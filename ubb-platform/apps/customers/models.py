@@ -172,6 +172,7 @@ class AutoTopUpConfig(SoftDeleteMixin, BaseModel):
 TOP_UP_ATTEMPT_TRIGGERS = [
     ("manual", "Manual"),
     ("auto_topup", "Auto Top-Up"),
+    ("widget", "Widget"),
 ]
 
 TOP_UP_ATTEMPT_STATUSES = [

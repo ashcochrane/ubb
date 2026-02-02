@@ -111,6 +111,7 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_invoicing"),
     Queue("ubb_webhooks"),
     Queue("ubb_topups"),
+    Queue("ubb_billing"),
 ]
 
 from celery.schedules import crontab
@@ -127,6 +128,14 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-webhook-events": {
         "task": "apps.stripe_integration.tasks.cleanup_webhook_events",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
+    },
+    "close-tenant-billing-periods": {
+        "task": "apps.tenant_billing.tasks.close_tenant_billing_periods",
+        "schedule": crontab(minute=0, hour=0, day_of_month=1),  # 1st of month 00:00 UTC
+    },
+    "generate-tenant-platform-invoices": {
+        "task": "apps.tenant_billing.tasks.generate_tenant_platform_invoices",
+        "schedule": crontab(minute=0, hour=1, day_of_month=1),  # 1st of month 01:00 UTC
     },
 }
 
