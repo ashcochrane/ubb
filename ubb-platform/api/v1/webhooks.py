@@ -197,6 +197,24 @@ def handle_checkout_completed(event):
             reference_id=str(attempt.id) if attempt else "",
         )
 
+    # Generate receipt invoice (after commit)
+    if attempt:
+        transaction.on_commit(lambda: _dispatch_receipt(customer.id, attempt.id))
+
+
+def _dispatch_receipt(customer_id, attempt_id):
+    from apps.customers.models import Customer, TopUpAttempt
+    from apps.invoicing.services import ReceiptService
+    try:
+        customer = Customer.objects.select_related("tenant").get(id=customer_id)
+        attempt = TopUpAttempt.objects.get(id=attempt_id)
+        ReceiptService.create_topup_receipt(customer, attempt)
+    except Exception:
+        logger.exception(
+            "Failed to generate top-up receipt",
+            extra={"data": {"customer_id": str(customer_id), "attempt_id": str(attempt_id)}},
+        )
+
 
 def handle_invoice_paid(event):
     """Handle invoice.paid — mark local invoice as paid."""
