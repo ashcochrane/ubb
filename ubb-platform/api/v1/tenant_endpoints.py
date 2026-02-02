@@ -1,0 +1,175 @@
+from datetime import date
+from typing import Optional
+
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncDate, Coalesce
+from ninja import NinjaAPI, Schema
+
+from core.auth import ApiKeyAuth
+from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.usage.models import UsageEvent
+
+tenant_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_tenant_v1")
+
+
+class TenantBillingPeriodOut(Schema):
+    id: str
+    period_start: str
+    period_end: str
+    status: str
+    total_usage_cost_micros: int
+    event_count: int
+    platform_fee_micros: int
+
+
+class TenantBillingPeriodListResponse(Schema):
+    data: list[TenantBillingPeriodOut]
+
+
+class TenantInvoiceOut(Schema):
+    id: str
+    billing_period_id: str
+    stripe_invoice_id: str
+    total_amount_micros: int
+    status: str
+    created_at: str
+
+
+class TenantInvoiceListResponse(Schema):
+    data: list[TenantInvoiceOut]
+
+
+class UsageAnalyticsResponse(Schema):
+    total_events: int
+    total_billed_cost_micros: int
+    total_provider_cost_micros: int
+    by_provider: list[dict]
+    by_event_type: list[dict]
+
+
+class RevenueAnalyticsResponse(Schema):
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    total_markup_micros: int
+    daily: list[dict]
+
+
+@tenant_api.get("/billing-periods", response=TenantBillingPeriodListResponse)
+def list_billing_periods(request):
+    tenant = request.auth.tenant
+    periods = TenantBillingPeriod.objects.filter(tenant=tenant).order_by("-period_start")
+    return {
+        "data": [
+            {
+                "id": str(p.id),
+                "period_start": p.period_start.isoformat(),
+                "period_end": p.period_end.isoformat(),
+                "status": p.status,
+                "total_usage_cost_micros": p.total_usage_cost_micros,
+                "event_count": p.event_count,
+                "platform_fee_micros": p.platform_fee_micros,
+            }
+            for p in periods
+        ]
+    }
+
+
+@tenant_api.get("/invoices", response=TenantInvoiceListResponse)
+def list_invoices(request):
+    tenant = request.auth.tenant
+    invoices = TenantInvoice.objects.filter(tenant=tenant).order_by("-created_at")
+    return {
+        "data": [
+            {
+                "id": str(inv.id),
+                "billing_period_id": str(inv.billing_period_id),
+                "stripe_invoice_id": inv.stripe_invoice_id,
+                "total_amount_micros": inv.total_amount_micros,
+                "status": inv.status,
+                "created_at": inv.created_at.isoformat(),
+            }
+            for inv in invoices
+        ]
+    }
+
+
+@tenant_api.get("/analytics/usage", response=UsageAnalyticsResponse)
+def usage_analytics(request, start_date: date = None, end_date: date = None):
+    """Usage analytics. Uses billed_cost_micros (falls back to cost_micros via Coalesce)
+    to correctly aggregate both pricing modes."""
+    tenant = request.auth.tenant
+    qs = UsageEvent.objects.filter(tenant=tenant)
+
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lte=end_date)
+
+    # Coalesce: use billed_cost_micros if set (metric pricing), else cost_micros (legacy)
+    effective_cost = Coalesce("billed_cost_micros", "cost_micros")
+
+    totals = qs.aggregate(
+        total_events=Count("id"),
+        total_billed_cost_micros=Sum(effective_cost),
+        total_provider_cost_micros=Sum("provider_cost_micros"),
+    )
+
+    by_provider = list(
+        qs.exclude(provider="").values("provider").annotate(
+            event_count=Count("id"),
+            total_cost_micros=Sum(effective_cost),
+        ).order_by("-total_cost_micros")
+    )
+
+    by_event_type = list(
+        qs.exclude(event_type="").values("event_type").annotate(
+            event_count=Count("id"),
+            total_cost_micros=Sum(effective_cost),
+        ).order_by("-total_cost_micros")
+    )
+
+    return {
+        "total_events": totals["total_events"] or 0,
+        "total_billed_cost_micros": totals["total_billed_cost_micros"] or 0,
+        "total_provider_cost_micros": totals["total_provider_cost_micros"] or 0,
+        "by_provider": by_provider,
+        "by_event_type": by_event_type,
+    }
+
+
+@tenant_api.get("/analytics/revenue", response=RevenueAnalyticsResponse)
+def revenue_analytics(request, start_date: date = None, end_date: date = None):
+    tenant = request.auth.tenant
+    qs = UsageEvent.objects.filter(tenant=tenant)
+
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lte=end_date)
+
+    totals = qs.aggregate(
+        total_provider_cost_micros=Sum("provider_cost_micros"),
+        total_billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+    )
+
+    provider_cost = totals["total_provider_cost_micros"] or 0
+    billed_cost = totals["total_billed_cost_micros"] or 0
+
+    daily = list(
+        qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
+            provider_cost_micros=Sum("provider_cost_micros"),
+            billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+            event_count=Count("id"),
+        ).order_by("day")
+    )
+
+    for entry in daily:
+        if entry.get("day"):
+            entry["day"] = entry["day"].isoformat()
+
+    return {
+        "total_provider_cost_micros": provider_cost,
+        "total_billed_cost_micros": billed_cost,
+        "total_markup_micros": billed_cost - provider_cost,
+        "daily": daily,
+    }
