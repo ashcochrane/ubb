@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "apps.stripe_integration",
     "apps.gating",
     "apps.invoicing",
+    "apps.tenant_billing",
 ]
 
 MIDDLEWARE = [

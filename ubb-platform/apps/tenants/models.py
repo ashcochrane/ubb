@@ -9,6 +9,9 @@ from core.models import BaseModel
 class Tenant(BaseModel):
     name = models.CharField(max_length=255)
     stripe_connected_account_id = models.CharField(max_length=255, blank=True, default="")
+    # stripe_connected_account_id = tenant's own Stripe account (for end-user charges)
+    # stripe_customer_id = tenant as UBB's customer (for platform fee billing)
+    stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
     arrears_threshold_micros = models.BigIntegerField(default=5_000_000)  # $5 default
     platform_fee_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=1.00
