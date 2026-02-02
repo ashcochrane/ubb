@@ -16,12 +16,23 @@ class Tenant(BaseModel):
     is_active = models.BooleanField(default=True)
     branding_config = models.JSONField(default=dict)
     metadata = models.JSONField(default=dict)
+    widget_secret = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         db_table = "ubb_tenant"
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.widget_secret:
+            self.widget_secret = secrets.token_urlsafe(48)
+        super().save(*args, **kwargs)
+
+    def rotate_widget_secret(self):
+        """Generate a new widget_secret. Invalidates all existing widget JWTs."""
+        self.widget_secret = secrets.token_urlsafe(48)
+        self.save(update_fields=["widget_secret", "updated_at"])
 
 
 class TenantApiKey(BaseModel):

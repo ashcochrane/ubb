@@ -10,3 +10,4 @@ stripe>=8.0
 factory-boy>=3.3
 pytest-django>=4.5
 httpx>=0.28
+PyJWT>=2.8
