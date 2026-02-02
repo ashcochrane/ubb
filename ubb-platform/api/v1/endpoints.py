@@ -81,6 +81,7 @@ def record_usage(request, payload: RecordUsageRequest):
             provider=payload.provider,
             usage_metrics=payload.usage_metrics,
             properties=payload.properties,
+            group_keys=payload.group_keys,
         )
     except PricingError as e:
         return api.create_response(request, {"error": str(e)}, status=422)
@@ -108,11 +109,16 @@ def get_balance(request, customer_id: str):
 
 
 @api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
-def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50):
+def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
+              group_key: str = None, group_value: str = None):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     limit = min(max(limit, 1), 100)  # Clamp between 1 and 100
 
     qs = customer.usage_events.all().order_by("-effective_at", "-id")
+
+    if group_key and group_value:
+        qs = qs.filter(group_keys__contains={group_key: group_value})
+
     if cursor:
         try:
             qs = apply_cursor_filter(qs, cursor)

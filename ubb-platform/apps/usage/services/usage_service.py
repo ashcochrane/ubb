@@ -1,4 +1,5 @@
 import logging
+import re
 
 from django.db import transaction, IntegrityError
 
@@ -7,6 +8,29 @@ from apps.customers.models import Wallet, WalletTransaction
 from core.locking import lock_for_billing
 
 logger = logging.getLogger(__name__)
+
+# Min 2 chars, max 64 chars, starts with letter, lowercase alphanumeric + underscores
+GROUP_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
+
+
+def validate_group_keys(group_keys):
+    """Validate group_keys dict. Raises ValueError on invalid input."""
+    if group_keys is None:
+        return
+    if not isinstance(group_keys, dict):
+        raise ValueError("group_keys must be a dict")
+    if len(group_keys) > 10:
+        raise ValueError("group_keys cannot have more than 10 keys")
+    for key, value in group_keys.items():
+        if not GROUP_KEY_PATTERN.match(key):
+            raise ValueError(
+                f"group_keys key '{key}' must be lowercase alphanumeric + underscores, "
+                "start with a letter, 2-64 chars"
+            )
+        if not isinstance(value, str):
+            raise ValueError(f"group_keys value for '{key}' must be a string")
+        if len(value) > 256:
+            raise ValueError(f"group_keys value for '{key}' exceeds 256 chars")
 
 
 class UsageService:
@@ -23,7 +47,11 @@ class UsageService:
         provider=None,
         usage_metrics=None,
         properties=None,
+        group_keys=None,
     ):
+        # 0. Validate group_keys before any DB work
+        validate_group_keys(group_keys)
+
         # 1. Idempotency check — fast path before locking
         existing = UsageEvent.objects.filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key
@@ -80,6 +108,7 @@ class UsageService:
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
                     pricing_provenance=pricing_provenance,
+                    group_keys=group_keys,
                 )
         except IntegrityError:
             existing = UsageEvent.objects.get(tenant=tenant, customer=customer, idempotency_key=idempotency_key)

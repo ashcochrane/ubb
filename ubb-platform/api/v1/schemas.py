@@ -23,6 +23,8 @@ class RecordUsageRequest(Schema):
     # Mode 1: Caller-provided cost (legacy)
     cost_micros: Optional[int] = Field(default=None, gt=0, le=999_999_999_999)
 
+    group_keys: Optional[dict[str, str]] = None
+
     # Mode 2: Raw metrics (platform prices it)
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)

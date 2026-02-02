@@ -65,6 +65,7 @@ class UsageEvent(BaseModel):
     provider_cost_micros = models.BigIntegerField(null=True, blank=True)
     billed_cost_micros = models.BigIntegerField(null=True, blank=True)
     pricing_provenance = models.JSONField(default=dict, blank=True)
+    group_keys = models.JSONField(null=True, blank=True)
     effective_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
