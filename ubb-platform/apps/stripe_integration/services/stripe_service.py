@@ -188,3 +188,52 @@ class StripeService:
             stripe_account=connected_account,
         )
         return intent
+
+    @staticmethod
+    def create_tenant_platform_invoice(tenant, billing_period):
+        """
+        Create a Stripe invoice for the platform fee billed directly to the tenant.
+
+        Uses tenant.stripe_customer_id (tenant as UBB's customer on UBB's Stripe account).
+        NOT on the connected account — this is UBB billing the tenant.
+        auto_advance=False until items attached, then finalize explicitly.
+        """
+        if not tenant.stripe_customer_id:
+            raise StripeFatalError(
+                f"Tenant {tenant.id} has no stripe_customer_id for platform billing"
+            )
+
+        amount_cents = micros_to_cents(billing_period.platform_fee_micros)
+        if amount_cents <= 0:
+            return None
+
+        # Create invoice with auto_advance=False to prevent early finalization
+        invoice = stripe_call(
+            stripe.Invoice.create,
+            retryable=True,
+            idempotency_key=f"platform-invoice-{billing_period.id}",
+            customer=tenant.stripe_customer_id,
+            auto_advance=False,
+            collection_method="charge_automatically",
+        )
+
+        stripe_call(
+            stripe.InvoiceItem.create,
+            retryable=True,
+            idempotency_key=f"platform-item-{billing_period.id}",
+            customer=tenant.stripe_customer_id,
+            invoice=invoice.id,
+            amount=amount_cents,
+            currency="usd",
+            description=f"UBB Platform fee: {billing_period.period_start} - {billing_period.period_end}",
+        )
+
+        finalized = stripe_call(
+            stripe.Invoice.finalize_invoice,
+            retryable=True,
+            idempotency_key=f"platform-finalize-{billing_period.id}",
+            invoice=invoice.id,
+            auto_advance=True,  # Now enable auto-advance for collection
+        )
+
+        return finalized.id

@@ -63,24 +63,34 @@ def generate_tenant_platform_invoices():
 def _create_tenant_invoice(period):
     """Create a platform fee invoice for a tenant.
 
-    On Stripe failure: period stays "closed" so the next scheduled run retries.
-    On success: period moves to "invoiced".
+    On Stripe failure: period stays 'closed', no local record — allows retry.
+    On success: local TenantInvoice created, period moves to 'invoiced'.
     """
     period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
     if period.status != "closed":
         return
 
-    # Idempotency: skip if invoice already exists
     if TenantInvoice.objects.filter(billing_period=period).exists():
         return
 
-    # TODO: Stripe integration added in Task 10.
-    # For now, create local record as draft.
-    invoice = TenantInvoice.objects.create(
+    from apps.stripe_integration.services.stripe_service import StripeService
+
+    # If Stripe fails, exception propagates, transaction rolls back,
+    # period stays "closed", and next scheduled run retries.
+    stripe_invoice_id = StripeService.create_tenant_platform_invoice(
+        period.tenant, period
+    )
+
+    if not stripe_invoice_id:
+        return
+
+    TenantInvoice.objects.create(
         tenant=period.tenant,
         billing_period=period,
+        stripe_invoice_id=stripe_invoice_id,
         total_amount_micros=period.platform_fee_micros,
-        status="draft",
+        status="finalized",
+        finalized_at=timezone.now(),
     )
 
     period.status = "invoiced"
@@ -89,7 +99,7 @@ def _create_tenant_invoice(period):
     logger.info(
         "Created tenant platform invoice",
         extra={"data": {
-            "invoice_id": str(invoice.id),
+            "invoice_id": stripe_invoice_id,
             "tenant": period.tenant.name,
             "amount_micros": period.platform_fee_micros,
         }},
