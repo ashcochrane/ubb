@@ -55,3 +55,27 @@ def verify_widget_token(token):
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+from ninja.security import HttpBearer
+
+
+class WidgetJWTAuth(HttpBearer):
+    def authenticate(self, request, token):
+        payload = verify_widget_token(token)
+        if payload is None:
+            return None
+
+        from apps.customers.models import Customer
+        try:
+            customer = Customer.objects.select_related("tenant").get(
+                id=payload["sub"],
+                tenant_id=payload["tid"],
+                tenant__is_active=True,
+            )
+        except Customer.DoesNotExist:
+            return None
+
+        request.widget_customer = customer
+        request.widget_tenant = customer.tenant
+        return customer
