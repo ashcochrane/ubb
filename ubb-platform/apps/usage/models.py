@@ -3,31 +3,24 @@ from django.db import models
 from core.models import BaseModel
 
 
-BILLING_PERIOD_STATUS_CHOICES = [
-    ("open", "Open"),
-    ("closed", "Closed"),
-    ("invoiced", "Invoiced"),
-]
-
 INVOICE_STATUS_CHOICES = [
     ("draft", "Draft"),
     ("finalized", "Finalized"),
     ("paid", "Paid"),
     ("void", "Void"),
-    ("uncollectible", "Uncollectible"),
 ]
 
 
 class Invoice(BaseModel):
-    """Invoice for a billing period."""
+    """Receipt invoice for a top-up payment."""
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="invoices"
     )
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="invoices"
     )
-    billing_period = models.OneToOneField(
-        "usage.BillingPeriod", on_delete=models.CASCADE, related_name="invoice"
+    top_up_attempt = models.OneToOneField(
+        "customers.TopUpAttempt", on_delete=models.CASCADE, related_name="invoice"
     )
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     total_amount_micros = models.BigIntegerField(default=0)
@@ -72,13 +65,6 @@ class UsageEvent(BaseModel):
     provider_cost_micros = models.BigIntegerField(null=True, blank=True)
     billed_cost_micros = models.BigIntegerField(null=True, blank=True)
     pricing_provenance = models.JSONField(default=dict, blank=True)
-    invoice = models.ForeignKey(
-        Invoice,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="usage_events",
-    )
     effective_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -107,7 +93,7 @@ class UsageEvent(BaseModel):
 
 
 class Refund(BaseModel):
-    """Refund linked to a usage event. Only non-invoiced events can be refunded."""
+    """Refund linked to a usage event."""
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="refunds"
     )
@@ -128,38 +114,3 @@ class Refund(BaseModel):
 
     def __str__(self):
         return f"Refund({self.usage_event.request_id}: {self.amount_micros})"
-
-
-class BillingPeriod(BaseModel):
-    tenant = models.ForeignKey(
-        "tenants.Tenant", on_delete=models.CASCADE, related_name="billing_periods"
-    )
-    customer = models.ForeignKey(
-        "customers.Customer", on_delete=models.CASCADE, related_name="billing_periods"
-    )
-    period_start = models.DateTimeField(db_index=True)
-    period_end = models.DateTimeField(db_index=True)
-    status = models.CharField(
-        max_length=20,
-        choices=BILLING_PERIOD_STATUS_CHOICES,
-        default="open",
-        db_index=True,
-    )
-    total_cost_micros = models.BigIntegerField(default=0)
-    event_count = models.IntegerField(default=0)
-    invoice_attempt_number = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        db_table = "ubb_billing_period"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "customer", "period_start", "period_end"],
-                name="uq_billing_period",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=["status", "period_end"], name="idx_billing_period_status_end"),
-        ]
-
-    def __str__(self):
-        return f"BillingPeriod({self.customer.external_id}: {self.status})"

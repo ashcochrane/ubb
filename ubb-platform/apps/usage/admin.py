@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.usage.models import BillingPeriod, Invoice, UsageEvent
+from apps.usage.models import Invoice, UsageEvent
 
 
 @admin.register(UsageEvent)
@@ -14,20 +14,6 @@ class UsageEventAdmin(admin.ModelAdmin):
     )
     list_filter = ("tenant",)
     search_fields = ("request_id", "idempotency_key")
-
-
-@admin.register(BillingPeriod)
-class BillingPeriodAdmin(admin.ModelAdmin):
-    list_display = (
-        "customer",
-        "tenant",
-        "period_start",
-        "period_end",
-        "status",
-        "total_cost_micros",
-        "event_count",
-    )
-    list_filter = ("status", "tenant")
 
 
 @admin.register(Invoice)

@@ -363,39 +363,6 @@ class RefundEndpointTest(TestCase):
         self.assertIn("refund_id", body)
         self.assertEqual(body["balance_micros"], 105_000_000)
 
-    def test_refund_blocked_when_event_invoiced(self):
-        # Mark event as invoiced
-        from apps.usage.models import Invoice, BillingPeriod
-        from django.utils import timezone
-        bp = BillingPeriod.objects.create(
-            tenant=self.tenant,
-            customer=self.customer,
-            period_start=timezone.now(),
-            period_end=timezone.now(),
-            status="invoiced",
-        )
-        invoice = Invoice.objects.create(
-            tenant=self.tenant,
-            customer=self.customer,
-            billing_period=bp,
-            status="finalized",
-        )
-        # Update event to have invoice FK
-        UsageEvent.objects.filter(id=self.event.id).update(invoice=invoice)
-
-        response = self.client.post(
-            f"/api/v1/customers/{self.customer.id}/refund",
-            data=json.dumps({
-                "usage_event_id": str(self.event.id),
-                "reason": "Too late",
-                "idempotency_key": "refund_idem_inv",
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "Cannot refund invoiced usage event")
-
     def test_refund_captures_api_key(self):
         response = self.client.post(
             f"/api/v1/customers/{self.customer.id}/refund",

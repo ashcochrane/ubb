@@ -239,12 +239,6 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
         if event.customer_id != customer.id or event.tenant_id != request.auth.tenant.id:
             return api.create_response(request, {"error": "Usage event not found"}, status=404)
 
-        # Block refunds on invoiced events (checked under lock — no race)
-        if event.invoice_id is not None:
-            return api.create_response(
-                request, {"error": "Cannot refund invoiced usage event"}, status=400
-            )
-
         # Idempotency on WalletTransaction
         existing_txn = WalletTransaction.objects.filter(
             wallet=wallet, idempotency_key=payload.idempotency_key

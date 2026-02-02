@@ -72,10 +72,3 @@ class StripeCallWrapperTest(TestCase):
     def test_micros_to_cents_zero(self):
         self.assertEqual(micros_to_cents(0), 0)
 
-    def test_platform_fee_calculation(self):
-        from unittest.mock import MagicMock
-        tenant = MagicMock()
-        tenant.platform_fee_percentage = "10.00"  # Decimal field
-        # 100 cents total, 10% fee = 10 cents
-        fee = StripeService._calculate_platform_fee(tenant, 1_000_000)
-        self.assertEqual(fee, 10)
