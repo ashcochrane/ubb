@@ -25,8 +25,12 @@ def _check_micros_allow_zero(value: int, name: str) -> None:
 
 
 class UBBClient:
-    def __init__(self, api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0) -> None:
+    def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
+                 timeout: float = 10.0, widget_secret: str | None = None,
+                 tenant_id: str | None = None) -> None:
         self._base_url = base_url.rstrip("/")
+        self._widget_secret = widget_secret
+        self._tenant_id = tenant_id
         self._http = httpx.Client(
             base_url=self._base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -68,18 +72,49 @@ class UBBClient:
             pass
         return response.text
 
+    def create_widget_token(self, customer_id: str, expires_in: int = 900) -> str:
+        """Create a signed JWT for widget authentication."""
+        if not self._widget_secret:
+            raise ValueError("widget_secret is required to create widget tokens")
+        if not self._tenant_id:
+            raise ValueError("tenant_id is required to create widget tokens")
+
+        import time
+        import jwt
+
+        payload = {
+            "sub": customer_id,
+            "tid": self._tenant_id,
+            "iss": "ubb",
+            "exp": int(time.time()) + expires_in,
+        }
+        return jwt.encode(payload, self._widget_secret, algorithm="HS256")
+
     def pre_check(self, customer_id: str) -> PreCheckResult:
         r = self._request("post", "/api/v1/pre-check", json={"customer_id": customer_id})
         return PreCheckResult(**r.json())
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int, metadata: dict | None = None) -> RecordUsageResult:
-        _check_micros(cost_micros, "cost_micros")
-        r = self._request("post", "/api/v1/usage", json={
+                     cost_micros: int | None = None, metadata: dict | None = None,
+                     event_type: str | None = None, provider: str | None = None,
+                     usage_metrics: dict | None = None, properties: dict | None = None,
+                     group_keys: dict | None = None) -> RecordUsageResult:
+        body: dict = {
             "customer_id": customer_id, "request_id": request_id,
-            "idempotency_key": idempotency_key, "cost_micros": cost_micros,
-            "metadata": metadata or {},
-        })
+            "idempotency_key": idempotency_key, "metadata": metadata or {},
+        }
+        if cost_micros is not None:
+            _check_micros(cost_micros, "cost_micros")
+            body["cost_micros"] = cost_micros
+        if usage_metrics is not None:
+            body["event_type"] = event_type
+            body["provider"] = provider
+            body["usage_metrics"] = usage_metrics
+            if properties:
+                body["properties"] = properties
+        if group_keys is not None:
+            body["group_keys"] = group_keys
+        r = self._request("post", "/api/v1/usage", json=body)
         return RecordUsageResult(**r.json())
 
     def create_customer(self, external_id: str, email: str, metadata: dict | None = None) -> CustomerResult:
