@@ -217,27 +217,57 @@ def _dispatch_receipt(customer_id, attempt_id):
 
 
 def handle_invoice_paid(event):
-    """Handle invoice.paid — mark local invoice as paid."""
+    """Handle invoice.paid — mark local invoice as paid.
+
+    Handles both:
+    - End-user invoices (on connected account): matched via event.account
+    - Platform fee invoices (on UBB's own account): matched when no connected account
+    """
     inv = event.data.object
     connected_account = event.account
-    invoice = Invoice.objects.filter(
-        stripe_invoice_id=inv.id,
-        tenant__stripe_connected_account_id=connected_account,
-    ).first()
-    if not invoice:
-        return
 
-    # Handler-level idempotency: already paid = skip
-    if invoice.status == "paid":
-        return
+    if connected_account:
+        # End-user invoice on tenant's Connected Account
+        invoice = Invoice.objects.filter(
+            stripe_invoice_id=inv.id,
+            tenant__stripe_connected_account_id=connected_account,
+        ).first()
+        if not invoice:
+            return
 
-    with transaction.atomic():
-        invoice = lock_invoice(invoice.id)
         if invoice.status == "paid":
             return
-        invoice.status = "paid"
-        invoice.paid_at = timezone.now()
-        invoice.save(update_fields=["status", "paid_at", "updated_at"])
+
+        with transaction.atomic():
+            invoice = lock_invoice(invoice.id)
+            if invoice.status == "paid":
+                return
+            invoice.status = "paid"
+            invoice.paid_at = timezone.now()
+            invoice.save(update_fields=["status", "paid_at", "updated_at"])
+    else:
+        # Platform fee invoice on UBB's own Stripe account
+        from apps.tenant_billing.models import TenantInvoice
+        tenant_invoice = TenantInvoice.objects.filter(
+            stripe_invoice_id=inv.id,
+        ).first()
+        if not tenant_invoice:
+            # TenantInvoice may not be persisted yet — raise to trigger Stripe retry
+            raise ObjectDoesNotExist(
+                f"TenantInvoice not found for stripe_invoice_id={inv.id}"
+            )
+
+        if tenant_invoice.status == "paid":
+            return
+
+        now = timezone.now()
+        TenantInvoice.objects.filter(
+            id=tenant_invoice.id,
+        ).exclude(status="paid").update(
+            status="paid",
+            paid_at=now,
+            updated_at=now,
+        )
 
 
 def handle_invoice_payment_failed(event):

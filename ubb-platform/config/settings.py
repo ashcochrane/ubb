@@ -137,6 +137,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.tenant_billing.tasks.generate_tenant_platform_invoices",
         "schedule": crontab(minute=0, hour=1, day_of_month=1),  # 1st of month 01:00 UTC
     },
+    "reconcile-tenant-billing-periods": {
+        "task": "apps.tenant_billing.tasks.reconcile_tenant_billing_periods",
+        "schedule": crontab(minute=0, hour="*/1"),  # Every hour
+    },
+    "reconcile-missing-receipts": {
+        "task": "apps.invoicing.tasks.reconcile_missing_receipts",
+        "schedule": crontab(minute=30, hour="*/1"),  # Every hour at :30
+    },
 }
 
 # UBB Platform Settings
@@ -180,8 +188,6 @@ LOGGING = {
 # Stripe
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-UBB_TOPUP_SUCCESS_URL = os.environ.get("UBB_TOPUP_SUCCESS_URL", "")
-UBB_TOPUP_CANCEL_URL = os.environ.get("UBB_TOPUP_CANCEL_URL", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

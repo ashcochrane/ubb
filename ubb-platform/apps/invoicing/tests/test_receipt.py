@@ -11,7 +11,7 @@ class TopUpReceiptTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com",
+            tenant=self.tenant, external_id="c1",
             stripe_customer_id="cus_test",
         )
         self.attempt = TopUpAttempt.objects.create(

@@ -36,11 +36,49 @@ def close_tenant_billing_periods():
 
 
 @shared_task(queue="ubb_billing")
+def reconcile_tenant_billing_periods():
+    """Reconcile all open billing periods against actual UsageEvent data.
+
+    Catches any accumulate_usage drift from transient failures.
+    Runs hourly — fast no-op when totals match.
+    """
+    periods = TenantBillingPeriod.objects.filter(
+        status="open",
+    ).select_related("tenant")
+
+    for period in periods:
+        try:
+            TenantBillingService.reconcile_period(period)
+        except Exception:
+            logger.exception(
+                "Failed to reconcile tenant billing period",
+                extra={"data": {"period_id": str(period.id)}},
+            )
+
+
+@shared_task(queue="ubb_billing")
 def generate_tenant_platform_invoices():
-    """Generate Stripe invoices for closed billing periods without invoices."""
+    """Generate Stripe invoices for closed billing periods without invoices.
+
+    Also reclaims stale 'invoicing' periods (stuck >30 min) by reverting to 'closed'.
+    """
+    from datetime import timedelta
+
+    stale_cutoff = timezone.now() - timedelta(minutes=30)
+
+    # Reclaim stale invoicing periods (worker crash recovery)
+    stale_count = TenantBillingPeriod.objects.filter(
+        status="invoicing",
+        updated_at__lt=stale_cutoff,
+    ).update(status="closed")
+    if stale_count:
+        logger.warning(
+            "Reclaimed stale invoicing periods",
+            extra={"data": {"count": stale_count}},
+        )
+
     periods = TenantBillingPeriod.objects.filter(
         status="closed",
-    ).filter(
         invoice__isnull=True,
     ).select_related("tenant")
 
@@ -59,42 +97,67 @@ def generate_tenant_platform_invoices():
             )
 
 
-@transaction.atomic
 def _create_tenant_invoice(period):
-    """Create a platform fee invoice for a tenant.
+    """Create a platform fee invoice for a tenant (two-phase).
 
-    On Stripe failure: period stays 'closed', no local record — allows retry.
+    Phase 1: Claim period with 'invoicing' status inside a transaction.
+    Phase 2: Call Stripe outside any transaction (no DB locks held).
+    Phase 3: Record result in a new transaction.
+
+    On Stripe failure: period stays 'invoicing', next run can reclaim stale ones.
     On success: local TenantInvoice created, period moves to 'invoiced'.
     """
-    period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-    if period.status != "closed":
-        return
+    # Phase 1 — Claim the period
+    with transaction.atomic():
+        period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
+        if period.status != "closed":
+            return
 
-    if TenantInvoice.objects.filter(billing_period=period).exists():
-        return
+        if TenantInvoice.objects.filter(billing_period=period).exists():
+            period.status = "invoiced"
+            period.save(update_fields=["status", "updated_at"])
+            return
 
+        period.status = "invoicing"
+        period.save(update_fields=["status", "updated_at"])
+
+    # Phase 2 — Call Stripe (no DB transaction held)
     from apps.stripe_integration.services.stripe_service import StripeService
 
-    # If Stripe fails, exception propagates, transaction rolls back,
-    # period stays "closed", and next scheduled run retries.
-    stripe_invoice_id = StripeService.create_tenant_platform_invoice(
-        period.tenant, period
-    )
+    try:
+        stripe_invoice_id = StripeService.create_tenant_platform_invoice(
+            period.tenant, period
+        )
+    except Exception:
+        # Stripe failed — revert to closed so next run retries
+        TenantBillingPeriod.objects.filter(
+            id=period.id, status="invoicing"
+        ).update(status="closed")
+        raise
 
     if not stripe_invoice_id:
+        TenantBillingPeriod.objects.filter(
+            id=period.id, status="invoicing"
+        ).update(status="closed")
         return
 
-    TenantInvoice.objects.create(
-        tenant=period.tenant,
-        billing_period=period,
-        stripe_invoice_id=stripe_invoice_id,
-        total_amount_micros=period.platform_fee_micros,
-        status="finalized",
-        finalized_at=timezone.now(),
-    )
+    # Phase 3 — Record success
+    with transaction.atomic():
+        period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
+        if period.status != "invoicing":
+            return  # Another process already handled it
 
-    period.status = "invoiced"
-    period.save(update_fields=["status", "updated_at"])
+        TenantInvoice.objects.create(
+            tenant=period.tenant,
+            billing_period=period,
+            stripe_invoice_id=stripe_invoice_id,
+            total_amount_micros=period.platform_fee_micros,
+            status="finalized",
+            finalized_at=timezone.now(),
+        )
+
+        period.status = "invoiced"
+        period.save(update_fields=["status", "updated_at"])
 
     logger.info(
         "Created tenant platform invoice",

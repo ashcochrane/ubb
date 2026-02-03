@@ -12,7 +12,6 @@ class UsageEventModelTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             external_id="user_1",
-            email="test@example.com",
         )
 
     def test_create_event(self):

@@ -71,7 +71,6 @@ class PreCheckEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             external_id="cust_001",
-            email="test@example.com",
         )
 
     def test_pre_check_active_customer(self):
@@ -117,7 +116,6 @@ class RecordUsageEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             external_id="cust_002",
-            email="usage@example.com",
         )
         # Set wallet balance to $10
         wallet = self.customer.wallet
@@ -155,7 +153,7 @@ class CustomerEndpointTest(TestCase):
             "/api/v1/customers",
             data=json.dumps({
                 "external_id": "cust_new",
-                "email": "new@example.com",
+                "stripe_customer_id": "cus_test123",
                 "metadata": {"plan": "pro"},
             }),
             content_type="application/json",
@@ -164,7 +162,6 @@ class CustomerEndpointTest(TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["external_id"], "cust_new")
-        self.assertEqual(body["email"], "new@example.com")
         self.assertEqual(body["status"], "active")
         self.assertIn("id", body)
 
@@ -172,7 +169,6 @@ class CustomerEndpointTest(TestCase):
         customer = Customer.objects.create(
             tenant=self.tenant,
             external_id="cust_bal",
-            email="balance@example.com",
         )
         response = self.client.get(
             f"/api/v1/customers/{customer.id}/balance",
@@ -189,7 +185,7 @@ class WalletTransactionIdempotencyTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()
@@ -231,7 +227,7 @@ class WithdrawEndpointTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_w1", email="w@t.com"
+            tenant=self.tenant, external_id="cust_w1"
         )
         self.customer.wallet.balance_micros = 50_000_000
         self.customer.wallet.save()
@@ -295,7 +291,7 @@ class TransactionsEndpointTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_tx", email="tx@t.com"
+            tenant=self.tenant, external_id="cust_tx"
         )
         wallet = self.customer.wallet
         wallet.balance_micros = 100_000_000
@@ -331,7 +327,7 @@ class RefundEndpointTest(TestCase):
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_ref", email="ref@t.com"
+            tenant=self.tenant, external_id="cust_ref"
         )
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()
@@ -429,7 +425,7 @@ class RecordUsageRawMetricsEndpointTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_raw", email="raw@example.com",
+            tenant=self.tenant, external_id="cust_raw",
         )
         wallet = self.customer.wallet
         wallet.balance_micros = 10_000_000

@@ -9,7 +9,7 @@ class SoftDeleteTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
 
     def test_soft_delete_hides_from_default_queryset(self):

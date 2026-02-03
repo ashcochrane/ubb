@@ -8,7 +8,7 @@ from apps.gating.services.risk_service import RiskService
 class RiskServiceTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1", email="t@t.com")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
         RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10, max_concurrent_requests=3)
 
     def test_active_customer_passes(self):

@@ -14,7 +14,7 @@ class ExpireStaleTopupAttemptsTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
 
     def _create_attempt(self, trigger, minutes_ago=0, hours_ago=0, customer=None):
@@ -34,7 +34,7 @@ class ExpireStaleTopupAttemptsTest(TestCase):
         stale = self._create_attempt("auto_topup", minutes_ago=31)
         # Use separate customer to avoid UniqueConstraint on pending auto_topup
         customer2 = Customer.objects.create(
-            tenant=self.tenant, external_id="c2", email="c2@t.com"
+            tenant=self.tenant, external_id="c2"
         )
         fresh = self._create_attempt("auto_topup", minutes_ago=10, customer=customer2)
 
@@ -78,7 +78,7 @@ class ReconcileWalletBalancesTest(TestCase):
 
     def test_no_drift_when_balanced(self):
         customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         wallet = customer.wallet
         # Credit via wallet method to create matching transaction
@@ -89,7 +89,7 @@ class ReconcileWalletBalancesTest(TestCase):
 
     def test_detects_drift(self):
         customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c2", email="t2@t.com"
+            tenant=self.tenant, external_id="c2"
         )
         wallet = customer.wallet
         # Manually set balance without matching transaction
@@ -106,7 +106,7 @@ class ReconcileWalletBalancesTest(TestCase):
 
     def test_balanced_with_multiple_transactions(self):
         customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c3", email="t3@t.com"
+            tenant=self.tenant, external_id="c3"
         )
         wallet = customer.wallet
         wallet.credit(20_000_000, description="top-up")

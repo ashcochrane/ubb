@@ -13,7 +13,7 @@ class GroupKeysValidationTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()
@@ -94,7 +94,7 @@ class GroupKeysEndpointTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_gk", email="gk@t.com"
+            tenant=self.tenant, external_id="cust_gk"
         )
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()

@@ -85,6 +85,8 @@ def record_usage(request, payload: RecordUsageRequest):
         )
     except PricingError as e:
         return api.create_response(request, {"error": str(e)}, status=422)
+    except ValueError as e:
+        return api.create_response(request, {"error": str(e)}, status=422)
     return result
 
 
@@ -94,7 +96,7 @@ def create_customer(request, payload: CreateCustomerRequest):
         customer = Customer.objects.create(
             tenant=request.auth.tenant,
             external_id=payload.external_id,
-            email=payload.email,
+            stripe_customer_id=payload.stripe_customer_id,
             metadata=payload.metadata,
         )
         return 201, customer
@@ -174,7 +176,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if not customer.stripe_customer_id:
-        StripeService.create_customer(customer)
+        return api.create_response(request, {"error": "Customer has no stripe_customer_id"}, status=400)
 
     attempt = TopUpAttempt.objects.create(
         customer=customer,
@@ -183,7 +185,11 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
         status="pending",
     )
 
-    checkout_url = StripeService.create_checkout_session(customer, payload.amount_micros, attempt)
+    checkout_url = StripeService.create_checkout_session(
+        customer, payload.amount_micros, attempt,
+        success_url=payload.success_url,
+        cancel_url=payload.cancel_url,
+    )
     return {"checkout_url": checkout_url}
 
 

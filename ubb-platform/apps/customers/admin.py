@@ -10,9 +10,9 @@ from apps.customers.models import (
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ("external_id", "tenant", "email", "status", "created_at")
+    list_display = ("external_id", "tenant", "status", "created_at")
     list_filter = ("status", "tenant")
-    search_fields = ("external_id", "email")
+    search_fields = ("external_id",)
 
 
 @admin.register(Wallet)

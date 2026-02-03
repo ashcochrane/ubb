@@ -6,6 +6,7 @@ from core.models import BaseModel
 TENANT_BILLING_PERIOD_STATUS_CHOICES = [
     ("open", "Open"),
     ("closed", "Closed"),
+    ("invoicing", "Invoicing"),
     ("invoiced", "Invoiced"),
 ]
 

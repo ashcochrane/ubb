@@ -13,7 +13,7 @@ class AutoTopUpServiceTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         self.wallet = self.customer.wallet
         self.wallet.balance_micros = -1_000_000  # below threshold

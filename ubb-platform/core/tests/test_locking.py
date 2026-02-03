@@ -13,7 +13,6 @@ class LockForBillingTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant,
             external_id="cust_1",
-            email="test@test.com",
         )
 
     def test_lock_for_billing_returns_wallet_and_customer(self):

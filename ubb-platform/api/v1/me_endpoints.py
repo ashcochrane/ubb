@@ -1,4 +1,5 @@
 from ninja import NinjaAPI, Schema, Field
+from pydantic import field_validator
 from typing import Optional
 
 from core.widget_auth import WidgetJWTAuth
@@ -6,23 +7,32 @@ from apps.customers.models import TopUpAttempt
 from apps.stripe_integration.services.stripe_service import StripeService
 from apps.usage.models import Invoice
 
-widget_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_widget_v1")
+me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
 
 
-class WidgetBalanceResponse(Schema):
+class BalanceResponse(Schema):
     balance_micros: int
     currency: str
 
 
-class WidgetTopUpRequest(Schema):
+class TopUpRequest(Schema):
     amount_micros: int = Field(gt=0)
+    success_url: str = Field(min_length=1)
+    cancel_url: str = Field(min_length=1)
+
+    @field_validator("amount_micros")
+    @classmethod
+    def validate_amount_micros(cls, value):
+        if value % 10_000 != 0:
+            raise ValueError("amount_micros must be divisible by 10,000 (cent-aligned)")
+        return value
 
 
-class WidgetTopUpResponse(Schema):
+class TopUpResponse(Schema):
     checkout_url: str
 
 
-class WidgetTransactionOut(Schema):
+class TransactionOut(Schema):
     id: str
     transaction_type: str
     amount_micros: int
@@ -31,35 +41,35 @@ class WidgetTransactionOut(Schema):
     created_at: str
 
 
-class WidgetPaginatedTransactions(Schema):
-    data: list[WidgetTransactionOut]
+class PaginatedTransactions(Schema):
+    data: list[TransactionOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
 
-class WidgetInvoiceOut(Schema):
+class InvoiceOut(Schema):
     id: str
     total_amount_micros: int
     status: str
-    stripe_invoice_id: str
+    stripe_invoice_id: str  # Exposed so UIs can link to Stripe-hosted invoice
     created_at: str
 
 
-class WidgetPaginatedInvoices(Schema):
-    data: list[WidgetInvoiceOut]
+class PaginatedInvoices(Schema):
+    data: list[InvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
 
-@widget_api.get("/balance", response=WidgetBalanceResponse)
-def widget_balance(request):
+@me_api.get("/balance", response=BalanceResponse)
+def get_balance(request):
     customer = request.widget_customer
     wallet = customer.wallet
     return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
 
 
-@widget_api.get("/transactions", response=WidgetPaginatedTransactions)
-def widget_transactions(request, cursor: str = None, limit: int = 50):
+@me_api.get("/transactions", response=PaginatedTransactions)
+def get_transactions(request, cursor: str = None, limit: int = 50):
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 
@@ -70,7 +80,7 @@ def widget_transactions(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return widget_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
 
     txns = list(qs[:limit + 1])
     has_more = len(txns) > limit
@@ -99,12 +109,12 @@ def widget_transactions(request, cursor: str = None, limit: int = 50):
     }
 
 
-@widget_api.post("/top-up", response=WidgetTopUpResponse)
-def widget_top_up(request, payload: WidgetTopUpRequest):
+@me_api.post("/top-up", response=TopUpResponse)
+def create_top_up(request, payload: TopUpRequest):
     customer = request.widget_customer
 
     if not customer.stripe_customer_id:
-        StripeService.create_customer(customer)
+        return me_api.create_response(request, {"error": "Customer has no stripe_customer_id"}, status=400)
 
     attempt = TopUpAttempt.objects.create(
         customer=customer,
@@ -114,13 +124,15 @@ def widget_top_up(request, payload: WidgetTopUpRequest):
     )
 
     checkout_url = StripeService.create_checkout_session(
-        customer, payload.amount_micros, attempt
+        customer, payload.amount_micros, attempt,
+        success_url=payload.success_url,
+        cancel_url=payload.cancel_url,
     )
     return {"checkout_url": checkout_url}
 
 
-@widget_api.get("/invoices", response=WidgetPaginatedInvoices)
-def widget_invoices(request, cursor: str = None, limit: int = 50):
+@me_api.get("/invoices", response=PaginatedInvoices)
+def get_invoices(request, cursor: str = None, limit: int = 50):
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 
@@ -131,7 +143,7 @@ def widget_invoices(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return widget_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit

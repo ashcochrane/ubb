@@ -79,7 +79,6 @@ class WebhookDispatcherTest(TestCase):
         customer = Customer.objects.create(
             tenant=tenant,
             external_id="cust_ext_1",
-            email="test@example.com",
             stripe_customer_id="cus_stripe_1",
         )
         wallet = customer.wallet  # auto-created by Customer.save()

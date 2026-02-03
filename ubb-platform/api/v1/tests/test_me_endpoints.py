@@ -12,7 +12,7 @@ class WidgetBalanceTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         self.customer.wallet.balance_micros = 50_000_000
         self.customer.wallet.save()
@@ -22,7 +22,7 @@ class WidgetBalanceTest(TestCase):
 
     def test_get_balance(self):
         response = self.http_client.get(
-            "/api/v1/widget/balance",
+            "/api/v1/me/balance",
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
         self.assertEqual(response.status_code, 200)
@@ -31,7 +31,7 @@ class WidgetBalanceTest(TestCase):
         self.assertEqual(body["currency"], "USD")
 
     def test_no_token_returns_401(self):
-        response = self.http_client.get("/api/v1/widget/balance")
+        response = self.http_client.get("/api/v1/me/balance")
         self.assertEqual(response.status_code, 401)
 
     def test_expired_token_returns_401(self):
@@ -40,7 +40,7 @@ class WidgetBalanceTest(TestCase):
             expires_in=-1,
         )
         response = self.http_client.get(
-            "/api/v1/widget/balance",
+            "/api/v1/me/balance",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
         self.assertEqual(response.status_code, 401)
@@ -53,7 +53,7 @@ class WidgetTransactionsTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         wallet = self.customer.wallet
         wallet.balance_micros = 100_000_000
@@ -72,7 +72,7 @@ class WidgetTransactionsTest(TestCase):
 
     def test_list_transactions(self):
         response = self.http_client.get(
-            "/api/v1/widget/transactions",
+            "/api/v1/me/transactions",
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
         self.assertEqual(response.status_code, 200)
@@ -87,7 +87,7 @@ class WidgetTopUpTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com",
+            tenant=self.tenant, external_id="c1",
             stripe_customer_id="cus_test",
         )
         self.token = create_widget_token(
@@ -96,7 +96,7 @@ class WidgetTopUpTest(TestCase):
 
     def test_create_topup_requires_amount(self):
         response = self.http_client.post(
-            "/api/v1/widget/top-up",
+            "/api/v1/me/top-up",
             data=json.dumps({}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.token}",

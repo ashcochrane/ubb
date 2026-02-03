@@ -13,7 +13,7 @@ class UsageServiceLockingTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         # Credit wallet so we can deduct
         self.customer.wallet.balance_micros = 100_000_000
@@ -126,7 +126,7 @@ class UsageServicePricingTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1", email="t@t.com"
+            tenant=self.tenant, external_id="c1"
         )
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()

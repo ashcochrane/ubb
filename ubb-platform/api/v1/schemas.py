@@ -74,14 +74,13 @@ class RecordUsageResponse(Schema):
 
 class CreateCustomerRequest(Schema):
     external_id: str = Field(min_length=1, max_length=255)
-    email: str = Field(min_length=1, max_length=255)
+    stripe_customer_id: str = Field(min_length=1, max_length=255)
     metadata: dict = Field(default_factory=dict)
 
 
 class CustomerResponse(Schema):
     id: UUID
     external_id: str
-    email: str
     status: str
 
 
@@ -117,6 +116,8 @@ class ConfigureAutoTopUpRequest(Schema):
 
 class CreateTopUpRequest(Schema):
     amount_micros: int = Field(gt=0)
+    success_url: str = Field(min_length=1)
+    cancel_url: str = Field(min_length=1)
 
     @field_validator("amount_micros")
     @classmethod

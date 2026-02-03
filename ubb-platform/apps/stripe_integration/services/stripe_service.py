@@ -109,24 +109,7 @@ def _log_stripe_error(fn, error, attempt):
 
 class StripeService:
     @staticmethod
-    def create_customer(customer):
-        """Create Stripe customer under tenant's connected account. Skip if already synced."""
-        if customer.stripe_customer_id:
-            return customer.stripe_customer_id
-        stripe_customer = stripe_call(
-            stripe.Customer.create,
-            retryable=True,
-            idempotency_key=f"create-customer-{customer.id}",
-            email=customer.email,
-            metadata={"ubb_customer_id": str(customer.id), "external_id": customer.external_id},
-            stripe_account=customer.tenant.stripe_connected_account_id,
-        )
-        customer.stripe_customer_id = stripe_customer.id
-        customer.save(update_fields=["stripe_customer_id", "updated_at"])
-        return stripe_customer.id
-
-    @staticmethod
-    def create_checkout_session(customer, amount_micros, top_up_attempt):
+    def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_url, cancel_url):
         """Create Stripe Checkout session for top-up."""
         validate_amount_micros(amount_micros)
         amount_cents = micros_to_cents(amount_micros)
@@ -145,8 +128,8 @@ class StripeService:
                 },
                 "quantity": 1,
             }],
-            success_url=settings.UBB_TOPUP_SUCCESS_URL,
-            cancel_url=settings.UBB_TOPUP_CANCEL_URL,
+            success_url=success_url,
+            cancel_url=cancel_url,
             stripe_account=customer.tenant.stripe_connected_account_id,
         )
         top_up_attempt.stripe_checkout_session_id = session.id

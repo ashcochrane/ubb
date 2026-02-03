@@ -5,6 +5,7 @@ from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate, Coalesce
 from ninja import NinjaAPI, Schema
 
+from api.v1.pagination import apply_cursor_filter, encode_cursor
 from core.auth import ApiKeyAuth
 from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.usage.models import UsageEvent
@@ -24,6 +25,8 @@ class TenantBillingPeriodOut(Schema):
 
 class TenantBillingPeriodListResponse(Schema):
     data: list[TenantBillingPeriodOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class TenantInvoiceOut(Schema):
@@ -37,6 +40,8 @@ class TenantInvoiceOut(Schema):
 
 class TenantInvoiceListResponse(Schema):
     data: list[TenantInvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class UsageAnalyticsResponse(Schema):
@@ -55,9 +60,27 @@ class RevenueAnalyticsResponse(Schema):
 
 
 @tenant_api.get("/billing-periods", response=TenantBillingPeriodListResponse)
-def list_billing_periods(request):
+def list_billing_periods(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
-    periods = TenantBillingPeriod.objects.filter(tenant=tenant).order_by("-period_start")
+    limit = min(max(limit, 1), 100)
+
+    qs = TenantBillingPeriod.objects.filter(tenant=tenant).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return tenant_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    periods = list(qs[:limit + 1])
+    has_more = len(periods) > limit
+    periods = periods[:limit]
+
+    next_cursor = None
+    if has_more and periods:
+        last = periods[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
     return {
         "data": [
             {
@@ -70,14 +93,34 @@ def list_billing_periods(request):
                 "platform_fee_micros": p.platform_fee_micros,
             }
             for p in periods
-        ]
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
     }
 
 
 @tenant_api.get("/invoices", response=TenantInvoiceListResponse)
-def list_invoices(request):
+def list_invoices(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
-    invoices = TenantInvoice.objects.filter(tenant=tenant).order_by("-created_at")
+    limit = min(max(limit, 1), 100)
+
+    qs = TenantInvoice.objects.filter(tenant=tenant).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return tenant_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    invoices = list(qs[:limit + 1])
+    has_more = len(invoices) > limit
+    invoices = invoices[:limit]
+
+    next_cursor = None
+    if has_more and invoices:
+        last = invoices[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
     return {
         "data": [
             {
@@ -89,7 +132,9 @@ def list_invoices(request):
                 "created_at": inv.created_at.isoformat(),
             }
             for inv in invoices
-        ]
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
     }
 
 
@@ -167,9 +212,17 @@ def revenue_analytics(request, start_date: date = None, end_date: date = None):
         if entry.get("day"):
             entry["day"] = entry["day"].isoformat()
 
+    # Compute markup when provider_cost is known (is not None from DB).
+    # provider_cost == 0 is valid (free provider); None means no provider cost data.
+    raw_provider = totals["total_provider_cost_micros"]
+    if raw_provider is not None:
+        markup = billed_cost - provider_cost
+    else:
+        markup = 0
+
     return {
         "total_provider_cost_micros": provider_cost,
         "total_billed_cost_micros": billed_cost,
-        "total_markup_micros": billed_cost - provider_cost,
+        "total_markup_micros": markup,
         "daily": daily,
     }

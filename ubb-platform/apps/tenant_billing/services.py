@@ -1,8 +1,9 @@
 import logging
 from decimal import Decimal
 
-from django.db import transaction
-from django.db.models import F
+from django.db import transaction, IntegrityError
+from django.db.models import F, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.tenant_billing.models import TenantBillingPeriod
@@ -25,12 +26,21 @@ class TenantBillingService:
         else:
             first_of_next_month = today.replace(month=today.month + 1, day=1)
 
-        period, _ = TenantBillingPeriod.objects.get_or_create(
-            tenant=tenant,
-            period_start=first_of_month,
-            period_end=first_of_next_month,
-            defaults={"status": "open"},
-        )
+        try:
+            period, _ = TenantBillingPeriod.objects.get_or_create(
+                tenant=tenant,
+                period_start=first_of_month,
+                period_end=first_of_next_month,
+                defaults={"status": "open"},
+            )
+        except IntegrityError:
+            # Race condition: partial unique index rejected a second open period.
+            # Another request won the create — fetch the existing one.
+            period = TenantBillingPeriod.objects.get(
+                tenant=tenant,
+                period_start=first_of_month,
+                period_end=first_of_next_month,
+            )
         return period
 
     @staticmethod
@@ -42,26 +52,91 @@ class TenantBillingService:
         meaningful latency.
         """
         period = TenantBillingService.get_or_create_current_period(tenant)
-        TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+        rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
             total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,
             event_count=F("event_count") + 1,
         )
+        if rows == 0:
+            logger.error(
+                "accumulate_usage updated zero rows — period may have been closed mid-request",
+                extra={"data": {"tenant_id": str(tenant.id), "period_id": str(period.id)}},
+            )
 
     @staticmethod
-    @transaction.atomic
     def close_period(period):
-        """Close a billing period and calculate platform fee using Decimal arithmetic."""
-        period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-        if period.status != "open":
-            return
+        """Reconcile then close a billing period, calculating platform fee.
 
-        # Use Decimal arithmetic — no float conversion
-        fee_micros = int(
-            period.total_usage_cost_micros
-            * period.tenant.platform_fee_percentage
-            / Decimal(100)
+        Reconciliation runs outside the transaction to get accurate totals
+        before locking and closing.
+        """
+        # Reconcile first — catches any accumulate_usage drift near month-end
+        TenantBillingService.reconcile_period(period)
+
+        with transaction.atomic():
+            period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
+            if period.status != "open":
+                return
+
+            # Use Decimal arithmetic — no float conversion.
+            # Floor to nearest micros-of-a-cent (tenant-friendly rounding).
+            raw_fee = (
+                Decimal(period.total_usage_cost_micros)
+                * period.tenant.platform_fee_percentage
+                / Decimal(100)
+            )
+            fee_micros = int(raw_fee)  # int() truncates toward zero = floor for positive values
+
+            # Floor to cent boundary so micros_to_cents won't reject it.
+            fee_micros = (fee_micros // 10_000) * 10_000
+
+            period.status = "closed"
+            period.platform_fee_micros = fee_micros
+            period.save(update_fields=["status", "platform_fee_micros", "updated_at"])
+
+    @staticmethod
+    def reconcile_period(period):
+        """Recompute a billing period's totals from actual UsageEvent records.
+
+        Used as a belt-and-suspenders reconciliation for any accumulate_usage
+        failures. Safe to run on open or closed periods.
+        """
+        from apps.usage.models import UsageEvent
+
+        totals = UsageEvent.objects.filter(
+            tenant=period.tenant,
+            effective_at__date__gte=period.period_start,
+            effective_at__date__lt=period.period_end,
+        ).aggregate(
+            total_cost=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+            total_events=Sum(1),  # Count via Sum(1) for consistency
         )
 
-        period.status = "closed"
-        period.platform_fee_micros = fee_micros
-        period.save(update_fields=["status", "platform_fee_micros", "updated_at"])
+        recomputed_cost = totals["total_cost"] or 0
+        recomputed_count = UsageEvent.objects.filter(
+            tenant=period.tenant,
+            effective_at__date__gte=period.period_start,
+            effective_at__date__lt=period.period_end,
+        ).count()
+
+        # Skip if no events found — avoids zeroing out periods where events
+        # were recorded via accumulate_usage but aren't queryable here.
+        if recomputed_count == 0 and period.event_count > 0:
+            return
+
+        if (recomputed_cost != period.total_usage_cost_micros
+                or recomputed_count != period.event_count):
+            logger.warning(
+                "Billing period reconciliation drift detected",
+                extra={"data": {
+                    "period_id": str(period.id),
+                    "tenant": period.tenant.name,
+                    "stored_cost": period.total_usage_cost_micros,
+                    "recomputed_cost": recomputed_cost,
+                    "stored_count": period.event_count,
+                    "recomputed_count": recomputed_count,
+                }},
+            )
+            TenantBillingPeriod.objects.filter(id=period.id).update(
+                total_usage_cost_micros=recomputed_cost,
+                event_count=recomputed_count,
+            )

@@ -24,7 +24,6 @@ class Customer(SoftDeleteMixin, BaseModel):
         "tenants.Tenant", on_delete=models.CASCADE, related_name="customers"
     )
     external_id = models.CharField(max_length=255, db_index=True)
-    email = models.EmailField()
     stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(
         max_length=20,
