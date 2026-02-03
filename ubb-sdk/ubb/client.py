@@ -117,10 +117,13 @@ class UBBClient:
         r = self._request("post", "/api/v1/usage", json=body)
         return RecordUsageResult(**r.json())
 
-    def create_customer(self, external_id: str, email: str, metadata: dict | None = None) -> CustomerResult:
+    def create_customer(self, external_id: str, stripe_customer_id: str,
+                        metadata: dict | None = None) -> CustomerResult:
         """Create a new customer. Raises UBBConflictError (409) if external_id already exists."""
         r = self._request("post", "/api/v1/customers", json={
-            "external_id": external_id, "email": email, "metadata": metadata or {},
+            "external_id": external_id,
+            "stripe_customer_id": stripe_customer_id,
+            "metadata": metadata or {},
         })
         return CustomerResult(**r.json())
 
@@ -137,9 +140,14 @@ class UBBClient:
         events = [UsageEvent(**item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
 
-    def create_top_up(self, customer_id: str, amount_micros: int) -> TopUpResult:
+    def create_top_up(self, customer_id: str, amount_micros: int, *,
+                      success_url: str, cancel_url: str) -> TopUpResult:
         _check_micros(amount_micros, "amount_micros")
-        r = self._request("post", f"/api/v1/customers/{customer_id}/top-up", json={"amount_micros": amount_micros})
+        r = self._request("post", f"/api/v1/customers/{customer_id}/top-up", json={
+            "amount_micros": amount_micros,
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+        })
         return TopUpResult(**r.json())
 
     def configure_auto_top_up(self, customer_id: str, threshold: int, amount: int, enabled: bool = True) -> AutoTopUpResult:

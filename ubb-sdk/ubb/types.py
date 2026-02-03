@@ -21,7 +21,6 @@ class RecordUsageResult:
 class CustomerResult:
     id: str
     external_id: str
-    email: str
     status: str
 
 @dataclass(frozen=True)
