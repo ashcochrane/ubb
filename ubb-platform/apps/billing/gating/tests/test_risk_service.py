@@ -1,8 +1,8 @@
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.gating.models import RiskConfig
-from apps.gating.services.risk_service import RiskService
+from apps.billing.gating.models import RiskConfig
+from apps.billing.gating.services.risk_service import RiskService
 
 
 class RiskServiceTest(TestCase):

@@ -33,7 +33,7 @@ INSTALLED_APPS = [
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.stripe",
-    "apps.gating",
+    "apps.billing.gating",
     "apps.invoicing",
     "apps.tenant_billing",
 ]

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.gating.models import RiskConfig
+from apps.billing.gating.models import RiskConfig
 
 
 @admin.register(RiskConfig)

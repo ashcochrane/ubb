@@ -1,6 +1,6 @@
 from django.core.cache import cache
 
-from apps.gating.models import RiskConfig
+from apps.billing.gating.models import RiskConfig
 
 
 class RiskService:

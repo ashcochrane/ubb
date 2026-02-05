@@ -18,7 +18,7 @@ from api.v1.schemas import (
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer, AutoTopUpConfig
 from apps.metering.usage.services.usage_service import UsageService
-from apps.gating.services.risk_service import RiskService
+from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.stripe.services.stripe_service import StripeService
 from django.shortcuts import get_object_or_404
 
