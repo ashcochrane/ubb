@@ -4,7 +4,7 @@ import json
 from django.test import TestCase
 
 from apps.pricing.models import ProviderRate, TenantMarkup
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 
 
 class ProviderRateTests(TestCase):

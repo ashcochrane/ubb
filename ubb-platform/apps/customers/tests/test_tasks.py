@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.customers.models import Customer, TopUpAttempt, Wallet, WalletTransaction
 from apps.customers.tasks import expire_stale_topup_attempts, reconcile_wallet_balances
 

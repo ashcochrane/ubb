@@ -1,5 +1,5 @@
 from django.test import TestCase
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.customers.models import Customer
 from apps.gating.models import RiskConfig
 from apps.gating.services.risk_service import RiskService

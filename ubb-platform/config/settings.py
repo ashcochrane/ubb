@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     # UBB Apps
-    "apps.tenants",
+    "apps.platform.tenants",
     "apps.customers",
     "apps.usage",
     "apps.pricing",

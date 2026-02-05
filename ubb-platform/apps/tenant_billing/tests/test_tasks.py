@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.customers.models import Customer
 from apps.tenant_billing.models import TenantBillingPeriod
 from apps.tenant_billing.services import TenantBillingService

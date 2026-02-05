@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from apps.customers.models import Customer, Wallet, WalletTransaction
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 
 
 class CustomerModelTest(TestCase):

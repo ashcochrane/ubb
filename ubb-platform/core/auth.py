@@ -1,7 +1,7 @@
 from django.utils import timezone
 from ninja.security import HttpBearer
 
-from apps.tenants.models import TenantApiKey
+from apps.platform.tenants.models import TenantApiKey
 
 
 class ApiKeyAuth(HttpBearer):

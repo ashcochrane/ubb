@@ -1,7 +1,7 @@
 import json
 from django.db import connection
 from django.test import TestCase, Client, skipUnlessDBFeature
-from apps.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.customers.models import Customer
 from apps.usage.models import UsageEvent
 from apps.usage.services.usage_service import UsageService

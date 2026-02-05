@@ -1,7 +1,7 @@
 from datetime import date
 from django.test import TestCase
 from django.db import IntegrityError, transaction
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
 

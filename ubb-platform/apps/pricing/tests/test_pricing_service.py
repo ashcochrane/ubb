@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.pricing.models import ProviderRate, TenantMarkup
 from apps.pricing.services.pricing_service import PricingError, PricingService
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 
 
 class PricingServiceTests(TestCase):

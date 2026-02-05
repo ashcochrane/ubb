@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from apps.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
 class TenantModelTest(TestCase):

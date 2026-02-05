@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
 @admin.register(Tenant)

@@ -2,7 +2,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from django.db import transaction
 
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.customers.models import Customer, AutoTopUpConfig, TopUpAttempt
 from apps.usage.services.auto_topup_service import AutoTopUpService
 

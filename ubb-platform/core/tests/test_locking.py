@@ -1,5 +1,5 @@
 from django.test import TestCase
-from apps.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant
 from apps.customers.models import Customer, Wallet
 from core.locking import lock_for_billing, lock_customer
 
