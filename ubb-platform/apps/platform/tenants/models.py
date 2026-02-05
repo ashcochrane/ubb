@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 
+from django.core.cache import cache
 from django.db import models
 
 from core.models import BaseModel
@@ -32,6 +33,7 @@ class Tenant(BaseModel):
         if not self.widget_secret:
             self.widget_secret = secrets.token_urlsafe(48)
         super().save(*args, **kwargs)
+        cache.delete(f"tenant_products:{self.id}")
 
     def rotate_widget_secret(self):
         """Generate a new widget_secret. Invalidates all existing widget JWTs."""
