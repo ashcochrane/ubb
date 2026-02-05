@@ -2,12 +2,21 @@ from ninja import NinjaAPI, Schema, Field
 from pydantic import field_validator
 from typing import Optional
 
+from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
 from apps.platform.customers.models import TopUpAttempt
 from apps.billing.stripe.services.stripe_service import StripeService
 from apps.metering.usage.models import Invoice
 
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
+
+_billing_check = ProductAccess("billing")
+
+
+def _check_billing_product(request):
+    """Bridge widget auth (widget_tenant) to ProductAccess (tenant)."""
+    request.tenant = request.widget_tenant
+    _billing_check(request)
 
 
 class BalanceResponse(Schema):
@@ -63,6 +72,7 @@ class PaginatedInvoices(Schema):
 
 @me_api.get("/balance", response=BalanceResponse)
 def get_balance(request):
+    _check_billing_product(request)
     customer = request.widget_customer
     wallet = customer.wallet
     return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
@@ -70,6 +80,7 @@ def get_balance(request):
 
 @me_api.get("/transactions", response=PaginatedTransactions)
 def get_transactions(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 
@@ -111,6 +122,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 @me_api.post("/top-up", response=TopUpResponse)
 def create_top_up(request, payload: TopUpRequest):
+    _check_billing_product(request)
     customer = request.widget_customer
 
     if not customer.stripe_customer_id:
@@ -133,6 +145,7 @@ def create_top_up(request, payload: TopUpRequest):
 
 @me_api.get("/invoices", response=PaginatedInvoices)
 def get_invoices(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 

@@ -9,7 +9,8 @@ class WidgetBalanceTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -50,7 +51,8 @@ class WidgetTransactionsTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -84,7 +86,8 @@ class WidgetTopUpTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1",
@@ -102,3 +105,41 @@ class WidgetTopUpTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
         self.assertEqual(response.status_code, 422)
+
+
+class WidgetProductGatingTest(TestCase):
+    """Tenants without billing product get 403 on widget endpoints."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Metering Only", stripe_connected_account_id="acct_test",
+            products=["metering"],
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_gate"
+        )
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
+        )
+
+    def test_tenant_without_billing_gets_403_on_widget_balance(self):
+        response = self.http_client.get(
+            "/api/v1/me/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_tenant_without_billing_gets_403_on_widget_transactions(self):
+        response = self.http_client.get(
+            "/api/v1/me/transactions",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_tenant_without_billing_gets_403_on_widget_invoices(self):
+        response = self.http_client.get(
+            "/api/v1/me/invoices",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)
