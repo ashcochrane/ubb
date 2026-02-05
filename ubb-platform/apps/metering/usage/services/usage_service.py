@@ -5,6 +5,7 @@ from django.db import transaction, IntegrityError
 
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Wallet, WalletTransaction
+from core.event_bus import event_bus
 from core.locking import lock_for_billing
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,15 @@ class UsageService:
             transaction.on_commit(
                 lambda aid=attempt.id: charge_auto_topup_task.delay(aid)
             )
+
+        # 9. Emit usage.recorded event for cross-product handlers
+        event_bus.emit("usage.recorded", {
+            "tenant_id": str(tenant.id),
+            "customer_id": str(customer.id),
+            "cost_micros": effective_cost,
+            "event_type": event_type,
+            "event_id": str(event.id),
+        })
 
         return {
             "event_id": str(event.id),

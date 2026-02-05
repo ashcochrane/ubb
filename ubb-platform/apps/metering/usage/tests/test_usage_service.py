@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, AutoTopUpConfig, TopUpAttempt
@@ -231,3 +231,60 @@ class UsageServicePricingTest(TestCase):
         self.assertEqual(result1["event_id"], result2["event_id"])
         self.assertEqual(result2["provider_cost_micros"], 75_000)
         self.assertEqual(result2["billed_cost_micros"], 75_000)
+
+
+class UsageServiceEventEmissionTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test", stripe_connected_account_id="acct_test"
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1"
+        )
+        self.customer.wallet.balance_micros = 100_000_000
+        self.customer.wallet.save()
+
+    @patch("apps.metering.usage.services.usage_service.event_bus")
+    def test_record_usage_emits_usage_recorded_event(self, mock_event_bus):
+        result = UsageService.record_usage(
+            tenant=self.tenant,
+            customer=self.customer,
+            request_id="req_emit_1",
+            idempotency_key="idem_emit_1",
+            cost_micros=1_000_000,
+        )
+        mock_event_bus.emit.assert_called_once_with("usage.recorded", {
+            "tenant_id": str(self.tenant.id),
+            "customer_id": str(self.customer.id),
+            "cost_micros": 1_000_000,
+            "event_type": None,
+            "event_id": result["event_id"],
+        })
+
+    @patch("apps.metering.usage.services.usage_service.event_bus")
+    def test_record_usage_emits_billed_cost_for_priced_events(self, mock_event_bus):
+        ProviderRate.objects.create(
+            provider="google_gemini",
+            event_type="gemini_api_call",
+            metric_name="input_tokens",
+            dimensions={"model": "gemini-2.0-flash"},
+            cost_per_unit_micros=75_000,
+            unit_quantity=1_000_000,
+        )
+        result = UsageService.record_usage(
+            tenant=self.tenant,
+            customer=self.customer,
+            request_id="req_emit_2",
+            idempotency_key="idem_emit_2",
+            event_type="gemini_api_call",
+            provider="google_gemini",
+            usage_metrics={"input_tokens": 1_000_000},
+            properties={"model": "gemini-2.0-flash"},
+        )
+        mock_event_bus.emit.assert_called_once_with("usage.recorded", {
+            "tenant_id": str(self.tenant.id),
+            "customer_id": str(self.customer.id),
+            "cost_micros": 75_000,  # billed_cost_micros, not raw cost_micros
+            "event_type": "gemini_api_call",
+            "event_id": result["event_id"],
+        })
