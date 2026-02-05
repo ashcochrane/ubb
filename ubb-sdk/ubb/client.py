@@ -28,7 +28,8 @@ class UBBClient:
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
                  timeout: float = 10.0, widget_secret: str | None = None,
                  tenant_id: str | None = None,
-                 metering: bool = True, billing: bool = False) -> None:
+                 metering: bool = True, billing: bool = False,
+                 subscriptions: bool = False) -> None:
         self._base_url = base_url.rstrip("/")
         self._widget_secret = widget_secret
         self._tenant_id = tenant_id
@@ -50,6 +51,12 @@ class UBBClient:
         )
         # Backward compat alias
         self.billing_client = self.billing
+
+        from ubb.subscriptions import SubscriptionsClient
+
+        self.subscriptions: SubscriptionsClient | None = (
+            SubscriptionsClient(api_key, base_url, timeout) if subscriptions else None
+        )
 
     def __enter__(self) -> UBBClient:
         return self
@@ -267,3 +274,5 @@ class UBBClient:
             self.metering.close()
         if self.billing is not None:
             self.billing.close()
+        if self.subscriptions is not None:
+            self.subscriptions.close()
