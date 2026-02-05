@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import ProviderRate, TenantMarkup
 
 logger = logging.getLogger(__name__)
 

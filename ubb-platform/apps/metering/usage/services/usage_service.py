@@ -75,7 +75,7 @@ class UsageService:
         pricing_provenance = {}
 
         if usage_metrics is not None:
-            from apps.pricing.services.pricing_service import PricingService
+            from apps.metering.pricing.services.pricing_service import PricingService
             provider_cost_micros, billed_cost_micros, pricing_provenance = (
                 PricingService.price_event(
                     tenant=tenant,

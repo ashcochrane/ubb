@@ -2,7 +2,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, AutoTopUpConfig, TopUpAttempt
-from apps.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import ProviderRate, TenantMarkup
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 

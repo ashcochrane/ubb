@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import ProviderRate, TenantMarkup
 
 
 @admin.register(ProviderRate)

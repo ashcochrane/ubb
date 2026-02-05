@@ -66,7 +66,7 @@ def pre_check(request, payload: PreCheckRequest):
 
 @api.post("/usage", response=RecordUsageResponse)
 def record_usage(request, payload: RecordUsageRequest):
-    from apps.pricing.services.pricing_service import PricingError
+    from apps.metering.pricing.services.pricing_service import PricingError
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     try:

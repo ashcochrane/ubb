@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     "apps.platform.tenants",
     "apps.platform.customers",
     "apps.metering.usage",
-    "apps.pricing",
+    "apps.metering.pricing",
     "apps.stripe_integration",
     "apps.gating",
     "apps.invoicing",

@@ -3,7 +3,7 @@ import json
 
 from django.test import TestCase
 
-from apps.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import ProviderRate, TenantMarkup
 from apps.platform.tenants.models import Tenant
 
 
