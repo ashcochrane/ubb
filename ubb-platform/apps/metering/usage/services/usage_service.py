@@ -134,18 +134,10 @@ class UsageService:
             reference_id=str(event.id),
         )
 
-        # 5b. Accumulate usage for tenant billing (synchronous — atomic UPDATE is fast)
+        # 5b. Compute effective cost for event emission
         # billed_cost_micros is set for metric-priced events; cost_micros is the fallback
         # for legacy caller-provided cost mode.
         effective_cost = billed_cost_micros if billed_cost_micros is not None else cost_micros
-        from apps.billing.tenant_billing.services import TenantBillingService
-        try:
-            TenantBillingService.accumulate_usage(tenant, effective_cost)
-        except Exception:
-            logger.exception(
-                "Failed to accumulate tenant usage",
-                extra={"data": {"tenant_id": str(tenant.id)}},
-            )
 
         # 6. Check arrears threshold — customer already locked
         suspended = False
