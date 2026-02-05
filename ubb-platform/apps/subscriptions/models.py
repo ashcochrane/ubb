@@ -65,3 +65,7 @@ class SubscriptionInvoice(BaseModel):
 
     def __str__(self):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"
+
+
+# Import economics models so Django discovers them for migrations
+from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics  # noqa: E402, F401

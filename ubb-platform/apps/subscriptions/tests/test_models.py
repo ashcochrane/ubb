@@ -101,3 +101,40 @@ class TestSubscriptionInvoice:
                 stripe_invoice_id="in_dup", amount_paid_micros=10_000_000,
                 currency="usd", period_start=now, period_end=now, paid_at=now,
             )
+
+
+@pytest.mark.django_db
+class TestCustomerCostAccumulator:
+    def test_create_accumulator(self):
+        from apps.subscriptions.economics.models import CustomerCostAccumulator
+        from datetime import date
+
+        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
+
+        acc = CustomerCostAccumulator.objects.create(
+            tenant=tenant, customer=customer,
+            period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
+            total_cost_micros=5_000_000, event_count=10,
+        )
+        acc.refresh_from_db()
+        assert acc.total_cost_micros == 5_000_000
+        assert acc.event_count == 10
+
+    def test_accumulator_unique_constraint(self):
+        from apps.subscriptions.economics.models import CustomerCostAccumulator
+        from django.db import IntegrityError
+        from datetime import date
+
+        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
+
+        CustomerCostAccumulator.objects.create(
+            tenant=tenant, customer=customer,
+            period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
+        )
+        with pytest.raises(IntegrityError):
+            CustomerCostAccumulator.objects.create(
+                tenant=tenant, customer=customer,
+                period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
+            )
