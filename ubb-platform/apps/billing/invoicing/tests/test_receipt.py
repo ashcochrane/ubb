@@ -22,13 +22,13 @@ class TopUpReceiptTest(TestCase):
             stripe_checkout_session_id="cs_test",
         )
 
-    @patch("apps.invoicing.services.stripe_call")
+    @patch("apps.billing.invoicing.services.stripe_call")
     def test_create_receipt_invoice(self, mock_stripe_call):
         mock_invoice = MagicMock()
         mock_invoice.id = "inv_test123"
         mock_stripe_call.return_value = mock_invoice
 
-        from apps.invoicing.services import ReceiptService
+        from apps.billing.invoicing.services import ReceiptService
         ReceiptService.create_topup_receipt(self.customer, self.attempt)
 
         invoice = Invoice.objects.get(top_up_attempt=self.attempt)
@@ -36,12 +36,12 @@ class TopUpReceiptTest(TestCase):
         self.assertEqual(invoice.status, "paid")
         self.assertIsNotNone(invoice.paid_at)
 
-    @patch("apps.invoicing.services.stripe_call")
+    @patch("apps.billing.invoicing.services.stripe_call")
     def test_stripe_failure_does_not_create_local_invoice(self, mock_stripe_call):
         """If Stripe fails, no local Invoice is created -- allows retry."""
         mock_stripe_call.side_effect = Exception("Stripe API error")
 
-        from apps.invoicing.services import ReceiptService
+        from apps.billing.invoicing.services import ReceiptService
         ReceiptService.create_topup_receipt(self.customer, self.attempt)
 
         self.assertFalse(Invoice.objects.filter(top_up_attempt=self.attempt).exists())
@@ -54,6 +54,6 @@ class TopUpReceiptTest(TestCase):
             total_amount_micros=20_000_000,
             status="paid",
         )
-        from apps.invoicing.services import ReceiptService
+        from apps.billing.invoicing.services import ReceiptService
         ReceiptService.create_topup_receipt(self.customer, self.attempt)
         self.assertEqual(Invoice.objects.filter(top_up_attempt=self.attempt).count(), 1)

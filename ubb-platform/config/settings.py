@@ -34,7 +34,7 @@ INSTALLED_APPS = [
     "apps.metering.pricing",
     "apps.billing.stripe",
     "apps.billing.gating",
-    "apps.invoicing",
+    "apps.billing.invoicing",
     "apps.tenant_billing",
 ]
 
@@ -142,7 +142,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "reconcile-missing-receipts": {
-        "task": "apps.invoicing.tasks.reconcile_missing_receipts",
+        "task": "apps.billing.invoicing.tasks.reconcile_missing_receipts",
         "schedule": crontab(minute=30, hour="*/1"),  # Every hour at :30
     },
 }
