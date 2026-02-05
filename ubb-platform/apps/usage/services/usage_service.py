@@ -4,7 +4,7 @@ import re
 from django.db import transaction, IntegrityError
 
 from apps.usage.models import UsageEvent
-from apps.customers.models import Wallet, WalletTransaction
+from apps.platform.customers.models import Wallet, WalletTransaction
 from core.locking import lock_for_billing
 
 logger = logging.getLogger(__name__)

@@ -23,7 +23,7 @@ def charge_auto_topup_task(attempt_id):
     Dispatched via transaction.on_commit after usage recording.
     Idempotent: checks attempt status before and after charging.
     """
-    from apps.customers.models import TopUpAttempt
+    from apps.platform.customers.models import TopUpAttempt
     from apps.stripe_integration.services.stripe_service import StripeService
 
     # Pre-charge check (outside transaction — no lock needed)
@@ -86,7 +86,7 @@ def charge_auto_topup_task(attempt_id):
             wallet.balance_micros += attempt.amount_micros
             wallet.save(update_fields=["balance_micros", "updated_at"])
 
-            from apps.customers.models import WalletTransaction
+            from apps.platform.customers.models import WalletTransaction
             WalletTransaction.objects.create(
                 wallet=wallet,
                 transaction_type="TOP_UP",

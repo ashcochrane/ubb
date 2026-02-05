@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.customers.models import Customer, Wallet, WalletTransaction
+from apps.platform.customers.models import Customer, Wallet, WalletTransaction
 from apps.pricing.models import ProviderRate
 from apps.usage.models import UsageEvent, Refund
 

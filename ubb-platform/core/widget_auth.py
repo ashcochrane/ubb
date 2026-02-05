@@ -66,7 +66,7 @@ class WidgetJWTAuth(HttpBearer):
         if payload is None:
             return None
 
-        from apps.customers.models import Customer
+        from apps.platform.customers.models import Customer
         try:
             customer = Customer.objects.select_related("tenant").get(
                 id=payload["sub"],

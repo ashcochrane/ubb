@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.customers.models import Customer
+from apps.platform.customers.models import Customer
 
 
 class Command(BaseCommand):

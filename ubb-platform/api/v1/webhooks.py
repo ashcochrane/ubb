@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from apps.customers.models import Customer, TopUpAttempt
+from apps.platform.customers.models import Customer, TopUpAttempt
 from apps.usage.models import Invoice
 from apps.stripe_integration.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
@@ -187,7 +187,7 @@ def handle_checkout_completed(event):
         wallet.balance_micros += amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
-        from apps.customers.models import WalletTransaction
+        from apps.platform.customers.models import WalletTransaction
         WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="TOP_UP",
@@ -203,7 +203,7 @@ def handle_checkout_completed(event):
 
 
 def _dispatch_receipt(customer_id, attempt_id):
-    from apps.customers.models import Customer, TopUpAttempt
+    from apps.platform.customers.models import Customer, TopUpAttempt
     from apps.invoicing.services import ReceiptService
     try:
         customer = Customer.objects.select_related("tenant").get(id=customer_id)

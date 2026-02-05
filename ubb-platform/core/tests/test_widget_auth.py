@@ -3,7 +3,7 @@ import jwt
 import time
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
-from apps.customers.models import Customer
+from apps.platform.customers.models import Customer
 from core.widget_auth import create_widget_token, verify_widget_token
 
 

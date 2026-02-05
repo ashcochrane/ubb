@@ -1,6 +1,6 @@
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
-from apps.customers.models import Customer, Wallet, AutoTopUpConfig
+from apps.platform.customers.models import Customer, Wallet, AutoTopUpConfig
 
 
 class SoftDeleteTest(TestCase):

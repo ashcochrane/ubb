@@ -3,7 +3,7 @@ from pydantic import field_validator
 from typing import Optional
 
 from core.widget_auth import WidgetJWTAuth
-from apps.customers.models import TopUpAttempt
+from apps.platform.customers.models import TopUpAttempt
 from apps.stripe_integration.services.stripe_service import StripeService
 from apps.usage.models import Invoice
 

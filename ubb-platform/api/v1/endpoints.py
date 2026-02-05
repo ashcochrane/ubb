@@ -16,7 +16,7 @@ from api.v1.schemas import (
     RefundRequest,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
-from apps.customers.models import Customer, AutoTopUpConfig
+from apps.platform.customers.models import Customer, AutoTopUpConfig
 from apps.usage.services.usage_service import UsageService
 from apps.gating.services.risk_service import RiskService
 from apps.stripe_integration.services.stripe_service import StripeService
@@ -172,7 +172,7 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 
 @api.post("/customers/{customer_id}/top-up")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
-    from apps.customers.models import TopUpAttempt
+    from apps.platform.customers.models import TopUpAttempt
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if not customer.stripe_customer_id:
@@ -198,7 +198,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
     from core.locking import lock_for_billing
-    from apps.customers.models import WalletTransaction
+    from apps.platform.customers.models import WalletTransaction
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
@@ -236,7 +236,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     from django.db import IntegrityError, transaction
     from core.locking import lock_for_billing, lock_usage_event
     from apps.usage.models import UsageEvent, Refund
-    from apps.customers.models import WalletTransaction
+    from apps.platform.customers.models import WalletTransaction
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)

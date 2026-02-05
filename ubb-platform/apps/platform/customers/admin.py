@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.customers.models import (
+from apps.platform.customers.models import (
     AutoTopUpConfig,
     Customer,
     Wallet,

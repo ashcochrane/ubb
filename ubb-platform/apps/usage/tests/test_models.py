@@ -1,7 +1,7 @@
 from django.db import IntegrityError
 from django.test import TestCase
 
-from apps.customers.models import Customer
+from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.usage.models import UsageEvent
 

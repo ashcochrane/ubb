@@ -4,8 +4,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
-from apps.customers.models import Customer, TopUpAttempt, Wallet, WalletTransaction
-from apps.customers.tasks import expire_stale_topup_attempts, reconcile_wallet_balances
+from apps.platform.customers.models import Customer, TopUpAttempt, Wallet, WalletTransaction
+from apps.platform.customers.tasks import expire_stale_topup_attempts, reconcile_wallet_balances
 
 
 class ExpireStaleTopupAttemptsTest(TestCase):
@@ -95,7 +95,7 @@ class ReconcileWalletBalancesTest(TestCase):
         # Manually set balance without matching transaction
         Wallet.objects.filter(pk=wallet.pk).update(balance_micros=50_000_000)
 
-        with self.assertLogs("apps.customers.tasks", level="ERROR") as cm:
+        with self.assertLogs("apps.platform.customers.tasks", level="ERROR") as cm:
             reconcile_wallet_balances()
 
         self.assertTrue(any("drift" in msg.lower() for msg in cm.output))

@@ -8,7 +8,7 @@ All code that needs multiple locks MUST use these helpers.
 Do not call select_for_update() directly on these models.
 """
 
-from apps.customers.models import Customer, Wallet
+from apps.platform.customers.models import Customer, Wallet
 
 
 def lock_for_billing(customer_id):
@@ -40,7 +40,7 @@ def lock_top_up_attempt(attempt_id):
     Use for: status transitions after Stripe calls.
     MUST be called within @transaction.atomic.
     """
-    from apps.customers.models import TopUpAttempt
+    from apps.platform.customers.models import TopUpAttempt
     return TopUpAttempt.objects.select_for_update().get(id=attempt_id)
 
 
