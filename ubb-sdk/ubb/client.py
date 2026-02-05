@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from ubb.exceptions import (
-    UBBAuthError, UBBAPIError, UBBConflictError, UBBValidationError, UBBConnectionError,
+    UBBError, UBBAuthError, UBBAPIError, UBBConflictError, UBBValidationError, UBBConnectionError,
 )
 from ubb.types import (
     PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
@@ -45,9 +45,11 @@ class UBBClient:
         self.metering: MeteringClient | None = (
             MeteringClient(api_key, base_url, timeout) if metering else None
         )
-        self.billing_client: BillingClient | None = (
+        self.billing: BillingClient | None = (
             BillingClient(api_key, base_url, timeout) if billing else None
         )
+        # Backward compat alias
+        self.billing_client = self.billing
 
     def __enter__(self) -> UBBClient:
         return self
@@ -102,7 +104,36 @@ class UBBClient:
         }
         return jwt.encode(payload, self._widget_secret, algorithm="HS256")
 
-    def pre_check(self, customer_id: str) -> PreCheckResult:
+    def pre_check(self, customer_id: str, event_type: str | None = None,
+                  provider: str | None = None,
+                  usage_metrics: dict | None = None) -> PreCheckResult:
+        """Pre-check whether a request should proceed.
+
+        When metering and billing product clients are configured and event_type
+        is provided, orchestrates across both products: estimates cost via
+        metering, then checks billing eligibility. Otherwise falls back to the
+        legacy flat /api/v1/pre-check endpoint.
+        """
+        # Orchestrated path: metering estimate + billing pre-check
+        if self.metering and event_type:
+            cost = self.metering.estimate_cost(
+                event_type, provider or "", usage_metrics or {},
+            )
+            if self.billing:
+                check = self.billing.pre_check(customer_id, cost)
+                return PreCheckResult(
+                    allowed=check.get("allowed", check.get("can_proceed", True)),
+                    can_proceed=check.get("can_proceed", check.get("allowed", True)),
+                    estimated_cost_micros=cost,
+                    balance_micros=check.get("balance_micros"),
+                )
+            return PreCheckResult(
+                allowed=True,
+                can_proceed=True,
+                estimated_cost_micros=cost,
+            )
+
+        # Legacy fallback: flat endpoint
         r = self._request("post", "/api/v1/pre-check", json={"customer_id": customer_id})
         return PreCheckResult(**r.json())
 
@@ -111,6 +142,44 @@ class UBBClient:
                      event_type: str | None = None, provider: str | None = None,
                      usage_metrics: dict | None = None, properties: dict | None = None,
                      group_keys: dict | None = None) -> RecordUsageResult:
+        """Record a usage event, optionally orchestrating metering + billing.
+
+        When the metering product client is configured, delegates to
+        metering.record_usage(). If billing is also configured and the event
+        has a billed_cost_micros > 0, automatically debits the customer wallet.
+        Falls back to the legacy flat /api/v1/usage endpoint when metering is
+        not configured.
+        """
+        # Orchestrated path: metering + optional billing debit
+        if self.metering:
+            result = self.metering.record_usage(
+                customer_id=customer_id,
+                request_id=request_id,
+                idempotency_key=idempotency_key,
+                cost_micros=cost_micros,
+                metadata=metadata,
+                event_type=event_type,
+                provider=provider,
+                usage_metrics=usage_metrics,
+                properties=properties,
+                group_keys=group_keys,
+            )
+            if self.billing and result.billed_cost_micros:
+                debit = self.billing.debit(
+                    customer_id, result.billed_cost_micros, str(result.event_id),
+                )
+                # Return enriched result with balance_after_micros from debit
+                result = RecordUsageResult(
+                    event_id=result.event_id,
+                    new_balance_micros=result.new_balance_micros,
+                    suspended=result.suspended,
+                    provider_cost_micros=result.provider_cost_micros,
+                    billed_cost_micros=result.billed_cost_micros,
+                    balance_after_micros=debit.get("new_balance_micros"),
+                )
+            return result
+
+        # Legacy fallback: flat endpoint (no product clients configured)
         body: dict = {
             "customer_id": customer_id, "request_id": request_id,
             "idempotency_key": idempotency_key, "metadata": metadata or {},
@@ -196,5 +265,5 @@ class UBBClient:
         self._http.close()
         if self.metering is not None:
             self.metering.close()
-        if self.billing_client is not None:
-            self.billing_client.close()
+        if self.billing is not None:
+            self.billing.close()

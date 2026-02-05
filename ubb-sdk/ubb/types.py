@@ -8,6 +8,9 @@ from typing import Generic, TypeVar
 class PreCheckResult:
     allowed: bool
     reason: str | None = None
+    can_proceed: bool | None = None
+    estimated_cost_micros: int | None = None
+    balance_micros: int | None = None
 
 @dataclass(frozen=True)
 class RecordUsageResult:
