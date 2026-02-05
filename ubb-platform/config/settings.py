@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.billing.gating",
     "apps.billing.invoicing",
     "apps.billing.tenant_billing",
+    "apps.subscriptions",
 ]
 
 MIDDLEWARE = [
