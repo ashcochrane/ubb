@@ -16,6 +16,7 @@ class RecordUsageResult:
     suspended: bool
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
+    balance_after_micros: int | None = None
 
 @dataclass(frozen=True)
 class CustomerResult:

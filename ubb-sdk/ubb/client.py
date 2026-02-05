@@ -27,7 +27,8 @@ def _check_micros_allow_zero(value: int, name: str) -> None:
 class UBBClient:
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
                  timeout: float = 10.0, widget_secret: str | None = None,
-                 tenant_id: str | None = None) -> None:
+                 tenant_id: str | None = None,
+                 metering: bool = True, billing: bool = False) -> None:
         self._base_url = base_url.rstrip("/")
         self._widget_secret = widget_secret
         self._tenant_id = tenant_id
@@ -35,6 +36,17 @@ class UBBClient:
             base_url=self._base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
+        )
+
+        # Product-specific clients (lazy imports to avoid circular deps)
+        from ubb.metering import MeteringClient
+        from ubb.billing import BillingClient
+
+        self.metering: MeteringClient | None = (
+            MeteringClient(api_key, base_url, timeout) if metering else None
+        )
+        self.billing_client: BillingClient | None = (
+            BillingClient(api_key, base_url, timeout) if billing else None
         )
 
     def __enter__(self) -> UBBClient:
@@ -182,3 +194,7 @@ class UBBClient:
 
     def close(self) -> None:
         self._http.close()
+        if self.metering is not None:
+            self.metering.close()
+        if self.billing_client is not None:
+            self.billing_client.close()
