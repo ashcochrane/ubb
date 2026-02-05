@@ -259,6 +259,7 @@ class UsageServiceEventEmissionTest(TestCase):
             "cost_micros": 1_000_000,
             "event_type": None,
             "event_id": result["event_id"],
+            "auto_topup_attempt_id": None,
         })
 
     @patch("apps.metering.usage.services.usage_service.event_bus")
@@ -287,4 +288,5 @@ class UsageServiceEventEmissionTest(TestCase):
             "cost_micros": 75_000,  # billed_cost_micros, not raw cost_micros
             "event_type": "gemini_api_call",
             "event_id": result["event_id"],
+            "auto_topup_attempt_id": None,
         })

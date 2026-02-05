@@ -100,6 +100,10 @@ class TenantBillingService:
         Used as a belt-and-suspenders reconciliation for any accumulate_usage
         failures. Safe to run on open or closed periods.
         """
+        # NOTE: Cross-product import for read-only reconciliation query.
+        # UsageEvent lives in metering; billing reads it to verify accumulation
+        # totals. This is an accepted coupling until a dedicated query service
+        # or materialised view is introduced.
         from apps.metering.usage.models import UsageEvent
 
         totals = UsageEvent.objects.filter(

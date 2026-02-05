@@ -1,6 +1,6 @@
 import logging
 from django.utils import timezone
-from apps.metering.usage.models import Invoice
+from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.services.stripe_service import stripe_call, micros_to_cents
 
 logger = logging.getLogger(__name__)

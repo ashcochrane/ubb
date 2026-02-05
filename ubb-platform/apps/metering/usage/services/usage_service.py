@@ -158,20 +158,16 @@ class UsageService:
                 extra={"data": {"customer_id": str(customer.id)}},
             )
 
-        # 8. Dispatch charge task after commit
-        if attempt is not None:
-            from apps.metering.usage.tasks import charge_auto_topup_task
-            transaction.on_commit(
-                lambda aid=attempt.id: charge_auto_topup_task.delay(aid)
-            )
-
-        # 9. Emit usage.recorded event for cross-product handlers
+        # 8. Emit usage.recorded event for cross-product handlers
+        # Include auto_topup_attempt_id so billing can dispatch the charge task
+        # without metering needing to import from billing.
         event_bus.emit("usage.recorded", {
             "tenant_id": str(tenant.id),
             "customer_id": str(customer.id),
             "cost_micros": effective_cost,
             "event_type": event_type,
             "event_id": str(event.id),
+            "auto_topup_attempt_id": str(attempt.id) if attempt else None,
         })
 
         return {
