@@ -100,7 +100,7 @@ class TenantBillingService:
         Used as a belt-and-suspenders reconciliation for any accumulate_usage
         failures. Safe to run on open or closed periods.
         """
-        from apps.usage.models import UsageEvent
+        from apps.metering.usage.models import UsageEvent
 
         totals = UsageEvent.objects.filter(
             tenant=period.tenant,

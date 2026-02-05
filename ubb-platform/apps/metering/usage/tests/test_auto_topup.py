@@ -4,7 +4,7 @@ from django.db import transaction
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, AutoTopUpConfig, TopUpAttempt
-from apps.usage.services.auto_topup_service import AutoTopUpService
+from apps.metering.usage.services.auto_topup_service import AutoTopUpService
 
 
 class AutoTopUpServiceTest(TestCase):

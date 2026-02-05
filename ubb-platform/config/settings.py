@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     # UBB Apps
     "apps.platform.tenants",
     "apps.platform.customers",
-    "apps.usage",
+    "apps.metering.usage",
     "apps.pricing",
     "apps.stripe_integration",
     "apps.gating",

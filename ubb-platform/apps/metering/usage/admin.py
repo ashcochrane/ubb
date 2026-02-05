@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.usage.models import Invoice, UsageEvent
+from apps.metering.usage.models import Invoice, UsageEvent
 
 
 @admin.register(UsageEvent)

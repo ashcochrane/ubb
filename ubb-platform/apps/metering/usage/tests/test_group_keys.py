@@ -3,8 +3,8 @@ from django.db import connection
 from django.test import TestCase, Client, skipUnlessDBFeature
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.usage.models import UsageEvent
-from apps.usage.services.usage_service import UsageService
+from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.services.usage_service import UsageService
 
 
 class GroupKeysValidationTest(TestCase):

@@ -17,7 +17,7 @@ from api.v1.schemas import (
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer, AutoTopUpConfig
-from apps.usage.services.usage_service import UsageService
+from apps.metering.usage.services.usage_service import UsageService
 from apps.gating.services.risk_service import RiskService
 from apps.stripe_integration.services.stripe_service import StripeService
 from django.shortcuts import get_object_or_404
@@ -235,7 +235,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
     from core.locking import lock_for_billing, lock_usage_event
-    from apps.usage.models import UsageEvent, Refund
+    from apps.metering.usage.models import UsageEvent, Refund
     from apps.platform.customers.models import WalletTransaction
 
     with transaction.atomic():

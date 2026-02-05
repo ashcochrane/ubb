@@ -2,7 +2,7 @@ from datetime import date
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.usage.services.usage_service import UsageService
+from apps.metering.usage.services.usage_service import UsageService
 from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
 

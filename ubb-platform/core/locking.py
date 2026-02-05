@@ -51,7 +51,7 @@ def lock_invoice(invoice_id):
     Use for: status transitions from webhooks.
     MUST be called within @transaction.atomic.
     """
-    from apps.usage.models import Invoice
+    from apps.metering.usage.models import Invoice
     return Invoice.objects.select_for_update().get(id=invoice_id)
 
 
@@ -63,5 +63,5 @@ def lock_usage_event(event_id):
     MUST be called within @transaction.atomic.
     Raises UsageEvent.DoesNotExist if not found.
     """
-    from apps.usage.models import UsageEvent
+    from apps.metering.usage.models import UsageEvent
     return UsageEvent.objects.select_for_update().get(id=event_id)

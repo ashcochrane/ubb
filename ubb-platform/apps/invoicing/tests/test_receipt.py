@@ -2,7 +2,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, TopUpAttempt
-from apps.usage.models import Invoice
+from apps.metering.usage.models import Invoice
 
 
 class TopUpReceiptTest(TestCase):

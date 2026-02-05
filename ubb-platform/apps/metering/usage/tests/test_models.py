@@ -3,7 +3,7 @@ from django.test import TestCase
 
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
-from apps.usage.models import UsageEvent
+from apps.metering.usage.models import UsageEvent
 
 
 class UsageEventModelTest(TestCase):

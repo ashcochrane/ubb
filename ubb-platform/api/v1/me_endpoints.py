@@ -5,7 +5,7 @@ from typing import Optional
 from core.widget_auth import WidgetJWTAuth
 from apps.platform.customers.models import TopUpAttempt
 from apps.stripe_integration.services.stripe_service import StripeService
-from apps.usage.models import Invoice
+from apps.metering.usage.models import Invoice
 
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
 

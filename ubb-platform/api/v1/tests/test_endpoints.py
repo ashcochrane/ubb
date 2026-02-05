@@ -7,7 +7,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer, Wallet, WalletTransaction
 from apps.pricing.models import ProviderRate
-from apps.usage.models import UsageEvent, Refund
+from apps.metering.usage.models import UsageEvent, Refund
 
 
 class HealthEndpointTest(TestCase):

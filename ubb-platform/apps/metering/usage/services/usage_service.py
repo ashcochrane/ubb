@@ -3,7 +3,7 @@ import re
 
 from django.db import transaction, IntegrityError
 
-from apps.usage.models import UsageEvent
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Wallet, WalletTransaction
 from core.locking import lock_for_billing
 
@@ -156,7 +156,7 @@ class UsageService:
 
         # 7. Auto top-up check — creates pending attempt if eligible
         attempt = None
-        from apps.usage.services.auto_topup_service import AutoTopUpService
+        from apps.metering.usage.services.auto_topup_service import AutoTopUpService
         try:
             attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
         except Exception:
@@ -167,7 +167,7 @@ class UsageService:
 
         # 8. Dispatch charge task after commit
         if attempt is not None:
-            from apps.usage.tasks import charge_auto_topup_task
+            from apps.metering.usage.tasks import charge_auto_topup_task
             transaction.on_commit(
                 lambda aid=attempt.id: charge_auto_topup_task.delay(aid)
             )
