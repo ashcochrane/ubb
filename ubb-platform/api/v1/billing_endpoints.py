@@ -13,6 +13,7 @@ from api.v1.schemas import (
     CreateTopUpRequest,
     WithdrawRequest,
     RefundRequest,
+    DebitRequest, CreditRequest, DebitCreditResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
 from apps.platform.customers.models import Customer, AutoTopUpConfig
@@ -35,6 +36,41 @@ def get_balance(request, customer_id: str):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     return {"balance_micros": customer.wallet.balance_micros, "currency": customer.wallet.currency}
+
+
+@billing_api.post("/debit", response=DebitCreditResponse)
+def debit(request, payload: DebitRequest):
+    _product_check(request)
+    customer = get_object_or_404(
+        Customer, external_id=payload.customer_id, tenant=request.auth.tenant
+    )
+    txn = customer.wallet.deduct(
+        payload.amount_micros,
+        description="External debit",
+        reference_id=payload.reference,
+    )
+    return {
+        "new_balance_micros": customer.wallet.balance_micros,
+        "transaction_id": str(txn.id),
+    }
+
+
+@billing_api.post("/credit", response=DebitCreditResponse)
+def credit(request, payload: CreditRequest):
+    _product_check(request)
+    customer = get_object_or_404(
+        Customer, external_id=payload.customer_id, tenant=request.auth.tenant
+    )
+    txn = customer.wallet.credit(
+        payload.amount_micros,
+        description=f"Credit: {payload.source}",
+        reference_id=payload.reference,
+        transaction_type="ADJUSTMENT",
+    )
+    return {
+        "new_balance_micros": customer.wallet.balance_micros,
+        "transaction_id": str(txn.id),
+    }
 
 
 @billing_api.put("/customers/{customer_id}/auto-top-up")

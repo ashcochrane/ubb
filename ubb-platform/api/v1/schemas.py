@@ -152,6 +152,24 @@ class RefundRequest(Schema):
     idempotency_key: str = Field(min_length=1, max_length=500)
 
 
+class DebitRequest(Schema):
+    customer_id: str = Field(min_length=1, max_length=255)
+    amount_micros: int = Field(gt=0)
+    reference: str = Field(min_length=1, max_length=500)
+
+
+class CreditRequest(Schema):
+    customer_id: str = Field(min_length=1, max_length=255)
+    amount_micros: int = Field(gt=0)
+    source: str = Field(min_length=1, max_length=255)
+    reference: str = Field(min_length=1, max_length=500)
+
+
+class DebitCreditResponse(Schema):
+    new_balance_micros: int
+    transaction_id: str
+
+
 class WalletTransactionOut(Schema):
     id: UUID
     transaction_type: str
