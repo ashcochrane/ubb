@@ -1,8 +1,16 @@
+import logging
+
+import stripe
+from stripe import SignatureVerificationError as StripeSignatureError
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from ninja import NinjaAPI
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
@@ -253,3 +261,56 @@ def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50)
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+
+# ---------- Stripe Webhook ----------
+
+logger = logging.getLogger(__name__)
+
+from apps.subscriptions.api.webhooks import (
+    handle_subscription_created,
+    handle_subscription_updated,
+    handle_subscription_deleted,
+    handle_invoice_paid,
+)
+
+SUBSCRIPTIONS_WEBHOOK_HANDLERS = {
+    "customer.subscription.created": handle_subscription_created,
+    "customer.subscription.updated": handle_subscription_updated,
+    "customer.subscription.deleted": handle_subscription_deleted,
+    "invoice.paid": handle_invoice_paid,
+}
+
+
+@csrf_exempt
+@require_POST
+def subscriptions_stripe_webhook(request):
+    """Stripe webhook endpoint for subscription events."""
+    payload = request.body
+    sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            settings.STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
+            if hasattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET")
+            else settings.STRIPE_WEBHOOK_SECRET,
+        )
+    except (ValueError, StripeSignatureError):
+        return HttpResponse(status=400)
+
+    handler = SUBSCRIPTIONS_WEBHOOK_HANDLERS.get(event.type)
+    if not handler:
+        return JsonResponse({"status": "ok"})
+
+    try:
+        handler(event)
+    except Exception:
+        logger.exception(
+            "Subscriptions webhook handler failed",
+            extra={"data": {"event_id": event.id, "event_type": event.type}},
+        )
+        return HttpResponse(status=500)
+
+    return JsonResponse({"status": "ok"})
