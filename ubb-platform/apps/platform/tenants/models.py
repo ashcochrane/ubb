@@ -20,6 +20,7 @@ class Tenant(BaseModel):
     branding_config = models.JSONField(default=dict)
     metadata = models.JSONField(default=dict)
     widget_secret = models.CharField(max_length=64, blank=True, default="")
+    products = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "ubb_tenant"

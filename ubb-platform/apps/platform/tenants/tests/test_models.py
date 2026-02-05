@@ -34,3 +34,22 @@ class TenantModelTest(TestCase):
         key_obj.save()
         result = TenantApiKey.verify_key(raw_key)
         self.assertIsNone(result)
+
+
+class TenantProductsFieldTest(TestCase):
+    def test_products_default_is_empty_list(self):
+        tenant = Tenant.objects.create(name="Default Products")
+        tenant.refresh_from_db()
+        self.assertEqual(tenant.products, [])
+
+    def test_products_single_product(self):
+        tenant = Tenant.objects.create(name="Metering Only", products=["metering"])
+        tenant.refresh_from_db()
+        self.assertEqual(tenant.products, ["metering"])
+
+    def test_products_multiple_products(self):
+        tenant = Tenant.objects.create(
+            name="Full Suite", products=["metering", "billing"]
+        )
+        tenant.refresh_from_db()
+        self.assertEqual(tenant.products, ["metering", "billing"])
