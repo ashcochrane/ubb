@@ -390,6 +390,10 @@ ubb-platform/
         api/
           endpoints.py        # CRUD customers
           schemas.py
+      tenant_billing/
+        models.py             # TenantBillingPeriod, TenantPlatformInvoice
+        services.py           # accumulate_revenue(), close_period()
+        tasks.py              # monthly close + invoice generation
 
     metering/
       usage/
@@ -417,10 +421,6 @@ ubb-platform/
       invoicing/
         services.py           # Receipt invoices
         tasks.py
-      tenant_billing/
-        models.py             # TenantBillingPeriod, TenantInvoice
-        services.py
-        tasks.py
       gating/
         models.py             # RiskConfig
         services.py           # RiskService (pre-check based on balance)
@@ -446,7 +446,7 @@ ubb-platform/
 | `apps/gating/` | `billing/gating/` | Pre-check is balance-based |
 | `apps/stripe_integration/` | `billing/stripe/` | Payment provider |
 | `apps/invoicing/` | `billing/invoicing/` | Unchanged logic |
-| `apps/tenant_billing/` | `billing/tenant_billing/` | Unchanged logic |
+| `apps/tenant_billing/` | `platform/tenant_billing/` | Shared — any money-handling product accumulates fees here |
 | `apps/usage/Refund` | `billing/wallets/` | Refunding is a financial operation |
 
 ---
