@@ -137,7 +137,7 @@ class UsageService:
         # billed_cost_micros is set for metric-priced events; cost_micros is the fallback
         # for legacy caller-provided cost mode.
         effective_cost = billed_cost_micros if billed_cost_micros is not None else cost_micros
-        from apps.tenant_billing.services import TenantBillingService
+        from apps.billing.tenant_billing.services import TenantBillingService
         try:
             TenantBillingService.accumulate_usage(tenant, effective_cost)
         except Exception:

@@ -247,7 +247,7 @@ def handle_invoice_paid(event):
             invoice.save(update_fields=["status", "paid_at", "updated_at"])
     else:
         # Platform fee invoice on UBB's own Stripe account
-        from apps.tenant_billing.models import TenantInvoice
+        from apps.billing.tenant_billing.models import TenantInvoice
         tenant_invoice = TenantInvoice.objects.filter(
             stripe_invoice_id=inv.id,
         ).first()

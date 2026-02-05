@@ -6,7 +6,7 @@ from django.db.models import F, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.tenant_billing.models import TenantBillingPeriod
+from apps.billing.tenant_billing.models import TenantBillingPeriod
 
 logger = logging.getLogger(__name__)
 

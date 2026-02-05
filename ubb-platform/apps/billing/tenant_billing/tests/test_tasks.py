@@ -4,8 +4,8 @@ from django.test import TestCase
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.tenant_billing.models import TenantBillingPeriod
-from apps.tenant_billing.services import TenantBillingService
+from apps.billing.tenant_billing.models import TenantBillingPeriod
+from apps.billing.tenant_billing.services import TenantBillingService
 
 
 class AccumulateUsageTest(TestCase):

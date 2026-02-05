@@ -7,7 +7,7 @@ from ninja import NinjaAPI, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
 from core.auth import ApiKeyAuth
-from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.metering.usage.models import UsageEvent
 
 tenant_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_tenant_v1")

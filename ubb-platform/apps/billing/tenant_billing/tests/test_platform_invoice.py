@@ -2,8 +2,8 @@ from datetime import date
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
-from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
-from apps.tenant_billing.tasks import generate_tenant_platform_invoices
+from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.billing.tenant_billing.tasks import generate_tenant_platform_invoices
 
 
 class PlatformInvoiceStripeTest(TestCase):

@@ -35,7 +35,7 @@ INSTALLED_APPS = [
     "apps.billing.stripe",
     "apps.billing.gating",
     "apps.billing.invoicing",
-    "apps.tenant_billing",
+    "apps.billing.tenant_billing",
 ]
 
 MIDDLEWARE = [
@@ -130,15 +130,15 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
     "close-tenant-billing-periods": {
-        "task": "apps.tenant_billing.tasks.close_tenant_billing_periods",
+        "task": "apps.billing.tenant_billing.tasks.close_tenant_billing_periods",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),  # 1st of month 00:00 UTC
     },
     "generate-tenant-platform-invoices": {
-        "task": "apps.tenant_billing.tasks.generate_tenant_platform_invoices",
+        "task": "apps.billing.tenant_billing.tasks.generate_tenant_platform_invoices",
         "schedule": crontab(minute=0, hour=1, day_of_month=1),  # 1st of month 01:00 UTC
     },
     "reconcile-tenant-billing-periods": {
-        "task": "apps.tenant_billing.tasks.reconcile_tenant_billing_periods",
+        "task": "apps.billing.tenant_billing.tasks.reconcile_tenant_billing_periods",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "reconcile-missing-receipts": {

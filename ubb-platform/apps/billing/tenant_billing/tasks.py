@@ -4,8 +4,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from apps.tenant_billing.models import TenantBillingPeriod, TenantInvoice
-from apps.tenant_billing.services import TenantBillingService
+from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.billing.tenant_billing.services import TenantBillingService
 
 logger = logging.getLogger(__name__)
 
