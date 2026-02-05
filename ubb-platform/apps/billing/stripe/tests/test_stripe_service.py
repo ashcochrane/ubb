@@ -2,7 +2,7 @@ import stripe
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, override_settings
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
-from apps.stripe_integration.services.stripe_service import stripe_call, validate_amount_micros, micros_to_cents, StripeService
+from apps.billing.stripe.services.stripe_service import stripe_call, validate_amount_micros, micros_to_cents, StripeService
 
 
 class StripeCallWrapperTest(TestCase):
@@ -33,7 +33,7 @@ class StripeCallWrapperTest(TestCase):
         with self.assertRaises(StripeFatalError):
             stripe_call(mock_fn)
 
-    @patch("apps.stripe_integration.services.stripe_service.time.sleep")
+    @patch("apps.billing.stripe.services.stripe_service.time.sleep")
     def test_retryable_with_idempotency_key_retries(self, mock_sleep):
         mock_fn = MagicMock(
             side_effect=[

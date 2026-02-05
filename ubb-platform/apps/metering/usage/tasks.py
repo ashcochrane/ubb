@@ -24,7 +24,7 @@ def charge_auto_topup_task(attempt_id):
     Idempotent: checks attempt status before and after charging.
     """
     from apps.platform.customers.models import TopUpAttempt
-    from apps.stripe_integration.services.stripe_service import StripeService
+    from apps.billing.stripe.services.stripe_service import StripeService
 
     # Pre-charge check (outside transaction — no lock needed)
     try:

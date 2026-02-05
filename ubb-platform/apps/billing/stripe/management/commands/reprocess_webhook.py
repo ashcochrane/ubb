@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.stripe_integration.models import StripeWebhookEvent
+from apps.billing.stripe.models import StripeWebhookEvent
 
 
 class Command(BaseCommand):

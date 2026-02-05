@@ -24,7 +24,7 @@ class PlatformInvoiceStripeTest(TestCase):
             platform_fee_micros=1_000_000_000,
         )
 
-    @patch("apps.stripe_integration.services.stripe_service.stripe_call")
+    @patch("apps.billing.stripe.services.stripe_service.stripe_call")
     def test_creates_stripe_invoice_for_platform_fee(self, mock_stripe_call):
         mock_invoice = MagicMock()
         mock_invoice.id = "inv_platform_test"
@@ -40,7 +40,7 @@ class PlatformInvoiceStripeTest(TestCase):
         create_call = mock_stripe_call.call_args_list[0]
         self.assertNotIn("stripe_account", create_call.kwargs)
 
-    @patch("apps.stripe_integration.services.stripe_service.stripe_call")
+    @patch("apps.billing.stripe.services.stripe_service.stripe_call")
     def test_stripe_failure_keeps_period_closed_for_retry(self, mock_stripe_call):
         """On Stripe failure, period stays closed so next run retries."""
         mock_stripe_call.side_effect = Exception("Stripe down")

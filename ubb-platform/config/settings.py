@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     "apps.platform.customers",
     "apps.metering.usage",
     "apps.metering.pricing",
-    "apps.stripe_integration",
+    "apps.billing.stripe",
     "apps.gating",
     "apps.invoicing",
     "apps.tenant_billing",
@@ -126,7 +126,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "cleanup-webhook-events": {
-        "task": "apps.stripe_integration.tasks.cleanup_webhook_events",
+        "task": "apps.billing.stripe.tasks.cleanup_webhook_events",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
     "close-tenant-billing-periods": {

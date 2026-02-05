@@ -5,7 +5,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 class StripeIntegrationConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.stripe_integration"
+    name = "apps.billing.stripe"
     label = "stripe_integration"
 
     def ready(self):

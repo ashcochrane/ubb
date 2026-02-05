@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.db import IntegrityError, transaction
 from django.utils import timezone
-from apps.stripe_integration.models import StripeWebhookEvent
+from apps.billing.stripe.models import StripeWebhookEvent
 
 
 class StripeWebhookEventModelTest(TestCase):

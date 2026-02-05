@@ -122,7 +122,7 @@ def _create_tenant_invoice(period):
         period.save(update_fields=["status", "updated_at"])
 
     # Phase 2 — Call Stripe (no DB transaction held)
-    from apps.stripe_integration.services.stripe_service import StripeService
+    from apps.billing.stripe.services.stripe_service import StripeService
 
     try:
         stripe_invoice_id = StripeService.create_tenant_platform_invoice(

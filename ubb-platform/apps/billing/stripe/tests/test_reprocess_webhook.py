@@ -2,7 +2,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from apps.stripe_integration.models import StripeWebhookEvent
+from apps.billing.stripe.models import StripeWebhookEvent
 
 
 class ReprocessWebhookCommandTest(TestCase):

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @shared_task(queue="ubb_webhooks")
 def cleanup_webhook_events():
     """Batch-delete old webhook events to avoid long-running deletes and WAL bloat."""
-    from apps.stripe_integration.models import StripeWebhookEvent
+    from apps.billing.stripe.models import StripeWebhookEvent
 
     now = timezone.now()
     succeeded_cutoff = now - timedelta(days=90)

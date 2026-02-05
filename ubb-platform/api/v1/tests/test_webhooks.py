@@ -3,7 +3,7 @@ from django.test import TestCase, RequestFactory
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.stripe_integration.models import StripeWebhookEvent
+from apps.billing.stripe.models import StripeWebhookEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, TopUpAttempt, WalletTransaction
 from api.v1.webhooks import stripe_webhook

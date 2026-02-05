@@ -19,7 +19,7 @@ from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer, AutoTopUpConfig
 from apps.metering.usage.services.usage_service import UsageService
 from apps.gating.services.risk_service import RiskService
-from apps.stripe_integration.services.stripe_service import StripeService
+from apps.billing.stripe.services.stripe_service import StripeService
 from django.shortcuts import get_object_or_404
 
 api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_v1")
