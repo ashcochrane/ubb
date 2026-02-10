@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     # UBB Apps
     "apps.platform.tenants",
     "apps.platform.customers",
+    "apps.platform.events",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.stripe",
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     "apps.billing.invoicing",
     "apps.billing.tenant_billing",
     "apps.subscriptions",
+    "apps.referrals",
 ]
 
 MIDDLEWARE = [
