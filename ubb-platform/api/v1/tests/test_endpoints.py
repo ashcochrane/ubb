@@ -117,12 +117,9 @@ class RecordUsageEndpointTest(TestCase):
             tenant=self.tenant,
             external_id="cust_002",
         )
-        # Set wallet balance to $10
-        wallet = self.customer.wallet
-        wallet.balance_micros = 10_000_000
-        wallet.save(update_fields=["balance_micros"])
 
-    def test_record_usage(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage(self, mock_process):
         response = self.client.post(
             "/api/v1/usage",
             data=json.dumps({
@@ -137,7 +134,7 @@ class RecordUsageEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["new_balance_micros"], 8_500_000)
+        self.assertIsNone(body["new_balance_micros"])
         self.assertFalse(body["suspended"])
         self.assertIn("event_id", body)
 
@@ -427,9 +424,6 @@ class RecordUsageRawMetricsEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_raw",
         )
-        wallet = self.customer.wallet
-        wallet.balance_micros = 10_000_000
-        wallet.save(update_fields=["balance_micros"])
         ProviderRate.objects.create(
             provider="google_gemini",
             event_type="gemini_api_call",
@@ -439,7 +433,8 @@ class RecordUsageRawMetricsEndpointTest(TestCase):
             unit_quantity=1_000_000,
         )
 
-    def test_record_usage_raw_metrics(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_raw_metrics(self, mock_process):
         response = self.client.post(
             "/api/v1/usage",
             data=json.dumps({

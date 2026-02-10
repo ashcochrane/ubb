@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 from django.db import connection
 from django.test import TestCase, Client, skipUnlessDBFeature
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -15,10 +16,9 @@ class GroupKeysValidationTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        self.customer.wallet.balance_micros = 100_000_000
-        self.customer.wallet.save()
 
-    def test_group_keys_stored_on_event(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_group_keys_stored_on_event(self, mock_process):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
@@ -30,7 +30,8 @@ class GroupKeysValidationTest(TestCase):
         event = UsageEvent.objects.get(id=result["event_id"])
         self.assertEqual(event.group_keys, {"department": "sales", "workflow_run": "wf_123"})
 
-    def test_group_keys_null_by_default(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_group_keys_null_by_default(self, mock_process):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
@@ -96,10 +97,9 @@ class GroupKeysEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_gk"
         )
-        self.customer.wallet.balance_micros = 100_000_000
-        self.customer.wallet.save()
 
-    def test_record_usage_with_group_keys(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_with_group_keys(self, mock_process):
         response = self.client.post(
             "/api/v1/usage",
             data=json.dumps({
@@ -117,7 +117,8 @@ class GroupKeysEndpointTest(TestCase):
         self.assertEqual(event.group_keys, {"department": "engineering"})
 
     @skipUnlessDBFeature("supports_json_field_contains")
-    def test_usage_filter_by_group_key(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_usage_filter_by_group_key(self, mock_process):
         for i, dept in enumerate(["sales", "engineering", "sales"]):
             self.client.post(
                 "/api/v1/usage",

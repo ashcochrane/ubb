@@ -4,6 +4,7 @@ Verifies that product-gated endpoints correctly enforce access based on
 the tenant's products field.
 """
 import json
+from unittest.mock import patch
 
 from django.test import TestCase, Client
 
@@ -29,7 +30,8 @@ class TestMeteringOnlyTenant(TestCase):
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
-    def test_can_record_usage_on_metering_endpoint(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_can_record_usage_on_metering_endpoint(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -44,7 +46,7 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("event_id", body)
-        self.assertEqual(body["new_balance_micros"], 9_000_000)
+        self.assertIsNone(body["new_balance_micros"])
 
     def test_can_get_usage_history_on_metering_endpoint(self):
         response = self.http_client.get(
@@ -189,7 +191,8 @@ class TestBothProductsTenant(TestCase):
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
-    def test_can_record_usage_on_metering_endpoint(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_can_record_usage_on_metering_endpoint(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -235,8 +238,13 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-    def test_can_record_usage_then_check_balance(self):
-        """Full cross-product workflow: record usage via metering, then check balance via billing."""
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_can_record_usage_then_check_balance(self, mock_process):
+        """Cross-product workflow: record usage via metering, check balance via billing.
+
+        After decoupling, metering does NOT deduct the wallet. Wallet balance
+        stays unchanged until billing's outbox handler processes the event.
+        """
         # Record usage
         response = self.http_client.post(
             "/api/v1/metering/usage",
@@ -251,13 +259,13 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         usage_body = response.json()
-        self.assertEqual(usage_body["new_balance_micros"], 8_000_000)
+        self.assertIsNone(usage_body["new_balance_micros"])
 
-        # Check balance via billing
+        # Balance unchanged (billing handles deduction via outbox)
         response = self.http_client.get(
             f"/api/v1/billing/customers/{self.customer.id}/balance",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
         balance_body = response.json()
-        self.assertEqual(balance_body["balance_micros"], 8_000_000)
+        self.assertEqual(balance_body["balance_micros"], 10_000_000)

@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 from django.test import TestCase, Client
 
@@ -45,7 +46,8 @@ class MeteringProductGatingTest(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_tenant_with_metering_can_record_usage(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_tenant_with_metering_can_record_usage(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -60,7 +62,7 @@ class MeteringProductGatingTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["new_balance_micros"], 8_500_000)
+        self.assertIsNone(body["new_balance_micros"])
         self.assertIn("event_id", body)
 
     def test_tenant_without_metering_gets_403_on_usage_history(self):

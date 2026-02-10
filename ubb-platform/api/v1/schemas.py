@@ -66,7 +66,7 @@ class RecordUsageRequest(Schema):
 
 class RecordUsageResponse(Schema):
     event_id: str
-    new_balance_micros: int
+    new_balance_micros: Optional[int] = None
     suspended: bool
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
