@@ -5,7 +5,8 @@ from django.db import transaction, IntegrityError
 
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Wallet, WalletTransaction
-from core.event_bus import event_bus
+from apps.platform.events.outbox import write_event
+from apps.platform.events.schemas import UsageRecorded
 from core.locking import lock_for_billing
 
 logger = logging.getLogger(__name__)
@@ -158,17 +159,18 @@ class UsageService:
                 extra={"data": {"customer_id": str(customer.id)}},
             )
 
-        # 8. Emit usage.recorded event for cross-product handlers
-        # Include auto_topup_attempt_id so billing can dispatch the charge task
-        # without metering needing to import from billing.
-        event_bus.emit("usage.recorded", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "cost_micros": effective_cost,
-            "event_type": event_type,
-            "event_id": str(event.id),
-            "auto_topup_attempt_id": str(attempt.id) if attempt else None,
-        })
+        # 8. Write outbox event for cross-product handlers
+        write_event(UsageRecorded(
+            tenant_id=str(tenant.id),
+            customer_id=str(customer.id),
+            event_id=str(event.id),
+            cost_micros=effective_cost,
+            provider_cost_micros=provider_cost_micros,
+            billed_cost_micros=billed_cost_micros,
+            event_type=event_type or "",
+            provider=provider or "",
+            auto_topup_attempt_id=str(attempt.id) if attempt else None,
+        ))
 
         return {
             "event_id": str(event.id),

@@ -244,8 +244,10 @@ class UsageServiceEventEmissionTest(TestCase):
         self.customer.wallet.balance_micros = 100_000_000
         self.customer.wallet.save()
 
-    @patch("apps.metering.usage.services.usage_service.event_bus")
-    def test_record_usage_emits_usage_recorded_event(self, mock_event_bus):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_writes_outbox_event(self, mock_process):
+        from apps.platform.events.models import OutboxEvent
+
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
@@ -253,17 +255,18 @@ class UsageServiceEventEmissionTest(TestCase):
             idempotency_key="idem_emit_1",
             cost_micros=1_000_000,
         )
-        mock_event_bus.emit.assert_called_once_with("usage.recorded", {
-            "tenant_id": str(self.tenant.id),
-            "customer_id": str(self.customer.id),
-            "cost_micros": 1_000_000,
-            "event_type": None,
-            "event_id": result["event_id"],
-            "auto_topup_attempt_id": None,
-        })
+        outbox = OutboxEvent.objects.get(event_type="usage.recorded")
+        self.assertEqual(outbox.payload["tenant_id"], str(self.tenant.id))
+        self.assertEqual(outbox.payload["customer_id"], str(self.customer.id))
+        self.assertEqual(outbox.payload["cost_micros"], 1_000_000)
+        self.assertEqual(outbox.payload["event_type"], "")
+        self.assertEqual(outbox.payload["event_id"], result["event_id"])
+        self.assertIsNone(outbox.payload["auto_topup_attempt_id"])
 
-    @patch("apps.metering.usage.services.usage_service.event_bus")
-    def test_record_usage_emits_billed_cost_for_priced_events(self, mock_event_bus):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_writes_billed_cost_for_priced_events(self, mock_process):
+        from apps.platform.events.models import OutboxEvent
+
         ProviderRate.objects.create(
             provider="google_gemini",
             event_type="gemini_api_call",
@@ -282,11 +285,7 @@ class UsageServiceEventEmissionTest(TestCase):
             usage_metrics={"input_tokens": 1_000_000},
             properties={"model": "gemini-2.0-flash"},
         )
-        mock_event_bus.emit.assert_called_once_with("usage.recorded", {
-            "tenant_id": str(self.tenant.id),
-            "customer_id": str(self.customer.id),
-            "cost_micros": 75_000,  # billed_cost_micros, not raw cost_micros
-            "event_type": "gemini_api_call",
-            "event_id": result["event_id"],
-            "auto_topup_attempt_id": None,
-        })
+        outbox = OutboxEvent.objects.get(event_type="usage.recorded")
+        self.assertEqual(outbox.payload["cost_micros"], 75_000)  # billed_cost_micros
+        self.assertEqual(outbox.payload["event_type"], "gemini_api_call")
+        self.assertEqual(outbox.payload["event_id"], result["event_id"])
