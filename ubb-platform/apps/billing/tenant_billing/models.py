@@ -102,3 +102,18 @@ class ProductFeeConfig(BaseModel):
 
     def __str__(self):
         return f"ProductFeeConfig({self.tenant.name}: {self.product} [{self.fee_type}])"
+
+
+class TenantInvoiceLineItem(BaseModel):
+    invoice = models.ForeignKey(
+        TenantInvoice, on_delete=models.CASCADE, related_name="line_items"
+    )
+    product = models.CharField(max_length=100)
+    description = models.CharField(max_length=255)
+    amount_micros = models.BigIntegerField()
+
+    class Meta:
+        db_table = "ubb_tenant_invoice_line_item"
+
+    def __str__(self):
+        return f"LineItem({self.product}: {self.amount_micros})"
