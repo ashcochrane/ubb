@@ -7,6 +7,9 @@ from django.db import models
 from core.models import BaseModel
 
 
+VALID_PRODUCTS = {"metering", "billing", "subscriptions", "referrals"}
+
+
 class Tenant(BaseModel):
     name = models.CharField(max_length=255)
     stripe_connected_account_id = models.CharField(max_length=255, blank=True, default="")
@@ -29,9 +32,23 @@ class Tenant(BaseModel):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if not self.products or "metering" not in self.products:
+            raise ValidationError({"products": "metering must always be present in products."})
+        unknown = set(self.products) - VALID_PRODUCTS
+        if unknown:
+            raise ValidationError(
+                {"products": f"Unknown products: {', '.join(sorted(unknown))}"}
+            )
+
     def save(self, *args, **kwargs):
         if not self.widget_secret:
             self.widget_secret = secrets.token_urlsafe(48)
+        # Sort and deduplicate products
+        if self.products:
+            self.products = sorted(set(self.products))
         super().save(*args, **kwargs)
         cache.delete(f"tenant_products:{self.id}")
 

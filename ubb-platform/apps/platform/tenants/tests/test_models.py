@@ -52,4 +52,5 @@ class TenantProductsFieldTest(TestCase):
             name="Full Suite", products=["metering", "billing"]
         )
         tenant.refresh_from_db()
-        self.assertEqual(tenant.products, ["metering", "billing"])
+        # Products are sorted alphabetically on save
+        self.assertEqual(tenant.products, ["billing", "metering"])
