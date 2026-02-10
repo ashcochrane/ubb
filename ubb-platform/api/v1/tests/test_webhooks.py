@@ -5,7 +5,9 @@ from datetime import timedelta
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, TopUpAttempt, WalletTransaction
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import TopUpAttempt
+from apps.billing.wallets.models import WalletTransaction
 from api.v1.webhooks import stripe_webhook
 
 

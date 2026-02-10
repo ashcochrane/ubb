@@ -28,7 +28,7 @@ def charge_auto_topup_task(attempt_id):
     Moved from apps.metering.usage.tasks to apps.billing.stripe.tasks
     to respect product isolation boundaries.
     """
-    from apps.platform.customers.models import TopUpAttempt
+    from apps.billing.topups.models import TopUpAttempt
     from apps.billing.stripe.services.stripe_service import StripeService
 
     # Pre-charge check (outside transaction — no lock needed)
@@ -91,7 +91,7 @@ def charge_auto_topup_task(attempt_id):
             wallet.balance_micros += attempt.amount_micros
             wallet.save(update_fields=["balance_micros", "updated_at"])
 
-            from apps.platform.customers.models import WalletTransaction
+            from apps.billing.wallets.models import WalletTransaction
             WalletTransaction.objects.create(
                 wallet=wallet,
                 transaction_type="TOP_UP",

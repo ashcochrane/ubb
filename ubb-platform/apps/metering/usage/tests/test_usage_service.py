@@ -120,7 +120,7 @@ class UsageServiceCoreTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_auto_topup_not_triggered_by_metering(self, mock_process):
         """Auto-topup is now billing's responsibility via outbox handler."""
-        from apps.platform.customers.models import AutoTopUpConfig, TopUpAttempt
+        from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 
         self.customer.wallet.balance_micros = 0
         self.customer.wallet.save()

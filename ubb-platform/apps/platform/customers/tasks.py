@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @shared_task(queue="ubb_topups")
 def expire_stale_topup_attempts():
     """Expire stale pending TopUpAttempts that are stuck."""
-    from apps.platform.customers.models import TopUpAttempt
+    from apps.billing.topups.models import TopUpAttempt
 
     now = timezone.now()
     auto_cutoff = now - timedelta(minutes=30)
@@ -44,7 +44,7 @@ def expire_stale_topup_attempts():
 @shared_task(queue="ubb_invoicing")
 def reconcile_wallet_balances():
     """Reconcile wallet balances against WalletTransaction ledger."""
-    from apps.platform.customers.models import Wallet, WalletTransaction
+    from apps.billing.wallets.models import Wallet, WalletTransaction
     from django.db.models import Sum
 
     wallets = Wallet.objects.all()

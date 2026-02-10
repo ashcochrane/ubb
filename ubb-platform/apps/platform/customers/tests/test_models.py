@@ -1,6 +1,7 @@
 from django.test import TestCase
 
-from apps.platform.customers.models import Customer, Wallet, WalletTransaction
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.platform.tenants.models import Tenant
 
 

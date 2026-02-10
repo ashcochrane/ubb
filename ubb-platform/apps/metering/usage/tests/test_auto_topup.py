@@ -3,7 +3,8 @@ from django.test import TestCase
 from django.db import transaction
 
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, AutoTopUpConfig, TopUpAttempt
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 from apps.metering.usage.services.auto_topup_service import AutoTopUpService
 
 

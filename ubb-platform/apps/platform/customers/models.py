@@ -2,6 +2,8 @@ from django.db import models
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
+from apps.billing.wallets.models import Wallet
+from apps.billing.topups.models import AutoTopUpConfig
 
 
 CUSTOMER_STATUS_CHOICES = [
@@ -62,7 +64,3 @@ class Customer(SoftDeleteMixin, BaseModel):
     def __str__(self):
         return f"Customer({self.external_id})"
 
-
-# Re-exports for backward compatibility (to be removed after all imports are updated)
-from apps.billing.wallets.models import Wallet, WalletTransaction, WALLET_TXN_TYPES  # noqa: E402, F401
-from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt, TOP_UP_ATTEMPT_TRIGGERS, TOP_UP_ATTEMPT_STATUSES  # noqa: E402, F401

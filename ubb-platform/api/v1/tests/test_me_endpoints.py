@@ -1,7 +1,8 @@
 import json
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, WalletTransaction
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import WalletTransaction
 from core.widget_auth import create_widget_token
 
 

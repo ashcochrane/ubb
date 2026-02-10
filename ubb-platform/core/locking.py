@@ -14,7 +14,8 @@ def lock_row(model_class, **lookup):
     return model_class.objects.select_for_update().get(**lookup)
 
 
-from apps.platform.customers.models import Customer, Wallet
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 
 
 def lock_for_billing(customer_id):
@@ -46,7 +47,7 @@ def lock_top_up_attempt(attempt_id):
     Use for: status transitions after Stripe calls.
     MUST be called within @transaction.atomic.
     """
-    from apps.platform.customers.models import TopUpAttempt
+    from apps.billing.topups.models import TopUpAttempt
     return TopUpAttempt.objects.select_for_update().get(id=attempt_id)
 
 

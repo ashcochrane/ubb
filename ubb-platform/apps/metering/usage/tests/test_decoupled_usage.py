@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.customers.models import Wallet
+from apps.billing.wallets.models import Wallet
 
 
 @pytest.mark.django_db

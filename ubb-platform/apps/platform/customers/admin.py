@@ -1,11 +1,8 @@
 from django.contrib import admin
 
-from apps.platform.customers.models import (
-    AutoTopUpConfig,
-    Customer,
-    Wallet,
-    WalletTransaction,
-)
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet, WalletTransaction
+from apps.billing.topups.models import AutoTopUpConfig
 
 
 @admin.register(Customer)

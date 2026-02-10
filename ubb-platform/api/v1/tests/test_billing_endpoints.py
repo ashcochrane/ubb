@@ -175,7 +175,7 @@ class BillingDebitEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         body = response.json()
-        from apps.platform.customers.models import WalletTransaction
+        from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(id=body["transaction_id"])
         self.assertEqual(txn.transaction_type, "USAGE_DEDUCTION")
         self.assertEqual(txn.amount_micros, -2_000_000)
@@ -292,7 +292,7 @@ class BillingCreditEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         body = response.json()
-        from apps.platform.customers.models import WalletTransaction
+        from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(id=body["transaction_id"])
         self.assertEqual(txn.transaction_type, "ADJUSTMENT")
         self.assertEqual(txn.amount_micros, 3_000_000)

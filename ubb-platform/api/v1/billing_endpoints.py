@@ -16,7 +16,8 @@ from api.v1.schemas import (
     DebitRequest, CreditRequest, DebitCreditResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
-from apps.platform.customers.models import Customer, AutoTopUpConfig
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.stripe.services.stripe_service import StripeService
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
@@ -91,7 +92,7 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 @billing_api.post("/customers/{customer_id}/top-up")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     _product_check(request)
-    from apps.platform.customers.models import TopUpAttempt
+    from apps.billing.topups.models import TopUpAttempt
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if not customer.stripe_customer_id:
@@ -118,7 +119,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
     from core.locking import lock_for_billing
-    from apps.platform.customers.models import WalletTransaction
+    from apps.billing.wallets.models import WalletTransaction
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
@@ -165,7 +166,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     from django.db import IntegrityError, transaction
     from core.locking import lock_for_billing, lock_usage_event
     from apps.metering.usage.models import UsageEvent, Refund
-    from apps.platform.customers.models import WalletTransaction
+    from apps.billing.wallets.models import WalletTransaction
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)

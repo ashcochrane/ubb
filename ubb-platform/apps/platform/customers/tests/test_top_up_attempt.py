@@ -1,7 +1,8 @@
 from django.test import TestCase
 from django.db import IntegrityError, transaction
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, TopUpAttempt
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import TopUpAttempt
 
 
 class TopUpAttemptModelTest(TestCase):

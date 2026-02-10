@@ -1,7 +1,8 @@
 import pytest
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, Wallet
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 from core.locking import lock_for_billing, lock_customer
 
 
@@ -56,7 +57,7 @@ class LockForBillingTest(TestCase):
     def test_lock_for_billing_nonexistent_raises(self):
         import uuid
         from django.db import transaction
-        from apps.platform.customers.models import Wallet
+        from apps.billing.wallets.models import Wallet
         with self.assertRaises(Wallet.DoesNotExist):
             with transaction.atomic():
                 lock_for_billing(uuid.uuid4())

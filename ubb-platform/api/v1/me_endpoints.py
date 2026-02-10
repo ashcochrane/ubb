@@ -4,7 +4,7 @@ from typing import Optional
 
 from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
-from apps.platform.customers.models import TopUpAttempt
+from apps.billing.topups.models import TopUpAttempt
 from apps.billing.stripe.services.stripe_service import StripeService
 from apps.metering.usage.models import Invoice
 

@@ -2,7 +2,7 @@ import logging
 
 from django.db import IntegrityError, transaction
 
-from apps.platform.customers.models import AutoTopUpConfig, TopUpAttempt
+from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 
 logger = logging.getLogger(__name__)
 

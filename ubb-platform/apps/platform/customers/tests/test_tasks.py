@@ -4,7 +4,9 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer, TopUpAttempt, Wallet, WalletTransaction
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import TopUpAttempt
+from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.platform.customers.tasks import expire_stale_topup_attempts, reconcile_wallet_balances
 
 

@@ -2,7 +2,7 @@ import logging
 
 from celery import shared_task
 
-from apps.platform.customers.models import TopUpAttempt
+from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 
 logger = logging.getLogger(__name__)
