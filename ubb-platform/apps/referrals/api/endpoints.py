@@ -484,6 +484,52 @@ def revoke_referral(request, referral_id: str):
     return {"status": "revoked"}
 
 
+# ---------- Payout Export ----------
+
+
+@referrals_api.get("/payouts/export")
+def payout_export(request):
+    _product_check(request)
+    tenant = request.auth.tenant
+
+    referrers = Referrer.objects.filter(tenant=tenant).select_related("customer")
+
+    data = []
+    total_payout = 0
+
+    for referrer in referrers:
+        acc_totals = ReferralRewardAccumulator.objects.filter(
+            referral__referrer=referrer,
+        ).aggregate(
+            earned=Sum("total_earned_micros"),
+            spend=Sum("total_referred_spend_micros"),
+        )
+        earned = acc_totals["earned"] or 0
+        if earned <= 0:
+            continue
+
+        ref_count = Referral.objects.filter(referrer=referrer).count()
+        active_count = Referral.objects.filter(referrer=referrer, status="active").count()
+
+        data.append({
+            "referrer_customer_id": str(referrer.customer_id),
+            "external_id": referrer.customer.external_id,
+            "referral_code": referrer.referral_code,
+            "total_earned_micros": earned,
+            "total_referred_spend_micros": acc_totals["spend"] or 0,
+            "referral_count": ref_count,
+            "active_referral_count": active_count,
+        })
+        total_payout += earned
+
+    return {
+        "data": data,
+        "total_payout_micros": total_payout,
+        "referrer_count": len(data),
+        "exported_at": timezone.now().isoformat(),
+    }
+
+
 # ---------- Analytics ----------
 
 
