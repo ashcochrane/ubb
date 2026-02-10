@@ -49,6 +49,8 @@ def _program_to_dict(program):
             if program.estimated_cost_percentage is not None
             else None
         ),
+        "max_referrals_per_day": program.max_referrals_per_day,
+        "min_customer_age_hours": program.min_customer_age_hours,
         "status": program.status,
         "created_at": program.created_at.isoformat(),
         "updated_at": program.updated_at.isoformat(),
@@ -74,6 +76,8 @@ def create_program(request, payload: ProgramCreateRequest):
         reward_window_days=payload.reward_window_days,
         max_reward_micros=payload.max_reward_micros,
         estimated_cost_percentage=payload.estimated_cost_percentage,
+        max_referrals_per_day=payload.max_referrals_per_day,
+        min_customer_age_hours=payload.min_customer_age_hours,
     )
     return _program_to_dict(program)
 
@@ -109,6 +113,7 @@ def update_program(request, payload: ProgramUpdateRequest):
     for field_name in [
         "reward_type", "reward_value", "attribution_window_days",
         "reward_window_days", "max_reward_micros", "estimated_cost_percentage",
+        "max_referrals_per_day", "min_customer_age_hours",
     ]:
         value = getattr(payload, field_name, None)
         if value is not None:
@@ -281,6 +286,22 @@ def attribute_referral(request, payload: AttributeRequest):
     ).first()
     if not program:
         raise HttpError(400, "No active referral program")
+
+    # Fraud prevention: velocity limit
+    if program.max_referrals_per_day is not None:
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_count = Referral.objects.filter(
+            referrer=referrer,
+            attributed_at__gte=today_start,
+        ).count()
+        if today_count >= program.max_referrals_per_day:
+            raise HttpError(429, "Referrer has reached the daily referral limit")
+
+    # Fraud prevention: customer age check
+    if program.min_customer_age_hours is not None:
+        age_hours = (timezone.now() - customer.created_at).total_seconds() / 3600
+        if age_hours < program.min_customer_age_hours:
+            raise HttpError(400, "Referred customer account is too new")
 
     # For link attribution, check window
     if payload.link_token:
