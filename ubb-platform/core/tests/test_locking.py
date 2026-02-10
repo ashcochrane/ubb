@@ -1,7 +1,29 @@
+import pytest
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer, Wallet
 from core.locking import lock_for_billing, lock_customer
+
+
+@pytest.mark.django_db
+class TestGenericLockRow:
+    def test_lock_row_returns_instance(self):
+        from core.locking import lock_row
+        from django.db import transaction
+
+        tenant = Tenant.objects.create(name="LockTest")
+        with transaction.atomic():
+            locked = lock_row(Tenant, id=tenant.id)
+        assert locked.id == tenant.id
+
+    def test_lock_row_raises_does_not_exist(self):
+        from core.locking import lock_row
+        from django.db import transaction
+        import uuid
+
+        with pytest.raises(Tenant.DoesNotExist):
+            with transaction.atomic():
+                lock_row(Tenant, id=uuid.uuid4())
 
 
 class LockForBillingTest(TestCase):

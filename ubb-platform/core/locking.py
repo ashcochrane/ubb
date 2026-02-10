@@ -8,6 +8,12 @@ All code that needs multiple locks MUST use these helpers.
 Do not call select_for_update() directly on these models.
 """
 
+
+def lock_row(model_class, **lookup):
+    """Acquire a row lock. Must be inside @transaction.atomic."""
+    return model_class.objects.select_for_update().get(**lookup)
+
+
 from apps.platform.customers.models import Customer, Wallet
 
 
