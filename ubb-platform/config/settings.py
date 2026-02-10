@@ -115,6 +115,7 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_webhooks"),
     Queue("ubb_topups"),
     Queue("ubb_billing"),
+    Queue("ubb_events"),
 ]
 
 from celery.schedules import crontab
@@ -147,6 +148,14 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-missing-receipts": {
         "task": "apps.billing.invoicing.tasks.reconcile_missing_receipts",
         "schedule": crontab(minute=30, hour="*/1"),  # Every hour at :30
+    },
+    "sweep-outbox": {
+        "task": "apps.platform.events.tasks.sweep_outbox",
+        "schedule": crontab(minute="*/1"),
+    },
+    "cleanup-outbox": {
+        "task": "apps.platform.events.tasks.cleanup_outbox",
+        "schedule": crontab(minute=0, hour=4),
     },
 }
 
