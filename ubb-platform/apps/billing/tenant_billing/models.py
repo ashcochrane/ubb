@@ -81,3 +81,24 @@ class TenantInvoice(BaseModel):
 
     def __str__(self):
         return f"TenantInvoice({self.tenant.name}: {self.status})"
+
+
+class ProductFeeConfig(BaseModel):
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="fee_configs"
+    )
+    product = models.CharField(max_length=100)
+    fee_type = models.CharField(max_length=100)
+    config = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "ubb_product_fee_config"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "product"],
+                name="uq_fee_config_tenant_product",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ProductFeeConfig({self.tenant.name}: {self.product} [{self.fee_type}])"
