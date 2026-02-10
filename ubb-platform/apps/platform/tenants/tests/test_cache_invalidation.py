@@ -29,8 +29,8 @@ class TenantProductsCacheInvalidationTest(TestCase):
         self.assertIsNone(cache.get(cache_key))
 
     def test_fresh_lookup_after_cache_invalidation(self):
-        """After save, EventBus._tenant_has_product will fetch fresh data."""
-        from core.event_bus import EventBus
+        """After save, _tenant_has_product will fetch fresh data."""
+        from apps.platform.events.dispatch import _tenant_has_product
 
         cache_key = f"tenant_products:{self.tenant.id}"
 
@@ -41,9 +41,8 @@ class TenantProductsCacheInvalidationTest(TestCase):
         self.tenant.products = ["metering", "billing"]
         self.tenant.save()
 
-        # EventBus should now see the updated products (cache was invalidated)
-        bus = EventBus()
-        self.assertTrue(bus._tenant_has_product(str(self.tenant.id), "billing"))
+        # Should now see the updated products (cache was invalidated)
+        self.assertTrue(_tenant_has_product(str(self.tenant.id), "billing"))
 
     def test_create_also_sets_cache_key_clear(self):
         """Even on initial create, the cache key is cleared (no-op but safe)."""

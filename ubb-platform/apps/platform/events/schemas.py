@@ -46,3 +46,23 @@ class ReferralRewardEarned:
     referrer_id: str
     referred_customer_id: str
     reward_micros: int
+
+
+@dataclass(frozen=True)
+class ReferralCreated:
+    EVENT_TYPE = "referral.created"
+
+    tenant_id: str
+    referral_id: str
+    referrer_id: str
+    referred_customer_id: str
+
+
+@dataclass(frozen=True)
+class ReferralExpired:
+    EVENT_TYPE = "referral.expired"
+
+    tenant_id: str
+    referral_id: str
+    referrer_id: str
+    total_earned_micros: int
