@@ -72,18 +72,6 @@ class RecordUsageResponse(Schema):
     billed_cost_micros: Optional[int] = None
 
 
-class CreateCustomerRequest(Schema):
-    external_id: str = Field(min_length=1, max_length=255)
-    stripe_customer_id: str = Field(min_length=1, max_length=255)
-    metadata: dict = Field(default_factory=dict)
-
-
-class CustomerResponse(Schema):
-    id: UUID
-    external_id: str
-    status: str
-
-
 class BalanceResponse(Schema):
     balance_micros: int
     currency: str
@@ -168,13 +156,3 @@ class CreditRequest(Schema):
 class DebitCreditResponse(Schema):
     new_balance_micros: int
     transaction_id: str
-
-
-class WalletTransactionOut(Schema):
-    id: UUID
-    transaction_type: str
-    amount_micros: int
-    balance_after_micros: int
-    description: str
-    reference_id: str
-    created_at: str

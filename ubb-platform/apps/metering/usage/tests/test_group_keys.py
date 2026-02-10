@@ -92,7 +92,9 @@ class GroupKeysValidationTest(TestCase):
 class GroupKeysEndpointTest(TestCase):
     def setUp(self):
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant")
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", products=["metering", "billing"]
+        )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_gk"
@@ -101,7 +103,7 @@ class GroupKeysEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_with_group_keys(self, mock_process):
         response = self.client.post(
-            "/api/v1/usage",
+            "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
                 "request_id": "req_gk_ep1",
@@ -121,7 +123,7 @@ class GroupKeysEndpointTest(TestCase):
     def test_usage_filter_by_group_key(self, mock_process):
         for i, dept in enumerate(["sales", "engineering", "sales"]):
             self.client.post(
-                "/api/v1/usage",
+                "/api/v1/metering/usage",
                 data=json.dumps({
                     "customer_id": str(self.customer.id),
                     "request_id": f"req_filter_{i}",
@@ -134,7 +136,7 @@ class GroupKeysEndpointTest(TestCase):
             )
 
         response = self.client.get(
-            f"/api/v1/customers/{self.customer.id}/usage?group_key=department&group_value=sales",
+            f"/api/v1/metering/customers/{self.customer.id}/usage?group_key=department&group_value=sales",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
