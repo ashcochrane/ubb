@@ -17,13 +17,13 @@ def _current_period_bounds():
     return first_of_month, first_of_next_month
 
 
-def handle_usage_recorded(data):
+def handle_usage_recorded_subscriptions(event_id, payload):
     """Accumulate usage cost for unit economics calculation.
 
-    Called by event bus when usage.recorded fires for subscriptions tenants.
+    Outbox handler for usage.recorded events on subscriptions tenants.
     Uses atomic F() increment — no SELECT needed for the hot path.
     """
-    cost_micros = data.get("cost_micros", 0)
+    cost_micros = payload.get("cost_micros", 0)
     if cost_micros <= 0:
         return
 
@@ -33,8 +33,8 @@ def handle_usage_recorded(data):
 
     # Try atomic increment first (fast path — row already exists)
     rows = CustomerCostAccumulator.objects.filter(
-        tenant_id=data["tenant_id"],
-        customer_id=data["customer_id"],
+        tenant_id=payload["tenant_id"],
+        customer_id=payload["customer_id"],
         period_start=period_start,
     ).update(
         total_cost_micros=F("total_cost_micros") + cost_micros,
@@ -46,8 +46,8 @@ def handle_usage_recorded(data):
         from django.db import IntegrityError
         try:
             CustomerCostAccumulator.objects.create(
-                tenant_id=data["tenant_id"],
-                customer_id=data["customer_id"],
+                tenant_id=payload["tenant_id"],
+                customer_id=payload["customer_id"],
                 period_start=period_start,
                 period_end=period_end,
                 total_cost_micros=cost_micros,
@@ -56,8 +56,8 @@ def handle_usage_recorded(data):
         except IntegrityError:
             # Lost race — retry the update
             CustomerCostAccumulator.objects.filter(
-                tenant_id=data["tenant_id"],
-                customer_id=data["customer_id"],
+                tenant_id=payload["tenant_id"],
+                customer_id=payload["customer_id"],
                 period_start=period_start,
             ).update(
                 total_cost_micros=F("total_cost_micros") + cost_micros,

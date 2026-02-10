@@ -7,11 +7,12 @@ class SubscriptionsConfig(AppConfig):
     label = "subscriptions"
 
     def ready(self):
-        from core.event_bus import event_bus
-        from apps.subscriptions.handlers import handle_usage_recorded
+        from apps.platform.events.registry import handler_registry
+        from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
 
-        event_bus.subscribe(
+        handler_registry.register(
             "usage.recorded",
-            handle_usage_recorded,
+            "subscriptions.cost_accumulator",
+            handle_usage_recorded_subscriptions,
             requires_product="subscriptions",
         )
