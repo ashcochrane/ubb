@@ -20,7 +20,7 @@ class Invoice(BaseModel):
         "customers.Customer", on_delete=models.CASCADE, related_name="invoices"
     )
     top_up_attempt = models.OneToOneField(
-        "customers.TopUpAttempt", on_delete=models.CASCADE, related_name="invoice"
+        "topups.TopUpAttempt", on_delete=models.CASCADE, related_name="invoice"
     )
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     total_amount_micros = models.BigIntegerField(default=0)

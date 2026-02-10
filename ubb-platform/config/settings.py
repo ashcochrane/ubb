@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
+    "apps.billing.topups",
     "apps.billing.stripe",
     "apps.billing.gating",
     "apps.billing.invoicing",
