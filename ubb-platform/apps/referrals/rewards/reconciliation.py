@@ -16,14 +16,14 @@ def reconcile_referral(referral, period_start, period_end):
 
     Recalculates from source usage data and writes a ledger entry.
     Returns the ledger entry or None if no activity.
-    """
-    from apps.metering.usage.models import UsageEvent
 
-    events = UsageEvent.objects.filter(
-        tenant_id=referral.tenant_id,
-        customer_id=referral.referred_customer_id,
-        created_at__gte=period_start,
-        created_at__lt=period_end,
+    Reads via metering query interface — no direct model import.
+    """
+    from apps.metering.queries import get_customer_usage_for_period
+
+    events = get_customer_usage_for_period(
+        referral.tenant_id, referral.referred_customer_id,
+        period_start, period_end,
     )
 
     total_spend = 0
@@ -32,8 +32,8 @@ def reconcile_referral(referral, period_start, period_end):
     has_actual_cost = False
 
     for event in events:
-        cost = event.billed_cost_micros or event.cost_micros or 0
-        raw_cost = getattr(event, "raw_cost_micros", None)
+        cost = event.get("billed_cost_micros") or event.get("cost_micros") or 0
+        raw_cost = event.get("provider_cost_micros")
 
         total_spend += cost
         if raw_cost is not None:

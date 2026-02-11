@@ -12,6 +12,7 @@ class PreCheckRequest(Schema):
 class PreCheckResponse(Schema):
     allowed: bool
     reason: Optional[str] = None
+    balance_micros: Optional[int] = None
 
 
 class RecordUsageRequest(Schema):

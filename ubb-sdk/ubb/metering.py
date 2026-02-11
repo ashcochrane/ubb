@@ -84,21 +84,6 @@ class MeteringClient:
         r = self._request("post", "/api/v1/metering/usage", json=body)
         return RecordUsageResult(**r.json())
 
-    def estimate_cost(self, event_type: str, provider: str,
-                      usage_metrics: dict, properties: dict | None = None) -> int:
-        """Estimate cost via GET /api/v1/metering/estimate. Returns estimated_cost_micros."""
-        params: dict = {
-            "event_type": event_type,
-            "provider": provider,
-        }
-        # usage_metrics and properties are sent as JSON query params
-        import json
-        params["usage_metrics"] = json.dumps(usage_metrics)
-        if properties:
-            params["properties"] = json.dumps(properties)
-        r = self._request("get", "/api/v1/metering/estimate", params=params)
-        return r.json()["estimated_cost_micros"]
-
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   group_key: str | None = None, group_value: str | None = None) -> PaginatedResponse[UsageEvent]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage."""

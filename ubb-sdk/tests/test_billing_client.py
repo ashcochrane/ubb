@@ -64,23 +64,24 @@ class BillingClientTest(unittest.TestCase):
     @patch("ubb.billing.httpx.Client.post")
     def test_pre_check(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "allowed": True, "reason": None,
+            "allowed": True, "reason": None, "balance_micros": 10_000_000,
         })
-        result = self.client.pre_check(customer_id="cust_1", estimated_cost=1_000_000)
+        result = self.client.pre_check(customer_id="cust_1")
         self.assertTrue(result["allowed"])
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/pre-check")
         body = call_args.kwargs["json"]
-        self.assertEqual(body["estimated_cost"], 1_000_000)
+        self.assertEqual(body["customer_id"], "cust_1")
+        self.assertNotIn("estimated_cost", body)
 
     @patch("ubb.billing.httpx.Client.post")
     def test_pre_check_denied(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "allowed": False, "reason": "Insufficient balance",
+            "allowed": False, "reason": "insufficient_funds", "balance_micros": -6_000_000,
         })
-        result = self.client.pre_check(customer_id="cust_1", estimated_cost=99_000_000)
+        result = self.client.pre_check(customer_id="cust_1")
         self.assertFalse(result["allowed"])
-        self.assertEqual(result["reason"], "Insufficient balance")
+        self.assertEqual(result["reason"], "insufficient_funds")
 
     # ---- create_top_up ----
 

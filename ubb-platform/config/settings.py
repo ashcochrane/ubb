@@ -118,6 +118,9 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_topups"),
     Queue("ubb_billing"),
     Queue("ubb_events"),
+    Queue("ubb_economics"),
+    Queue("ubb_subscriptions"),
+    Queue("ubb_referrals"),
 ]
 
 from celery.schedules import crontab
@@ -158,6 +161,14 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-outbox": {
         "task": "apps.platform.events.tasks.cleanup_outbox",
         "schedule": crontab(minute=0, hour=4),
+    },
+    "calculate-all-economics": {
+        "task": "apps.subscriptions.tasks.calculate_all_economics_task",
+        "schedule": crontab(minute=0, hour=2),  # Daily at 2 AM UTC
+    },
+    "reconcile-all-referrals": {
+        "task": "apps.referrals.tasks.reconcile_all_referrals_task",
+        "schedule": crontab(minute=0, hour=5),  # Daily at 5 AM UTC
     },
 }
 

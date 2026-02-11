@@ -6,7 +6,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.services.auto_topup_service import AutoTopUpService
+from apps.billing.topups.services import AutoTopUpService
 
 
 class AutoTopUpServiceTest(TestCase):

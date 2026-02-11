@@ -2,8 +2,7 @@ import logging
 from decimal import Decimal
 
 from django.db import transaction, IntegrityError
-from django.db.models import F, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import F
 from django.utils import timezone
 
 from apps.billing.tenant_billing.models import TenantBillingPeriod
@@ -99,28 +98,14 @@ class TenantBillingService:
 
         Used as a belt-and-suspenders reconciliation for any accumulate_usage
         failures. Safe to run on open or closed periods.
+
+        Reads via metering query interface — no direct model import.
         """
-        # NOTE: Cross-product import for read-only reconciliation query.
-        # UsageEvent lives in metering; billing reads it to verify accumulation
-        # totals. This is an accepted coupling until a dedicated query service
-        # or materialised view is introduced.
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.queries import get_period_totals
 
-        totals = UsageEvent.objects.filter(
-            tenant=period.tenant,
-            effective_at__date__gte=period.period_start,
-            effective_at__date__lt=period.period_end,
-        ).aggregate(
-            total_cost=Sum(Coalesce("billed_cost_micros", "cost_micros")),
-            total_events=Sum(1),  # Count via Sum(1) for consistency
-        )
-
-        recomputed_cost = totals["total_cost"] or 0
-        recomputed_count = UsageEvent.objects.filter(
-            tenant=period.tenant,
-            effective_at__date__gte=period.period_start,
-            effective_at__date__lt=period.period_end,
-        ).count()
+        totals = get_period_totals(period.tenant_id, period.period_start, period.period_end)
+        recomputed_cost = totals["total_cost_micros"]
+        recomputed_count = totals["event_count"]
 
         # Skip if no events found — avoids zeroing out periods where events
         # were recorded via accumulate_usage but aren't queryable here.

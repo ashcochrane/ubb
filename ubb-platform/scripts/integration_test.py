@@ -12,6 +12,8 @@ This script tests the full flow with detailed balance and transaction verificati
 7. Test refund and verify balance restored
 8. Verify all transactions are recorded with correct types/amounts
 9. Test tenant billing endpoints
+10. Test subscriptions endpoints (sync, subscription data, invoices, economics)
+11. Test referrals endpoints (program, referrers, attribution, earnings, analytics)
 
 Prerequisites:
 - Local server running: python manage.py runserver
@@ -23,14 +25,22 @@ Usage:
 
     # Skip Stripe checkout (funds wallet directly via DB):
     python scripts/integration_test.py --api-key <ubb_api_key> --stripe-customer-id <cus_xxx> --skip-stripe-webhook
+
+    # Include subscriptions tests (requires tenant with subscriptions product):
+    python scripts/integration_test.py --api-key <ubb_api_key> --stripe-customer-id <cus_xxx> --skip-stripe-webhook --test-subscriptions
+
+    # Include referrals tests:
+    python scripts/integration_test.py --api-key <ubb_api_key> --stripe-customer-id <cus_xxx> --skip-stripe-webhook --test-referrals
 """
 
 import argparse
+import json
 import os
 import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone as dt_timezone
 from typing import Optional
 
 import requests
@@ -43,6 +53,8 @@ class TestConfig:
     stripe_customer_id: str
     stripe_connected_account_id: Optional[str] = None
     db_url: Optional[str] = None
+    test_subscriptions: bool = False
+    test_referrals: bool = False
 
 
 @dataclass
@@ -56,6 +68,14 @@ class TestState:
     usage_cost_2: int = 500_000    # $0.50 (for idempotency test)
     withdraw_amount: int = 500_000  # $0.50
     top_up_amount: int = 10_000_000  # $10.00
+    # Subscriptions state
+    stripe_subscription_id: Optional[str] = None
+    subscription_invoice_id: Optional[str] = None
+    # Referrals state
+    referrer_customer_id: Optional[str] = None
+    referred_customer_id: Optional[str] = None
+    referral_code: Optional[str] = None
+    referral_id: Optional[str] = None
 
 
 class IntegrationTestRunner:
@@ -678,6 +698,725 @@ class IntegrationTestRunner:
             return False
 
     # =========================================================================
+    # SUBSCRIPTIONS HELPERS
+    # =========================================================================
+
+    def _subs_get(self, path: str) -> requests.Response:
+        """GET against subscriptions API (/api/v1/subscriptions/...)."""
+        base = self.config.base_url  # e.g. http://localhost:8000/api/v1
+        subs_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/subscriptions"
+        return requests.get(f"{subs_url}{path}", headers=self._headers())
+
+    def _subs_post(self, path: str, data: dict = None) -> requests.Response:
+        """POST against subscriptions API."""
+        base = self.config.base_url
+        subs_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/subscriptions"
+        return requests.post(
+            f"{subs_url}{path}",
+            headers=self._headers(),
+            json=data or {},
+        )
+
+    def seed_subscription_via_db(self) -> bool:
+        """Seed a StripeSubscription + SubscriptionInvoice directly in the DB.
+
+        This mirrors what Stripe webhooks would create, allowing us to test
+        the read-only API endpoints without a live Stripe connection.
+        """
+        try:
+            import psycopg
+
+            db_url = self.config.db_url or os.environ.get(
+                "DATABASE_URL", "postgresql://heyotis:heyotis@localhost:5432/ubb"
+            )
+
+            with psycopg.connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    sub_id = str(uuid.uuid4())
+                    stripe_sub_id = f"sub_test_{uuid.uuid4().hex[:12]}"
+
+                    # Look up tenant_id from the customer
+                    cur.execute(
+                        "SELECT tenant_id FROM ubb_customer WHERE id = %s",
+                        (self.state.customer_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        self._log("Seed subscription", False, "Customer not found in DB")
+                        return False
+                    tenant_id = row[0]
+
+                    # Ensure tenant has "subscriptions" in products
+                    cur.execute(
+                        "SELECT products FROM ubb_tenant WHERE id = %s",
+                        (tenant_id,)
+                    )
+                    raw = cur.fetchone()[0]
+                    if isinstance(raw, str):
+                        products = json.loads(raw) if raw else []
+                    elif isinstance(raw, list):
+                        products = raw
+                    else:
+                        products = []
+                    if "subscriptions" not in products:
+                        products.append("subscriptions")
+                        cur.execute(
+                            "UPDATE ubb_tenant SET products = %s::jsonb, updated_at = NOW() WHERE id = %s",
+                            (json.dumps(products), tenant_id),
+                        )
+
+                    period_start = date.today().replace(day=1).isoformat() + " 00:00:00"
+                    if date.today().month == 12:
+                        period_end = date.today().replace(year=date.today().year + 1, month=1, day=1).isoformat() + " 00:00:00"
+                    else:
+                        period_end = date.today().replace(month=date.today().month + 1, day=1).isoformat() + " 00:00:00"
+
+                    # Create StripeSubscription
+                    cur.execute(
+                        """INSERT INTO ubb_stripe_subscription
+                           (id, created_at, updated_at, tenant_id, customer_id,
+                            stripe_subscription_id, stripe_product_name, status,
+                            amount_micros, currency, "interval", current_period_start,
+                            current_period_end, last_synced_at)
+                           VALUES (%s, NOW(), NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())""",
+                        (sub_id, tenant_id, self.state.customer_id,
+                         stripe_sub_id, "Pro Plan", "active",
+                         490_000_000, "usd", "month",
+                         period_start, period_end),
+                    )
+                    self.state.stripe_subscription_id = stripe_sub_id
+
+                    # Create SubscriptionInvoice
+                    inv_id = str(uuid.uuid4())
+                    stripe_inv_id = f"in_test_{uuid.uuid4().hex[:12]}"
+                    cur.execute(
+                        """INSERT INTO ubb_subscription_invoice
+                           (id, created_at, updated_at, tenant_id, customer_id,
+                            stripe_subscription_id, stripe_invoice_id, amount_paid_micros,
+                            currency, period_start, period_end, paid_at)
+                           VALUES (%s, NOW(), NOW(), %s, %s, %s, %s, %s, %s, %s, %s, NOW())""",
+                        (inv_id, tenant_id, self.state.customer_id,
+                         sub_id, stripe_inv_id, 490_000_000,
+                         "usd", period_start, period_end),
+                    )
+                    self.state.subscription_invoice_id = stripe_inv_id
+
+                    # Create CustomerCostAccumulator for economics
+                    acc_id = str(uuid.uuid4())
+                    period_start_date = date.today().replace(day=1).isoformat()
+                    if date.today().month == 12:
+                        period_end_date = date.today().replace(year=date.today().year + 1, month=1, day=1).isoformat()
+                    else:
+                        period_end_date = date.today().replace(month=date.today().month + 1, day=1).isoformat()
+                    cur.execute(
+                        """INSERT INTO ubb_customer_cost_accumulator
+                           (id, created_at, updated_at, tenant_id, customer_id,
+                            period_start, period_end, total_cost_micros, event_count)
+                           VALUES (%s, NOW(), NOW(), %s, %s, %s, %s, %s, %s)""",
+                        (acc_id, tenant_id, self.state.customer_id,
+                         period_start_date, period_end_date, 50_000_000, 10),
+                    )
+
+                    conn.commit()
+
+            self._log(
+                "Seed subscription via DB",
+                True,
+                f"sub={stripe_sub_id}, invoice={stripe_inv_id}, cost_acc=50M micros"
+            )
+            return True
+
+        except ImportError:
+            self._log("Seed subscription via DB", False, "psycopg not installed. Run: pip install psycopg")
+            return False
+        except Exception as e:
+            self._log("Seed subscription via DB", False, str(e))
+            return False
+
+    # =========================================================================
+    # SUBSCRIPTIONS TESTS
+    # =========================================================================
+
+    def test_subs_get_subscription(self) -> bool:
+        """Get subscription for customer."""
+        resp = self._subs_get(f"/customers/{self.state.customer_id}/subscription")
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: get subscription", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        checks = [
+            body.get("status") == "active",
+            body.get("stripe_product_name") == "Pro Plan",
+            body.get("amount_micros") == 490_000_000,
+            body.get("currency") == "usd",
+            body.get("interval") == "month",
+        ]
+        passed = all(checks)
+        self._log(
+            "Subscriptions: get subscription", passed,
+            f"product={body.get('stripe_product_name')}, status={body.get('status')}, "
+            f"amount={body.get('amount_micros')}"
+        )
+        return passed
+
+    def test_subs_get_subscription_not_found(self) -> bool:
+        """Non-existent customer returns 404."""
+        fake_id = str(uuid.uuid4())
+        resp = self._subs_get(f"/customers/{fake_id}/subscription")
+        passed = resp.status_code == 404
+        self._log(
+            "Subscriptions: subscription 404 for unknown customer", passed,
+            f"status={resp.status_code}"
+        )
+        return passed
+
+    def test_subs_get_invoices(self) -> bool:
+        """Get invoices for customer."""
+        resp = self._subs_get(f"/customers/{self.state.customer_id}/invoices")
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: get invoices", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        data = body.get("data", [])
+        passed = (
+            len(data) >= 1
+            and data[0].get("amount_paid_micros") == 490_000_000
+            and body.get("has_more") is False
+        )
+        self._log(
+            "Subscriptions: get invoices", passed,
+            f"count={len(data)}, has_more={body.get('has_more')}"
+        )
+        return passed
+
+    def test_subs_get_invoices_pagination(self) -> bool:
+        """Invoices endpoint respects limit parameter."""
+        resp = self._subs_get(f"/customers/{self.state.customer_id}/invoices?limit=1")
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: invoices pagination", False,
+                f"status={resp.status_code}"
+            )
+            return False
+
+        body = resp.json()
+        passed = len(body.get("data", [])) <= 1
+        self._log(
+            "Subscriptions: invoices pagination", passed,
+            f"count={len(body.get('data', []))}, limit=1"
+        )
+        return passed
+
+    def test_subs_economics_summary(self) -> bool:
+        """Get economics summary for current period."""
+        today = date.today()
+        period_start = today.replace(day=1).isoformat()
+        if today.month == 12:
+            period_end = today.replace(year=today.year + 1, month=1, day=1).isoformat()
+        else:
+            period_end = today.replace(month=today.month + 1, day=1).isoformat()
+
+        resp = self._subs_get(
+            f"/economics/summary?period_start={period_start}&period_end={period_end}"
+        )
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: economics summary", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        passed = (
+            body.get("total_customers", 0) >= 1
+            and body.get("total_revenue_micros", 0) > 0
+            and "total_cost_micros" in body
+            and "total_margin_micros" in body
+            and "avg_margin_percentage" in body
+        )
+        self._log(
+            "Subscriptions: economics summary", passed,
+            f"customers={body.get('total_customers')}, "
+            f"revenue={body.get('total_revenue_micros')}, "
+            f"cost={body.get('total_cost_micros')}, "
+            f"margin={body.get('avg_margin_percentage')}%"
+        )
+        return passed
+
+    def test_subs_economics_list(self) -> bool:
+        """Get per-customer economics list."""
+        today = date.today()
+        period_start = today.replace(day=1).isoformat()
+        if today.month == 12:
+            period_end = today.replace(year=today.year + 1, month=1, day=1).isoformat()
+        else:
+            period_end = today.replace(month=today.month + 1, day=1).isoformat()
+
+        resp = self._subs_get(
+            f"/economics?period_start={period_start}&period_end={period_end}"
+        )
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: economics list", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        customers = body.get("customers", [])
+        summary = body.get("summary", {})
+
+        # Find our customer in the list
+        our_customer = next(
+            (c for c in customers if c["customer_id"] == self.state.customer_id),
+            None,
+        )
+
+        passed = (
+            our_customer is not None
+            and our_customer.get("plan") == "Pro Plan"
+            and our_customer.get("subscription_revenue_micros") > 0
+            and summary.get("total_revenue_micros", 0) > 0
+        )
+        self._log(
+            "Subscriptions: economics list", passed,
+            f"total_customers={len(customers)}, "
+            f"our_revenue={our_customer.get('subscription_revenue_micros') if our_customer else 'N/A'}, "
+            f"our_cost={our_customer.get('usage_cost_micros') if our_customer else 'N/A'}"
+        )
+        return passed
+
+    def test_subs_customer_economics(self) -> bool:
+        """Get economics for a specific customer."""
+        today = date.today()
+        period_start = today.replace(day=1).isoformat()
+        if today.month == 12:
+            period_end = today.replace(year=today.year + 1, month=1, day=1).isoformat()
+        else:
+            period_end = today.replace(month=today.month + 1, day=1).isoformat()
+
+        resp = self._subs_get(
+            f"/economics/{self.state.customer_id}"
+            f"?period_start={period_start}&period_end={period_end}"
+        )
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: customer economics", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        revenue = body.get("subscription_revenue_micros", 0)
+        cost = body.get("usage_cost_micros", 0)
+        margin = body.get("gross_margin_micros", 0)
+
+        # Revenue should be 490M (from the seeded invoice)
+        # Cost should be 50M (from the seeded accumulator)
+        # Margin should be revenue - cost
+        passed = (
+            revenue == 490_000_000
+            and cost == 50_000_000
+            and margin == 440_000_000
+            and body.get("plan") == "Pro Plan"
+            and body.get("margin_percentage", 0) > 0
+        )
+        self._log(
+            "Subscriptions: customer economics", passed,
+            f"revenue={revenue}, cost={cost}, margin={margin}, "
+            f"margin_pct={body.get('margin_percentage')}%"
+        )
+        return passed
+
+    def test_subs_economics_default_period(self) -> bool:
+        """Economics endpoints default to current period when params omitted."""
+        resp = self._subs_get("/economics/summary")
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: economics default period", False,
+                f"status={resp.status_code}"
+            )
+            return False
+
+        body = resp.json()
+        period = body.get("period", {})
+        today = date.today()
+        expected_start = today.replace(day=1).isoformat()
+
+        passed = period.get("start") == expected_start
+        self._log(
+            "Subscriptions: economics default period", passed,
+            f"period_start={period.get('start')} (expected {expected_start})"
+        )
+        return passed
+
+    def test_subs_sync(self) -> bool:
+        """Trigger subscription sync (may sync 0 if no Stripe connection)."""
+        resp = self._subs_post("/sync")
+        if resp.status_code != 200:
+            self._log(
+                "Subscriptions: trigger sync", False,
+                f"status={resp.status_code}, body={resp.text}"
+            )
+            return False
+
+        body = resp.json()
+        passed = (
+            "synced" in body
+            and "skipped" in body
+            and "errors" in body
+        )
+        self._log(
+            "Subscriptions: trigger sync", passed,
+            f"synced={body.get('synced')}, skipped={body.get('skipped')}, "
+            f"errors={body.get('errors')}"
+        )
+        return passed
+
+    # =========================================================================
+    # REFERRALS HELPERS
+    # =========================================================================
+
+    def _ref_get(self, path: str) -> requests.Response:
+        """GET against referrals API (/api/v1/referrals/...)."""
+        base = self.config.base_url  # e.g. http://localhost:8000/api/v1
+        ref_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/referrals"
+        return requests.get(f"{ref_url}{path}", headers=self._headers())
+
+    def _ref_post(self, path: str, data: dict = None) -> requests.Response:
+        """POST against referrals API."""
+        base = self.config.base_url
+        ref_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/referrals"
+        return requests.post(
+            f"{ref_url}{path}",
+            headers=self._headers(),
+            json=data or {},
+        )
+
+    def _ref_patch(self, path: str, data: dict = None) -> requests.Response:
+        """PATCH against referrals API."""
+        base = self.config.base_url
+        ref_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/referrals"
+        return requests.patch(
+            f"{ref_url}{path}",
+            headers=self._headers(),
+            json=data or {},
+        )
+
+    def _ref_delete(self, path: str) -> requests.Response:
+        """DELETE against referrals API."""
+        base = self.config.base_url
+        ref_url = base.rsplit("/api/v1", 1)[0] + "/api/v1/referrals"
+        return requests.delete(f"{ref_url}{path}", headers=self._headers())
+
+    def seed_referrals_via_db(self) -> bool:
+        """Ensure the tenant has 'referrals' in products and create a second
+        customer to act as the referred user."""
+        try:
+            import psycopg
+
+            db_url = self.config.db_url or os.environ.get(
+                "DATABASE_URL", "postgresql://heyotis:heyotis@localhost:5432/ubb"
+            )
+
+            with psycopg.connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    # Look up tenant_id
+                    cur.execute(
+                        "SELECT tenant_id FROM ubb_customer WHERE id = %s",
+                        (self.state.customer_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        self._log("Seed referrals", False, "Customer not found in DB")
+                        return False
+                    tenant_id = row[0]
+
+                    # Ensure tenant has "referrals" in products
+                    cur.execute(
+                        "SELECT products FROM ubb_tenant WHERE id = %s",
+                        (tenant_id,)
+                    )
+                    raw = cur.fetchone()[0]
+                    if isinstance(raw, str):
+                        products = json.loads(raw) if raw else []
+                    elif isinstance(raw, list):
+                        products = raw
+                    else:
+                        products = []
+                    if "referrals" not in products:
+                        products.append("referrals")
+                        cur.execute(
+                            "UPDATE ubb_tenant SET products = %s::jsonb, updated_at = NOW() WHERE id = %s",
+                            (json.dumps(products), tenant_id),
+                        )
+
+                    # Create a second customer to be the "referred" user
+                    referred_id = str(uuid.uuid4())
+                    referred_ext = f"referred_{uuid.uuid4().hex[:8]}"
+                    cur.execute(
+                        """INSERT INTO ubb_customer
+                           (id, created_at, updated_at, tenant_id, external_id,
+                            stripe_customer_id, metadata, is_active, is_suspended)
+                           VALUES (%s, NOW(), NOW(), %s, %s, %s, '{}'::jsonb, true, false)""",
+                        (referred_id, tenant_id, referred_ext, "cus_ref_test"),
+                    )
+                    self.state.referred_customer_id = referred_id
+
+                    # Create a wallet for the referred customer
+                    wallet_id = str(uuid.uuid4())
+                    cur.execute(
+                        """INSERT INTO ubb_wallet
+                           (id, created_at, updated_at, customer_id, balance_micros)
+                           VALUES (%s, NOW(), NOW(), %s, 0)""",
+                        (wallet_id, referred_id),
+                    )
+
+                    conn.commit()
+
+            self.state.referrer_customer_id = self.state.customer_id
+            self._log(
+                "Seed referrals via DB", True,
+                f"referred_customer={referred_id}, tenant products updated"
+            )
+            return True
+
+        except ImportError:
+            self._log("Seed referrals via DB", False, "psycopg not installed. Run: pip install psycopg")
+            return False
+        except Exception as e:
+            self._log("Seed referrals via DB", False, str(e))
+            return False
+
+    # =========================================================================
+    # REFERRALS TESTS
+    # =========================================================================
+
+    def test_ref_create_program(self) -> bool:
+        """Create a referral program."""
+        resp = self._ref_post("/program", {
+            "reward_type": "revenue_share",
+            "reward_value": 0.10,
+            "attribution_window_days": 30,
+            "reward_window_days": 365,
+        })
+        if resp.status_code != 200:
+            self._log("Referrals: create program", False,
+                      f"status={resp.status_code}, body={resp.text}")
+            return False
+
+        body = resp.json()
+        passed = (
+            body.get("reward_type") == "revenue_share"
+            and body.get("status") == "active"
+        )
+        self._log("Referrals: create program", passed,
+                  f"type={body.get('reward_type')}, status={body.get('status')}")
+        return passed
+
+    def test_ref_get_program(self) -> bool:
+        """Get the active referral program."""
+        resp = self._ref_get("/program")
+        if resp.status_code != 200:
+            self._log("Referrals: get program", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = body.get("status") == "active"
+        self._log("Referrals: get program", passed,
+                  f"type={body.get('reward_type')}, status={body.get('status')}")
+        return passed
+
+    def test_ref_update_program(self) -> bool:
+        """Update program reward value."""
+        resp = self._ref_patch("/program", {"reward_value": 0.15})
+        if resp.status_code != 200:
+            self._log("Referrals: update program", False,
+                      f"status={resp.status_code}, body={resp.text}")
+            return False
+
+        body = resp.json()
+        passed = abs(body.get("reward_value", 0) - 0.15) < 0.001
+        self._log("Referrals: update program", passed,
+                  f"reward_value={body.get('reward_value')}")
+
+        # Reset back to 0.10 for subsequent tests
+        self._ref_patch("/program", {"reward_value": 0.10})
+        return passed
+
+    def test_ref_register_referrer(self) -> bool:
+        """Register the primary customer as a referrer."""
+        resp = self._ref_post("/referrers", {
+            "customer_id": self.state.referrer_customer_id,
+        })
+        if resp.status_code != 200:
+            self._log("Referrals: register referrer", False,
+                      f"status={resp.status_code}, body={resp.text}")
+            return False
+
+        body = resp.json()
+        self.state.referral_code = body.get("referral_code")
+        passed = (
+            body.get("referral_code", "").startswith("REF-")
+            and body.get("is_active") is True
+        )
+        self._log("Referrals: register referrer", passed,
+                  f"code={body.get('referral_code')}, active={body.get('is_active')}")
+        return passed
+
+    def test_ref_get_referrer(self) -> bool:
+        """Get referrer by customer ID."""
+        resp = self._ref_get(f"/referrers/{self.state.referrer_customer_id}")
+        if resp.status_code != 200:
+            self._log("Referrals: get referrer", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = body.get("customer_id") == self.state.referrer_customer_id
+        self._log("Referrals: get referrer", passed,
+                  f"customer_id={body.get('customer_id')}")
+        return passed
+
+    def test_ref_list_referrers(self) -> bool:
+        """List referrers."""
+        resp = self._ref_get("/referrers")
+        if resp.status_code != 200:
+            self._log("Referrals: list referrers", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = len(body.get("data", [])) >= 1
+        self._log("Referrals: list referrers", passed,
+                  f"count={len(body.get('data', []))}")
+        return passed
+
+    def test_ref_attribute(self) -> bool:
+        """Attribute referred customer using referral code."""
+        resp = self._ref_post("/attribute", {
+            "customer_id": self.state.referred_customer_id,
+            "code": self.state.referral_code,
+        })
+        if resp.status_code != 200:
+            self._log("Referrals: attribute customer", False,
+                      f"status={resp.status_code}, body={resp.text}")
+            return False
+
+        body = resp.json()
+        self.state.referral_id = body.get("referral_id")
+        passed = (
+            body.get("status") == "active"
+            and body.get("referred_customer_id") == self.state.referred_customer_id
+        )
+        self._log("Referrals: attribute customer", passed,
+                  f"referral_id={body.get('referral_id')}, status={body.get('status')}")
+        return passed
+
+    def test_ref_duplicate_attribution_409(self) -> bool:
+        """Duplicate attribution returns 409."""
+        resp = self._ref_post("/attribute", {
+            "customer_id": self.state.referred_customer_id,
+            "code": self.state.referral_code,
+        })
+        passed = resp.status_code == 409
+        self._log("Referrals: duplicate attribution 409", passed,
+                  f"status={resp.status_code}")
+        return passed
+
+    def test_ref_get_earnings(self) -> bool:
+        """Get referrer earnings (should be 0 since no usage from referred customer)."""
+        resp = self._ref_get(f"/referrers/{self.state.referrer_customer_id}/earnings")
+        if resp.status_code != 200:
+            self._log("Referrals: get earnings", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = (
+            body.get("total_referrals") >= 1
+            and body.get("active_referrals") >= 1
+            and body.get("total_earned_micros") == 0  # No usage yet
+        )
+        self._log("Referrals: get earnings", passed,
+                  f"referrals={body.get('total_referrals')}, "
+                  f"earned={body.get('total_earned_micros')}")
+        return passed
+
+    def test_ref_get_referrals(self) -> bool:
+        """Get referrer's referral list."""
+        resp = self._ref_get(f"/referrers/{self.state.referrer_customer_id}/referrals")
+        if resp.status_code != 200:
+            self._log("Referrals: get referrals list", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        data = body.get("data", [])
+        passed = (
+            len(data) >= 1
+            and data[0].get("status") == "active"
+        )
+        self._log("Referrals: get referrals list", passed,
+                  f"count={len(data)}")
+        return passed
+
+    def test_ref_get_ledger(self) -> bool:
+        """Get referral ledger (empty initially)."""
+        resp = self._ref_get(f"/referrals/{self.state.referral_id}/ledger")
+        if resp.status_code != 200:
+            self._log("Referrals: get ledger", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = isinstance(body.get("data"), list)
+        self._log("Referrals: get ledger", passed,
+                  f"entries={len(body.get('data', []))}")
+        return passed
+
+    def test_ref_analytics_summary(self) -> bool:
+        """Get referral analytics summary."""
+        resp = self._ref_get("/analytics/summary")
+        if resp.status_code != 200:
+            self._log("Referrals: analytics summary", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = (
+            body.get("total_referrers") >= 1
+            and body.get("total_referrals") >= 1
+        )
+        self._log("Referrals: analytics summary", passed,
+                  f"referrers={body.get('total_referrers')}, "
+                  f"referrals={body.get('total_referrals')}")
+        return passed
+
+    def test_ref_analytics_earnings(self) -> bool:
+        """Get referral earnings analytics."""
+        resp = self._ref_get("/analytics/earnings")
+        if resp.status_code != 200:
+            self._log("Referrals: analytics earnings", False,
+                      f"status={resp.status_code}")
+            return False
+
+        body = resp.json()
+        passed = isinstance(body.get("referrers"), list)
+        self._log("Referrals: analytics earnings", passed,
+                  f"referrers_count={len(body.get('referrers', []))}")
+        return passed
+
+    # =========================================================================
     # RUN ALL
     # =========================================================================
 
@@ -688,6 +1427,8 @@ class IntegrationTestRunner:
         print(f"Base URL:            {self.config.base_url}")
         print(f"Stripe Customer ID:  {self.config.stripe_customer_id}")
         print(f"Skip Stripe Webhook: {skip_stripe_webhook}")
+        print(f"Test Subscriptions:  {self.config.test_subscriptions}")
+        print(f"Test Referrals:      {self.config.test_referrals}")
         print("=" * 70)
         print()
 
@@ -777,6 +1518,64 @@ class IntegrationTestRunner:
         self.test_usage_analytics()
         self.test_revenue_analytics()
 
+        # ---- Subscriptions ----
+        if self.config.test_subscriptions:
+            print("\n--- Subscriptions: Setup ---")
+            if not self.seed_subscription_via_db():
+                print("\n[WARN] Could not seed subscription data. Skipping subscriptions tests.")
+            else:
+                print("\n--- Subscriptions: Subscription Data ---")
+                self.test_subs_get_subscription()
+                self.test_subs_get_subscription_not_found()
+
+                print("\n--- Subscriptions: Invoices ---")
+                self.test_subs_get_invoices()
+                self.test_subs_get_invoices_pagination()
+
+                print("\n--- Subscriptions: Unit Economics ---")
+                self.test_subs_customer_economics()
+                self.test_subs_economics_summary()
+                self.test_subs_economics_list()
+                self.test_subs_economics_default_period()
+
+                print("\n--- Subscriptions: Sync ---")
+                self.test_subs_sync()
+        else:
+            print("\n--- Subscriptions ---")
+            print("[SKIP] Use --test-subscriptions to run subscriptions tests")
+
+        # ---- Referrals ----
+        if self.config.test_referrals:
+            print("\n--- Referrals: Setup ---")
+            if not self.seed_referrals_via_db():
+                print("\n[WARN] Could not seed referrals data. Skipping referrals tests.")
+            else:
+                print("\n--- Referrals: Program Management ---")
+                self.test_ref_create_program()
+                self.test_ref_get_program()
+                self.test_ref_update_program()
+
+                print("\n--- Referrals: Referrer Management ---")
+                self.test_ref_register_referrer()
+                self.test_ref_get_referrer()
+                self.test_ref_list_referrers()
+
+                print("\n--- Referrals: Attribution ---")
+                self.test_ref_attribute()
+                self.test_ref_duplicate_attribution_409()
+
+                print("\n--- Referrals: Rewards ---")
+                self.test_ref_get_earnings()
+                self.test_ref_get_referrals()
+                self.test_ref_get_ledger()
+
+                print("\n--- Referrals: Analytics ---")
+                self.test_ref_analytics_summary()
+                self.test_ref_analytics_earnings()
+        else:
+            print("\n--- Referrals ---")
+            print("[SKIP] Use --test-referrals to run referrals tests")
+
         # ---- Summary ----
         print("\n" + "=" * 70)
         print("TEST SUMMARY")
@@ -841,6 +1640,16 @@ def main():
         action="store_true",
         help="Skip Stripe checkout, fund wallet directly via DB",
     )
+    parser.add_argument(
+        "--test-subscriptions",
+        action="store_true",
+        help="Include subscriptions product tests (requires tenant with subscriptions product)",
+    )
+    parser.add_argument(
+        "--test-referrals",
+        action="store_true",
+        help="Include referrals product tests (seeds program + attribution via API)",
+    )
 
     args = parser.parse_args()
 
@@ -858,6 +1667,8 @@ def main():
         stripe_customer_id=args.stripe_customer_id,
         stripe_connected_account_id=args.stripe_connected_account,
         db_url=args.db_url,
+        test_subscriptions=args.test_subscriptions,
+        test_referrals=args.test_referrals,
     )
 
     runner = IntegrationTestRunner(config)

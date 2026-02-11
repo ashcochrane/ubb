@@ -21,7 +21,6 @@ from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.stripe.services.stripe_service import StripeService
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
-from apps.metering.usage.models import UsageEvent
 from django.shortcuts import get_object_or_404
 
 billing_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_billing_v1")

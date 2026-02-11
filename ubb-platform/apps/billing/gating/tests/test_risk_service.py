@@ -3,6 +3,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
+from apps.billing.wallets.models import Wallet
 
 
 class RiskServiceTest(TestCase):
@@ -33,3 +34,47 @@ class RiskServiceTest(TestCase):
         RiskConfig.objects.all().delete()
         result = RiskService.check(self.customer)
         self.assertTrue(result["allowed"])
+
+    def test_returns_balance_micros(self):
+        Wallet.objects.create(customer=self.customer, balance_micros=5_000_000)
+        result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["balance_micros"], 5_000_000)
+
+    def test_no_wallet_defaults_balance_to_zero(self):
+        result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["balance_micros"], 0)
+
+    def test_affordability_denied_when_balance_below_negative_threshold(self):
+        """Deny when balance < -arrears_threshold."""
+        # Tenant default arrears_threshold is 5M
+        # balance(-6M) < -5M → denied
+        Wallet.objects.create(customer=self.customer, balance_micros=-6_000_000)
+        result = RiskService.check(self.customer)
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["reason"], "insufficient_funds")
+        self.assertEqual(result["balance_micros"], -6_000_000)
+
+    def test_affordability_allowed_within_arrears_threshold(self):
+        """Allow when balance >= -arrears_threshold."""
+        # balance(-3M) >= -5M → allowed
+        Wallet.objects.create(customer=self.customer, balance_micros=-3_000_000)
+        result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["balance_micros"], -3_000_000)
+
+    def test_affordability_allowed_positive_balance(self):
+        """Positive balance is always allowed."""
+        Wallet.objects.create(customer=self.customer, balance_micros=100)
+        result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["balance_micros"], 100)
+
+    def test_affordability_denied_no_wallet_zero_threshold(self):
+        """No wallet (balance=0), zero threshold: balance(0) < -0 is false → allowed."""
+        self.customer.arrears_threshold_micros = 0
+        self.customer.save()
+        result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["balance_micros"], 0)

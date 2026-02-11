@@ -62,32 +62,6 @@ class MeteringClientTest(unittest.TestCase):
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["group_keys"], {"project": "proj_1"})
 
-    # ---- estimate_cost ----
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_estimate_cost(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "estimated_cost_micros": 750_000,
-        })
-        result = self.client.estimate_cost(
-            event_type="chat_completion", provider="openai",
-            usage_metrics={"input_tokens": 100, "output_tokens": 50},
-        )
-        self.assertEqual(result, 750_000)
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/estimate")
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_estimate_cost_with_properties(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "estimated_cost_micros": 1_200_000,
-        })
-        result = self.client.estimate_cost(
-            event_type="chat_completion", provider="openai",
-            usage_metrics={"input_tokens": 200}, properties={"model": "gpt-4"},
-        )
-        self.assertEqual(result, 1_200_000)
-
     # ---- get_usage ----
 
     @patch("ubb.metering.httpx.Client.get")

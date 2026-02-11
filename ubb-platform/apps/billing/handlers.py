@@ -9,17 +9,17 @@ logger = logging.getLogger("ubb.events")
 
 
 def handle_usage_recorded_billing(event_id, payload):
-    """Outbox handler: deduct wallet + accumulate billing period.
+    """Outbox handler: deduct wallet + accumulate billing period + auto-topup.
 
     Registered as outbox handler with requires_product="billing".
     Called by the outbox dispatcher with (event_id, payload) signature.
 
-    Responsibilities (moved here from UsageService in Task 14):
+    Responsibilities:
     1. Deduct wallet balance (with proper locking)
     2. Create a WalletTransaction record
     3. Check arrears threshold and suspend customer if needed
-    4. Accumulate billing period totals
-    5. Dispatch auto-topup if needed
+    4. Check auto-topup eligibility and dispatch charge if needed
+    5. Accumulate billing period totals
     """
     tenant = Tenant.objects.get(id=payload["tenant_id"])
     billed_cost_micros = payload.get("cost_micros", 0)
@@ -27,6 +27,7 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros > 0:
         from apps.billing.wallets.models import WalletTransaction
         from apps.billing.locking import lock_for_billing
+        from apps.billing.topups.services import AutoTopUpService
 
         with transaction.atomic():
             # lock_for_billing acquires locks in canonical order: Wallet -> Customer
@@ -50,16 +51,18 @@ def handle_usage_recorded_billing(event_id, payload):
                 customer.status = "suspended"
                 customer.save(update_fields=["status", "updated_at"])
 
+            # Check auto-topup eligibility (wallet is already locked)
+            attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
+
         # Accumulate billing period (outside the wallet lock)
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
 
-    # Dispatch auto-topup charge task if needed
-    attempt_id = payload.get("auto_topup_attempt_id")
-    if attempt_id:
-        from apps.billing.stripe.tasks import charge_auto_topup_task
-        transaction.on_commit(
-            lambda aid=attempt_id: charge_auto_topup_task.delay(aid)
-        )
+        # Dispatch auto-topup charge task if attempt was created
+        if attempt:
+            from apps.billing.stripe.tasks import charge_auto_topup_task
+            transaction.on_commit(
+                lambda aid=str(attempt.id): charge_auto_topup_task.delay(aid)
+            )
 
 
 def handle_customer_deleted_billing(event_id, payload):
