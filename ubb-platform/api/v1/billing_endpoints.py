@@ -170,7 +170,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
     from apps.billing.locking import lock_for_billing
-    from core.locking import lock_usage_event
+    from apps.metering.locking import lock_usage_event
     from apps.metering.usage.models import UsageEvent, Refund
     from apps.billing.wallets.models import WalletTransaction
 
