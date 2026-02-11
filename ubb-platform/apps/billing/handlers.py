@@ -26,7 +26,7 @@ def handle_usage_recorded_billing(event_id, payload):
 
     if billed_cost_micros > 0:
         from apps.billing.wallets.models import WalletTransaction
-        from core.locking import lock_for_billing
+        from apps.billing.locking import lock_for_billing
 
         with transaction.atomic():
             # lock_for_billing acquires locks in canonical order: Wallet -> Customer

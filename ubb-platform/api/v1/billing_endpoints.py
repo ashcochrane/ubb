@@ -36,7 +36,12 @@ _product_check = ProductAccess("billing")
 def get_balance(request, customer_id: str):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    return {"balance_micros": customer.wallet.balance_micros, "currency": customer.wallet.currency}
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+    except Wallet.DoesNotExist:
+        return {"balance_micros": 0, "currency": "USD"}
 
 
 @billing_api.post("/debit", response=DebitCreditResponse)
@@ -118,7 +123,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
-    from core.locking import lock_for_billing
+    from apps.billing.locking import lock_for_billing
     from apps.billing.wallets.models import WalletTransaction
 
     with transaction.atomic():
@@ -164,7 +169,8 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
-    from core.locking import lock_for_billing, lock_usage_event
+    from apps.billing.locking import lock_for_billing
+    from core.locking import lock_usage_event
     from apps.metering.usage.models import UsageEvent, Refund
     from apps.billing.wallets.models import WalletTransaction
 
@@ -225,7 +231,13 @@ def get_transactions(request, customer_id: str, cursor: str = None, limit: int =
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     limit = min(max(limit, 1), 100)
 
-    qs = customer.wallet.transactions.all().order_by("-created_at", "-id")
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+    except Wallet.DoesNotExist:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    qs = wallet.transactions.all().order_by("-created_at", "-id")
 
     if cursor:
         try:

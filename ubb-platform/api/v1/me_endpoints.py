@@ -74,8 +74,12 @@ class PaginatedInvoices(Schema):
 def get_balance(request):
     _check_billing_product(request)
     customer = request.widget_customer
-    wallet = customer.wallet
-    return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+    except Wallet.DoesNotExist:
+        return {"balance_micros": 0, "currency": "USD"}
 
 
 @me_api.get("/transactions", response=PaginatedTransactions)
@@ -84,7 +88,13 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 
-    qs = customer.wallet.transactions.all().order_by("-created_at", "-id")
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+    except Wallet.DoesNotExist:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    qs = wallet.transactions.all().order_by("-created_at", "-id")
 
     if cursor:
         try:

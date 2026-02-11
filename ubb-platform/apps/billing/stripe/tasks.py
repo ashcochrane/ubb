@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
-from core.locking import lock_for_billing, lock_top_up_attempt
+from apps.billing.locking import lock_for_billing, lock_top_up_attempt
 
 logger = logging.getLogger(__name__)
 

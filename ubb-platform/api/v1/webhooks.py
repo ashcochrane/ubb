@@ -16,7 +16,8 @@ from apps.billing.topups.models import TopUpAttempt
 from apps.metering.usage.models import Invoice
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
-from core.locking import lock_for_billing, lock_customer, lock_invoice, lock_top_up_attempt
+from core.locking import lock_customer
+from apps.billing.locking import lock_for_billing, lock_invoice, lock_top_up_attempt
 
 logger = logging.getLogger(__name__)
 
