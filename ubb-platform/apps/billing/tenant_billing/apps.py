@@ -7,6 +7,20 @@ class TenantBillingConfig(AppConfig):
     label = "tenant_billing"
 
     def ready(self):
-        from core.event_bus import event_bus
-        from apps.billing.handlers import handle_usage_recorded
-        event_bus.subscribe("usage.recorded", handle_usage_recorded, requires_product="billing")
+        from apps.platform.events.registry import handler_registry
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.handlers import handle_customer_deleted_billing
+
+        handler_registry.register(
+            "usage.recorded",
+            "billing.wallet_deduction",
+            handle_usage_recorded_billing,
+            requires_product="billing",
+        )
+
+        handler_registry.register(
+            "customer.deleted",
+            "billing.cleanup_customer",
+            handle_customer_deleted_billing,
+            requires_product="billing",
+        )

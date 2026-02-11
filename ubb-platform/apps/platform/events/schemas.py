@@ -66,3 +66,10 @@ class ReferralExpired:
     referral_id: str
     referrer_id: str
     total_earned_micros: int
+
+
+@dataclass(frozen=True)
+class CustomerDeleted:
+    EVENT_TYPE = "customer.deleted"
+    tenant_id: str
+    customer_id: str
