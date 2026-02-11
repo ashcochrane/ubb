@@ -124,11 +124,11 @@ from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
     "expire-stale-topup-attempts": {
-        "task": "apps.platform.customers.tasks.expire_stale_topup_attempts",
+        "task": "apps.billing.topups.tasks.expire_stale_topup_attempts",
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
     },
     "reconcile-wallet-balances": {
-        "task": "apps.platform.customers.tasks.reconcile_wallet_balances",
+        "task": "apps.billing.wallets.tasks.reconcile_wallet_balances",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "cleanup-webhook-events": {
