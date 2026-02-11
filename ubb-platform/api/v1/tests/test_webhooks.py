@@ -7,7 +7,7 @@ from apps.billing.stripe.models import StripeWebhookEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
-from apps.billing.wallets.models import WalletTransaction
+from apps.billing.wallets.models import Wallet, WalletTransaction
 from api.v1.webhooks import stripe_webhook
 
 
@@ -83,7 +83,7 @@ class WebhookDispatcherTest(TestCase):
             external_id="cust_ext_1",
             stripe_customer_id="cus_stripe_1",
         )
-        wallet = customer.wallet  # auto-created by Customer.save()
+        wallet = Wallet.objects.create(customer=customer)
         attempt = TopUpAttempt.objects.create(
             customer=customer,
             amount_micros=1_000_000,

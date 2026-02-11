@@ -10,6 +10,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 
 
 class TestMeteringOnlyTenant(TestCase):
@@ -26,7 +27,7 @@ class TestMeteringOnlyTenant(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_met_only"
         )
-        wallet = self.customer.wallet
+        wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
@@ -187,7 +188,7 @@ class TestBothProductsTenant(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_both"
         )
-        wallet = self.customer.wallet
+        wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 

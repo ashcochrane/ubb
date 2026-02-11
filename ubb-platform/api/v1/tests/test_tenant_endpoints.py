@@ -2,6 +2,7 @@ from datetime import date
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.usage_service import UsageService
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
@@ -82,8 +83,9 @@ class TenantUsageAnalyticsEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        self.customer.wallet.balance_micros = 100_000_000
-        self.customer.wallet.save()
+        self.wallet = Wallet.objects.create(customer=self.customer)
+        self.wallet.balance_micros = 100_000_000
+        self.wallet.save()
         for i in range(3):
             UsageService.record_usage(
                 tenant=self.tenant,

@@ -2,7 +2,7 @@ import json
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.billing.wallets.models import WalletTransaction
+from apps.billing.wallets.models import Wallet, WalletTransaction
 from core.widget_auth import create_widget_token
 
 
@@ -16,8 +16,9 @@ class WidgetBalanceTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        self.customer.wallet.balance_micros = 50_000_000
-        self.customer.wallet.save()
+        self.wallet = Wallet.objects.create(customer=self.customer)
+        self.wallet.balance_micros = 50_000_000
+        self.wallet.save()
         self.token = create_widget_token(
             self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
         )
@@ -58,7 +59,7 @@ class WidgetTransactionsTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        wallet = self.customer.wallet
+        wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
         for i in range(3):

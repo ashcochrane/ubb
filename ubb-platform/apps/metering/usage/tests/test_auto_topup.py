@@ -5,6 +5,7 @@ from django.db import transaction
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
+from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.auto_topup_service import AutoTopUpService
 
 
@@ -16,7 +17,7 @@ class AutoTopUpServiceTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        self.wallet = self.customer.wallet
+        self.wallet = Wallet.objects.create(customer=self.customer)
         self.wallet.balance_micros = -1_000_000  # below threshold
         self.wallet.save()
         AutoTopUpConfig.objects.create(

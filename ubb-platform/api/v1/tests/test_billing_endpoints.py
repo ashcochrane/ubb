@@ -4,6 +4,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 
 
 class BillingProductGatingTest(TestCase):
@@ -130,8 +131,9 @@ class BillingDebitEndpointTest(TestCase):
             tenant=self.tenant, external_id="cust_debit_1"
         )
         # Give the wallet some balance
-        self.customer.wallet.balance_micros = 10_000_000
-        self.customer.wallet.save()
+        self.wallet = Wallet.objects.create(customer=self.customer)
+        self.wallet.balance_micros = 10_000_000
+        self.wallet.save()
 
     def test_debit_success(self):
         response = self.http_client.post(
@@ -160,8 +162,8 @@ class BillingDebitEndpointTest(TestCase):
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        self.customer.wallet.refresh_from_db()
-        self.assertEqual(self.customer.wallet.balance_micros, 7_000_000)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 7_000_000)
 
     def test_debit_creates_wallet_transaction(self):
         response = self.http_client.post(
@@ -244,8 +246,7 @@ class BillingCreditEndpointTest(TestCase):
             tenant=self.tenant, external_id="cust_credit_1"
         )
         # Start with zero balance
-        self.customer.wallet.balance_micros = 0
-        self.customer.wallet.save()
+        self.wallet = Wallet.objects.create(customer=self.customer)
 
     def test_credit_success(self):
         response = self.http_client.post(
@@ -276,8 +277,8 @@ class BillingCreditEndpointTest(TestCase):
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        self.customer.wallet.refresh_from_db()
-        self.assertEqual(self.customer.wallet.balance_micros, 7_000_000)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 7_000_000)
 
     def test_credit_creates_adjustment_transaction(self):
         response = self.http_client.post(

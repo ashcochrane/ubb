@@ -4,6 +4,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import ProviderRate, TenantMarkup
 from apps.metering.usage.models import UsageEvent
+from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.usage_service import UsageService
 
 
@@ -23,6 +24,7 @@ class UsageServiceCoreTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
+        self.wallet = Wallet.objects.create(customer=self.customer)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_creates_event(self, mock_process):
@@ -41,8 +43,8 @@ class UsageServiceCoreTest(TestCase):
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_does_not_deduct_wallet(self, mock_process):
-        self.customer.wallet.balance_micros = 100_000_000
-        self.customer.wallet.save()
+        self.wallet.balance_micros = 100_000_000
+        self.wallet.save()
 
         UsageService.record_usage(
             tenant=self.tenant,
@@ -51,8 +53,8 @@ class UsageServiceCoreTest(TestCase):
             idempotency_key="idem_1",
             cost_micros=1_000_000,
         )
-        self.customer.wallet.refresh_from_db()
-        self.assertEqual(self.customer.wallet.balance_micros, 100_000_000)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 100_000_000)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_idempotent(self, mock_process):
@@ -82,8 +84,8 @@ class UsageServiceCoreTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_does_not_suspend_on_threshold(self, mock_process):
         """Suspension is now billing's responsibility via outbox handler."""
-        self.customer.wallet.balance_micros = 0
-        self.customer.wallet.save()
+        self.wallet.balance_micros = 0
+        self.wallet.save()
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
@@ -122,8 +124,8 @@ class UsageServiceCoreTest(TestCase):
         """Auto-topup is now billing's responsibility via outbox handler."""
         from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 
-        self.customer.wallet.balance_micros = 0
-        self.customer.wallet.save()
+        self.wallet.balance_micros = 0
+        self.wallet.save()
         AutoTopUpConfig.objects.create(
             customer=self.customer,
             is_enabled=True,
@@ -152,6 +154,7 @@ class UsageServicePricingTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
+        self.wallet = Wallet.objects.create(customer=self.customer)
 
         ProviderRate.objects.create(
             provider="google_gemini",
@@ -185,8 +188,8 @@ class UsageServicePricingTest(TestCase):
         self.assertEqual(result["provider_cost_micros"], 75_000)
         self.assertEqual(result["billed_cost_micros"], 75_000)
         # Wallet NOT deducted (billing handles this now)
-        self.customer.wallet.refresh_from_db()
-        self.assertEqual(self.customer.wallet.balance_micros, 0)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 0)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_with_raw_metrics_and_markup(self, mock_process):

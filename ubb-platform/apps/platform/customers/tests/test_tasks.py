@@ -82,7 +82,7 @@ class ReconcileWalletBalancesTest(TestCase):
         customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        wallet = customer.wallet
+        wallet = Wallet.objects.create(customer=customer)
         # Credit via wallet method to create matching transaction
         wallet.credit(10_000_000, description="top-up")
 
@@ -93,7 +93,7 @@ class ReconcileWalletBalancesTest(TestCase):
         customer = Customer.objects.create(
             tenant=self.tenant, external_id="c2"
         )
-        wallet = customer.wallet
+        wallet = Wallet.objects.create(customer=customer)
         # Manually set balance without matching transaction
         Wallet.objects.filter(pk=wallet.pk).update(balance_micros=50_000_000)
 
@@ -110,7 +110,7 @@ class ReconcileWalletBalancesTest(TestCase):
         customer = Customer.objects.create(
             tenant=self.tenant, external_id="c3"
         )
-        wallet = customer.wallet
+        wallet = Wallet.objects.create(customer=customer)
         wallet.credit(20_000_000, description="top-up")
         wallet.deduct(5_000_000, description="usage")
 

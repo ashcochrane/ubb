@@ -19,7 +19,7 @@ class TestHandleCustomerDeletedBilling:
     def test_soft_deletes_wallet(self):
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        wallet = customer.wallet  # auto-created by Customer.save()
+        wallet = Wallet.objects.create(customer=customer)
 
         handle_customer_deleted_billing("evt-1", {
             "tenant_id": str(tenant.id),
@@ -50,10 +50,8 @@ class TestHandleCustomerDeletedBilling:
         """No error if wallet doesn't exist."""
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        # Delete the auto-created wallet to simulate no wallet
-        Wallet.objects.filter(customer=customer).delete()
+        # No wallet created — handler should not raise
 
-        # Should not raise
         handle_customer_deleted_billing("evt-1", {
             "tenant_id": str(tenant.id),
             "customer_id": str(customer.id),

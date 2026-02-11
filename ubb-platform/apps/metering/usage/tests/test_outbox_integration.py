@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 from apps.platform.events.models import OutboxEvent
 
 
@@ -18,8 +19,9 @@ class TestUsageServiceOutbox:
         customer = Customer.objects.create(
             tenant=tenant, external_id="ext1",
         )
-        customer.wallet.balance_micros = 100_000_000
-        customer.wallet.save(update_fields=["balance_micros"])
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 100_000_000
+        wallet.save(update_fields=["balance_micros"])
 
         with patch("apps.platform.events.tasks.process_single_event"):
             result = UsageService.record_usage(

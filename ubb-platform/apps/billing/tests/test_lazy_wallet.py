@@ -20,8 +20,7 @@ class TestLazyWalletCreation:
     def test_lock_for_billing_creates_wallet_if_missing(self):
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        # Customer.save() currently creates a wallet; delete it to simulate lazy path
-        Wallet.objects.filter(customer=customer).delete()
+        # No wallet exists — lock_for_billing should create one lazily
 
         with transaction.atomic():
             wallet, cust = lock_for_billing(customer.id)
@@ -33,8 +32,7 @@ class TestLazyWalletCreation:
     def test_lock_for_billing_uses_existing_wallet(self):
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        # Wallet auto-created with balance 0; credit it
-        wallet = customer.wallet
+        wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 5000000
         wallet.save()
 

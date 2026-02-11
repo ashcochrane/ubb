@@ -9,6 +9,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 
 
 class TestSubscriptionsProductIsolation(TestCase):
@@ -70,8 +71,9 @@ class TestSubscriptionsProductIsolation(TestCase):
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
-        customer.wallet.balance_micros = 100_000_000
-        customer.wallet.save()
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 100_000_000
+        wallet.save()
 
         response = self.http_client.post(
             "/api/v1/metering/usage",

@@ -2,8 +2,6 @@ from django.db import models
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
-from apps.billing.wallets.models import Wallet
-from apps.billing.topups.models import AutoTopUpConfig
 
 
 CUSTOMER_STATUS_CHOICES = [
@@ -43,23 +41,15 @@ class Customer(SoftDeleteMixin, BaseModel):
             return self.arrears_threshold_micros
         return self.tenant.arrears_threshold_micros
 
-    def save(self, *args, **kwargs):
-        is_new = self._state.adding
-        super().save(*args, **kwargs)
-        if is_new:
-            Wallet.objects.create(customer=self)
-
     def soft_delete(self):
-        """Cascade soft delete to related records."""
+        """Soft delete customer and emit outbox event for product cleanup."""
         super().soft_delete()
-        try:
-            self.wallet.soft_delete()
-        except Wallet.DoesNotExist:
-            pass
-        try:
-            self.auto_top_up_config.soft_delete()
-        except AutoTopUpConfig.DoesNotExist:
-            pass
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import CustomerDeleted
+        write_event(CustomerDeleted(
+            tenant_id=str(self.tenant_id),
+            customer_id=str(self.id),
+        ))
 
     def __str__(self):
         return f"Customer({self.external_id})"

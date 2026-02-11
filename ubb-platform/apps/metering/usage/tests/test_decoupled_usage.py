@@ -17,7 +17,7 @@ class TestDecoupledUsageService:
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
@@ -42,7 +42,7 @@ class TestDecoupledUsageService:
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 0  # Zero balance
         wallet.save(update_fields=["balance_micros"])
 

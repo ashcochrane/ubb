@@ -37,6 +37,7 @@ class LockForBillingTest(TestCase):
             tenant=self.tenant,
             external_id="cust_1",
         )
+        self.wallet = Wallet.objects.create(customer=self.customer)
 
     def test_lock_for_billing_returns_wallet_and_customer(self):
         from django.db import transaction

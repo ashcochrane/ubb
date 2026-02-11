@@ -12,22 +12,22 @@ class TestWalletInBillingApp:
         assert Wallet is not None
         assert WalletTransaction is not None
 
-    def test_wallet_created_via_customer(self):
-        """Customer.save() still auto-creates wallet (until we change that)."""
+    def test_wallet_not_auto_created_via_customer(self):
+        """Wallet is no longer auto-created by Customer.save()."""
         from apps.billing.wallets.models import Wallet
 
         tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(
             tenant=tenant, external_id="ext1",
         )
-        assert Wallet.objects.filter(customer=customer).exists()
+        assert not Wallet.objects.filter(customer=customer).exists()
 
     def test_wallet_deduct(self):
         from apps.billing.wallets.models import Wallet, WalletTransaction
 
         tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
