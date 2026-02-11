@@ -6,7 +6,7 @@ from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.stripe.services.stripe_service import StripeService
-from apps.metering.usage.models import Invoice
+from apps.billing.invoicing.models import Invoice
 
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
 

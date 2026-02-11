@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
-from apps.metering.usage.models import Invoice
+from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
 from core.locking import lock_customer
