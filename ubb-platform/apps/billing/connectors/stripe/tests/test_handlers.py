@@ -36,7 +36,7 @@ class TestHandleBalanceLowStripe:
         }
 
         with patch(
-            "apps.billing.stripe.tasks.charge_auto_topup_task"
+            "apps.billing.connectors.stripe.tasks.charge_auto_topup_task"
         ) as mock_task:
             mock_task.delay = MagicMock()
             handle_balance_low_stripe("evt_1", payload)

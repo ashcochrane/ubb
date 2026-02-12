@@ -1,3 +1,7 @@
+from apps.billing.connectors.stripe.stripe_api import (
+    create_checkout_session,
+    charge_saved_payment_method,
+)
 from apps.billing.stripe.services.stripe_service import StripeService
 
 
@@ -8,13 +12,13 @@ class StripeProvider:
         self, customer, amount_micros, top_up_attempt, *,
         success_url, cancel_url,
     ):
-        return StripeService.create_checkout_session(
+        return create_checkout_session(
             customer, amount_micros, top_up_attempt,
             success_url=success_url, cancel_url=cancel_url,
         )
 
     def charge_saved_payment_method(self, customer, amount_micros, top_up_attempt):
-        return StripeService.charge_saved_payment_method(
+        return charge_saved_payment_method(
             customer, amount_micros, top_up_attempt,
         )
 

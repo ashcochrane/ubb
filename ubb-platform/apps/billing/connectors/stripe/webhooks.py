@@ -110,7 +110,7 @@ def handle_checkout_completed(event):
 def _dispatch_receipt(customer_id, attempt_id):
     from apps.platform.customers.models import Customer
     from apps.billing.topups.models import TopUpAttempt
-    from apps.billing.invoicing.services import ReceiptService
+    from apps.billing.connectors.stripe.receipts import ReceiptService
     try:
         customer = Customer.objects.select_related("tenant").get(id=customer_id)
         attempt = TopUpAttempt.objects.get(id=attempt_id)

@@ -173,7 +173,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=5),  # Daily at 5 AM UTC
     },
     "reconcile-topups-with-stripe": {
-        "task": "apps.billing.stripe.tasks.reconcile_topups_with_stripe",
+        "task": "apps.billing.connectors.stripe.tasks.reconcile_topups_with_stripe",
         "schedule": crontab(minute=0, hour=6),  # Daily at 6 AM UTC
     },
     "emit-referral-payouts": {

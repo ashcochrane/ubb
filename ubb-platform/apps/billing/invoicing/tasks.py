@@ -15,7 +15,7 @@ def reconcile_missing_receipts():
     Catches transient Stripe failures during receipt generation.
     Runs hourly — fast no-op when no missing receipts.
     """
-    from apps.billing.invoicing.services import ReceiptService
+    from apps.billing.connectors.stripe.receipts import ReceiptService
 
     # Find succeeded top-up attempts with no corresponding Invoice
     attempts = TopUpAttempt.objects.filter(

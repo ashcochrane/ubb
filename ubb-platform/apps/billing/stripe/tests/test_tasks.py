@@ -1,10 +1,15 @@
 from datetime import timedelta
+from unittest.mock import patch, MagicMock
 
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from apps.billing.stripe.tasks import cleanup_webhook_events, _batched_delete
+from apps.billing.connectors.stripe.tasks import reconcile_topups_with_stripe
+from apps.platform.tenants.models import Tenant
+from apps.platform.customers.models import Customer
+from apps.billing.topups.models import TopUpAttempt
 
 
 class CleanupWebhookEventsTest(TestCase):
@@ -73,3 +78,98 @@ class BatchedDeleteTest(TestCase):
         _batched_delete(qs, batch_size=2)
 
         self.assertEqual(StripeWebhookEvent.objects.count(), 0)
+
+
+class ReconcileTopupsWithStripeTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test", stripe_connected_account_id="acct_test",
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1",
+        )
+
+    def _create_attempt(self, charge_id, amount_micros=5_000_000):
+        return TopUpAttempt.objects.create(
+            customer=self.customer,
+            amount_micros=amount_micros,
+            trigger="manual",
+            status="succeeded",
+            stripe_charge_id=charge_id,
+        )
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    @patch("apps.billing.connectors.stripe.tasks.time.sleep")
+    def test_no_mismatch_for_matching_charge(self, mock_sleep, mock_retrieve):
+        self._create_attempt("ch_ok", amount_micros=5_000_000)
+        mock_charge = MagicMock()
+        mock_charge.status = "succeeded"
+        mock_charge.amount = 500  # 500 cents = 5_000_000 micros
+        mock_charge.refunded = False
+        mock_retrieve.return_value = mock_charge
+
+        reconcile_topups_with_stripe()
+
+        mock_retrieve.assert_called_once_with(
+            "ch_ok", stripe_account="acct_test",
+        )
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    @patch("apps.billing.connectors.stripe.tasks.time.sleep")
+    def test_flags_amount_mismatch(self, mock_sleep, mock_retrieve):
+        self._create_attempt("ch_bad", amount_micros=5_000_000)
+        mock_charge = MagicMock()
+        mock_charge.status = "succeeded"
+        mock_charge.amount = 999  # Wrong amount
+        mock_charge.refunded = False
+        mock_retrieve.return_value = mock_charge
+
+        with self.assertLogs("apps.billing.connectors.stripe.tasks", level="ERROR") as cm:
+            reconcile_topups_with_stripe()
+        self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    @patch("apps.billing.connectors.stripe.tasks.time.sleep")
+    def test_flags_refunded_charge(self, mock_sleep, mock_retrieve):
+        self._create_attempt("ch_refunded", amount_micros=5_000_000)
+        mock_charge = MagicMock()
+        mock_charge.status = "succeeded"
+        mock_charge.amount = 500
+        mock_charge.refunded = True
+        mock_retrieve.return_value = mock_charge
+
+        with self.assertLogs("apps.billing.connectors.stripe.tasks", level="ERROR") as cm:
+            reconcile_topups_with_stripe()
+        self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    @patch("apps.billing.connectors.stripe.tasks.time.sleep")
+    def test_skips_old_attempts(self, mock_sleep, mock_retrieve):
+        attempt = self._create_attempt("ch_old")
+        # Make attempt older than 48 hours
+        TopUpAttempt.objects.filter(pk=attempt.pk).update(
+            updated_at=timezone.now() - timedelta(hours=49),
+        )
+
+        reconcile_topups_with_stripe()
+
+        mock_retrieve.assert_not_called()
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    @patch("apps.billing.connectors.stripe.tasks.time.sleep")
+    def test_handles_stripe_error_gracefully(self, mock_sleep, mock_retrieve):
+        import stripe as stripe_lib
+        self._create_attempt("ch_error")
+        mock_retrieve.side_effect = stripe_lib.error.StripeError("API down")
+
+        # Should not raise
+        reconcile_topups_with_stripe()
+
+    def test_skips_attempts_without_charge_id(self):
+        TopUpAttempt.objects.create(
+            customer=self.customer, amount_micros=5_000_000,
+            trigger="manual", status="succeeded",
+            stripe_charge_id=None,
+        )
+        # No Stripe API call should be attempted — no mock needed
+        reconcile_topups_with_stripe()

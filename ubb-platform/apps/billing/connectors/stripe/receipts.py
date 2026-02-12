@@ -1,3 +1,8 @@
+"""Receipt invoice generation via Stripe.
+
+Part of the Stripe connector — creates receipt invoices on the
+tenant's Stripe Connected Account.
+"""
 import logging
 from django.utils import timezone
 from apps.billing.invoicing.models import Invoice

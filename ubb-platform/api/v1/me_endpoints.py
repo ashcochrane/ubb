@@ -5,7 +5,7 @@ from typing import Optional
 from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.topups.models import TopUpAttempt
-from apps.billing.stripe.services.stripe_service import StripeService
+from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
 
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
@@ -145,7 +145,7 @@ def create_top_up(request, payload: TopUpRequest):
         status="pending",
     )
 
-    checkout_url = StripeService.create_checkout_session(
+    checkout_url = create_checkout_session(
         customer, payload.amount_micros, attempt,
         success_url=payload.success_url,
         cancel_url=payload.cancel_url,

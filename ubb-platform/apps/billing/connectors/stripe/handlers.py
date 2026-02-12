@@ -31,5 +31,5 @@ def handle_balance_low_stripe(event_id, payload):
         attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
 
     if attempt:
-        from apps.billing.stripe.tasks import charge_auto_topup_task
+        from apps.billing.connectors.stripe.tasks import charge_auto_topup_task
         charge_auto_topup_task.delay(str(attempt.id))

@@ -19,7 +19,7 @@ from core.auth import ApiKeyAuth, ProductAccess
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
-from apps.billing.stripe.services.stripe_service import StripeService
+from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from django.shortcuts import get_object_or_404
 
@@ -109,7 +109,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
         status="pending",
     )
 
-    checkout_url = StripeService.create_checkout_session(
+    checkout_url = create_checkout_session(
         customer, payload.amount_micros, attempt,
         success_url=payload.success_url,
         cancel_url=payload.cancel_url,
@@ -124,6 +124,8 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
     from django.db import IntegrityError, transaction
     from apps.billing.locking import lock_for_billing
     from apps.billing.wallets.models import WalletTransaction
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import WithdrawalRequested
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
@@ -152,6 +154,14 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
             idempotency_key=payload.idempotency_key,
         )
 
+        write_event(WithdrawalRequested(
+            tenant_id=str(request.auth.tenant.id),
+            customer_id=str(customer.id),
+            amount_micros=payload.amount_micros,
+            transaction_id=str(txn.id),
+            idempotency_key=payload.idempotency_key,
+        ))
+
     return {"transaction_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
@@ -159,7 +169,12 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
 def pre_check(request, payload: PreCheckRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    result = RiskService.check(customer)
+    result = RiskService.check(
+        customer,
+        create_run=payload.start_run,
+        run_metadata=payload.run_metadata,
+        external_run_id=payload.external_run_id,
+    )
     return result
 
 
@@ -167,24 +182,15 @@ def pre_check(request, payload: PreCheckRequest):
 def refund_usage(request, customer_id: str, payload: RefundRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    from django.db import IntegrityError, transaction
+    from django.db import transaction
     from apps.billing.locking import lock_for_billing
-    from apps.metering.locking import lock_usage_event
-    from apps.metering.usage.models import UsageEvent, Refund
     from apps.billing.wallets.models import WalletTransaction
+    from apps.metering.queries import get_usage_event_cost
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import RefundRequested
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
-
-        # Lock event — raises DoesNotExist → catch and return 404
-        try:
-            event = lock_usage_event(payload.usage_event_id)
-        except UsageEvent.DoesNotExist:
-            return billing_api.create_response(request, {"error": "Usage event not found"}, status=404)
-
-        # Verify ownership
-        if event.customer_id != customer.id or event.tenant_id != request.auth.tenant.id:
-            return billing_api.create_response(request, {"error": "Usage event not found"}, status=404)
 
         # Idempotency on WalletTransaction
         existing_txn = WalletTransaction.objects.filter(
@@ -193,35 +199,35 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
         if existing_txn:
             return {"refund_id": existing_txn.reference_id, "balance_micros": wallet.balance_micros}
 
-        # Create refund (IntegrityError = already refunded via OneToOne constraint)
-        try:
-            refund = Refund.objects.create(
-                tenant=request.auth.tenant,
-                customer=customer,
-                usage_event=event,
-                amount_micros=event.cost_micros,
-                reason=payload.reason,
-                refunded_by_api_key=request.auth,
-            )
-        except IntegrityError:
-            return billing_api.create_response(
-                request, {"error": "Usage event already refunded"}, status=409
-            )
+        # Look up cost via metering query interface (tenant-scoped)
+        cost = get_usage_event_cost(payload.usage_event_id, tenant_id=request.auth.tenant.id)
+        if cost is None:
+            return billing_api.create_response(request, {"error": "Usage event not found"}, status=404)
 
-        wallet.balance_micros += event.cost_micros
+        wallet.balance_micros += cost
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
-        WalletTransaction.objects.create(
+        txn = WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="REFUND",
-            amount_micros=event.cost_micros,
+            amount_micros=cost,
             balance_after_micros=wallet.balance_micros,
-            description=f"Refund: {event.request_id}",
-            reference_id=str(refund.id),
+            description=f"Refund: {payload.usage_event_id}",
+            reference_id=str(payload.usage_event_id),
             idempotency_key=payload.idempotency_key,
         )
 
-    return {"refund_id": str(refund.id), "balance_micros": wallet.balance_micros}
+        # Emit outbox event for metering to create Refund record
+        write_event(RefundRequested(
+            tenant_id=str(request.auth.tenant.id),
+            customer_id=str(customer.id),
+            usage_event_id=str(payload.usage_event_id),
+            refund_amount_micros=cost,
+            reason=payload.reason,
+            idempotency_key=payload.idempotency_key,
+        ))
+
+    return {"refund_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
 @billing_api.get("/customers/{customer_id}/transactions")
