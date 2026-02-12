@@ -13,9 +13,16 @@ class EventsConfig(AppConfig):
         event_types = [
             "usage.recorded",
             "usage.refunded",
+            "refund.requested",
             "referral.reward_earned",
             "referral.created",
             "referral.expired",
+            "billing.withdrawal_requested",
+            "billing.balance_low",
+            "billing.balance_critical",
+            "billing.topup_requested",
+            "billing.customer_suspended",
+            "referral.payout_due",
         ]
         for event_type in event_types:
             handler_registry.register(

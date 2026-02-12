@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "apps.platform.tenants",
     "apps.platform.customers",
     "apps.platform.events",
+    "apps.platform.runs",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
@@ -39,6 +40,7 @@ INSTALLED_APPS = [
     "apps.billing.gating",
     "apps.billing.invoicing",
     "apps.billing.tenant_billing",
+    "apps.billing.connectors.stripe",
     "apps.subscriptions",
     "apps.referrals",
 ]
@@ -169,6 +171,18 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-all-referrals": {
         "task": "apps.referrals.tasks.reconcile_all_referrals_task",
         "schedule": crontab(minute=0, hour=5),  # Daily at 5 AM UTC
+    },
+    "reconcile-topups-with-stripe": {
+        "task": "apps.billing.stripe.tasks.reconcile_topups_with_stripe",
+        "schedule": crontab(minute=0, hour=6),  # Daily at 6 AM UTC
+    },
+    "emit-referral-payouts": {
+        "task": "apps.referrals.tasks.emit_referral_payouts_task",
+        "schedule": crontab(minute=0, hour=4),  # Daily at 4 AM UTC
+    },
+    "close-abandoned-runs": {
+        "task": "apps.platform.runs.tasks.close_abandoned_runs",
+        "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
 }
 
