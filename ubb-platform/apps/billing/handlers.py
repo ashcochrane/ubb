@@ -17,7 +17,7 @@ def handle_usage_recorded_billing(event_id, payload):
     Responsibilities:
     1. Deduct wallet balance (with proper locking)
     2. Create a WalletTransaction record
-    3. Check arrears threshold → suspend and emit CustomerSuspended event
+    3. Check min balance threshold → suspend and emit CustomerSuspended event
     4. Check auto-topup threshold → emit BalanceLow event
     5. Accumulate billing period totals
 
@@ -50,15 +50,15 @@ def handle_usage_recorded_billing(event_id, payload):
                 reference_id=payload.get("event_id", ""),
             )
 
-            # Check arrears threshold and suspend if needed
-            threshold = customer.get_arrears_threshold()
+            # Check min balance threshold and suspend if needed
+            threshold = customer.get_min_balance()
             if wallet.balance_micros < -threshold and customer.status == "active":
                 customer.status = "suspended"
                 customer.save(update_fields=["status", "updated_at"])
                 write_event(CustomerSuspended(
                     tenant_id=str(tenant.id),
                     customer_id=str(customer.id),
-                    reason="arrears_exceeded",
+                    reason="min_balance_exceeded",
                     balance_micros=wallet.balance_micros,
                 ))
 

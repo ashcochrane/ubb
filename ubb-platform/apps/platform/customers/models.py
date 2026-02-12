@@ -23,7 +23,7 @@ class Customer(SoftDeleteMixin, BaseModel):
         default="active",
         db_index=True,
     )
-    arrears_threshold_micros = models.BigIntegerField(null=True, blank=True)
+    min_balance_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
 
     class Meta:
@@ -35,11 +35,11 @@ class Customer(SoftDeleteMixin, BaseModel):
             ),
         ]
 
-    def get_arrears_threshold(self):
-        """Return customer-level threshold or fall back to tenant default."""
-        if self.arrears_threshold_micros is not None:
-            return self.arrears_threshold_micros
-        return self.tenant.arrears_threshold_micros
+    def get_min_balance(self):
+        """Return customer-level min balance or fall back to tenant default."""
+        if self.min_balance_micros is not None:
+            return self.min_balance_micros
+        return self.tenant.min_balance_micros
 
     def soft_delete(self):
         """Soft delete customer and emit outbox event for product cleanup."""

@@ -105,9 +105,9 @@ class TestBalanceCriticalSchema:
             tenant_id="t1",
             customer_id="c1",
             balance_micros=-4500000,
-            arrears_limit_micros=5000000,
+            min_balance_micros=5000000,
         )
-        assert event.arrears_limit_micros == 5000000
+        assert event.min_balance_micros == 5000000
 
 
 class TestTopUpRequestedSchema:
@@ -138,7 +138,7 @@ class TestCustomerSuspendedSchema:
         event = CustomerSuspended(
             tenant_id="t1",
             customer_id="c1",
-            reason="arrears_exceeded",
+            reason="min_balance_exceeded",
             balance_micros=-5100000,
         )
-        assert event.reason == "arrears_exceeded"
+        assert event.reason == "min_balance_exceeded"

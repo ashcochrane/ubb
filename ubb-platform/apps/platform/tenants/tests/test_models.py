@@ -8,7 +8,6 @@ class TenantModelTest(TestCase):
         tenant = Tenant.objects.create(
             name="LocalScouta",
             stripe_connected_account_id="acct_test123",
-            arrears_threshold_micros=5_000_000,
             platform_fee_percentage=1.0,
         )
         self.assertEqual(tenant.name, "LocalScouta")

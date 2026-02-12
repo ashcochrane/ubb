@@ -10,6 +10,8 @@ WALLET_TXN_TYPES = [
     ("WITHDRAWAL", "Withdrawal"),
     ("REFUND", "Refund"),
     ("ADJUSTMENT", "Adjustment"),
+    ("DISPUTE_DEDUCTION", "Dispute Deduction"),
+    ("STRIPE_REFUND", "Stripe Refund"),
 ]
 
 
@@ -28,7 +30,7 @@ class Wallet(SoftDeleteMixin, BaseModel):
 
     @transaction.atomic
     def deduct(self, amount_micros, description="", reference_id=""):
-        """Deduct from wallet balance. Allows negative balance (arrears)."""
+        """Deduct from wallet balance. Allows negative balance."""
         wallet = Wallet.objects.select_for_update().get(pk=self.pk)
         wallet.balance_micros -= amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])

@@ -150,13 +150,13 @@ class TestBillingOutboxHandler:
         wallet.refresh_from_db()
         assert wallet.balance_micros == 10_000_000
 
-    def test_suspends_customer_when_below_arrears_threshold(self):
+    def test_suspends_customer_when_below_min_balance(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            arrears_threshold_micros=1_000_000,  # $1 threshold
+            min_balance_micros=1_000_000,  # $1 threshold
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -179,13 +179,13 @@ class TestBillingOutboxHandler:
         customer.refresh_from_db()
         assert customer.status == "suspended"
 
-    def test_does_not_suspend_when_within_arrears_threshold(self):
+    def test_does_not_suspend_when_within_min_balance(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            arrears_threshold_micros=5_000_000,  # $5 threshold
+            min_balance_micros=5_000_000,  # $5 threshold
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -325,13 +325,13 @@ class TestBillingHandlerEmitsBalanceLow:
 
 class TestBillingHandlerEmitsCustomerSuspended:
     @pytest.mark.django_db
-    def test_emits_customer_suspended_on_arrears_breach(self):
+    def test_emits_customer_suspended_on_min_balance_breach(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            arrears_threshold_micros=1_000_000,
+            min_balance_micros=1_000_000,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -355,7 +355,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
             event_type="billing.customer_suspended"
         ).first()
         assert suspended_event is not None
-        assert suspended_event.payload["reason"] == "arrears_exceeded"
+        assert suspended_event.payload["reason"] == "min_balance_exceeded"
         assert suspended_event.payload["balance_micros"] == -2_000_000
 
     @pytest.mark.django_db
@@ -365,7 +365,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            arrears_threshold_micros=5_000_000,
+            min_balance_micros=5_000_000,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)

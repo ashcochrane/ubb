@@ -125,7 +125,7 @@ class BalanceCritical:
     tenant_id: str
     customer_id: str
     balance_micros: int
-    arrears_limit_micros: int
+    min_balance_micros: int
 
 
 @dataclass(frozen=True)
