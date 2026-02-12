@@ -207,3 +207,184 @@ class TestBillingOutboxHandler:
 
         customer.refresh_from_db()
         assert customer.status == "active"
+
+
+class TestBillingHandlerEmitsBalanceLow:
+    """After wallet deduction, if balance drops below auto-topup threshold,
+    emit a balance.low event instead of dispatching a Stripe task."""
+
+    @pytest.mark.django_db
+    def test_emits_balance_low_when_below_threshold(self):
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.topups.models import AutoTopUpConfig
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 6_000_000  # $6
+        wallet.save(update_fields=["balance_micros"])
+
+        AutoTopUpConfig.objects.create(
+            customer=customer,
+            is_enabled=True,
+            trigger_threshold_micros=5_000_000,  # $5 threshold
+            top_up_amount_micros=20_000_000,
+        )
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 2_000_000,  # $2 deduction -> balance $4 (below $5)
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        low_event = OutboxEvent.objects.filter(
+            event_type="billing.balance_low"
+        ).first()
+        assert low_event is not None
+        assert low_event.payload["balance_micros"] == 4_000_000
+        assert low_event.payload["suggested_topup_micros"] == 20_000_000
+
+    @pytest.mark.django_db
+    def test_does_not_emit_balance_low_when_above_threshold(self):
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.topups.models import AutoTopUpConfig
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 20_000_000  # $20
+        wallet.save(update_fields=["balance_micros"])
+
+        AutoTopUpConfig.objects.create(
+            customer=customer,
+            is_enabled=True,
+            trigger_threshold_micros=5_000_000,
+            top_up_amount_micros=20_000_000,
+        )
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 100_000,  # small deduction
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        assert not OutboxEvent.objects.filter(
+            event_type="billing.balance_low"
+        ).exists()
+
+    @pytest.mark.django_db
+    def test_does_not_emit_when_no_auto_topup_config(self):
+        from apps.billing.handlers import handle_usage_recorded_billing
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 1_000_000
+        wallet.save(update_fields=["balance_micros"])
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 500_000,
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        assert not OutboxEvent.objects.filter(
+            event_type="billing.balance_low"
+        ).exists()
+
+
+class TestBillingHandlerEmitsCustomerSuspended:
+    @pytest.mark.django_db
+    def test_emits_customer_suspended_on_arrears_breach(self):
+        from apps.billing.handlers import handle_usage_recorded_billing
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+            arrears_threshold_micros=1_000_000,
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 0
+        wallet.save(update_fields=["balance_micros"])
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 2_000_000,
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        suspended_event = OutboxEvent.objects.filter(
+            event_type="billing.customer_suspended"
+        ).first()
+        assert suspended_event is not None
+        assert suspended_event.payload["reason"] == "arrears_exceeded"
+        assert suspended_event.payload["balance_micros"] == -2_000_000
+
+    @pytest.mark.django_db
+    def test_does_not_emit_suspended_when_within_threshold(self):
+        from apps.billing.handlers import handle_usage_recorded_billing
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+            arrears_threshold_micros=5_000_000,
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 0
+        wallet.save(update_fields=["balance_micros"])
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 2_000_000,
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        assert not OutboxEvent.objects.filter(
+            event_type="billing.customer_suspended"
+        ).exists()

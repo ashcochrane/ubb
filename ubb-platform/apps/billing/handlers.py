@@ -9,7 +9,7 @@ logger = logging.getLogger("ubb.events")
 
 
 def handle_usage_recorded_billing(event_id, payload):
-    """Outbox handler: deduct wallet + accumulate billing period + auto-topup.
+    """Outbox handler: deduct wallet + emit billing events.
 
     Registered as outbox handler with requires_product="billing".
     Called by the outbox dispatcher with (event_id, payload) signature.
@@ -17,9 +17,12 @@ def handle_usage_recorded_billing(event_id, payload):
     Responsibilities:
     1. Deduct wallet balance (with proper locking)
     2. Create a WalletTransaction record
-    3. Check arrears threshold and suspend customer if needed
-    4. Check auto-topup eligibility and dispatch charge if needed
+    3. Check arrears threshold → suspend and emit CustomerSuspended event
+    4. Check auto-topup threshold → emit BalanceLow event
     5. Accumulate billing period totals
+
+    This handler NEVER calls Stripe or dispatches payment tasks.
+    Payment connectors subscribe to the emitted events.
     """
     tenant = Tenant.objects.get(id=payload["tenant_id"])
     billed_cost_micros = payload.get("cost_micros", 0)
@@ -27,7 +30,9 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros > 0:
         from apps.billing.wallets.models import WalletTransaction
         from apps.billing.locking import lock_for_billing
-        from apps.billing.topups.services import AutoTopUpService
+        from apps.billing.topups.models import AutoTopUpConfig
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import BalanceLow, CustomerSuspended
 
         with transaction.atomic():
             # lock_for_billing acquires locks in canonical order: Wallet -> Customer
@@ -50,19 +55,32 @@ def handle_usage_recorded_billing(event_id, payload):
             if wallet.balance_micros < -threshold and customer.status == "active":
                 customer.status = "suspended"
                 customer.save(update_fields=["status", "updated_at"])
+                write_event(CustomerSuspended(
+                    tenant_id=str(tenant.id),
+                    customer_id=str(customer.id),
+                    reason="arrears_exceeded",
+                    balance_micros=wallet.balance_micros,
+                ))
 
-            # Check auto-topup eligibility (wallet is already locked)
-            attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
+            # Check auto-topup threshold → emit BalanceLow
+            try:
+                config = AutoTopUpConfig.objects.get(
+                    customer=customer, is_enabled=True
+                )
+            except AutoTopUpConfig.DoesNotExist:
+                config = None
+
+            if config and wallet.balance_micros < config.trigger_threshold_micros:
+                write_event(BalanceLow(
+                    tenant_id=str(tenant.id),
+                    customer_id=str(customer.id),
+                    balance_micros=wallet.balance_micros,
+                    threshold_micros=config.trigger_threshold_micros,
+                    suggested_topup_micros=config.top_up_amount_micros,
+                ))
 
         # Accumulate billing period (outside the wallet lock)
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
-
-        # Dispatch auto-topup charge task if attempt was created
-        if attempt:
-            from apps.billing.stripe.tasks import charge_auto_topup_task
-            transaction.on_commit(
-                lambda aid=str(attempt.id): charge_auto_topup_task.delay(aid)
-            )
 
 
 def handle_customer_deleted_billing(event_id, payload):
