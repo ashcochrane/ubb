@@ -74,3 +74,71 @@ class TestReferralRewardEarnedSchema:
             referred_customer_id="c1", reward_micros=500,
         )
         assert event.EVENT_TYPE == "referral.reward_earned"
+
+
+class TestBalanceLowSchema:
+    def test_event_type(self):
+        from apps.platform.events.schemas import BalanceLow
+        assert BalanceLow.EVENT_TYPE == "billing.balance_low"
+
+    def test_fields(self):
+        from apps.platform.events.schemas import BalanceLow
+        event = BalanceLow(
+            tenant_id="t1",
+            customer_id="c1",
+            balance_micros=-1000000,
+            threshold_micros=5000000,
+            suggested_topup_micros=20000000,
+        )
+        assert event.balance_micros == -1000000
+        assert event.suggested_topup_micros == 20000000
+
+
+class TestBalanceCriticalSchema:
+    def test_event_type(self):
+        from apps.platform.events.schemas import BalanceCritical
+        assert BalanceCritical.EVENT_TYPE == "billing.balance_critical"
+
+    def test_fields(self):
+        from apps.platform.events.schemas import BalanceCritical
+        event = BalanceCritical(
+            tenant_id="t1",
+            customer_id="c1",
+            balance_micros=-4500000,
+            arrears_limit_micros=5000000,
+        )
+        assert event.arrears_limit_micros == 5000000
+
+
+class TestTopUpRequestedSchema:
+    def test_event_type(self):
+        from apps.platform.events.schemas import TopUpRequested
+        assert TopUpRequested.EVENT_TYPE == "billing.topup_requested"
+
+    def test_fields(self):
+        from apps.platform.events.schemas import TopUpRequested
+        event = TopUpRequested(
+            tenant_id="t1",
+            customer_id="c1",
+            amount_micros=20000000,
+            trigger="auto",
+            success_url="",
+            cancel_url="",
+        )
+        assert event.trigger == "auto"
+
+
+class TestCustomerSuspendedSchema:
+    def test_event_type(self):
+        from apps.platform.events.schemas import CustomerSuspended
+        assert CustomerSuspended.EVENT_TYPE == "billing.customer_suspended"
+
+    def test_fields(self):
+        from apps.platform.events.schemas import CustomerSuspended
+        event = CustomerSuspended(
+            tenant_id="t1",
+            customer_id="c1",
+            reason="arrears_exceeded",
+            balance_micros=-5100000,
+        )
+        assert event.reason == "arrears_exceeded"
