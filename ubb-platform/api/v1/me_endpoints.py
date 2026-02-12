@@ -134,23 +134,44 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 def create_top_up(request, payload: TopUpRequest):
     _check_billing_product(request)
     customer = request.widget_customer
+    tenant = customer.tenant
 
-    if not customer.stripe_customer_id:
-        return me_api.create_response(request, {"error": "Customer has no stripe_customer_id"}, status=400)
+    if tenant.stripe_connected_account_id:
+        if not customer.stripe_customer_id:
+            return me_api.create_response(
+                request, {"error": "Customer has no stripe_customer_id"}, status=400
+            )
 
-    attempt = TopUpAttempt.objects.create(
-        customer=customer,
-        amount_micros=payload.amount_micros,
-        trigger="widget",
-        status="pending",
-    )
+        attempt = TopUpAttempt.objects.create(
+            customer=customer,
+            amount_micros=payload.amount_micros,
+            trigger="widget",
+            status="pending",
+        )
 
-    checkout_url = create_checkout_session(
-        customer, payload.amount_micros, attempt,
-        success_url=payload.success_url,
-        cancel_url=payload.cancel_url,
-    )
-    return {"checkout_url": checkout_url}
+        checkout_url = create_checkout_session(
+            customer, payload.amount_micros, attempt,
+            success_url=payload.success_url,
+            cancel_url=payload.cancel_url,
+        )
+        return {"checkout_url": checkout_url}
+    else:
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import TopUpRequested
+
+        write_event(TopUpRequested(
+            tenant_id=str(tenant.id),
+            customer_id=str(customer.id),
+            amount_micros=payload.amount_micros,
+            trigger="widget",
+            success_url=getattr(payload, "success_url", "") or "",
+            cancel_url=getattr(payload, "cancel_url", "") or "",
+        ))
+        return me_api.create_response(
+            request,
+            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
+            status=202,
+        )
 
 
 @me_api.get("/invoices", response=PaginatedInvoices)

@@ -1,9 +1,11 @@
 import json
+from unittest.mock import patch
 
 from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.runs.models import Run
 from apps.billing.wallets.models import Wallet
 
 
@@ -350,3 +352,217 @@ class BillingCreditEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class WithdrawOutboxEventTest(TestCase):
+    """Test that the withdraw endpoint emits a WithdrawalRequested outbox event."""
+
+    def setUp(self):
+        from apps.platform.events.models import OutboxEvent
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Withdraw Tenant", products=["billing"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(
+            self.tenant, label="test"
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_withdraw_1"
+        )
+        self.wallet = Wallet.objects.create(
+            customer=self.customer, balance_micros=10_000_000
+        )
+
+    def _withdraw(self, amount_micros=1_000_000, idempotency_key="wdraw_1"):
+        return self.http_client.post(
+            f"/api/v1/billing/customers/{self.customer.id}/withdraw",
+            data=json.dumps({
+                "amount_micros": amount_micros,
+                "idempotency_key": idempotency_key,
+                "description": "Test withdrawal",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_withdraw_emits_outbox_event(self):
+        from apps.platform.events.models import OutboxEvent
+        response = self._withdraw()
+        self.assertEqual(response.status_code, 200)
+
+        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        self.assertEqual(events.count(), 1)
+        evt = events.first()
+        self.assertEqual(evt.payload["customer_id"], str(self.customer.id))
+        self.assertEqual(evt.payload["amount_micros"], 1_000_000)
+        self.assertEqual(evt.payload["idempotency_key"], "wdraw_1")
+        self.assertEqual(str(evt.tenant_id), str(self.tenant.id))
+
+    def test_withdraw_idempotent_no_duplicate_event(self):
+        from apps.platform.events.models import OutboxEvent
+        self._withdraw(idempotency_key="wdraw_dup")
+        self._withdraw(idempotency_key="wdraw_dup")
+
+        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        self.assertEqual(events.count(), 1)
+
+    def test_withdraw_insufficient_balance_no_event(self):
+        from apps.platform.events.models import OutboxEvent
+        response = self._withdraw(amount_micros=99_000_000)
+        self.assertEqual(response.status_code, 400)
+
+        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        self.assertEqual(events.count(), 0)
+
+
+class PreCheckRunTest(TestCase):
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Run Tenant",
+            products=["billing"],
+            run_cost_limit_micros=10_000_000,
+            hard_stop_balance_micros=-5_000_000,
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_run_1"
+        )
+        self.wallet = Wallet.objects.create(
+            customer=self.customer, balance_micros=20_000_000
+        )
+
+    def _pre_check(self, **extra):
+        data = {"customer_id": str(self.customer.id)}
+        data.update(extra)
+        return self.http_client.post(
+            "/api/v1/billing/pre-check",
+            data=json.dumps(data),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_pre_check_start_run_returns_run_id(self):
+        resp = self._pre_check(start_run=True)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["allowed"])
+        self.assertIsNotNone(body["run_id"])
+        self.assertEqual(body["cost_limit_micros"], 10_000_000)
+        self.assertEqual(body["hard_stop_balance_micros"], -5_000_000)
+
+        # Run exists in DB
+        run = Run.objects.get(id=body["run_id"])
+        self.assertEqual(run.status, "active")
+        self.assertEqual(run.balance_snapshot_micros, 20_000_000)
+
+    def test_pre_check_start_run_denied_no_run_created(self):
+        self.wallet.balance_micros = -6_000_000
+        self.wallet.save()
+
+        resp = self._pre_check(start_run=True)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertFalse(body["allowed"])
+        self.assertIsNone(body["run_id"])
+        self.assertEqual(Run.objects.count(), 0)
+
+    def test_pre_check_without_start_run_returns_null_run(self):
+        resp = self._pre_check()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["allowed"])
+        self.assertIsNone(body["run_id"])
+
+
+class TopUpWithoutConnectorTest(TestCase):
+    def setUp(self):
+        self.http_client = Client()
+        # Tenant WITHOUT Stripe connector
+        self.tenant = Tenant.objects.create(
+            name="No Stripe", products=["billing"],
+            stripe_connected_account_id="",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_no_stripe",
+        )
+
+    def test_topup_emits_event_when_no_stripe_account(self):
+        from apps.platform.events.models import OutboxEvent
+
+        response = self.http_client.post(
+            f"/api/v1/billing/customers/{self.customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 20_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        body = response.json()
+        self.assertEqual(body["status"], "topup_requested")
+
+        event = OutboxEvent.objects.filter(
+            event_type="billing.topup_requested"
+        ).first()
+        self.assertIsNotNone(event)
+        self.assertEqual(event.payload["amount_micros"], 20_000_000)
+        self.assertEqual(event.payload["trigger"], "manual")
+
+
+class TopUpWithConnectorTest(TestCase):
+    """Verify that top-up with Stripe connector still works (existing behavior)."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Has Stripe", products=["billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_stripe",
+            stripe_customer_id="cus_test",
+        )
+
+    @patch("api.v1.billing_endpoints.create_checkout_session")
+    def test_topup_creates_checkout_session_when_stripe_active(self, mock_checkout):
+        mock_checkout.return_value = "https://checkout.stripe.com/test"
+
+        response = self.http_client.post(
+            f"/api/v1/billing/customers/{self.customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 20_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["checkout_url"], "https://checkout.stripe.com/test")
+
+    def test_topup_returns_400_when_no_stripe_customer_id(self):
+        # Customer without stripe_customer_id
+        customer_no_stripe = Customer.objects.create(
+            tenant=self.tenant, external_id="no_cus_id",
+        )
+
+        response = self.http_client.post(
+            f"/api/v1/billing/customers/{customer_no_stripe.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 20_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
