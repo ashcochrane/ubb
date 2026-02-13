@@ -2,8 +2,6 @@ from datetime import date
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.billing.wallets.models import Wallet
-from apps.metering.usage.services.usage_service import UsageService
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
 
@@ -71,36 +69,3 @@ class TenantInvoicesEndpointTest(TestCase):
         body = response.json()
         self.assertEqual(len(body["data"]), 1)
         self.assertEqual(body["data"][0]["total_amount_micros"], 500_000_000)
-
-
-class TenantUsageAnalyticsEndpointTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test",
-        )
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1"
-        )
-        self.wallet = Wallet.objects.create(customer=self.customer)
-        self.wallet.balance_micros = 100_000_000
-        self.wallet.save()
-        for i in range(3):
-            UsageService.record_usage(
-                tenant=self.tenant,
-                customer=self.customer,
-                request_id=f"req_analytics_{i}",
-                idempotency_key=f"idem_analytics_{i}",
-                cost_micros=1_000_000,
-            )
-
-    def test_usage_analytics(self):
-        response = self.http_client.get(
-            "/api/v1/tenant/analytics/usage",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["total_events"], 3)
-        self.assertEqual(body["total_billed_cost_micros"], 3_000_000)

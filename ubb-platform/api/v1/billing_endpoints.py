@@ -14,6 +14,7 @@ from api.v1.schemas import (
     WithdrawRequest,
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
+    RevenueAnalyticsResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
 from apps.platform.customers.models import Customer
@@ -21,6 +22,7 @@ from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.metering.usage.models import UsageEvent
 from django.shortcuts import get_object_or_404
 
 billing_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_billing_v1")
@@ -413,4 +415,54 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         ],
         "next_cursor": next_cursor,
         "has_more": has_more,
+    }
+
+
+# ---------- Analytics ----------
+
+
+@billing_api.get("/analytics/revenue", response=RevenueAnalyticsResponse)
+def revenue_analytics(request, start_date: date = None, end_date: date = None):
+    _product_check(request)
+    tenant = request.auth.tenant
+    qs = UsageEvent.objects.filter(tenant=tenant)
+
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lte=end_date)
+
+    totals = qs.aggregate(
+        total_provider_cost_micros=Sum("provider_cost_micros"),
+        total_billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+    )
+
+    provider_cost = totals["total_provider_cost_micros"] or 0
+    billed_cost = totals["total_billed_cost_micros"] or 0
+
+    daily = list(
+        qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
+            provider_cost_micros=Sum("provider_cost_micros"),
+            billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+            event_count=Count("id"),
+        ).order_by("day")
+    )
+
+    for entry in daily:
+        if entry.get("day"):
+            entry["day"] = entry["day"].isoformat()
+
+    # Compute markup when provider_cost is known (is not None from DB).
+    # provider_cost == 0 is valid (free provider); None means no provider cost data.
+    raw_provider = totals["total_provider_cost_micros"]
+    if raw_provider is not None:
+        markup = billed_cost - provider_cost
+    else:
+        markup = 0
+
+    return {
+        "total_provider_cost_micros": provider_cost,
+        "total_billed_cost_micros": billed_cost,
+        "total_markup_micros": markup,
+        "daily": daily,
     }
