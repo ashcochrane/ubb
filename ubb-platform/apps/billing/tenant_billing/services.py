@@ -62,6 +62,54 @@ class TenantBillingService:
             )
 
     @staticmethod
+    def _calculate_fees(tenant, period):
+        """Calculate fees per product using ProductFeeConfig.
+
+        Falls back to legacy percentage if no ProductFeeConfig rows exist.
+        """
+        from apps.billing.tenant_billing.models import ProductFeeConfig
+
+        total_fee = 0
+        line_items = []
+
+        configs = list(ProductFeeConfig.objects.filter(tenant=tenant))
+
+        if configs:
+            for config in configs:
+                if config.fee_type == "flat":
+                    fee = config.config.get("amount_micros", 0)
+                elif config.fee_type == "percentage":
+                    pct = Decimal(str(config.config.get("percentage", "0")))
+                    fee = int(Decimal(period.total_usage_cost_micros) * pct / Decimal(100))
+                    fee = (fee // 10_000) * 10_000  # Floor to cent boundary
+                else:
+                    continue
+
+                total_fee += fee
+                line_items.append({
+                    "product": config.product,
+                    "description": f"{config.product} fee ({config.fee_type})",
+                    "amount_micros": fee,
+                })
+        else:
+            # Legacy fallback: single percentage
+            raw_fee = (
+                Decimal(period.total_usage_cost_micros)
+                * tenant.platform_fee_percentage
+                / Decimal(100)
+            )
+            fee = int(raw_fee)
+            fee = (fee // 10_000) * 10_000
+            total_fee = fee
+            line_items.append({
+                "product": "platform",
+                "description": "Platform fee",
+                "amount_micros": fee,
+            })
+
+        return total_fee, line_items
+
+    @staticmethod
     def close_period(period):
         """Reconcile then close a billing period, calculating platform fee.
 
@@ -76,17 +124,9 @@ class TenantBillingService:
             if period.status != "open":
                 return
 
-            # Use Decimal arithmetic — no float conversion.
-            # Floor to nearest micros-of-a-cent (tenant-friendly rounding).
-            raw_fee = (
-                Decimal(period.total_usage_cost_micros)
-                * period.tenant.platform_fee_percentage
-                / Decimal(100)
+            fee_micros, line_items = TenantBillingService._calculate_fees(
+                period.tenant, period
             )
-            fee_micros = int(raw_fee)  # int() truncates toward zero = floor for positive values
-
-            # Floor to cent boundary so micros_to_cents won't reject it.
-            fee_micros = (fee_micros // 10_000) * 10_000
 
             period.status = "closed"
             period.platform_fee_micros = fee_micros
