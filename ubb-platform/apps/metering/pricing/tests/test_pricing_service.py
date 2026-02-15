@@ -12,6 +12,7 @@ class PricingServiceTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test Tenant")
         self.rate = ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
             metric_name="input_tokens",
@@ -20,6 +21,7 @@ class PricingServiceTests(TestCase):
             unit_quantity=1_000_000,
         )
         self.output_rate = ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
             metric_name="output_tokens",
@@ -94,6 +96,7 @@ class PricingServiceTests(TestCase):
 
     def test_dimension_matching_most_specific_wins(self):
         ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
             metric_name="input_tokens",
@@ -112,6 +115,7 @@ class PricingServiceTests(TestCase):
 
     def test_dimension_matching_fallback_when_no_specific(self):
         ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
             metric_name="input_tokens",

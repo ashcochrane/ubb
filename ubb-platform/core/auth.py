@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.utils import timezone
 from ninja.errors import HttpError
 from ninja.security import HttpBearer
@@ -11,7 +12,8 @@ class ApiKeyAuth(HttpBearer):
         if key_obj is None:
             return None
         request.tenant = key_obj.tenant
-        TenantApiKey.objects.filter(pk=key_obj.pk).update(last_used_at=timezone.now())
+        # Buffer last_used_at in Redis — flushed to DB by periodic task
+        cache.set(f"apikey_used:{key_obj.pk}", timezone.now().isoformat(), timeout=3600)
         return key_obj
 
 

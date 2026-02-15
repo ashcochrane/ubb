@@ -56,10 +56,21 @@ class TenantBillingService:
             event_count=F("event_count") + 1,
         )
         if rows == 0:
-            logger.error(
-                "accumulate_usage updated zero rows — period may have been closed mid-request",
+            # Period was closed between get_or_create and update — get fresh period and retry once
+            logger.warning(
+                "accumulate_usage: period closed mid-request, retrying with fresh period",
                 extra={"data": {"tenant_id": str(tenant.id), "period_id": str(period.id)}},
             )
+            period = TenantBillingService.get_or_create_current_period(tenant)
+            rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+                total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,
+                event_count=F("event_count") + 1,
+            )
+            if rows == 0:
+                logger.error(
+                    "accumulate_usage: retry also updated zero rows",
+                    extra={"data": {"tenant_id": str(tenant.id), "period_id": str(period.id)}},
+                )
 
     @staticmethod
     def _calculate_fees(tenant, period):

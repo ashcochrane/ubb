@@ -87,6 +87,21 @@ class RiskServiceTest(TestCase):
         self.assertIsNone(result["run_id"])
 
 
+class RiskServiceRedisFailureTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
+        RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10)
+
+    def test_allows_when_redis_unavailable(self):
+        """Pre-check should degrade gracefully when Redis is down."""
+        from unittest.mock import patch
+        with patch("apps.billing.gating.services.risk_service.cache") as mock_cache:
+            mock_cache.get.side_effect = ConnectionError("Redis unavailable")
+            result = RiskService.check(self.customer)
+        self.assertTrue(result["allowed"])
+
+
 class RiskServiceRunTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(

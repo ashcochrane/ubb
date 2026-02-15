@@ -4,8 +4,9 @@ import httpx
 
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
+    UBBHardStopError, UBBRunNotActiveError,
 )
-from ubb.types import RecordUsageResult, UsageEvent, PaginatedResponse
+from ubb.types import RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse
 
 
 class MeteringClient:
@@ -63,7 +64,8 @@ class MeteringClient:
                      cost_micros: int | None = None, metadata: dict | None = None,
                      event_type: str | None = None, provider: str | None = None,
                      usage_metrics: dict | None = None, properties: dict | None = None,
-                     group_keys: dict | None = None) -> RecordUsageResult:
+                     group_keys: dict | None = None,
+                     run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
         body: dict = {
             "customer_id": customer_id,
@@ -81,8 +83,46 @@ class MeteringClient:
                 body["properties"] = properties
         if group_keys is not None:
             body["group_keys"] = group_keys
-        r = self._request("post", "/api/v1/metering/usage", json=body)
+        if run_id is not None:
+            body["run_id"] = run_id
+        r = self._request_usage("post", "/api/v1/metering/usage", json=body)
         return RecordUsageResult(**r.json())
+
+    def _request_usage(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Like _request but handles run-specific error codes."""
+        try:
+            response = getattr(self._http, method)(path, **kwargs)
+        except httpx.TimeoutException as e:
+            raise UBBConnectionError("Request timed out", original=e) from e
+        except httpx.ConnectError as e:
+            raise UBBConnectionError("Could not connect to UBB API", original=e) from e
+        if response.status_code == 401:
+            raise UBBAuthError("Invalid or revoked API key")
+        if response.status_code == 429:
+            body = response.json()
+            if body.get("hard_stop"):
+                raise UBBHardStopError(
+                    run_id=body.get("run_id", ""),
+                    reason=body.get("reason", ""),
+                    total_cost_micros=body.get("total_cost_micros", 0),
+                )
+        if response.status_code == 409:
+            body = response.json()
+            if body.get("error") == "run_not_active":
+                raise UBBRunNotActiveError(
+                    run_id=body.get("run_id", ""),
+                    status=body.get("status", ""),
+                )
+            raise UBBConflictError(self._extract_error_detail(response))
+        detail = self._extract_error_detail(response)
+        if response.status_code >= 400:
+            raise UBBAPIError(response.status_code, detail)
+        return response
+
+    def close_run(self, run_id: str) -> CloseRunResult:
+        """Close (complete) a run via POST /api/v1/metering/runs/{run_id}/close."""
+        r = self._request("post", f"/api/v1/metering/runs/{run_id}/close")
+        return CloseRunResult(**r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   group_key: str | None = None, group_value: str | None = None) -> PaginatedResponse[UsageEvent]:

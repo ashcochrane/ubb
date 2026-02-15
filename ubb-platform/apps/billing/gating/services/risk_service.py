@@ -14,16 +14,19 @@ class RiskService:
             config = customer.tenant.risk_config
         except RiskConfig.DoesNotExist:
             config = None
-        # Fixed-window rate limiting
+        # Fixed-window rate limiting (degrades gracefully if Redis is down)
         if config and config.max_requests_per_minute and config.max_requests_per_minute > 0:
-            cache_key = f"ratelimit:{customer.id}:rpm"
-            current_count = cache.get(cache_key, 0)
-            if current_count >= config.max_requests_per_minute:
-                return {"allowed": False, "reason": "rate_limit_exceeded", "balance_micros": None, "run_id": None}
             try:
-                cache.incr(cache_key)
-            except ValueError:
-                cache.set(cache_key, 1, timeout=60)
+                cache_key = f"ratelimit:{customer.id}:rpm"
+                current_count = cache.get(cache_key, 0)
+                if current_count >= config.max_requests_per_minute:
+                    return {"allowed": False, "reason": "rate_limit_exceeded", "balance_micros": None, "run_id": None}
+                try:
+                    cache.incr(cache_key)
+                except ValueError:
+                    cache.set(cache_key, 1, timeout=60)
+            except Exception:
+                pass  # Degrade: skip rate limiting if cache is unavailable
 
         # Affordability check
         from apps.billing.wallets.models import Wallet

@@ -2,6 +2,7 @@ import logging
 
 from celery import shared_task
 from django.db import transaction
+from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
@@ -10,7 +11,12 @@ from apps.billing.tenant_billing.services import TenantBillingService
 logger = logging.getLogger(__name__)
 
 
-@shared_task(queue="ubb_billing")
+@shared_task(
+    queue="ubb_billing",
+    autoretry_for=(OperationalError, InterfaceError),
+    max_retries=3,
+    retry_backoff=True,
+)
 def close_tenant_billing_periods():
     """Close all open billing periods from previous months."""
     today = timezone.now().date()
@@ -28,6 +34,8 @@ def close_tenant_billing_periods():
                 "Closed tenant billing period",
                 extra={"data": {"period_id": str(period.id), "tenant": period.tenant.name}},
             )
+        except (OperationalError, InterfaceError):
+            raise  # Transient DB errors — let Celery retry
         except Exception:
             logger.exception(
                 "Failed to close tenant billing period",
@@ -35,7 +43,12 @@ def close_tenant_billing_periods():
             )
 
 
-@shared_task(queue="ubb_billing")
+@shared_task(
+    queue="ubb_billing",
+    autoretry_for=(OperationalError, InterfaceError),
+    max_retries=3,
+    retry_backoff=True,
+)
 def reconcile_tenant_billing_periods():
     """Reconcile all open billing periods against actual UsageEvent data.
 
@@ -49,6 +62,8 @@ def reconcile_tenant_billing_periods():
     for period in periods:
         try:
             TenantBillingService.reconcile_period(period)
+        except (OperationalError, InterfaceError):
+            raise  # Transient DB errors — let Celery retry
         except Exception:
             logger.exception(
                 "Failed to reconcile tenant billing period",
@@ -56,7 +71,12 @@ def reconcile_tenant_billing_periods():
             )
 
 
-@shared_task(queue="ubb_billing")
+@shared_task(
+    queue="ubb_billing",
+    autoretry_for=(OperationalError, InterfaceError),
+    max_retries=3,
+    retry_backoff=True,
+)
 def generate_tenant_platform_invoices():
     """Generate Stripe invoices for closed billing periods without invoices.
 
@@ -90,6 +110,8 @@ def generate_tenant_platform_invoices():
 
         try:
             _create_tenant_invoice(period)
+        except (OperationalError, InterfaceError):
+            raise  # Transient DB errors — let Celery retry
         except Exception:
             logger.exception(
                 "Failed to create tenant platform invoice",

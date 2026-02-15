@@ -154,15 +154,17 @@ class RefundRequest(Schema):
 
 class DebitRequest(Schema):
     customer_id: str = Field(min_length=1, max_length=255)
-    amount_micros: int = Field(gt=0)
+    amount_micros: int = Field(gt=0, le=999_999_999_999)
     reference: str = Field(min_length=1, max_length=500)
+    idempotency_key: Optional[str] = Field(default=None, max_length=500)
 
 
 class CreditRequest(Schema):
     customer_id: str = Field(min_length=1, max_length=255)
-    amount_micros: int = Field(gt=0)
+    amount_micros: int = Field(gt=0, le=999_999_999_999)
     source: str = Field(min_length=1, max_length=255)
     reference: str = Field(min_length=1, max_length=500)
+    idempotency_key: Optional[str] = Field(default=None, max_length=500)
 
 
 class DebitCreditResponse(Schema):

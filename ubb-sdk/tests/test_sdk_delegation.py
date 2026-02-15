@@ -94,7 +94,9 @@ class TestMeteringDelegationRequiresMetering:
         })
         result = self.client.pre_check("cust1")
         assert result.allowed is True
-        self.client.billing.pre_check.assert_called_once_with("cust1")
+        self.client.billing.pre_check.assert_called_once_with(
+            "cust1", start_run=False, run_metadata=None, external_run_id="",
+        )
 
     def test_get_usage_requires_metering(self):
         with pytest.raises(UBBError, match="metering"):
@@ -237,7 +239,9 @@ class TestPreCheckWithoutEventType:
             "allowed": True, "can_proceed": True, "balance_micros": 5_000_000,
         })
         result = client.pre_check(customer_id="cust1")
-        client.billing.pre_check.assert_called_once_with("cust1")
+        client.billing.pre_check.assert_called_once_with(
+            "cust1", start_run=False, run_metadata=None, external_run_id="",
+        )
         assert result.allowed is True
         assert result.balance_micros == 5_000_000
         client.close()

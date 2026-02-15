@@ -48,6 +48,7 @@ class UsageService:
         usage_metrics=None,
         properties=None,
         group_keys=None,
+        run_id=None,
     ):
         # 0. Validate group_keys before any DB work
         validate_group_keys(group_keys)
@@ -63,6 +64,9 @@ class UsageService:
                 "suspended": False,
                 "provider_cost_micros": existing.provider_cost_micros,
                 "billed_cost_micros": existing.billed_cost_micros,
+                "run_id": str(existing.run_id) if existing.run_id else None,
+                "run_total_cost_micros": None,
+                "hard_stop": False,
             }
 
         # 2. Price the event if raw metrics provided
@@ -83,6 +87,20 @@ class UsageService:
             )
             cost_micros = billed_cost_micros
 
+        # 2.5 Run hard-stop check (synchronous, under select_for_update)
+        run = None
+        if run_id is not None:
+            from apps.platform.runs.services import RunService
+
+            effective_cost_for_run = (
+                billed_cost_micros if billed_cost_micros is not None else cost_micros
+            )
+            # Locks the Run row, increments cost, checks both hard stop limits.
+            # Raises HardStopExceeded if either limit is breached — the outer
+            # @transaction.atomic rolls back, no event is created, and the
+            # caller (endpoint) handles killing the run in a separate transaction.
+            run = RunService.accumulate_cost(run_id, effective_cost_for_run or 0)
+
         # 3. Create event (handle race via IntegrityError)
         try:
             with transaction.atomic():  # savepoint
@@ -102,6 +120,7 @@ class UsageService:
                     billed_cost_micros=billed_cost_micros,
                     pricing_provenance=pricing_provenance,
                     group_keys=group_keys,
+                    run_id=run_id,
                 )
         except IntegrityError:
             existing = UsageEvent.objects.get(
@@ -113,6 +132,9 @@ class UsageService:
                 "suspended": False,
                 "provider_cost_micros": existing.provider_cost_micros,
                 "billed_cost_micros": existing.billed_cost_micros,
+                "run_id": str(existing.run_id) if existing.run_id else None,
+                "run_total_cost_micros": None,
+                "hard_stop": False,
             }
 
         # 4. Compute effective cost for outbox event
@@ -131,6 +153,7 @@ class UsageService:
             billed_cost_micros=billed_cost_micros,
             event_type=event_type or "",
             provider=provider or "",
+            run_id=str(run_id) if run_id else None,
         ))
 
         return {
@@ -139,4 +162,7 @@ class UsageService:
             "suspended": False,
             "provider_cost_micros": provider_cost_micros,
             "billed_cost_micros": billed_cost_micros,
+            "run_id": str(run_id) if run_id else None,
+            "run_total_cost_micros": run.total_cost_micros if run else None,
+            "hard_stop": False,
         }

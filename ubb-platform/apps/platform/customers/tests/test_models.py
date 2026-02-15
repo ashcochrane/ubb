@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from django.test import TestCase
 
 from apps.platform.customers.models import Customer
@@ -63,3 +64,31 @@ class CustomerModelTest(TestCase):
         event = OutboxEvent.objects.get(event_type="customer.deleted")
         self.assertEqual(event.payload["customer_id"], str(customer.id))
         self.assertEqual(event.payload["tenant_id"], str(self.tenant.id))
+
+    def test_soft_delete_creates_outbox_event(self):
+        """soft_delete() creates an outbox event atomically with the delete."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_del_atomic"
+        )
+        customer.soft_delete()
+
+        # Both the soft delete and the outbox event should exist
+        customer.refresh_from_db()
+        self.assertTrue(customer.is_deleted)
+        self.assertTrue(OutboxEvent.objects.filter(event_type="customer.deleted").exists())
+
+    def test_soft_delete_rolls_back_on_event_failure(self):
+        """If write_event fails, the soft delete should roll back."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_del_rollback"
+        )
+        with patch(
+            "apps.platform.events.outbox.write_event",
+            side_effect=RuntimeError("outbox failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                customer.soft_delete()
+
+        # Customer should NOT be soft-deleted because the transaction rolled back
+        customer.refresh_from_db()
+        self.assertFalse(customer.is_deleted)

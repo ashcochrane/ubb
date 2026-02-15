@@ -43,10 +43,49 @@ def handle_checkout_completed(event):
         if not (attempt.status == "expired" and attempt.trigger == "manual"):
             return
 
+    # Guard null/zero amount (Stripe can send None for incomplete sessions)
+    if not session.amount_total:
+        logger.warning(
+            "Checkout completed with null/zero amount_total",
+            extra={"data": {"session_id": getattr(session, "id", None)}},
+        )
+        return
     amount_micros = session.amount_total * 10_000
+
+    # Pre-fetch PaymentIntent and charge ID outside transaction (no network inside DB locks)
+    pi_id = getattr(session, "payment_intent", None)
+    charge_id_from_pi = None
+    if isinstance(pi_id, str) and pi_id:
+        try:
+            pi = stripe.PaymentIntent.retrieve(
+                pi_id,
+                stripe_account=connected_account,
+                expand=["latest_charge"],
+            )
+            if pi.latest_charge:
+                cid = (
+                    pi.latest_charge.id
+                    if hasattr(pi.latest_charge, "id")
+                    else pi.latest_charge
+                )
+                if isinstance(cid, str) and cid:
+                    charge_id_from_pi = cid
+        except stripe.error.StripeError:
+            logger.warning(
+                "Failed to retrieve charge ID for reconciliation",
+                extra={"data": {"payment_intent": pi_id}},
+            )
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
+
+        # Idempotency: check for existing top-up transaction
+        from apps.billing.wallets.models import WalletTransaction
+        existing = WalletTransaction.objects.filter(
+            wallet=wallet, idempotency_key=f"topup:{session.id}",
+        ).first()
+        if existing:
+            return
 
         # Re-check attempt status under lock
         if attempt:
@@ -61,38 +100,18 @@ def handle_checkout_completed(event):
                 )
             attempt.status = "succeeded"
             attempt.stripe_checkout_session_id = session.id
-            # Persist charge ID for reconciliation
             save_fields = ["status", "stripe_checkout_session_id", "updated_at"]
-            pi_id = getattr(session, "payment_intent", None)
             if isinstance(pi_id, str) and pi_id:
                 attempt.stripe_payment_intent_id = pi_id
                 save_fields.append("stripe_payment_intent_id")
-                try:
-                    pi = stripe.PaymentIntent.retrieve(
-                        pi_id,
-                        stripe_account=connected_account,
-                        expand=["latest_charge"],
-                    )
-                    if pi.latest_charge:
-                        charge_id = (
-                            pi.latest_charge.id
-                            if hasattr(pi.latest_charge, "id")
-                            else pi.latest_charge
-                        )
-                        if isinstance(charge_id, str) and charge_id:
-                            attempt.stripe_charge_id = charge_id
-                            save_fields.append("stripe_charge_id")
-                except stripe.error.StripeError:
-                    logger.warning(
-                        "Failed to retrieve charge ID for reconciliation",
-                        extra={"data": {"payment_intent": pi_id}},
-                    )
+                if charge_id_from_pi:
+                    attempt.stripe_charge_id = charge_id_from_pi
+                    save_fields.append("stripe_charge_id")
             attempt.save(update_fields=save_fields)
 
         wallet.balance_micros += amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
-        from apps.billing.wallets.models import WalletTransaction
         WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="TOP_UP",
@@ -100,6 +119,7 @@ def handle_checkout_completed(event):
             balance_after_micros=wallet.balance_micros,
             description="Stripe top-up",
             reference_id=str(attempt.id) if attempt else "",
+            idempotency_key=f"topup:{session.id}",
         )
 
     # Generate receipt invoice (after commit)
@@ -189,6 +209,12 @@ def handle_charge_dispute_closed(event):
     if not attempt:
         return
 
+    if not dispute.amount:
+        logger.warning(
+            "Dispute closed with null/zero amount",
+            extra={"data": {"charge_id": charge_id}},
+        )
+        return
     amount_micros = dispute.amount * 10_000  # Stripe cents -> micros
 
     with transaction.atomic():
@@ -215,6 +241,20 @@ def handle_charge_dispute_closed(event):
             idempotency_key=f"dispute:{charge_id}",
         )
 
+        # Suspend customer if balance dropped below min_balance threshold
+        threshold = customer.get_min_balance()
+        if wallet.balance_micros < -threshold and customer.status == "active":
+            customer.status = "suspended"
+            customer.save(update_fields=["status", "updated_at"])
+            logger.warning(
+                "Customer suspended after dispute deduction",
+                extra={"data": {
+                    "customer_id": str(customer.id),
+                    "balance_micros": wallet.balance_micros,
+                    "threshold": threshold,
+                }},
+            )
+
 
 def handle_charge_refunded(event):
     """Handle charge.refunded — deduct wallet for Stripe-initiated refund."""
@@ -229,6 +269,12 @@ def handle_charge_refunded(event):
     if not attempt:
         return
 
+    if not charge.amount_refunded:
+        logger.warning(
+            "Charge refunded with null/zero amount_refunded",
+            extra={"data": {"charge_id": charge_id}},
+        )
+        return
     refunded_micros = charge.amount_refunded * 10_000
 
     with transaction.atomic():

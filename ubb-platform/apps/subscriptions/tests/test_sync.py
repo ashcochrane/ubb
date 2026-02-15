@@ -1,4 +1,5 @@
 import pytest
+import stripe
 from unittest.mock import patch, MagicMock
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
@@ -124,3 +125,43 @@ class TestFullSync:
         assert sub.status == "active"
         assert sub.stripe_product_name == "Pro Plan"
         assert sub.amount_micros == 49_000_000
+
+    def test_sync_handles_stripe_api_error(self):
+        from apps.subscriptions.stripe.sync import sync_subscriptions
+
+        tenant = Tenant.objects.create(
+            name="test",
+            products=["metering", "subscriptions"],
+            stripe_connected_account_id="acct_api_err",
+        )
+
+        with patch("apps.subscriptions.stripe.sync.stripe") as mock_stripe:
+            mock_stripe.Subscription.list.side_effect = stripe.error.APIError(
+                "Internal server error"
+            )
+            mock_stripe.error = stripe.error
+
+            result = sync_subscriptions(tenant)
+
+        assert result["errors"] == 1
+        assert result["synced"] == 0
+
+    def test_sync_handles_stripe_auth_error(self):
+        from apps.subscriptions.stripe.sync import sync_subscriptions
+
+        tenant = Tenant.objects.create(
+            name="test",
+            products=["metering", "subscriptions"],
+            stripe_connected_account_id="acct_auth_err",
+        )
+
+        with patch("apps.subscriptions.stripe.sync.stripe") as mock_stripe:
+            mock_stripe.Subscription.list.side_effect = stripe.error.AuthenticationError(
+                "Invalid API Key"
+            )
+            mock_stripe.error = stripe.error
+
+            result = sync_subscriptions(tenant)
+
+        assert result["errors"] == 1
+        assert result["synced"] == 0

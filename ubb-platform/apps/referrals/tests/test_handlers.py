@@ -152,6 +152,38 @@ class TestUsageRecordedHandler:
         assert acc.total_earned_micros == 150_000  # Capped
 
     @patch("apps.platform.events.tasks.process_single_event")
+    def test_cap_enforcement_under_lock(self, mock_task):
+        """Cap check uses select_for_update to prevent over-cap payouts."""
+        tenant, _, referred, referral = self._setup(
+            "revenue_share", 0.10,
+            snapshot_max_reward_micros=120_000,
+        )
+
+        # First event: 10% of 1M = 100K (within 120K cap)
+        handle_usage_recorded_referrals("evt-outbox-cap-1", {
+            "tenant_id": str(tenant.id),
+            "customer_id": str(referred.id),
+            "cost_micros": 1_000_000,
+            "event_type": "api_call",
+            "event_id": "evt-cap-1",
+        })
+
+        acc = ReferralRewardAccumulator.objects.get(referral=referral)
+        assert acc.total_earned_micros == 100_000
+
+        # Second event: would be 100K but only 20K remaining under cap
+        handle_usage_recorded_referrals("evt-outbox-cap-2", {
+            "tenant_id": str(tenant.id),
+            "customer_id": str(referred.id),
+            "cost_micros": 1_000_000,
+            "event_type": "api_call",
+            "event_id": "evt-cap-2",
+        })
+
+        acc.refresh_from_db()
+        assert acc.total_earned_micros == 120_000  # Capped at 120K, not 200K
+
+    @patch("apps.platform.events.tasks.process_single_event")
     def test_profit_share_with_raw_cost(self, mock_task):
         tenant, _, referred, referral = self._setup("profit_share", 0.50)
 

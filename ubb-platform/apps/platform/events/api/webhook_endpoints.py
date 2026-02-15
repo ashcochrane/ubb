@@ -1,12 +1,14 @@
-from ninja import NinjaAPI, Schema
+from ninja import NinjaAPI, Schema, Field
+from ninja.errors import HttpError
 
 from core.auth import ApiKeyAuth
+from core.url_validation import validate_webhook_url
 from apps.platform.events.webhook_models import TenantWebhookConfig
 
 
 class WebhookConfigCreateRequest(Schema):
-    url: str
-    secret: str
+    url: str = Field(max_length=500)
+    secret: str = Field(min_length=32, max_length=255)
     event_types: list[str] = []
     is_active: bool = True
 
@@ -24,6 +26,11 @@ webhook_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_webhooks_v1")
 
 @webhook_api.post("/configs", response={201: WebhookConfigResponse})
 def create_webhook_config(request, payload: WebhookConfigCreateRequest):
+    try:
+        validate_webhook_url(payload.url)
+    except ValueError as e:
+        raise HttpError(400, str(e))
+
     config = TenantWebhookConfig.objects.create(
         tenant=request.auth.tenant,
         url=payload.url,

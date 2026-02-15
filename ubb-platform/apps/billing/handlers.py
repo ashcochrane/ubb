@@ -48,6 +48,7 @@ def handle_usage_recorded_billing(event_id, payload):
                 balance_after_micros=wallet.balance_micros,
                 description=f"Usage: {payload.get('event_id', '')}",
                 reference_id=payload.get("event_id", ""),
+                idempotency_key=f"usage_deduction:{event_id}",
             )
 
             # Check min balance threshold and suspend if needed

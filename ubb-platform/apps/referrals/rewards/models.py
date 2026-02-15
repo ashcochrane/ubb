@@ -15,6 +15,8 @@ class ReferralRewardAccumulator(BaseModel):
     total_earned_micros = models.BigIntegerField(default=0)
     total_referred_spend_micros = models.BigIntegerField(default=0)
     event_count = models.IntegerField(default=0)
+    last_payout_at = models.DateTimeField(null=True, blank=True)
+    last_payout_amount_micros = models.BigIntegerField(default=0)
 
     class Meta:
         app_label = "referrals"
@@ -52,6 +54,12 @@ class ReferralRewardLedger(BaseModel):
             models.Index(
                 fields=["referral", "period_start"],
                 name="idx_rwdledger_ref_period",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["referral", "period_start"],
+                name="uq_rwdledger_referral_period",
             ),
         ]
 

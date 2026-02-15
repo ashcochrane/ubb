@@ -73,7 +73,9 @@ class TestPreCheckNoBilling(unittest.TestCase):
         self.assertIsInstance(result, PreCheckResult)
         self.assertTrue(result.allowed)
         self.assertEqual(result.balance_micros, 10_000_000)
-        client.billing.pre_check.assert_called_once_with("cust_1")
+        client.billing.pre_check.assert_called_once_with(
+            "cust_1", start_run=False, run_metadata=None, external_run_id="",
+        )
         client.close()
 
     def test_widget_secret_and_tenant_id_preserved(self):
@@ -97,7 +99,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         self.client.close()
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request")
+    @patch.object(MeteringClient, "_request_usage")
     def test_record_usage_delegates_to_metering_no_double_debit(self, mock_met_request, mock_bill_request):
         """record_usage delegates to metering only — wallet deduction is
         handled server-side via the billing outbox handler, NOT by the SDK."""
@@ -124,7 +126,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         # billing.debit must NOT be called — server handles deduction
         mock_bill_request.assert_not_called()
 
-    @patch.object(MeteringClient, "_request")
+    @patch.object(MeteringClient, "_request_usage")
     def test_record_usage_metering_only_no_debit_when_no_billing(self, mock_met_request):
         """When billing is not enabled, record_usage only calls metering."""
         client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
@@ -145,7 +147,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         client.close()
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request")
+    @patch.object(MeteringClient, "_request_usage")
     def test_record_usage_no_debit_when_billed_cost_is_zero(self, mock_met_request, mock_bill_request):
         """When billing is enabled but billed_cost is 0, no debit call."""
         mock_met_request.return_value = MagicMock(
@@ -164,7 +166,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         self.assertIsNone(result.balance_after_micros)
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request")
+    @patch.object(MeteringClient, "_request_usage")
     def test_record_usage_no_debit_when_billed_cost_is_none(self, mock_met_request, mock_bill_request):
         """When billing is enabled but billed_cost is None, no debit call."""
         mock_met_request.return_value = MagicMock(

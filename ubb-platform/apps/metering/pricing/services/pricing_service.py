@@ -82,6 +82,7 @@ class PricingService:
 
         for metric_name, units in usage_metrics.items():
             rate = PricingService._find_rate(
+                tenant=tenant,
                 provider=provider,
                 event_type=event_type,
                 metric_name=metric_name,
@@ -140,6 +141,7 @@ class PricingService:
 
     @staticmethod
     def _find_rate(
+        tenant,
         provider: str,
         event_type: str,
         metric_name: str,
@@ -148,6 +150,7 @@ class PricingService:
     ) -> Optional[ProviderRate]:
         """Find best matching ProviderRate using dimension matching."""
         rates = ProviderRate.objects.filter(
+            tenant=tenant,
             provider=provider,
             event_type=event_type,
             metric_name=metric_name,

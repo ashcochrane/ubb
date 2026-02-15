@@ -4,7 +4,10 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
-from apps.metering.queries import get_period_totals, get_customer_usage_for_period
+from apps.metering.queries import (
+    get_period_totals, get_customer_usage_for_period,
+    get_usage_event_cost, get_revenue_analytics,
+)
 
 
 class GetPeriodTotalsTest(TestCase):
@@ -100,3 +103,87 @@ class GetCustomerUsageForPeriodTest(TestCase):
             self.tenant.id, self.customer.id, self.start, self.end,
         )
         self.assertEqual(events, [])
+
+
+class GetUsageEventCostTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+
+    def test_returns_cost_micros(self):
+        event = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1", cost_micros=1_000_000,
+        )
+        self.assertEqual(get_usage_event_cost(event.id), 1_000_000)
+
+    def test_prefers_billed_cost(self):
+        event = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            cost_micros=1_000_000, billed_cost_micros=1_500_000,
+        )
+        self.assertEqual(get_usage_event_cost(event.id), 1_500_000)
+
+    def test_returns_none_for_missing_event(self):
+        import uuid
+        self.assertIsNone(get_usage_event_cost(uuid.uuid4()))
+
+
+class GetRevenueAnalyticsTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+
+    def test_returns_totals_and_daily(self):
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            cost_micros=1_000_000, billed_cost_micros=1_200_000,
+            provider_cost_micros=800_000,
+        )
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r2", idempotency_key="i2",
+            cost_micros=2_000_000, billed_cost_micros=2_500_000,
+            provider_cost_micros=1_500_000,
+        )
+        result = get_revenue_analytics(self.tenant.id)
+        self.assertEqual(result["total_provider_cost_micros"], 2_300_000)
+        self.assertEqual(result["total_billed_cost_micros"], 3_700_000)
+        self.assertEqual(result["total_markup_micros"], 1_400_000)
+        self.assertEqual(len(result["daily"]), 1)
+        self.assertEqual(result["daily"][0]["event_count"], 2)
+
+    def test_returns_zeros_for_no_events(self):
+        result = get_revenue_analytics(self.tenant.id)
+        self.assertEqual(result["total_provider_cost_micros"], 0)
+        self.assertEqual(result["total_billed_cost_micros"], 0)
+        self.assertEqual(result["total_markup_micros"], 0)
+        self.assertEqual(result["daily"], [])
+
+    def test_filters_by_date_range(self):
+        from datetime import timedelta
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            cost_micros=1_000_000, provider_cost_micros=500_000,
+        )
+        result = get_revenue_analytics(self.tenant.id, start_date=today, end_date=today)
+        self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
+        # Exclude by filtering to yesterday only
+        result = get_revenue_analytics(self.tenant.id, start_date=yesterday, end_date=yesterday)
+        self.assertEqual(result["total_billed_cost_micros"], 0)
+
+    def test_markup_zero_when_no_provider_cost(self):
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            cost_micros=1_000_000,
+            provider_cost_micros=None,
+        )
+        result = get_revenue_analytics(self.tenant.id)
+        self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
+        self.assertEqual(result["total_markup_micros"], 0)

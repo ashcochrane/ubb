@@ -1,7 +1,11 @@
 import pytest
+from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+from django.db import IntegrityError
+
+from apps.referrals.rewards.models import ReferralRewardLedger
 from apps.referrals.rewards.services import RewardService
 
 
@@ -68,3 +72,43 @@ class TestRewardCalculation:
         ref = self._make_referral("unknown_type", 0.10)
         reward = RewardService.calculate_reward(ref, cost_micros=1_000_000)
         assert reward == 0
+
+
+@pytest.mark.django_db
+class TestReferralRewardLedgerConstraints:
+    def test_duplicate_ledger_entry_raises_integrity_error(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.referrals.models import Referral, Referrer
+
+        tenant = Tenant.objects.create(name="Test", products=["metering"])
+        referrer_customer = Customer.objects.create(tenant=tenant, external_id="referrer")
+        referred_customer = Customer.objects.create(tenant=tenant, external_id="referred")
+        referrer = Referrer.objects.create(tenant=tenant, customer=referrer_customer)
+        referral = Referral.objects.create(
+            tenant=tenant,
+            referrer=referrer,
+            referred_customer=referred_customer,
+            referral_code_used=referrer.referral_code,
+            snapshot_reward_type="revenue_share",
+            snapshot_reward_value=Decimal("0.10"),
+        )
+
+        ReferralRewardLedger.objects.create(
+            referral=referral,
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 2, 1),
+            referred_spend_micros=1_000_000,
+            reward_micros=100_000,
+            calculation_method="actual_cost",
+        )
+
+        with pytest.raises(IntegrityError):
+            ReferralRewardLedger.objects.create(
+                referral=referral,
+                period_start=date(2026, 1, 1),
+                period_end=date(2026, 3, 1),
+                referred_spend_micros=2_000_000,
+                reward_micros=200_000,
+                calculation_method="actual_cost",
+            )

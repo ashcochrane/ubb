@@ -1,5 +1,6 @@
 import logging
 
+from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
@@ -53,45 +54,60 @@ def handle_usage_recorded_referrals(event_id, payload):
     if reward_micros <= 0:
         return
 
-    # Check cap
-    if referral.snapshot_max_reward_micros is not None:
-        try:
-            acc = referral.reward_accumulator
-        except ReferralRewardAccumulator.DoesNotExist:
-            acc = ReferralRewardAccumulator.objects.create(referral=referral)
-
-        remaining = referral.snapshot_max_reward_micros - acc.total_earned_micros
-        if remaining <= 0:
-            return
-        reward_micros = min(reward_micros, remaining)
-
-    # Atomic increment
+    # Check cap and accumulate under lock to prevent over-cap payouts
     from django.db import IntegrityError
 
-    rows = ReferralRewardAccumulator.objects.filter(
-        referral=referral,
-    ).update(
-        total_earned_micros=F("total_earned_micros") + reward_micros,
-        total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
-        event_count=F("event_count") + 1,
-    )
+    if referral.snapshot_max_reward_micros is not None:
+        with transaction.atomic():
+            acc = ReferralRewardAccumulator.objects.select_for_update().filter(
+                referral=referral,
+            ).first()
+            if acc is None:
+                try:
+                    acc = ReferralRewardAccumulator.objects.create(referral=referral)
+                except IntegrityError:
+                    acc = ReferralRewardAccumulator.objects.select_for_update().get(
+                        referral=referral,
+                    )
 
-    if rows == 0:
-        try:
-            ReferralRewardAccumulator.objects.create(
-                referral=referral,
-                total_earned_micros=reward_micros,
-                total_referred_spend_micros=cost_micros,
-                event_count=1,
-            )
-        except IntegrityError:
-            ReferralRewardAccumulator.objects.filter(
-                referral=referral,
-            ).update(
-                total_earned_micros=F("total_earned_micros") + reward_micros,
-                total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
-                event_count=F("event_count") + 1,
-            )
+            remaining = referral.snapshot_max_reward_micros - acc.total_earned_micros
+            if remaining <= 0:
+                return
+            reward_micros = min(reward_micros, remaining)
+
+            acc.total_earned_micros += reward_micros
+            acc.total_referred_spend_micros += cost_micros
+            acc.event_count += 1
+            acc.save(update_fields=[
+                "total_earned_micros", "total_referred_spend_micros",
+                "event_count", "updated_at",
+            ])
+    else:
+        # No cap — use atomic F() increment (no lock needed)
+        rows = ReferralRewardAccumulator.objects.filter(
+            referral=referral,
+        ).update(
+            total_earned_micros=F("total_earned_micros") + reward_micros,
+            total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
+            event_count=F("event_count") + 1,
+        )
+
+        if rows == 0:
+            try:
+                ReferralRewardAccumulator.objects.create(
+                    referral=referral,
+                    total_earned_micros=reward_micros,
+                    total_referred_spend_micros=cost_micros,
+                    event_count=1,
+                )
+            except IntegrityError:
+                ReferralRewardAccumulator.objects.filter(
+                    referral=referral,
+                ).update(
+                    total_earned_micros=F("total_earned_micros") + reward_micros,
+                    total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
+                    event_count=F("event_count") + 1,
+                )
 
     # Mark flat fee as paid
     if referral.snapshot_reward_type == "flat_fee":

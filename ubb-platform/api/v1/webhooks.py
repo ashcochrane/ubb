@@ -185,14 +185,15 @@ def handle_invoice_paid(event):
         if tenant_invoice.status == "paid":
             return
 
-        now = timezone.now()
-        TenantInvoice.objects.filter(
-            id=tenant_invoice.id,
-        ).exclude(status="paid").update(
-            status="paid",
-            paid_at=now,
-            updated_at=now,
-        )
+        with transaction.atomic():
+            tenant_invoice = TenantInvoice.objects.select_for_update().get(
+                id=tenant_invoice.id,
+            )
+            if tenant_invoice.status == "paid":
+                return
+            tenant_invoice.status = "paid"
+            tenant_invoice.paid_at = timezone.now()
+            tenant_invoice.save(update_fields=["status", "paid_at", "updated_at"])
 
 
 WEBHOOK_HANDLERS = {

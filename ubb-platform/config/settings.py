@@ -84,6 +84,7 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -105,12 +106,28 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Redis / Celery
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
 
+# Cache (Redis-backed — required for cross-process rate limiting and dispatch caching)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    }
+}
+
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+
+# Celery safety defaults
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_TASK_TIME_LIMIT = 600          # 10 min hard kill
+CELERY_TASK_SOFT_TIME_LIMIT = 300     # 5 min SoftTimeLimitExceeded
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 
 from kombu import Queue
 
@@ -183,6 +200,14 @@ CELERY_BEAT_SCHEDULE = {
     "close-abandoned-runs": {
         "task": "apps.platform.runs.tasks.close_abandoned_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
+    },
+    "flush-api-key-last-used": {
+        "task": "core.tasks.flush_api_key_last_used",
+        "schedule": crontab(minute="*/5"),
+    },
+    "cleanup-webhook-delivery-attempts": {
+        "task": "apps.platform.events.tasks_webhook_cleanup.cleanup_webhook_delivery_attempts",
+        "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
 }
 

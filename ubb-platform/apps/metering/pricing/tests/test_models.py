@@ -9,7 +9,9 @@ from apps.platform.tenants.models import Tenant
 
 class ProviderRateTests(TestCase):
     def setUp(self):
+        self.tenant = Tenant.objects.create(name="Test Tenant")
         self.rate = ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="openai",
             event_type="llm_call",
             metric_name="input_tokens",
@@ -27,6 +29,7 @@ class ProviderRateTests(TestCase):
     def test_calculate_cost_micros_round_half_up(self):
         """Verify round-half-up: exact midpoint rounds up."""
         rate = ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="openai",
             event_type="llm_call",
             metric_name="output_tokens",
@@ -49,6 +52,7 @@ class ProviderRateTests(TestCase):
     def test_dimensions_hash_empty_dict(self):
         """Empty dimensions should still produce a valid hash."""
         rate = ProviderRate.objects.create(
+            tenant=self.tenant,
             provider="anthropic",
             event_type="llm_call",
             metric_name="input_tokens",

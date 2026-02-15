@@ -182,6 +182,120 @@ class TestDeliverWebhook:
 
 
 @pytest.mark.django_db
+class TestWebhookTimeoutRetry:
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(self.tenant.id),
+        )
+
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_timeout_raises_for_retry(self, mock_client_class):
+        import httpx
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.side_effect = httpx.ReadTimeout("timeout")
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://slow.example.com/hook",
+            secret="test-secret",
+            event_types=[],
+        )
+
+        with pytest.raises(httpx.ReadTimeout):
+            deliver_webhook(self.event)
+
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_timeout_records_delivery_attempt_before_raising(self, mock_client_class):
+        import httpx
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.side_effect = httpx.ConnectTimeout("connect timeout")
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://slow.example.com/hook",
+            secret="test-secret",
+            event_types=[],
+        )
+
+        with pytest.raises(httpx.ConnectTimeout):
+            deliver_webhook(self.event)
+
+        # Delivery attempt should have been saved before raising
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is False
+        assert "connect timeout" in attempt.error_message
+
+
+@pytest.mark.django_db
+class TestWebhookNetworkErrorRetry:
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(self.tenant.id),
+        )
+
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_connection_error_raises_for_retry(self, mock_client_class):
+        """Non-timeout network errors (ConnectError) should re-raise for Celery retry."""
+        import httpx
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.side_effect = httpx.ConnectError("Connection refused")
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=[],
+        )
+
+        with pytest.raises(httpx.ConnectError):
+            deliver_webhook(self.event)
+
+        # Attempt should still be saved before re-raising
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is False
+
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_non_network_error_swallowed(self, mock_client_class):
+        """Non-network errors (e.g. ValueError) should be swallowed, not re-raised."""
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.side_effect = ValueError("bad data")
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=[],
+        )
+
+        # Should not raise
+        deliver_webhook(self.event)
+
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        assert WebhookDeliveryAttempt.objects.first().success is False
+
+
+@pytest.mark.django_db
 class TestHandleWebhookDelivery:
     def test_handles_missing_event(self):
         from apps.platform.events.webhooks import handle_webhook_delivery
@@ -204,7 +318,7 @@ class TestWebhookConfigAPI:
             data=json.dumps(
                 {
                     "url": "https://example.com/hook",
-                    "secret": "my-secret",
+                    "secret": "a" * 32,
                     "event_types": ["usage.recorded"],
                 }
             ),

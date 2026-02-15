@@ -22,10 +22,20 @@ def handle_subscription_created(event):
     stripe_sub = event.data.object
     connected_account = event.account
 
-    customer = Customer.objects.get(
-        stripe_customer_id=stripe_sub.customer,
-        tenant__stripe_connected_account_id=connected_account,
-    )
+    try:
+        customer = Customer.objects.get(
+            stripe_customer_id=stripe_sub.customer,
+            tenant__stripe_connected_account_id=connected_account,
+        )
+    except Customer.DoesNotExist:
+        logger.warning(
+            "Subscription created for unknown customer",
+            extra={"data": {
+                "stripe_customer_id": stripe_sub.customer,
+                "connected_account": connected_account,
+            }},
+        )
+        raise  # Re-raise so webhook framework retries
 
     StripeSubscription.objects.get_or_create(
         stripe_subscription_id=stripe_sub.id,
@@ -89,6 +99,7 @@ def handle_invoice_paid(event):
             extra={"data": {
                 "stripe_invoice_id": invoice.id,
                 "stripe_subscription_id": invoice.subscription,
+                "connected_account": event.account,
             }},
         )
         raise  # Re-raise so webhook framework retries

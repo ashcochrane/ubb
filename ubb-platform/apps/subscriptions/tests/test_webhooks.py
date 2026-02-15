@@ -179,3 +179,35 @@ class TestHandleInvoicePaid:
         handle_invoice_paid(event)
 
         assert SubscriptionInvoice.objects.count() == 0
+
+    def test_invoice_paid_raises_on_missing_subscription(self):
+        from apps.subscriptions.api.webhooks import handle_invoice_paid
+        from apps.subscriptions.models import StripeSubscription
+
+        event = MagicMock()
+        event.account = "acct_unknown"
+        event.data.object.id = "in_missing_sub"
+        event.data.object.subscription = "sub_nonexistent"
+
+        with pytest.raises(StripeSubscription.DoesNotExist):
+            handle_invoice_paid(event)
+
+
+@pytest.mark.django_db
+class TestSubscriptionCreatedUnknownCustomer:
+    def test_subscription_created_raises_on_unknown_customer(self):
+        from apps.subscriptions.api.webhooks import handle_subscription_created
+
+        Tenant.objects.create(
+            name="test",
+            products=["metering", "subscriptions"],
+            stripe_connected_account_id="acct_no_cust",
+        )
+
+        event = MagicMock()
+        event.account = "acct_no_cust"
+        event.data.object.id = "sub_unknown"
+        event.data.object.customer = "cus_nonexistent"
+
+        with pytest.raises(Customer.DoesNotExist):
+            handle_subscription_created(event)

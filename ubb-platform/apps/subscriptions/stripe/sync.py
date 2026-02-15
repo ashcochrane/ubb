@@ -37,11 +37,17 @@ def sync_subscriptions(tenant):
         )
     }
 
-    subscriptions = stripe.Subscription.list(
-        status="all",
-        stripe_account=tenant.stripe_connected_account_id,
-        expand=["data.plan.product"],
-    )
+    try:
+        subscriptions = stripe.Subscription.list(
+            status="all",
+            stripe_account=tenant.stripe_connected_account_id,
+            expand=["data.plan.product"],
+        )
+    except stripe.error.StripeError:
+        logger.exception("Stripe API error during subscription sync", extra={
+            "data": {"tenant_id": str(tenant.id)},
+        })
+        return {"synced": 0, "skipped": 0, "errors": 1}
 
     synced = 0
     skipped = 0

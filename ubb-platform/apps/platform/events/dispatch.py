@@ -4,6 +4,7 @@ Dispatch outbox events to registered handlers with idempotency and product gatin
 import logging
 
 from django.core.cache import cache
+from django.db import IntegrityError
 
 from apps.platform.events.models import HandlerCheckpoint
 from apps.platform.events.registry import handler_registry
@@ -18,7 +19,16 @@ def _tenant_has_product(tenant_id, product):
     if products is None:
         from apps.platform.tenants.models import Tenant
 
-        tenant = Tenant.objects.get(id=tenant_id)
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            logger.warning(
+                "tenant.not_found_in_dispatch",
+                extra={"data": {"tenant_id": str(tenant_id)}},
+            )
+            products = []
+            cache.set(cache_key, products, timeout=300)
+            return False
         products = tenant.products
         cache.set(cache_key, products, timeout=300)
     return product in products
@@ -60,7 +70,13 @@ def dispatch_to_handlers(event, registry=None):
         handler_fn(str(event.id), event.payload)
 
         # Record checkpoint
-        HandlerCheckpoint.objects.create(
-            outbox_event=event,
-            handler_name=handler_name,
-        )
+        try:
+            HandlerCheckpoint.objects.create(
+                outbox_event=event,
+                handler_name=handler_name,
+            )
+        except IntegrityError:
+            logger.info(
+                "handler.checkpoint_race",
+                extra={"data": {"handler": handler_name, "event_id": str(event.id)}},
+            )

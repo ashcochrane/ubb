@@ -32,7 +32,7 @@ class TenantBillingPeriod(BaseModel):
         db_index=True,
     )
     total_usage_cost_micros = models.BigIntegerField(default=0)
-    event_count = models.IntegerField(default=0)
+    event_count = models.BigIntegerField(default=0)
     platform_fee_micros = models.BigIntegerField(default=0)
 
     class Meta:

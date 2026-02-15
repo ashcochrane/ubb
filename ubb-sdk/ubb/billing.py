@@ -86,11 +86,17 @@ class BillingClient:
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/balance")
         return BalanceResult(**r.json())
 
-    def pre_check(self, customer_id: str) -> dict:
+    def pre_check(self, customer_id: str, start_run: bool = False,
+                  run_metadata: dict | None = None, external_run_id: str = "") -> dict:
         """Pre-check billing via POST /api/v1/billing/pre-check."""
-        r = self._request("post", "/api/v1/billing/pre-check", json={
-            "customer_id": customer_id,
-        })
+        body: dict = {"customer_id": customer_id}
+        if start_run:
+            body["start_run"] = True
+        if run_metadata:
+            body["run_metadata"] = run_metadata
+        if external_run_id:
+            body["external_run_id"] = external_run_id
+        r = self._request("post", "/api/v1/billing/pre-check", json=body)
         return r.json()
 
     def create_top_up(self, customer_id: str, amount_micros: int,

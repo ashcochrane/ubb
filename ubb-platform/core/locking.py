@@ -1,7 +1,7 @@
 """
 Canonical lock ordering for the UBB platform.
 
-Lock order: Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
+Lock order: Run -> Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
 
 Product-specific lock helpers live in their respective apps:
 - apps/billing/locking.py: lock_for_billing, lock_top_up_attempt, lock_invoice

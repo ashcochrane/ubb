@@ -181,7 +181,7 @@ class BillingDebitEndpointTest(TestCase):
         body = response.json()
         from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(id=body["transaction_id"])
-        self.assertEqual(txn.transaction_type, "USAGE_DEDUCTION")
+        self.assertEqual(txn.transaction_type, "DEBIT")
         self.assertEqual(txn.amount_micros, -2_000_000)
         self.assertEqual(txn.reference_id, "evt_789")
         self.assertEqual(txn.description, "External debit")
@@ -352,6 +352,138 @@ class BillingCreditEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class DebitCreditHardeningTest(TestCase):
+    """Phase 2 hardening: lazy wallet creation, locking, idempotency."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Hardening Tenant", products=["billing"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def test_debit_creates_wallet_lazily(self):
+        """Debit creates wallet on-the-fly if none exists."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="no_wallet_debit"
+        )
+        # No wallet created — lock_for_billing will create one
+        response = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({
+                "customer_id": "no_wallet_debit",
+                "amount_micros": 1_000_000,
+                "reference": "ref_lazy",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Wallet.objects.filter(customer=customer).exists())
+
+    def test_credit_creates_wallet_lazily(self):
+        """Credit creates wallet on-the-fly if none exists."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="no_wallet_credit"
+        )
+        response = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({
+                "customer_id": "no_wallet_credit",
+                "amount_micros": 5_000_000,
+                "source": "promo",
+                "reference": "ref_lazy",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 200)
+        wallet = Wallet.objects.get(customer=customer)
+        self.assertEqual(wallet.balance_micros, 5_000_000)
+
+    def test_debit_idempotency_prevents_duplicate(self):
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="idemp_debit"
+        )
+        Wallet.objects.create(customer=customer, balance_micros=10_000_000)
+
+        payload = json.dumps({
+            "customer_id": "idemp_debit",
+            "amount_micros": 2_000_000,
+            "reference": "ref_1",
+            "idempotency_key": "debit_idem_1",
+        })
+        resp1 = self.http_client.post(
+            "/api/v1/billing/debit", data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        resp2 = self.http_client.post(
+            "/api/v1/billing/debit", data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp2.status_code, 200)
+        # Same transaction ID returned
+        self.assertEqual(resp1.json()["transaction_id"], resp2.json()["transaction_id"])
+        # Only debited once
+        wallet = Wallet.objects.get(customer=customer)
+        self.assertEqual(wallet.balance_micros, 8_000_000)
+
+    def test_credit_idempotency_prevents_duplicate(self):
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="idemp_credit"
+        )
+        Wallet.objects.create(customer=customer, balance_micros=0)
+
+        payload = json.dumps({
+            "customer_id": "idemp_credit",
+            "amount_micros": 3_000_000,
+            "source": "promo",
+            "reference": "ref_1",
+            "idempotency_key": "credit_idem_1",
+        })
+        resp1 = self.http_client.post(
+            "/api/v1/billing/credit", data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        resp2 = self.http_client.post(
+            "/api/v1/billing/credit", data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp1.json()["transaction_id"], resp2.json()["transaction_id"])
+        wallet = Wallet.objects.get(customer=customer)
+        self.assertEqual(wallet.balance_micros, 3_000_000)
+
+    def test_debit_under_lock(self):
+        """Verify debit creates a proper WalletTransaction with lock_for_billing."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, external_id="lock_debit"
+        )
+        Wallet.objects.create(customer=customer, balance_micros=5_000_000)
+
+        response = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({
+                "customer_id": "lock_debit",
+                "amount_micros": 1_000_000,
+                "reference": "ref_lock",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 200)
+        from apps.billing.wallets.models import WalletTransaction
+        txn = WalletTransaction.objects.get(wallet__customer=customer)
+        self.assertEqual(txn.transaction_type, "DEBIT")
+        self.assertEqual(txn.balance_after_micros, 4_000_000)
 
 
 class WithdrawOutboxEventTest(TestCase):

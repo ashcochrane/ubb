@@ -7,6 +7,11 @@ from core.models import BaseModel
 
 
 class ProviderRate(BaseModel):
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="provider_rates",
+    )
     provider = models.CharField(max_length=100, db_index=True)
     event_type = models.CharField(max_length=100, db_index=True)
     metric_name = models.CharField(max_length=100, db_index=True)
@@ -20,6 +25,19 @@ class ProviderRate(BaseModel):
 
     class Meta:
         db_table = "ubb_provider_rate"
+        indexes = [
+            models.Index(
+                fields=["tenant", "provider", "event_type", "metric_name"],
+                name="idx_provrate_tenant_lookup",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "provider", "event_type", "metric_name", "dimensions_hash"],
+                condition=models.Q(valid_to__isnull=True),
+                name="uq_provrate_active_per_tenant",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         canonical = json.dumps(self.dimensions, sort_keys=True)
@@ -46,6 +64,12 @@ class TenantMarkup(BaseModel):
 
     class Meta:
         db_table = "ubb_tenant_markup"
+        indexes = [
+            models.Index(
+                fields=["tenant", "event_type", "provider"],
+                name="idx_markup_tenant_lookup",
+            ),
+        ]
 
     def calculate_markup_micros(self, provider_cost_micros: int) -> int:
         """Calculate markup with round-half-up on the percentage portion."""

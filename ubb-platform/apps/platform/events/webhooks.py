@@ -71,9 +71,25 @@ def _deliver_to_config(config, event):
         attempt.success = 200 <= response.status_code < 300
         if not attempt.success:
             attempt.error_message = response.text[:500]
+    except httpx.TimeoutException as e:
+        attempt.success = False
+        attempt.error_message = str(e)[:500]
+        attempt.save()
+        logger.warning(
+            "webhook.delivery_timeout",
+            extra={
+                "data": {
+                    "config_id": str(config.id),
+                    "event_id": str(event.id),
+                    "error": str(e)[:200],
+                }
+            },
+        )
+        raise  # Re-raise for Celery retry
     except Exception as e:
         attempt.success = False
         attempt.error_message = str(e)[:500]
+        attempt.save()
         logger.warning(
             "webhook.delivery_failed",
             extra={
@@ -84,6 +100,10 @@ def _deliver_to_config(config, event):
                 }
             },
         )
+        # Re-raise network errors for Celery retry; swallow only non-network issues
+        if isinstance(e, (httpx.HTTPError, OSError)):
+            raise
+        return
 
     attempt.save()
 

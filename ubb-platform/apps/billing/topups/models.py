@@ -48,6 +48,7 @@ class TopUpAttempt(BaseModel):
     )
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True, null=True)
     stripe_checkout_session_id = models.CharField(max_length=255, blank=True, null=True)
+    stripe_charge_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     failure_reason = models.JSONField(null=True, blank=True)
 
     class Meta:

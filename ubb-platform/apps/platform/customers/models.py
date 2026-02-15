@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
@@ -43,13 +43,14 @@ class Customer(SoftDeleteMixin, BaseModel):
 
     def soft_delete(self):
         """Soft delete customer and emit outbox event for product cleanup."""
-        super().soft_delete()
-        from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import CustomerDeleted
-        write_event(CustomerDeleted(
-            tenant_id=str(self.tenant_id),
-            customer_id=str(self.id),
-        ))
+        with transaction.atomic():
+            super().soft_delete()
+            from apps.platform.events.outbox import write_event
+            from apps.platform.events.schemas import CustomerDeleted
+            write_event(CustomerDeleted(
+                tenant_id=str(self.tenant_id),
+                customer_id=str(self.id),
+            ))
 
     def __str__(self):
         return f"Customer({self.external_id})"

@@ -94,6 +94,71 @@ class TestBillingOutboxHandler:
         period = TenantBillingPeriod.objects.get(tenant=tenant)
         assert period.total_usage_cost_micros == 5_000_000
 
+    def test_usage_deduction_idempotency_key(self):
+        """WalletTransaction should have idempotency_key based on outbox event ID."""
+        from apps.billing.handlers import handle_usage_recorded_billing
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 10_000_000
+        wallet.save(update_fields=["balance_micros"])
+
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": str(uuid.uuid4()),
+                "cost_micros": 500_000,
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        txn = WalletTransaction.objects.get(wallet=wallet)
+        assert txn.idempotency_key is not None
+        assert txn.idempotency_key.startswith("usage_deduction:")
+
+    def test_usage_deduction_replay_no_double_deduct(self):
+        """Replaying the same outbox event must not create a second deduction."""
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from django.db import IntegrityError
+
+        tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test",
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="ext1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 10_000_000
+        wallet.save(update_fields=["balance_micros"])
+
+        event_uuid = str(uuid.uuid4())
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={
+                "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id),
+                "event_id": event_uuid,
+                "cost_micros": 500_000,
+            },
+            tenant_id=tenant.id,
+        )
+
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+        # Simulate replay with same event_id
+        with pytest.raises(IntegrityError):
+            handle_usage_recorded_billing(str(event.id), event.payload)
+
+        txn_count = WalletTransaction.objects.filter(wallet=wallet).count()
+        assert txn_count == 1
+
     def test_skips_deduction_for_zero_cost(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 

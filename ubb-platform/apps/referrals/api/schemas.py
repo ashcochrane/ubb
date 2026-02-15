@@ -1,19 +1,19 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from ninja import Schema
+from ninja import Schema, Field
 
 
 # ---- Program ----
 
 class ProgramCreateRequest(Schema):
-    reward_type: str  # flat_fee, revenue_share, profit_share
-    reward_value: float  # micros for flat_fee, decimal for share types
-    attribution_window_days: int = 30
-    reward_window_days: Optional[int] = None
-    max_reward_micros: Optional[int] = None
-    estimated_cost_percentage: Optional[float] = None
-    max_referrals_per_day: Optional[int] = None
-    min_customer_age_hours: Optional[int] = None
+    reward_type: Literal["flat_fee", "revenue_share", "profit_share"]
+    reward_value: float = Field(gt=0, le=100_000_000_000)
+    attribution_window_days: int = Field(default=30, ge=1, le=365)
+    reward_window_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    max_reward_micros: Optional[int] = Field(default=None, gt=0, le=999_999_999_999)
+    estimated_cost_percentage: Optional[float] = Field(default=None, ge=0, le=100)
+    max_referrals_per_day: Optional[int] = Field(default=None, ge=1, le=10000)
+    min_customer_age_hours: Optional[int] = Field(default=None, ge=0, le=8760)
 
 
 class ProgramUpdateRequest(Schema):

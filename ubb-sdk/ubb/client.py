@@ -4,9 +4,9 @@ from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
 from ubb.types import (
-    PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
-    UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult,
-    WalletTransaction, PaginatedResponse,
+    PreCheckResult, RecordUsageResult, CloseRunResult, CustomerResult,
+    BalanceResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
+    RefundResult, WalletTransaction, PaginatedResponse,
 )
 
 
@@ -106,33 +106,67 @@ class UBBClient:
 
     # ---- orchestrated methods ----
 
-    def pre_check(self, customer_id: str) -> PreCheckResult:
+    def pre_check(self, customer_id: str, start_run: bool = False,
+                  run_metadata: dict | None = None,
+                  external_run_id: str = "") -> PreCheckResult:
         """Pre-check whether a request should proceed.
 
         If billing is enabled, delegates to billing pre-check which checks
         customer status, rate limits, and wallet balance vs arrears threshold.
         If billing is not enabled, returns trivially allowed.
+
+        If start_run=True and the check passes, a Run is created server-side
+        and its ID is returned in the result.
         """
         if self.billing:
-            check = self.billing.pre_check(customer_id)
+            check = self.billing.pre_check(
+                customer_id,
+                start_run=start_run,
+                run_metadata=run_metadata,
+                external_run_id=external_run_id,
+            )
             return PreCheckResult(
                 allowed=check.get("allowed", check.get("can_proceed", True)),
                 can_proceed=check.get("can_proceed", check.get("allowed", True)),
                 balance_micros=check.get("balance_micros"),
+                run_id=check.get("run_id"),
+                cost_limit_micros=check.get("cost_limit_micros"),
+                hard_stop_balance_micros=check.get("hard_stop_balance_micros"),
             )
 
         return PreCheckResult(allowed=True, can_proceed=True)
+
+    def start_run(self, customer_id: str, metadata: dict | None = None,
+                  external_run_id: str = "") -> PreCheckResult:
+        """Start a run: pre-check + create a Run if allowed.
+
+        Convenience wrapper around pre_check(start_run=True).
+        Requires billing product.
+        """
+        self._require_billing()
+        return self.pre_check(
+            customer_id,
+            start_run=True,
+            run_metadata=metadata,
+            external_run_id=external_run_id,
+        )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
                      cost_micros: int | None = None, metadata: dict | None = None,
                      event_type: str | None = None, provider: str | None = None,
                      usage_metrics: dict | None = None, properties: dict | None = None,
-                     group_keys: dict | None = None) -> RecordUsageResult:
+                     group_keys: dict | None = None,
+                     run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via metering.
 
         Delegates to metering.record_usage(). Wallet deduction is handled
         server-side via the billing outbox handler — the SDK does NOT call
         billing.debit() to avoid double-debit.
+
+        If run_id is provided, the event is associated with the run and
+        the run's hard stop limits are checked. Raises UBBHardStopError
+        if the run exceeds its limits (the run is automatically killed).
+        Raises UBBRunNotActiveError if the run is already killed/completed.
         """
         metering = self._require_metering()
 
@@ -147,7 +181,12 @@ class UBBClient:
             usage_metrics=usage_metrics,
             properties=properties,
             group_keys=group_keys,
+            run_id=run_id,
         )
+
+    def close_run(self, run_id: str) -> CloseRunResult:
+        """Close (complete) a run. Requires metering product."""
+        return self._require_metering().close_run(run_id)
 
     # ---- platform-level methods (use metering's HTTP client) ----
 

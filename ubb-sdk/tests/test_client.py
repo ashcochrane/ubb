@@ -46,11 +46,13 @@ class UBBClientTest(unittest.TestCase):
         })
         result = self.client.pre_check(customer_id="cust_123")
         self.assertTrue(result.allowed)
-        self.client.billing.pre_check.assert_called_once_with("cust_123")
+        self.client.billing.pre_check.assert_called_once_with(
+            "cust_123", start_run=False, run_metadata=None, external_run_id="",
+        )
 
     # --- record_usage (delegates to metering) ---
 
-    @patch.object(MeteringClient, "_request")
+    @patch.object(MeteringClient, "_request_usage")
     def test_record_usage(self, mock_met_request):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {

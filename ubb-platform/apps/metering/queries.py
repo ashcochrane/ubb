@@ -9,13 +9,14 @@ HTTP calls. All callers remain untouched.
 
 Consumers:
 - apps/billing/tenant_billing/services.py → get_period_totals()
+- api/v1/billing_endpoints.py → get_revenue_analytics()
 - apps/referrals/rewards/reconciliation.py → get_customer_usage_for_period()
 """
 from datetime import date
 from typing import TypedDict
 
 from django.db.models import Sum, Count
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncDate
 
 
 class PeriodTotals(TypedDict):
@@ -66,6 +67,66 @@ def get_usage_event_cost(usage_event_id: str, tenant_id: str | None = None) -> i
         Coalesce("billed_cost_micros", "cost_micros"), flat=True
     ).first()
     return event
+
+
+class RevenueAnalytics(TypedDict):
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    total_markup_micros: int
+    daily: list[dict]
+
+
+def get_revenue_analytics(
+    tenant_id: str, start_date: date = None, end_date: date = None,
+) -> RevenueAnalytics:
+    """Get revenue analytics with totals and daily breakdown.
+
+    Returns dict with total provider/billed/markup costs and a daily
+    list of dicts with day, provider_cost_micros, billed_cost_micros,
+    event_count.
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lte=end_date)
+
+    totals = qs.aggregate(
+        total_provider_cost_micros=Sum("provider_cost_micros"),
+        total_billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+    )
+
+    provider_cost = totals["total_provider_cost_micros"] or 0
+    billed_cost = totals["total_billed_cost_micros"] or 0
+
+    daily = list(
+        qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
+            provider_cost_micros=Sum("provider_cost_micros"),
+            billed_cost_micros=Sum(Coalesce("billed_cost_micros", "cost_micros")),
+            event_count=Count("id"),
+        ).order_by("day")
+    )
+
+    for entry in daily:
+        if entry.get("day"):
+            entry["day"] = entry["day"].isoformat()
+
+    # provider_cost == 0 is valid (free provider); None means no provider cost data.
+    raw_provider = totals["total_provider_cost_micros"]
+    if raw_provider is not None:
+        markup = billed_cost - provider_cost
+    else:
+        markup = 0
+
+    return {
+        "total_provider_cost_micros": provider_cost,
+        "total_billed_cost_micros": billed_cost,
+        "total_markup_micros": markup,
+        "daily": daily,
+    }
 
 
 def get_customer_usage_for_period(
