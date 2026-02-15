@@ -2,12 +2,21 @@ from ninja import NinjaAPI, Schema, Field
 from pydantic import field_validator
 from typing import Optional
 
+from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
-from apps.customers.models import TopUpAttempt
-from apps.stripe_integration.services.stripe_service import StripeService
-from apps.usage.models import Invoice
+from apps.billing.topups.models import TopUpAttempt
+from apps.billing.connectors.stripe.stripe_api import create_checkout_session
+from apps.billing.invoicing.models import Invoice
 
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
+
+_billing_check = ProductAccess("billing")
+
+
+def _check_billing_product(request):
+    """Bridge widget auth (widget_tenant) to ProductAccess (tenant)."""
+    request.tenant = request.widget_tenant
+    _billing_check(request)
 
 
 class BalanceResponse(Schema):
@@ -63,17 +72,29 @@ class PaginatedInvoices(Schema):
 
 @me_api.get("/balance", response=BalanceResponse)
 def get_balance(request):
+    _check_billing_product(request)
     customer = request.widget_customer
-    wallet = customer.wallet
-    return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+    except Wallet.DoesNotExist:
+        return {"balance_micros": 0, "currency": "USD"}
 
 
 @me_api.get("/transactions", response=PaginatedTransactions)
 def get_transactions(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 
-    qs = customer.wallet.transactions.all().order_by("-created_at", "-id")
+    from apps.billing.wallets.models import Wallet
+    try:
+        wallet = Wallet.objects.get(customer=customer)
+    except Wallet.DoesNotExist:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    qs = wallet.transactions.all().order_by("-created_at", "-id")
 
     if cursor:
         try:
@@ -111,28 +132,51 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 @me_api.post("/top-up", response=TopUpResponse)
 def create_top_up(request, payload: TopUpRequest):
+    _check_billing_product(request)
     customer = request.widget_customer
+    tenant = customer.tenant
 
-    if not customer.stripe_customer_id:
-        return me_api.create_response(request, {"error": "Customer has no stripe_customer_id"}, status=400)
+    if tenant.stripe_connected_account_id:
+        if not customer.stripe_customer_id:
+            return me_api.create_response(
+                request, {"error": "Customer has no stripe_customer_id"}, status=400
+            )
 
-    attempt = TopUpAttempt.objects.create(
-        customer=customer,
-        amount_micros=payload.amount_micros,
-        trigger="widget",
-        status="pending",
-    )
+        attempt = TopUpAttempt.objects.create(
+            customer=customer,
+            amount_micros=payload.amount_micros,
+            trigger="widget",
+            status="pending",
+        )
 
-    checkout_url = StripeService.create_checkout_session(
-        customer, payload.amount_micros, attempt,
-        success_url=payload.success_url,
-        cancel_url=payload.cancel_url,
-    )
-    return {"checkout_url": checkout_url}
+        checkout_url = create_checkout_session(
+            customer, payload.amount_micros, attempt,
+            success_url=payload.success_url,
+            cancel_url=payload.cancel_url,
+        )
+        return {"checkout_url": checkout_url}
+    else:
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import TopUpRequested
+
+        write_event(TopUpRequested(
+            tenant_id=str(tenant.id),
+            customer_id=str(customer.id),
+            amount_micros=payload.amount_micros,
+            trigger="widget",
+            success_url=getattr(payload, "success_url", "") or "",
+            cancel_url=getattr(payload, "cancel_url", "") or "",
+        ))
+        return me_api.create_response(
+            request,
+            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
+            status=202,
+        )
 
 
 @me_api.get("/invoices", response=PaginatedInvoices)
 def get_invoices(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
     customer = request.widget_customer
     limit = min(max(limit, 1), 100)
 

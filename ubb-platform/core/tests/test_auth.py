@@ -1,5 +1,5 @@
 from django.test import TestCase, RequestFactory
-from apps.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.auth import ApiKeyAuth
 
 

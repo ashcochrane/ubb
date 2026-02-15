@@ -8,6 +8,11 @@ from typing import Generic, TypeVar
 class PreCheckResult:
     allowed: bool
     reason: str | None = None
+    can_proceed: bool | None = None
+    balance_micros: int | None = None
+    run_id: str | None = None
+    cost_limit_micros: int | None = None
+    hard_stop_balance_micros: int | None = None
 
 @dataclass(frozen=True)
 class RecordUsageResult:
@@ -16,6 +21,17 @@ class RecordUsageResult:
     suspended: bool
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
+    balance_after_micros: int | None = None
+    run_id: str | None = None
+    run_total_cost_micros: int | None = None
+    hard_stop: bool = False
+
+@dataclass(frozen=True)
+class CloseRunResult:
+    run_id: str
+    status: str
+    total_cost_micros: int
+    event_count: int
 
 @dataclass(frozen=True)
 class CustomerResult:

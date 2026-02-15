@@ -28,14 +28,21 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     # UBB Apps
-    "apps.tenants",
-    "apps.customers",
-    "apps.usage",
-    "apps.pricing",
-    "apps.stripe_integration",
-    "apps.gating",
-    "apps.invoicing",
-    "apps.tenant_billing",
+    "apps.platform.tenants",
+    "apps.platform.customers",
+    "apps.platform.events",
+    "apps.platform.runs",
+    "apps.metering.usage",
+    "apps.metering.pricing",
+    "apps.billing.wallets",
+    "apps.billing.topups",
+    "apps.billing.stripe",
+    "apps.billing.gating",
+    "apps.billing.invoicing",
+    "apps.billing.tenant_billing",
+    "apps.billing.connectors.stripe",
+    "apps.subscriptions",
+    "apps.referrals",
 ]
 
 MIDDLEWARE = [
@@ -77,6 +84,7 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -98,12 +106,28 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Redis / Celery
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
 
+# Cache (Redis-backed — required for cross-process rate limiting and dispatch caching)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    }
+}
+
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+
+# Celery safety defaults
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_TASK_TIME_LIMIT = 600          # 10 min hard kill
+CELERY_TASK_SOFT_TIME_LIMIT = 300     # 5 min SoftTimeLimitExceeded
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 
 from kombu import Queue
 
@@ -112,44 +136,84 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_webhooks"),
     Queue("ubb_topups"),
     Queue("ubb_billing"),
+    Queue("ubb_events"),
+    Queue("ubb_economics"),
+    Queue("ubb_subscriptions"),
+    Queue("ubb_referrals"),
 ]
 
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
     "expire-stale-topup-attempts": {
-        "task": "apps.customers.tasks.expire_stale_topup_attempts",
+        "task": "apps.billing.topups.tasks.expire_stale_topup_attempts",
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
     },
     "reconcile-wallet-balances": {
-        "task": "apps.customers.tasks.reconcile_wallet_balances",
+        "task": "apps.billing.wallets.tasks.reconcile_wallet_balances",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "cleanup-webhook-events": {
-        "task": "apps.stripe_integration.tasks.cleanup_webhook_events",
+        "task": "apps.billing.stripe.tasks.cleanup_webhook_events",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
     "close-tenant-billing-periods": {
-        "task": "apps.tenant_billing.tasks.close_tenant_billing_periods",
+        "task": "apps.billing.tenant_billing.tasks.close_tenant_billing_periods",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),  # 1st of month 00:00 UTC
     },
     "generate-tenant-platform-invoices": {
-        "task": "apps.tenant_billing.tasks.generate_tenant_platform_invoices",
+        "task": "apps.billing.tenant_billing.tasks.generate_tenant_platform_invoices",
         "schedule": crontab(minute=0, hour=1, day_of_month=1),  # 1st of month 01:00 UTC
     },
     "reconcile-tenant-billing-periods": {
-        "task": "apps.tenant_billing.tasks.reconcile_tenant_billing_periods",
+        "task": "apps.billing.tenant_billing.tasks.reconcile_tenant_billing_periods",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
     "reconcile-missing-receipts": {
-        "task": "apps.invoicing.tasks.reconcile_missing_receipts",
+        "task": "apps.billing.invoicing.tasks.reconcile_missing_receipts",
         "schedule": crontab(minute=30, hour="*/1"),  # Every hour at :30
+    },
+    "sweep-outbox": {
+        "task": "apps.platform.events.tasks.sweep_outbox",
+        "schedule": crontab(minute="*/1"),
+    },
+    "cleanup-outbox": {
+        "task": "apps.platform.events.tasks.cleanup_outbox",
+        "schedule": crontab(minute=0, hour=4),
+    },
+    "calculate-all-economics": {
+        "task": "apps.subscriptions.tasks.calculate_all_economics_task",
+        "schedule": crontab(minute=0, hour=2),  # Daily at 2 AM UTC
+    },
+    "reconcile-all-referrals": {
+        "task": "apps.referrals.tasks.reconcile_all_referrals_task",
+        "schedule": crontab(minute=0, hour=5),  # Daily at 5 AM UTC
+    },
+    "reconcile-topups-with-stripe": {
+        "task": "apps.billing.connectors.stripe.tasks.reconcile_topups_with_stripe",
+        "schedule": crontab(minute=0, hour=6),  # Daily at 6 AM UTC
+    },
+    "emit-referral-payouts": {
+        "task": "apps.referrals.tasks.emit_referral_payouts_task",
+        "schedule": crontab(minute=0, hour=4),  # Daily at 4 AM UTC
+    },
+    "close-abandoned-runs": {
+        "task": "apps.platform.runs.tasks.close_abandoned_runs",
+        "schedule": crontab(minute="*/15"),  # Every 15 minutes
+    },
+    "flush-api-key-last-used": {
+        "task": "core.tasks.flush_api_key_last_used",
+        "schedule": crontab(minute="*/5"),
+    },
+    "cleanup-webhook-delivery-attempts": {
+        "task": "apps.platform.events.tasks_webhook_cleanup.cleanup_webhook_delivery_attempts",
+        "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
 }
 
 # UBB Platform Settings
-UBB_ARREARS_DEFAULT_THRESHOLD = int(
-    os.environ.get("UBB_ARREARS_DEFAULT_THRESHOLD", "5000000")
+UBB_MIN_BALANCE_DEFAULT = int(
+    os.environ.get("UBB_MIN_BALANCE_DEFAULT", "0")
 )
 UBB_INVOICE_PERIOD_DAYS = int(os.environ.get("UBB_INVOICE_PERIOD_DAYS", "7"))
 UBB_PLATFORM_FEE_PERCENTAGE = float(

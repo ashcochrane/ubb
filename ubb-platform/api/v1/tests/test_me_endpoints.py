@@ -1,7 +1,8 @@
 import json
 from django.test import TestCase, Client
-from apps.tenants.models import Tenant
-from apps.customers.models import Customer, WalletTransaction
+from apps.platform.tenants.models import Tenant
+from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet, WalletTransaction
 from core.widget_auth import create_widget_token
 
 
@@ -9,13 +10,15 @@ class WidgetBalanceTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        self.customer.wallet.balance_micros = 50_000_000
-        self.customer.wallet.save()
+        self.wallet = Wallet.objects.create(customer=self.customer)
+        self.wallet.balance_micros = 50_000_000
+        self.wallet.save()
         self.token = create_widget_token(
             self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
         )
@@ -50,12 +53,13 @@ class WidgetTransactionsTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        wallet = self.customer.wallet
+        wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
         for i in range(3):
@@ -84,7 +88,8 @@ class WidgetTopUpTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1",
@@ -102,3 +107,41 @@ class WidgetTopUpTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
         self.assertEqual(response.status_code, 422)
+
+
+class WidgetProductGatingTest(TestCase):
+    """Tenants without billing product get 403 on widget endpoints."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Metering Only", stripe_connected_account_id="acct_test",
+            products=["metering"],
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_gate"
+        )
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
+        )
+
+    def test_tenant_without_billing_gets_403_on_widget_balance(self):
+        response = self.http_client.get(
+            "/api/v1/me/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_tenant_without_billing_gets_403_on_widget_transactions(self):
+        response = self.http_client.get(
+            "/api/v1/me/transactions",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_tenant_without_billing_gets_403_on_widget_invoices(self):
+        response = self.http_client.get(
+            "/api/v1/me/invoices",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 403)

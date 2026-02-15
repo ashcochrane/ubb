@@ -42,7 +42,7 @@ def verify_widget_token(token):
             return None
 
         # Step 3: look up tenant
-        from apps.tenants.models import Tenant
+        from apps.platform.tenants.models import Tenant
         try:
             tenant = Tenant.objects.get(id=tenant_id, is_active=True)
         except Tenant.DoesNotExist:
@@ -66,7 +66,7 @@ class WidgetJWTAuth(HttpBearer):
         if payload is None:
             return None
 
-        from apps.customers.models import Customer
+        from apps.platform.customers.models import Customer
         try:
             customer = Customer.objects.select_related("tenant").get(
                 id=payload["sub"],
