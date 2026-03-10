@@ -8,45 +8,30 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService
 from apps.billing.wallets.models import Wallet
+from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.metering.pricing.models import ProviderRate, TenantMarkup
 
 
 class MeteringProductGatingTest(TestCase):
     def setUp(self):
         self.http_client = Client()
-        self.tenant_no_metering = Tenant.objects.create(
-            name="No Metering", products=["billing"]
+        self.tenant_metering_only = Tenant.objects.create(
+            name="Metering Only", products=["metering"]
         )
-        self.key_obj_no, self.raw_key_no = TenantApiKey.create_key(
-            self.tenant_no_metering, label="test"
-        )
-        self.tenant_with_metering = Tenant.objects.create(
-            name="Has Metering", products=["metering"]
-        )
-        self.key_obj_yes, self.raw_key_yes = TenantApiKey.create_key(
-            self.tenant_with_metering, label="test"
+        self.key_obj_met, self.raw_key_met = TenantApiKey.create_key(
+            self.tenant_metering_only, label="test"
         )
         self.customer = Customer.objects.create(
-            tenant=self.tenant_with_metering, external_id="cust_met1"
+            tenant=self.tenant_metering_only, external_id="cust_met1"
         )
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
 
-    def test_tenant_without_metering_gets_403_on_usage(self):
-        customer = Customer.objects.create(
-            tenant=self.tenant_no_metering, external_id="cust_no_met"
-        )
-        response = self.http_client.post(
-            "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(customer.id),
-                "request_id": "req_gate_1",
-                "idempotency_key": "idem_gate_1",
-                "cost_micros": 1_000_000,
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
+    def test_metering_only_tenant_gets_403_on_billing_balance(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
         self.assertEqual(response.status_code, 403)
 
@@ -62,27 +47,24 @@ class MeteringProductGatingTest(TestCase):
                 "metadata": {"model": "gpt-4"},
             }),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIsNone(body["new_balance_micros"])
         self.assertIn("event_id", body)
 
-    def test_tenant_without_metering_gets_403_on_usage_history(self):
-        customer = Customer.objects.create(
-            tenant=self.tenant_no_metering, external_id="cust_no_met2"
-        )
+    def test_metering_only_tenant_gets_403_on_billing_transactions(self):
         response = self.http_client.get(
-            f"/api/v1/metering/customers/{customer.id}/usage",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
+            f"/api/v1/billing/customers/{self.customer.id}/transactions",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
         self.assertEqual(response.status_code, 403)
 
     def test_tenant_with_metering_can_get_usage_history(self):
         response = self.http_client.get(
             f"/api/v1/metering/customers/{self.customer.id}/usage",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -254,6 +236,11 @@ class MeteringRunEndpointTest(TestCase):
             run_cost_limit_micros=10_000_000,
             hard_stop_balance_micros=-5_000_000,
         )
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant,
+            run_cost_limit_micros=10_000_000,
+            hard_stop_balance_micros=-5_000_000,
+        )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_run_met"
@@ -292,7 +279,8 @@ class MeteringRunEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_hard_stop_returns_429(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
         )
         # First event under limit
         resp = self._record(
@@ -399,13 +387,10 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.assertEqual(body["total_events"], 3)
         self.assertEqual(body["total_billed_cost_micros"], 3_000_000)
 
-    def test_usage_analytics_requires_metering_product(self):
-        tenant_no_metering = Tenant.objects.create(
-            name="No Metering", products=["billing"]
-        )
-        _, raw_key = TenantApiKey.create_key(tenant_no_metering, label="test")
+    def test_metering_only_tenant_gets_403_on_billing_balance(self):
+        """Metering-only tenant cannot access billing endpoints."""
         response = self.http_client.get(
-            "/api/v1/metering/analytics/usage",
-            HTTP_AUTHORIZATION=f"Bearer {raw_key}",
+            f"/api/v1/billing/customers/{self.customer.id}/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)

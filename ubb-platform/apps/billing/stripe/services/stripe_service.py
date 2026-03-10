@@ -38,6 +38,11 @@ def stripe_call(fn, *, retryable=False, idempotency_key=None, max_retries=3, **k
     - retryable=True + no key: forced to non-retryable (safety)
     - Maps Stripe exceptions to domain exceptions
     """
+    if not settings.STRIPE_SECRET_KEY:
+        raise StripeFatalError(
+            "STRIPE_SECRET_KEY is not configured. "
+            "Set it in the environment to enable Stripe operations."
+        )
     if retryable and not idempotency_key:
         retryable = False
 
@@ -113,11 +118,14 @@ class StripeService:
         """
         Create a Stripe invoice for the platform fee billed directly to the tenant.
 
-        Uses tenant.stripe_customer_id (tenant as UBB's customer on UBB's Stripe account).
+        Uses BillingTenantConfig.stripe_customer_id (tenant as UBB's customer).
         NOT on the connected account — this is UBB billing the tenant.
         auto_advance=False until items attached, then finalize explicitly.
         """
-        if not tenant.stripe_customer_id:
+        from apps.billing.queries import get_billing_config
+        billing_config = get_billing_config(tenant.id)
+
+        if not billing_config.stripe_customer_id:
             raise StripeFatalError(
                 f"Tenant {tenant.id} has no stripe_customer_id for platform billing"
             )
@@ -131,7 +139,7 @@ class StripeService:
             stripe.Invoice.create,
             retryable=True,
             idempotency_key=f"platform-invoice-{billing_period.id}",
-            customer=tenant.stripe_customer_id,
+            customer=billing_config.stripe_customer_id,
             auto_advance=False,
             collection_method="charge_automatically",
         )
@@ -140,7 +148,7 @@ class StripeService:
             stripe.InvoiceItem.create,
             retryable=True,
             idempotency_key=f"platform-item-{billing_period.id}",
-            customer=tenant.stripe_customer_id,
+            customer=billing_config.stripe_customer_id,
             invoice=invoice.id,
             amount=amount_cents,
             currency="usd",

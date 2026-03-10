@@ -2,7 +2,7 @@ import pytest
 from decimal import Decimal
 from datetime import date
 from apps.platform.tenants.models import Tenant
-from apps.billing.tenant_billing.models import TenantBillingPeriod, ProductFeeConfig
+from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod, ProductFeeConfig
 from apps.billing.tenant_billing.services import TenantBillingService
 
 
@@ -87,6 +87,10 @@ class TestProductFeeCalculation:
     def test_falls_back_to_legacy_percentage_when_no_configs(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering"],
+            platform_fee_percentage=Decimal("1.5"),
+        )
+        BillingTenantConfig.objects.create(
+            tenant=tenant,
             platform_fee_percentage=Decimal("1.5"),
         )
         period = TenantBillingPeriod.objects.create(

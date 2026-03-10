@@ -11,7 +11,7 @@ class WidgetBalanceTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
-            products=["billing"],
+            products=["metering", "billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -54,7 +54,7 @@ class WidgetTransactionsTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
-            products=["billing"],
+            products=["metering", "billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -89,7 +89,7 @@ class WidgetTopUpTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
-            products=["billing"],
+            products=["metering", "billing"],
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1",

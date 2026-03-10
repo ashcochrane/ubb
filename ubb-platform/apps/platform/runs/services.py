@@ -33,17 +33,20 @@ class RunNotActive(Exception):
 class RunService:
 
     @staticmethod
-    def create_run(tenant, customer, balance_snapshot_micros, metadata=None, external_run_id=""):
-        """Create a Run, snapshotting the tenant's hard stop config and wallet balance.
+    def create_run(tenant, customer, balance_snapshot_micros,
+                   cost_limit_micros=None, hard_stop_balance_micros=None,
+                   metadata=None, external_run_id=""):
+        """Create a Run, snapshotting hard stop config and wallet balance.
 
+        Limits are passed explicitly by the caller (billing pre-check).
         Must be called inside @transaction.atomic.
         """
         return Run.objects.create(
             tenant=tenant,
             customer=customer,
             balance_snapshot_micros=balance_snapshot_micros,
-            cost_limit_micros=tenant.run_cost_limit_micros,
-            hard_stop_balance_micros=tenant.hard_stop_balance_micros,
+            cost_limit_micros=cost_limit_micros,
+            hard_stop_balance_micros=hard_stop_balance_micros,
             metadata=metadata or {},
             external_run_id=external_run_id,
         )

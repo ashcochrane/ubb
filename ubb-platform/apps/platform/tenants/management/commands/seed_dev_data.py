@@ -47,6 +47,19 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Created tenant: {tenant.name}")
 
+        # Create or update billing config for this tenant
+        from apps.billing.tenant_billing.models import BillingTenantConfig
+        billing_config, bc_created = BillingTenantConfig.objects.get_or_create(
+            tenant=tenant,
+            defaults={
+                "platform_fee_percentage": Decimal(options["platform_fee"]),
+            },
+        )
+        if not bc_created:
+            billing_config.platform_fee_percentage = Decimal(options["platform_fee"])
+            billing_config.save(update_fields=["platform_fee_percentage", "updated_at"])
+        self.stdout.write(f"{'Created' if bc_created else 'Updated'} billing config")
+
         # Create API key
         key_obj, raw_key = TenantApiKey.create_key(tenant, label="dev-seed")
         self.stdout.write(f"Created API key: {raw_key}")

@@ -5,7 +5,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.billing.wallets.models import Wallet, WalletTransaction
-from apps.billing.tenant_billing.models import TenantBillingPeriod
+from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod
 
 
 @pytest.mark.django_db
@@ -252,6 +252,10 @@ class TestBillingOutboxHandler:
             stripe_connected_account_id="acct_test",
             min_balance_micros=5_000_000,  # $5 threshold
         )
+        BillingTenantConfig.objects.create(
+            tenant=tenant,
+            min_balance_micros=5_000_000,
+        )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 0
@@ -430,6 +434,10 @@ class TestBillingHandlerEmitsCustomerSuspended:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
+            min_balance_micros=5_000_000,
+        )
+        BillingTenantConfig.objects.create(
+            tenant=tenant,
             min_balance_micros=5_000_000,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")

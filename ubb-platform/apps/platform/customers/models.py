@@ -35,12 +35,6 @@ class Customer(SoftDeleteMixin, BaseModel):
             ),
         ]
 
-    def get_min_balance(self):
-        """Return customer-level min balance or fall back to tenant default."""
-        if self.min_balance_micros is not None:
-            return self.min_balance_micros
-        return self.tenant.min_balance_micros
-
     def soft_delete(self):
         """Soft delete customer and emit outbox event for product cleanup."""
         with transaction.atomic():

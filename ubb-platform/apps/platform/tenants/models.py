@@ -48,9 +48,12 @@ class Tenant(BaseModel):
     def save(self, *args, **kwargs):
         if not self.widget_secret:
             self.widget_secret = secrets.token_urlsafe(48)
+        # Default to metering if no products set
+        if not self.products:
+            self.products = ["metering"]
         # Sort and deduplicate products
-        if self.products:
-            self.products = sorted(set(self.products))
+        self.products = sorted(set(self.products))
+        self.clean()
         super().save(*args, **kwargs)
         cache.delete(f"tenant_products:{self.id}")
 

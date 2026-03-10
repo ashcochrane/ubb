@@ -96,13 +96,13 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class TestBillingOnlyTenant(TestCase):
-    """Tenant with products=["billing"] can use billing endpoints but not metering."""
+class TestMeteringBillingTenant(TestCase):
+    """Tenant with products=["metering", "billing"] can use billing endpoints but not referrals/subscriptions."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Billing Only", products=["billing"]
+            name="Metering+Billing", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -152,23 +152,16 @@ class TestBillingOnlyTenant(TestCase):
         self.assertIn("data", body)
         self.assertIn("has_more", body)
 
-    def test_gets_403_on_metering_usage(self):
-        response = self.http_client.post(
-            "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(self.customer.id),
-                "request_id": "req_iso_2",
-                "idempotency_key": "idem_iso_2",
-                "cost_micros": 1_000_000,
-            }),
-            content_type="application/json",
+    def test_gets_403_on_referrals(self):
+        response = self.http_client.get(
+            "/api/v1/referrals/program",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_gets_403_on_metering_usage_history(self):
+    def test_gets_403_on_subscriptions(self):
         response = self.http_client.get(
-            f"/api/v1/metering/customers/{self.customer.id}/usage",
+            "/api/v1/subscriptions/economics",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)

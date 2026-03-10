@@ -395,7 +395,8 @@ class UsageServiceRunTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_hard_stop_raises_no_event_created(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
         )
         # Accumulate close to limit
         UsageService.record_usage(
@@ -434,7 +435,8 @@ class UsageServiceRunTest(TestCase):
     def test_record_usage_hard_stop_balance_floor(self, mock_process):
         # balance=3M, hard_stop_balance=-5M → can spend up to 8M
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=3_000_000
+            self.tenant, self.customer, balance_snapshot_micros=3_000_000,
+            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
         )
         UsageService.record_usage(
             tenant=self.tenant,
