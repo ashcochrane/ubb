@@ -223,6 +223,10 @@ class TestBillingOutboxHandler:
             stripe_connected_account_id="acct_test",
             min_balance_micros=1_000_000,  # $1 threshold
         )
+        BillingTenantConfig.objects.create(
+            tenant=tenant,
+            min_balance_micros=1_000_000,
+        )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 0  # zero balance
@@ -400,6 +404,10 @@ class TestBillingHandlerEmitsCustomerSuspended:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
+            min_balance_micros=1_000_000,
+        )
+        BillingTenantConfig.objects.create(
+            tenant=tenant,
             min_balance_micros=1_000_000,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")

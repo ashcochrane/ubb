@@ -37,7 +37,6 @@ class Command(BaseCommand):
             name=options["tenant_name"],
             defaults={
                 "stripe_connected_account_id": options["stripe_account"],
-                "platform_fee_percentage": Decimal(options["platform_fee"]),
             },
         )
         if not created:
