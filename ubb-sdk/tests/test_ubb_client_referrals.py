@@ -6,6 +6,7 @@ class TestUBBClientReferrals:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
             metering=True,
             referrals=True,
         )
@@ -18,6 +19,7 @@ class TestUBBClientReferrals:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
             metering=True,
             referrals=False,
         )
@@ -28,6 +30,7 @@ class TestUBBClientReferrals:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
         )
         assert client.referrals is None
         client.close()

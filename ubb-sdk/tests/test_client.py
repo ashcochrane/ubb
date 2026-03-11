@@ -24,6 +24,7 @@ class UBBClientTest(unittest.TestCase):
     def setUp(self):
         self.client = UBBClient(api_key="ubb_live_test123",
                                 base_url="http://localhost:8001",
+                                max_retries=0,
                                 metering=True, billing=True)
 
     def tearDown(self):
@@ -33,7 +34,7 @@ class UBBClientTest(unittest.TestCase):
 
     def test_pre_check_metering_only_no_event_type(self):
         """Without event_type and no billing, pre_check returns trivially allowed."""
-        client = UBBClient(api_key="test", metering=True, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
         result = client.pre_check(customer_id="cust_123")
         self.assertTrue(result.allowed)
         self.assertTrue(result.can_proceed)
@@ -96,7 +97,7 @@ class UBBClientTest(unittest.TestCase):
     # --- Billing-required methods raise UBBError when billing disabled ---
 
     def test_get_balance_raises_without_billing(self):
-        client = UBBClient(api_key="test", metering=True, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
         with self.assertRaises(UBBError):
             client.get_balance("c1")
         client.close()
@@ -163,11 +164,11 @@ class UBBClientTest(unittest.TestCase):
         self.assertIsInstance(result, AutoTopUpResult)
         self.assertEqual(result.status, "enabled")
 
-    # --- withdraw (delegates to billing.debit) ---
+    # --- withdraw (delegates to billing.withdraw) ---
 
     def test_withdraw(self):
-        self.client.billing.debit = MagicMock(
-            return_value={"transaction_id": "txn_1", "new_balance_micros": 5000000}
+        self.client.billing.withdraw = MagicMock(
+            return_value=WithdrawResult(transaction_id="txn_1", balance_micros=5000000)
         )
         result = self.client.withdraw(customer_id="c1", amount_micros=10_000,
                                       idempotency_key="w1")
@@ -175,11 +176,11 @@ class UBBClientTest(unittest.TestCase):
         self.assertEqual(result.transaction_id, "txn_1")
         self.assertEqual(result.balance_micros, 5000000)
 
-    # --- refund_usage (delegates to billing.credit) ---
+    # --- refund_usage (delegates to billing.refund) ---
 
     def test_refund_usage(self):
-        self.client.billing.credit = MagicMock(
-            return_value={"transaction_id": "ref_1", "new_balance_micros": 11000000}
+        self.client.billing.refund = MagicMock(
+            return_value=RefundResult(refund_id="ref_1", balance_micros=11000000)
         )
         result = self.client.refund_usage(
             customer_id="c1", usage_event_id="evt_1", idempotency_key="rf1", reason="mistake",

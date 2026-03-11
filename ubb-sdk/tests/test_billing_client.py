@@ -10,7 +10,7 @@ from ubb.types import BalanceResult, TopUpResult, WalletTransaction, PaginatedRe
 
 class BillingClientTest(unittest.TestCase):
     def setUp(self):
-        self.client = BillingClient(api_key="ubb_live_test123", base_url="http://localhost:8001")
+        self.client = BillingClient(api_key="ubb_live_test123", base_url="http://localhost:8001", max_retries=0)
 
     def tearDown(self):
         self.client.close()

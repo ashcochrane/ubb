@@ -2,11 +2,12 @@ import pytest
 import httpx
 from unittest.mock import patch
 from ubb.subscriptions import SubscriptionsClient
+from ubb.types import CustomerEconomics, SubscriptionResult, SubscriptionInvoice, PaginatedResponse
 
 
 class TestSubscriptionsClient:
     def test_sync_calls_subscriptions_endpoint(self):
-        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001", max_retries=0)
 
         with patch.object(client._http, "post") as mock_post:
             mock_post.return_value = httpx.Response(
@@ -19,7 +20,7 @@ class TestSubscriptionsClient:
             assert result["synced"] == 5
 
     def test_get_economics_calls_subscriptions_endpoint(self):
-        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001", max_retries=0)
 
         with patch.object(client._http, "get") as mock_get:
             mock_get.return_value = httpx.Response(200, json={
@@ -40,7 +41,7 @@ class TestSubscriptionsClient:
             assert "customers" in result
 
     def test_get_customer_economics(self):
-        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001", max_retries=0)
 
         with patch.object(client._http, "get") as mock_get:
             mock_get.return_value = httpx.Response(200, json={
@@ -54,10 +55,11 @@ class TestSubscriptionsClient:
             })
 
             result = client.get_customer_economics("cust-1")
-            assert result["gross_margin_micros"] == 29_000_000
+            assert isinstance(result, CustomerEconomics)
+            assert result.gross_margin_micros == 29_000_000
 
     def test_get_subscription(self):
-        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001", max_retries=0)
 
         with patch.object(client._http, "get") as mock_get:
             mock_get.return_value = httpx.Response(200, json={
@@ -74,10 +76,11 @@ class TestSubscriptionsClient:
             })
 
             result = client.get_subscription("cust-1")
-            assert result["status"] == "active"
+            assert isinstance(result, SubscriptionResult)
+            assert result.status == "active"
 
     def test_get_invoices(self):
-        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+        client = SubscriptionsClient(api_key="ubb_live_test", base_url="http://localhost:8001", max_retries=0)
 
         with patch.object(client._http, "get") as mock_get:
             mock_get.return_value = httpx.Response(200, json={
@@ -85,4 +88,5 @@ class TestSubscriptionsClient:
             })
 
             result = client.get_invoices("cust-1")
-            assert result["has_more"] is False
+            assert isinstance(result, PaginatedResponse)
+            assert result.has_more is False

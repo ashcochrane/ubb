@@ -5,8 +5,10 @@ import httpx
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
+from ubb.retry import request_with_retry
 from ubb.types import (
-    BalanceResult, TopUpResult, WalletTransaction, PaginatedResponse,
+    BalanceResult, TopUpResult, WithdrawResult, RefundResult,
+    RevenueAnalyticsResult, WalletTransaction, PaginatedResponse,
 )
 
 
@@ -14,8 +16,9 @@ class BillingClient:
     """Product-specific client for the UBB Billing API (/api/v1/billing/)."""
 
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
-                 timeout: float = 10.0) -> None:
+                 timeout: float = 10.0, max_retries: int = 3) -> None:
         self._base_url = base_url.rstrip("/")
+        self._max_retries = max_retries
         self._http = httpx.Client(
             base_url=self._base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -30,7 +33,7 @@ class BillingClient:
 
     # ---- internal request helper (same pattern as UBBClient) ----
 
-    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+    def _request_once(self, method: str, path: str, **kwargs) -> httpx.Response:
         try:
             response = getattr(self._http, method)(path, **kwargs)
         except httpx.TimeoutException as e:
@@ -43,8 +46,21 @@ class BillingClient:
         if response.status_code == 409:
             raise UBBConflictError(detail)
         if response.status_code >= 400:
-            raise UBBAPIError(response.status_code, detail)
+            err = UBBAPIError(response.status_code, detail)
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    err.retry_after = float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            raise err
         return response
+
+    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        return request_with_retry(
+            self._request_once, max_retries=self._max_retries,
+            method=method, path=path, **kwargs,
+        )
 
     @staticmethod
     def _extract_error_detail(response: httpx.Response) -> str:
@@ -121,6 +137,38 @@ class BillingClient:
         r = self._request("put", f"/api/v1/billing/customers/{customer_id}/auto-top-up", json=body)
         return r.json()
 
+    def withdraw(self, customer_id: str, amount_micros: int,
+                 idempotency_key: str, description: str = "") -> WithdrawResult:
+        """Withdraw from customer wallet via POST /api/v1/billing/customers/{customer_id}/withdraw."""
+        body: dict = {
+            "amount_micros": amount_micros,
+            "idempotency_key": idempotency_key,
+        }
+        if description:
+            body["description"] = description
+        r = self._request("post", f"/api/v1/billing/customers/{customer_id}/withdraw", json=body)
+        data = r.json()
+        return WithdrawResult(
+            transaction_id=data["transaction_id"],
+            balance_micros=data["balance_micros"],
+        )
+
+    def refund(self, customer_id: str, usage_event_id: str,
+               idempotency_key: str, reason: str = "") -> RefundResult:
+        """Refund a usage event via POST /api/v1/billing/customers/{customer_id}/refund."""
+        body: dict = {
+            "usage_event_id": usage_event_id,
+            "idempotency_key": idempotency_key,
+        }
+        if reason:
+            body["reason"] = reason
+        r = self._request("post", f"/api/v1/billing/customers/{customer_id}/refund", json=body)
+        data = r.json()
+        return RefundResult(
+            refund_id=data["refund_id"],
+            balance_micros=data["balance_micros"],
+        )
+
     def get_transactions(self, customer_id: str, cursor: str | None = None,
                          limit: int = 20) -> PaginatedResponse[WalletTransaction]:
         """Get transactions via GET /api/v1/billing/customers/{customer_id}/transactions."""
@@ -131,6 +179,17 @@ class BillingClient:
         body = r.json()
         txns = [WalletTransaction(**item) for item in body["data"]]
         return PaginatedResponse(data=txns, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+
+    def get_revenue_analytics(self, start_date: str | None = None,
+                              end_date: str | None = None) -> RevenueAnalyticsResult:
+        """Get revenue analytics via GET /api/v1/billing/analytics/revenue."""
+        params = {}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        r = self._request("get", "/api/v1/billing/analytics/revenue", params=params)
+        return RevenueAnalyticsResult(**r.json())
 
     def close(self) -> None:
         self._http.close()

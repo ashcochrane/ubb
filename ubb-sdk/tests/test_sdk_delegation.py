@@ -19,22 +19,22 @@ class TestLegacyHTTPRemoved:
     """Verify the legacy _http client and related methods are removed."""
 
     def test_no_http_client(self):
-        client = UBBClient(api_key="test")
+        client = UBBClient(api_key="test", max_retries=0)
         assert not hasattr(client, "_http")
         client.close()
 
     def test_no_request_method(self):
-        client = UBBClient(api_key="test")
+        client = UBBClient(api_key="test", max_retries=0)
         assert not hasattr(client, "_request")
         client.close()
 
     def test_no_extract_error_detail(self):
-        client = UBBClient(api_key="test")
+        client = UBBClient(api_key="test", max_retries=0)
         assert not hasattr(client, "_extract_error_detail")
         client.close()
 
     def test_no_billing_client_alias(self):
-        client = UBBClient(api_key="test", billing=True)
+        client = UBBClient(api_key="test", max_retries=0, billing=True)
         assert not hasattr(client, "billing_client")
         client.close()
 
@@ -43,7 +43,7 @@ class TestBillingDelegationRequiresBilling:
     """Methods that require billing raise UBBError when billing is disabled."""
 
     def setup_method(self):
-        self.client = UBBClient(api_key="test", metering=True, billing=False)
+        self.client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
 
     def teardown_method(self):
         self.client.close()
@@ -78,7 +78,7 @@ class TestMeteringDelegationRequiresMetering:
     """Methods that require metering raise UBBError when metering is disabled."""
 
     def setup_method(self):
-        self.client = UBBClient(api_key="test", metering=False, billing=True)
+        self.client = UBBClient(api_key="test", max_retries=0, metering=False, billing=True)
 
     def teardown_method(self):
         self.client.close()
@@ -111,7 +111,7 @@ class TestBillingDelegation:
     """Methods properly delegate to the billing product client."""
 
     def setup_method(self):
-        self.client = UBBClient(api_key="test", metering=True, billing=True)
+        self.client = UBBClient(api_key="test", max_retries=0, metering=True, billing=True)
 
     def teardown_method(self):
         self.client.close()
@@ -148,7 +148,7 @@ class TestMeteringDelegation:
     """Methods properly delegate to the metering product client."""
 
     def setup_method(self):
-        self.client = UBBClient(api_key="test", metering=True, billing=False)
+        self.client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
 
     def teardown_method(self):
         self.client.close()
@@ -167,7 +167,7 @@ class TestCreateCustomerDelegation:
     """create_customer uses metering._request to call the platform API."""
 
     def test_create_customer_uses_metering_request(self):
-        client = UBBClient(api_key="test", metering=True)
+        client = UBBClient(api_key="test", max_retries=0, metering=True)
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "id": "c1", "external_id": "ext1", "status": "active",
@@ -204,7 +204,7 @@ class TestCloseNoHTTP:
     """close() does not reference _http."""
 
     def test_close_only_closes_product_clients(self):
-        client = UBBClient(api_key="test", metering=True, billing=True,
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=True,
                            subscriptions=True, referrals=True)
         with patch.object(client.metering, "close") as m_close, \
              patch.object(client.billing, "close") as b_close, \
@@ -217,7 +217,7 @@ class TestCloseNoHTTP:
             r_close.assert_called_once()
 
     def test_close_with_none_clients_does_not_error(self):
-        client = UBBClient(api_key="test", metering=False, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=False, billing=False)
         client.close()  # Should not raise
 
 
@@ -226,7 +226,7 @@ class TestPreCheckWithoutEventType:
 
     def test_pre_check_metering_only_no_event_type(self):
         """With metering only, no event_type: trivially allowed."""
-        client = UBBClient(api_key="test", metering=True, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
         result = client.pre_check(customer_id="cust1")
         assert result.allowed is True
         assert result.can_proceed is True
@@ -234,7 +234,7 @@ class TestPreCheckWithoutEventType:
 
     def test_pre_check_with_billing_delegates(self):
         """With billing enabled, delegates to billing.pre_check."""
-        client = UBBClient(api_key="test", metering=True, billing=True)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=True)
         client.billing.pre_check = MagicMock(return_value={
             "allowed": True, "can_proceed": True, "balance_micros": 5_000_000,
         })
