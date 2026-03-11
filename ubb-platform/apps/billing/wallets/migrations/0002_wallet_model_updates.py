@@ -11,21 +11,23 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AlterField(
-            model_name='wallet',
-            name='deleted_at',
-            field=models.DateTimeField(blank=True, db_index=True, default=None, null=True),
-        ),
-        migrations.AlterField(
             model_name='wallettransaction',
             name='transaction_type',
             field=models.CharField(choices=[('TOP_UP', 'Top Up'), ('USAGE_DEDUCTION', 'Usage Deduction'), ('WITHDRAWAL', 'Withdrawal'), ('REFUND', 'Refund'), ('ADJUSTMENT', 'Adjustment'), ('DISPUTE_DEDUCTION', 'Dispute Deduction'), ('STRIPE_REFUND', 'Stripe Refund')], db_index=True, max_length=20),
         ),
-        migrations.AddIndex(
-            model_name='wallettransaction',
-            index=models.Index(fields=['wallet', 'created_at'], name='idx_wallet_txn_wallet_created'),
-        ),
-        migrations.AddConstraint(
-            model_name='wallettransaction',
-            constraint=models.UniqueConstraint(condition=models.Q(('idempotency_key__isnull', False)), fields=('wallet', 'idempotency_key'), name='uq_wallet_txn_idempotency'),
+        # Index and constraint already exist in DB from customers migrations.
+        # State-only operations to register them under the wallets app.
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AddIndex(
+                    model_name='wallettransaction',
+                    index=models.Index(fields=['wallet', 'created_at'], name='idx_wallet_txn_wallet_created'),
+                ),
+                migrations.AddConstraint(
+                    model_name='wallettransaction',
+                    constraint=models.UniqueConstraint(condition=models.Q(('idempotency_key__isnull', False)), fields=('wallet', 'idempotency_key'), name='uq_wallet_txn_idempotency'),
+                ),
+            ],
+            database_operations=[],
         ),
     ]

@@ -7,6 +7,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.billing.wallets.models import Wallet
+from apps.billing.tenant_billing.models import BillingTenantConfig
 
 
 class BillingProductGatingTest(TestCase):
@@ -19,7 +20,7 @@ class BillingProductGatingTest(TestCase):
             self.tenant_no_billing, label="test"
         )
         self.tenant_with_billing = Tenant.objects.create(
-            name="Has Billing", products=["billing"]
+            name="Has Billing", products=["metering", "billing"]
         )
         self.key_obj_yes, self.raw_key_yes = TenantApiKey.create_key(
             self.tenant_with_billing, label="test"
@@ -124,7 +125,7 @@ class BillingDebitEndpointTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Debit Tenant", products=["billing"]
+            name="Debit Tenant", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -202,7 +203,7 @@ class BillingDebitEndpointTest(TestCase):
     def test_debit_tenant_isolation(self):
         """Customer from another tenant should not be accessible."""
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", products=["billing"]
+            name="Other Tenant", products=["metering", "billing"]
         )
         other_key_obj, other_raw_key = TenantApiKey.create_key(other_tenant, label="test")
         response = self.http_client.post(
@@ -239,7 +240,7 @@ class BillingCreditEndpointTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Credit Tenant", products=["billing"]
+            name="Credit Tenant", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -319,7 +320,7 @@ class BillingCreditEndpointTest(TestCase):
     def test_credit_tenant_isolation(self):
         """Customer from another tenant should not be accessible."""
         other_tenant = Tenant.objects.create(
-            name="Other Tenant 2", products=["billing"]
+            name="Other Tenant 2", products=["metering", "billing"]
         )
         other_key_obj, other_raw_key = TenantApiKey.create_key(other_tenant, label="test")
         response = self.http_client.post(
@@ -360,7 +361,7 @@ class DebitCreditHardeningTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Hardening Tenant", products=["billing"]
+            name="Hardening Tenant", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
@@ -493,7 +494,7 @@ class WithdrawOutboxEventTest(TestCase):
         from apps.platform.events.models import OutboxEvent
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Withdraw Tenant", products=["billing"]
+            name="Withdraw Tenant", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -552,7 +553,12 @@ class PreCheckRunTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Run Tenant",
-            products=["billing"],
+            products=["metering", "billing"],
+            run_cost_limit_micros=10_000_000,
+            hard_stop_balance_micros=-5_000_000,
+        )
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant,
             run_cost_limit_micros=10_000_000,
             hard_stop_balance_micros=-5_000_000,
         )
@@ -612,7 +618,7 @@ class TopUpWithoutConnectorTest(TestCase):
         self.http_client = Client()
         # Tenant WITHOUT Stripe connector
         self.tenant = Tenant.objects.create(
-            name="No Stripe", products=["billing"],
+            name="No Stripe", products=["metering", "billing"],
             stripe_connected_account_id="",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
@@ -652,7 +658,7 @@ class TopUpWithConnectorTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Has Stripe", products=["billing"],
+            name="Has Stripe", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")

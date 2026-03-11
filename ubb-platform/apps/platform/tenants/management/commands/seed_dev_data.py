@@ -37,7 +37,6 @@ class Command(BaseCommand):
             name=options["tenant_name"],
             defaults={
                 "stripe_connected_account_id": options["stripe_account"],
-                "platform_fee_percentage": Decimal(options["platform_fee"]),
             },
         )
         if not created:
@@ -46,6 +45,19 @@ class Command(BaseCommand):
             self.stdout.write(f"Updated existing tenant: {tenant.name}")
         else:
             self.stdout.write(f"Created tenant: {tenant.name}")
+
+        # Create or update billing config for this tenant
+        from apps.billing.tenant_billing.models import BillingTenantConfig
+        billing_config, bc_created = BillingTenantConfig.objects.get_or_create(
+            tenant=tenant,
+            defaults={
+                "platform_fee_percentage": Decimal(options["platform_fee"]),
+            },
+        )
+        if not bc_created:
+            billing_config.platform_fee_percentage = Decimal(options["platform_fee"])
+            billing_config.save(update_fields=["platform_fee_percentage", "updated_at"])
+        self.stdout.write(f"{'Created' if bc_created else 'Updated'} billing config")
 
         # Create API key
         key_obj, raw_key = TenantApiKey.create_key(tenant, label="dev-seed")

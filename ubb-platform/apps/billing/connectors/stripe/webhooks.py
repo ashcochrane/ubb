@@ -242,7 +242,8 @@ def handle_charge_dispute_closed(event):
         )
 
         # Suspend customer if balance dropped below min_balance threshold
-        threshold = customer.get_min_balance()
+        from apps.billing.queries import get_customer_min_balance
+        threshold = get_customer_min_balance(customer.id, customer.tenant_id)
         if wallet.balance_micros < -threshold and customer.status == "active":
             customer.status = "suspended"
             customer.save(update_fields=["status", "updated_at"])

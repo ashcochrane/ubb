@@ -4,7 +4,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
-from apps.billing.wallets.models import Wallet
+from apps.billing.tenant_billing.models import BillingTenantConfig
+from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 
 
 class RiskServiceTest(TestCase):
@@ -59,9 +60,9 @@ class RiskServiceTest(TestCase):
 
     def test_affordability_allowed_within_min_balance(self):
         """Allow when balance >= -min_balance (custom threshold)."""
-        # Set a 5M min_balance on tenant so -3M >= -5M → allowed
-        self.tenant.min_balance_micros = 5_000_000
-        self.tenant.save(update_fields=["min_balance_micros", "updated_at"])
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant, min_balance_micros=5_000_000,
+        )
         Wallet.objects.create(customer=self.customer, balance_micros=-3_000_000)
         result = RiskService.check(self.customer)
         self.assertTrue(result["allowed"])
@@ -76,8 +77,9 @@ class RiskServiceTest(TestCase):
 
     def test_affordability_denied_no_wallet_zero_threshold(self):
         """No wallet (balance=0), zero threshold: balance(0) < -0 is false → allowed."""
-        self.customer.min_balance_micros = 0
-        self.customer.save()
+        CustomerBillingProfile.objects.create(
+            customer=self.customer, min_balance_micros=0,
+        )
         result = RiskService.check(self.customer)
         self.assertTrue(result["allowed"])
         self.assertEqual(result["balance_micros"], 0)
@@ -104,15 +106,16 @@ class RiskServiceRedisFailureTest(TestCase):
 
 class RiskServiceRunTest(TestCase):
     def setUp(self):
-        self.tenant = Tenant.objects.create(
-            name="Test",
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
-        )
+        self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="u1"
         )
         RiskConfig.objects.create(tenant=self.tenant)
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant,
+            run_cost_limit_micros=10_000_000,
+            hard_stop_balance_micros=-5_000_000,
+        )
 
     def test_check_with_create_run_returns_run_id(self):
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)

@@ -139,9 +139,10 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     tenant = request.auth.tenant
 
-    if tenant.stripe_connected_account_id:
+    from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
+    if get_tenant_stripe_account(tenant.id):
         # Stripe connector is active — create checkout session
-        if not customer.stripe_customer_id:
+        if not get_customer_stripe_id(customer.id):
             return billing_api.create_response(
                 request, {"error": "Customer has no stripe_customer_id"}, status=400
             )

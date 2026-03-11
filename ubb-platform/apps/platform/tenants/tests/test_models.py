@@ -36,10 +36,10 @@ class TenantModelTest(TestCase):
 
 
 class TenantProductsFieldTest(TestCase):
-    def test_products_default_is_empty_list(self):
+    def test_products_default_is_metering(self):
         tenant = Tenant.objects.create(name="Default Products")
         tenant.refresh_from_db()
-        self.assertEqual(tenant.products, [])
+        self.assertEqual(tenant.products, ["metering"])
 
     def test_products_single_product(self):
         tenant = Tenant.objects.create(name="Metering Only", products=["metering"])
