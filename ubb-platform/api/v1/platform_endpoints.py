@@ -9,6 +9,7 @@ from api.v1.pagination import apply_cursor_filter, encode_cursor
 from core.auth import ApiKeyAuth
 from core.clerk_auth import ClerkJWTAuth
 from apps.platform.customers.models import Customer
+from apps.billing.wallets.models import Wallet
 
 
 class CreateCustomerRequest(Schema):
@@ -170,3 +171,43 @@ def delete_customer(request, customer_id: str):
     )
     customer.soft_delete()
     return platform_api.create_response(request, "", status=204)
+
+
+@platform_api.get("/wallets")
+def list_wallets(request, max_balance_micros: int = None, cursor: str = None, limit: int = 50):
+    qs = Wallet.objects.filter(
+        customer__tenant=request.auth.tenant
+    ).select_related("customer").order_by("-created_at", "-id")
+
+    if max_balance_micros is not None:
+        qs = qs.filter(balance_micros__lte=max_balance_micros)
+
+    limit = min(max(limit, 1), 100)
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return platform_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    wallets = list(qs[:limit + 1])
+    has_more = len(wallets) > limit
+    wallets = wallets[:limit]
+
+    next_cursor = None
+    if has_more and wallets:
+        last = wallets[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [{
+            "id": str(w.id),
+            "customer_id": str(w.customer_id),
+            "customer_external_id": w.customer.external_id,
+            "balance_micros": w.balance_micros,
+            "currency": w.currency,
+            "created_at": w.created_at.isoformat(),
+        } for w in wallets],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
