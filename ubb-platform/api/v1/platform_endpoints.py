@@ -2,6 +2,7 @@ from django.db import IntegrityError
 from ninja import NinjaAPI, Schema
 
 from core.auth import ApiKeyAuth
+from core.clerk_auth import ClerkJWTAuth
 from apps.platform.customers.models import Customer
 
 
@@ -18,7 +19,7 @@ class CustomerResponse(Schema):
     status: str
 
 
-platform_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_platform_v1")
+platform_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_platform_v1")
 
 
 @platform_api.post("/customers", response={201: CustomerResponse, 409: dict})
