@@ -253,6 +253,9 @@ LOGGING = {
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
+# Clerk (dashboard auth)
+CLERK_ISSUER_URL = os.environ.get("CLERK_ISSUER_URL", "")
+
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors.split(",") if o.strip()]
