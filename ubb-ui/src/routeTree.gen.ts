@@ -12,6 +12,19 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedCustomersIndexRouteImport } from './routes/_authenticated/customers/index'
+import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_authenticated/settings/webhooks'
+import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings/team'
+import { Route as AuthenticatedSettingsStripeRouteImport } from './routes/_authenticated/settings/stripe'
+import { Route as AuthenticatedSettingsGeneralRouteImport } from './routes/_authenticated/settings/general'
+import { Route as AuthenticatedMeteringUsageRouteImport } from './routes/_authenticated/metering/usage'
+import { Route as AuthenticatedMeteringPricingRouteImport } from './routes/_authenticated/metering/pricing'
+import { Route as AuthenticatedMeteringAnalyticsRouteImport } from './routes/_authenticated/metering/analytics'
+import { Route as AuthenticatedCustomersCustomerIdRouteImport } from './routes/_authenticated/customers/$customerId'
+import { Route as AuthenticatedBillingWalletsRouteImport } from './routes/_authenticated/billing/wallets'
+import { Route as AuthenticatedBillingTransactionsRouteImport } from './routes/_authenticated/billing/transactions'
+import { Route as AuthenticatedBillingTopUpsRouteImport } from './routes/_authenticated/billing/top-ups'
+import { Route as AuthenticatedBillingInvoicesRouteImport } from './routes/_authenticated/billing/invoices'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -27,27 +40,191 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCustomersIndexRoute =
+  AuthenticatedCustomersIndexRouteImport.update({
+    id: '/customers/',
+    path: '/customers/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsWebhooksRoute =
+  AuthenticatedSettingsWebhooksRouteImport.update({
+    id: '/settings/webhooks',
+    path: '/settings/webhooks',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsTeamRoute =
+  AuthenticatedSettingsTeamRouteImport.update({
+    id: '/settings/team',
+    path: '/settings/team',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsStripeRoute =
+  AuthenticatedSettingsStripeRouteImport.update({
+    id: '/settings/stripe',
+    path: '/settings/stripe',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsGeneralRoute =
+  AuthenticatedSettingsGeneralRouteImport.update({
+    id: '/settings/general',
+    path: '/settings/general',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMeteringUsageRoute =
+  AuthenticatedMeteringUsageRouteImport.update({
+    id: '/metering/usage',
+    path: '/metering/usage',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMeteringPricingRoute =
+  AuthenticatedMeteringPricingRouteImport.update({
+    id: '/metering/pricing',
+    path: '/metering/pricing',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMeteringAnalyticsRoute =
+  AuthenticatedMeteringAnalyticsRouteImport.update({
+    id: '/metering/analytics',
+    path: '/metering/analytics',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCustomersCustomerIdRoute =
+  AuthenticatedCustomersCustomerIdRouteImport.update({
+    id: '/customers/$customerId',
+    path: '/customers/$customerId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBillingWalletsRoute =
+  AuthenticatedBillingWalletsRouteImport.update({
+    id: '/billing/wallets',
+    path: '/billing/wallets',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBillingTransactionsRoute =
+  AuthenticatedBillingTransactionsRouteImport.update({
+    id: '/billing/transactions',
+    path: '/billing/transactions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBillingTopUpsRoute =
+  AuthenticatedBillingTopUpsRouteImport.update({
+    id: '/billing/top-ups',
+    path: '/billing/top-ups',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedBillingInvoicesRoute =
+  AuthenticatedBillingInvoicesRouteImport.update({
+    id: '/billing/invoices',
+    path: '/billing/invoices',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/sign-in': typeof SignInRoute
+  '/billing/invoices': typeof AuthenticatedBillingInvoicesRoute
+  '/billing/top-ups': typeof AuthenticatedBillingTopUpsRoute
+  '/billing/transactions': typeof AuthenticatedBillingTransactionsRoute
+  '/billing/wallets': typeof AuthenticatedBillingWalletsRoute
+  '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/metering/analytics': typeof AuthenticatedMeteringAnalyticsRoute
+  '/metering/pricing': typeof AuthenticatedMeteringPricingRoute
+  '/metering/usage': typeof AuthenticatedMeteringUsageRoute
+  '/settings/general': typeof AuthenticatedSettingsGeneralRoute
+  '/settings/stripe': typeof AuthenticatedSettingsStripeRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/customers/': typeof AuthenticatedCustomersIndexRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/': typeof AuthenticatedIndexRoute
+  '/billing/invoices': typeof AuthenticatedBillingInvoicesRoute
+  '/billing/top-ups': typeof AuthenticatedBillingTopUpsRoute
+  '/billing/transactions': typeof AuthenticatedBillingTransactionsRoute
+  '/billing/wallets': typeof AuthenticatedBillingWalletsRoute
+  '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/metering/analytics': typeof AuthenticatedMeteringAnalyticsRoute
+  '/metering/pricing': typeof AuthenticatedMeteringPricingRoute
+  '/metering/usage': typeof AuthenticatedMeteringUsageRoute
+  '/settings/general': typeof AuthenticatedSettingsGeneralRoute
+  '/settings/stripe': typeof AuthenticatedSettingsStripeRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/customers': typeof AuthenticatedCustomersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/billing/invoices': typeof AuthenticatedBillingInvoicesRoute
+  '/_authenticated/billing/top-ups': typeof AuthenticatedBillingTopUpsRoute
+  '/_authenticated/billing/transactions': typeof AuthenticatedBillingTransactionsRoute
+  '/_authenticated/billing/wallets': typeof AuthenticatedBillingWalletsRoute
+  '/_authenticated/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/_authenticated/metering/analytics': typeof AuthenticatedMeteringAnalyticsRoute
+  '/_authenticated/metering/pricing': typeof AuthenticatedMeteringPricingRoute
+  '/_authenticated/metering/usage': typeof AuthenticatedMeteringUsageRoute
+  '/_authenticated/settings/general': typeof AuthenticatedSettingsGeneralRoute
+  '/_authenticated/settings/stripe': typeof AuthenticatedSettingsStripeRoute
+  '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/_authenticated/customers/': typeof AuthenticatedCustomersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sign-in'
+  fullPaths:
+    | '/'
+    | '/sign-in'
+    | '/billing/invoices'
+    | '/billing/top-ups'
+    | '/billing/transactions'
+    | '/billing/wallets'
+    | '/customers/$customerId'
+    | '/metering/analytics'
+    | '/metering/pricing'
+    | '/metering/usage'
+    | '/settings/general'
+    | '/settings/stripe'
+    | '/settings/team'
+    | '/settings/webhooks'
+    | '/customers/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/sign-in' | '/'
-  id: '__root__' | '/_authenticated' | '/sign-in' | '/_authenticated/'
+  to:
+    | '/sign-in'
+    | '/'
+    | '/billing/invoices'
+    | '/billing/top-ups'
+    | '/billing/transactions'
+    | '/billing/wallets'
+    | '/customers/$customerId'
+    | '/metering/analytics'
+    | '/metering/pricing'
+    | '/metering/usage'
+    | '/settings/general'
+    | '/settings/stripe'
+    | '/settings/team'
+    | '/settings/webhooks'
+    | '/customers'
+  id:
+    | '__root__'
+    | '/_authenticated'
+    | '/sign-in'
+    | '/_authenticated/'
+    | '/_authenticated/billing/invoices'
+    | '/_authenticated/billing/top-ups'
+    | '/_authenticated/billing/transactions'
+    | '/_authenticated/billing/wallets'
+    | '/_authenticated/customers/$customerId'
+    | '/_authenticated/metering/analytics'
+    | '/_authenticated/metering/pricing'
+    | '/_authenticated/metering/usage'
+    | '/_authenticated/settings/general'
+    | '/_authenticated/settings/stripe'
+    | '/_authenticated/settings/team'
+    | '/_authenticated/settings/webhooks'
+    | '/_authenticated/customers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -78,15 +255,132 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/customers/': {
+      id: '/_authenticated/customers/'
+      path: '/customers'
+      fullPath: '/customers/'
+      preLoaderRoute: typeof AuthenticatedCustomersIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/webhooks': {
+      id: '/_authenticated/settings/webhooks'
+      path: '/settings/webhooks'
+      fullPath: '/settings/webhooks'
+      preLoaderRoute: typeof AuthenticatedSettingsWebhooksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/team': {
+      id: '/_authenticated/settings/team'
+      path: '/settings/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/stripe': {
+      id: '/_authenticated/settings/stripe'
+      path: '/settings/stripe'
+      fullPath: '/settings/stripe'
+      preLoaderRoute: typeof AuthenticatedSettingsStripeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/general': {
+      id: '/_authenticated/settings/general'
+      path: '/settings/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof AuthenticatedSettingsGeneralRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/metering/usage': {
+      id: '/_authenticated/metering/usage'
+      path: '/metering/usage'
+      fullPath: '/metering/usage'
+      preLoaderRoute: typeof AuthenticatedMeteringUsageRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/metering/pricing': {
+      id: '/_authenticated/metering/pricing'
+      path: '/metering/pricing'
+      fullPath: '/metering/pricing'
+      preLoaderRoute: typeof AuthenticatedMeteringPricingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/metering/analytics': {
+      id: '/_authenticated/metering/analytics'
+      path: '/metering/analytics'
+      fullPath: '/metering/analytics'
+      preLoaderRoute: typeof AuthenticatedMeteringAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/customers/$customerId': {
+      id: '/_authenticated/customers/$customerId'
+      path: '/customers/$customerId'
+      fullPath: '/customers/$customerId'
+      preLoaderRoute: typeof AuthenticatedCustomersCustomerIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/billing/wallets': {
+      id: '/_authenticated/billing/wallets'
+      path: '/billing/wallets'
+      fullPath: '/billing/wallets'
+      preLoaderRoute: typeof AuthenticatedBillingWalletsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/billing/transactions': {
+      id: '/_authenticated/billing/transactions'
+      path: '/billing/transactions'
+      fullPath: '/billing/transactions'
+      preLoaderRoute: typeof AuthenticatedBillingTransactionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/billing/top-ups': {
+      id: '/_authenticated/billing/top-ups'
+      path: '/billing/top-ups'
+      fullPath: '/billing/top-ups'
+      preLoaderRoute: typeof AuthenticatedBillingTopUpsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/billing/invoices': {
+      id: '/_authenticated/billing/invoices'
+      path: '/billing/invoices'
+      fullPath: '/billing/invoices'
+      preLoaderRoute: typeof AuthenticatedBillingInvoicesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedBillingInvoicesRoute: typeof AuthenticatedBillingInvoicesRoute
+  AuthenticatedBillingTopUpsRoute: typeof AuthenticatedBillingTopUpsRoute
+  AuthenticatedBillingTransactionsRoute: typeof AuthenticatedBillingTransactionsRoute
+  AuthenticatedBillingWalletsRoute: typeof AuthenticatedBillingWalletsRoute
+  AuthenticatedCustomersCustomerIdRoute: typeof AuthenticatedCustomersCustomerIdRoute
+  AuthenticatedMeteringAnalyticsRoute: typeof AuthenticatedMeteringAnalyticsRoute
+  AuthenticatedMeteringPricingRoute: typeof AuthenticatedMeteringPricingRoute
+  AuthenticatedMeteringUsageRoute: typeof AuthenticatedMeteringUsageRoute
+  AuthenticatedSettingsGeneralRoute: typeof AuthenticatedSettingsGeneralRoute
+  AuthenticatedSettingsStripeRoute: typeof AuthenticatedSettingsStripeRoute
+  AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
+  AuthenticatedSettingsWebhooksRoute: typeof AuthenticatedSettingsWebhooksRoute
+  AuthenticatedCustomersIndexRoute: typeof AuthenticatedCustomersIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedBillingInvoicesRoute: AuthenticatedBillingInvoicesRoute,
+  AuthenticatedBillingTopUpsRoute: AuthenticatedBillingTopUpsRoute,
+  AuthenticatedBillingTransactionsRoute: AuthenticatedBillingTransactionsRoute,
+  AuthenticatedBillingWalletsRoute: AuthenticatedBillingWalletsRoute,
+  AuthenticatedCustomersCustomerIdRoute: AuthenticatedCustomersCustomerIdRoute,
+  AuthenticatedMeteringAnalyticsRoute: AuthenticatedMeteringAnalyticsRoute,
+  AuthenticatedMeteringPricingRoute: AuthenticatedMeteringPricingRoute,
+  AuthenticatedMeteringUsageRoute: AuthenticatedMeteringUsageRoute,
+  AuthenticatedSettingsGeneralRoute: AuthenticatedSettingsGeneralRoute,
+  AuthenticatedSettingsStripeRoute: AuthenticatedSettingsStripeRoute,
+  AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
+  AuthenticatedSettingsWebhooksRoute: AuthenticatedSettingsWebhooksRoute,
+  AuthenticatedCustomersIndexRoute: AuthenticatedCustomersIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

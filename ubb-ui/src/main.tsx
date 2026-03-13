@@ -4,6 +4,7 @@ import { ClerkProvider, useAuth } from "@clerk/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { setAuthTokenGetter } from "./api/client";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -28,6 +29,11 @@ declare module "@tanstack/react-router" {
 
 function InnerApp() {
   const auth = useAuth();
+
+  React.useEffect(() => {
+    setAuthTokenGetter(() => auth.getToken());
+  }, [auth]);
+
   return <RouterProvider router={router} context={{ auth }} />;
 }
 

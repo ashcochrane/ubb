@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated API types (re-generate with `pnpm api:generate`)
+src/api/generated/*.ts
+!src/api/generated/.gitkeep
