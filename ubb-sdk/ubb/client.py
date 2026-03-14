@@ -153,9 +153,7 @@ class UBBClient:
         )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int | None = None, metadata: dict | None = None,
-                     event_type: str | None = None, provider: str | None = None,
-                     usage_metrics: dict | None = None, properties: dict | None = None,
+                     event_type: str, provider: str, usage_metrics: dict,
                      group_keys: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via metering.
@@ -175,12 +173,9 @@ class UBBClient:
             customer_id=customer_id,
             request_id=request_id,
             idempotency_key=idempotency_key,
-            cost_micros=cost_micros,
-            metadata=metadata,
             event_type=event_type,
             provider=provider,
             usage_metrics=usage_metrics,
-            properties=properties,
             group_keys=group_keys,
             run_id=run_id,
         )

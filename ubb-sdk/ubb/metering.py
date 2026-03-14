@@ -79,9 +79,7 @@ class MeteringClient:
     # ---- public API ----
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int | None = None, metadata: dict | None = None,
-                     event_type: str | None = None, provider: str | None = None,
-                     usage_metrics: dict | None = None, properties: dict | None = None,
+                     event_type: str, provider: str, usage_metrics: dict,
                      group_keys: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
@@ -89,16 +87,10 @@ class MeteringClient:
             "customer_id": customer_id,
             "request_id": request_id,
             "idempotency_key": idempotency_key,
-            "metadata": metadata or {},
+            "event_type": event_type,
+            "provider": provider,
+            "usage_metrics": usage_metrics,
         }
-        if cost_micros is not None:
-            body["cost_micros"] = cost_micros
-        if usage_metrics is not None:
-            body["event_type"] = event_type
-            body["provider"] = provider
-            body["usage_metrics"] = usage_metrics
-            if properties:
-                body["properties"] = properties
         if group_keys is not None:
             body["group_keys"] = group_keys
         if run_id is not None:
@@ -182,7 +174,6 @@ class MeteringClient:
                 id=str(item["id"]),
                 request_id=item["request_id"],
                 cost_micros=item["cost_micros"],
-                metadata=item.get("metadata", {}),
                 effective_at=item["effective_at"],
                 event_type=item.get("event_type", ""),
                 provider=item.get("provider", ""),
