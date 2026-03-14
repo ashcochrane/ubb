@@ -57,14 +57,17 @@ class UBBClientTest(unittest.TestCase):
     def test_record_usage(self, mock_met_request):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_1", "new_balance_micros": 8500000, "suspended": False,
+                "event_id": "evt_1",
+                "provider_cost_micros": 500_000, "billed_cost_micros": 1_500_000,
             }
         )
         result = self.client.record_usage(
-            customer_id="c1", request_id="r1", idempotency_key="i1", cost_micros=1500000,
+            customer_id="c1", request_id="r1", idempotency_key="i1",
+            event_type="chat_completion", provider="openai",
+            usage_metrics={"tokens": 100},
         )
-        self.assertEqual(result.new_balance_micros, 8500000)
-        self.assertFalse(result.suspended)
+        self.assertEqual(result.event_id, "evt_1")
+        self.assertEqual(result.billed_cost_micros, 1_500_000)
 
     # --- create_customer (uses metering._request for platform API) ---
 
@@ -125,7 +128,7 @@ class UBBClientTest(unittest.TestCase):
     def test_get_usage(self):
         expected = PaginatedResponse(
             data=[UsageEvent(id="e1", request_id="r1", cost_micros=10000,
-                             metadata={}, effective_at="2025-01-01T00:00:00Z")],
+                             effective_at="2025-01-01T00:00:00Z")],
             next_cursor="cur_abc", has_more=True,
         )
         self.client.metering.get_usage = MagicMock(return_value=expected)
