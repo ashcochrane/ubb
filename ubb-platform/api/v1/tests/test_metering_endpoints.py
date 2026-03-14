@@ -32,6 +32,15 @@ class MeteringProductGatingTest(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        ProviderRate.objects.create(
+            tenant=self.tenant_with_metering,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     def test_tenant_without_metering_gets_403_on_usage(self):
         customer = Customer.objects.create(
@@ -43,7 +52,9 @@ class MeteringProductGatingTest(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req_gate_1",
                 "idempotency_key": "idem_gate_1",
-                "cost_micros": 1_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
@@ -58,15 +69,15 @@ class MeteringProductGatingTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_met_1",
                 "idempotency_key": "idem_met_1",
-                "cost_micros": 1_500_000,
-                "metadata": {"model": "gpt-4"},
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIsNone(body["new_balance_micros"])
         self.assertIn("event_id", body)
 
     def test_tenant_without_metering_gets_403_on_usage_history(self):
@@ -258,6 +269,16 @@ class MeteringRunEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_run_met"
         )
+        # Rate: 1 micro per token
+        ProviderRate.objects.create(
+            tenant=self.tenant,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1,
+            unit_quantity=1,
+        )
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -267,7 +288,9 @@ class MeteringRunEndpointTest(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": "req_1",
             "idempotency_key": "idem_1",
-            "cost_micros": 1_000_000,
+            "event_type": "test_event",
+            "provider": "test_provider",
+            "usage_metrics": {"tokens": 1_000_000},
         }
         data.update(extra)
         return self.http_client.post(
@@ -299,7 +322,7 @@ class MeteringRunEndpointTest(TestCase):
             run_id=str(run.id),
             request_id="req_hs1",
             idempotency_key="idem_hs1",
-            cost_micros=9_000_000,
+            usage_metrics={"tokens": 9_000_000},
         )
         self.assertEqual(resp.status_code, 200)
 
@@ -308,7 +331,7 @@ class MeteringRunEndpointTest(TestCase):
             run_id=str(run.id),
             request_id="req_hs2",
             idempotency_key="idem_hs2",
-            cost_micros=2_000_000,
+            usage_metrics={"tokens": 2_000_000},
         )
         self.assertEqual(resp.status_code, 429)
         body = resp.json()
@@ -377,13 +400,24 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
+        ProviderRate.objects.create(
+            tenant=self.tenant,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
         for i in range(3):
             UsageService.record_usage(
                 tenant=self.tenant,
                 customer=self.customer,
                 request_id=f"req_analytics_{i}",
                 idempotency_key=f"idem_analytics_{i}",
-                cost_micros=1_000_000,
+                event_type="test_event",
+                provider="test_provider",
+                usage_metrics={"tokens": 1},
             )
 
     def _auth(self):

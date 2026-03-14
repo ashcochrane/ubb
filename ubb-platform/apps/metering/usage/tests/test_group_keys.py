@@ -99,6 +99,16 @@ class GroupKeysEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_gk"
         )
+        from apps.metering.pricing.models import ProviderRate
+        ProviderRate.objects.create(
+            tenant=self.tenant,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_with_group_keys(self, mock_process):
@@ -108,7 +118,9 @@ class GroupKeysEndpointTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_gk_ep1",
                 "idempotency_key": "idem_gk_ep1",
-                "cost_micros": 1_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
                 "group_keys": {"department": "engineering"},
             }),
             content_type="application/json",
@@ -128,7 +140,9 @@ class GroupKeysEndpointTest(TestCase):
                     "customer_id": str(self.customer.id),
                     "request_id": f"req_filter_{i}",
                     "idempotency_key": f"idem_filter_{i}",
-                    "cost_micros": 1_000_000,
+                    "event_type": "test_event",
+                    "provider": "test_provider",
+                    "usage_metrics": {"tokens": 1},
                     "group_keys": {"department": dept},
                 }),
                 content_type="application/json",

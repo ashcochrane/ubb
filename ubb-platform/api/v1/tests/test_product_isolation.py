@@ -30,6 +30,16 @@ class TestMeteringOnlyTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        from apps.metering.pricing.models import ProviderRate
+        ProviderRate.objects.create(
+            tenant=self.tenant,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_can_record_usage_on_metering_endpoint(self, mock_process):
@@ -39,7 +49,9 @@ class TestMeteringOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
-                "cost_micros": 1_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -47,7 +59,6 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("event_id", body)
-        self.assertIsNone(body["new_balance_micros"])
 
     def test_can_get_usage_history_on_metering_endpoint(self):
         response = self.http_client.get(
@@ -159,7 +170,9 @@ class TestBillingOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_2",
                 "idempotency_key": "idem_iso_2",
-                "cost_micros": 1_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -191,6 +204,16 @@ class TestBothProductsTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        from apps.metering.pricing.models import ProviderRate
+        ProviderRate.objects.create(
+            tenant=self.tenant,
+            provider="test_provider",
+            event_type="test_event",
+            metric_name="tokens",
+            dimensions={},
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_can_record_usage_on_metering_endpoint(self, mock_process):
@@ -200,7 +223,9 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
-                "cost_micros": 1_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -253,14 +278,14 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
-                "cost_micros": 2_000_000,
+                "event_type": "test_event",
+                "provider": "test_provider",
+                "usage_metrics": {"tokens": 2},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
-        usage_body = response.json()
-        self.assertIsNone(usage_body["new_balance_micros"])
 
         # Balance unchanged (billing handles deduction via outbox)
         response = self.http_client.get(

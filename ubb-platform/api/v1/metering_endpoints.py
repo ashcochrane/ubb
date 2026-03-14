@@ -40,12 +40,9 @@ def record_usage(request, payload: RecordUsageRequest):
             customer=customer,
             request_id=payload.request_id,
             idempotency_key=payload.idempotency_key,
-            cost_micros=payload.cost_micros,
-            metadata=payload.metadata,
             event_type=payload.event_type,
             provider=payload.provider,
             usage_metrics=payload.usage_metrics,
-            properties=payload.properties,
             group_keys=payload.group_keys,
             run_id=payload.run_id,
         )
@@ -114,7 +111,6 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
                 "provider": e.provider,
                 "provider_cost_micros": e.provider_cost_micros,
                 "billed_cost_micros": e.billed_cost_micros,
-                "metadata": e.metadata,
                 "effective_at": e.effective_at.isoformat(),
             }
             for e in events
