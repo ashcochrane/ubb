@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:620px;margin:0 auto}
+.logo{font-size:18px;font-weight:500;text-align:center;margin-bottom:1.5rem;color:var(--color-text-secondary)}
+.view{display:none}.view.show{display:block}
+.hero-t{font-size:22px;font-weight:500;text-align:center;margin-bottom:4px}
+.hero-s{font-size:13px;color:var(--color-text-secondary);text-align:center;margin-bottom:1.5rem;max-width:480px;margin-left:auto;margin-right:auto}
+.progress{display:flex;gap:4px;margin-bottom:1.5rem}
+.prog-seg{flex:1;height:4px;border-radius:2px;background:var(--color-border-tertiary)}
+.prog-done{background:var(--color-text-success)}.prog-active{background:var(--color-text-primary)}
+.step-badge{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px}
+.step-num{width:24px;height:24px;border-radius:50%;background:var(--color-text-primary);color:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+.step-label{font-size:12px;color:var(--color-text-secondary)}
+.paths{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.path{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 14px;cursor:pointer;transition:all .15s;text-align:center}
+.path:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.path.rec{border:2px solid var(--color-border-info)}
+.path-icon{width:32px;height:32px;border-radius:var(--border-radius-md);display:inline-flex;align-items:center;justify-content:center;margin-bottom:6px}
+.path-badge{font-size:9px;padding:2px 8px;border-radius:10px;display:inline-block;margin-bottom:6px;font-weight:500}
+.path-badge-new{background:#EEEDFE;color:#3C3489}
+.path-badge-rec{background:var(--color-background-info);color:var(--color-text-info)}
+.path-t{font-size:13px;font-weight:500;margin-bottom:3px}
+.path-s{font-size:10px;color:var(--color-text-secondary);line-height:1.4}
+.path-req{font-size:9px;color:var(--color-text-tertiary);margin-top:6px}
+.card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:18px;margin-bottom:12px}
+.card-t{font-size:15px;font-weight:500;margin-bottom:3px}
+.card-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px}
+.perm-tbl{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0}
+.perm-tbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-tbl td{padding:5px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-tbl tr:last-child td{border:none}
+.pr{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500}
+.pr-r{background:var(--color-background-success);color:var(--color-text-success)}
+.pr-w{background:var(--color-background-warning);color:var(--color-text-warning)}
+.pr-n{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.pr-new{position:relative}
+.new-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#7F77DD;margin-left:4px;vertical-align:middle}
+.key-row{display:flex;gap:0;margin:12px 0 8px}
+.key-row input{flex:1;font-family:var(--font-mono);font-size:12px;padding:10px 12px;border-radius:var(--border-radius-md) 0 0 var(--border-radius-md);letter-spacing:.3px}
+.key-row button{padding:0 18px;border:0.5px solid var(--color-border-secondary);border-left:none;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;background:var(--color-background-secondary);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;color:var(--color-text-primary)}
+.val-msg{padding:10px 14px;border-radius:var(--border-radius-md);margin-top:10px;display:none}
+.val-ok{background:var(--color-background-success);border:0.5px solid var(--color-border-success)}
+.val-ok .vm-t{color:var(--color-text-success)}
+.val-err{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger)}
+.val-err .vm-t{color:var(--color-text-danger)}
+.vm-t{font-size:13px;font-weight:500;margin-bottom:2px}.vm-s{font-size:11px;color:var(--color-text-secondary)}
+.val-perms{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.val-perm{font-size:10px;padding:3px 8px;border-radius:10px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary)}
+.val-perm.ok{border-color:var(--color-border-success);color:var(--color-text-success)}
+.val-perm.miss{border-color:var(--color-border-danger);color:var(--color-text-danger)}
+.sec-note{font-size:10px;color:var(--color-text-tertiary);text-align:center;margin-top:10px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.margin-sec{margin-bottom:14px}
+.margin-mode{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px}
+.mm{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer;transition:all .12s;text-align:center}
+.mm:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.mm.sel{border-color:var(--color-text-primary);border-width:2px}
+.mm-t{font-size:12px;font-weight:500;margin-bottom:2px}
+.mm-s{font-size:10px;color:var(--color-text-secondary)}
+.margin-global{display:none}
+.margin-product{display:none}
+.margin-card{display:none}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.fld input,.fld select{width:100%;font-size:12px;padding:7px 10px}
+.fld .ht{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.margin-row{display:grid;grid-template-columns:1fr 80px 80px;gap:8px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px}
+.margin-row:last-child{border:none}
+.mr-name{font-weight:500}
+.mr-pct{font-family:var(--font-mono);font-size:12px;padding:5px 8px;width:100%;text-align:right}
+.mr-eff{font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);text-align:right}
+.sim{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px;margin-top:14px}
+.sim-t{font-size:14px;font-weight:500;margin-bottom:4px}
+.sim-s{font-size:11px;color:var(--color-text-secondary);margin-bottom:12px}
+.sim-flow{display:grid;grid-template-columns:1fr 32px 1fr 32px 1fr;gap:0;align-items:center;margin-bottom:12px}
+.sim-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px;text-align:center}
+.sim-box-l{font-size:10px;color:var(--color-text-secondary);margin-bottom:2px}
+.sim-box-v{font-size:16px;font-weight:500;font-family:var(--font-mono)}
+.sim-box-v.cost{color:var(--color-text-danger)}.sim-box-v.margin{color:#534AB7}.sim-box-v.charge{color:var(--color-text-primary)}
+.sim-arrow{text-align:center;font-size:14px;color:var(--color-text-tertiary)}
+.sim-detail{font-size:11px;color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;margin-top:8px}
+.sim-detail-row{display:flex;justify-content:space-between;padding:2px 0}
+.sim-detail-row span:last-child{font-family:var(--font-mono);font-weight:500}
+.sim-controls{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.sim-controls label{font-size:11px;color:var(--color-text-secondary);white-space:nowrap}
+.sim-controls input{flex:1}
+.sim-controls .sim-val{font-size:12px;font-weight:500;min-width:40px;text-align:right;font-family:var(--font-mono)}
+.balance-preview{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px;margin-top:12px}
+.bal-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.bal-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px}
+.bal-row:last-child{border:none}
+.bal-name{font-weight:500}
+.bal-val{font-family:var(--font-mono);font-size:11px}
+.bal-bar{width:60px;height:4px;background:var(--color-border-tertiary);border-radius:2px;overflow:hidden}
+.bal-fill{height:100%;border-radius:2px;background:#5DCAA5;transition:width .3s}
+.bal-low .bal-fill{background:#E24B4A}
+.alert-cfg{margin-top:14px}
+.alert-cfg-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.alert-row{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--color-text-secondary);padding:4px 0}
+.alck{width:14px;height:14px;border:1.5px solid var(--color-border-secondary);border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.alck.on{background:var(--color-text-info);border-color:var(--color-text-info)}
+.alck.on::after{content:'';width:4px;height:6px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);margin-top:-1px}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-back:hover{background:var(--color-background-secondary)}
+.btn-next{padding:9px 24px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-next:hover{opacity:.9}.btn-next:disabled{opacity:.35;cursor:not-allowed}
+.diff-tag{font-size:9px;padding:2px 6px;border-radius:6px;background:#EEEDFE;color:#3C3489;font-weight:500;margin-left:4px;vertical-align:middle}
+</style>
+
+<div class="pg">
+<div class="logo">Your Platform</div>
+
+<div class="view show" id="v-choose">
+<div class="hero-t">What would you like to track?</div>
+<div class="hero-s">Start with what you need now. You can upgrade to billing later without reconfiguring anything.</div>
+<div class="paths">
+<div class="path" onclick="sendPrompt('Set me up for cost tracking only')">
+<div class="path-icon" style="background:var(--color-background-secondary)"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="2" stroke="var(--color-text-secondary)" stroke-width="1.5"/><path d="M7 9h6M7 12h4" stroke="var(--color-text-secondary)" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+<div class="path-t">Track costs</div>
+<div class="path-s">Monitor your API costs. No Stripe needed.</div>
+<div class="path-req">Pricing cards + SDK</div>
+</div>
+<div class="path rec" onclick="sendPrompt('Set me up for revenue and cost tracking')">
+<div class="path-badge path-badge-rec">Recommended</div>
+<div class="path-t">Revenue and costs</div>
+<div class="path-s">See profitability by customer alongside API costs.</div>
+<div class="path-req">Stripe read-only</div>
+</div>
+<div class="path" onclick="showView('v-step1')" style="border-color:#AFA9EC">
+<div class="path-badge path-badge-new">New</div>
+<div class="path-t">Bill your customers</div>
+<div class="path-s">Charge customers a margin on compute. Balance-based billing.</div>
+<div class="path-req">Stripe read + write (balance)</div>
+</div>
+</div>
+</div>
+
+<div class="view" id="v-step1">
+<div class="progress"><div class="prog-seg prog-active"></div><div class="prog-seg"></div><div class="prog-seg"></div><div class="prog-seg"></div></div>
+<div class="step-badge"><div class="step-num">1</div><span class="step-label">of 4 — Connect Stripe</span></div>
+<div class="hero-t" style="text-align:left;font-size:20px">Create and paste a restricted API key</div>
+<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Because billing mode debits customer balances, the key needs one additional write permission compared to the read-only tracking mode.</div>
+
+<div class="card">
+<div style="font-size:13px;font-weight:500;margin-bottom:8px">Required permissions</div>
+<table class="perm-tbl">
+<thead><tr><th>Resource</th><th>Permission</th><th style="color:var(--color-text-tertiary);font-weight:400">Purpose</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Customers</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Pull customer data</td></tr>
+<tr><td style="font-weight:500">Subscriptions</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Track subscription revenue</td></tr>
+<tr><td style="font-weight:500">Invoices</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Payment amounts</td></tr>
+<tr><td style="font-weight:500">Charges</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">One-off payments</td></tr>
+<tr class="pr-new" style="background:rgba(238,237,254,0.3)"><td style="font-weight:500">Customer balance transactions<span class="diff-tag">billing</span></td><td><span class="pr pr-w">Write</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Debit customer balances for usage</td></tr>
+<tr><td style="color:var(--color-text-tertiary)">Everything else</td><td><span class="pr pr-n">None</span></td><td></td></tr>
+</tbody>
+</table>
+
+<div style="font-size:11px;color:var(--color-text-secondary);margin:12px 0 4px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);line-height:1.6">
+The "Customer balance transactions: Write" permission is the only difference from read-only tracking. It allows us to create negative balance entries when a customer uses your product. It cannot create charges, modify customer data, or access payment methods.
+</div>
+
+<div style="font-size:12px;font-weight:500;margin-top:14px;margin-bottom:4px">Paste your restricted key</div>
+<div class="key-row">
+<input type="text" id="sk" placeholder="rk_live_..." />
+<button id="val-btn" onclick="validateKey()">Validate key</button>
+</div>
+
+<div class="val-msg val-ok" id="v-ok">
+<div class="vm-t">Key validated — all permissions confirmed</div>
+<div class="vm-s">Read access to Customers, Subscriptions, Invoices, Charges. Write access to Customer Balance Transactions.</div>
+<div class="val-perms" id="v-perms">
+<span class="val-perm ok">Customers: Read</span>
+<span class="val-perm ok">Subscriptions: Read</span>
+<span class="val-perm ok">Invoices: Read</span>
+<span class="val-perm ok">Charges: Read</span>
+<span class="val-perm ok">Balance Txns: Write</span>
+</div>
+</div>
+<div class="val-msg val-err" id="v-err"><div class="vm-t">Validation failed</div><div class="vm-s" id="v-err-msg"></div><div class="val-perms" id="v-err-perms"></div></div>
+
+<div class="sec-note">We only debit balances for tracked usage events. We never create charges, access payment methods, or modify customer records.</div>
+</div>
+
+<div class="nav">
+<button class="btn-back" onclick="showView('v-choose')">Back</button>
+<button class="btn-next" id="s1-next" onclick="showView('v-step3')" disabled>Continue to margin setup</button>
+</div>
+</div>
+
+<div class="view" id="v-step3">
+<div class="progress"><div class="prog-seg prog-done"></div><div class="prog-seg prog-done"></div><div class="prog-seg prog-active"></div><div class="prog-seg"></div></div>
+<div class="step-badge"><div class="step-num">3</div><span class="step-label">of 4 — Configure billing</span></div>
+<div class="hero-t" style="text-align:left;font-size:20px">Set your margin rules</div>
+<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">When your customer uses a product, we calculate the API cost from your pricing cards, apply your margin, and debit the total from their Stripe balance.</div>
+
+<div class="card">
+<div style="font-size:13px;font-weight:500;margin-bottom:8px">How would you like to set margins?</div>
+<div class="margin-mode">
+<div class="mm sel" id="mm-0" onclick="setMarginMode(0)"><div class="mm-t">Global margin</div><div class="mm-s">Same % for everything</div></div>
+<div class="mm" id="mm-1" onclick="setMarginMode(1)"><div class="mm-t">Per product</div><div class="mm-s">Different margin by product</div></div>
+<div class="mm" id="mm-2" onclick="setMarginMode(2)"><div class="mm-t">Per pricing card</div><div class="mm-s">Different margin by API</div></div>
+</div>
+
+<div class="margin-global" id="mg-0" style="display:block">
+<div class="fld"><label>Margin percentage</label>
+<div style="display:flex;align-items:center;gap:10px"><input type="range" min="0" max="200" value="50" step="5" id="g-slider" oninput="updateSim()" style="flex:1" /><span style="font-family:var(--font-mono);font-size:14px;font-weight:500;min-width:44px;text-align:right" id="g-val">50%</span></div>
+<div class="ht">A 50% margin means a $2.00 API cost becomes $3.00 charged to your customer.</div>
+</div>
+</div>
+
+<div class="margin-product" id="mg-1">
+<div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">Set a margin for each product. Costs from pricing cards within that product will inherit this margin.</div>
+<div class="margin-row" style="border-bottom:0.5px solid var(--color-border-tertiary)"><span style="font-size:10px;color:var(--color-text-tertiary)">Product</span><span style="font-size:10px;color:var(--color-text-tertiary);text-align:right">Margin</span><span style="font-size:10px;color:var(--color-text-tertiary);text-align:right">Effective rate</span></div>
+<div class="margin-row"><span class="mr-name">Property search</span><input type="number" class="mr-pct" value="50" oninput="calcEff(this)" /><span class="mr-eff">1.50x</span></div>
+<div class="margin-row"><span class="mr-name">Doc summariser</span><input type="number" class="mr-pct" value="75" oninput="calcEff(this)" /><span class="mr-eff">1.75x</span></div>
+<div class="margin-row"><span class="mr-name">Content gen</span><input type="number" class="mr-pct" value="100" oninput="calcEff(this)" /><span class="mr-eff">2.00x</span></div>
+</div>
+
+<div class="margin-card" id="mg-2">
+<div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">Set a margin for each pricing card. Useful when some APIs are premium and should carry higher markup.</div>
+<div class="margin-row" style="border-bottom:0.5px solid var(--color-border-tertiary)"><span style="font-size:10px;color:var(--color-text-tertiary)">Pricing card</span><span style="font-size:10px;color:var(--color-text-tertiary);text-align:right">Margin</span><span style="font-size:10px;color:var(--color-text-tertiary);text-align:right">Effective rate</span></div>
+<div class="margin-row"><span class="mr-name">Gemini 2.0 Flash</span><input type="number" class="mr-pct" value="40" oninput="calcEff(this)" /><span class="mr-eff">1.40x</span></div>
+<div class="margin-row"><span class="mr-name">Claude 3.5 Sonnet</span><input type="number" class="mr-pct" value="60" oninput="calcEff(this)" /><span class="mr-eff">1.60x</span></div>
+<div class="margin-row"><span class="mr-name">GPT-4o</span><input type="number" class="mr-pct" value="50" oninput="calcEff(this)" /><span class="mr-eff">1.50x</span></div>
+<div class="margin-row"><span class="mr-name">Google Places</span><input type="number" class="mr-pct" value="30" oninput="calcEff(this)" /><span class="mr-eff">1.30x</span></div>
+<div class="margin-row"><span class="mr-name">Serper</span><input type="number" class="mr-pct" value="30" oninput="calcEff(this)" /><span class="mr-eff">1.30x</span></div>
+</div>
+</div>
+
+<div class="sim">
+<div class="sim-t">Live billing preview</div>
+<div class="sim-s">Adjust the API cost below to see what your customer would be charged.</div>
+
+<div class="sim-controls">
+<label>Example API cost:</label>
+<input type="range" min="10" max="500" value="200" step="10" id="sim-cost" oninput="updateSim()" style="flex:1" />
+<span class="sim-val" id="sim-cost-v">$2.00</span>
+</div>
+
+<div class="sim-flow">
+<div class="sim-box"><div class="sim-box-l">API cost</div><div class="sim-box-v cost" id="sf-cost">$2.00</div></div>
+<div class="sim-arrow">+</div>
+<div class="sim-box"><div class="sim-box-l">Your margin</div><div class="sim-box-v margin" id="sf-margin">$1.00</div></div>
+<div class="sim-arrow">=</div>
+<div class="sim-box"><div class="sim-box-l">Customer charged</div><div class="sim-box-v charge" id="sf-charge">$3.00</div></div>
+</div>
+
+<div class="sim-detail">
+<div class="sim-detail-row"><span>API cost (your expense)</span><span id="sd-cost">$2.00</span></div>
+<div class="sim-detail-row"><span>Margin (<span id="sd-pct">50%</span>)</span><span id="sd-margin">$1.00</span></div>
+<div class="sim-detail-row" style="border-top:0.5px solid var(--color-border-tertiary);padding-top:4px;margin-top:2px;font-weight:500"><span>Debited from customer balance</span><span id="sd-total">$3.00</span></div>
+<div class="sim-detail-row" style="color:var(--color-text-success)"><span>Your gross profit on this request</span><span id="sd-profit">$1.00</span></div>
+</div>
+
+<div class="balance-preview">
+<div class="bal-t">Example: how balances update</div>
+<div class="bal-row"><span class="bal-name">Acme Corp</span><div class="bal-bar"><div class="bal-fill" style="width:85%"></div></div><span class="bal-val">$850.00</span></div>
+<div class="bal-row"><span class="bal-name">BrightPath Ltd</span><div class="bal-bar"><div class="bal-fill" style="width:62%"></div></div><span class="bal-val">$620.00</span></div>
+<div class="bal-row bal-low"><span class="bal-name">NovaTech Inc</span><div class="bal-bar bal-low"><div class="bal-fill" style="width:8%"></div></div><span class="bal-val" style="color:var(--color-text-danger)">$42.10</span></div>
+</div>
+
+<div class="alert-cfg">
+<div class="alert-cfg-t">Balance alerts</div>
+<div class="alert-row"><div class="alck on" onclick="this.classList.toggle('on')"></div><span>Notify me when a customer's balance drops below <span style="font-family:var(--font-mono)">$50.00</span></span></div>
+<div class="alert-row"><div class="alck on" onclick="this.classList.toggle('on')"></div><span>Notify the customer to top up when below <span style="font-family:var(--font-mono)">$25.00</span></span></div>
+<div class="alert-row"><div class="alck" onclick="this.classList.toggle('on')"></div><span>Pause billing when balance reaches <span style="font-family:var(--font-mono)">$0.00</span> (deny API calls)</span></div>
+</div>
+</div>
+
+<div class="nav">
+<button class="btn-back" onclick="showView('v-step1')">Back to step 1</button>
+<button class="btn-next" onclick="sendPrompt('Continue to customer mapping and final review for billing mode')">Continue to step 4</button>
+</div>
+</div>
+</div>
+
+<script>
+function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('show'));document.getElementById(v).classList.add('show')}
+let marginMode=0;
+
+function validateKey(){
+  const k=document.getElementById('sk').value.trim();
+  const ok=document.getElementById('v-ok'),err=document.getElementById('v-err');
+  ok.style.display='none';err.style.display='none';
+
+  if(!k){showEl(err);document.getElementById('v-err-msg').textContent='Please paste your Stripe restricted API key.';return}
+  if(k.startsWith('sk_')){showEl(err);document.getElementById('v-err-msg').textContent='This is a secret key (sk_). Please create a restricted key with the specific permissions above.';return}
+  if(!k.startsWith('rk_')){showEl(err);document.getElementById('v-err-msg').textContent='Should start with rk_live_ or rk_test_.';return}
+
+  const btn=document.getElementById('val-btn');
+  btn.textContent='Validating...';btn.style.opacity='.5';
+
+  setTimeout(()=>{
+    btn.textContent='Validate key';btn.style.opacity='1';
+
+    if(k.includes('nowrite')){
+      showEl(err);
+      document.getElementById('v-err-msg').textContent='Key validated but missing required write permission:';
+      document.getElementById('v-err-perms').innerHTML='<span class="val-perm ok">Customers: Read</span><span class="val-perm ok">Subscriptions: Read</span><span class="val-perm ok">Invoices: Read</span><span class="val-perm ok">Charges: Read</span><span class="val-perm miss">Balance Txns: Missing</span>';
+      document.getElementById('v-err-perms').style.display='flex';
+      return;
+    }
+
+    showEl(ok);
+    document.getElementById('s1-next').disabled=false;
+  },1000);
+}
+
+function showEl(el){el.style.display='block'}
+
+function setMarginMode(m){
+  marginMode=m;
+  [0,1,2].forEach(i=>{document.getElementById('mm-'+i).classList.toggle('sel',i===m);document.getElementById('mg-'+i).style.display=i===m?'block':'none'});
+  updateSim();
+}
+
+function calcEff(inp){
+  const v=parseFloat(inp.value)||0;
+  inp.closest('.margin-row').querySelector('.mr-eff').textContent=(1+v/100).toFixed(2)+'x';
+}
+
+function updateSim(){
+  const costCents=parseInt(document.getElementById('sim-cost').value);
+  const cost=costCents/100;
+  let pct=50;
+  if(marginMode===0)pct=parseInt(document.getElementById('g-slider').value);
+  document.getElementById('g-val').textContent=pct+'%';
+  document.getElementById('sim-cost-v').textContent='$'+cost.toFixed(2);
+
+  const margin=Math.round(cost*pct)/100;
+  const charge=Math.round((cost+margin)*100)/100;
+  const profit=Math.round(margin*100)/100;
+
+  document.getElementById('sf-cost').textContent='$'+cost.toFixed(2);
+  document.getElementById('sf-margin').textContent='$'+margin.toFixed(2);
+  document.getElementById('sf-charge').textContent='$'+charge.toFixed(2);
+  document.getElementById('sd-cost').textContent='$'+cost.toFixed(2);
+  document.getElementById('sd-pct').textContent=pct+'%';
+  document.getElementById('sd-margin').textContent='$'+margin.toFixed(2);
+  document.getElementById('sd-total').textContent='$'+charge.toFixed(2);
+  document.getElementById('sd-profit').textContent='$'+profit.toFixed(2);
+}
+
+updateSim();
+</script></body></html>

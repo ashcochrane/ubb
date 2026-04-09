@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1rem 0;max-width:720px}
+.pg-t{font-size:22px;font-weight:500;margin-bottom:4px}
+.pg-s{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.25rem}
+.sync-bar{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 14px;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.sb-left{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-secondary)}
+.sb-dot{width:8px;height:8px;border-radius:50%;background:var(--color-text-success)}
+.sb-right{display:flex;gap:6px;align-items:center}
+.bsm{padding:4px 10px;font-size:11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.bsm:hover{background:var(--color-background-secondary)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:1rem}
+.st{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
+.st-l{font-size:10px;color:var(--color-text-secondary);margin-bottom:1px}
+.st-v{font-size:17px;font-weight:500}
+.st-s{font-size:9px;color:var(--color-text-tertiary);margin-top:1px}
+.st-v.grn{color:var(--color-text-success)}.st-v.red{color:var(--color-text-danger)}.st-v.amb{color:var(--color-text-warning)}
+.alert{border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.alert-w{background:var(--color-background-warning);border:0.5px solid var(--color-border-warning)}
+.alert-d{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger)}
+.alert-left{display:flex;align-items:center;gap:8px}
+.alert-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.alert-icon-w{background:var(--color-background-warning)}
+.alert-icon-d{background:var(--color-background-danger)}
+.alert-text{font-size:12px}
+.alert-text b{font-weight:500}
+.alert-btn{padding:4px 10px;font-size:11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);cursor:pointer;color:var(--color-text-primary);white-space:nowrap}
+.alert-btn:hover{background:var(--color-background-secondary)}
+.sec{margin-bottom:1.5rem}
+.sec-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+.sec-t{font-size:16px;font-weight:500}
+.sec-ctrls{display:flex;gap:6px;align-items:center}
+.filter-bar{display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.fbtn{padding:4px 10px;font-size:10px;border-radius:14px;border:0.5px solid var(--color-border-tertiary);background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fbtn:hover{background:var(--color-background-secondary)}
+.fbtn.sel{background:var(--color-text-primary);color:var(--color-background-primary);border-color:var(--color-text-primary)}
+.search-input{font-size:11px;padding:4px 10px;border:0.5px solid var(--color-border-tertiary);border-radius:14px;background:transparent;color:var(--color-text-primary);min-width:160px}
+.tbl-wrap{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.tbl{width:100%;border-collapse:collapse;font-size:11px}
+.tbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:7px 10px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);cursor:pointer;white-space:nowrap;user-select:none}
+.tbl th:hover{color:var(--color-text-primary)}
+.tbl td{padding:8px 10px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:middle}
+.tbl tr:last-child td{border:none}
+.tbl tbody tr{transition:background .1s}
+.tbl tbody tr:hover td{background:var(--color-background-secondary)}
+.tbl tbody tr.row-warn{background:rgba(250,238,218,0.15)}
+.tbl tbody tr.row-new{background:rgba(225,245,238,0.2)}
+.cn{font-weight:500;font-size:11px}
+.csid{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary);margin-top:1px}
+.cemail{font-size:10px;color:var(--color-text-tertiary)}
+.cmatch{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.crev{font-family:var(--font-mono);font-size:10px;text-align:right}
+.cevts{font-family:var(--font-mono);font-size:10px;text-align:right}
+.cevts-zero{color:var(--color-text-tertiary)}
+.clast{font-size:10px;color:var(--color-text-tertiary);text-align:right;white-space:nowrap}
+.status-pill{font-size:9px;padding:2px 7px;border-radius:8px;font-weight:500;white-space:nowrap}
+.sp-active{background:var(--color-background-success);color:var(--color-text-success)}
+.sp-idle{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.sp-new{background:#E1F5EE;color:#085041}
+.cedit{text-align:center}
+.edit-btn{font-size:10px;color:var(--color-text-info);cursor:pointer;border:none;background:none;padding:2px 4px}
+.edit-btn:hover{text-decoration:underline}
+.cinput{font-family:var(--font-mono);font-size:10px;padding:4px 6px;width:100%;max-width:140px;border:0.5px solid var(--color-border-info);border-radius:3px;background:var(--color-background-primary);color:var(--color-text-primary)}
+.csave{font-size:10px;color:var(--color-text-info);cursor:pointer;border:none;background:none;padding:0 4px;font-weight:500}
+.ccancel{font-size:10px;color:var(--color-text-tertiary);cursor:pointer;border:none;background:none;padding:0 4px}
+.edit-row{display:flex;gap:4px;align-items:center}
+.orphan-sec{margin-top:1.5rem}
+.orphan-bar{background:var(--color-background-danger);border-radius:var(--border-radius-md) var(--border-radius-md) 0 0;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.orphan-t{font-size:12px;font-weight:500;color:var(--color-text-danger)}
+.orphan-tbl{border:0.5px solid var(--color-border-danger);border-top:none;border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg);overflow:hidden}
+.orphan-tbl .tbl td{font-size:11px}
+.orphan-id{font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--color-text-danger)}
+.orphan-evts{font-family:var(--font-mono);font-size:10px;text-align:right}
+.orphan-cost{font-family:var(--font-mono);font-size:10px;text-align:right;font-weight:500}
+.orphan-apply{font-size:10px;color:var(--color-text-info);cursor:pointer;border:none;background:none;font-weight:500;padding:0 4px}
+.mode-pill{font-size:10px;padding:3px 10px;border-radius:10px;font-weight:500}
+.mode-bill{background:#EEEDFE;color:#3C3489}
+</style>
+
+<div class="pg">
+<div class="pg-t">Customer mapping</div>
+<div class="pg-s">Manage how your Stripe customers connect to the identifiers your SDK sends. Every mapping must be correct for accurate cost tracking, revenue attribution, and billing.</div>
+
+<div class="sync-bar">
+<div class="sb-left"><div class="sb-dot"></div><span>Stripe connected</span><span style="color:var(--color-text-tertiary)">Last synced 14 min ago</span></div>
+<div class="sb-right">
+<span class="mode-pill mode-bill">Billing mode</span>
+<button class="bsm" onclick="this.textContent='Syncing...';setTimeout(()=>this.textContent='Sync now',1200)">Sync now</button>
+<button class="bsm">Stripe settings</button>
+</div>
+</div>
+
+<div class="stats">
+<div class="st"><div class="st-l">Stripe customers</div><div class="st-v">23</div><div class="st-s">2 added since last month</div></div>
+<div class="st"><div class="st-l">Mapped</div><div class="st-v grn">21</div><div class="st-s">Fully connected</div></div>
+<div class="st"><div class="st-l">Unmapped</div><div class="st-v amb">2</div><div class="st-s">Need attention</div></div>
+<div class="st"><div class="st-l">Orphaned events</div><div class="st-v red">142</div><div class="st-s">3 unknown SDK IDs</div></div>
+</div>
+
+<div class="alert alert-w" id="alert-new">
+<div class="alert-left">
+<div class="alert-icon alert-icon-w"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-warning)" stroke-width="2.5" stroke-linecap="round"><path d="M12 9v4m0 4h.01"/></svg></div>
+<div class="alert-text"><b>2 new Stripe customers</b> were detected in the last sync and need to be mapped to an SDK identifier before their revenue and costs can be tracked.</div>
+</div>
+<button class="alert-btn" onclick="setFilter('unmapped')">Map them now</button>
+</div>
+
+<div class="alert alert-d" id="alert-orphan">
+<div class="alert-left">
+<div class="alert-icon alert-icon-d"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-danger)" stroke-width="2.5" stroke-linecap="round"><path d="M12 9v4m0 4h.01"/></svg></div>
+<div class="alert-text"><b>142 events</b> arrived with customer IDs that don't match any mapping. These events are tracked but can't be attributed to a Stripe customer.</div>
+</div>
+<button class="alert-btn" onclick="document.getElementById('orphan-sec').scrollIntoView({behavior:'smooth'})">Review</button>
+</div>
+
+<div class="sec">
+<div class="sec-bar">
+<div class="sec-t">All customers</div>
+<div class="sec-ctrls">
+<input class="search-input" type="text" placeholder="Search customers..." oninput="filterSearch(this.value)" />
+<button class="bsm">Auto-match</button>
+</div>
+</div>
+
+<div class="filter-bar">
+<span class="fbtn sel" id="f-all" onclick="setFilter('all')">All (23)</span>
+<span class="fbtn" id="f-active" onclick="setFilter('active')">Active (18)</span>
+<span class="fbtn" id="f-idle" onclick="setFilter('idle')">Idle (3)</span>
+<span class="fbtn" id="f-unmapped" onclick="setFilter('unmapped')">Unmapped (2)</span>
+</div>
+
+<div class="tbl-wrap">
+<table class="tbl" id="main-tbl">
+<thead><tr>
+<th style="min-width:130px">Stripe customer</th>
+<th>SDK identifier</th>
+<th style="text-align:right">Revenue (30d)</th>
+<th style="text-align:right">Events (30d)</th>
+<th style="text-align:right">Last event</th>
+<th style="width:70px">Status</th>
+<th style="width:40px"></th>
+</tr></thead>
+<tbody id="tbl-body"></tbody>
+</table>
+</div>
+</div>
+
+<div class="sec orphan-sec" id="orphan-sec">
+<div class="sec-bar"><div class="sec-t">Unrecognised SDK identifiers</div></div>
+<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px">These customer IDs appeared in SDK events but don't match any mapping. Either map them to an existing Stripe customer, or check your code for typos.</div>
+
+<div class="orphan-bar">
+<div class="orphan-t">3 unknown identifiers (142 events)</div>
+<button class="bsm" style="border-color:var(--color-border-danger);color:var(--color-text-danger);background:var(--color-background-primary)">Dismiss all</button>
+</div>
+<div class="orphan-tbl">
+<table class="tbl">
+<thead><tr><th>SDK identifier received</th><th>First seen</th><th style="text-align:right">Events</th><th style="text-align:right">Unattributed cost</th><th>Assign to Stripe customer</th><th style="width:40px"></th></tr></thead>
+<tbody>
+<tr><td><span class="orphan-id">acme_legacy</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">18 Mar 2026</td><td class="orphan-evts">89</td><td class="orphan-cost">$12.40</td><td><div style="display:flex;gap:4px;align-items:center"><select style="font-size:10px;padding:3px 6px;min-width:130px"><option value="">Select customer...</option><option>Acme Corp (cus_R4k)</option><option>BrightPath Ltd (cus_Q7m)</option><option>NovaTech Inc (cus_S2p)</option><option>Helios Digital (cus_U6n)</option></select></div></td><td><button class="orphan-apply" onclick="resolveOrphan(this)">Assign</button></td></tr>
+<tr><td><span class="orphan-id">test_user_001</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">20 Mar 2026</td><td class="orphan-evts">41</td><td class="orphan-cost">$5.20</td><td><div style="display:flex;gap:4px;align-items:center"><select style="font-size:10px;padding:3px 6px;min-width:130px"><option value="">Select customer...</option><option>Acme Corp (cus_R4k)</option><option>BrightPath Ltd (cus_Q7m)</option><option>NovaTech Inc (cus_S2p)</option></select></div></td><td><button class="orphan-apply" onclick="resolveOrphan(this)">Assign</button></td></tr>
+<tr><td><span class="orphan-id">clearview_v2</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">22 Mar 2026</td><td class="orphan-evts">12</td><td class="orphan-cost">$1.85</td><td><div style="display:flex;gap:4px;align-items:center"><select style="font-size:10px;padding:3px 6px;min-width:130px"><option value="">Select customer...</option><option>ClearView Analytics (cus_V3b)</option><option>Acme Corp (cus_R4k)</option></select></div></td><td><button class="orphan-apply" onclick="resolveOrphan(this)">Assign</button></td></tr>
+</tbody>
+</table>
+</div>
+<div style="font-size:10px;color:var(--color-text-tertiary);margin-top:6px;padding:0 4px">When you assign an orphaned identifier, the existing 142 events are retroactively attributed to that Stripe customer. Future events with this identifier will also be mapped automatically.</div>
+</div>
+</div>
+
+<script>
+const CUSTS=[
+{n:'Acme Corp',sid:'cus_R4kB9xPm2nQ',email:'admin@acmecorp.com',sdk:'cus_R4kB9xPm2nQ',rev:'$2,400',evts:'14,219',last:'2 min ago',status:'active'},
+{n:'BrightPath Ltd',sid:'cus_Q7mN3vHj8wL',email:'team@brightpath.io',sdk:'cus_Q7mN3vHj8wL',rev:'$1,800',evts:'11,402',last:'5 min ago',status:'active'},
+{n:'NovaTech Inc',sid:'cus_S2pK5tRn7xY',email:'ops@novatech.co',sdk:'cus_S2pK5tRn7xY',rev:'$950',evts:'6,841',last:'12 min ago',status:'active'},
+{n:'Helios Digital',sid:'cus_U6nR2wKm9xQ',email:'hello@helios.dev',sdk:'cus_U6nR2wKm9xQ',rev:'$720',evts:'9,403',last:'8 min ago',status:'active'},
+{n:'Zenith Labs',sid:'cus_T9wM1kJp4qB',email:'info@zenithlabs.com',sdk:'cus_T9wM1kJp4qB',rev:'$680',evts:'5,120',last:'1 hr ago',status:'active'},
+{n:'ClearView Analytics',sid:'cus_V3bP8sHn5mJ',email:'support@clearview.ai',sdk:'cus_V3bP8sHn5mJ',rev:'$150',evts:'8,210',last:'22 min ago',status:'active'},
+{n:'Eko Systems',sid:'cus_W1cT4rFk7pN',email:'dev@ekosystems.io',sdk:'cus_W1cT4rFk7pN',rev:'$90',evts:'7,891',last:'3 min ago',status:'active'},
+{n:'Pinnacle AI',sid:'cus_X5rW8nKp3mQ',email:'cto@pinnacle.ai',sdk:'cus_X5rW8nKp3mQ',rev:'$340',evts:'2,104',last:'45 min ago',status:'active'},
+{n:'Meridian Group',sid:'cus_Y2dF6hTn8qR',email:'ops@meridian.co',sdk:'cus_Y2dF6hTn8qR',rev:'$480',evts:'3,812',last:'1 hr ago',status:'active'},
+{n:'Atlas Robotics',sid:'cus_Z3eG7jUo9sS',email:'api@atlas-robotics.com',sdk:'cus_Z3eG7jUo9sS',rev:'$320',evts:'2,310',last:'2 hr ago',status:'active'},
+{n:'Quantum Logic',sid:'cus_A4fH8kVp0tT',email:'dev@quantumlogic.io',sdk:'cus_A4fH8kVp0tT',rev:'$275',evts:'1,891',last:'3 hr ago',status:'active'},
+{n:'BlueSky Data',sid:'cus_B5gI9lWq1uU',email:'team@blueskydata.com',sdk:'cus_B5gI9lWq1uU',rev:'$210',evts:'1,402',last:'4 hr ago',status:'active'},
+{n:'Vertex Labs',sid:'cus_C6hJ0mXr2vV',email:'eng@vertex.dev',sdk:'cus_C6hJ0mXr2vV',rev:'$190',evts:'980',last:'6 hr ago',status:'active'},
+{n:'Forge AI',sid:'cus_D7iK1nYs3wW',email:'hello@forge-ai.com',sdk:'cus_D7iK1nYs3wW',rev:'$165',evts:'820',last:'5 hr ago',status:'active'},
+{n:'Echo Systems',sid:'cus_E8jL2oZt4xX',email:'api@echo-sys.io',sdk:'cus_E8jL2oZt4xX',rev:'$140',evts:'650',last:'8 hr ago',status:'active'},
+{n:'Ridgeline',sid:'cus_F9kM3pAu5yY',email:'tech@ridgeline.co',sdk:'cus_F9kM3pAu5yY',rev:'$120',evts:'410',last:'12 hr ago',status:'active'},
+{n:'Prism Health',sid:'cus_G0lN4qBv6zZ',email:'dev@prismhealth.com',sdk:'cus_G0lN4qBv6zZ',rev:'$95',evts:'220',last:'1 day ago',status:'active'},
+{n:'Aether Inc',sid:'cus_H1mO5rCw7aA',email:'eng@aether.inc',sdk:'cus_H1mO5rCw7aA',rev:'$60',evts:'102',last:'2 days ago',status:'active'},
+{n:'Nomad Digital',sid:'cus_I2nP6sDx8bB',email:'api@nomad.digital',sdk:'cus_I2nP6sDx8bB',rev:'$45',evts:'0',last:'\u2014',status:'idle'},
+{n:'Strata Corp',sid:'cus_J3oQ7tEy9cC',email:'tech@strata.io',sdk:'cus_J3oQ7tEy9cC',rev:'$30',evts:'0',last:'\u2014',status:'idle'},
+{n:'Cobalt Labs',sid:'cus_K4pR8uFz0dD',email:'dev@cobalt-labs.com',sdk:'cus_K4pR8uFz0dD',rev:'$15',evts:'0',last:'\u2014',status:'idle'},
+{n:'Terraform Solutions',sid:'cus_L5qS9vGa1eE',email:'hello@terraform-sol.com',sdk:null,rev:'$380',evts:'\u2014',last:'\u2014',status:'new'},
+{n:'Orbit Analytics',sid:'cus_M6rT0wHb2fF',email:'team@orbit-analytics.io',sdk:null,rev:'$125',evts:'\u2014',last:'\u2014',status:'new'}
+];
+
+let currentFilter='all';
+let editingIdx=null;
+
+function renderTable(filter,searchQ){
+  const body=document.getElementById('tbl-body');
+  body.innerHTML='';
+  const sq=(searchQ||'').toLowerCase();
+
+  CUSTS.forEach((c,i)=>{
+    if(filter==='active'&&c.status!=='active')return;
+    if(filter==='idle'&&c.status!=='idle')return;
+    if(filter==='unmapped'&&c.status!=='new')return;
+    if(sq&&!c.n.toLowerCase().includes(sq)&&!(c.sdk||'').toLowerCase().includes(sq)&&!c.sid.toLowerCase().includes(sq))return;
+
+    const rowClass=c.status==='new'?'row-new':c.status==='unmapped'?'row-warn':'';
+    const statusPill=c.status==='active'?'<span class="status-pill sp-active">Active</span>':c.status==='idle'?'<span class="status-pill sp-idle">Idle</span>':c.status==='new'?'<span class="status-pill sp-new">New</span>':'';
+
+    let sdkCell;
+    if(editingIdx===i){
+      sdkCell='<div class="edit-row"><input class="cinput" id="edit-input" value="'+(c.sdk||'')+'" placeholder="Enter SDK identifier..." /><button class="csave" onclick="saveEdit('+i+')">Save</button><button class="ccancel" onclick="cancelEdit()">Cancel</button></div>';
+    } else if(c.sdk){
+      sdkCell='<span class="cmatch">'+c.sdk+'</span>';
+    } else {
+      sdkCell='<div class="edit-row"><input class="cinput" id="edit-input-'+i+'" placeholder="Enter identifier..." /><button class="csave" onclick="saveNew('+i+')">Map</button></div>';
+    }
+
+    const evtsClass=c.evts==='0'||c.evts==='\u2014'?'cevts cevts-zero':'cevts';
+
+    body.innerHTML+='<tr class="'+rowClass+'"><td><div class="cn">'+c.n+'</div><div class="csid">'+c.sid+'</div><div class="cemail">'+c.email+'</div></td><td>'+sdkCell+'</td><td class="crev">'+c.rev+'</td><td class="'+evtsClass+'">'+c.evts+'</td><td class="clast">'+c.last+'</td><td>'+statusPill+'</td><td class="cedit">'+(c.sdk&&editingIdx!==i?'<button class="edit-btn" onclick="startEdit('+i+')">Edit</button>':'')+'</td></tr>';
+  });
+}
+
+function setFilter(f){
+  currentFilter=f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('sel'));
+  document.getElementById('f-'+f).classList.add('sel');
+  editingIdx=null;
+  renderTable(f);
+}
+
+function filterSearch(q){editingIdx=null;renderTable(currentFilter,q)}
+
+function startEdit(i){editingIdx=i;renderTable(currentFilter);setTimeout(()=>{const inp=document.getElementById('edit-input');if(inp)inp.focus()},50)}
+
+function cancelEdit(){editingIdx=null;renderTable(currentFilter)}
+
+function saveEdit(i){
+  const inp=document.getElementById('edit-input');
+  if(inp&&inp.value.trim()){
+    CUSTS[i].sdk=inp.value.trim();
+    editingIdx=null;
+    renderTable(currentFilter);
+  }
+}
+
+function saveNew(i){
+  const inp=document.getElementById('edit-input-'+i);
+  if(inp&&inp.value.trim()){
+    CUSTS[i].sdk=inp.value.trim();
+    CUSTS[i].status='idle';
+    CUSTS[i].evts='0';
+    renderTable(currentFilter);
+  }
+}
+
+function resolveOrphan(btn){
+  const sel=btn.closest('tr').querySelector('select');
+  if(!sel.value){sel.style.borderColor='var(--color-border-danger)';return}
+  const row=btn.closest('tr');
+  row.style.opacity='.4';
+  btn.textContent='Assigned';
+  setTimeout(()=>row.remove(),1000);
+}
+
+renderTable('all');
+</script></body></html>
