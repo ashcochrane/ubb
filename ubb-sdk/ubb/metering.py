@@ -80,7 +80,7 @@ class MeteringClient:
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
                      event_type: str, provider: str, usage_metrics: dict,
-                     group_keys: dict | None = None,
+                     group: str | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
         body: dict = {
@@ -91,8 +91,8 @@ class MeteringClient:
             "provider": provider,
             "usage_metrics": usage_metrics,
         }
-        if group_keys is not None:
-            body["group_keys"] = group_keys
+        if group is not None:
+            body["group"] = group
         if run_id is not None:
             body["run_id"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)
@@ -158,15 +158,13 @@ class MeteringClient:
         return CloseRunResult(**r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
-                  group_key: str | None = None, group_value: str | None = None) -> PaginatedResponse[UsageEvent]:
+                  group: str | None = None) -> PaginatedResponse[UsageEvent]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage."""
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        if group_key is not None:
-            params["group_key"] = group_key
-        if group_value is not None:
-            params["group_value"] = group_value
+        if group is not None:
+            params["group"] = group
         r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
         body = r.json()
         events = [

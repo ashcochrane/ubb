@@ -8,7 +8,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService
 from apps.billing.wallets.models import Wallet
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import Card, Rate, TenantMarkup
 
 
 class MeteringProductGatingTest(TestCase):
@@ -32,12 +32,16 @@ class MeteringProductGatingTest(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant_with_metering,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1_000_000,
             unit_quantity=1,
         )
@@ -101,96 +105,6 @@ class MeteringProductGatingTest(TestCase):
         self.assertIn("has_more", body)
 
 
-class PricingRatesCRUDTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(name="Test", products=["metering"])
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
-
-    def test_create_and_list_rate(self):
-        resp = self.http_client.post(
-            "/api/v1/metering/pricing/rates",
-            data=json.dumps({
-                "provider": "openai",
-                "event_type": "llm_call",
-                "metric_name": "input_tokens",
-                "dimensions": {"model": "gpt-4o"},
-                "cost_per_unit_micros": 5000,
-                "unit_quantity": 1000000,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        rate = resp.json()
-        self.assertEqual(rate["provider"], "openai")
-        self.assertIsNone(rate["valid_to"])
-
-        # List
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.json()), 1)
-
-    def test_update_rate_versions(self):
-        rate = ProviderRate.objects.create(
-            tenant=self.tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.put(
-            f"/api/v1/metering/pricing/rates/{rate.id}",
-            data=json.dumps({
-                "provider": "openai",
-                "event_type": "llm_call",
-                "metric_name": "input_tokens",
-                "dimensions": {},
-                "cost_per_unit_micros": 7500,
-                "unit_quantity": 1000000,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        new_rate = resp.json()
-        self.assertEqual(new_rate["cost_per_unit_micros"], 7500)
-        self.assertNotEqual(new_rate["id"], str(rate.id))
-
-        # Old rate should be expired
-        rate.refresh_from_db()
-        self.assertIsNotNone(rate.valid_to)
-
-        # Only new rate in active list
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(len(resp.json()), 1)
-        self.assertEqual(resp.json()[0]["cost_per_unit_micros"], 7500)
-
-    def test_delete_rate_expires(self):
-        rate = ProviderRate.objects.create(
-            tenant=self.tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/rates/{rate.id}", **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        rate.refresh_from_db()
-        self.assertIsNotNone(rate.valid_to)
-
-    def test_tenant_isolation(self):
-        other_tenant = Tenant.objects.create(name="Other", products=["metering"])
-        ProviderRate.objects.create(
-            tenant=other_tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(len(resp.json()), 0)
-
-
 class PricingMarkupsCRUDTest(TestCase):
     def setUp(self):
         self.http_client = Client()
@@ -206,15 +120,14 @@ class PricingMarkupsCRUDTest(TestCase):
             data=json.dumps({
                 "event_type": "llm_call",
                 "provider": "openai",
-                "markup_percentage_micros": 20000000,
-                "fixed_uplift_micros": 0,
+                "margin_pct": 20.0,
             }),
             content_type="application/json",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
         markup = resp.json()
-        self.assertEqual(markup["markup_percentage_micros"], 20000000)
+        self.assertEqual(markup["margin_pct"], 20.0)
 
         resp = self.http_client.get("/api/v1/metering/pricing/markups", **self._auth())
         self.assertEqual(len(resp.json()), 1)
@@ -222,22 +135,21 @@ class PricingMarkupsCRUDTest(TestCase):
     def test_update_markup_versions(self):
         markup = TenantMarkup.objects.create(
             tenant=self.tenant, event_type="llm_call", provider="openai",
-            markup_percentage_micros=20000000, fixed_uplift_micros=0,
+            margin_pct=20.0,
         )
         resp = self.http_client.put(
             f"/api/v1/metering/pricing/markups/{markup.id}",
             data=json.dumps({
                 "event_type": "llm_call",
                 "provider": "openai",
-                "markup_percentage_micros": 30000000,
-                "fixed_uplift_micros": 100,
+                "margin_pct": 30.0,
             }),
             content_type="application/json",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
         new_markup = resp.json()
-        self.assertEqual(new_markup["markup_percentage_micros"], 30000000)
+        self.assertEqual(new_markup["margin_pct"], 30.0)
         self.assertNotEqual(new_markup["id"], str(markup.id))
 
         markup.refresh_from_db()
@@ -246,7 +158,7 @@ class PricingMarkupsCRUDTest(TestCase):
     def test_delete_markup_expires(self):
         markup = TenantMarkup.objects.create(
             tenant=self.tenant, event_type="llm_call", provider="openai",
-            markup_percentage_micros=20000000,
+            margin_pct=20.0,
         )
         resp = self.http_client.delete(
             f"/api/v1/metering/pricing/markups/{markup.id}", **self._auth(),
@@ -270,12 +182,16 @@ class MeteringRunEndpointTest(TestCase):
             tenant=self.tenant, external_id="cust_run_met"
         )
         # Rate: 1 micro per token
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1,
             unit_quantity=1,
         )
@@ -400,12 +316,16 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1_000_000,
             unit_quantity=1,
         )

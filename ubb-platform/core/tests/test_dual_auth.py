@@ -66,7 +66,7 @@ class TestClerkJWTRejectedOnMachineAPIs:
     def test_clerk_jwt_rejected_on_metering_api(self, mock_verify):
         mock_verify.return_value = {"sub": "user_blocked"}
         resp = self.http_client.get(
-            "/api/v1/metering/pricing/rates",
+            "/api/v1/metering/pricing/cards",
             HTTP_AUTHORIZATION="Bearer fake.jwt.token",
         )
         assert resp.status_code == 401

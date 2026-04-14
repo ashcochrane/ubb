@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1rem 0;max-width:680px}
+.back{font-size:12px;color:var(--color-text-secondary);cursor:pointer;border:none;background:none;padding:0;margin-bottom:10px;display:inline-block}
+.ch{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem}
+.ch-n{font-size:22px;font-weight:500}.ch-m{font-size:13px;color:var(--color-text-secondary);margin-top:2px}
+.ch-m code{font-family:var(--font-mono);font-size:11px;background:var(--color-background-secondary);padding:1px 6px;border-radius:4px}
+.pill{display:inline-block;font-size:11px;padding:2px 10px;border-radius:20px;font-weight:500}
+.pill-a{background:var(--color-background-success);color:var(--color-text-success)}
+.pill-s{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.pill-r{background:var(--color-background-info);color:var(--color-text-info)}
+.bsm{padding:5px 12px;font-size:12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.bsm:hover{background:var(--color-background-secondary)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:1.25rem}
+.st{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
+.st-l{font-size:11px;color:var(--color-text-secondary);margin-bottom:1px}
+.st-v{font-size:18px;font-weight:500}
+.st-s{font-size:10px;color:var(--color-text-tertiary);margin-top:1px}
+.sec{margin-bottom:1.5rem}
+.sec-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sec-t{font-size:16px;font-weight:500}
+.tl-zone{margin-bottom:14px}
+.tl-label-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.tl-label{font-size:11px;font-weight:500;color:var(--color-text-secondary)}
+.tl-label-cost{font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.tt{height:36px;display:flex;gap:2px;margin-bottom:2px}
+.ts{height:100%;border-radius:5px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:36px;overflow:hidden}
+.ts:hover{opacity:.85}
+.ts.sel{outline:2px solid var(--color-text-primary);outline-offset:2px}
+.ts-l{font-size:11px;font-weight:500}
+.ts-d{font-size:8px;opacity:.7}
+.ts-c{font-size:9px;font-family:var(--font-mono);opacity:.6}
+.td{display:flex;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);margin-bottom:0}
+.tl-connector{display:flex;align-items:center;gap:4px;margin:3px 0;padding-left:20px}
+.tl-conn-line{flex:1;height:0;border-top:1px dashed var(--color-border-secondary)}
+.tl-conn-label{font-size:10px;color:var(--color-text-tertiary);white-space:nowrap}
+.leg{display:flex;gap:10px;font-size:11px;color:var(--color-text-secondary);margin-bottom:6px;flex-wrap:wrap}
+.leg-d{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
+.vd{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-bottom:10px}
+.vd-t{font-size:14px;font-weight:500}
+.vd-p{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.vd-s{display:flex;gap:14px;font-size:12px;color:var(--color-text-secondary);margin-top:3px}
+.vd-s span{font-weight:500;color:var(--color-text-primary)}
+.dt{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.dt th{text-align:left;font-weight:500;font-size:11px;color:var(--color-text-secondary);padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.dt td{padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.dt tr:last-child td{border:none}
+.dk{font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);background:var(--color-background-secondary);padding:2px 6px;border-radius:4px}
+.dp{font-size:11px;padding:2px 6px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.ba{padding:6px 12px;font-size:12px;font-weight:500;border-radius:var(--border-radius-md);cursor:pointer;transition:all .15s}
+.ba-p{border:0.5px solid var(--color-border-warning);background:var(--color-background-warning);color:var(--color-text-warning)}
+.ba-b{border:0.5px solid var(--color-border-tertiary);background:transparent;color:var(--color-text-primary)}
+.ba-s{border:0.5px solid var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info)}
+.ba:hover{opacity:.85}
+.pan{border-radius:var(--border-radius-lg);padding:18px;margin-top:10px;display:none}
+.pan-p{border:2px solid var(--color-border-warning)}.pan-b{border:2px solid var(--color-border-tertiary)}.pan-s{border:2px solid var(--color-border-info)}
+.pan-t{font-size:15px;font-weight:500;margin-bottom:3px}
+.pan-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.row4{display:grid;grid-template-columns:110px 1fr 16px 1fr;gap:6px;align-items:center;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.row4:last-child{border:none}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.fld input,.fld select,.fld textarea{width:100%;font-size:13px;padding:7px 10px}
+.fld .ht{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+.mono{font-family:var(--font-mono)}
+.dim-k{font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary)}
+.dim-o{font-family:var(--font-mono);font-size:12px;color:var(--color-text-tertiary);text-align:right;padding:5px 6px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.dim-a{text-align:center;font-size:11px;color:var(--color-text-tertiary)}
+.dim-n{position:relative}
+.dim-n input{font-family:var(--font-mono);font-size:12px;width:100%;padding:5px 6px;padding-left:16px}
+.dim-pf{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--color-text-tertiary);font-family:var(--font-mono);pointer-events:none}
+.dim-ch{background:var(--color-background-warning);border-radius:var(--border-radius-md)}
+.pa{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)}
+.bc{padding:6px 12px;font-size:12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.bap{padding:7px 16px;font-size:12px;font-weight:500;border:none;border-radius:var(--border-radius-md);color:#fff;cursor:pointer}
+.bap:hover{opacity:.9}
+.bap-w{background:var(--color-text-warning)}.bap-k{background:var(--color-text-primary)}.bap-i{background:var(--color-text-info)}.bap-p{background:#534AB7}
+.bd-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px}
+.bd-pair{display:grid;grid-template-columns:1fr 30px 1fr;gap:0;align-items:stretch}
+.bd-side{padding:6px 8px}
+.bd-side-l{font-size:10px;font-weight:500;color:var(--color-text-secondary)}
+.bd-side-n{font-size:13px;font-weight:500}
+.bd-side-d{font-size:11px;color:var(--color-text-secondary)}
+.bd-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.bd-line{width:2px;height:100%;background:var(--color-border-secondary);position:absolute}
+.bd-dot{width:10px;height:10px;border-radius:50%;background:var(--color-text-primary);position:relative;z-index:1}
+.adj-sec{margin-bottom:1.5rem}
+.adj-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.adj-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.adj-pan{border:2px solid #AFA9EC;border-radius:var(--border-radius-lg);padding:18px;margin-bottom:14px;display:none}
+.adj-type-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.adj-to{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:10px 12px;cursor:pointer;transition:all .15s}
+.adj-to:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.adj-to.sel{border-color:var(--color-text-primary);border-width:2px}
+.adj-to-n{font-size:13px;font-weight:500;margin-bottom:1px}
+.adj-to-d{font-size:11px;color:var(--color-text-secondary);line-height:1.3}
+.dist-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:12px}
+.dist-opt{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px;text-align:center;cursor:pointer;transition:all .15s}
+.dist-opt:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.dist-opt.sel{border-color:var(--color-text-primary);border-width:2px}
+.dist-opt-n{font-size:12px;font-weight:500;margin-bottom:1px}
+.dist-opt-d{font-size:10px;color:var(--color-text-secondary);line-height:1.3}
+.dist-preview{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px;margin-bottom:12px}
+.dist-prev-t{font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px}
+.dist-bars{display:flex;gap:2px;align-items:flex-end;height:60px;margin-bottom:4px}
+.dist-bar{flex:1;background:#AFA9EC;border-radius:2px 2px 0 0;min-height:2px;position:relative;transition:height .2s}
+.dist-bar-lbl{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--color-text-tertiary);white-space:nowrap}
+.dist-bar-val{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;font-family:var(--font-mono);color:var(--color-text-secondary);white-space:nowrap}
+.dist-dates{display:flex;justify-content:space-between;font-size:9px;color:var(--color-text-tertiary);margin-top:14px}
+.dist-total{display:flex;justify-content:space-between;font-size:12px;margin-top:8px;padding-top:6px;border-top:0.5px solid var(--color-border-tertiary)}
+.dist-total span{font-weight:500;font-family:var(--font-mono)}
+.manual-grid{display:grid;grid-template-columns:60px 1fr 60px;gap:4px;align-items:center;margin-bottom:4px;font-size:12px}
+.manual-grid label{color:var(--color-text-secondary);font-size:11px}
+.manual-grid input{font-family:var(--font-mono);font-size:12px;padding:4px 6px;text-align:right}
+.manual-grid .mg-bar{height:6px;background:var(--color-border-tertiary);border-radius:3px;overflow:hidden}
+.manual-grid .mg-fill{height:100%;background:#AFA9EC;border-radius:3px;transition:width .15s}
+.rbar{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.rbar-l{font-size:12px;color:var(--color-text-secondary)}
+.rbar-v{display:flex;gap:10px;align-items:baseline}
+.rbar-o{font-size:12px;color:var(--color-text-tertiary);text-decoration:line-through}
+.rbar-a{font-size:15px;font-weight:500}
+.rbar-d{font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px}
+.rbar-d.pos{background:var(--color-background-danger);color:var(--color-text-danger)}
+.alog{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px}
+.alog-t{font-size:13px;font-weight:500;margin-bottom:6px}
+.alog-r{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px}
+.alog-r:last-child{border:none}
+.alog-tp{font-size:10px;padding:2px 7px;border-radius:10px;display:inline-block;margin-bottom:2px}
+.alog-tp-s{background:var(--color-background-info);color:var(--color-text-info)}
+.alog-tp-p{background:var(--color-background-warning);color:var(--color-text-warning)}
+.alog-tp-b{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.alog-tp-m{background:#EEEDFE;color:#3C3489}
+.alog-desc{color:var(--color-text-secondary);margin-top:1px;font-size:11px}
+.alog-meta{color:var(--color-text-tertiary);font-size:10px;margin-top:1px}
+.alog-delta{font-family:var(--font-mono);font-weight:500;font-size:12px;text-align:right}
+.alog-delta.pos{color:var(--color-text-danger)}.alog-delta.neg{color:var(--color-text-success)}
+.alog-dl{font-size:10px;color:var(--color-text-tertiary);text-align:right}
+</style>
+
+<div class="pg">
+<button class="back" onclick="sendPrompt('Show me the pricing cards landing page')">Back to all cards</button>
+<div class="ch"><div><div class="ch-n">Gemini 2.0 Flash</div><div class="ch-m">Google <code>gemini_2_flash</code></div></div><div style="display:flex;gap:6px;align-items:center"><span class="pill pill-a">Active</span><button class="bsm">Edit card</button></div></div>
+
+<div class="stats">
+<div class="st"><div class="st-l">Originally tracked</div><div class="st-v">$2,386</div><div class="st-s">Raw event costs</div></div>
+<div class="st"><div class="st-l">Reconciled total</div><div class="st-v">$2,418</div><div class="st-s">After adjustments</div></div>
+<div class="st"><div class="st-l">Net adjustments</div><div class="st-v" style="color:var(--color-text-danger)">+$32</div><div class="st-s">3 adjustments applied</div></div>
+<div class="st"><div class="st-l">Events / versions</div><div class="st-v">186k / v3</div><div class="st-s">Since 12 Jan 2026</div></div>
+</div>
+
+<div class="sec">
+<div class="sec-h"><div class="sec-t">Timeline</div><button class="ba ba-s" onclick="openPan('s')">Insert period</button></div>
+<div class="leg"><span><span class="leg-d" style="background:#5DCAA5"></span>Active</span><span><span class="leg-d" style="background:#B4B2A9"></span>Superseded</span><span><span class="leg-d" style="background:#85B7EB"></span>Retroactive</span></div>
+
+<div class="tl-zone">
+<div class="tl-label-row"><div class="tl-label">As originally tracked</div><div class="tl-label-cost">$2,385.83</div></div>
+<div class="tt">
+<div class="ts" style="flex:3;background:#F1EFE8;border:0.5px dashed var(--color-border-secondary)" onclick="selSeg(0)"><span class="ts-l" style="color:#5F5E5A">v1</span><span class="ts-c" style="color:#888780">$387</span></div>
+<div class="ts" style="flex:4;background:#F1EFE8;border:0.5px dashed var(--color-border-secondary)" onclick="selSeg(1)"><span class="ts-l" style="color:#5F5E5A">v2</span><span class="ts-c" style="color:#888780">$1,166</span></div>
+<div class="ts" style="flex:1.5;background:#F1EFE8;border:0.5px dashed var(--color-border-secondary)" onclick="selSeg(2)"><span class="ts-l" style="color:#5F5E5A">v3</span><span class="ts-c" style="color:#888780">$835</span></div>
+</div>
+
+<div class="tl-connector"><div class="tl-conn-line"></div><div class="tl-conn-label">+$32.40 adjustments</div><div class="tl-conn-line"></div></div>
+
+<div class="tl-label-row"><div class="tl-label">Reconciled timeline</div><div class="tl-label-cost" style="font-weight:500;color:var(--color-text-primary)">$2,418.23</div></div>
+<div class="tt" id="tl-track">
+<div class="ts" id="seg-0" style="flex:3;background:#D3D1C7" onclick="selSeg(0)"><span class="ts-l" style="color:#444441">v1</span><span class="ts-c" style="color:#5F5E5A">$387</span></div>
+<div class="ts" id="seg-1" style="flex:2.5;background:#D3D1C7" onclick="selSeg(1)"><span class="ts-l" style="color:#444441">v2</span><span class="ts-c" style="color:#5F5E5A">$449</span></div>
+<div class="ts" id="seg-1b" style="flex:1.5;background:#85B7EB" onclick="selSeg(3)"><span class="ts-l" style="color:#042C53">v2b</span><span class="ts-c" style="color:#0C447C">$781</span></div>
+<div class="ts sel" id="seg-2" style="flex:1.5;background:#5DCAA5" onclick="selSeg(2)"><span class="ts-l" style="color:#04342C">v3</span><span class="ts-c" style="color:#085041">$835</span></div>
+</div>
+<div class="td"><span>12 Jan 2026</span><span>3 Feb</span><span>20 Feb</span><span>18 Mar</span><span>Today</span></div>
+</div>
+
+<div id="vp-0" style="display:none"><div class="vd"><div class="vd-t">Version 1 <span class="pill pill-s">Superseded</span></div><div class="vd-p">12 Jan, 00:00 — 3 Feb, 00:00 (22 days)</div><div class="vd-s">Events: <span>41,203</span> | Cost: <span>$387.22</span></div><table class="dt"><thead><tr><th>Dimension</th><th>Type</th><th>Unit price</th><th>Display</th></tr></thead><tbody><tr><td><span class="dk">input_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000001000</td><td>$0.10 / 1M</td></tr><tr><td><span class="dk">output_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000004000</td><td>$0.40 / 1M</td></tr></tbody></table><div class="acts"><button class="ba ba-p" onclick="openPan('p')">Edit prices</button><button class="ba ba-b" onclick="openPan('b')">Adjust boundaries</button><button class="ba ba-s" onclick="openPan('s')">Split this period</button></div></div></div>
+
+<div id="vp-1" style="display:none"><div class="vd"><div class="vd-t">Version 2 <span class="pill pill-s">Superseded</span></div><div class="vd-p">3 Feb, 00:00 — 20 Feb, 00:00 (17 days)</div><div class="vd-s">Events: <span>37,147</span> | Cost: <span>$449.58</span></div><table class="dt"><thead><tr><th>Dimension</th><th>Type</th><th>Unit price</th><th>Display</th></tr></thead><tbody><tr><td><span class="dk">input_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000001500</td><td>$0.15 / 1M</td></tr><tr><td><span class="dk">output_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000004000</td><td>$0.40 / 1M</td></tr><tr><td><span class="dk">grounding_requests</span></td><td><span class="dp">flat</span></td><td class="mono" style="font-size:12px">$0.0350000000</td><td>$0.035 / req</td></tr></tbody></table><div class="acts"><button class="ba ba-p" onclick="openPan('p')">Edit prices</button><button class="ba ba-b" onclick="openPan('b')">Adjust boundaries</button><button class="ba ba-s" onclick="openPan('s')">Split this period</button></div></div></div>
+
+<div id="vp-3" style="display:none"><div class="vd"><div class="vd-t">Version 2b <span class="pill pill-r">Retroactive</span></div><div class="vd-p">20 Feb, 00:00 — 18 Mar, 00:00 (26 days)</div><div class="vd-s">Events: <span>61,294</span> | Original: <span style="text-decoration:line-through;color:var(--color-text-tertiary)">$748.32</span> Reconciled: <span>$780.71</span></div><table class="dt"><thead><tr><th>Dimension</th><th>Type</th><th>Unit price</th><th>Display</th></tr></thead><tbody><tr><td><span class="dk">input_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000002000</td><td>$0.20 / 1M</td></tr><tr><td><span class="dk">output_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000004000</td><td>$0.40 / 1M</td></tr><tr><td><span class="dk">grounding_requests</span></td><td><span class="dp">flat</span></td><td class="mono" style="font-size:12px">$0.0350000000</td><td>$0.035 / req</td></tr></tbody></table><div class="acts"><button class="ba ba-p" onclick="openPan('p')">Edit prices</button><button class="ba ba-b" onclick="openPan('b')">Adjust boundaries</button></div></div></div>
+
+<div id="vp-2"><div class="vd"><div class="vd-t">Version 3 <span class="pill pill-a">Active</span></div><div class="vd-p">18 Mar, 00:00 — present</div><div class="vd-s">Events: <span>46,768</span> | Cost: <span>$834.61</span></div><table class="dt"><thead><tr><th>Dimension</th><th>Type</th><th>Unit price</th><th>Display</th></tr></thead><tbody><tr><td><span class="dk">input_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000001500</td><td>$0.15 / 1M</td></tr><tr><td><span class="dk">output_tokens</span></td><td><span class="dp">per unit</span></td><td class="mono" style="font-size:12px">$0.0000004000</td><td>$0.40 / 1M</td></tr><tr><td><span class="dk">grounding_requests</span></td><td><span class="dp">flat</span></td><td class="mono" style="font-size:12px">$0.0350000000</td><td>$0.035 / req</td></tr></tbody></table><div class="acts"><button class="ba ba-b" onclick="openPan('b')">Adjust boundaries</button></div></div></div>
+
+<div class="pan pan-p" id="pan-p"><div class="pan-t">Edit prices for this version</div><div class="pan-sub">All events in this period will be recalculated at the corrected prices.</div><div id="pp-dims"><div class="row4"><div class="dim-k">input_tokens</div><div class="dim-o">$0.0000001000</div><div class="dim-a">&rarr;</div><div class="dim-n"><span class="dim-pf">$</span><input type="number" step="any" value="0.0000001000" /></div></div><div class="row4"><div class="dim-k">output_tokens</div><div class="dim-o">$0.0000004000</div><div class="dim-a">&rarr;</div><div class="dim-n"><span class="dim-pf">$</span><input type="number" step="any" value="0.0000004000" /></div></div></div><div class="fld" style="margin-top:10px"><label>Reason</label><textarea placeholder="e.g. v1 should have used $0.15/1M input, not $0.10/1M."></textarea></div><div class="pa"><button class="bc" onclick="closePan()">Cancel</button><div style="display:flex;gap:6px"><button class="bc">Preview events</button><button class="bap bap-w" onclick="closePan()">Apply correction</button></div></div></div>
+
+<div class="pan pan-b" id="pan-b"><div class="pan-t">Adjust version boundary</div><div class="pan-sub">Move the boundary between two adjacent versions. Events crossing the new boundary will be repriced.</div><div class="bd-card"><div class="bd-pair"><div class="bd-side"><div class="bd-side-l">Version ending</div><div class="bd-side-n">v1</div><div class="bd-side-d">12 Jan — 3 Feb</div></div><div class="bd-mid"><div class="bd-line"></div><div class="bd-dot"></div></div><div class="bd-side"><div class="bd-side-l">Version starting</div><div class="bd-side-n">v2</div><div class="bd-side-d">3 Feb — 20 Feb</div></div></div></div><div class="row3" style="margin-top:10px"><div class="fld" style="margin:0"><label>Move boundary to</label><input type="date" value="2026-02-03" /></div><div class="fld" style="margin:0"><label>Time</label><input type="time" value="00:00" /></div><div style="display:flex;align-items:end;font-size:12px;color:var(--color-text-tertiary);padding-bottom:8px">No change yet</div></div><div class="fld" style="margin-top:10px"><label>Reason</label><textarea placeholder="e.g. Price change was effective end of day 5 Feb, not 3 Feb."></textarea></div><div class="pa"><button class="bc" onclick="closePan()">Cancel</button><button class="bap bap-k" onclick="closePan()">Apply boundary change</button></div></div>
+
+<div class="pan pan-s" id="pan-s"><div class="pan-t">Insert a pricing period</div><div class="pan-sub">Split an existing version at a date to apply different prices for part of its period.</div><div class="row3"><div class="fld"><label>Split version</label><select><option>v2 (3 Feb — 20 Feb)</option><option>v1 (12 Jan — 3 Feb)</option><option>v3 (18 Mar — present)</option></select></div><div class="fld"><label>Split at date</label><input type="date" value="2026-02-10" /></div><div class="fld"><label>Time</label><input type="time" value="00:00" /></div></div><div style="font-size:12px;font-weight:500;margin-bottom:4px;margin-top:4px">New period prices</div><div class="row4"><div class="dim-k">input_tokens</div><div class="dim-o">$0.0000001500</div><div class="dim-a">&rarr;</div><div class="dim-n dim-ch"><span class="dim-pf">$</span><input type="number" step="any" value="0.0000002000" /></div></div><div class="row4"><div class="dim-k">output_tokens</div><div class="dim-o">$0.0000004000</div><div class="dim-a">&rarr;</div><div class="dim-n"><span class="dim-pf">$</span><input type="number" step="any" value="0.0000004000" /></div></div><div class="row4"><div class="dim-k">grounding_requests</div><div class="dim-o">$0.0350000000</div><div class="dim-a">&rarr;</div><div class="dim-n"><span class="dim-pf">$</span><input type="number" step="any" value="0.035" /></div></div><div class="fld" style="margin-top:10px"><label>Reason</label><textarea placeholder="e.g. Google increased input token pricing effective 10 Feb."></textarea></div><div class="pa"><button class="bc" onclick="closePan()">Cancel</button><div style="display:flex;gap:6px"><button class="bc">Preview events</button><button class="bap bap-i" onclick="closePan()">Apply and recalculate</button></div></div></div>
+</div>
+
+<div class="adj-sec">
+<div class="adj-h"><div class="sec-t">Adjustments</div><button class="bsm" onclick="toggleAdj()" style="border-color:#AFA9EC;color:#534AB7">Record an adjustment</button></div>
+<div class="adj-sub">For costs outside the event pipeline — refunds, credits, missed data, or invoice reconciliation.</div>
+
+<div class="adj-pan" id="adj-pan">
+<div style="font-size:15px;font-weight:500;margin-bottom:10px">Record an adjustment</div>
+<div class="adj-type-row">
+<div class="adj-to sel" id="at-0" onclick="pickAdjType(0)"><div class="adj-to-n">Credit or refund</div><div class="adj-to-d">Provider refund, billing credit, or cost reversal.</div></div>
+<div class="adj-to" id="at-1" onclick="pickAdjType(1)"><div class="adj-to-n">Missing costs</div><div class="adj-to-d">Costs that were never tracked by the system.</div></div>
+</div>
+
+<div class="row2">
+<div class="fld"><label>Total amount ($)</label><input type="number" step="any" id="adj-amt" value="-25.00" oninput="updateDist()" /><div class="ht" id="adj-hint">Negative = credit/refund.</div></div>
+<div class="fld"><label>Attribute to product</label><select><option>Property search</option><option>Doc summariser</option><option>Content gen</option><option>No product (card-level)</option></select></div>
+</div>
+
+<div class="fld"><label>How should this cost be distributed?</label></div>
+<div class="dist-row">
+<div class="dist-opt sel" id="dm-0" onclick="pickDist(0)"><div class="dist-opt-n">Lump sum</div><div class="dist-opt-d">Single date</div></div>
+<div class="dist-opt" id="dm-1" onclick="pickDist(1)"><div class="dist-opt-n">Even daily</div><div class="dist-opt-d">Split equally</div></div>
+<div class="dist-opt" id="dm-2" onclick="pickDist(2)"><div class="dist-opt-n">Proportional</div><div class="dist-opt-d">Match existing</div></div>
+<div class="dist-opt" id="dm-3" onclick="pickDist(3)"><div class="dist-opt-n">Manual</div><div class="dist-opt-d">Set each day</div></div>
+</div>
+
+<div id="dist-0"><div class="row2"><div class="fld"><label>Date</label><input type="date" value="2026-03-10" /></div><div class="fld"><label>Time (optional)</label><input type="time" value="14:30" /></div></div><div class="dist-preview"><div class="dist-prev-t">Preview</div><div class="dist-bars"><div class="dist-bar" style="height:100%"><div class="dist-bar-lbl">10 Mar</div><div class="dist-bar-val">$25.00</div></div></div><div class="dist-total"><span>Total</span><span id="dt-0">$25.00</span></div></div></div>
+
+<div id="dist-1" style="display:none"><div class="row2"><div class="fld"><label>Period start</label><input type="date" value="2026-03-01" onchange="updateDist()" /></div><div class="fld"><label>Period end</label><input type="date" value="2026-03-07" onchange="updateDist()" /></div></div><div class="dist-preview"><div class="dist-prev-t">Daily allocation preview (7 days)</div><div class="dist-bars" id="even-bars"></div><div class="dist-dates"><span>1 Mar</span><span>7 Mar</span></div><div class="dist-total"><span>Total ($3.57/day x 7)</span><span id="dt-1">$25.00</span></div></div></div>
+
+<div id="dist-2" style="display:none"><div class="row2"><div class="fld"><label>Period start</label><input type="date" value="2026-03-01" /></div><div class="fld"><label>Period end</label><input type="date" value="2026-03-07" /></div></div><div class="fld"><label>Proportional to</label><select id="prop-basis" onchange="updateProp()"><option value="total">Total tracked costs for this card</option><option value="product">Costs for selected product only</option></select><div class="ht">Allocates more to days with higher existing costs, less to quieter days.</div></div><div class="dist-preview"><div class="dist-prev-t">Daily allocation preview (proportional to existing costs)</div><div class="dist-bars" id="prop-bars"></div><div class="dist-dates"><span>1 Mar</span><span>7 Mar</span></div><div class="dist-total"><span>Total (weighted by daily cost volume)</span><span id="dt-2">$25.00</span></div></div></div>
+
+<div id="dist-3" style="display:none"><div class="row2"><div class="fld"><label>Period start</label><input type="date" value="2026-03-01" onchange="buildManual()" /></div><div class="fld"><label>Period end</label><input type="date" value="2026-03-07" onchange="buildManual()" /></div></div><div class="dist-preview"><div class="dist-prev-t">Allocate to each day</div><div id="manual-rows"></div><div class="dist-total" style="margin-top:8px"><span>Total allocated</span><span id="dt-3">$0.00</span></div><div id="manual-remaining" style="font-size:11px;color:var(--color-text-warning);margin-top:2px"></div></div></div>
+
+<div class="fld" style="margin-top:10px"><label>Reason</label><textarea id="adj-reason" placeholder="e.g. Google Cloud issued a $25 credit for service disruption on 10 Mar."></textarea><div class="ht">Required. Visible in the audit trail.</div></div>
+<div class="fld"><label>Supporting evidence (optional)</label><input type="text" placeholder="e.g. Invoice link, support ticket URL" /></div>
+<div class="pa"><button class="bc" onclick="toggleAdj()">Cancel</button><button class="bap bap-p" onclick="toggleAdj()">Record adjustment</button></div>
+</div>
+
+<div class="rbar"><div class="rbar-l">All-time reconciled cost</div><div class="rbar-v"><span class="rbar-o">$2,385.83</span><span class="rbar-a">$2,418.23</span><span class="rbar-d pos">+$32.40</span></div></div>
+
+<div class="alog"><div class="alog-t">Audit trail</div>
+<div class="alog-r"><div><span class="alog-tp alog-tp-s">Period insert</span><div style="font-size:11px;margin-top:2px">Inserted v2b: 20 Feb — 18 Mar</div><div class="alog-desc">input_tokens $0.15 to $0.20/1M. Google price increase.</div><div class="alog-meta">61,294 events recalculated. 20 Mar by j.smith@co</div></div><div><div class="alog-delta pos">+$38.39</div><div class="alog-dl">net delta</div></div></div>
+<div class="alog-r"><div><span class="alog-tp alog-tp-b">Boundary shift</span><div style="font-size:11px;margin-top:2px">v1/v2 boundary: 3 Feb to 5 Feb</div><div class="alog-desc">Corrected to actual pricing effective date.</div><div class="alog-meta">4,102 events reassigned. 19 Mar by j.smith@co</div></div><div><div class="alog-delta pos">+$6.81</div><div class="alog-dl">net delta</div></div></div>
+<div class="alog-r"><div><span class="alog-tp alog-tp-m">Credit recorded</span><div style="font-size:11px;margin-top:2px">Provider credit — 10 Mar (lump sum)</div><div class="alog-desc">Google Cloud service disruption credit.</div><div class="alog-meta">15 Mar by j.smith@co</div></div><div><div class="alog-delta neg">-$12.80</div><div class="alog-dl">credit</div></div></div>
+</div>
+</div>
+</div>
+
+<script>
+let sel=2;
+function selSeg(i){sel=i;
+document.querySelectorAll('#tl-track .ts').forEach(s=>s.classList.remove('sel'));
+const ids=['seg-0','seg-1','seg-2','seg-1b'];
+const el=document.getElementById(ids[i]);if(el)el.classList.add('sel');
+['vp-0','vp-1','vp-2','vp-3'].forEach((id,j)=>{const p=document.getElementById(id);if(p)p.style.display=j===i?'block':'none'});
+closePan();}
+
+function openPan(t){closePan();document.getElementById('pan-'+t).style.display='block'}
+function closePan(){['p','b','s'].forEach(t=>{document.getElementById('pan-'+t).style.display='none'})}
+function toggleAdj(){const p=document.getElementById('adj-pan');p.style.display=p.style.display==='block'?'none':'block';if(p.style.display==='block'){pickDist(0);updateDist()}}
+
+function pickAdjType(i){document.querySelectorAll('.adj-to').forEach((o,j)=>o.classList.toggle('sel',j===i));
+const a=document.getElementById('adj-amt');const h=document.getElementById('adj-hint');const r=document.getElementById('adj-reason');
+if(i===0){a.value='-25.00';h.textContent='Negative = credit/refund.';r.placeholder='e.g. Google Cloud issued a $25 credit...';}
+else{a.value='45.00';h.textContent='Positive = additional untracked cost.';r.placeholder='e.g. Developer forgot to instrument Whisper calls...';}
+updateDist();}
+
+let distMode=0;
+function pickDist(m){distMode=m;document.querySelectorAll('.dist-opt').forEach((o,j)=>o.classList.toggle('sel',j===m));
+[0,1,2,3].forEach(j=>{document.getElementById('dist-'+j).style.display=j===m?'block':'none'});
+updateDist();if(m===3)buildManual();}
+
+function updateDist(){
+const amt=Math.abs(parseFloat(document.getElementById('adj-amt').value)||0);
+document.getElementById('dt-0').textContent='$'+amt.toFixed(2);
+const days=7;
+if(distMode===1){const c=document.getElementById('even-bars');c.innerHTML='';const daily=amt/days;
+for(let i=0;i<days;i++){c.innerHTML+='<div class="dist-bar" style="height:100%"><div class="dist-bar-val">$'+daily.toFixed(2)+'</div></div>';}
+document.getElementById('dt-1').textContent='$'+amt.toFixed(2);}
+if(distMode===2)updateProp();}
+
+function updateProp(){
+const amt=Math.abs(parseFloat(document.getElementById('adj-amt').value)||0);
+const weights=[18,12,22,15,28,20,14];const total=weights.reduce((a,b)=>a+b,0);
+const c=document.getElementById('prop-bars');c.innerHTML='';const maxW=Math.max(...weights);
+weights.forEach((w,i)=>{const pct=w/total;const daily=(amt*pct);const h=Math.round((w/maxW)*100);
+c.innerHTML+='<div class="dist-bar" style="height:'+h+'%"><div class="dist-bar-val">$'+daily.toFixed(2)+'</div></div>';});
+document.getElementById('dt-2').textContent='$'+amt.toFixed(2);}
+
+function buildManual(){
+const amt=Math.abs(parseFloat(document.getElementById('adj-amt').value)||0);
+const days=['1 Mar','2 Mar','3 Mar','4 Mar','5 Mar','6 Mar','7 Mar'];
+const c=document.getElementById('manual-rows');c.innerHTML='';const daily=Math.round(amt/days.length*100)/100;
+days.forEach((d,i)=>{c.innerHTML+='<div class="manual-grid"><label>'+d+'</label><div class="mg-bar"><div class="mg-fill" id="mf-'+i+'" style="width:'+Math.round(100/days.length)+'%"></div></div><input type="number" step="0.01" value="'+daily.toFixed(2)+'" id="mi-'+i+'" oninput="calcManualTotal()" /></div>';});
+calcManualTotal();}
+
+function calcManualTotal(){
+let total=0;for(let i=0;i<7;i++){const el=document.getElementById('mi-'+i);if(el)total+=parseFloat(el.value)||0;}
+document.getElementById('dt-3').textContent='$'+total.toFixed(2);
+const amt=Math.abs(parseFloat(document.getElementById('adj-amt').value)||0);const rem=amt-total;
+const rEl=document.getElementById('manual-remaining');
+if(Math.abs(rem)>0.01){rEl.textContent='$'+Math.abs(rem).toFixed(2)+(rem>0?' remaining to allocate':' over-allocated');rEl.style.color=rem>0?'var(--color-text-warning)':'var(--color-text-danger)';}
+else{rEl.textContent='Fully allocated';rEl.style.color='var(--color-text-success)';}
+const maxV=Math.max(...Array.from({length:7},(_,i)=>parseFloat(document.getElementById('mi-'+i)?.value)||0),0.01);
+for(let i=0;i<7;i++){const v=parseFloat(document.getElementById('mi-'+i)?.value)||0;const f=document.getElementById('mf-'+i);if(f)f.style.width=Math.round(v/maxV*100)+'%';}}
+
+updateDist();
+</script></body></html>

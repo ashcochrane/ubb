@@ -6,9 +6,11 @@ from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
+from api.v1.schemas import CreateGroupRequest, UpdateGroupRequest, GroupResponse, GroupListResponse
 from core.auth import ApiKeyAuth
 from core.clerk_auth import ClerkJWTAuth
 from apps.platform.customers.models import Customer
+from apps.platform.groups.models import Group
 from apps.billing.wallets.models import Wallet
 
 
@@ -211,3 +213,127 @@ def list_wallets(request, max_balance_micros: int = None, cursor: str = None, li
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+
+# ── Group endpoints ──────────────────────────────────────────────────────
+
+
+def _group_to_response(g):
+    return {
+        "id": str(g.id),
+        "name": g.name,
+        "slug": g.slug,
+        "description": g.description,
+        "margin_pct": float(g.margin_pct) if g.margin_pct is not None else None,
+        "status": g.status,
+        "parent_id": str(g.parent_id) if g.parent_id else None,
+        "created_at": g.created_at.isoformat(),
+        "updated_at": g.updated_at.isoformat(),
+    }
+
+
+@platform_api.post("/groups", response={201: GroupResponse, 409: dict})
+def create_group(request, payload: CreateGroupRequest):
+    kwargs = {
+        "tenant": request.auth.tenant,
+        "name": payload.name,
+        "slug": payload.slug,
+        "description": payload.description,
+    }
+    if payload.margin_pct is not None:
+        kwargs["margin_pct"] = payload.margin_pct
+    if payload.parent_id is not None:
+        parent = get_object_or_404(
+            Group, id=payload.parent_id, tenant=request.auth.tenant
+        )
+        kwargs["parent"] = parent
+
+    try:
+        group = Group.objects.create(**kwargs)
+    except IntegrityError:
+        return 409, {"error": "Group with this slug already exists"}
+
+    return 201, _group_to_response(group)
+
+
+@platform_api.get("/groups", response=GroupListResponse)
+def list_groups(
+    request,
+    status: str = None,
+    cursor: str = None,
+    limit: int = 50,
+):
+    tenant = request.auth.tenant
+    limit = min(max(limit, 1), 100)
+
+    qs = Group.objects.filter(tenant=tenant).order_by("-created_at", "-id")
+
+    if status:
+        qs = qs.filter(status=status)
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return platform_api.create_response(
+                request, {"error": "Invalid cursor"}, status=400
+            )
+
+    groups = list(qs[: limit + 1])
+    has_more = len(groups) > limit
+    groups = groups[:limit]
+
+    next_cursor = None
+    if has_more and groups:
+        last = groups[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [_group_to_response(g) for g in groups],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@platform_api.get("/groups/{group_id}", response=GroupResponse)
+def get_group(request, group_id: str):
+    group = get_object_or_404(
+        Group, id=group_id, tenant=request.auth.tenant
+    )
+    return _group_to_response(group)
+
+
+@platform_api.patch("/groups/{group_id}", response=GroupResponse)
+def update_group(request, group_id: str, payload: UpdateGroupRequest):
+    group = get_object_or_404(
+        Group, id=group_id, tenant=request.auth.tenant
+    )
+
+    update_fields = ["updated_at"]
+    if payload.name is not None:
+        group.name = payload.name
+        update_fields.append("name")
+    if payload.description is not None:
+        group.description = payload.description
+        update_fields.append("description")
+    if payload.margin_pct is not None:
+        group.margin_pct = payload.margin_pct
+        update_fields.append("margin_pct")
+    if payload.status is not None:
+        group.status = payload.status
+        update_fields.append("status")
+
+    if len(update_fields) > 1:
+        group.save(update_fields=update_fields)
+
+    return _group_to_response(group)
+
+
+@platform_api.delete("/groups/{group_id}")
+def delete_group(request, group_id: str):
+    group = get_object_or_404(
+        Group, id=group_id, tenant=request.auth.tenant
+    )
+    group.status = "archived"
+    group.save(update_fields=["status", "updated_at"])
+    return _group_to_response(group)

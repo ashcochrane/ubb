@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:600px;margin:0 auto}
+.progress{display:flex;gap:4px;margin-bottom:1.5rem}
+.ps{flex:1;height:4px;border-radius:2px}
+.ps-done{background:var(--color-text-success)}.ps-act{background:var(--color-text-primary)}.ps-pen{background:var(--color-border-tertiary)}
+.sb{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px}
+.sn{width:24px;height:24px;border-radius:50%;background:var(--color-text-primary);color:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+.sl{font-size:12px;color:var(--color-text-secondary)}
+.pg-t{font-size:22px;font-weight:500;margin-bottom:4px}
+.pg-s{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem;max-width:500px}
+.ctx{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--color-text-secondary)}
+.ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--color-text-success);margin-right:6px;display:inline-block}
+.sec-t{font-size:15px;font-weight:500;margin-bottom:4px}
+.sec-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px;line-height:1.6}
+.mopts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.mo{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;cursor:pointer;transition:all .15s}
+.mo:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.mo.sel{border-color:var(--color-text-primary);border-width:2px}
+.mo-t{font-size:13px;font-weight:500;margin-bottom:3px}
+.mo-s{font-size:11px;color:var(--color-text-secondary);line-height:1.4}
+.mo-ex{font-family:var(--font-mono);font-size:10px;color:var(--color-text-tertiary);margin-top:6px;padding:4px 8px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);display:inline-block}
+.mo.sel .mo-ex{background:var(--color-background-primary)}
+.mo-conf{font-size:10px;color:var(--color-text-success);margin-top:4px;display:none}
+.mo.sel .mo-conf{display:block}
+.meta-fld{margin:12px 0;display:none}
+.meta-fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.meta-fld input{width:100%;font-size:12px;padding:8px 10px;font-family:var(--font-mono)}
+.meta-fld .ht{font-size:10px;color:var(--color-text-tertiary);margin-top:3px}
+.explain-box{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px;margin:14px 0;display:none}
+.explain-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.explain-how{font-size:11px;color:var(--color-text-secondary);line-height:1.6}
+.explain-code{font-family:var(--font-mono);font-size:10px;background:var(--color-background-secondary);padding:8px 10px;border-radius:var(--border-radius-md);margin-top:8px;line-height:1.7;white-space:pre;overflow-x:auto;color:var(--color-text-secondary)}
+.explain-code .hl{color:var(--color-text-info);font-weight:500}
+.match-section{margin-top:1.5rem;display:none}
+.mbtn{width:100%;padding:10px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.mbtn:hover{opacity:.9}.mbtn:disabled{opacity:.35;cursor:not-allowed}
+.match-loading{text-align:center;padding:16px;display:none}
+.match-loading-t{font-size:13px;color:var(--color-text-secondary);margin-top:6px}
+.spinner{width:24px;height:24px;border:2px solid var(--color-border-tertiary);border-top-color:var(--color-text-primary);border-radius:50%;display:inline-block;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result-section{display:none;margin-top:1.5rem}
+.res-summary{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:12px}
+.res-left{display:flex;align-items:center;gap:8px}
+.res-check{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.res-check-ok{background:var(--color-background-success)}
+.res-check-warn{background:var(--color-background-warning)}
+.res-t{font-size:13px;font-weight:500}.res-s{font-size:11px;color:var(--color-text-secondary)}
+.res-badge{font-size:10px;padding:3px 10px;border-radius:12px;font-weight:500}
+.res-badge-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.res-badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.cust-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:12px}
+.ctbl{width:100%;border-collapse:collapse;font-size:11px}
+.ctbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:7px 10px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.ctbl td{padding:7px 10px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:middle}
+.ctbl tr:last-child td{border:none}
+.ctbl tr.manual-row{background:rgba(250,238,218,0.15)}
+.cn{font-weight:500;font-size:11px}.cid{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary);margin-top:1px}
+.cmatch{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.crev{font-family:var(--font-mono);font-size:10px;text-align:right}
+.cpill{font-size:9px;padding:2px 6px;border-radius:8px;font-weight:500}
+.cpill-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.cpill-man{background:var(--color-background-warning);color:var(--color-text-warning)}
+.cinput{font-family:var(--font-mono);font-size:10px;padding:5px 8px;width:100%;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary)}
+.cinput:focus{border-color:var(--color-border-primary);outline:none}
+.cust-tbl-foot{padding:6px 10px;font-size:10px;color:var(--color-text-info);background:var(--color-background-secondary);cursor:pointer;text-align:center}
+.manual-help{font-size:11px;color:var(--color-text-warning);padding:8px 12px;background:var(--color-background-warning);border-radius:var(--border-radius-md);margin-bottom:12px;display:none;line-height:1.5}
+.sdk-preview{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px;margin-bottom:12px;display:none}
+.sdk-t{font-size:12px;font-weight:500;margin-bottom:4px}
+.sdk-s{font-size:11px;color:var(--color-text-secondary);margin-bottom:8px}
+.sdk-code{font-family:var(--font-mono);font-size:10px;background:var(--color-background-secondary);padding:10px 12px;border-radius:var(--border-radius-md);line-height:1.8;white-space:pre;overflow-x:auto;color:var(--color-text-secondary)}
+.sdk-code .hl{color:var(--color-text-info);font-weight:500}
+.complete-bar{border:0.5px solid var(--color-border-success);border-radius:var(--border-radius-md);padding:12px 16px;background:var(--color-background-success);display:none;margin-bottom:12px}
+.complete-t{font-size:14px;font-weight:500;color:var(--color-text-success);margin-bottom:2px}
+.complete-s{font-size:12px;color:var(--color-text-secondary)}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-back:hover{background:var(--color-background-secondary)}
+.btn-next{padding:9px 24px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-next:hover{opacity:.9}.btn-next:disabled{opacity:.35;cursor:not-allowed}
+</style>
+
+<div class="pg">
+<div class="progress"><div class="ps ps-done"></div><div class="ps ps-act"></div><div class="ps ps-pen"></div><div class="ps ps-pen"></div></div>
+<div class="sb"><div class="sn">2</div><span class="sl">of 4</span></div>
+<div class="pg-t">How do you identify your customers?</div>
+<div class="pg-s">Your SDK will send a customer identifier with each API event. We need to know what that identifier looks like so we can match it to your Stripe customers.</div>
+<div class="ctx"><span><span class="ctx-dot"></span>Stripe connected: 21 customers found</span><span style="font-weight:500">$8,420 revenue (30d)</span></div>
+
+<div style="margin-bottom:1.5rem">
+<div class="sec-t">What identifier does your app use?</div>
+<div class="sec-s">Think about the value your app has for the logged-in customer when it makes an API call. This is what you'll pass as the <span style="font-family:var(--font-mono);font-size:11px;background:var(--color-background-secondary);padding:1px 5px;border-radius:3px">customer</span> field in the SDK.</div>
+<div class="mopts">
+<div class="mo" id="m-0" onclick="pick(0)"><div class="mo-t">Stripe customer ID</div><div class="mo-s">Your code already uses the Stripe ID to identify the customer making the request.</div><div class="mo-ex">cus_R4kB9xPm2nQ</div><div class="mo-conf">Expect 100% auto-match</div></div>
+<div class="mo" id="m-1" onclick="pick(1)"><div class="mo-t">Email address</div><div class="mo-s">You look up the customer by their email address in your application.</div><div class="mo-ex"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="dabbbeb7b3b49abbb9b7bfb9b5a8aaf4b9b5b7">[email&#160;protected]</a></div><div class="mo-conf">Matched against Stripe email field</div></div>
+<div class="mo" id="m-2" onclick="pick(2)"><div class="mo-t">Internal ID or slug</div><div class="mo-s">Your app has its own customer identifier, like a slug, database ID, or org key.</div><div class="mo-ex">acme_corp, org_4521</div><div class="mo-conf">Fuzzy-matched against name and metadata</div></div>
+<div class="mo" id="m-3" onclick="pick(3)"><div class="mo-t">Stripe metadata field</div><div class="mo-s">You store your internal ID inside each Stripe customer's metadata object.</div><div class="mo-ex">metadata.platform_id</div><div class="mo-conf">Direct lookup from metadata</div></div>
+</div>
+<div class="meta-fld" id="meta-fld"><label>Which metadata key holds your identifier?</label><input type="text" id="meta-input" placeholder="e.g. platform_id, internal_id, org_key" oninput="checkMetaReady()" /><div class="ht">We'll read this field from each Stripe customer's metadata object to find the matching identifier.</div></div>
+</div>
+
+<div class="explain-box" id="explain-box"><div class="explain-t" id="explain-t"></div><div class="explain-how" id="explain-how"></div><div class="explain-code" id="explain-code"></div></div>
+<div class="match-section" id="match-section"><button class="mbtn" id="match-btn" onclick="runMatch()">Match my 21 Stripe customers</button></div>
+<div class="match-loading" id="match-loading"><div class="spinner"></div><div class="match-loading-t">Matching against your 21 Stripe customers...</div></div>
+
+<div class="result-section" id="result-section">
+<div class="res-summary"><div class="res-left"><div class="res-check res-check-ok" id="res-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><div><div class="res-t" id="res-t"></div><div class="res-s" id="res-s"></div></div></div><span class="res-badge res-badge-ok" id="res-badge"></span></div>
+<div class="manual-help" id="manual-help">Type your customer identifier for each unmatched row below. This is the value your code uses for that customer — the same value you'll send in the SDK.</div>
+<div class="cust-card"><table class="ctbl"><thead><tr><th>Stripe customer</th><th>Your identifier (sent via SDK)</th><th style="text-align:right">Revenue (30d)</th><th style="width:58px">Status</th></tr></thead><tbody id="cust-body"></tbody></table><div class="cust-tbl-foot" id="cust-foot" onclick="this.style.display='none'">Showing 6 of 21 — click to expand</div></div>
+<div class="sdk-preview" id="sdk-preview"><div class="sdk-t">Your SDK call will look like this</div><div class="sdk-s">The customer field below uses the identifier format you selected. Paste this pattern wherever you call an API in your app.</div><div class="sdk-code" id="sdk-code"></div></div>
+<div class="complete-bar" id="complete-bar"><div class="complete-t">Customer mapping complete</div><div class="complete-s">All 21 customers are mapped. Revenue from each Stripe customer will be paired with the API costs your SDK reports for that identifier.</div></div>
+</div>
+
+<div class="nav"><button class="btn-back">Back to step 1</button><button class="btn-next" id="btn-next" disabled>Continue to step 3</button></div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const CUSTS=[
+{name:'Acme Corp',sid:'cus_R4kB9xPm2nQ',email:'admin@acmecorp.com',slug:'acme_corp',meta:'ac_001',rev:'$2,400'},
+{name:'BrightPath Ltd',sid:'cus_Q7mN3vHj8wL',email:'team@brightpath.io',slug:'brightpath',meta:'bp_002',rev:'$1,800'},
+{name:'NovaTech Inc',sid:'cus_S2pK5tRn7xY',email:'ops@novatech.co',slug:'novatech',meta:'nt_003',rev:'$950'},
+{name:'Helios Digital',sid:'cus_U6nR2wKm9xQ',email:'hello@helios.dev',slug:'helios_digital',meta:'hd_004',rev:'$720'},
+{name:'Zenith Labs',sid:'cus_T9wM1kJp4qB',email:'info@zenithlabs.com',slug:null,meta:null,rev:'$680'},
+{name:'ClearView Analytics',sid:'cus_V3bP8sHn5mJ',email:'support@clearview.ai',slug:'clearview',meta:'cv_006',rev:'$150'},
+{name:'Eko Systems',sid:'cus_W1cT4rFk7pN',email:'dev@ekosystems.io',slug:'eko',meta:'ek_007',rev:'$90'},
+{name:'Pinnacle AI',sid:'cus_X5rW8nKp3mQ',email:null,slug:null,meta:null,rev:'$340'}
+];
+let mode=-1,matched=false;
+const EXPLAIN={
+0:{t:'How this will work in your code',how:'When your app processes a request, you already have the Stripe customer ID. You\'ll pass it directly to the SDK. Since this matches your Stripe data exactly, every customer will auto-match with 100% confidence.',code:'meter.track({\n  <span class="hl">customer: customer.stripeId,</span>\n  pricing_card: "gemini_2_flash",\n  usage: { input_tokens: 1523, output_tokens: 892 }\n})'},
+1:{t:'How this will work in your code',how:'When your app processes a request, you\'ll pass the customer\'s email. We\'ll match it against the email field on each Stripe customer. Most will match automatically \u2014 a few may need manual assignment if billing and product emails differ.',code:'meter.track({\n  <span class="hl">customer: currentUser.email,</span>\n  pricing_card: "gemini_2_flash",\n  usage: { input_tokens: 1523, output_tokens: 892 }\n})'},
+2:{t:'How this will work in your code',how:'When your app processes a request, you\'ll pass your internal customer identifier. We\'ll try to match it against Stripe customer names, descriptions, and metadata. Some may need manual assignment.',code:'meter.track({\n  <span class="hl">customer: currentUser.orgSlug,</span>\n  pricing_card: "gemini_2_flash",\n  usage: { input_tokens: 1523, output_tokens: 892 }\n})'},
+3:{t:'How this will work in your code',how:'When your app processes a request, you\'ll pass the same identifier you\'ve stored in Stripe metadata. We\'ll look up each customer\'s metadata to find the match.',code:'meter.track({\n  <span class="hl">customer: currentUser.platformId,</span>\n  pricing_card: "gemini_2_flash",\n  usage: { input_tokens: 1523, output_tokens: 892 }\n})'}
+};
+
+function pick(m){
+  mode=m;[0,1,2,3].forEach(i=>document.getElementById('m-'+i).classList.toggle('sel',i===m));
+  document.getElementById('meta-fld').style.display=m===3?'block':'none';
+  document.getElementById('result-section').style.display='none';
+  document.getElementById('complete-bar').style.display='none';
+  document.getElementById('btn-next').disabled=true;matched=false;
+  const eb=document.getElementById('explain-box');eb.style.display='block';
+  document.getElementById('explain-t').textContent=EXPLAIN[m].t;
+  document.getElementById('explain-how').textContent=EXPLAIN[m].how;
+  document.getElementById('explain-code').innerHTML=EXPLAIN[m].code;
+  if(m===3){document.getElementById('match-section').style.display='none';checkMetaReady()}
+  else{document.getElementById('match-section').style.display='block'}
+}
+function checkMetaReady(){document.getElementById('match-section').style.display=document.getElementById('meta-input').value.trim()?'block':'none'}
+function runMatch(){
+  document.getElementById('match-section').style.display='none';
+  document.getElementById('match-loading').style.display='block';
+  setTimeout(()=>{document.getElementById('match-loading').style.display='none';document.getElementById('result-section').style.display='block';matched=true;buildTable()},1000);
+}
+function buildTable(){
+  const body=document.getElementById('cust-body');body.innerHTML='';let okCount=0;
+  CUSTS.forEach((c,i)=>{
+    let yourId='',ok=false;
+    if(mode===0){yourId=c.sid;ok=true}else if(mode===1){if(c.email){yourId=c.email;ok=true}}else if(mode===2){if(c.slug){yourId=c.slug;ok=true}}else if(mode===3){if(c.meta){yourId=c.meta;ok=true}}
+    if(ok)okCount++;
+    const tr=document.createElement('tr');if(!ok)tr.className='manual-row';
+    tr.innerHTML='<td><div class="cn">'+c.name+'</div><div class="cid">'+c.sid+'</div></td><td>'+(ok?'<span class="cmatch">'+yourId+'</span>':'<input class="cinput" data-i="'+i+'" placeholder="Type the identifier you use for '+c.name+'..." oninput="onManualInput()" />')+'</td><td class="crev">'+c.rev+'</td><td><span class="cpill '+(ok?'cpill-ok':'cpill-man')+'" id="pill-'+i+'">'+(ok?'Matched':'Manual')+'</span></td>';
+    body.appendChild(tr);
+  });
+  const un=CUSTS.length-okCount;
+  document.getElementById('res-t').textContent=un===0?CUSTS.length+' of '+CUSTS.length+' customers matched':okCount+' of '+CUSTS.length+' auto-matched';
+  document.getElementById('res-s').textContent=un===0?'Every Stripe customer has a mapped identifier.':un+' customer'+(un>1?'s':'')+' couldn\'t be matched automatically.';
+  document.getElementById('res-badge').textContent=un===0?'All matched':un+' need input';
+  document.getElementById('res-badge').className='res-badge '+(un===0?'res-badge-ok':'res-badge-warn');
+  document.getElementById('res-icon').className='res-check '+(un===0?'res-check-ok':'res-check-warn');
+  document.getElementById('res-icon').innerHTML=un===0?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>':'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-warning)" stroke-width="3" stroke-linecap="round"><path d="M12 9v4m0 4h.01"/></svg>';
+  document.getElementById('manual-help').style.display=un>0?'block':'none';
+  const exId=mode===0?CUSTS[0].sid:mode===1?(CUSTS[0].email||'email@example.com'):mode===2?(CUSTS[0].slug||'your_id'):CUSTS[0].meta||'your_id';
+  document.getElementById('sdk-code').innerHTML='meter.track({\n  <span class="hl">customer: "'+exId+'",</span>\n  pricing_card: "gemini_2_flash",\n  product: "property_search",\n  usage: {\n    input_tokens: response.usage.promptTokens,\n    output_tokens: response.usage.completionTokens,\n    grounding_requests: 1\n  }\n})';
+  document.getElementById('sdk-preview').style.display='block';
+  checkComplete();
+}
+function onManualInput(){
+  const inputs=document.querySelectorAll('.cinput');let filled=0;
+  inputs.forEach(inp=>{const i=parseInt(inp.dataset.i);const pill=document.getElementById('pill-'+i);if(inp.value.trim()){filled++;if(pill){pill.textContent='Matched';pill.className='cpill cpill-ok'}inp.closest('tr').classList.remove('manual-row')}else{if(pill){pill.textContent='Manual';pill.className='cpill cpill-man'}inp.closest('tr').classList.add('manual-row')}});
+  const auto=CUSTS.length-inputs.length;const total=auto+filled;const rem=CUSTS.length-total;
+  document.getElementById('res-t').textContent=rem===0?CUSTS.length+' of '+CUSTS.length+' customers matched':total+' of '+CUSTS.length+' matched';
+  document.getElementById('res-s').textContent=rem===0?'Every Stripe customer has a mapped identifier.':rem+' customer'+(rem>1?'s':'')+' still need an identifier.';
+  document.getElementById('res-badge').textContent=rem===0?'All matched':rem+' need input';
+  document.getElementById('res-badge').className='res-badge '+(rem===0?'res-badge-ok':'res-badge-warn');
+  document.getElementById('res-icon').className='res-check '+(rem===0?'res-check-ok':'res-check-warn');
+  document.getElementById('res-icon').innerHTML=rem===0?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>':'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-warning)" stroke-width="3" stroke-linecap="round"><path d="M12 9v4m0 4h.01"/></svg>';
+  document.getElementById('manual-help').style.display=rem>0?'block':'none';
+  checkComplete();
+}
+function checkComplete(){
+  const inputs=document.querySelectorAll('.cinput');let allFilled=true;
+  inputs.forEach(i=>{if(!i.value.trim(</body></html>

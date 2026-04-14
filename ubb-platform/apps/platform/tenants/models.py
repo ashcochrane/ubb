@@ -27,6 +27,7 @@ class Tenant(BaseModel):
     metadata = models.JSONField(default=dict)
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
+    group_label = models.CharField(max_length=100, default="Products", help_text="Display label for groups in the UI.")
 
     class Meta:
         db_table = "ubb_tenant"

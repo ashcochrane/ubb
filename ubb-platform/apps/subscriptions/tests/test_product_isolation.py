@@ -74,13 +74,17 @@ class TestSubscriptionsProductIsolation(TestCase):
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
-        from apps.metering.pricing.models import ProviderRate
-        ProviderRate.objects.create(
+        from apps.metering.pricing.models import Card, Rate
+        card = Card.objects.create(
             tenant=tenant,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1_000_000,
             unit_quantity=1,
         )

@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.platform.customers",
     "apps.platform.events",
     "apps.platform.runs",
+    "apps.platform.groups",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",

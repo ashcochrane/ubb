@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UBB — Pricing Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:wght@700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-page:#f4f2ee;--bg-subtle:#ece8e2;--bg-surface:#fcfaf7;--bg-raised:#ffffff;
+  --border:#e2ddd5;--border-mid:#d4cdc2;--border-strong:#b5ad9e;
+  --text-primary:#2e2520;--text-secondary:#6d6358;--text-muted:#9a8e80;
+  --accent:#a16a4a;--accent-hover:#b07855;--accent-dark:#855638;--accent-light:#f0e0d2;--accent-ghost:#f8f0e8;--accent-text:#5a3520;--accent-border:#d4ad90;
+  --green:#3a8050;--green-light:#eaf5ee;--green-text:#1a4a28;--green-border:#a0cca8;
+  --amber:#a07020;--amber-light:#fdf4e4;--amber-text:#5a3e10;--amber-border:#e0c070;
+  --red:#b84848;--red-light:#faecec;--red-text:#6a1e1e;
+  --blue:#4a7fa8;--blue-light:#eaf1f7;--blue-text:#1e4060;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(46,37,32,0.04);--shadow-md:0 2px 8px rgba(46,37,32,0.06);
+  --font-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-serif:'Cormorant',Georgia,serif;
+  --font-mono:'DM Mono','SF Mono',ui-monospace,monospace;
+  --ease:0.15s ease;
+}
+body{font-family:var(--font-sans);background:var(--bg-page);color:var(--text-primary);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+.app{display:grid;grid-template-columns:200px 1fr;grid-template-rows:46px 1fr;min-height:100vh}
+
+/* TOPBAR */
+.topbar{grid-column:1/-1;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:20}
+.topbar-logo{font-family:var(--font-serif);font-size:21px;font-weight:700;letter-spacing:-0.5px;color:var(--text-primary);width:200px;line-height:1}
+.topbar-logo .dot{color:var(--accent)}
+.topbar-sep{width:1px;height:22px;background:var(--border);margin-left:-24px}
+.topbar-r{display:flex;align-items:center;gap:8px}
+.mock-pill{padding:3px 9px;border-radius:var(--radius-pill);background:var(--accent-ghost);color:var(--accent-text);font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;border:1px solid var(--accent-border)}
+.ib{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:all var(--ease)}
+.ib:hover{background:var(--bg-subtle);color:var(--text-secondary);border-color:var(--border-mid)}
+
+/* SIDEBAR */
+.side{grid-column:1;grid-row:2;background:var(--bg-surface);border-right:1px solid var(--border);padding:16px 0;display:flex;flex-direction:column}
+.ns{font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);padding:14px 16px 5px}
+.ng{display:flex;flex-direction:column;padding:0 6px}
+.ni{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);text-decoration:none;cursor:pointer;transition:all var(--ease)}
+.ni:hover{background:var(--bg-subtle);color:var(--text-primary)}
+.ni.on{background:var(--accent-ghost);color:var(--accent-text);font-weight:600}
+.ni svg{width:14px;height:14px;flex-shrink:0;opacity:0.45}
+.ni.on svg{opacity:0.8;color:var(--accent-dark)}
+.sf{margin-top:auto;padding:14px 16px;border-top:1px solid var(--border)}
+.ur{display:flex;align-items:center;gap:8px}
+.ua{width:26px;height:26px;border-radius:50%;background:var(--accent-light);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+
+/* MAIN */
+.main{grid-column:2;grid-row:2;padding:32px 40px 80px;overflow-y:auto}
+
+/* PAGE HEADER */
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px}
+.ph h1{font-size:20px;font-weight:700;letter-spacing:-0.3px}
+.ph-s{font-size:13px;color:var(--text-secondary);margin-top:4px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:var(--font-sans);transition:all var(--ease);text-decoration:none;white-space:nowrap}
+.btn-primary{background:var(--text-primary);color:var(--bg-surface);border-color:var(--text-primary)}
+.btn-primary:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+.btn-outline{background:var(--bg-surface);color:var(--text-secondary);border-color:var(--border-mid)}
+.btn-outline:hover{background:var(--bg-subtle);color:var(--text-primary)}
+.btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-accent:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-ghost{background:transparent;color:var(--text-secondary);border-color:var(--border-mid)}
+.btn-ghost:hover{background:var(--bg-subtle);color:var(--text-primary)}
+.btn-sm{padding:5px 12px;font-size:11px}
+
+/* SEARCH */
+.search-wrap{position:relative;max-width:320px;margin-bottom:24px}
+.search-wrap input{width:100%;padding:8px 12px 8px 34px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--bg-surface);font-size:12px;color:var(--text-primary);font-family:var(--font-sans);outline:none;transition:border-color var(--ease)}
+.search-wrap input::placeholder{color:var(--text-muted)}
+.search-wrap input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(161,106,74,0.12)}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted)}
+
+/* PRICING CARD GRID */
+.pc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pc-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;cursor:pointer;transition:all var(--ease);position:relative}
+.pc-card:hover{border-color:var(--border-mid);box-shadow:var(--shadow-md)}
+.pc-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px}
+.pc-name{font-size:14px;font-weight:600;letter-spacing:-0.15px}
+.pc-provider{font-size:12px;color:var(--text-secondary);margin-bottom:10px}
+.pc-slug{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:3px}
+.pc-dims{font-size:11px;color:var(--text-muted)}
+.badge{font-size:10px;font-weight:600;padding:3px 9px;border-radius:var(--radius-pill);display:inline-block}
+.badge-green{background:var(--green-light);color:var(--green-text)}
+.badge-amber{background:var(--amber-light);color:var(--amber-text)}
+
+/* STEPPER */
+.stepper{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:40px;padding-top:8px}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:80px}
+.step-circle{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;border:1.5px solid var(--border-mid);color:var(--text-muted);background:var(--bg-surface);transition:all var(--ease)}
+.step.done .step-circle{background:var(--green);border-color:var(--green);color:#fff}
+.step.active .step-circle{border-color:var(--text-primary);color:var(--text-primary);box-shadow:0 0 0 3px var(--bg-subtle)}
+.step-label{font-size:10px;color:var(--text-muted);font-weight:500}
+.step.active .step-label{color:var(--text-primary);font-weight:600}
+.step.done .step-label{color:var(--green-text)}
+.step-line{width:48px;height:1.5px;background:var(--border);margin-bottom:20px}
+.step-line.done{background:var(--green)}
+
+/* WIZARD CONTENT */
+.wiz{max-width:580px;margin:0 auto}
+.wiz-title{font-size:17px;font-weight:700;letter-spacing:-0.2px;margin-bottom:4px}
+.wiz-sub{font-size:13px;color:var(--text-secondary);margin-bottom:28px}
+
+/* OPTIONS */
+.opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px}
+.opt-card{background:var(--bg-surface);border:1.5px solid var(--border);border-radius:var(--radius-md);padding:16px 18px;cursor:pointer;transition:all var(--ease)}
+.opt-card:hover{border-color:var(--border-mid)}
+.opt-card.sel{border-color:var(--text-primary);box-shadow:0 0 0 1px var(--text-primary)}
+.opt-name{font-size:13px;font-weight:600;margin-bottom:2px}
+.opt-desc{font-size:12px;color:var(--text-secondary)}
+
+/* TEMPLATE GRID */
+.tmpl-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px}
+.tmpl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:32px}
+.tmpl{background:var(--bg-surface);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;transition:all var(--ease)}
+.tmpl:hover{border-color:var(--border-mid)}
+.tmpl.sel{border-color:var(--text-primary);box-shadow:0 0 0 1px var(--text-primary)}
+.tmpl-name{font-size:12px;font-weight:600;margin-bottom:2px}
+.tmpl-dims{font-size:11px;color:var(--text-muted)}
+
+/* FORM */
+.field{margin-bottom:22px}
+.field-label{font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;display:block}
+.field-hint{font-size:11px;color:var(--text-muted);margin-top:4px}
+.field-row{display:flex;gap:12px}
+.field-row .field{flex:1}
+input.fi,textarea.fi,select.fi{width:100%;padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-surface);font-size:13px;color:var(--text-primary);font-family:var(--font-sans);outline:none;transition:border-color var(--ease)}
+input.fi:focus,textarea.fi:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(161,106,74,0.12)}
+input.fi::placeholder,textarea.fi::placeholder{color:var(--text-muted)}
+textarea.fi{resize:vertical;min-height:72px}
+.char-count{font-size:10px;color:var(--text-muted);text-align:right;margin-top:3px}
+.input-group{display:flex;gap:0}
+.input-group input.fi{border-radius:var(--radius-sm) 0 0 var(--radius-sm);border-right:none;flex:1}
+.input-group .btn{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.input-prefix{display:flex;align-items:center;padding:0 0 0 12px;background:var(--bg-subtle);border:1px solid var(--border);border-right:none;border-radius:var(--radius-sm) 0 0 var(--radius-sm);font-size:13px;color:var(--text-secondary);font-weight:500}
+.input-prefix+input.fi{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+
+/* SEPARATOR */
+.sep{border:none;border-top:1px solid var(--border);margin:24px 0}
+
+/* CARD PREVIEW */
+.card-preview{background:var(--bg-subtle);border-radius:var(--radius-md);padding:14px 18px}
+.card-preview-label{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.card-preview-row{display:flex;align-items:center;gap:8px}
+.card-preview-dot{width:8px;height:8px;border-radius:50%;background:var(--amber)}
+.card-preview-name{font-size:13px;font-weight:600}
+.card-preview-badge{font-size:10px;color:var(--text-muted);background:var(--bg-surface);padding:2px 7px;border-radius:var(--radius-pill);border:1px solid var(--border)}
+
+/* WIZARD FOOTER */
+.wiz-foot{display:flex;align-items:center;justify-content:space-between;margin-top:32px}
+
+/* DIMENSION CARD */
+.dim-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:16px}
+.dim-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.dim-title{font-size:14px;font-weight:600}
+.dim-actions{display:flex;gap:4px}
+.dim-actions button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:all var(--ease);font-size:12px}
+.dim-actions button:hover{background:var(--bg-subtle);color:var(--text-primary)}
+
+/* TOGGLE */
+.toggle-row{display:flex;gap:2px;border-radius:var(--radius-sm);border:1px solid var(--border);overflow:hidden}
+.toggle-opt{padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;background:var(--bg-surface);color:var(--text-secondary);border:none;font-family:var(--font-sans);transition:all var(--ease)}
+.toggle-opt.on{background:var(--text-primary);color:var(--bg-surface)}
+
+/* ADD DIMENSION */
+.add-dim{display:flex;align-items:center;justify-content:center;gap:6px;padding:14px;border:1.5px dashed var(--border-mid);border-radius:var(--radius-md);color:var(--text-muted);font-size:12px;font-weight:500;cursor:pointer;transition:all var(--ease);margin-bottom:16px}
+.add-dim:hover{border-color:var(--accent-border);color:var(--accent-text);background:var(--accent-ghost)}
+
+/* QUICK DIMS */
+.quick-dims{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:28px}
+.quick-dim{padding:4px 10px;border-radius:var(--radius-pill);font-size:11px;font-weight:500;color:var(--text-secondary);background:var(--bg-surface);border:1px solid var(--border);cursor:pointer;font-family:var(--font-mono);transition:all var(--ease)}
+.quick-dim:hover{border-color:var(--accent-border);color:var(--accent-text);background:var(--accent-ghost)}
+
+/* LIVE TESTER */
+.tester{background:var(--accent-ghost);border:1px solid var(--accent-border);border-radius:var(--radius-md);padding:18px 20px;margin-bottom:8px}
+.tester-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.tester-title{font-size:13px;font-weight:600}
+.tester-live{font-size:10px;color:var(--green);font-weight:600}
+.tester-sub{font-size:12px;color:var(--text-secondary);margin-bottom:14px}
+.tester-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.tester-label{font-size:12px;color:var(--text-secondary)}
+.tester-input{width:80px;padding:5px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-surface);font-size:12px;text-align:right;font-family:var(--font-mono);outline:none}
+.tester-calc{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
+.tester-total{display:flex;align-items:baseline;justify-content:space-between;padding-top:10px;border-top:1px solid var(--accent-border);margin-top:10px}
+.tester-total-label{font-size:13px;font-weight:600}
+.tester-total-val{font-size:16px;font-weight:700;font-family:var(--font-mono)}
+
+/* REVIEW CARD */
+.review-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:20px}
+.review-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.review-provider{font-size:15px;font-weight:600}
+.review-slug{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px}
+.review-section{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;margin-top:4px}
+.review-dim{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bg-subtle)}
+.review-dim:last-child{border-bottom:none}
+.review-dim-name{font-size:13px;font-weight:500}
+.review-dim-meta{display:flex;align-items:center;gap:8px}
+.review-dim-type{font-size:10px;padding:2px 7px;border-radius:var(--radius-pill);background:var(--bg-subtle);color:var(--text-secondary);font-weight:500}
+.review-dim-price{font-size:12px;font-family:var(--font-mono);color:var(--text-primary);font-weight:500}
+
+/* COST BAR */
+.cost-bar-wrap{margin-top:12px;margin-bottom:6px}
+.cost-bar{height:6px;border-radius:var(--radius-pill);overflow:hidden;display:flex}
+.cost-bar div{height:100%}
+.cost-bar-legend{display:flex;gap:12px;margin-top:6px}
+.cost-bar-legend span{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted)}
+.cost-bar-dot{width:6px;height:6px;border-radius:50%}
+
+/* VALIDATION */
+.checks{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}
+.check-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary)}
+.check-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check-icon.pass{background:var(--green-light);color:var(--green)}
+.check-icon.warn{background:var(--amber-light);color:var(--amber)}
+
+/* ALERT */
+.alert{padding:12px 16px;border-radius:var(--radius-md);font-size:12px;line-height:1.6;margin-bottom:20px}
+.alert-amber{background:var(--amber-light);border:1px solid var(--amber-border);color:var(--amber-text)}
+.alert-title{font-weight:600;margin-bottom:2px}
+
+/* CODE BLOCK */
+.code-block{background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px;margin-bottom:8px;position:relative}
+.code-block-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.code-block-title{font-size:12px;font-weight:600}
+.code-block pre{font-family:var(--font-mono);font-size:12px;line-height:1.7;color:var(--text-primary);white-space:pre;overflow-x:auto}
+.code-block-hint{font-size:11px;color:var(--text-muted);margin-top:8px}
+
+/* SCREEN NAV — tabs between screens */
+.screen{display:none}
+.screen.visible{display:block}
+.screen-nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:4px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-pill);padding:4px;box-shadow:var(--shadow-md);z-index:50}
+.screen-btn{padding:6px 14px;border-radius:var(--radius-pill);font-size:11px;font-weight:500;cursor:pointer;border:none;background:none;font-family:var(--font-sans);color:var(--text-secondary);transition:all var(--ease)}
+.screen-btn:hover{color:var(--text-primary)}
+.screen-btn.on{background:var(--accent-ghost);color:var(--accent-text);font-weight:600}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.pc-card{animation:rise 0.35s ease both}
+.pc-card:nth-child(1){animation-delay:0s}.pc-card:nth-child(2){animation-delay:0.05s}.pc-card:nth-child(3){animation-delay:0.1s}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div style="display:flex;align-items:center"><div class="topbar-logo">ubb<span class="dot">.</span></div><div class="topbar-sep"></div></div>
+    <div class="topbar-r"><span class="mock-pill">Mock</span><button class="ib"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button><button class="ib"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-2.5 2-4.5 5-4.5s5 2 5 4.5"/></svg></button></div>
+  </header>
+
+  <aside class="side">
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>Dashboard</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5"/></svg>Customers</a>
+    </nav>
+    <div class="ns">Metering</div>
+    <nav class="ng">
+      <a class="ni on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><line x1="2" y1="7" x2="14" y2="7"/></svg>Pricing Cards</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="8.5" x2="9" y2="8.5"/><line x1="5" y1="11" x2="8" y2="11"/></svg>Products</a>
+    </nav>
+    <div class="ns">Billing</div>
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v12M5 5h5a2 2 0 010 4H6a2 2 0 000 4h5"/></svg>Billing</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h8v4"/><path d="M2 8h12l-1.5 5H3.5z"/></svg>Export</a>
+    </nav>
+    <div class="ns">Settings</div>
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.1 3.1l1.1 1.1M11.8 11.8l1.1 1.1M3.1 12.9l1.1-1.1M11.8 4.2l1.1-1.1"/></svg>Settings</a>
+    </nav>
+    <div class="sf"><div class="ur"><div class="ua">A</div><div><div style="font-size:12px;font-weight:600">Ash</div><div style="font-size:10px;color:var(--text-muted)">admin</div></div></div></div>
+  </aside>
+
+  <main class="main">
+
+    <!-- SCREEN 1: LIST -->
+    <div class="screen visible" id="s-list">
+      <div class="ph">
+        <div><h1>Pricing Cards</h1><div class="ph-s">Define how API costs are calculated.</div></div>
+        <button class="btn btn-primary" onclick="show('s-step1')">+ Create card</button>
+      </div>
+      <div class="search-wrap">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3"/></svg>
+        <input type="text" placeholder="Search cards...">
+      </div>
+      <div class="pc-grid">
+        <div class="pc-card">
+          <div class="pc-head"><div class="pc-name">Gemini 2.0 Flash</div><span class="badge badge-green">Active</span></div>
+          <div class="pc-provider">Google</div>
+          <div class="pc-slug">gemini_2_flash</div>
+          <div class="pc-dims">3 dimensions · v1</div>
+        </div>
+        <div class="pc-card">
+          <div class="pc-head"><div class="pc-name">GPT-4o</div><span class="badge badge-green">Active</span></div>
+          <div class="pc-provider">OpenAI</div>
+          <div class="pc-slug">gpt_4o</div>
+          <div class="pc-dims">2 dimensions · v2</div>
+        </div>
+        <div class="pc-card">
+          <div class="pc-head"><div class="pc-name">Serper Web Search</div><span class="badge badge-amber">Draft</span></div>
+          <div class="pc-provider">Serper</div>
+          <div class="pc-slug">serper_search</div>
+          <div class="pc-dims">1 dimension · v1</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 2: STEP 1 — Source -->
+    <div class="screen" id="s-step1">
+      <div class="stepper">
+        <div class="step active"><div class="step-circle">1</div><div class="step-label">Source</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">2</div><div class="step-label">Details</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">3</div><div class="step-label">Dimensions</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">4</div><div class="step-label">Review & test</div></div>
+      </div>
+      <div class="wiz">
+        <div class="wiz-title">How do you want to start?</div>
+        <div class="wiz-sub">Pick a pre-built template or configure from scratch.</div>
+        <div class="opt-grid">
+          <div class="opt-card sel"><div class="opt-name">From template</div><div class="opt-desc">Pre-filled with current API pricing.</div></div>
+          <div class="opt-card"><div class="opt-name">Custom card</div><div class="opt-desc">Configure from scratch for any API.</div></div>
+        </div>
+        <div class="tmpl-label">Choose a template</div>
+        <div class="tmpl-grid">
+          <div class="tmpl sel"><div class="tmpl-name">Gemini 2.0 Flash</div><div class="tmpl-dims">3 dimensions</div></div>
+          <div class="tmpl"><div class="tmpl-name">GPT-4o</div><div class="tmpl-dims">2 dimensions</div></div>
+          <div class="tmpl"><div class="tmpl-name">Claude Sonnet</div><div class="tmpl-dims">2 dimensions</div></div>
+        </div>
+        <div class="wiz-foot">
+          <button class="btn btn-ghost" onclick="show('s-list')">Cancel</button>
+          <button class="btn btn-primary" onclick="show('s-step2')">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 3: STEP 2 — Details -->
+    <div class="screen" id="s-step2">
+      <div class="stepper">
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Source</div></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-circle">2</div><div class="step-label">Details</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">3</div><div class="step-label">Dimensions</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">4</div><div class="step-label">Review & test</div></div>
+      </div>
+      <div class="wiz">
+        <div class="field"><label class="field-label">Card name</label><input class="fi" placeholder="e.g. Mapbox Geocoding API, Internal OCR Service..."><div class="field-hint">Use the API or model name your team would recognise.</div></div>
+        <div class="field-row">
+          <div class="field"><label class="field-label">Provider</label><input class="fi" placeholder="e.g. Google, OpenAI, Anthropic..."></div>
+          <div class="field" style="max-width:200px"><label class="field-label">Card ID</label><div class="input-group"><input class="fi" value="auto-generated" style="color:var(--text-muted)"><button class="btn btn-ghost btn-sm">Regenerate</button></div><div class="field-hint">Referenced in SDK calls. Auto-derived from name.</div></div>
+        </div>
+        <hr class="sep">
+        <div class="field"><label class="field-label">Description (optional)</label><textarea class="fi" placeholder="e.g. Used for geocoding property addresses in the search pipeline..."></textarea><div class="char-count">0 / 250</div></div>
+        <div class="field"><label class="field-label">Pricing source URL (optional)</label><input class="fi" placeholder="https://cloud.google.com/maps-platform/pricing"><div class="field-hint">Link to the provider's pricing page for reference.</div></div>
+        <div class="card-preview"><div class="card-preview-label">Card preview</div><div class="card-preview-row"><div class="card-preview-dot"></div><div class="card-preview-name">Untitled card</div><div class="card-preview-badge">Draft</div></div></div>
+        <div class="wiz-foot">
+          <button class="btn btn-ghost" onclick="show('s-step1')">Back</button>
+          <button class="btn btn-primary" onclick="show('s-step3')">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 4: STEP 3 — Dimensions -->
+    <div class="screen" id="s-step3">
+      <div class="stepper">
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Source</div></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Details</div></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-circle">3</div><div class="step-label">Dimensions</div></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-circle">4</div><div class="step-label">Review & test</div></div>
+      </div>
+      <div class="wiz">
+        <div class="wiz-title">Define cost dimensions</div>
+        <div class="wiz-sub">Each dimension is one line item on your cost breakdown.</div>
+        <div class="dim-card">
+          <div class="dim-head">
+            <div class="dim-title">Dimension 1</div>
+            <div class="dim-actions">
+              <button title="Collapse"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 10l4-4 4 4"/></svg></button>
+              <button title="Duplicate"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 11V4a1 1 0 011-1h7"/></svg></button>
+              <button title="Delete"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10M6 5V3h4v2M5 5v8h6V5"/></svg></button>
+            </div>
+          </div>
+          <div class="field-row" style="margin-bottom:14px">
+            <div class="field" style="flex:2;margin-bottom:0"><label class="field-label">Metric key</label><input class="fi" placeholder="e.g. input_tokens"><div class="field-hint">Must match the key your SDK sends.</div></div>
+            <div class="field" style="flex:1;margin-bottom:0"><label class="field-label">Pricing type</label><div class="toggle-row"><button class="toggle-opt on">Per unit</button><button class="toggle-opt">Flat</button></div></div>
+          </div>
+          <div class="field" style="margin-bottom:14px"><label class="field-label">Unit price ($)</label><div style="display:flex;gap:0"><div class="input-prefix">$</div><input class="fi" value="0" style="border-radius:0 var(--radius-sm) var(--radius-sm) 0"></div><div class="field-hint">Price per single unit.</div></div>
+          <div class="field-row">
+            <div class="field" style="margin-bottom:0"><label class="field-label">Display label</label><input class="fi" placeholder="e.g. Input tokens"></div>
+            <div class="field" style="margin-bottom:0"><label class="field-label">Display unit</label><input class="fi" placeholder="e.g. per 1M tokens"></div>
+            <div class="field" style="margin-bottom:0"><label class="field-label">Display price</label><input class="fi" placeholder="e.g. $0.10"><div class="field-hint">Auto-calculated if blank.</div></div>
+          </div>
+        </div>
+        <div class="add-dim">+ Add dimension</div>
+        <div class="quick-dims">
+          <span class="quick-dim">+ grounding</span>
+          <span class="quick-dim">+ cached_tokens</span>
+          <span class="quick-dim">+ image_tokens</span>
+          <span class="quick-dim">+ requests</span>
+          <span class="quick-dim">+ search_queries</span>
+        </div>
+        <div class="tester">
+          <div class="tester-head"><div class="tester-title">Live cost tester</div><div class="tester-live">Updates as you type</div></div>
+          <div class="tester-sub">Enter sample quantities to see calculated costs in real time.</div>
+          <div class="tester-row"><span class="tester-label">input</span><input class="tester-input" value="1000"><span class="tester-calc">—</span></div>
+          <div class="tester-total"><span class="tester-total-label">Total event cost</span><span class="tester-total-val">$0.000000</span></div>
+        </div>
+        <div class="wiz-foot">
+          <button class="btn btn-ghost" onclick="show('s-step2')">Back</button>
+          <button class="btn btn-primary" onclick="show('s-step4')">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 5: STEP 4 — Review & test -->
+    <div class="screen" id="s-step4">
+      <div class="stepper">
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Source</div></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Details</div></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-circle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div><div class="step-label">Dimensions</div></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-circle">4</div><div class="step-label">Review & test</div></div>
+      </div>
+      <div class="wiz">
+        <div class="review-card">
+          <div class="review-head">
+            <div><div class="review-provider">Google</div><div class="review-slug">test_google_376</div></div>
+            <span class="badge badge-amber">Draft v1</span>
+          </div>
+          <div class="review-section">Cost dimensions (1)</div>
+          <div class="review-dim">
+            <div class="review-dim-name">input</div>
+            <div class="review-dim-meta">
+              <span class="review-dim-type">per unit</span>
+              <span class="review-dim-price">$1 / 1M</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tester">
+          <div class="tester-head"><div class="tester-title">Dry-run simulator</div><div class="tester-live">Looks correct</div></div>
+          <div class="tester-sub">Enter realistic sample quantities for a single API call.</div>
+          <div class="tester-row"><span class="tester-label">input</span><input class="tester-input" value="1000"><span class="tester-calc">1,000 × $1 = $1000.000000</span></div>
+          <div style="text-align:right;font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);padding:4px 0">$1000.000000</div>
+          <div class="tester-total"><span class="tester-total-label">Total per event</span><span class="tester-total-val">$1000.000000</span></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">At 1,000 events/day: ~$10000000/day · ~$30000000/month</div>
+          <div class="cost-bar-wrap"><div class="cost-bar"><div style="width:100%;background:var(--blue);border-radius:var(--radius-pill)"></div></div></div>
+          <div class="cost-bar-legend"><span><span class="cost-bar-dot" style="background:var(--blue)"></span>100.0%</span></div>
+        </div>
+
+        <div class="alert alert-amber"><div class="alert-title">Dominated by one dimension</div>accounts for 100.0% of total cost. Is this expected?</div>
+
+        <div class="checks">
+          <div class="check-item"><div class="check-icon pass"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div>All dimensions have non-zero prices</div>
+          <div class="check-item"><div class="check-icon pass"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div>No duplicate metric keys</div>
+          <div class="check-item"><div class="check-icon pass"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div>Unit prices within expected ranges</div>
+          <div class="check-item"><div class="check-icon pass"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8.5L6.5 12L13 4"/></svg></div>Card ID is valid</div>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block-head"><div class="code-block-title">Integration snippet</div><button class="btn btn-ghost btn-sm">Copy to clipboard</button></div>
+          <pre>meter.track({
+  pricing_card: "google_376",
+  usage: {
+    input: inputCount
+  }
+})</pre>
+          <div class="code-block-hint">This snippet updates automatically when you assign a product.</div>
+        </div>
+
+        <div class="wiz-foot">
+          <button class="btn btn-ghost" onclick="show('s-step3')">Back</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline">Save as draft</button>
+            <button class="btn btn-accent">Activate card</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="screen-nav">
+  <button class="screen-btn on" onclick="show('s-list')">List</button>
+  <button class="screen-btn" onclick="show('s-step1')">Step 1</button>
+  <button class="screen-btn" onclick="show('s-step2')">Step 2</button>
+  <button class="screen-btn" onclick="show('s-step3')">Step 3</button>
+  <button class="screen-btn" onclick="show('s-step4')">Step 4</button>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('visible'));
+  document.getElementById(id).classList.add('visible');
+  document.querySelectorAll('.screen-btn').forEach(b => b.classList.remove('on'));
+  const labels = {'s-list':'List','s-step1':'Step 1','s-step2':'Step 2','s-step3':'Step 3','s-step4':'Step 4'};
+  document.querySelectorAll('.screen-btn').forEach(b => { if(b.textContent === labels[id]) b.classList.add('on'); });
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.opt-card').forEach(c => c.addEventListener('click', () => { document.querySelectorAll('.opt-card').forEach(x => x.classList.remove('sel')); c.classList.add('sel'); }));
+document.querySelectorAll('.tmpl').forEach(c => c.addEventListener('click', () => { document.querySelectorAll('.tmpl').forEach(x => x.classList.remove('sel')); c.classList.add('sel'); }));
+</script>
+</body>
+</html>

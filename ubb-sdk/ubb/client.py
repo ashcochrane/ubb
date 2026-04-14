@@ -154,7 +154,7 @@ class UBBClient:
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
                      event_type: str, provider: str, usage_metrics: dict,
-                     group_keys: dict | None = None,
+                     group: str | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via metering.
 
@@ -176,7 +176,7 @@ class UBBClient:
             event_type=event_type,
             provider=provider,
             usage_metrics=usage_metrics,
-            group_keys=group_keys,
+            group=group,
             run_id=run_id,
         )
 

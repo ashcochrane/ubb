@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:600px;margin:0 auto}
+.progress{display:flex;gap:4px;margin-bottom:1.5rem}
+.prog-seg{flex:1;height:4px;border-radius:2px}
+.prog-done{background:var(--color-text-success)}
+.prog-active{background:var(--color-text-primary)}
+.step-badge{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px}
+.step-num{width:24px;height:24px;border-radius:50%;background:var(--color-text-primary);color:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+.step-label{font-size:12px;color:var(--color-text-secondary)}
+.pg-t{font-size:22px;font-weight:500;margin-bottom:4px}
+.pg-s{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem;max-width:500px}
+.review-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin-bottom:12px;overflow:hidden}
+.rc-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.rc-head-left{display:flex;align-items:center;gap:8px}
+.rc-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.rc-icon-ok{background:var(--color-background-success)}
+.rc-icon-ok svg{width:12px;height:12px}
+.rc-title{font-size:13px;font-weight:500}
+.rc-edit{font-size:11px;color:var(--color-text-info);cursor:pointer;border:none;background:none;padding:0}
+.rc-edit:hover{text-decoration:underline}
+.rc-body{padding:14px 16px}
+.rc-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}
+.rc-row-l{color:var(--color-text-secondary)}
+.rc-row-v{font-weight:500}
+.rc-row-mono{font-family:var(--font-mono);font-size:11px}
+.rc-divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:8px 0}
+.rc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.rc-stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px;text-align:center}
+.rc-stat-v{font-size:18px;font-weight:500}
+.rc-stat-l{font-size:10px;color:var(--color-text-tertiary);margin-top:1px}
+.cust-summary{padding:14px 16px}
+.cs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cs-title{font-size:12px;font-weight:500}
+.cs-count{font-size:11px;color:var(--color-text-success);font-weight:500}
+.cs-table{width:100%;border-collapse:collapse;font-size:11px}
+.cs-table th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.cs-table td{padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.cs-table tr:last-child td{border:none}
+.cs-name{font-weight:500}
+.cs-sid{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary)}
+.cs-match{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.cs-rev{font-family:var(--font-mono);font-size:10px;text-align:right}
+.cs-pill{font-size:9px;padding:2px 6px;border-radius:8px;background:var(--color-background-success);color:var(--color-text-success);font-weight:500}
+.cs-pill-man{background:var(--color-background-info);color:var(--color-text-info)}
+.cs-expand{padding:6px 8px;font-size:10px;color:var(--color-text-info);cursor:pointer;text-align:center;background:var(--color-background-secondary)}
+.cs-expand:hover{background:var(--color-border-tertiary)}
+.sync-settings{padding:14px 16px}
+.sync-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px}
+.sync-row-l{color:var(--color-text-secondary)}
+.sync-row-v{font-weight:500;display:flex;align-items:center;gap:6px}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--color-text-success)}
+.sdk-section{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px;margin-bottom:12px}
+.sdk-t{font-size:14px;font-weight:500;margin-bottom:4px}
+.sdk-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.sdk-block{margin-bottom:10px}
+.sdk-block-t{font-size:12px;font-weight:500;margin-bottom:4px}
+.sdk-code{font-family:var(--font-mono);font-size:10px;background:var(--color-background-secondary);padding:10px 12px;border-radius:var(--border-radius-md);line-height:1.8;white-space:pre;overflow-x:auto;color:var(--color-text-secondary);position:relative}
+.sdk-code .hl{color:var(--color-text-info);font-weight:500}
+.sdk-code .key{color:var(--color-text-warning)}
+.copy-btn{position:absolute;top:6px;right:6px;font-size:10px;padding:3px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.copy-btn:hover{background:var(--color-background-secondary)}
+.api-key-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.api-key-label{font-size:11px;color:var(--color-text-secondary);white-space:nowrap}
+.api-key-val{font-family:var(--font-mono);font-size:11px;flex:1}
+.api-key-copy{font-size:10px;color:var(--color-text-info);cursor:pointer;white-space:nowrap}
+.checklist{margin-bottom:14px}
+.check-row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.check-icon{width:20px;height:20px;border-radius:50%;background:var(--color-background-success);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check-icon svg{width:11px;height:11px}
+.check-text{font-size:12px;color:var(--color-text-secondary)}
+.activate-section{margin-top:1.5rem}
+.activate-card{border:2px solid var(--color-border-success);border-radius:var(--border-radius-lg);padding:20px;text-align:center;display:none}
+.activate-t{font-size:16px;font-weight:500;color:var(--color-text-success);margin-bottom:4px}
+.activate-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px;max-width:420px;margin-left:auto;margin-right:auto}
+.next-steps{text-align:left;max-width:380px;margin:0 auto 14px}
+.next-step{display:flex;gap:8px;padding:5px 0;font-size:12px;color:var(--color-text-secondary)}
+.next-num{width:18px;height:18px;border-radius:50%;background:var(--color-background-info);color:var(--color-text-info);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;margin-top:1px}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-back:hover{background:var(--color-background-secondary)}
+.btn-activate{padding:10px 28px;font-size:14px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-success);color:#fff;cursor:pointer;transition:all .15s}
+.btn-activate:hover{opacity:.9}
+.btn-go{padding:10px 28px;font-size:14px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer;display:none}
+.btn-go:hover{opacity:.9}
+.sec-note{font-size:10px;color:var(--color-text-tertiary);text-align:center;padding:6px 10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-top:8px}
+</style>
+
+<div class="pg">
+
+<div class="progress">
+<div class="prog-seg prog-done"></div>
+<div class="prog-seg prog-done"></div>
+<div class="prog-seg prog-active" id="p2"></div>
+</div>
+
+<div class="step-badge"><div class="step-num">3</div><span class="step-label">of 3</span></div>
+<div class="pg-t">Review and activate</div>
+<div class="pg-s">Everything looks good. Review your setup below, then activate your Stripe integration to start syncing revenue data.</div>
+
+<div class="review-card">
+<div class="rc-head">
+<div class="rc-head-left">
+<div class="rc-icon rc-icon-ok"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div>
+<span class="rc-title">Stripe connection</span>
+</div>
+<button class="rc-edit" onclick="sendPrompt('Go back to Step 1 to change my Stripe key')">Edit</button>
+</div>
+<div class="rc-body">
+<div class="rc-row"><span class="rc-row-l">API key</span><span class="rc-row-v rc-row-mono">rk_live_51Abc...7xYz</span></div>
+<div class="rc-row"><span class="rc-row-l">Permissions</span><span class="rc-row-v">Read-only (Customers, Subscriptions, Invoices, Charges)</span></div>
+<div class="rc-row"><span class="rc-row-l">Account</span><span class="rc-row-v">Acme Corp (acct_1MqN3pLkdIwHu7ix)</span></div>
+<hr class="rc-divider" />
+<div class="rc-stats">
+<div class="rc-stat"><div class="rc-stat-v">21</div><div class="rc-stat-l">Customers</div></div>
+<div class="rc-stat"><div class="rc-stat-v">18</div><div class="rc-stat-l">Active subscriptions</div></div>
+<div class="rc-stat"><div class="rc-stat-v">$8,420</div><div class="rc-stat-l">Revenue (last 30d)</div></div>
+</div>
+</div>
+</div>
+
+<div class="review-card">
+<div class="rc-head">
+<div class="rc-head-left">
+<div class="rc-icon rc-icon-ok"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div>
+<span class="rc-title">Customer mapping</span>
+</div>
+<button class="rc-edit" onclick="sendPrompt('Go back to Step 2 to change customer mapping')">Edit</button>
+</div>
+<div class="cust-summary">
+<div class="cs-head">
+<div class="cs-title">Identifier mode: Stripe customer ID</div>
+<div class="cs-count">21 of 21 mapped</div>
+</div>
+<table class="cs-table">
+<thead><tr><th>Stripe customer</th><th>Your SDK identifier</th><th style="text-align:right">Revenue (30d)</th><th style="width:52px">Match</th></tr></thead>
+<tbody>
+<tr><td><div class="cs-name">Acme Corp</div><div class="cs-sid">cus_R4kB9xPm2nQ</div></td><td class="cs-match">cus_R4kB9xPm2nQ</td><td class="cs-rev">$2,400</td><td><span class="cs-pill">Auto</span></td></tr>
+<tr><td><div class="cs-name">BrightPath Ltd</div><div class="cs-sid">cus_Q7mN3vHj8wL</div></td><td class="cs-match">cus_Q7mN3vHj8wL</td><td class="cs-rev">$1,800</td><td><span class="cs-pill">Auto</span></td></tr>
+<tr><td><div class="cs-name">NovaTech Inc</div><div class="cs-sid">cus_S2pK5tRn7xY</div></td><td class="cs-match">cus_S2pK5tRn7xY</td><td class="cs-rev">$950</td><td><span class="cs-pill">Auto</span></td></tr>
+<tr><td><div class="cs-name">Helios Digital</div><div class="cs-sid">cus_U6nR2wKm9xQ</div></td><td class="cs-match">cus_U6nR2wKm9xQ</td><td class="cs-rev">$720</td><td><span class="cs-pill">Auto</span></td></tr>
+<tr><td><div class="cs-name">Zenith Labs</div><div class="cs-sid">cus_T9wM1kJp4qB</div></td><td class="cs-match">cus_T9wM1kJp4qB</td><td class="cs-rev">$680</td><td><span class="cs-pill">Auto</span></td></tr>
+<tr><td><div class="cs-name">Pinnacle AI</div><div class="cs-sid">cus_X5rW8nKp3mQ</div></td><td class="cs-match">cus_X5rW8nKp3mQ</td><td class="cs-rev">$340</td><td><span class="cs-pill">Auto</span></td></tr>
+</tbody>
+</table>
+<div class="cs-expand" id="cs-expand" onclick="expandTable()">Show all 21 customers</div>
+</div>
+</div>
+
+<div class="review-card">
+<div class="rc-head">
+<div class="rc-head-left">
+<div class="rc-icon rc-icon-ok"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div>
+<span class="rc-title">Sync settings</span>
+</div>
+</div>
+<div class="sync-settings">
+<div class="sync-row"><span class="sync-row-l">Sync frequency</span><span class="sync-row-v"><span class="sync-dot"></span>Every 6 hours</span></div>
+<div class="sync-row"><span class="sync-row-l">Data pulled</span><span class="sync-row-v">Customers, subscriptions, invoices, charges</span></div>
+<div class="sync-row"><span class="sync-row-l">Historical backfill</span><span class="sync-row-v">Last 12 months of invoice data</span></div>
+<div class="sync-row"><span class="sync-row-l">New customers</span><span class="sync-row-v">Auto-detected on each sync</span></div>
+</div>
+</div>
+
+<div class="sdk-section">
+<div class="sdk-t">Your SDK integration</div>
+<div class="sdk-s">This is the code you'll add to your application. Your API key and customer identifier format are pre-filled based on your setup.</div>
+
+<div class="api-key-row">
+<span class="api-key-label">Your API key:</span>
+<span class="api-key-val">mk_live_a1b2c3d4e5f6g7h8i9j0</span>
+<span class="api-key-copy" onclick="this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1500)">Copy</span>
+</div>
+
+<div class="sdk-block">
+<div class="sdk-block-t">Install</div>
+<div class="sdk-code">npm install @yourplatform/meter-sdk<span class="copy-btn" onclick="this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1500)">Copy</span></div>
+</div>
+
+<div class="sdk-block">
+<div class="sdk-block-t">Initialise (once, at app startup)</div>
+<div class="sdk-code"><span class="hl">import</span> { MeterClient } <span class="hl">from</span> '@yourplatform/meter-sdk';
+
+<span class="hl">const</span> meter = <span class="hl">new</span> MeterClient({
+  apiKey: '<span class="key">mk_live_a1b2c3d4e5f6g7h8i9j0</span>'
+});<span class="copy-btn" onclick="this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1500)">Copy</span></div>
+</div>
+
+<div class="sdk-block" style="margin-bottom:0">
+<div class="sdk-block-t">Track (wherever you call an API)</div>
+<div class="sdk-code">meter.track({
+  <span class="hl">customer: customer.stripeId,</span>
+  pricing_card: 'gemini_2_flash',
+  product: 'property_search',
+  usage: {
+    input_tokens: response.usage.promptTokens,
+    output_tokens: response.usage.completionTokens,
+    grounding_requests: 1
+  }
+});<span class="copy-btn" onclick="this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1500)">Copy</span></div>
+</div>
+</div>
+
+<div class="checklist">
+<div class="check-row"><div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">Stripe key validated with correct permissions</span></div>
+<div class="check-row"><div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">21 customers found and all 21 mapped to SDK identifiers</span></div>
+<div class="check-row"><div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">$8,420 in revenue data available (last 30 days)</span></div>
+<div class="check-row"><div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">12 months of historical invoices will be backfilled on activation</span></div>
+</div>
+
+<div class="sec-note">Once activated, Stripe data syncs automatically every 6 hours. You can change sync settings, re-map customers, or disconnect Stripe anytime from account settings.</div>
+
+<div class="activate-card" id="activate-card">
+<div class="activate-t">Stripe integration is live</div>
+<div class="activate-s">Revenue data is syncing now. Historical backfill will complete within the hour. Next, create a pricing card so the platform can start pairing costs against this revenue.</div>
+<div class="next-steps">
+<div class="next-step"><div class="next-num">1</div><span>Create your first pricing card (pick a template, verify prices, activate)</span></div>
+<div class="next-step"><div class="next-num">2</div><span>Paste the SDK code into your app wherever you make API calls</span></div>
+<div class="next-step"><div class="next-num">3</div><span>Deploy — your dashboard shows live profitability data within minutes</span></div>
+</div>
+</div>
+
+<div class="nav">
+<button class="btn-back" onclick="sendPrompt('Go back to Step 2 to review customer mapping')">Back to step 2</button>
+<button class="btn-activate" id="btn-activate" onclick="activate()">Activate Stripe integration</button>
+<button class="btn-go" id="btn-go" onclick="sendPrompt('Take me to create my first pricing card')">Create my first pricing card</button>
+</div>
+</div>
+
+<script>
+function expandTable(){
+  const extra=[
+    {n:'ClearView Analytics',s:'cus_V3bP8sHn5mJ',r:'$150'},
+    {n:'Eko Systems',s:'cus_W1cT4rFk7pN',r:'$90'},
+    {n:'Meridian Group',s:'cus_Y2dF6hTn8qR',r:'$480'},
+    {n:'Atlas Robotics',s:'cus_Z3eG7jUo9sS',r:'$320'},
+    {n:'Quantum Logic',s:'cus_A4fH8kVp0tT',r:'$275'}
+  ];
+  const tbody=document.querySelector('.cs-table tbody');
+  extra.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><div class="cs-name">'+c.n+'</div><div class="cs-sid">'+c.s+'</div></td><td class="cs-match">'+c.s+'</td><td class="cs-rev">'+c.r+'</td><td><span class="cs-pill">Auto</span></td>';
+    tbody.appendChild(tr);
+  });
+  const el=document.getElementById('cs-expand');
+  el.textContent='Showing all 21 customers';
+  el.style.cursor='default';
+  el.onclick=null;
+}
+
+function activate(){
+  const btn=document.getElementById('btn-activate');
+  btn.textContent='Activating...';btn.style.opacity='.6';
+
+  setTimeout(()=>{
+    btn.style.display='none';
+    document.getElementById('btn-go').style.display='inline-block';
+    document.getElementById('activate-card').style.display='block';
+    document.getElementById('p2').className='prog-seg prog-done';
+
+    document.querySelector('.pg-t').textContent='Setup complete';
+    document.querySelector('.pg-s').textContent='Your Stripe integration is live and revenue data is syncing. One more thing \u2014 create a pricing card to start tracking costs.';
+  },1200);
+}
+</script></body></html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unified Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a1a;line-height:1.6;background:#fff;padding:24px;max-width:780px;margin:0 auto}
+.dt{font-size:24px;font-weight:600;margin-bottom:16px}
+
+/* Scope bar */
+.sb{background:#f7f6f3;border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.sb-top{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sp{padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer;border:1px solid #e0ddd8;background:#fff;color:#73726c;transition:all .15s;white-space:nowrap}
+.sp:hover{border-color:#b4b2a9}.sp.sel{background:#1a1a1a;color:#fff;border-color:#1a1a1a}.sp.q{border-style:dashed}
+.sdiv{width:1px;height:20px;background:#d3d1c7;margin:0 2px}
+.ssi{flex:1;min-width:180px;font-size:12px;padding:6px 12px;border:1px solid #e0ddd8;border-radius:20px;background:#fff;color:#1a1a1a;outline:none}
+.ssi:focus{border-color:#888}
+.sdd{border:1px solid #e0ddd8;border-radius:8px;background:#fff;max-height:160px;overflow-y:auto;display:none;margin-top:6px}
+.ddi{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;cursor:pointer;transition:background .1s}.ddi:hover{background:#f7f6f3}
+.ddi-ck{width:16px;height:16px;border:2px solid #b4b2a9;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:8px;transition:all .1s}
+.ddi-ck.on{background:#185FA5;border-color:#185FA5}.ddi-ck.on::after{content:'';display:block;width:4px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);margin-top:-1px}
+.sch{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.chip{font-size:11px;padding:4px 10px;border-radius:16px;background:#E6F1FB;color:#185FA5;display:inline-flex;align-items:center;gap:5px}
+.chip-x{cursor:pointer;opacity:.5;font-size:14px;line-height:1}.chip-x:hover{opacity:1}
+.srun{display:none;justify-content:space-between;align-items:center;margin-top:10px}
+.run-btn{padding:7px 20px;font-size:13px;font-weight:600;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer}.run-btn:hover{opacity:.9}
+.vl{font-size:11px;color:#888;margin-bottom:12px;padding:8px 12px;background:#f7f6f3;border-radius:8px;display:flex;justify-content:space-between}
+.ctrls{display:flex;gap:6px;align-items:center;margin-bottom:12px;justify-content:space-between;flex-wrap:wrap}
+.rg{display:flex}.rb{padding:5px 12px;font-size:12px;border:1px solid #e0ddd8;background:#fff;color:#73726c;cursor:pointer}.rb:first-child{border-radius:8px 0 0 8px}.rb:last-child{border-radius:0 8px 8px 0}.rb:not(:first-child){border-left:none}.rb.sel{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.bsm{padding:5px 12px;font-size:12px;border:1px solid #d3d1c7;border-radius:8px;background:#fff;color:#1a1a1a;cursor:pointer}.bsm:hover{background:#f7f6f3}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
+.st{background:#f7f6f3;border-radius:8px;padding:10px 12px}.st-l{font-size:11px;color:#73726c}.st-v{font-size:18px;font-weight:600}.st-s{font-size:10px;color:#b4b2a9;margin-top:2px}.st-v.grn{color:#3B6D11}
+
+/* Sections */
+.sec{margin-bottom:20px}
+.sec-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px}
+.sec-t{font-size:14px;font-weight:600}
+.sec-c{display:flex;gap:6px;align-items:center}
+.tog{display:flex;border:1px solid #e0ddd8;border-radius:8px;overflow:hidden}
+.tog span{padding:4px 12px;font-size:11px;cursor:pointer;transition:all .12s;color:#73726c;white-space:nowrap}
+.tog span.sel{background:#1a1a1a;color:#fff}
+.rst{padding:3px 10px;font-size:11px;border:1px solid #B5D4F4;border-radius:8px;background:#E6F1FB;color:#185FA5;cursor:pointer;display:none}.rst:hover{opacity:.85}
+.iso-l{font-size:11px;color:#185FA5;font-weight:500;display:none;margin-left:4px}
+
+/* Legends */
+.leg{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px}
+.li{display:flex;align-items:center;gap:4px;font-size:11px;color:#73726c;padding:3px 8px;border-radius:8px;cursor:pointer;transition:all .1s;border:1px solid transparent}
+.li:hover{background:#f7f6f3;border-color:#e0ddd8}.li.active{border-color:#b4b2a9;background:#f7f6f3}.li.dimmed{opacity:.25}
+.li-s{cursor:default;border:none;padding:0}.li-s:hover{background:transparent}
+.ld{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.chart-w{position:relative;width:100%}
+.dh{font-size:10px;color:#b4b2a9;text-align:center;margin-top:3px;display:none}
+
+/* Breakdowns */
+.brkdn{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.brk{border:1px solid #e0ddd8;border-radius:12px;padding:12px 14px}
+.brk-t{font-size:13px;font-weight:600;margin-bottom:8px}
+.brk-r{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;border-bottom:1px solid #f0efe8}.brk-r:last-child{border:none}
+.brk-d{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.brk-n{flex:1;color:#73726c}
+.brk-b{flex:0 0 44px;height:4px;background:#e0ddd8;border-radius:2px;overflow:hidden}.brk-bf{height:100%;border-radius:2px}
+.brk-v{font-weight:600;font-family:monospace;font-size:11px;min-width:44px;text-align:right}
+.brk-p{font-size:10px;color:#b4b2a9;min-width:28px;text-align:right}
+.good{color:#3B6D11}.ok{color:#854F0B}.bad{color:#A32D2D}
+
+/* Customer table */
+.ct-wrap{border:1px solid #e0ddd8;border-radius:12px;overflow:hidden}
+.ct{width:100%;border-collapse:collapse;font-size:12px}
+.ct th{text-align:left;font-weight:600;font-size:11px;color:#73726c;padding:8px;border-bottom:1px solid #e0ddd8;white-space:nowrap}
+.ct td{padding:8px;border-bottom:1px solid #f0efe8}.ct tr:last-child td{border:none}
+.ct tbody tr{cursor:pointer;transition:background .1s}.ct tbody tr:hover td{background:#f7f6f3}
+.cn{font-weight:600}.ci{font-family:monospace;font-size:10px;color:#b4b2a9}
+.r{text-align:right}.mono{font-family:monospace}
+.pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.pill-s{background:#EEEDFE;color:#534AB7}.pill-u{background:#E1F5EE;color:#0F6E56}
+.mb{display:flex;height:6px;border-radius:3px;overflow:hidden;width:52px}.mr{background:#5DCAA5}.mc{background:#d3d1c7}
+.mp{font-family:monospace;font-size:11px}
+</style>
+</head>
+<body>
+<div class="dt">Dashboard</div>
+
+<!-- SCOPE BAR -->
+<div class="sb" id="sb">
+<div class="sb-top">
+<span class="sp sel" id="sp-all" onclick="setScope('all')">All customers</span><span class="sdiv"></span>
+<span class="sp q" id="sp-t5" onclick="setScope('top5')">Top 5 by revenue</span>
+<span class="sp q" id="sp-un" onclick="setScope('unprof')">Unprofitable</span><span class="sdiv"></span>
+<input class="ssi" placeholder="Search and add customers..." id="ssi" onfocus="showDD()" oninput="filterDD()" />
+</div>
+<div class="sdd" id="sdd"></div>
+<div class="sch" id="sch" style="display:none"></div>
+<div class="srun" id="srun"><div style="font-size:12px;color:#73726c" id="ssum">0 selected</div><button class="run-btn" onclick="runA()">Run analysis</button></div>
+</div>
+
+<div class="vl"><span>Showing: <span style="font-weight:600;color:#1a1a1a" id="vls">All 18 customers (aggregate)</span></span><span>30-day period</span></div>
+
+<div class="ctrls"><div class="rg"><button class="rb" onclick="setR(this)">7d</button><button class="rb sel" onclick="setR(this)">30d</button><button class="rb" onclick="setR(this)">90d</button><button class="rb" onclick="setR(this)">YTD</button></div><div style="display:flex;gap:6px"><select style="font-size:12px;padding:5px 10px;border:1px solid #d3d1c7;border-radius:8px"><option>All products</option><option>Property search</option><option>Doc summariser</option><option>Content gen</option></select><button class="bsm">Export</button></div></div>
+
+<!-- STATS -->
+<div class="stats">
+<div class="st"><div class="st-l">Revenue</div><div class="st-v">$8,420</div><div class="st-s">+14.2% vs prev</div></div>
+<div class="st"><div class="st-l">API costs</div><div class="st-v">$1,247</div><div class="st-s">+12.3% vs prev</div></div>
+<div class="st"><div class="st-l">Gross margin</div><div class="st-v grn">$7,173</div><div class="st-s">+14.5% vs prev</div></div>
+<div class="st"><div class="st-l">Margin %</div><div class="st-v grn">85.2%</div><div class="st-s">+0.2pp vs prev</div></div>
+<div class="st"><div class="st-l">Cost / $1 rev</div><div class="st-v">$0.148</div><div class="st-s">-0.3% vs prev</div></div>
+</div>
+
+<!-- REVENUE & MARGIN CHART -->
+<div class="sec">
+<div class="sec-t" style="margin-bottom:6px">Revenue and margin</div>
+<div class="leg" style="gap:12px"><span class="li li-s"><span class="ld" style="background:#1D9E75"></span>Revenue</span><span class="li li-s"><span class="ld" style="background:#E24B4A"></span>API costs</span><span class="li li-s"><span class="ld" style="background:rgba(99,153,34,.35);border:1px solid #639922"></span>Margin</span></div>
+<div class="chart-w" style="height:200px"><canvas id="ch-rev"></canvas></div>
+</div>
+
+<!-- COST BY PRODUCT -->
+<div class="sec" id="sec-p">
+<div class="sec-bar">
+<div style="display:flex;align-items:center;gap:6px"><div class="sec-t">Cost by product</div><span class="iso-l" id="iso-p"></span></div>
+<div class="sec-c"><span class="rst" id="rst-p" onclick="rstCh('p')">Show all</span><div class="tog" id="tog-p"><span class="sel" onclick="setG('p','g')">Grouped</span><span onclick="setG('p','d')">By dimension</span></div></div>
+</div>
+<div class="leg" id="leg-p"></div>
+<div class="chart-w" style="height:180px"><canvas id="ch-p"></canvas></div>
+<div class="dh" id="dh-p">Showing cost dimensions within each product</div>
+</div>
+
+<!-- COST BY PRICING CARD -->
+<div class="sec" id="sec-c">
+<div class="sec-bar">
+<div style="display:flex;align-items:center;gap:6px"><div class="sec-t">Cost by pricing card</div><span class="iso-l" id="iso-c"></span></div>
+<div class="sec-c"><span class="rst" id="rst-c" onclick="rstCh('c')">Show all</span><div class="tog" id="tog-c"><span class="sel" onclick="setG('c','g')">Grouped</span><span onclick="setG('c','d')">By dimension</span></div></div>
+</div>
+<div class="leg" id="leg-c"></div>
+<div class="chart-w" style="height:180px"><canvas id="ch-c"></canvas></div>
+<div class="dh" id="dh-c">Showing cost dimensions within each pricing card</div>
+</div>
+
+<!-- BREAKDOWNS -->
+<div class="sec">
+<div class="brkdn">
+<div class="brk"><div class="brk-t">Revenue by product</div>
+<div class="brk-r"><div class="brk-d" style="background:#378ADD"></div><div class="brk-n">Property search</div><div class="brk-b"><div class="brk-bf" style="width:55%;background:#378ADD"></div></div><div class="brk-v">$4,631</div><div class="brk-p">55%</div></div>
+<div class="brk-r"><div class="brk-d" style="background:#7F77DD"></div><div class="brk-n">Doc summariser</div><div class="brk-b"><div class="brk-bf" style="width:30%;background:#7F77DD"></div></div><div class="brk-v">$2,526</div><div class="brk-p">30%</div></div>
+<div class="brk-r"><div class="brk-d" style="background:#D85A30"></div><div class="brk-n">Content gen</div><div class="brk-b"><div class="brk-bf" style="width:15%;background:#D85A30"></div></div><div class="brk-v">$1,263</div><div class="brk-p">15%</div></div>
+</div>
+<div class="brk"><div class="brk-t">Margin by product</div>
+<div class="brk-r"><div class="brk-d" style="background:#378ADD"></div><div class="brk-n">Property search</div><div class="brk-b"><div class="brk-bf" style="width:81.7%;background:#5DCAA5"></div></div><div class="brk-v">$3,783</div><div class="brk-p good">81.7%</div></div>
+<div class="brk-r"><div class="brk-d" style="background:#7F77DD"></div><div class="brk-n">Doc summariser</div><div class="brk-b"><div class="brk-bf" style="width:89.2%;background:#5DCAA5"></div></div><div class="brk-v">$2,252</div><div class="brk-p good">89.2%</div></div>
+<div class="brk-r"><div class="brk-d" style="background:#D85A30"></div><div class="brk-n">Content gen</div><div class="brk-b"><div class="brk-bf" style="width:90.1%;background:#5DCAA5"></div></div><div class="brk-v">$1,138</div><div class="brk-p good">90.1%</div></div>
+</div>
+</div>
+</div>
+
+<!-- CUSTOMER TABLE -->
+<div class="sec">
+<div class="sec-bar"><div class="sec-t">Customer profitability</div><button class="bsm">Export table</button></div>
+<div class="ct-wrap">
+<table class="ct">
+<thead><tr><th style="min-width:120px">Customer</th><th class="r">Revenue</th><th class="r" style="color:#b4b2a9">Type</th><th class="r">API costs</th><th class="r">Margin</th><th>Margin %</th><th class="r">Events</th></tr></thead>
+<tbody>
+<tr><td><div class="cn">Acme Corp</div><div class="ci">acme_corp</div></td><td class="r mono">$2,400</td><td class="r"><span class="pill pill-s">Sub</span></td><td class="r mono">$312</td><td class="r mono">$2,088</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mr" style="width:87%"></div><div class="mc" style="width:13%"></div></div><span class="mp good">87.0%</span></div></td><td class="r">14.2k</td></tr>
+<tr><td><div class="cn">BrightPath Ltd</div><div class="ci">brightpath</div></td><td class="r mono">$1,800</td><td class="r"><span class="pill pill-s">Sub</span></td><td class="r mono">$247</td><td class="r mono">$1,553</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mr" style="width:86.3%"></div><div class="mc" style="width:13.7%"></div></div><span class="mp good">86.3%</span></div></td><td class="r">11.4k</td></tr>
+<tr><td><div class="cn">NovaTech Inc</div><div class="ci">novatech</div></td><td class="r mono">$950</td><td class="r"><span class="pill pill-u">Usage</span></td><td class="r mono">$189</td><td class="r mono">$761</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mr" style="width:80.1%"></div><div class="mc" style="width:19.9%"></div></div><span class="mp good">80.1%</span></div></td><td class="r">6.8k</td></tr>
+<tr><td><div class="cn">Helios Digital</div><div class="ci">helios</div></td><td class="r mono">$720</td><td class="r"><span class="pill pill-s">Sub</span></td><td class="r mono">$198</td><td class="r mono">$522</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mr" style="width:72.5%"></div><div class="mc" style="width:27.5%"></div></div><span class="mp ok">72.5%</span></div></td><td class="r">9.4k</td></tr>
+<tr><td><div class="cn">ClearView Analytics</div><div class="ci">clearview</div></td><td class="r mono">$150</td><td class="r"><span class="pill pill-u">Usage</span></td><td class="r mono">$142</td><td class="r mono">$8</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mr" style="width:5.3%"></div><div class="mc" style="width:94.7%"></div></div><span class="mp bad">5.3%</span></div></td><td class="r">8.2k</td></tr>
+<tr><td><div class="cn">Eko Systems</div><div class="ci">eko</div></td><td class="r mono">$90</td><td class="r"><span class="pill pill-u">Usage</span></td><td class="r mono">$118</td><td class="r mono" style="color:#A32D2D">-$28</td><td><div style="display:flex;align-items:center;gap:5px"><div class="mb"><div class="mc" style="width:100%;background:#F09595"></div></div><span class="mp bad">-31.1%</span></div></td><td class="r">7.9k</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<script>
+// DATA
+const N=30,days=[],now=new Date(2026,2,20);
+for(let i=N-1;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);days.push(d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))}
+function w(b,a,p){const o=[];for(let i=0;i<N;i++){o.push(Math.max(0,Math.round((b+a*Math.sin((i+p)*.22)+a*.3*Math.sin((i+p)*.55)+(Math.random()-.5)*a*.5)*100)/100))}return o}
+
+const customers=[
+{name:'Acme Corp',id:'cus_R4kB9xPm2nQ',rev:'$2,400'},
+{name:'BrightPath Ltd',id:'cus_Q7mN3vHj8wL',rev:'$1,800'},
+{name:'NovaTech Inc',id:'cus_S2pK5tRn7xY',rev:'$950'},
+{name:'Helios Digital',id:'cus_U6nR2wKm9xQ',rev:'$720'},
+{name:'ClearView Analytics',id:'cus_V3bP8sHn5mJ',rev:'$150'},
+{name:'Eko Systems',id:'cus_W1cT4rFk7pN',rev:'$90'}];
+
+// Build dropdown
+const ddEl=document.getElementById('sdd');
+customers.forEach((c,i)=>{
+ddEl.innerHTML+='<div class="ddi" onclick="tC(this,\''+c.name+'\')"><div style="display:flex;align-items:center"><div class="ddi-ck" id="ck-'+i+'"></div><div><div style="font-weight:600">'+c.name+'</div><div style="font-size:10px;color:#b4b2a9">'+c.id+'</div></div></div><div style="font-family:monospace;font-size:11px">'+c.rev+'</div></div>';
+});
+
+// Chart base options
+const bO={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',titleColor:'#1a1a1a',bodyColor:'#73726c',borderColor:'rgba(0,0,0,0.1)',borderWidth:1,padding:10,cornerRadius:8,bodyFont:{size:11},titleFont:{size:11,weight:600},callbacks:{label:c=>' '+c.dataset.label+': $'+c.parsed.y.toFixed(2)}}},
+scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#b4b2a9',maxTicksLimit:7}},y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:10,family:'monospace'},color:'#b4b2a9',callback:v=>'$'+v},beginAtZero:true}}};
+
+// Revenue chart
+const rev=w(280,40,0),costs=w(42,8,2),margin=rev.map((r,i)=>Math.round((r-costs[i])*100)/100);
+new Chart(document.getElementById('ch-rev'),{type:'line',data:{labels:days,datasets:[
+{label:'Revenue',data:rev,borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.08)',fill:true,borderWidth:1.5,pointRadius:0,pointHitRadius:8,tension:.3},
+{label:'API costs',data:costs,borderColor:'#E24B4A',backgroundColor:'rgba(226,75,74,0.06)',fill:true,borderWidth:1.5,pointRadius:0,pointHitRadius:8,tension:.3},
+{label:'Margin',data:margin,borderColor:'#639922',backgroundColor:'rgba(99,153,34,0.06)',fill:true,borderWidth:1,borderDash:[4,3],pointRadius:0,pointHitRadius:8,tension:.3}
+]},options:bO});
+
+// Cost data
+const D={p:{g:[
+{k:'ps',l:'Property search',c:'#378ADD',bg:'rgba(55,138,221,0.08)',d:w(28,8,0)},
+{k:'ds',l:'Doc summariser',c:'#7F77DD',bg:'rgba(127,119,221,0.06)',d:w(9,3,2)},
+{k:'cg',l:'Content gen',c:'#D85A30',bg:'rgba(216,90,48,0.06)',d:w(4,2,5)}
+],d:[
+{k:'ps_gi',l:'Property search',s:'Gemini / input_tokens',c:'#378ADD',bg:'rgba(55,138,221,0.08)',d:w(3,1,0)},
+{k:'ps_go',l:'Property search',s:'Gemini / output_tokens',c:'#85B7EB',bg:'rgba(133,183,235,0.08)',d:w(8,2.5,1)},
+{k:'ps_gg',l:'Property search',s:'Gemini / grounding',c:'#B5D4F4',bg:'rgba(181,212,244,0.06)',d:w(14,4,.5)},
+{k:'ps_pl',l:'Property search',s:'Places / requests',c:'#042C53',bg:'rgba(4,44,83,0.06)',d:w(2,.8,3)},
+{k:'ps_sr',l:'Property search',s:'Serper / queries',c:'#0C447C',bg:'rgba(12,68,124,0.05)',d:w(1,.5,2)},
+{k:'ds_ci',l:'Doc summariser',s:'Claude / input_tokens',c:'#7F77DD',bg:'rgba(127,119,221,0.06)',d:w(2.5,1,2)},
+{k:'ds_co',l:'Doc summariser',s:'Claude / output_tokens',c:'#AFA9EC',bg:'rgba(175,169,236,0.06)',d:w(6,2,2.5)},
+{k:'cg_gi',l:'Content gen',s:'GPT-4o / input_tokens',c:'#D85A30',bg:'rgba(216,90,48,0.06)',d:w(1,.5,5)},
+{k:'cg_go',l:'Content gen',s:'GPT-4o / output_tokens',c:'#F0997B',bg:'rgba(240,153,123,0.06)',d:w(3,1.2,5.5)}
+]},c:{g:[
+{k:'gem',l:'Gemini 2.0 Flash',c:'#D85A30',bg:'rgba(216,90,48,0.08)',d:w(23,6,0)},
+{k:'cla',l:'Claude 3.5 Sonnet',c:'#D4537E',bg:'rgba(212,83,126,0.06)',d:w(10,3,2)},
+{k:'gpt',l:'GPT-4o',c:'#BA7517',bg:'rgba(186,117,23,0.06)',d:w(5,1.5,4)},
+{k:'plc',l:'Google Places',c:'#888780',bg:'rgba(136,135,128,0.06)',d:w(2,.8,3)},
+{k:'srp',l:'Serper',c:'#B4B2A9',bg:'rgba(180,178,169,0.04)',d:w(1.2,.5,1)}
+],d:[
+{k:'gem_i',l:'Gemini 2.0 Flash',s:'input_tokens',c:'#D85A30',bg:'rgba(216,90,48,0.08)',d:w(3,1,0)},
+{k:'gem_o',l:'Gemini 2.0 Flash',s:'output_tokens',c:'#F0997B',bg:'rgba(240,153,123,0.06)',d:w(8,2.5,1)},
+{k:'gem_g',l:'Gemini 2.0 Flash',s:'grounding_requests',c:'#F5C4B3',bg:'rgba(245,196,179,0.06)',d:w(14,4,.5)},
+{k:'cla_i',l:'Claude 3.5 Sonnet',s:'input_tokens',c:'#D4537E',bg:'rgba(212,83,126,0.06)',d:w(2.5,1,2)},
+{k:'cla_o',l:'Claude 3.5 Sonnet',s:'output_tokens',c:'#ED93B1',bg:'rgba(237,147,177,0.06)',d:w(6,2,2.5)},
+{k:'gpt_i',l:'GPT-4o',s:'input_tokens',c:'#BA7517',bg:'rgba(186,117,23,0.06)',d:w(1,.5,4)},
+{k:'gpt_o',l:'GPT-4o',s:'output_tokens',c:'#FAC775',bg:'rgba(250,199,117,0.06)',d:w(3,1.2,4.5)},
+{k:'plc_r',l:'Google Places',s:'requests',c:'#888780',bg:'rgba(136,135,128,0.06)',d:w(2,.8,3)},
+{k:'srp_r',l:'Serper',s:'search_queries',c:'#B4B2A9',bg:'rgba(180,178,169,0.04)',d:w(1.2,.5,1)}
+]}};
+
+const S={p:{g:'g',iso:null,ch:null},c:{g:'g',iso:null,ch:null}};
+function gs(p){return S[p].g==='g'?D[p].g:D[p].d}
+
+function bLeg(p){
+const s=gs(p),el=document.getElementById('leg-'+p),iso=S[p].iso;
+el.innerHTML='';
+s.forEach(x=>{
+const dim=iso!==null&&iso!==x.k,act=iso===x.k;
+const lbl=S[p].g==='d'?x.s:x.l;
+const tot=x.d.reduce((a,b)=>a+b,0);
+el.innerHTML+='<span class="li'+(act?' active':'')+(dim?' dimmed':'')+'" onclick="tIso(\''+p+'\',\''+x.k+'\')"><span class="ld" style="background:'+x.c+'"></span><span>'+lbl+'</span><span style="font-family:monospace;font-size:10px;color:#b4b2a9;margin-left:2px">$'+Math.round(tot)+'</span></span>';
+});}
+
+function bCh(p){
+const s=gs(p),iso=S[p].iso,cv=document.getElementById('ch-'+p);
+if(S[p].ch)S[p].ch.destroy();
+const ds=s.map(x=>{const h=iso!==null&&iso!==x.k;
+return{label:S[p].g==='d'?(x.l+' / '+x.s):x.l,data:x.d,borderColor:h?'transparent':x.c,backgroundColor:h?'transparent':x.bg,fill:!h,borderWidth:h?0:1.5,pointRadius:0,pointHitRadius:h?0:8,tension:.3};});
+S[p].ch=new Chart(cv,{type:'line',data:{labels:days,datasets:ds},options:{...bO,animation:{duration:250}}});}
+
+function setG(p,m){
+S[p].g=m;S[p].iso=null;
+document.getElementById('tog-'+p).querySelectorAll('span').forEach((s,i)=>s.classList.toggle('sel',i===(m==='g'?0:1)));
+document.getElementById('dh-'+p).style.display=m==='d'?'block':'none';
+document.getElementById('rst-'+p).style.display='none';
+document.getElementById('iso-'+p).style.display='none';
+bLeg(p);bCh(p);}
+
+function tIso(p,k){
+if(S[p].iso===k){rstCh(p);return}
+S[p].iso=k;
+const s=gs(p).find(x=>x.k===k);
+const lbl=S[p].g==='d'?(s.l+' / '+s.s):s.l;
+document.getElementById('rst-'+p).style.display='inline-block';
+const ie=document.getElementById('iso-'+p);ie.style.display='inline';ie.textContent=lbl;
+bLeg(p);bCh(p);}
+
+function rstCh(p){S[p].iso=null;document.getElementById('rst-'+p).style.display='none';document.getElementById('iso-'+p).style.display='none';bLeg(p);bCh(p);}
+
+bLeg('p');bCh('p');bLeg('c');bCh('c');
+
+// SCOPE
+let sel=new Set(),scm='all';
+function setScope(m){scm=m;document.querySelectorAll('.sp').forEach(p=>p.classList.remove('sel'));
+if(m==='all'){document.getElementById('sp-all').classList.add('sel');sel.clear();uCh();document.getElementById('srun').style.display='none';document.getElementById('sdd').style.display='none';document.getElementById('vls').textContent='All 18 customers (aggregate)';return}
+if(m==='top5'){document.getElementById('sp-t5').classList.add('sel');sel=new Set(['Acme Corp','BrightPath Ltd','NovaTech Inc','Helios Digital','ClearView Analytics'])}
+if(m==='unprof'){document.getElementById('sp-un').classList.add('sel');sel=new Set(['ClearView Analytics','Eko Systems'])}
+uCh();document.getElementById('srun').style.display='flex';document.getElementById('sdd').style.display='none'}
+
+function showDD(){if(scm==='all'){scm='x';document.querySelectorAll('.sp').forEach(p=>p.classList.remove('sel'));document.getElementById('srun').style.display='flex'}document.getElementById('sdd').style.display='block'}
+function filterDD(){const q=document.getElementById('ssi').value.toLowerCase();document.querySelectorAll('.ddi').forEach(i=>{const n=i.querySelector('div[style*="font-weight"]');i.style.display=n&&n.textContent.toLowerCase().includes(q)?'flex':'none'});document.getElementById('sdd').style.display='block'}
+function tC(el,n){if(sel.has(n))sel.delete(n);else sel.add(n);el.querySelector('.ddi-ck').classList.toggle('on');uCh()}
+function uCh(){const c=document.getElementById('sch');if(!sel.size){c.style.display='none';document.getElementById('ssum').textContent='0 selected';return}
+c.style.display='flex';c.innerHTML='';sel.forEach(n=>{c.innerHTML+='<span class="chip">'+n+'<span class="chip-x" onclick="rC(event,\''+n+'\')">x</span></span>'});
+document.getElementById('ssum').textContent=sel.size+' selected';
+document.querySelectorAll('.ddi-ck').forEach(c=>c.classList.remove('on'));
+document.querySelectorAll('.ddi').forEach(i=>{const n=i.querySelector('div[style*="font-weight"]');if(n&&sel.has(n.textContent))i.querySelector('.ddi-ck').classList.add('on')})}
+function rC(e,n){e.stopPropagation();sel.delete(n);uCh()}
+function runA(){document.getElementById('sdd').style.display='none';const n=[...sel];document.getElementById('vls').textContent=n.length===1?n[0]:n.length+' selected customers'}
+function setR(el){document.querySelectorAll('.rb').forEach(b=>b.classList.remove('sel'));el.classList.add('sel')}
+document.addEventListener('click',e=>{if(!document.getElementById('sb').contains(e.target))document.getElementById('sdd').style.display='none'});
+</script>
+</body>
+</html>
+</body></html>

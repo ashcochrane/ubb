@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.wizard{padding:1.5rem 0;max-width:640px}
+.steps{display:flex;gap:0;margin-bottom:2rem}
+.step-item{flex:1;text-align:center;position:relative}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--color-border-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--color-text-tertiary);background:var(--color-background-primary);position:relative;z-index:1}
+.step-dot.done{border-color:var(--color-text-success);background:var(--color-background-success);color:var(--color-text-success)}
+.step-dot.active{border-color:var(--color-text-primary);color:var(--color-text-primary)}
+.step-label{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+.step-label.active{color:var(--color-text-primary);font-weight:500}
+.step-line{position:absolute;top:14px;left:calc(50% + 20px);right:calc(-50% + 20px);height:1px;background:var(--color-border-tertiary)}
+.step-line.done{background:var(--color-text-success)}
+.panel-title{font-size:18px;font-weight:500;margin-bottom:4px}
+.panel-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem}
+.section-label{font-size:14px;font-weight:500;margin-bottom:4px}
+.section-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.review-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 18px;margin-bottom:14px}
+.rc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.rc-name{font-size:16px;font-weight:500}
+.rc-meta{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.rc-meta span{font-family:var(--font-mono);font-size:11px;background:var(--color-background-secondary);padding:1px 6px;border-radius:4px;margin-left:4px}
+.pill-draft{display:inline-block;font-size:11px;padding:2px 10px;border-radius:20px;background:var(--color-background-warning);color:var(--color-text-warning);font-weight:500}
+.edit-link{font-size:12px;color:var(--color-text-info);cursor:pointer;text-decoration:none;border:none;background:none;padding:0}
+.edit-link:hover{text-decoration:underline}
+.rc-divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:12px 0}
+.dim-review{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.dim-review:last-child{border:none}
+.dim-review-key{font-family:var(--font-mono);font-size:12px}
+.dim-review-type{font-size:11px;padding:2px 8px;border-radius:12px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.dim-review-unit{font-size:12px;color:var(--color-text-secondary)}
+.dim-review-price{font-size:13px;font-weight:500;font-family:var(--font-mono);text-align:right}
+.dryrun{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:18px 20px;margin-bottom:14px;background:var(--color-background-secondary)}
+.dryrun-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.dryrun-title{font-size:14px;font-weight:500}
+.dryrun-badge{font-size:11px;padding:2px 10px;border-radius:20px}
+.dryrun-badge-i{background:var(--color-background-info);color:var(--color-text-info)}
+.dryrun-badge-s{background:var(--color-background-success);color:var(--color-text-success);display:none}
+.dryrun-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px}
+.dryrun-inputs{margin-bottom:14px}
+.dryrun-irow{display:grid;grid-template-columns:130px 100px 1fr;gap:10px;align-items:center;padding:6px 0}
+.dryrun-irow label{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.dryrun-irow input{font-family:var(--font-mono);font-size:13px;text-align:right;padding:6px 10px}
+.dryrun-irow .calc{font-size:12px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.dryrun-divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:10px 0}
+.dryrun-breakdown{margin-bottom:6px}
+.dryrun-brow{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
+.dryrun-brow .bl{color:var(--color-text-secondary)}
+.dryrun-brow .bv{font-family:var(--font-mono);font-weight:500}
+.dryrun-total{display:flex;justify-content:space-between;padding:10px 0 0;border-top:0.5px solid var(--color-border-tertiary);font-size:15px;font-weight:500}
+.dryrun-total .tv{font-family:var(--font-mono)}
+.dryrun-proj{font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-top:4px}
+.dryrun-bar{margin-top:12px}
+.dryrun-bar-label{font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px}
+.bar-track{height:8px;background:var(--color-border-tertiary);border-radius:4px;overflow:hidden;display:flex}
+.bar-seg{height:100%;transition:width .3s}
+.bar-legend{display:flex;gap:12px;margin-top:6px;flex-wrap:wrap}
+.bar-legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-secondary)}
+.bar-legend-dot{width:8px;height:8px;border-radius:2px}
+.sanity{border:0.5px solid var(--color-border-warning);border-radius:var(--border-radius-md);padding:10px 14px;margin-top:12px;background:var(--color-background-warning);display:none}
+.sanity-title{font-size:12px;font-weight:500;color:var(--color-text-warning);margin-bottom:2px}
+.sanity-msg{font-size:11px;color:var(--color-text-warning);line-height:1.5}
+.checklist{margin-top:14px}
+.check-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.check-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check-pass{background:var(--color-background-success)}
+.check-pass svg{width:12px;height:12px}
+.check-warn{background:var(--color-background-warning)}
+.check-text{color:var(--color-text-secondary)}
+.product-section{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 18px;margin-bottom:14px}
+.product-section label{font-size:13px;font-weight:500;display:block;margin-bottom:4px}
+.product-section .ps-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:10px}
+.pp-grid{display:flex;gap:8px;flex-wrap:wrap}
+.pp{padding:6px 14px;border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;border:0.5px solid var(--color-border-tertiary);background:transparent;color:var(--color-text-secondary);transition:all .15s}
+.pp:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.pp.sel{background:var(--color-background-info);color:var(--color-text-info);border-color:transparent}
+.pp-new{border-style:dashed}
+.snippet{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-bottom:14px}
+.snippet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.snippet-title{font-size:13px;font-weight:500}
+.snippet-copy{font-size:11px;color:var(--color-text-info);cursor:pointer;border:none;background:none;padding:0}
+.snippet-copy:hover{text-decoration:underline}
+.snippet-code{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px;font-family:var(--font-mono);font-size:11px;line-height:1.8;overflow-x:auto;white-space:pre;color:var(--color-text-secondary)}
+.snippet-note{font-size:11px;color:var(--color-text-tertiary);margin-top:6px}
+.nav-row{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary)}
+.btn-activate{padding:10px 24px;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;border:none;background:var(--color-text-success);color:#fff;transition:opacity .15s}
+.btn-activate:hover{opacity:.9}
+.btn-activate:disabled{opacity:.4;cursor:not-allowed}
+.confirm-overlay{display:none;position:relative;margin-top:12px;border:2px solid var(--color-text-success);border-radius:var(--border-radius-lg);padding:20px;text-align:center;background:var(--color-background-primary)}
+.confirm-title{font-size:15px;font-weight:500;margin-bottom:4px}
+.confirm-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px}
+.confirm-btns{display:flex;gap:8px;justify-content:center}
+.success-view{display:none}
+.success-check{width:52px;height:52px;border-radius:50%;background:var(--color-background-success);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.success-check svg{width:28px;height:28px}
+.success-title{font-size:18px;font-weight:500;margin-bottom:4px}
+.success-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem}
+</style>
+
+<div class="wizard">
+  <div class="steps">
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Details</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Dimensions</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot active">4</div><div class="step-label active">Review & test</div></div>
+  </div>
+
+  <div id="main-view">
+    <div class="panel-title">Review and test</div>
+    <div class="panel-sub">Verify your configuration, run a test event to confirm costs calculate correctly, then activate when ready.</div>
+
+    <!-- Review card -->
+    <div class="review-card">
+      <div class="rc-head">
+        <div>
+          <div class="rc-name">Gemini 2.0 Flash</div>
+          <div class="rc-meta">Google<span>gemini_2_flash</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="pill-draft">Draft v1</span>
+          <button class="edit-link" onclick="sendPrompt('Go back to the details step for my custom card')">Edit details</button>
+        </div>
+      </div>
+      <hr class="rc-divider" />
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary)">Cost dimensions (3)</div>
+        <button class="edit-link" onclick="sendPrompt('Go back to the dimensions step for my custom card')">Edit dimensions</button>
+      </div>
+      <div class="dim-review">
+        <div class="dim-review-key">input_tokens</div>
+        <div class="dim-review-type">per unit</div>
+        <div class="dim-review-unit">per 1M tokens</div>
+        <div class="dim-review-price">$0.10</div>
+      </div>
+      <div class="dim-review">
+        <div class="dim-review-key">output_tokens</div>
+        <div class="dim-review-type">per unit</div>
+        <div class="dim-review-unit">per 1M tokens</div>
+        <div class="dim-review-price">$0.40</div>
+      </div>
+      <div class="dim-review">
+        <div class="dim-review-key">grounding_requests</div>
+        <div class="dim-review-type">flat</div>
+        <div class="dim-review-unit">per request</div>
+        <div class="dim-review-price">$0.035</div>
+      </div>
+    </div>
+
+    <!-- Dry run simulator -->
+    <div class="dryrun">
+      <div class="dryrun-head">
+        <div class="dryrun-title">Dry-run simulator</div>
+        <div>
+          <span class="dryrun-badge dryrun-badge-i" id="badge-waiting">Adjust quantities below</span>
+          <span class="dryrun-badge dryrun-badge-s" id="badge-pass">Looks correct</span>
+        </div>
+      </div>
+      <div class="dryrun-sub">Enter realistic sample quantities for a single API call. The simulator shows exactly how costs would be calculated.</div>
+
+      <div class="dryrun-inputs">
+        <div class="dryrun-irow">
+          <label>input_tokens</label>
+          <input type="number" id="dr-0" value="1500" min="0" oninput="calcDryRun()" />
+          <div class="calc" id="dc-0">1,500 x $0.0000001 = $0.000150</div>
+        </div>
+        <div class="dryrun-irow">
+          <label>output_tokens</label>
+          <input type="number" id="dr-1" value="800" min="0" oninput="calcDryRun()" />
+          <div class="calc" id="dc-1">800 x $0.0000004 = $0.000320</div>
+        </div>
+        <div class="dryrun-irow">
+          <label>grounding_requests</label>
+          <input type="number" id="dr-2" value="1" min="0" oninput="calcDryRun()" />
+          <div class="calc" id="dc-2">1 event x $0.035 = $0.035000</div>
+        </div>
+      </div>
+
+      <hr class="dryrun-divider" />
+
+      <div class="dryrun-breakdown" id="breakdown">
+        <div class="dryrun-brow"><span class="bl">Input tokens</span><span class="bv" id="bv-0">$0.000150</span></div>
+        <div class="dryrun-brow"><span class="bl">Output tokens</span><span class="bv" id="bv-1">$0.000320</span></div>
+        <div class="dryrun-brow"><span class="bl">Grounding requests</span><span class="bv" id="bv-2">$0.035000</span></div>
+      </div>
+
+      <div class="dryrun-total"><span>Total per event</span><span class="tv" id="dr-total">$0.035470</span></div>
+      <div class="dryrun-proj" id="dr-proj">At 1,000 events/day: ~$35.47/day · ~$1,064/month</div>
+
+      <div class="dryrun-bar">
+        <div class="dryrun-bar-label">Cost distribution</div>
+        <div class="bar-track">
+          <div class="bar-seg" id="bar-0" style="width:0.4%;background:#378ADD"></div>
+          <div class="bar-seg" id="bar-1" style="width:0.9%;background:#7F77DD"></div>
+          <div class="bar-seg" id="bar-2" style="width:98.7%;background:#D85A30"></div>
+        </div>
+        <div class="bar-legend">
+          <div class="bar-legend-item"><div class="bar-legend-dot" style="background:#378ADD"></div><span id="leg-0">Input tokens 0.4%</span></div>
+          <div class="bar-legend-item"><div class="bar-legend-dot" style="background:#7F77DD"></div><span id="leg-1">Output tokens 0.9%</span></div>
+          <div class="bar-legend-item"><div class="bar-legend-dot" style="background:#D85A30"></div><span id="leg-2">Grounding 98.7%</span></div>
+        </div>
+      </div>
+
+      <div class="sanity" id="sanity">
+        <div class="sanity-title">Sanity check</div>
+        <div class="sanity-msg" id="sanity-msg">Grounding requests account for 98.7% of total cost. This is typical for Gemini with grounding enabled — the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts. If this doesn't look right, edit your dimensions.</div>
+      </div>
+
+      <div class="checklist" id="checklist">
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">All 3 dimensions have non-zero prices</span></div>
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">No duplicate metric keys</span></div>
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">Unit prices are within expected ranges</span></div>
+        <div class="check-row"><div class="check-icon check-warn"><svg viewBox="0 0 16 16" fill="var(--color-text-warning)" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--color-text-warning)" stroke-width="1.5"/><text x="8" y="11.5" font-size="10" text-anchor="middle" fill="var(--color-text-warning)" font-weight="600">!</text></svg></div><span class="check-text" style="color:var(--color-text-warning)">Cost dominated by one dimension (see sanity check above)</span></div>
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">Card ID is valid and unique</span></div>
+      </div>
+    </div>
+
+    <!-- Product assignment -->
+    <div class="product-section">
+      <label>Assign to product</label>
+      <div class="ps-sub">Group this card under a product for dashboard cost aggregation. You can change this anytime.</div>
+      <div class="pp-grid">
+        <span class="pp" onclick="toggleProd(this)">Property search</span>
+        <span class="pp" onclick="toggleProd(this)">Doc summariser</span>
+        <span class="pp" onclick="toggleProd(this)">Content gen</span>
+        <span class="pp pp-new" onclick="toggleProd(this)">+ Create new product</span>
+      </div>
+    </div>
+
+    <!-- SDK snippet preview -->
+    <div class="snippet">
+      <div class="snippet-head">
+        <div class="snippet-title">Integration snippet</div>
+        <button class="snippet-copy" onclick="copySnippet()">Copy to clipboard</button>
+      </div>
+      <div class="snippet-code" id="snippet-code">meter.track({
+  pricing_card: "gemini_2_flash",
+  usage: {
+    input_tokens: tokenCount.input,
+    output_tokens: tokenCount.output,
+    grounding_requests: 1
+  }
+})</div>
+      <div class="snippet-note">This snippet updates automatically when you assign a product. Paste it into your consumer app where the API call happens.</div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-row">
+      <button class="btn-back" onclick="sendPrompt('Go back to the dimensions step for my custom card')">Back to dimensions</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-back" id="btn-draft">Save as draft</button>
+        <button class="btn-activate" id="btn-activate" onclick="showConfirm()">Activate card</button>
+      </div>
+    </div>
+
+    <!-- Confirmation overlay -->
+    <div class="confirm-overlay" id="confirm">
+      <div class="confirm-title">Activate this card?</div>
+      <div class="confirm-sub">Once active, this card will calculate real costs for every matching usage event sent via the SDK. You can deactivate or edit it at any time — changes create a new version and don't affect historical data.</div>
+      <div class="confirm-btns">
+        <button class="btn-back" onclick="hideConfirm()">Cancel</button>
+        <button class="btn-activate" onclick="activate()">Yes, activate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success view -->
+  <div class="success-view" id="success-view">
+    <div style="text-align:center;padding:1.5rem 0">
+      <div class="success-check"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div>
+      <div class="success-title">Gemini 2.0 Flash is live</div>
+      <div class="success-sub">Your card is now actively calculating costs for every event sent to<br><span style="font-family:var(--font-mono);font-size:12px;background:var(--color-background-secondary);padding:2px 8px;border-radius:4px">gemini_2_flash</span></div>
+    </div>
+
+    <div class="snippet" style="text-align:left">
+      <div class="snippet-head">
+        <div class="snippet-title">Your integration snippet</div>
+        <button class="snippet-copy" onclick="copySnippet()">Copy to clipboard</button>
+      </div>
+      <div class="snippet-code">meter.track({
+  pricing_card: "gemini_2_flash",
+  product: "property_search",
+  usage: {
+    input_tokens: tokenCount.input,
+    output_tokens: tokenCount.output,
+    grounding_requests: 1
+  }
+})</div>
+    </div>
+
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 18px;margin-top:12px">
+      <div style="font-size:13px;font-weight:500;margin-bottom:10px">What happens next</div>
+      <div style="display:grid;gap:8px">
+        <div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--color-text-secondary)">
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--color-background-info);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--color-text-info);flex-shrink:0">1</div>
+          <div>Paste the snippet into your consumer app wherever you make the Gemini API call.</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--color-text-secondary)">
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--color-background-info);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--color-text-info);flex-shrink:0">2</div>
+          <div>Deploy your app. Costs start calculating immediately for each tracked event.</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--color-text-secondary)">
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--color-background-info);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--color-text-info);flex-shrink:0">3</div>
+          <div>Check your dashboard within minutes to see live cost data flowing in.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:1.5rem">
+      <button class="btn-back" onclick="sendPrompt('Show me the pricing cards landing page')">Back to all cards</button>
+      <button class="btn-activate" onclick="sendPrompt('Show me the pricing card creation flow')">Create another card</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const prices=[0.0000001,0.0000004,0.035];
+const types=['per_unit','per_unit','flat'];
+const labels=['Input tokens','Output tokens','Grounding'];
+const colors=['#378ADD','#7F77DD','#D85A30'];
+
+function calcDryRun(){
+  const qtys=[parseFloat(document.getElementById('dr-0').value)||0,parseFloat(document.getElementById('dr-1').value)||0,parseFloat(document.getElementById('dr-2').value)||0];
+  let costs=[0,0,0];
+  let total=0;
+  for(let i=0;i<3;i++){
+    if(types[i]==='flat')costs[i]=qtys[i]>0?prices[i]:0;
+    else costs[i]=qtys[i]*prices[i];
+    total+=costs[i];
+    const qf=qtys[i].toLocaleString();
+    if(types[i]==='flat'){
+      document.getElementById('dc-'+i).textContent=qtys[i]>0?qf+' event x $'+prices[i].toFixed(3)+' = $'+costs[i].toFixed(6):'0 events = $0.000000';
+    } else {
+      document.getElementById('dc-'+i).textContent=qf+' x $'+prices[i].toFixed(7)+' = $'+costs[i].toFixed(6);
+    }
+    document.getElementById('bv-'+i).textContent='$'+costs[i].toFixed(6);
+  }
+  document.getElementById('dr-total').textContent='$'+total.toFixed(6);
+  const day=(total*1000);
+  const month=day*30;
+  document.getElementById('dr-proj').textContent='At 1,000 events/day: ~$'+day.toFixed(2)+'/day · ~$'+month.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})+'/month';
+  for(let i=0;i<3;i++){
+    const pct=total>0?(costs[i]/total*100):0;
+    document.getElementById('bar-'+i).style.width=Math.max(pct,0.3)+'%';
+    document.getElementById('leg-'+i).textContent=labels[i]+' '+pct.toFixed(1)+'%';
+  }
+  const maxPct=total>0?Math.max(...costs)/total*100:0;
+  const s=document.getElementById('sanity');
+  if(maxPct>90&&total>0){
+    s.style.display='block';
+    const dom=costs.indexOf(Math.max(...costs));
+    document.getElementById('sanity-msg').textContent=labels[dom]+' accounts for '+maxPct.toFixed(1)+'% of total cost. '+(dom===2?'This is typical for Gemini with grounding enabled \u2014 the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts.':'This might indicate a pricing misconfiguration. Double-check your unit prices.')+' If this doesn\'t look right, edit your dimensions.';
+  } else {
+    s.style.display='none';
+  }
+  if(total>0){
+    document.getElementById('badge-waiting').style.display='none';
+    document.getElementById('badge-pass').style.display='inline-block';
+  }
+}
+
+function toggleProd(el){
+  if(el.textContent==='+ Create new product')return;
+  el.classList.toggle('sel');
+  updateSnippet();
+}
+
+function updateSnippet(){
+  const sel=document.querySelectorAll('.pp.sel');
+  let prod='';
+  if(sel.length>0)prod=sel[0].textContent.toLowerCase().replace(/\s+/g,'_');
+  const prodLine=prod?'\n  product: "'+prod+'",'  :'';
+  const code='meter.track({'+'\n  pricing_card: "gemini_2_flash",'+prodLine+'\n  usage: {'+'\n    input_tokens: tokenCount.input,'+'\n    output_tokens: tokenCount.output,'+'\n    grounding_requests: 1'+'\n  }'+'\n})';
+  document.getElementById('snippet-code').textContent=code;
+}
+
+function copySnippet(){
+  const t=document.getElementById('snippet-code').textContent;
+  navigator.clipboard?.writeText(t);
+}
+
+function showConfirm(){document.getElementById('confirm').style.display='block'}
+function hideConfirm(){document.getElementById('confirm').style.display='none'}
+function activate(){
+  document.getElementById('main-view').style.display='none';
+  document.getElementById('success-view').style.display='block';
+}
+
+calcDryRun();
+</script></body></html>

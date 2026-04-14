@@ -11,6 +11,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.models import Card, Rate
 
 
 class TestMeteringOnlyTenant(TestCase):
@@ -30,13 +31,16 @@ class TestMeteringOnlyTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
-        from apps.metering.pricing.models import ProviderRate
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1_000_000,
             unit_quantity=1,
         )
@@ -204,13 +208,16 @@ class TestBothProductsTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
-        from apps.metering.pricing.models import ProviderRate
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant,
+            name="Test Card",
             provider="test_provider",
             event_type="test_event",
-            metric_name="tokens",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
             cost_per_unit_micros=1_000_000,
             unit_quantity=1,
         )

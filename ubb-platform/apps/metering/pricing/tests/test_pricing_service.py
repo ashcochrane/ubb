@@ -1,9 +1,10 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import Card, Rate, TenantMarkup
 from apps.metering.pricing.services.pricing_service import PricingError, PricingService
 from apps.platform.tenants.models import Tenant
 
@@ -11,21 +12,22 @@ from apps.platform.tenants.models import Tenant
 class PricingServiceTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test Tenant")
-        self.rate = ProviderRate.objects.create(
+        self.card = Card.objects.create(
             tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
-            metric_name="input_tokens",
+            name="Gemini Flash",
             dimensions={"model": "gemini-2.0-flash"},
+        )
+        self.input_rate = Rate.objects.create(
+            card=self.card,
+            metric_name="input_tokens",
             cost_per_unit_micros=75_000,
             unit_quantity=1_000_000,
         )
-        self.output_rate = ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
+        self.output_rate = Rate.objects.create(
+            card=self.card,
             metric_name="output_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
             cost_per_unit_micros=300_000,
             unit_quantity=1_000_000,
         )
@@ -39,6 +41,7 @@ class PricingServiceTests(TestCase):
             properties={"model": "gemini-2.0-flash"},
         )
         self.assertEqual(provider_cost, 75_000)
+        # No margin configured -> passthrough
         self.assertEqual(billed_cost, 75_000)
         self.assertIn("input_tokens", provenance["metrics"])
 
@@ -52,15 +55,15 @@ class PricingServiceTests(TestCase):
         )
         # input: 75_000, output: (500_000 * 300_000 + 500_000) // 1_000_000 = 150_000
         self.assertEqual(provider_cost, 75_000 + 150_000)
+        # No margin -> passthrough
         self.assertEqual(billed_cost, provider_cost)
 
-    def test_price_event_with_markup(self):
+    def test_price_event_with_margin(self):
         TenantMarkup.objects.create(
             tenant=self.tenant,
             event_type="gemini_api_call",
             provider="google_gemini",
-            markup_percentage_micros=20_000_000,
-            fixed_uplift_micros=0,
+            margin_pct=20,
         )
         provider_cost, billed_cost, provenance = PricingService.price_event(
             tenant=self.tenant,
@@ -70,12 +73,13 @@ class PricingServiceTests(TestCase):
             properties={"model": "gemini-2.0-flash"},
         )
         self.assertEqual(provider_cost, 75_000)
-        # markup: (75_000 * 20_000_000 + 50_000_000) // 100_000_000 = 15_000
-        self.assertEqual(billed_cost, 75_000 + 15_000)
-        self.assertIn("markup", provenance)
-        self.assertEqual(provenance["markup"]["percentage_micros"], 20_000_000)
+        # margin 20%: 75_000 / (1 - 0.20) = 75_000 / 0.80 = 93_750
+        expected_billed = int(Decimal("75000") / Decimal("0.80"))
+        self.assertEqual(billed_cost, expected_billed)
+        self.assertIn("margin", provenance)
+        self.assertEqual(provenance["margin"]["margin_pct"], 20.0)
 
-    def test_no_rate_raises_pricing_error(self):
+    def test_no_card_raises_pricing_error(self):
         with self.assertRaises(PricingError):
             PricingService.price_event(
                 tenant=self.tenant,
@@ -95,12 +99,17 @@ class PricingServiceTests(TestCase):
         self.assertEqual(billed_cost, 0)
 
     def test_dimension_matching_most_specific_wins(self):
-        ProviderRate.objects.create(
+        # Create a fallback card with no dimensions (less specific)
+        fallback_card = Card.objects.create(
             tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
-            metric_name="input_tokens",
+            name="Gemini Fallback",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=fallback_card,
+            metric_name="input_tokens",
             cost_per_unit_micros=100_000,
             unit_quantity=1_000_000,
         )
@@ -111,15 +120,21 @@ class PricingServiceTests(TestCase):
             usage_metrics={"input_tokens": 1_000_000},
             properties={"model": "gemini-2.0-flash"},
         )
+        # The more specific card (with model dimension) should win -> 75_000
         self.assertEqual(provider_cost, 75_000)
 
     def test_dimension_matching_fallback_when_no_specific(self):
-        ProviderRate.objects.create(
+        # Create a fallback card with no dimensions
+        fallback_card = Card.objects.create(
             tenant=self.tenant,
             provider="google_gemini",
             event_type="gemini_api_call",
-            metric_name="input_tokens",
+            name="Gemini Fallback",
             dimensions={},
+        )
+        Rate.objects.create(
+            card=fallback_card,
+            metric_name="input_tokens",
             cost_per_unit_micros=100_000,
             unit_quantity=1_000_000,
         )
@@ -130,20 +145,21 @@ class PricingServiceTests(TestCase):
             usage_metrics={"input_tokens": 1_000_000},
             properties={"model": "unknown-model"},
         )
+        # The specific card dimensions don't match, fallback wins -> 100_000
         self.assertEqual(provider_cost, 100_000)
 
-    def test_markup_precedence(self):
+    def test_margin_precedence(self):
         TenantMarkup.objects.create(
             tenant=self.tenant,
             event_type="",
             provider="",
-            markup_percentage_micros=10_000_000,
+            margin_pct=10,
         )
         TenantMarkup.objects.create(
             tenant=self.tenant,
             event_type="gemini_api_call",
             provider="google_gemini",
-            markup_percentage_micros=25_000_000,
+            margin_pct=25,
         )
         _, billed_cost, provenance = PricingService.price_event(
             tenant=self.tenant,
@@ -152,11 +168,12 @@ class PricingServiceTests(TestCase):
             usage_metrics={"input_tokens": 1_000_000},
             properties={"model": "gemini-2.0-flash"},
         )
-        self.assertEqual(provenance["markup"]["percentage_micros"], 25_000_000)
+        # Most specific markup (event_type + provider) wins
+        self.assertEqual(provenance["margin"]["margin_pct"], 25.0)
 
     def test_expired_rate_not_used(self):
-        self.rate.valid_to = timezone.now() - timedelta(days=1)
-        self.rate.save()
+        self.input_rate.valid_to = timezone.now() - timedelta(days=1)
+        self.input_rate.save()
         with self.assertRaises(PricingError):
             PricingService.price_event(
                 tenant=self.tenant,
@@ -207,8 +224,12 @@ class PricingServiceTests(TestCase):
         self.assertIn("engine_version", provenance)
         self.assertIn("calculated_at", provenance)
         self.assertIn("metrics", provenance)
+        self.assertIn("card_id", provenance)
+        self.assertIn("card_name", provenance)
+        self.assertIn("margin", provenance)
         metric_prov = provenance["metrics"]["input_tokens"]
         self.assertIn("rate_id", metric_prov)
+        self.assertIn("card_id", metric_prov)
         self.assertIn("units", metric_prov)
         self.assertIn("cost_per_unit_micros", metric_prov)
         self.assertEqual(metric_prov["units"], 500)

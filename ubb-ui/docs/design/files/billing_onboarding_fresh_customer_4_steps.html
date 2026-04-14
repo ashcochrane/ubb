@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:600px;margin:0 auto}
+.logo{font-size:18px;font-weight:500;text-align:center;margin-bottom:1.5rem;color:var(--color-text-secondary)}
+.view{display:none}.view.show{display:block}
+.progress{display:flex;gap:4px;margin-bottom:1.5rem}
+.ps{flex:1;height:4px;border-radius:2px;background:var(--color-border-tertiary);transition:background .3s}
+.ps-done{background:var(--color-text-success)}.ps-act{background:var(--color-text-primary)}
+.sb{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px}
+.sn{width:24px;height:24px;border-radius:50%;background:var(--color-text-primary);color:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+.sl{font-size:12px;color:var(--color-text-secondary)}
+.pg-t{font-size:20px;font-weight:500;margin-bottom:4px}
+.pg-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:1.25rem;max-width:500px;line-height:1.6}
+.card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:18px;margin-bottom:12px}
+.card.done{border-color:var(--color-border-success)}
+.card-t{font-size:14px;font-weight:500;margin-bottom:3px}
+.card-s{font-size:11px;color:var(--color-text-secondary);margin-bottom:12px;line-height:1.5}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.fld input,.fld select{width:100%;font-size:12px;padding:7px 10px}
+.fld .ht{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.perm-t{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0 10px}
+.perm-t th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-t td{padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-t tr:last-child td{border:none}
+.pr{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500}
+.pr-r{background:var(--color-background-success);color:var(--color-text-success)}
+.pr-w{background:var(--color-background-warning);color:var(--color-text-warning)}
+.pr-n{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.diff-tag{font-size:9px;padding:2px 6px;border-radius:6px;background:#EEEDFE;color:#3C3489;font-weight:500;margin-left:4px}
+.key-row{display:flex;gap:0;margin:10px 0 6px}
+.key-row input{flex:1;font-family:var(--font-mono);font-size:12px;padding:10px 12px;border-radius:var(--border-radius-md) 0 0 var(--border-radius-md);letter-spacing:.3px}
+.key-row button{padding:0 18px;border:0.5px solid var(--color-border-secondary);border-left:none;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;background:var(--color-background-secondary);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;color:var(--color-text-primary)}
+.vm{padding:10px 14px;border-radius:var(--border-radius-md);margin-top:10px;display:none}
+.vm-ok{background:var(--color-background-success);border:0.5px solid var(--color-border-success)}
+.vm-ok .vm-t{color:var(--color-text-success)}
+.vm-err{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger)}
+.vm-err .vm-t{color:var(--color-text-danger)}
+.vm-t{font-size:13px;font-weight:500;margin-bottom:2px}.vm-s{font-size:11px;color:var(--color-text-secondary)}
+.vp{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.vp-i{font-size:10px;padding:3px 8px;border-radius:10px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary)}
+.vp-i.ok{border-color:var(--color-border-success);color:var(--color-text-success)}
+.vp-i.miss{border-color:var(--color-border-danger);color:var(--color-text-danger)}
+.sync-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px;margin-top:12px;display:none}
+.sync-t{font-size:13px;font-weight:500;margin-bottom:6px}
+.sync-g{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sync-c{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px;text-align:center}
+.sync-v{font-size:17px;font-weight:500}
+.sync-l{font-size:10px;color:var(--color-text-tertiary)}
+.sec-note{font-size:10px;color:var(--color-text-tertiary);text-align:center;margin-top:10px;padding:7px 10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.ctx{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--color-text-secondary)}
+.ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--color-text-success);margin-right:6px;display:inline-block}
+.mopts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.mo{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer;transition:all .12s}
+.mo:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.mo.sel{border-color:var(--color-text-primary);border-width:2px}
+.mo-t{font-size:12px;font-weight:500;margin-bottom:1px}
+.mo-s{font-size:10px;color:var(--color-text-secondary)}
+.mo-ex{font-family:var(--font-mono);font-size:10px;color:var(--color-text-tertiary);margin-top:4px}
+.cdd{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);background:var(--color-background-primary);max-height:130px;overflow-y:auto;display:none;margin-top:4px}
+.cdi{display:flex;justify-content:space-between;padding:5px 10px;font-size:11px;cursor:pointer}
+.cdi:hover{background:var(--color-background-secondary)}
+.cdi-n{font-weight:500}
+.cdi-m{font-size:9px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.ck{width:13px;height:13px;border:1.5px solid var(--color-border-secondary);border-radius:3px;flex-shrink:0;margin-right:6px;display:inline-flex;align-items:center;justify-content:center}
+.ck.on{background:var(--color-text-info);border-color:var(--color-text-info)}
+.ck.on::after{content:'';width:3px;height:6px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);margin-top:-1px}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.chip{font-size:10px;padding:3px 8px;border-radius:14px;background:var(--color-background-info);color:var(--color-text-info);display:inline-flex;align-items:center;gap:4px}
+.chip-x{cursor:pointer;opacity:.5;font-size:12px}.chip-x:hover{opacity:1}
+.mbtn{width:100%;padding:9px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer;margin:8px 0}
+.mbtn:hover{opacity:.9}.mbtn:disabled{opacity:.35;cursor:not-allowed}
+.res{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin:10px 0;display:none}
+.res-bar{padding:8px 12px;display:flex;justify-content:space-between;align-items:center;background:var(--color-background-secondary)}
+.res-t{font-size:12px;font-weight:500}
+.res-b{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500}
+.res-b-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.res-b-w{background:var(--color-background-warning);color:var(--color-text-warning)}
+.ct{width:100%;border-collapse:collapse;font-size:11px}
+.ct th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.ct td{padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.ct tr:last-child td{border:none}
+.ct tr.man{background:rgba(250,238,218,0.15)}
+.cn{font-weight:500}.ci{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary)}
+.cm{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.cp{font-size:9px;padding:2px 6px;border-radius:8px;font-weight:500}
+.cp-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.cp-man{background:var(--color-background-warning);color:var(--color-text-warning)}
+.cinput{font-family:var(--font-mono);font-size:10px;padding:4px 6px;width:100%;border:0.5px solid var(--color-border-secondary);border-radius:3px;background:var(--color-background-primary);color:var(--color-text-primary)}
+.code-hint{font-size:11px;color:var(--color-text-secondary);padding:10px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-top:10px;line-height:1.5;display:none}
+.code-hint b{font-weight:500;color:var(--color-text-primary)}
+.code-i{font-family:var(--font-mono);font-size:10px;background:var(--color-background-primary);padding:1px 4px;border-radius:3px;border:0.5px solid var(--color-border-tertiary)}
+.sim-flow{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;gap:0;align-items:center;margin:12px 0}
+.sim-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px;text-align:center}
+.sim-box-l{font-size:10px;color:var(--color-text-secondary);margin-bottom:2px}
+.sim-box-v{font-size:17px;font-weight:500;font-family:var(--font-mono)}
+.sim-box-v.cost{color:var(--color-text-danger)}.sim-box-v.margin{color:#534AB7}.sim-box-v.charge{color:var(--color-text-primary)}
+.sim-arrow{text-align:center;font-size:14px;color:var(--color-text-tertiary)}
+.sim-detail{font-size:11px;color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;margin-top:6px}
+.sim-dr{display:flex;justify-content:space-between;padding:2px 0}
+.sim-dr span:last-child{font-family:var(--font-mono);font-weight:500}
+.sim-dr.total{border-top:0.5px solid var(--color-border-tertiary);padding-top:4px;margin-top:2px;font-weight:500;color:var(--color-text-primary)}
+.sim-dr.profit{color:var(--color-text-success)}
+.alert-sec{margin-top:14px}
+.alert-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.alert-row{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--color-text-secondary);padding:4px 0}
+.alck{width:14px;height:14px;border:1.5px solid var(--color-border-secondary);border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.alck.on{background:var(--color-text-info);border-color:var(--color-text-info)}
+.alck.on::after{content:'';width:4px;height:6px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);margin-top:-1px}
+.later-note{font-size:11px;color:var(--color-text-tertiary);padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-top:12px;line-height:1.5}
+.rc{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin-bottom:10px;overflow:hidden}
+.rc-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.rc-hl{display:flex;align-items:center;gap:8px}
+.rc-ic{width:20px;height:20px;border-radius:50%;background:var(--color-background-success);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.rc-ic svg{width:11px;height:11px}
+.rc-title{font-size:13px;font-weight:500}
+.rc-edit{font-size:11px;color:var(--color-text-info);cursor:pointer;border:none;background:none;padding:0}
+.rc-body{padding:12px 14px}
+.rc-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
+.rc-row-l{color:var(--color-text-secondary)}
+.rc-row-v{font-weight:500}
+.rc-row-m{font-family:var(--font-mono);font-size:11px}
+.rc-div{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:6px 0}
+.done-card{border:2px solid var(--color-border-success);border-radius:var(--border-radius-lg);padding:20px;text-align:center;display:none;margin-bottom:12px}
+.done-t{font-size:16px;font-weight:500;color:var(--color-text-success);margin-bottom:4px}
+.done-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px;max-width:420px;margin-left:auto;margin-right:auto}
+.next-step{display:flex;gap:8px;padding:4px 0;font-size:12px;color:var(--color-text-secondary);text-align:left;max-width:380px;margin:0 auto}
+.next-num{width:18px;height:18px;border-radius:50%;background:var(--color-background-info);color:var(--color-text-info);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;margin-top:1px}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.25rem;padding-top:.75rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-b{padding:7px 14px;font-size:12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-b:hover{background:var(--color-background-secondary)}
+.btn-n{padding:8px 22px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-n:hover{opacity:.9}.btn-n:disabled{opacity:.35;cursor:not-allowed}
+.btn-act{background:var(--color-text-success);color:#fff}
+</style>
+
+<div class="pg">
+<div class="logo">Your Platform</div>
+
+<div class="view show" id="v0">
+<div class="progress"><div class="ps ps-act"></div><div class="ps"></div><div class="ps"></div><div class="ps"></div></div>
+<div class="sb"><div class="sn">1</div><span class="sl">of 4 — Connect Stripe</span></div>
+<div class="pg-t">Create and paste a restricted API key</div>
+<div class="pg-s">Because billing mode debits customer balances, the key needs one write permission in addition to the standard read access. Everything else stays at "None".</div>
+
+<div class="card">
+<table class="perm-t">
+<thead><tr><th>Resource</th><th>Permission</th><th style="color:var(--color-text-tertiary);font-weight:400">Purpose</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Customers</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Pull customer data for mapping</td></tr>
+<tr><td style="font-weight:500">Subscriptions</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Track subscription revenue</td></tr>
+<tr><td style="font-weight:500">Invoices</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Payment amounts per period</td></tr>
+<tr><td style="font-weight:500">Charges</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">One-off and usage payments</td></tr>
+<tr style="background:rgba(238,237,254,0.25)"><td style="font-weight:500">Customer balance transactions<span class="diff-tag">billing</span></td><td><span class="pr pr-w">Write</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Debit balances for usage</td></tr>
+<tr><td style="color:var(--color-text-tertiary)">Everything else</td><td><span class="pr pr-n">None</span></td><td></td></tr>
+</tbody>
+</table>
+
+<div style="font-size:11px;color:var(--color-text-secondary);padding:8px 10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:10px;line-height:1.5">The write permission for "Customer balance transactions" allows us to create negative balance entries when an end consumer uses your product. It cannot create charges, modify customer records, or access payment methods.</div>
+
+<div style="font-size:12px;font-weight:500;margin-bottom:4px">Paste your restricted key</div>
+<div class="key-row"><input type="text" id="sk" placeholder="rk_live_..." /><button id="vb" onclick="valKey()">Validate</button></div>
+
+<div class="vm vm-ok" id="vok"><div class="vm-t">Key validated — all permissions confirmed</div><div class="vm-s">Read: Customers, Subscriptions, Invoices, Charges. Write: Balance Transactions.</div><div class="vp"><span class="vp-i ok">Customers: Read</span><span class="vp-i ok">Subscriptions: Read</span><span class="vp-i ok">Invoices: Read</span><span class="vp-i ok">Charges: Read</span><span class="vp-i ok">Balance Txns: Write</span></div></div>
+<div class="vm vm-err" id="verr"><div class="vm-t">Validation failed</div><div class="vm-s" id="verr-m"></div><div class="vp" id="verr-p"></div></div>
+
+<div class="sync-box" id="sync-box"><div class="sync-t">We found your Stripe data</div><div class="sync-g"><div class="sync-c"><div class="sync-v">21</div><div class="sync-l">Customers</div></div><div class="sync-c"><div class="sync-v">18</div><div class="sync-l">Active subs</div></div><div class="sync-c"><div class="sync-v">$8,420</div><div class="sync-l">Revenue (30d)</div></div></div></div>
+
+<div class="sec-note">Your key is encrypted at rest. We never access payment methods, create charges, or modify customer records.</div>
+</div>
+<div class="nav"><div></div><button class="btn-n" id="n0" onclick="go(1)" disabled>Continue to customer mapping</button></div>
+</div>
+
+<div class="view" id="v1">
+<div class="progress"><div class="ps ps-done"></div><div class="ps ps-act"></div><div class="ps"></div><div class="ps"></div></div>
+<div class="sb"><div class="sn">2</div><span class="sl">of 4 — Map customers</span></div>
+<div class="pg-t">How do you identify your customers?</div>
+<div class="pg-s">Your SDK sends a customer identifier with each API event. We match this to Stripe customers so we know whose balance to debit. Getting this right is critical — a wrong mapping means billing the wrong account.</div>
+
+<div class="ctx"><span><span class="ctx-dot"></span>Stripe connected: 21 customers found</span><span style="font-weight:500">$8,420 revenue (30d)</span></div>
+
+<div class="card">
+<div class="card-t">What identifier does your app use?</div>
+<div class="card-s">This is the value you'll pass as the customer field in the SDK. Pick the one that matches how your code identifies the logged-in user or account.</div>
+<div class="mopts">
+<div class="mo" id="mo0" onclick="pickM(0)"><div class="mo-t">Stripe customer ID</div><div class="mo-s">I already use cus_xxxxx</div><div class="mo-ex">cus_R4kB9xPm2nQ</div></div>
+<div class="mo" id="mo1" onclick="pickM(1)"><div class="mo-t">Email address</div><div class="mo-s">I look up users by email</div><div class="mo-ex"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="adccc9c0c4c3edcccec0c8cec2dfdd83cec2c0">[email&#160;protected]</a></div></div>
+<div class="mo" id="mo2" onclick="pickM(2)"><div class="mo-t">Internal ID or slug</div><div class="mo-s">My own identifier</div><div class="mo-ex">acme_corp, org_4521</div></div>
+<div class="mo" id="mo3" onclick="pickM(3)"><div class="mo-t">Stripe metadata field</div><div class="mo-s">Stored in customer metadata</div><div class="mo-ex">metadata.platform_id</div></div>
+</div>
+<div id="meta-fld" style="display:none;margin:8px 0"><div class="fld" style="margin:0"><label>Metadata key</label><input type="text" id="meta-k" placeholder="e.g. platform_id, org_key" oninput="checkMeta()" /><div class="ht">We'll look in each customer's metadata for this key.</div></div></div>
+<button class="mbtn" id="mbtn" onclick="runMatch()" disabled>Match my 21 Stripe customers</button>
+</div>
+
+<div class="res" id="res-box">
+<div class="res-bar"><div class="res-t" id="res-t"></div><span class="res-b" id="res-b"></span></div>
+<table class="ct"><thead><tr><th>Stripe customer</th><th>Your identifier</th><th style="text-align:right">Revenue (30d)</th><th style="width:52px">Status</th></tr></thead><tbody id="ct-body"></tbody></table>
+</div>
+
+<div class="code-hint" id="code-hint"><b>In your code:</b> pass the identifier from the table above as <span class="code-i" id="code-ex">customer: "cus_R4kB9xPm2nQ"</span> in every SDK call. This is how we know whose balance to debit.</div>
+
+<div class="nav"><button class="btn-b" onclick="go(0)">Back</button><button class="btn-n" id="n1" onclick="go(2)" disabled>Continue to billing setup</button></div>
+</div>
+
+<div class="view" id="v2">
+<div class="progress"><div class="ps ps-done"></div><div class="ps ps-done"></div><div class="ps ps-act"></div><div class="ps"></div></div>
+<div class="sb"><div class="sn">3</div><span class="sl">of 4 — Configure billing</span></div>
+<div class="pg-t">Set your default margin</div>
+<div class="pg-s">When a customer uses your product, we calculate the API cost, add your margin, and debit the total from their Stripe balance. Set a default margin now — you can refine this per product or per pricing card later once you've created them.</div>
+
+<div class="card">
+<div class="card-t">Default margin</div>
+<div class="card-s">This margin will apply to all API costs across all products and pricing cards you create. You can override it at the product or card level anytime after setup.</div>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><input type="range" min="0" max="200" value="50" step="5" id="g-slider" oninput="updateSim()" style="flex:1" /><span style="font-family:var(--font-mono);font-size:16px;font-weight:500;min-width:48px;text-align:right" id="g-val">50%</span></div>
+<div class="ht" style="margin-bottom:0">A 50% margin means a $2.00 API cost is charged to your customer as $3.00. Your profit on that request is $1.00.</div>
+
+<div class="sim-flow">
+<div class="sim-box"><div class="sim-box-l">API cost (example)</div><div class="sim-box-v cost" id="sf-c">$2.00</div></div>
+<div class="sim-arrow">+</div>
+<div class="sim-box"><div class="sim-box-l">Your margin</div><div class="sim-box-v margin" id="sf-m">$1.00</div></div>
+<div class="sim-arrow">=</div>
+<div class="sim-box"><div class="sim-box-l">Debited from customer</div><div class="sim-box-v charge" id="sf-t">$3.00</div></div>
+</div>
+
+<div class="sim-detail">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><label style="font-size:11px;color:var(--color-text-secondary);white-space:nowrap">Try a different cost:</label><input type="range" min="10" max="1000" value="200" step="10" id="sim-cost" oninput="updateSim()" style="flex:1" /><span style="font-family:var(--font-mono);font-size:12px;min-width:44px;text-align:right" id="sim-cost-v">$2.00</span></div>
+<div class="sim-dr"><span>API cost (your expense)</span><span id="sd-c">$2.00</span></div>
+<div class="sim-dr"><span>Margin (<span id="sd-p">50%</span>)</span><span id="sd-m">$1.00</span></div>
+<div class="sim-dr total"><span>Debited from customer balance</span><span id="sd-t">$3.00</span></div>
+<div class="sim-dr profit"><span>Your gross profit</span><span id="sd-pr">$1.00</span></div>
+</div>
+</div>
+
+<div class="card">
+<div class="card-t">Balance alerts</div>
+<div class="card-s">Get notified when a customer's balance runs low so there are no surprises.</div>
+<div class="alert-row"><div class="alck on" onclick="this.classList.toggle('on')"></div><span>Notify me when a customer balance drops below <span style="font-family:var(--font-mono)">$50.00</span></span></div>
+<div class="alert-row"><div class="alck on" onclick="this.classList.toggle('on')"></div><span>Email the customer to top up when below <span style="font-family:var(--font-mono)">$25.00</span></span></div>
+<div class="alert-row"><div class="alck" onclick="this.classList.toggle('on')"></div><span>Pause billing when balance reaches <span style="font-family:var(--font-mono)">$0.00</span></span></div>
+</div>
+
+<div class="later-note">Once you create products and pricing cards, you'll be able to set different margins per product or per pricing card from the billing settings page. The default margin above will apply to anything without a specific override.</div>
+
+<div class="nav"><button class="btn-b" onclick="go(1)">Back</button><button class="btn-n" onclick="go(3)">Continue to review</button></div>
+</div>
+
+<div class="view" id="v3">
+<div class="progress"><div class="ps ps-done"></div><div class="ps ps-done"></div><div class="ps ps-done"></div><div class="ps ps-act" id="p3"></div></div>
+<div class="sb"><div class="sn">4</div><span class="sl">of 4 — Review and activate</span></div>
+<div class="pg-t">Review your setup</div>
+<div class="pg-s">Everything below was configured in the previous steps. Review it, then activate to start syncing data and enable billing.</div>
+
+<div class="rc"><div class="rc-h"><div class="rc-hl"><div class="rc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="rc-title">Stripe connection</span></div><button class="rc-edit" onclick="go(0)">Edit</button></div>
+<div class="rc-body">
+<div class="rc-row"><span class="rc-row-l">API key</span><span class="rc-row-v rc-row-m">rk_live_51Abc...7xYz</span></div>
+<div class="rc-row"><span class="rc-row-l">Permissions</span><span class="rc-row-v">4 read + 1 write (balance transactions)</span></div>
+<hr class="rc-div" />
+<div class="rc-row"><span class="rc-row-l">Customers found</span><span class="rc-row-v">21</span></div>
+<div class="rc-row"><span class="rc-row-l">Active subscriptions</span><span class="rc-row-v">18</span></div>
+<div class="rc-row"><span class="rc-row-l">Revenue (last 30d)</span><span class="rc-row-v">$8,420</span></div>
+</div></div>
+
+<div class="rc"><div class="rc-h"><div class="rc-hl"><div class="rc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="rc-title">Customer mapping</span></div><button class="rc-edit" onclick="go(1)">Edit</button></div>
+<div class="rc-body">
+<div class="rc-row"><span class="rc-row-l">Identifier mode</span><span class="rc-row-v" id="rv-mode">Stripe customer ID</span></div>
+<div class="rc-row"><span class="rc-row-l">Customers mapped</span><span class="rc-row-v" id="rv-mapped" style="color:var(--color-text-success)">21 of 21</span></div>
+</div></div>
+
+<div class="rc"><div class="rc-h"><div class="rc-hl"><div class="rc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="rc-title">Billing configuration</span></div><button class="rc-edit" onclick="go(2)">Edit</button></div>
+<div class="rc-body">
+<div class="rc-row"><span class="rc-row-l">Default margin</span><span class="rc-row-v" id="rv-margin">50%</span></div>
+<div class="rc-row"><span class="rc-row-l">Effective multiplier</span><span class="rc-row-v" id="rv-mult">1.50x cost</span></div>
+<hr class="rc-div" />
+<div class="rc-row"><span class="rc-row-l">Low balance alert (you)</span><span class="rc-row-v">$50.00</span></div>
+<div class="rc-row"><span class="rc-row-l">Top-up reminder (customer)</span><span class="rc-row-v">$25.00</span></div>
+<div class="rc-row"><span class="rc-row-l">Auto-pause at $0</span><span class="rc-row-v" style="color:var(--color-text-tertiary)">Off</span></div>
+<hr class="rc-div" />
+<div class="rc-row"><span class="rc-row-l">Per-product overrides</span><span class="rc-row-v" style="color:var(--color-text-tertiary)">None yet — set up after creating products</span></div>
+</div></div>
+
+<div class="rc"><div class="rc-h"><div class="rc-hl"><div class="rc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="rc-title">Data sync</span></div></div>
+<div class="rc-body">
+<div class="rc-row"><span class="rc-row-l">Sync frequency</span><span class="rc-row-v">Every 6 hours</span></div>
+<div class="rc-row"><span class="rc-row-l">Historical backfill</span><span class="rc-row-v">Last 12 months of invoices</span></div>
+<div class="rc-row"><span class="rc-row-l">New customers</span><span class="rc-row-v">Auto-detected each sync</span></div>
+</div></div>
+
+<div class="sec-note">Once activated, your platform will debit customer Stripe balances for each tracked API event based on cost + margin. Ensure your customers have topped up their balances before going live.</div>
+
+<div class="done-card" id="done-card">
+<div class="done-t">Billing integration is live</div>
+<div class="done-s">Stripe data is syncing and the billing engine is ready. Create your first pricing card to define API costs, then integrate the SDK.</div>
+<div class="next-step"><div class="next-num">1</div><span>Create a pricing card — define which API costs to track</span></div>
+<div class="next-step"><div class="next-num">2</div><span>Integrate the SDK — paste the code into your app</span></div>
+<div class="next-step"><div class="next-num">3</div><span>Deploy — billing starts the moment events flow in</span></div>
+</div>
+
+<div class="nav">
+<button class="btn-b" onclick="go(2)">Back to billing setup</button>
+<button class="btn-n btn-act" id="act-btn" onclick="activate()">Activate Stripe integration</button>
+<button class="btn-n" id="go-btn" onclick="sendPrompt('Take me to create my first pricing card')" style="display:none">Create my first pricing card</button>
+</div>
+</div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+let keyOk=false,mode=-1,matchOk=false,allMapped=false;
+const CUSTS=[
+{n:'Acme Corp',s:'cus_R4kB9xPm2nQ',e:'admin@acmecorp.com',sl:'acme_corp',m:'ac_001',r:'$2,400'},
+{n:'BrightPath Ltd',s:'cus_Q7mN3vHj8wL',e:'team@brightpath.io',sl:'brightpath',m:'bp_002',r:'$1,800'},
+{n:'NovaTech Inc',s:'cus_S2pK5tRn7xY',e:'ops@novatech.co',sl:'novatech',m:'nt_003',r:'$950'},
+{n:'Helios Digital',s:'cus_U6nR2wKm9xQ',e:'hello@helios.dev',sl:'helios',m:'hd_004',r:'$720'},
+{n:'Zenith Labs',s:'cus_T9wM1kJp4qB',e:'info@zenithlabs.com',sl:null,m:null,r:'$680'},
+{n:'Pinnacle AI',s:'cus_X5rW8nKp3mQ',e:null,sl:null,m:null,r:'$340'}
+];
+const modeNames=['Stripe customer ID','Email address','Internal ID or slug','Stripe metadata field'];
+
+function go(s){document.querySelectorAll('.view').forEach(v=>v.classList.remove('show'));document.getElementById('v'+s).classList.add('show');if(s===3)updateReview()}
+
+function valKey(){
+  const k=document.getElementById('sk').value.trim();
+  const ok=document.getElementById('vok'),err=document.getElementById('verr');
+  ok.style.display='none';err.style.display='none';document.getElementById('sync-box').style.display='none';
+  if(!k){s(err);document.getElementById('verr-m').textContent='Please paste your Stripe restricted API key.';return}
+  if(k.startsWith('sk_')){s(err);document.getElementById('verr-m').textContent='This is a secret key (sk_). Please create a restricted key instead.';return}
+  if(!k.startsWith('rk_')){s(err);document.getElementById('verr-m').textContent='Should start with rk_live_ or rk_test_.';return}
+  const btn=document.getElementById('vb');btn.textContent='Validating...';btn.style.opacity='.5';
+  setTimeout(()=>{
+    btn.textContent='Validate';btn.style.opacity='1';
+    if(k.includes('nobal')){s(err);document.getElementById('verr-m').textContent='Key is valid but missing the required write permission:';document.getElementById('verr-p').innerHTML='<span class="vp-i ok">Customers</span><span class="vp-i ok">Subscriptions</span><span class="vp-i ok">Invoices</span><span class="vp-i ok">Charges</span><span class="vp-i miss">Balance Txns: Missing</span>';document.getElementById('verr-p').style.display='flex';return}
+    s(ok);document.getElementById('sync-box').style.display='block';keyOk=true;document.getElementById('n0').disabled=false;
+  },900);
+}
+
+function s(el){el.style.display='block'}
+
+function pickM(m){mode=m;[0,1,2,3].forEach(i=>document.getElementById('mo'+i).classList.toggle('sel',i===m));document.getElementById('meta-fld').style.display=m===3?'block':'none';document.getElementById('res-box').style.display='none';document.getElementById('code-hint').style.display='none';matchOk=false;allMapped=false;document.getElementById('n1').disabled=true;if(m===3)checkMeta();else document.getElementById('mbtn').disabled=false}
+
+function checkMeta(){document.getElementById('mbtn').disabled=!document.getElementById('meta-k').value.trim()}
+
+function runMatch(){
+  const btn=document.getElementById('mbtn');btn.textContent='Matching...';btn.disabled=true;
+  setTimeout(()=>{
+    btn.textContent='Match my 21 Stripe customers';btn.disabled=false;matchOk=true;
+    const body=document.getElementById('ct-body');body.innerHTML='';let ok=0;
+    CUSTS.forEach((c,i)=>{
+      let id='',pass=false;
+      if(mode===0){id=c.s;pass=true}else if(mode===1){if(c.e){id=c.e;pass=true}}else if(mode===2){if(c.sl){id=c.sl;pass=true}}else{if(c.m){id=c.m;pass=true}}
+      if(pass)ok++;
+      const tr=document.createElement('tr');if(!pass)tr.className='man';
+      tr.innerHTML='<td><div class="cn">'+c.n+'</div><div class="ci">'+c.s+'</div></td><td>'+(pass?'<span class="cm">'+id+'</span>':'<input class="cinput" data-i="'+i+'" placeholder="Type ID for '+c.n+'..." oninput="onManual()" />')+'</td><td style="text-align:right;font-family:var(--font-mono);font-size:10px">'+c.r+'</td><td><span class="cp '+(pass?'cp-ok':'cp-man')+'" id="p-'+i+'">'+(pass?'Matched':'Manual')+'</span></td>';
+      body.appendChild(tr);
+    });
+    const un=CUSTS.length-ok;allMapped=un===0;
+    document.getElementById('res-t').textContent=ok+' of '+CUSTS.length+(allMapped?' matched':' auto-matched');
+    document.getElementById('res-b').textContent=allMapped?'All matched':un+' need input';
+    document.getElementById('res-b').className='res-b '+(allMapped?'res-b-ok':'res-b-w');
+    document.getElementById('res-box').style.display='block';
+    const ex=mode===0?CUSTS[0].s:mode===1?CUSTS[0].e:mode===2?(CUSTS[0].sl||'your_id'):(CUSTS[0].m||'your_id');
+    document.getElementById('code-ex').textContent='customer: "'+ex+'"';
+    document.getElementById('code-hint').style.display='block';
+    document.getElementById('n1').disabled=!allMapped;
+  },800);
+}
+
+function onManual(){
+  const inp=document.querySelectorAll('.cinput');let filled=0;
+  inp.forEach(i=>{const idx=i.dataset.i;const pill=document.getElementById('p-'+idx);if(i.value.trim()){filled++;if(pill){pill.textContent='Matched';pill.className='cp cp-ok'}i.closest('tr').classList.remove('man')}else{if(pill){pill.textContent='Manual';pill.className='cp cp-man'}i.closest('tr').classList.add('man')}});
+  const auto=CUSTS.length-inp.length;const total=auto+filled;const rem=CUSTS.length-total;
+  allMapped=rem===0;
+  document.getElementById('res-t').textContent=total+' of '+CUSTS.length+(allMapped?' matched':' matched');
+  document.getElementById('res-b').textContent=allMapped?'All matched':rem+' need input';
+  document.getElementById('res-b').className='res-b '+(allMapped?'res-b-ok':'res-b-w');
+  document.getElementById('n1').disabled=!allMapped;
+}
+
+function updateSim(){
+  const pct=parseInt(document.getElementById('g-slider').value);
+  const cents=parseInt(document.getElementById('sim-cost').value);
+  const cost=cents/100;
+  document.getElementById('g-val').textContent=pct+'%';
+  document.getElementById('sim-cost-v').textContent='$'+cost.toFixed(2);
+  const margin=Math.round(cost*pct)/100;
+  const total=Math.round((cost+margin)*100)/100;
+  document.getElementById('sf-c').textContent='$'+cost.toFixed(2);
+  document.getElementById('sf-m').textContent='$'+margin.toFixed(2);
+  document.getElementById('sf-t').textContent='$'+total.toFixed(2);
+  document.getElementById('sd-c').textContent='$'+cost.toFixed(2);
+  document.getElementById('sd-p').textContent=pct+'%';
+  document.getElementById('sd-m').textContent='$'+margin.toFixed(2);
+  document.getElementById('sd-t').textContent='$'+total.toFixed(2);
+  document.getElementById('sd-pr').textContent='$'+margin.toFixed(2);
+}
+
+function updateReview(){
+  const pct=parseInt(document.getElementById('g-slider').value);
+  document.getElementById('rv-mode').textContent=mode>=0?modeNames[mode]:'\u2014';
+  document.getElementById('rv-mapped').textContent=allMapped?CUSTS.length+' of '+CUSTS.length:'Incomplete';
+  document.getElementById('rv-margin').textContent=pct+'%';
+  document.getElementById('rv-mult').textContent=(1+pct/100).toFixed(2)+'x cost';
+}
+
+function activate(){
+  const btn=document.getElementById('act-btn');btn.textContent='Activating...';btn.style.opacity='.6';
+  setTimeout(()=>{
+    btn.style.display='none</body></html>

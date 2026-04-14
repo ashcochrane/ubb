@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.wizard{padding:1.5rem 0;max-width:620px}
+.steps{display:flex;gap:0;margin-bottom:2rem;position:relative}
+.step-item{flex:1;text-align:center;position:relative;cursor:pointer}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--color-border-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--color-text-tertiary);background:var(--color-background-primary);position:relative;z-index:1;transition:all .2s}
+.step-dot.active{border-color:var(--color-text-primary);color:var(--color-text-primary)}
+.step-dot.done{border-color:var(--color-text-success);background:var(--color-background-success);color:var(--color-text-success)}
+.step-label{font-size:11px;color:var(--color-text-tertiary);margin-top:4px;transition:color .2s}
+.step-label.active{color:var(--color-text-primary);font-weight:500}
+.step-line{position:absolute;top:14px;left:calc(50% + 20px);right:calc(-50% + 20px);height:1px;background:var(--color-border-tertiary)}
+.step-line.done{background:var(--color-text-success)}
+.panel{display:none}
+.panel.show{display:block}
+.panel-title{font-size:18px;font-weight:500;margin-bottom:4px}
+.panel-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:13px;font-weight:500;margin-bottom:4px}
+.field .hint{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+.field input,.field select{width:100%;padding:8px 12px;font-size:14px}
+.field input[type="number"]{font-family:var(--font-mono)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row3{display:grid;grid-template-columns:2fr 1fr 1.5fr;gap:12px}
+.tmpl-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+.tmpl-opt{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;cursor:pointer;transition:all .15s}
+.tmpl-opt:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.tmpl-opt.selected{border-color:var(--color-text-primary);border-width:2px}
+.tmpl-opt-name{font-size:14px;font-weight:500}
+.tmpl-opt-sub{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.dim-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-bottom:10px;position:relative}
+.dim-card .dim-num{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+.dim-remove{position:absolute;top:12px;right:14px;background:none;border:none;font-size:16px;color:var(--color-text-tertiary);cursor:pointer;padding:2px 6px;border-radius:4px}
+.dim-remove:hover{background:var(--color-background-danger);color:var(--color-text-danger)}
+.add-dim{border:0.5px dashed var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:12px;text-align:center;cursor:pointer;font-size:13px;color:var(--color-text-secondary);transition:all .15s}
+.add-dim:hover{background:var(--color-background-secondary);border-color:var(--color-border-primary)}
+.pricing-toggle{display:flex;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;width:fit-content}
+.pricing-toggle span{padding:5px 14px;font-size:12px;cursor:pointer;transition:all .15s;color:var(--color-text-secondary)}
+.pricing-toggle span.sel{background:var(--color-text-primary);color:var(--color-background-primary)}
+.nav-row{display:flex;justify-content:space-between;align-items:center;margin-top:2rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary)}
+.btn-next{padding:8px 20px;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer;border:none;background:var(--color-text-primary);color:var(--color-background-primary)}
+.btn-next:hover{opacity:.9}
+.review-block{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:14px 16px;margin-bottom:12px}
+.review-label{font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px}
+.review-val{font-size:14px;font-weight:500}
+.review-dims{margin-top:8px}
+.review-dim{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.review-dim:last-child{border:none}
+.review-dim .k{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.dryrun-box{border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-lg);padding:16px;margin-top:1rem;background:var(--color-background-info)}
+.dryrun-title{font-size:13px;font-weight:500;color:var(--color-text-info);margin-bottom:8px}
+.dryrun-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+.dryrun-row .calc{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.dryrun-total{display:flex;justify-content:space-between;font-size:14px;font-weight:500;padding-top:8px;margin-top:6px;border-top:0.5px solid var(--color-border-info)}
+.warn-bar{background:var(--color-background-warning);border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:var(--color-text-warning);margin-top:10px;display:none}
+.success-box{text-align:center;padding:2rem 1rem}
+.success-check{width:48px;height:48px;border-radius:50%;background:var(--color-background-success);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.success-check svg{width:24px;height:24px}
+.snippet-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:14px 16px;text-align:left;margin-top:1rem;font-family:var(--font-mono);font-size:12px;line-height:1.8;color:var(--color-text-secondary);white-space:pre;overflow-x:auto}
+.product-assign{margin-top:1rem;padding:14px 16px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg)}
+.product-assign label{font-size:13px;font-weight:500;display:block;margin-bottom:6px}
+.product-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pp{padding:4px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);transition:all .15s}
+.pp.sel{background:var(--color-background-info);color:var(--color-text-info);border-color:transparent}
+</style>
+
+<div class="wizard">
+  <div class="steps" id="steps">
+    <div class="step-item" onclick="goStep(0)"><div class="step-dot active" id="sd0">1</div><div class="step-label active" id="sl0">Source</div><div class="step-line" id="ln0"></div></div>
+    <div class="step-item" onclick="goStep(1)"><div class="step-dot" id="sd1">2</div><div class="step-label" id="sl1">Details</div><div class="step-line" id="ln1"></div></div>
+    <div class="step-item" onclick="goStep(2)"><div class="step-dot" id="sd2">3</div><div class="step-label" id="sl2">Dimensions</div><div class="step-line" id="ln2"></div></div>
+    <div class="step-item" onclick="goStep(3)"><div class="step-dot" id="sd3">4</div><div class="step-label" id="sl3">Review & test</div></div>
+  </div>
+
+  <!-- STEP 0: Source -->
+  <div class="panel show" id="p0">
+    <div class="panel-title">How do you want to start?</div>
+    <div class="panel-sub">Pick a pre-built template or configure from scratch. Templates use current public pricing — you just verify.</div>
+    <div class="tmpl-pick">
+      <div class="tmpl-opt selected" id="src-tmpl" onclick="pickSrc('tmpl')">
+        <div class="tmpl-opt-name">From template</div>
+        <div class="tmpl-opt-sub">Pre-filled with current API pricing. Fastest path — just verify and go.</div>
+      </div>
+      <div class="tmpl-opt" id="src-custom" onclick="pickSrc('custom')">
+        <div class="tmpl-opt-name">Custom card</div>
+        <div class="tmpl-opt-sub">Configure from scratch for any API or service not in our catalog.</div>
+      </div>
+    </div>
+    <div id="tmpl-list">
+      <div class="field"><label>Choose a template</label></div>
+      <div class="tmpl-pick" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="tmpl-opt selected" id="t-gem" onclick="pickTmpl('gem')"><div class="tmpl-opt-name">Gemini 2.0 Flash</div><div class="tmpl-opt-sub">3 dimensions</div></div>
+        <div class="tmpl-opt" id="t-gpt" onclick="pickTmpl('gpt')"><div class="tmpl-opt-name">GPT-4o</div><div class="tmpl-opt-sub">2 dimensions</div></div>
+        <div class="tmpl-opt" id="t-claude" onclick="pickTmpl('claude')"><div class="tmpl-opt-name">Claude Sonnet</div><div class="tmpl-opt-sub">2 dimensions</div></div>
+      </div>
+    </div>
+    <div class="nav-row"><div></div><button class="btn-next" onclick="goStep(1)">Continue</button></div>
+  </div>
+
+  <!-- STEP 1: Details -->
+  <div class="panel" id="p1">
+    <div class="panel-title">Card details</div>
+    <div class="panel-sub">Name this card and identify the provider. This is how it will appear across your dashboard.</div>
+    <div class="field">
+      <label>Card name</label>
+      <input type="text" id="f-name" value="Gemini 2.0 Flash" placeholder="e.g. Gemini 2.0 Flash" />
+      <div class="hint">Descriptive name including model variant. You can rename later.</div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Provider</label>
+        <select id="f-provider"><option>Google</option><option>OpenAI</option><option>Anthropic</option><option>Cohere</option><option>Other</option></select>
+      </div>
+      <div class="field">
+        <label>Card ID (auto-generated)</label>
+        <input type="text" value="gemini_2_flash" style="color:var(--color-text-tertiary)" readonly />
+        <div class="hint">Used in SDK calls. Editable before activation.</div>
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-back" onclick="goStep(0)">Back</button><button class="btn-next" onclick="goStep(2)">Continue</button></div>
+  </div>
+
+  <!-- STEP 2: Dimensions -->
+  <div class="panel" id="p2">
+    <div class="panel-title">Cost dimensions</div>
+    <div class="panel-sub">Each dimension is one measurable cost line. For token-based APIs, add separate dimensions for input and output. For flat-rate APIs, one dimension is enough.</div>
+
+    <div id="dims-list">
+      <div class="dim-card" id="dim0">
+        <div class="dim-num">Dimension 1</div>
+        <button class="dim-remove" onclick="removeDim(0)" title="Remove">x</button>
+        <div class="row3">
+          <div class="field"><label>Metric key</label><input type="text" value="input_tokens" placeholder="e.g. input_tokens" /></div>
+          <div class="field">
+            <label>Type</label>
+            <div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div>
+          </div>
+          <div class="field"><label>Unit price</label><input type="number" value="0.00000010" step="any" placeholder="0.00" /><div class="hint">$ per single token</div></div>
+        </div>
+        <div class="row2" style="margin-top:6px">
+          <div class="field"><label>Display label</label><input type="text" value="Input tokens" placeholder="e.g. Input tokens" /></div>
+          <div class="field"><label>Display unit</label><input type="text" value="per 1M tokens" placeholder="e.g. per 1M tokens" /></div>
+        </div>
+      </div>
+
+      <div class="dim-card" id="dim1">
+        <div class="dim-num">Dimension 2</div>
+        <button class="dim-remove" onclick="removeDim(1)" title="Remove">x</button>
+        <div class="row3">
+          <div class="field"><label>Metric key</label><input type="text" value="output_tokens" /></div>
+          <div class="field">
+            <label>Type</label>
+            <div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div>
+          </div>
+          <div class="field"><label>Unit price</label><input type="number" value="0.00000040" step="any" /><div class="hint">$ per single token</div></div>
+        </div>
+        <div class="row2" style="margin-top:6px">
+          <div class="field"><label>Display label</label><input type="text" value="Output tokens" /></div>
+          <div class="field"><label>Display unit</label><input type="text" value="per 1M tokens" /></div>
+        </div>
+      </div>
+
+      <div class="dim-card" id="dim2">
+        <div class="dim-num">Dimension 3</div>
+        <button class="dim-remove" onclick="removeDim(2)" title="Remove">x</button>
+        <div class="row3">
+          <div class="field"><label>Metric key</label><input type="text" value="grounding_requests" /></div>
+          <div class="field">
+            <label>Type</label>
+            <div class="pricing-toggle"><span>Per unit</span><span class="sel">Flat</span></div>
+          </div>
+          <div class="field"><label>Unit price</label><input type="number" value="0.035" step="any" /><div class="hint">$ per request</div></div>
+        </div>
+        <div class="row2" style="margin-top:6px">
+          <div class="field"><label>Display label</label><input type="text" value="Grounding requests" /></div>
+          <div class="field"><label>Display unit</label><input type="text" value="per request" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="add-dim" onclick="addDim()">+ Add another dimension</div>
+
+    <div class="nav-row"><button class="btn-back" onclick="goStep(1)">Back</button><button class="btn-next" onclick="goStep(3)">Review & test</button></div>
+  </div>
+
+  <!-- STEP 3: Review & Dry Run -->
+  <div class="panel" id="p3">
+    <div class="panel-title">Review and test</div>
+    <div class="panel-sub">Verify your configuration, then run a test event to confirm costs calculate correctly before going live.</div>
+
+    <div class="review-block">
+      <div class="review-label">Card</div>
+      <div class="review-val">Gemini 2.0 Flash <span style="font-weight:400;font-size:12px;color:var(--color-text-tertiary);margin-left:6px">Google · gemini_2_flash</span></div>
+      <div class="review-dims">
+        <div class="review-dim"><span class="k">input_tokens</span><span>$0.10 / 1M tokens (per unit)</span></div>
+        <div class="review-dim"><span class="k">output_tokens</span><span>$0.40 / 1M tokens (per unit)</span></div>
+        <div class="review-dim"><span class="k">grounding_requests</span><span>$0.035 / request (flat)</span></div>
+      </div>
+    </div>
+
+    <div class="dryrun-box">
+      <div class="dryrun-title">Dry run — test event</div>
+      <div style="font-size:12px;color:var(--color-text-info);margin-bottom:10px">Simulating: 1,500 input tokens, 800 output tokens, 1 grounding request</div>
+      <div class="dryrun-row"><span>input_tokens</span><span class="calc">1,500 x $0.00000010 = $0.000150</span></div>
+      <div class="dryrun-row"><span>output_tokens</span><span class="calc">800 x $0.00000040 = $0.000320</span></div>
+      <div class="dryrun-row"><span>grounding_requests</span><span class="calc">1 x $0.035 = $0.035000</span></div>
+      <div class="dryrun-total"><span>Total event cost</span><span>$0.035470</span></div>
+    </div>
+
+    <div class="warn-bar" id="warn">Price sanity check: the grounding cost is 99% of the total event cost. This is typical for Gemini with grounding — just confirming you expect this.</div>
+
+    <div class="product-assign">
+      <label>Assign to product (optional — can do later)</label>
+      <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">Group this card under a product for dashboard aggregation.</div>
+      <div class="product-pills">
+        <span class="pp sel">Property search</span>
+        <span class="pp" onclick="this.classList.toggle('sel')">Doc summariser</span>
+        <span class="pp" onclick="this.classList.toggle('sel')">Content gen</span>
+        <span class="pp" onclick="this.classList.toggle('sel')">+ New product</span>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn-back" onclick="goStep(2)">Back</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-back" onclick="goStep(2)">Save as draft</button>
+        <button class="btn-next" onclick="goStep(4)">Activate card</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: Success -->
+  <div class="panel" id="p4">
+    <div class="success-box">
+      <div class="success-check"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div>
+      <div style="font-size:18px;font-weight:500;margin-bottom:4px">Card activated</div>
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:1rem">Gemini 2.0 Flash is now live and tracking costs under Property search.</div>
+      <div style="font-size:13px;font-weight:500;text-align:left;margin-bottom:6px">Integration snippet</div>
+      <div class="snippet-box">meter.track({
+  pricing_card: "gemini_2_flash",
+  product: "property_search",
+  usage: {
+    input_tokens: tokenCount.input,
+    output_tokens: tokenCount.output,
+    grounding_requests: 1
+  }
+})</div>
+      <div style="margin-top:1.5rem;display:flex;gap:8px;justify-content:center">
+        <button class="btn-back" onclick="sendPrompt('Show me the pricing cards landing page')">Back to cards</button>
+        <button class="btn-next" onclick="sendPrompt('Show me the pricing card creation flow')">Create another</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let cur=0;
+function goStep(n){
+  if(n>4)return;
+  for(let i=0;i<5;i++){
+    const p=document.getElementById('p'+i);
+    if(p)p.classList.toggle('show',i===n);
+  }
+  for(let i=0;i<4;i++){
+    const d=document.getElementById('sd'+i),l=document.getElementById('sl'+i),ln=document.getElementById('ln'+i);
+    if(!d)continue;
+    d.className='step-dot'+(i===n?' active':i<n?' done':'');
+    l.className='step-label'+(i===n?' active':'');
+    if(ln)ln.className='step-line'+(i<n?' done':'');
+    if(i<n)d.textContent='✓'; else d.textContent=''+(i+1);
+  }
+  cur=n;
+  if(n===3)document.getElementById('warn').style.display='block';
+}
+function pickSrc(t){
+  document.getElementById('src-tmpl').classList.toggle('selected',t==='tmpl');
+  document.getElementById('src-custom').classList.toggle('selected',t==='custom');
+  document.getElementById('tmpl-list').style.display=t==='tmpl'?'block':'none';
+}
+function pickTmpl(t){
+  ['gem','gpt','claude'].forEach(k=>{document.getElementById('t-'+k).classList.toggle('selected',k===t)});
+}
+let dimCount=3;
+function addDim(){
+  dimCount++;
+  const d=document.createElement('div');
+  d.className='dim-card';
+  d.id='dim'+(dimCount-1);
+  d.innerHTML='<div class="dim-num">Dimension '+dimCount+'</div><button class="dim-remove" onclick="this.parentElement.remove()" title="Remove">x</button><div class="row3"><div class="field"><label>Metric key</label><input type="text" placeholder="e.g. cached_tokens" /></div><div class="field"><label>Type</label><div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div></div><div class="field"><label>Unit price</label><input type="number" step="any" placeholder="0.00" /><div class="hint">$ per unit</div></div></div><div class="row2" style="margin-top:6px"><div class="field"><label>Display label</label><input type="text" placeholder="e.g. Cached tokens" /></div><div class="field"><label>Display unit</label><input type="text" placeholder="e.g. per 1M tokens" /></div></div>';
+  document.getElementById('dims-list').appendChild(d);
+}
+function removeDim(i){document.getElementById('dim'+i)?.remove()}
+</script></body></html>

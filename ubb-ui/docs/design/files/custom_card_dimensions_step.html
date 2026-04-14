@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.wizard{padding:1.5rem 0;max-width:640px}
+.steps{display:flex;gap:0;margin-bottom:2rem}
+.step-item{flex:1;text-align:center;position:relative}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--color-border-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--color-text-tertiary);background:var(--color-background-primary);position:relative;z-index:1}
+.step-dot.done{border-color:var(--color-text-success);background:var(--color-background-success);color:var(--color-text-success)}
+.step-dot.active{border-color:var(--color-text-primary);color:var(--color-text-primary)}
+.step-label{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+.step-label.active{color:var(--color-text-primary);font-weight:500}
+.step-line{position:absolute;top:14px;left:calc(50% + 20px);right:calc(-50% + 20px);height:1px;background:var(--color-border-tertiary)}
+.step-line.done{background:var(--color-text-success)}
+.badge{display:inline-block;font-size:11px;padding:3px 10px;border-radius:20px;margin-bottom:1.5rem}
+.badge-custom{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-seed{background:var(--color-background-info);color:var(--color-text-info);margin-left:6px}
+.panel-title{font-size:18px;font-weight:500;margin-bottom:4px}
+.panel-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.25rem}
+.field{margin-bottom:.75rem}
+.field label{display:block;font-size:12px;font-weight:500;margin-bottom:3px;color:var(--color-text-secondary)}
+.field .hint{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+.field input,.field select{width:100%;padding:7px 10px;font-size:13px}
+.field input[type=number]{font-family:var(--font-mono)}
+.field input.mono{font-family:var(--font-mono);font-size:12px}
+.dim-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 18px;margin-bottom:12px;position:relative;transition:border-color .15s}
+.dim-card:hover{border-color:var(--color-border-secondary)}
+.dim-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.dim-num{font-size:13px;font-weight:500}
+.dim-actions{display:flex;gap:4px;align-items:center}
+.dim-btn{background:none;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:3px 8px;font-size:11px;cursor:pointer;color:var(--color-text-secondary);transition:all .15s}
+.dim-btn:hover{background:var(--color-background-secondary);border-color:var(--color-border-secondary)}
+.dim-btn.remove:hover{background:var(--color-background-danger);color:var(--color-text-danger);border-color:var(--color-border-danger)}
+.dim-grid-top{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:end}
+.dim-grid-bot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:4px}
+.toggle-track{display:flex;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden}
+.toggle-track span{padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s;color:var(--color-text-secondary);text-align:center;flex:1}
+.toggle-track span.sel{background:var(--color-text-primary);color:var(--color-background-primary)}
+.price-group{position:relative}
+.price-prefix{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--color-text-tertiary);font-family:var(--font-mono);pointer-events:none}
+.price-group input{padding-left:22px}
+.warn-inline{font-size:11px;color:var(--color-text-warning);margin-top:3px;display:none;padding:4px 8px;background:var(--color-background-warning);border-radius:var(--border-radius-md)}
+.add-dim{border:0.5px dashed var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:14px;text-align:center;cursor:pointer;font-size:13px;color:var(--color-text-secondary);transition:all .15s;margin-bottom:12px}
+.add-dim:hover{background:var(--color-background-secondary);border-color:var(--color-border-primary)}
+.quick-add{display:flex;gap:6px;justify-content:center;margin-top:8px;flex-wrap:wrap}
+.quick-chip{font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid var(--color-border-tertiary);cursor:pointer;color:var(--color-text-secondary);background:transparent;transition:all .15s}
+.quick-chip:hover{background:var(--color-background-secondary);border-color:var(--color-border-secondary)}
+.tester{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px 18px;margin-top:1.5rem;background:var(--color-background-secondary)}
+.tester-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.tester-title{font-size:13px;font-weight:500}
+.tester-badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--color-background-info);color:var(--color-text-info)}
+.tester-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.tester-inputs{display:grid;gap:8px;margin-bottom:12px}
+.tester-row{display:grid;grid-template-columns:1fr 100px auto;gap:8px;align-items:center}
+.tester-key{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.tester-row input{font-family:var(--font-mono);font-size:12px;padding:5px 8px;text-align:right}
+.tester-eq{font-size:12px;color:var(--color-text-tertiary);font-family:var(--font-mono);min-width:120px;text-align:right}
+.tester-divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:8px 0}
+.tester-total{display:flex;justify-content:space-between;font-size:14px;font-weight:500}
+.tester-per{font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-top:4px}
+.nav-row{display:flex;justify-content:space-between;align-items:center;margin-top:2rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary)}
+.btn-next{padding:8px 20px;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer;border:none;background:var(--color-text-primary);color:var(--color-background-primary)}
+.btn-next:hover{opacity:.9}
+.key-status{font-size:10px;display:inline-block;margin-left:4px;opacity:.7}
+.collapse-body{overflow:hidden;transition:max-height .2s;max-height:300px}
+.collapse-body.collapsed{max-height:0}
+.dim-summary{display:none;font-size:12px;color:var(--color-text-secondary);padding:4px 0}
+.dim-summary span{font-family:var(--font-mono);font-size:11px}
+.dim-card.collapsed-card .dim-summary{display:flex;justify-content:space-between}
+.dim-card.collapsed-card .collapse-body{max-height:0}
+</style>
+
+<div class="wizard">
+  <div class="steps">
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Details</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot active">3</div><div class="step-label active">Dimensions</div><div class="step-line"></div></div>
+    <div class="step-item"><div class="step-dot">4</div><div class="step-label">Review & test</div></div>
+  </div>
+
+  <span class="badge badge-custom">Custom card</span><span class="badge badge-seed">Pre-seeded: token-based</span>
+
+  <div class="panel-title">Define cost dimensions</div>
+  <div class="panel-sub">Each dimension is one line item on your cost breakdown. We've pre-added input and output tokens based on your selection — adjust the prices and add more as needed.</div>
+
+  <div id="dims-container">
+
+    <div class="dim-card" id="dim-0" data-type="per_unit" data-price="0">
+      <div class="dim-head">
+        <div class="dim-num">Dimension 1</div>
+        <div class="dim-actions">
+          <button class="dim-btn" onclick="toggleCollapse(0)">Collapse</button>
+          <button class="dim-btn" onclick="dupDim(0)">Duplicate</button>
+          <button class="dim-btn remove" onclick="removeDim(0)">Remove</button>
+        </div>
+      </div>
+      <div class="dim-summary"><span>input_tokens</span><span>per unit — set price below</span></div>
+      <div class="collapse-body" id="body-0">
+        <div class="dim-grid-top">
+          <div class="field">
+            <label>Metric key <span class="key-status" id="ks-0"></span></label>
+            <input type="text" class="mono" id="mk-0" value="input_tokens" placeholder="e.g. input_tokens" oninput="syncKey(0)" />
+            <div class="hint">Must match the key your SDK sends in the usage object.</div>
+          </div>
+          <div class="field">
+            <label>Pricing type</label>
+            <div class="toggle-track" id="tt-0">
+              <span class="sel" onclick="setType(0,'per_unit')">Per unit</span>
+              <span onclick="setType(0,'flat')">Flat</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Unit price ($)</label>
+            <div class="price-group">
+              <span class="price-prefix">$</span>
+              <input type="number" id="up-0" step="any" placeholder="0.00000010" oninput="syncPrice(0)" />
+            </div>
+            <div class="hint" id="ph-0">Price per single token</div>
+            <div class="warn-inline" id="warn-0"></div>
+          </div>
+        </div>
+        <div class="dim-grid-bot">
+          <div class="field">
+            <label>Display label</label>
+            <input type="text" id="dl-0" value="Input tokens" placeholder="Human-readable name" />
+          </div>
+          <div class="field">
+            <label>Display unit</label>
+            <input type="text" id="du-0" value="per 1M tokens" placeholder="e.g. per 1M tokens" />
+          </div>
+          <div class="field">
+            <label>Display price</label>
+            <input type="text" id="dp-0" placeholder="e.g. $0.10" oninput="syncDisplayPrice(0)" />
+            <div class="hint">Shown on dashboard. Auto-calculated if blank.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dim-card" id="dim-1" data-type="per_unit" data-price="0">
+      <div class="dim-head">
+        <div class="dim-num">Dimension 2</div>
+        <div class="dim-actions">
+          <button class="dim-btn" onclick="toggleCollapse(1)">Collapse</button>
+          <button class="dim-btn" onclick="dupDim(1)">Duplicate</button>
+          <button class="dim-btn remove" onclick="removeDim(1)">Remove</button>
+        </div>
+      </div>
+      <div class="dim-summary"><span>output_tokens</span><span>per unit — set price below</span></div>
+      <div class="collapse-body" id="body-1">
+        <div class="dim-grid-top">
+          <div class="field">
+            <label>Metric key <span class="key-status" id="ks-1"></span></label>
+            <input type="text" class="mono" id="mk-1" value="output_tokens" placeholder="e.g. output_tokens" oninput="syncKey(1)" />
+            <div class="hint">Must match the key your SDK sends in the usage object.</div>
+          </div>
+          <div class="field">
+            <label>Pricing type</label>
+            <div class="toggle-track" id="tt-1">
+              <span class="sel" onclick="setType(1,'per_unit')">Per unit</span>
+              <span onclick="setType(1,'flat')">Flat</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Unit price ($)</label>
+            <div class="price-group">
+              <span class="price-prefix">$</span>
+              <input type="number" id="up-1" step="any" placeholder="0.00000040" oninput="syncPrice(1)" />
+            </div>
+            <div class="hint" id="ph-1">Price per single token</div>
+            <div class="warn-inline" id="warn-1"></div>
+          </div>
+        </div>
+        <div class="dim-grid-bot">
+          <div class="field">
+            <label>Display label</label>
+            <input type="text" id="dl-1" value="Output tokens" />
+          </div>
+          <div class="field">
+            <label>Display unit</label>
+            <input type="text" id="du-1" value="per 1M tokens" />
+          </div>
+          <div class="field">
+            <label>Display price</label>
+            <input type="text" id="dp-1" placeholder="e.g. $0.40" />
+            <div class="hint">Shown on dashboard. Auto-calculated if blank.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="add-dim" onclick="addDim()">
+    + Add dimension
+    <div class="quick-add">
+      <span class="quick-chip" onclick="event.stopPropagation();addPreset('grounding_requests','Grounding requests','per request','flat')">+ grounding</span>
+      <span class="quick-chip" onclick="event.stopPropagation();addPreset('cached_tokens','Cached tokens','per 1M tokens','per_unit')">+ cached tokens</span>
+      <span class="quick-chip" onclick="event.stopPropagation();addPreset('image_tokens','Image tokens','per 1M tokens','per_unit')">+ image tokens</span>
+      <span class="quick-chip" onclick="event.stopPropagation();addPreset('requests','Requests','per request','flat')">+ requests</span>
+      <span class="quick-chip" onclick="event.stopPropagation();addPreset('search_queries','Search queries','per query','flat')">+ search queries</span>
+    </div>
+  </div>
+
+  <div class="tester" id="tester">
+    <div class="tester-head">
+      <div class="tester-title">Live cost tester</div>
+      <div class="tester-badge">Updates as you type</div>
+    </div>
+    <div class="tester-sub">Enter sample quantities to see calculated costs in real time. This uses the prices you've entered above.</div>
+    <div class="tester-inputs" id="tester-rows"></div>
+    <hr class="tester-divider" />
+    <div class="tester-total"><span>Total event cost</span><span id="tester-total">$0.000000</span></div>
+    <div class="tester-per" id="tester-per"></div>
+  </div>
+
+  <div class="nav-row">
+    <button class="btn-back" onclick="sendPrompt('Go back to the details step for my custom card')">Back</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn-back">Save draft</button>
+      <button class="btn-next" onclick="sendPrompt('Show me the review and test step for my custom pricing card')">Review & test</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let dimCount=2;
+let dims=[
+  {id:0,key:'input_tokens',type:'per_unit',price:0,label:'Input tokens',unit:'per 1M tokens'},
+  {id:1,key:'output_tokens',type:'per_unit',price:0,label:'Output tokens',unit:'per 1M tokens'}
+];
+
+function rebuildTester(){
+  const c=document.getElementById('tester-rows');
+  c.innerHTML='';
+  dims.forEach((d,i)=>{
+    if(!document.getElementById('dim-'+d.id))return;
+    const def=d.type==='flat'?'1':(d.key.includes('token')?'1000':'10');
+    const r=document.createElement('div');
+    r.className='tester-row';
+    r.innerHTML='<div class="tester-key">'+d.key+'</div><input type="number" id="tq-'+d.id+'" value="'+def+'" min="0" oninput="calcTester()" /><div class="tester-eq" id="te-'+d.id+'">= $0.000000</div>';
+    c.appendChild(r);
+  });
+  calcTester();
+}
+
+function calcTester(){
+  let total=0;
+  dims.forEach(d=>{
+    if(!document.getElementById('dim-'+d.id))return;
+    const qEl=document.getElementById('tq-'+d.id);
+    const eEl=document.getElementById('te-'+d.id);
+    if(!qEl||!eEl)return;
+    const q=parseFloat(qEl.value)||0;
+    const p=parseFloat(document.getElementById('up-'+d.id)?.value)||0;
+    let cost=0;
+    if(d.type==='flat')cost=q>0?p:0;
+    else cost=q*p;
+    total+=cost;
+    const qs=q.toLocaleString();
+    eEl.textContent=d.type==='flat'?(q>0?'= $'+cost.toFixed(6):'= $0.000000'):''+qs+' x $'+p.toFixed(10).replace(/0+$/,'').replace(/\.$/,'')+' = $'+cost.toFixed(6);
+  });
+  document.getElementById('tester-total').textContent='$'+total.toFixed(6);
+  if(total>0){
+    const perK='$'+(total*1000).toFixed(4);
+    document.getElementById('tester-per').textContent='Approx '+perK+' per 1,000 events at this volume';
+  } else {
+    document.getElementById('tester-per').textContent='';
+  }
+}
+
+function syncKey(id){
+  const v=document.getElementById('mk-'+id).value;
+  const d=dims.find(x=>x.id===id);
+  if(d)d.key=v;
+  const dup=dims.filter(x=>x.key===v&&x.key!=='');
+  const ks=document.getElementById('ks-'+id);
+  if(dup.length>1&&ks){ks.textContent='(duplicate key!)';ks.style.color='var(--color-text-danger)'}
+  else if(ks){ks.textContent='';ks.style.color=''}
+  rebuildTester();
+}
+function syncPrice(id){
+  const v=parseFloat(document.getElementById('up-'+id).value)||0;
+  const d=dims.find(x=>x.id===id);
+  if(d)d.price=v;
+  const w=document.getElementById('warn-'+id);
+  if(w){
+    if(d&&d.key.includes('token')&&v>0.001){w.textContent='This seems high for a per-token price. Did you mean the per-million price? The unit price should be the cost of one single token.';w.style.display='block'}
+    else if(d&&d.type==='flat'&&v>10){w.textContent='$'+v.toFixed(2)+' per request is unusually high. Double-check this is the per-call cost, not a monthly fee.';w.style.display='block'}
+    else{w.style.display='none'}
+  }
+  calcTester();
+}
+function syncDisplayPrice(id){}
+function setType(id,t){
+  const el=document.getElementById('tt-'+id);
+  el.querySelectorAll('span').forEach(s=>{s.classList.toggle('sel',s.textContent.toLowerCase().replace(/\s/g,'_')===t)});
+  const d=dims.find(x=>x.id===id);
+  if(d)d.type=t;
+  document.getElementById('dim-'+id).setAttribute('data-type',t);
+  const ph=document.getElementById('ph-'+id);
+  if(ph)ph.textContent=t==='flat'?'Fixed cost each time this event fires':'Price per single unit';
+  rebuildTester();
+}
+function toggleCollapse(id){
+  const card=document.getElementById('dim-'+id);
+  card.classList.toggle('collapsed-card');
+}
+function removeDim(id){
+  document.getElementById('dim-'+id)?.remove();
+  dims=dims.filter(x=>x.id!==id);
+  renumber();
+  rebuildTester();
+}
+function dupDim(id){
+  const src=dims.find(x=>x.id===id);
+  if(!src)return;
+  addDimFull(src.key+'_copy',src.type,src.label+' (copy)',src.unit);
+}
+function renumber(){
+  const cards=document.querySelectorAll('.dim-card');
+  cards.forEach((c,i)=>{c.querySelector('.dim-num').textContent='Dimension '+(i+1)});
+}
+function addPreset(key,label,unit,type){
+  addDimFull(key,type,label,unit);
+}
+function addDimFull(key,type,label,unit){
+  dimCount++;
+  const id=dimCount;
+  dims.push({id,key,type,price:0,label,unit});
+  const d=document.createElement('div');
+  d.className='dim-card';
+  d.id='dim-'+id;
+  d.setAttribute('data-type',type);
+  d.setAttribute('data-price','0');
+  const isSel=type==='per_unit';
+  d.innerHTML='<div class="dim-head"><div class="dim-num">Dimension</div><div class="dim-actions"><button class="dim-btn" onclick="toggleCollapse('+id+')">Collapse</button><button class="dim-btn" onclick="dupDim('+id+')">Duplicate</button><button class="dim-btn remove" onclick="removeDim('+id+')">Remove</button></div></div><div class="dim-summary"><span>'+key+'</span><span>'+type.replace('_',' ')+' — set price below</span></div><div class="collapse-body" id="body-'+id+'"><div class="dim-grid-top"><div class="field"><label>Metric key <span class="key-status" id="ks-'+id+'"></span></label><input type="text" class="mono" id="mk-'+id+'" value="'+key+'" oninput="syncKey('+id+')" /><div class="hint">Must match the key your SDK sends in the usage object.</div></div><div class="field"><label>Pricing type</label><div class="toggle-track" id="tt-'+id+'"><span class="'+(isSel?'sel':'')+'" onclick="setType('+id+',\'per_unit\')">Per unit</span><span class="'+(isSel?'':'sel')+'" onclick="setType('+id+',\'flat\')">Flat</span></div></div><div class="field"><label>Unit price ($)</label><div class="price-group"><span class="price-prefix">$</span><input type="number" id="up-'+id+'" step="any" placeholder="0.00" oninput="syncPrice('+id+')" /></div><div class="hint" id="ph-'+id+'">'+(type==='flat'?'Fixed cost each time this event fires':'Price per single unit')+'</div><div class="warn-inline" id="warn-'+id+'"></div></div></div><div class="dim-grid-bot"><div class="field"><label>Display label</label><input type="text" id="dl-'+id+'" value="'+label+'" /></div><div class="field"><label>Display unit</label><input type="text" id="du-'+id+'" value="'+unit+'" /></div><div class="field"><label>Display price</label><input type="text" id="dp-'+id+'" placeholder="e.g. $0.035" /><div class="hint">Shown on dashboard.</div></div></div></div>';
+  document.getElementById('dims-container').appendChild(d);
+  renumber();
+  rebuildTester();
+}
+function addDim(){addDimFull('','per_unit','','');}
+rebuildTester();
+</script></body></html>

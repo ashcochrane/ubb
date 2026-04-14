@@ -37,7 +37,7 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(call_args.args[0], "/api/v1/metering/usage")
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_group_keys(self, mock_post):
+    def test_record_usage_with_group(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3",
             "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
@@ -46,10 +46,10 @@ class MeteringClientTest(unittest.TestCase):
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
             event_type="chat_completion", provider="openai",
             usage_metrics={"tokens": 100},
-            group_keys={"project": "proj_1"},
+            group="proj_1",
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["group_keys"], {"project": "proj_1"})
+        self.assertEqual(body["group"], "proj_1")
 
     # ---- get_usage ----
 
@@ -89,10 +89,9 @@ class MeteringClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [], "next_cursor": None, "has_more": False,
         })
-        self.client.get_usage(customer_id="cust_1", group_key="project", group_value="proj_1")
+        self.client.get_usage(customer_id="cust_1", group="proj_1")
         call_kwargs = mock_get.call_args
-        self.assertEqual(call_kwargs.kwargs["params"]["group_key"], "project")
-        self.assertEqual(call_kwargs.kwargs["params"]["group_value"], "proj_1")
+        self.assertEqual(call_kwargs.kwargs["params"]["group"], "proj_1")
 
     # ---- error handling ----
 

@@ -28,7 +28,7 @@ class RecordUsageRequest(Schema):
     event_type: str = Field(min_length=1, max_length=100)
     provider: str = Field(min_length=1, max_length=100)
     usage_metrics: dict[str, int]
-    group_keys: Optional[dict[str, str]] = None
+    group: Optional[str] = Field(default=None, max_length=255)
     run_id: Optional[UUID] = None
 
     @field_validator("usage_metrics")
@@ -139,42 +139,17 @@ class DebitCreditResponse(Schema):
     transaction_id: str
 
 
-class ProviderRateIn(Schema):
-    provider: str = Field(min_length=1, max_length=100)
-    event_type: str = Field(min_length=1, max_length=100)
-    metric_name: str = Field(min_length=1, max_length=100)
-    dimensions: dict = Field(default_factory=dict)
-    cost_per_unit_micros: int = Field(ge=0)
-    unit_quantity: int = Field(gt=0, default=1_000_000)
-    currency: str = Field(default="USD", max_length=3)
-
-
-class ProviderRateOut(Schema):
-    id: UUID
-    provider: str
-    event_type: str
-    metric_name: str
-    dimensions: dict
-    cost_per_unit_micros: int
-    unit_quantity: int
-    currency: str
-    valid_from: str
-    valid_to: Optional[str] = None
-
-
 class TenantMarkupIn(Schema):
     event_type: str = Field(default="", max_length=100)
     provider: str = Field(default="", max_length=100)
-    markup_percentage_micros: int = Field(default=0, ge=0)
-    fixed_uplift_micros: int = Field(default=0, ge=0)
+    margin_pct: float = Field(ge=0, lt=100, default=0)
 
 
 class TenantMarkupOut(Schema):
     id: UUID
     event_type: str
     provider: str
-    markup_percentage_micros: int
-    fixed_uplift_micros: int
+    margin_pct: float
     valid_from: str
     valid_to: Optional[str] = None
 
@@ -199,3 +174,89 @@ class RevenueAnalyticsResponse(Schema):
     total_billed_cost_micros: int
     total_markup_micros: int
     daily: list[dict]
+
+
+class CreateGroupRequest(Schema):
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=2, max_length=255, pattern=r"^[a-z][a-z0-9_]*$")
+    description: str = ""
+    margin_pct: Optional[float] = None
+    parent_id: Optional[str] = None
+
+
+class UpdateGroupRequest(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    margin_pct: Optional[float] = None
+    status: Optional[str] = None
+
+
+class GroupResponse(Schema):
+    id: str
+    name: str
+    slug: str
+    description: str
+    margin_pct: Optional[float]
+    status: str
+    parent_id: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+class GroupListResponse(Schema):
+    data: list[GroupResponse]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+# --- Card / Rate schemas ---
+
+
+class RateIn(Schema):
+    metric_name: str = Field(min_length=1, max_length=100)
+    cost_per_unit_micros: int = Field(ge=0)
+    unit_quantity: int = Field(gt=0, default=1_000_000)
+    currency: str = Field(default="USD", max_length=3)
+
+
+class CreateCardRequest(Schema):
+    name: str = Field(min_length=1, max_length=255)
+    provider: str = Field(min_length=1, max_length=100)
+    event_type: str = Field(min_length=1, max_length=100)
+    dimensions: dict = Field(default_factory=dict)
+    description: str = ""
+    rates: list[RateIn] = Field(default_factory=list)
+
+
+class UpdateCardRequest(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+class RateOut(Schema):
+    id: str
+    metric_name: str
+    cost_per_unit_micros: int
+    unit_quantity: int
+    currency: str
+    valid_from: str
+    valid_to: Optional[str] = None
+
+
+class CardOut(Schema):
+    id: str
+    name: str
+    provider: str
+    event_type: str
+    dimensions: dict
+    description: str
+    status: str
+    rates: list[RateOut]
+    created_at: str
+
+
+class CardListResponse(Schema):
+    data: list[CardOut]
+    next_cursor: Optional[str] = None
+    has_more: bool

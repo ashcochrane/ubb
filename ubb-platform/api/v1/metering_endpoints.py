@@ -11,10 +11,11 @@ from core.auth import ApiKeyAuth, ProductAccess
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     PaginatedUsageResponse,
-    ProviderRateIn, ProviderRateOut,
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
+    CreateCardRequest, UpdateCardRequest, RateIn,
+    CardOut, CardListResponse,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
@@ -43,7 +44,7 @@ def record_usage(request, payload: RecordUsageRequest):
             event_type=payload.event_type,
             provider=payload.provider,
             usage_metrics=payload.usage_metrics,
-            group_keys=payload.group_keys,
+            group=payload.group,
             run_id=payload.run_id,
         )
     except HardStopExceeded as e:
@@ -74,7 +75,7 @@ def record_usage(request, payload: RecordUsageRequest):
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
-              group_key: str = None, group_value: str = None):
+              group: str = None):
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -82,8 +83,8 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
 
     qs = customer.usage_events.all().order_by("-effective_at", "-id")
 
-    if group_key and group_value:
-        qs = qs.filter(group_keys__contains={group_key: group_value})
+    if group:
+        qs = qs.filter(group=group)
 
     if cursor:
         try:
@@ -142,89 +143,6 @@ def close_run(request, run_id: UUID):
 # --- Pricing Rates CRUD ---
 
 
-def _rate_to_out(rate):
-    return {
-        "id": rate.id,
-        "provider": rate.provider,
-        "event_type": rate.event_type,
-        "metric_name": rate.metric_name,
-        "dimensions": rate.dimensions,
-        "cost_per_unit_micros": rate.cost_per_unit_micros,
-        "unit_quantity": rate.unit_quantity,
-        "currency": rate.currency,
-        "valid_from": rate.valid_from.isoformat(),
-        "valid_to": rate.valid_to.isoformat() if rate.valid_to else None,
-    }
-
-
-@metering_api.get("/pricing/rates", response=list[ProviderRateOut])
-def list_rates(request):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rates = ProviderRate.objects.filter(
-        tenant=request.auth.tenant, valid_to__isnull=True,
-    ).order_by("provider", "event_type", "metric_name")
-    return [_rate_to_out(r) for r in rates]
-
-
-@metering_api.post("/pricing/rates", response=ProviderRateOut)
-def create_rate(request, payload: ProviderRateIn):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rate = ProviderRate.objects.create(
-        tenant=request.auth.tenant,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
-        cost_per_unit_micros=payload.cost_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        currency=payload.currency,
-    )
-    return _rate_to_out(rate)
-
-
-@metering_api.put("/pricing/rates/{rate_id}", response=ProviderRateOut)
-def update_rate(request, rate_id: UUID, payload: ProviderRateIn):
-    """Soft-expire old rate and create new version."""
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    old_rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    now = timezone.now()
-    old_rate.valid_to = now
-    old_rate.save(update_fields=["valid_to", "updated_at"])
-
-    new_rate = ProviderRate.objects.create(
-        tenant=request.auth.tenant,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
-        cost_per_unit_micros=payload.cost_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        currency=payload.currency,
-    )
-    return _rate_to_out(new_rate)
-
-
-@metering_api.delete("/pricing/rates/{rate_id}")
-def delete_rate(request, rate_id: UUID):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    rate.valid_to = timezone.now()
-    rate.save(update_fields=["valid_to", "updated_at"])
-    return {"status": "deleted"}
-
-
 # --- Pricing Markups CRUD ---
 
 
@@ -233,8 +151,7 @@ def _markup_to_out(markup):
         "id": markup.id,
         "event_type": markup.event_type,
         "provider": markup.provider,
-        "markup_percentage_micros": markup.markup_percentage_micros,
-        "fixed_uplift_micros": markup.fixed_uplift_micros,
+        "margin_pct": float(markup.margin_pct),
         "valid_from": markup.valid_from.isoformat(),
         "valid_to": markup.valid_to.isoformat() if markup.valid_to else None,
     }
@@ -260,8 +177,7 @@ def create_markup(request, payload: TenantMarkupIn):
         tenant=request.auth.tenant,
         event_type=payload.event_type,
         provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
+        margin_pct=payload.margin_pct,
     )
     return _markup_to_out(markup)
 
@@ -283,8 +199,7 @@ def update_markup(request, markup_id: UUID, payload: TenantMarkupIn):
         tenant=request.auth.tenant,
         event_type=payload.event_type,
         provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
+        margin_pct=payload.margin_pct,
     )
     return _markup_to_out(new_markup)
 
@@ -300,6 +215,207 @@ def delete_markup(request, markup_id: UUID):
     markup.valid_to = timezone.now()
     markup.save(update_fields=["valid_to", "updated_at"])
     return {"status": "deleted"}
+
+
+# --- Pricing Cards CRUD ---
+
+
+def _card_to_out(card):
+    rates = card.rates.filter(valid_to__isnull=True).order_by("metric_name")
+    return {
+        "id": str(card.id),
+        "name": card.name,
+        "provider": card.provider,
+        "event_type": card.event_type,
+        "dimensions": card.dimensions,
+        "description": card.description,
+        "status": card.status,
+        "rates": [
+            {
+                "id": str(r.id),
+                "metric_name": r.metric_name,
+                "cost_per_unit_micros": r.cost_per_unit_micros,
+                "unit_quantity": r.unit_quantity,
+                "currency": r.currency,
+                "valid_from": r.valid_from.isoformat(),
+                "valid_to": None,
+            }
+            for r in rates
+        ],
+        "created_at": card.created_at.isoformat(),
+    }
+
+
+@metering_api.post("/pricing/cards", response={201: CardOut})
+def create_card(request, payload: CreateCardRequest):
+    _product_check(request)
+    from apps.metering.pricing.models import Card, Rate
+
+    card = Card.objects.create(
+        tenant=request.auth.tenant,
+        name=payload.name,
+        provider=payload.provider,
+        event_type=payload.event_type,
+        dimensions=payload.dimensions,
+        description=payload.description,
+    )
+    for rate_in in payload.rates:
+        Rate.objects.create(
+            card=card,
+            metric_name=rate_in.metric_name,
+            cost_per_unit_micros=rate_in.cost_per_unit_micros,
+            unit_quantity=rate_in.unit_quantity,
+            currency=rate_in.currency,
+        )
+    return 201, _card_to_out(card)
+
+
+@metering_api.get("/pricing/cards", response=CardListResponse)
+def list_cards(request, cursor: str = None, limit: int = 50):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    limit = min(max(limit, 1), 100)
+    qs = Card.objects.filter(
+        tenant=request.auth.tenant, status="active",
+    ).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            from ninja.errors import HttpError
+            raise HttpError(400, "Invalid cursor")
+
+    cards = list(qs[:limit + 1])
+    has_more = len(cards) > limit
+    cards = cards[:limit]
+
+    next_cursor = None
+    if has_more and cards:
+        last = cards[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [_card_to_out(c) for c in cards],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@metering_api.get("/pricing/cards/{card_id}", response=CardOut)
+def get_card(request, card_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    return _card_to_out(card)
+
+
+@metering_api.patch("/pricing/cards/{card_id}", response=CardOut)
+def update_card(request, card_id: UUID, payload: UpdateCardRequest):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    update_fields = ["updated_at"]
+    if payload.name is not None:
+        card.name = payload.name
+        update_fields.append("name")
+    if payload.description is not None:
+        card.description = payload.description
+        update_fields.append("description")
+    if payload.status is not None:
+        card.status = payload.status
+        update_fields.append("status")
+    card.save(update_fields=update_fields)
+    return _card_to_out(card)
+
+
+@metering_api.delete("/pricing/cards/{card_id}")
+def delete_card(request, card_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    card = get_object_or_404(
+        Card, id=card_id, tenant=request.auth.tenant, status="active",
+    )
+    card.status = "archived"
+    card.save(update_fields=["status", "updated_at"])
+    return {"status": "archived"}
+
+
+# --- Nested Rate management on Cards ---
+
+
+@metering_api.post("/pricing/cards/{card_id}/rates", response={201: dict})
+def add_card_rate(request, card_id: UUID, payload: RateIn):
+    _product_check(request)
+    from apps.metering.pricing.models import Card, Rate
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    rate = Rate.objects.create(
+        card=card,
+        metric_name=payload.metric_name,
+        cost_per_unit_micros=payload.cost_per_unit_micros,
+        unit_quantity=payload.unit_quantity,
+        currency=payload.currency,
+    )
+    return 201, {
+        "id": str(rate.id),
+        "metric_name": rate.metric_name,
+        "cost_per_unit_micros": rate.cost_per_unit_micros,
+        "unit_quantity": rate.unit_quantity,
+        "currency": rate.currency,
+        "valid_from": rate.valid_from.isoformat(),
+        "valid_to": None,
+    }
+
+
+@metering_api.put("/pricing/cards/{card_id}/rates/{rate_id}", response=dict)
+def update_card_rate(request, card_id: UUID, rate_id: UUID, payload: RateIn):
+    """Soft-expire old rate, create new version."""
+    _product_check(request)
+    from apps.metering.pricing.models import Card, Rate
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    old_rate = get_object_or_404(
+        Rate, id=rate_id, card=card, valid_to__isnull=True,
+    )
+    now = timezone.now()
+    old_rate.valid_to = now
+    old_rate.save(update_fields=["valid_to", "updated_at"])
+
+    new_rate = Rate.objects.create(
+        card=card,
+        metric_name=payload.metric_name,
+        cost_per_unit_micros=payload.cost_per_unit_micros,
+        unit_quantity=payload.unit_quantity,
+        currency=payload.currency,
+    )
+    return {
+        "id": str(new_rate.id),
+        "metric_name": new_rate.metric_name,
+        "cost_per_unit_micros": new_rate.cost_per_unit_micros,
+        "unit_quantity": new_rate.unit_quantity,
+        "currency": new_rate.currency,
+        "valid_from": new_rate.valid_from.isoformat(),
+        "valid_to": None,
+    }
+
+
+@metering_api.delete("/pricing/cards/{card_id}/rates/{rate_id}")
+def delete_card_rate(request, card_id: UUID, rate_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.models import Card, Rate
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    rate = get_object_or_404(
+        Rate, id=rate_id, card=card, valid_to__isnull=True,
+    )
+    rate.valid_to = timezone.now()
+    rate.save(update_fields=["valid_to", "updated_at"])
+    return {"status": "deactivated"}
 
 
 # --- Analytics ---
