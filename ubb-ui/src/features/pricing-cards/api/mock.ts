@@ -1,5 +1,5 @@
-import type { PricingCard, CreateCardRequest, Template } from "./types";
-import type { GroupSummary } from "./api";
+import type { PricingCard, CreateCardRequest, Template, PricingType, CardStatus } from "./types";
+import type { GroupSummary, DimensionIn, UpdateCardRequest } from "./api";
 import { mockPricingCards, mockTemplates, mockGroups } from "./mock-data";
 import { mockDelay } from "@/lib/api-provider";
 
@@ -52,4 +52,94 @@ export async function getGroups(): Promise<GroupSummary[]> {
 export async function getTemplates(): Promise<Template[]> {
   await mockDelay(200);
   return [...mockTemplates];
+}
+
+export async function updateCard(
+  cardId: string,
+  req: UpdateCardRequest,
+): Promise<PricingCard> {
+  await mockDelay();
+  const idx = cards.findIndex((c) => c.id === cardId);
+  if (idx < 0) throw new Error("not found");
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const existing = cards[idx]!;
+  const next: PricingCard = {
+    ...existing,
+    name: req.name != null ? req.name : existing.name,
+    description: req.description != null ? req.description : existing.description,
+    groupId: req.groupId !== undefined ? req.groupId : existing.groupId,
+    pricingSourceUrl:
+      req.pricingSourceUrl != null
+        ? req.pricingSourceUrl
+        : existing.pricingSourceUrl,
+    status: req.status != null ? (req.status as CardStatus) : existing.status,
+  };
+  cards[idx] = next;
+  return next;
+}
+
+export async function deleteCard(cardId: string): Promise<void> {
+  await mockDelay();
+  const idx = cards.findIndex((c) => c.id === cardId);
+  if (idx >= 0) cards.splice(idx, 1);
+}
+
+export async function createRate(
+  cardId: string,
+  body: DimensionIn,
+): Promise<void> {
+  await mockDelay();
+  const card = cards.find((c) => c.id === cardId);
+  if (!card) throw new Error("not found");
+  card.dimensions = [
+    ...card.dimensions,
+    {
+      id: `rate_${Math.random().toString(36).slice(2, 8)}`,
+      validFrom: new Date().toISOString(),
+      validTo: null,
+      metricName: body.metricName,
+      pricingType: body.pricingType as PricingType,
+      costPerUnitMicros: body.costPerUnitMicros,
+      providerCostPerUnitMicros: body.providerCostPerUnitMicros ?? null,
+      unitQuantity: body.unitQuantity,
+      currency: body.currency,
+      label: body.label,
+      unit: body.unit,
+    },
+  ];
+}
+
+export async function updateRate(
+  cardId: string,
+  rateId: string,
+  body: DimensionIn,
+): Promise<void> {
+  await mockDelay();
+  const card = cards.find((c) => c.id === cardId);
+  if (!card) throw new Error("not found");
+  card.dimensions = card.dimensions.map((d) =>
+    d.id === rateId
+      ? {
+          ...d,
+          metricName: body.metricName,
+          pricingType: body.pricingType as PricingType,
+          costPerUnitMicros: body.costPerUnitMicros,
+          providerCostPerUnitMicros: body.providerCostPerUnitMicros ?? null,
+          unitQuantity: body.unitQuantity,
+          currency: body.currency,
+          label: body.label,
+          unit: body.unit,
+        }
+      : d,
+  );
+}
+
+export async function deleteRate(
+  cardId: string,
+  rateId: string,
+): Promise<void> {
+  await mockDelay();
+  const card = cards.find((c) => c.id === cardId);
+  if (!card) throw new Error("not found");
+  card.dimensions = card.dimensions.filter((d) => d.id !== rateId);
 }

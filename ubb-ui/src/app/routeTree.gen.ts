@@ -21,6 +21,7 @@ import { Route as AppCustomersIndexRouteImport } from './routes/_app/customers/i
 import { Route as AppBillingIndexRouteImport } from './routes/_app/billing/index'
 import { Route as AppPricingCardsNewRouteImport } from './routes/_app/pricing-cards/new'
 import { Route as AppPricingCardsCardIdRouteImport } from './routes/_app/pricing-cards/$cardId'
+import { Route as AppCustomersCustomerIdRouteImport } from './routes/_app/customers/$customerId'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -87,11 +88,17 @@ const AppPricingCardsCardIdRoute = AppPricingCardsCardIdRouteImport.update({
 } as any).lazy(() =>
   import('./routes/_app/pricing-cards/$cardId.lazy').then((d) => d.Route),
 )
+const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
+  id: '/customers/$customerId',
+  path: '/customers/$customerId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/billing/': typeof AppBillingIndexRoute
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/': typeof AppIndexRoute
+  '/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/billing': typeof AppBillingIndexRoute
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/_app/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/_app/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/_app/billing/': typeof AppBillingIndexRoute
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | '/'
     | '/onboarding'
     | '/sign-in'
+    | '/customers/$customerId'
     | '/pricing-cards/$cardId'
     | '/pricing-cards/new'
     | '/billing/'
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/sign-in'
     | '/'
+    | '/customers/$customerId'
     | '/pricing-cards/$cardId'
     | '/pricing-cards/new'
     | '/billing'
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/sign-in'
     | '/_app/'
+    | '/_app/customers/$customerId'
     | '/_app/pricing-cards/$cardId'
     | '/_app/pricing-cards/new'
     | '/_app/billing/'
@@ -264,11 +276,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPricingCardsCardIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/customers/$customerId': {
+      id: '/_app/customers/$customerId'
+      path: '/customers/$customerId'
+      fullPath: '/customers/$customerId'
+      preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
   AppPricingCardsCardIdRoute: typeof AppPricingCardsCardIdRoute
   AppPricingCardsNewRoute: typeof AppPricingCardsNewRoute
   AppBillingIndexRoute: typeof AppBillingIndexRoute
@@ -281,6 +301,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
   AppPricingCardsCardIdRoute: AppPricingCardsCardIdRoute,
   AppPricingCardsNewRoute: AppPricingCardsNewRoute,
   AppBillingIndexRoute: AppBillingIndexRoute,

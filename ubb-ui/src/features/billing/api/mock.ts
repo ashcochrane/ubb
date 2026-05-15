@@ -1,15 +1,18 @@
 // src/features/billing/api/mock.ts
-import type { MarginDashboardData, UpdateMarginRequest } from "./types";
-import { mockMarginData } from "./mock-data";
 import { mockDelay } from "@/lib/api-provider";
+import type { DefaultMargin, UpdateDefaultMarginRequest } from "./types";
 
-export async function getMarginDashboard(): Promise<MarginDashboardData> {
+let _stub: DefaultMargin = { defaultMarginPct: 20 };
+
+export async function getDefaultMargin(): Promise<DefaultMargin> {
   await mockDelay();
-  return structuredClone(mockMarginData);
+  return _stub;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function updateMargin(_req: UpdateMarginRequest): Promise<{ success: boolean }> {
-  await mockDelay(500);
-  return { success: true };
+export async function updateDefaultMargin(
+  req: UpdateDefaultMarginRequest,
+): Promise<DefaultMargin> {
+  await mockDelay();
+  _stub = { defaultMarginPct: req.defaultMarginPct };
+  return _stub;
 }

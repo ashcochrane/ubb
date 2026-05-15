@@ -1,6 +1,6 @@
 import { createLazyFileRoute } from "@tanstack/react-router";
-import { MarginPage } from "@/features/billing/components/margin-page";
+import { DefaultMarginPage } from "@/features/billing/components/default-margin-page";
 
 export const Route = createLazyFileRoute("/_app/billing/")({
-  component: MarginPage,
+  component: DefaultMarginPage,
 });

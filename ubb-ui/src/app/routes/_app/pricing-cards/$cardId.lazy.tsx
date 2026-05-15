@@ -1,11 +1,11 @@
 import { createLazyFileRoute } from "@tanstack/react-router";
-import { ReconciliationPage } from "@/features/reconciliation/components/reconciliation-page";
+import { CardDetailPage } from "@/features/pricing-cards/components/card-detail-page";
 
 export const Route = createLazyFileRoute("/_app/pricing-cards/$cardId")({
-  component: CardReconciliationRoute,
+  component: CardDetailRoute,
 });
 
-function CardReconciliationRoute() {
+function CardDetailRoute() {
   const { cardId } = Route.useParams();
-  return <ReconciliationPage cardId={cardId} />;
+  return <CardDetailPage cardId={cardId} />;
 }

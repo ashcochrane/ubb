@@ -1,66 +1,81 @@
 // src/features/customers/api/mock.ts
-import type { CustomerMappingData } from "./types";
-import { mockCustomerMappingData } from "./mock-data";
 import { mockDelay } from "@/lib/api-provider";
+import type {
+  CreateCustomerRequest,
+  CreatedCustomer,
+  Customer,
+  CustomerListResponse,
+  UpdateCustomerRequest,
+} from "./types";
 
-// Session-local mutable copy so mock mutations persist across calls
-const sessionData: CustomerMappingData = structuredClone(mockCustomerMappingData);
+let _store: Customer[] = [
+  {
+    id: "cus_001",
+    externalId: "acme",
+    stripeCustomerId: "cus_stripe_001",
+    status: "active",
+    minBalanceMicros: null,
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  } as Customer,
+];
 
-export async function getCustomerMapping(): Promise<CustomerMappingData> {
+export async function listCustomers(): Promise<CustomerListResponse> {
   await mockDelay();
-  return structuredClone(sessionData);
+  return { data: _store, hasMore: false, nextCursor: null };
 }
 
-export async function updateMapping(
-  customerId: string,
-  sdkIdentifier: string,
-): Promise<void> {
+export async function getCustomer(id: string): Promise<Customer> {
   await mockDelay();
-  const customer = sessionData.customers.find((c) => c.id === customerId);
-  if (!customer) throw new Error(`Customer ${customerId} not found`);
-  const wasUnmapped = !customer.sdkIdentifier;
-  customer.sdkIdentifier = sdkIdentifier;
-  if (wasUnmapped) {
-    customer.status = "idle";
-    customer.events30d = 0;
-    sessionData.stats.mapped += 1;
-    sessionData.stats.unmapped -= 1;
-  }
+  const found = _store.find((c) => c.id === id);
+  if (!found) throw new Error("not found");
+  return found;
 }
 
-export async function assignOrphan(
-  orphanId: string,
-  stripeCustomerId: string,
-): Promise<void> {
+export async function createCustomer(
+  req: CreateCustomerRequest,
+): Promise<CreatedCustomer> {
   await mockDelay();
-  const idx = sessionData.orphanedIdentifiers.findIndex(
-    (o) => o.id === orphanId,
-  );
-  if (idx === -1) throw new Error(`Orphan ${orphanId} not found`);
-  const orphan = sessionData.orphanedIdentifiers[idx]!;
-  sessionData.stats.orphanedEvents -= orphan.eventCount;
-  sessionData.stats.orphanedIdentifiers -= 1;
-  sessionData.orphanedIdentifiers.splice(idx, 1);
-  // Create mapping: associate orphan's SDK identifier with the Stripe customer
-  const customer = sessionData.customers.find(
-    (c) => c.stripeCustomerId === stripeCustomerId,
-  );
-  if (customer && !customer.sdkIdentifier) {
-    customer.sdkIdentifier = orphan.sdkIdentifier;
-    customer.status = "idle";
-    sessionData.stats.mapped += 1;
-    sessionData.stats.unmapped -= 1;
-  }
+  const created: Customer = {
+    id: `cus_${Math.random().toString(36).slice(2, 8)}`,
+    externalId: req.externalId,
+    stripeCustomerId: req.stripeCustomerId ?? "",
+    status: "active",
+    minBalanceMicros: null,
+    metadata: req.metadata ?? {},
+    createdAt: new Date().toISOString(),
+  } as Customer;
+  _store.push(created);
+  return {
+    id: created.id,
+    externalId: created.externalId,
+    stripeCustomerId: created.stripeCustomerId ?? "",
+    status: created.status,
+  };
 }
 
-export async function dismissOrphans(): Promise<void> {
+export async function updateCustomer(
+  id: string,
+  req: UpdateCustomerRequest,
+): Promise<Customer> {
   await mockDelay();
-  sessionData.stats.orphanedEvents = 0;
-  sessionData.stats.orphanedIdentifiers = 0;
-  sessionData.orphanedIdentifiers = [];
+  const idx = _store.findIndex((c) => c.id === id);
+  if (idx < 0) throw new Error("not found");
+  _store[idx] = {
+    ...(_store[idx] as Customer),
+    ...(req.status != null ? { status: req.status } : {}),
+    ...(req.stripeCustomerId != null
+      ? { stripeCustomerId: req.stripeCustomerId }
+      : {}),
+    ...(req.minBalanceMicros !== undefined
+      ? { minBalanceMicros: req.minBalanceMicros }
+      : {}),
+    ...(req.metadata != null ? { metadata: req.metadata } : {}),
+  } as Customer;
+  return _store[idx] as Customer;
 }
 
-export async function triggerSync(): Promise<void> {
-  await mockDelay(1200);
-  sessionData.syncStatus.lastSyncAt = new Date().toISOString();
+export async function deleteCustomer(id: string): Promise<void> {
+  await mockDelay();
+  _store = _store.filter((c) => c.id !== id);
 }

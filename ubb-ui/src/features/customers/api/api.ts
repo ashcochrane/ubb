@@ -1,36 +1,59 @@
 // src/features/customers/api/api.ts
-import type { CustomerMappingData } from "./types";
 import { platformApi } from "@/api/client";
+import type {
+  CreateCustomerRequest,
+  CreatedCustomer,
+  Customer,
+  CustomerListResponse,
+  UpdateCustomerRequest,
+} from "./types";
 
-export async function getCustomerMapping(): Promise<CustomerMappingData> {
-  const { data } = await platformApi.GET("/customers/mapping", {});
-  return data as CustomerMappingData;
+export async function listCustomers(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CustomerListResponse> {
+  const { data, error } = await platformApi.GET("/customers", {
+    params: { query: params },
+  });
+  if (error || !data) throw error ?? new Error("Failed to list customers");
+  return data;
 }
 
-export async function updateMapping(
+export async function getCustomer(customerId: string): Promise<Customer> {
+  const { data, error } = await platformApi.GET("/customers/{customer_id}", {
+    params: { path: { customer_id: customerId } },
+  });
+  if (error || !data) throw error ?? new Error("Failed to load customer");
+  return data;
+}
+
+export async function createCustomer(
+  req: CreateCustomerRequest,
+): Promise<CreatedCustomer> {
+  const { data, error } = await platformApi.POST("/customers", {
+    body: req,
+  });
+  if (error || !data) {
+    throw error ?? new Error("Create customer failed");
+  }
+  return data;
+}
+
+export async function updateCustomer(
   customerId: string,
-  sdkIdentifier: string,
-): Promise<void> {
-  await platformApi.PUT("/customers/mapping/{customerId}", {
-    params: { path: { customerId } },
-    body: { sdkIdentifier },
+  req: UpdateCustomerRequest,
+): Promise<Customer> {
+  const { data, error } = await platformApi.PATCH("/customers/{customer_id}", {
+    params: { path: { customer_id: customerId } },
+    body: req,
   });
+  if (error || !data) throw error ?? new Error("Failed to update customer");
+  return data;
 }
 
-export async function assignOrphan(
-  orphanId: string,
-  stripeCustomerId: string,
-): Promise<void> {
-  await platformApi.POST("/customers/orphans/{orphanId}/assign", {
-    params: { path: { orphanId } },
-    body: { stripeCustomerId },
+export async function deleteCustomer(customerId: string): Promise<void> {
+  const { error } = await platformApi.DELETE("/customers/{customer_id}", {
+    params: { path: { customer_id: customerId } },
   });
-}
-
-export async function dismissOrphans(): Promise<void> {
-  await platformApi.DELETE("/customers/orphans", {});
-}
-
-export async function triggerSync(): Promise<void> {
-  await platformApi.POST("/customers/sync", {});
+  if (error) throw error;
 }

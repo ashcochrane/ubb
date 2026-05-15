@@ -1,1 +1,1068 @@
-{"openapi": "3.1.0", "info": {"title": "NinjaAPI", "version": "1.0.0", "description": ""}, "paths": {"/api/v1/billing/customers/{customer_id}/balance": {"get": {"operationId": "api_v1_billing_endpoints_get_balance", "summary": "Get Balance", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BalanceResponse"}}}}}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/debit": {"post": {"operationId": "api_v1_billing_endpoints_debit", "summary": "Debit", "parameters": [], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DebitCreditResponse"}}}}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/DebitRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/credit": {"post": {"operationId": "api_v1_billing_endpoints_credit", "summary": "Credit", "parameters": [], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DebitCreditResponse"}}}}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreditRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/customers/{customer_id}/auto-top-up": {"put": {"operationId": "api_v1_billing_endpoints_configure_auto_top_up", "summary": "Configure Auto Top Up", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}], "responses": {"200": {"description": "OK"}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigureAutoTopUpRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/customers/{customer_id}/top-up": {"post": {"operationId": "api_v1_billing_endpoints_create_top_up", "summary": "Create Top Up", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}], "responses": {"200": {"description": "OK"}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateTopUpRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/customers/{customer_id}/withdraw": {"post": {"operationId": "api_v1_billing_endpoints_withdraw", "summary": "Withdraw", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}], "responses": {"200": {"description": "OK"}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/WithdrawRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/pre-check": {"post": {"operationId": "api_v1_billing_endpoints_pre_check", "summary": "Pre Check", "parameters": [], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PreCheckResponse"}}}}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/PreCheckRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/customers/{customer_id}/refund": {"post": {"operationId": "api_v1_billing_endpoints_refund_usage", "summary": "Refund Usage", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}], "responses": {"200": {"description": "OK"}}, "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefundRequest"}}}, "required": true}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/customers/{customer_id}/transactions": {"get": {"operationId": "api_v1_billing_endpoints_get_transactions", "summary": "Get Transactions", "parameters": [{"in": "path", "name": "customer_id", "schema": {"title": "Customer Id", "type": "string"}, "required": true}, {"in": "query", "name": "cursor", "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Cursor"}, "required": false}, {"in": "query", "name": "limit", "schema": {"default": 50, "title": "Limit", "type": "integer"}, "required": false}], "responses": {"200": {"description": "OK"}}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/tenant/billing-periods": {"get": {"operationId": "api_v1_billing_endpoints_list_billing_periods", "summary": "List Billing Periods", "parameters": [{"in": "query", "name": "cursor", "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Cursor"}, "required": false}, {"in": "query", "name": "limit", "schema": {"default": 50, "title": "Limit", "type": "integer"}, "required": false}], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TenantBillingPeriodListResponse"}}}}}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/tenant/invoices": {"get": {"operationId": "api_v1_billing_endpoints_list_invoices", "summary": "List Invoices", "parameters": [{"in": "query", "name": "cursor", "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Cursor"}, "required": false}, {"in": "query", "name": "limit", "schema": {"default": 50, "title": "Limit", "type": "integer"}, "required": false}], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TenantInvoiceListResponse"}}}}}, "security": [{"ApiKeyAuth": []}]}}, "/api/v1/billing/analytics/revenue": {"get": {"operationId": "api_v1_billing_endpoints_revenue_analytics", "summary": "Revenue Analytics", "parameters": [{"in": "query", "name": "start_date", "schema": {"anyOf": [{"format": "date", "type": "string"}, {"type": "null"}], "title": "Start Date"}, "required": false}, {"in": "query", "name": "end_date", "schema": {"anyOf": [{"format": "date", "type": "string"}, {"type": "null"}], "title": "End Date"}, "required": false}], "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RevenueAnalyticsResponse"}}}}}, "security": [{"ApiKeyAuth": []}]}}}, "components": {"schemas": {"BalanceResponse": {"properties": {"balanceMicros": {"title": "Balancemicros", "type": "integer"}, "currency": {"title": "Currency", "type": "string"}}, "required": ["balanceMicros", "currency"], "title": "BalanceResponse", "type": "object"}, "DebitCreditResponse": {"properties": {"newBalanceMicros": {"title": "Newbalancemicros", "type": "integer"}, "transactionId": {"title": "Transactionid", "type": "string"}}, "required": ["newBalanceMicros", "transactionId"], "title": "DebitCreditResponse", "type": "object"}, "DebitRequest": {"properties": {"customerId": {"maxLength": 255, "minLength": 1, "title": "Customerid", "type": "string"}, "amountMicros": {"exclusiveMinimum": 0, "maximum": 999999999999, "title": "Amountmicros", "type": "integer"}, "reference": {"maxLength": 500, "minLength": 1, "title": "Reference", "type": "string"}, "idempotencyKey": {"anyOf": [{"maxLength": 500, "type": "string"}, {"type": "null"}], "title": "Idempotencykey"}}, "required": ["customerId", "amountMicros", "reference"], "title": "DebitRequest", "type": "object"}, "CreditRequest": {"properties": {"customerId": {"maxLength": 255, "minLength": 1, "title": "Customerid", "type": "string"}, "amountMicros": {"exclusiveMinimum": 0, "maximum": 999999999999, "title": "Amountmicros", "type": "integer"}, "source": {"maxLength": 255, "minLength": 1, "title": "Source", "type": "string"}, "reference": {"maxLength": 500, "minLength": 1, "title": "Reference", "type": "string"}, "idempotencyKey": {"anyOf": [{"maxLength": 500, "type": "string"}, {"type": "null"}], "title": "Idempotencykey"}}, "required": ["customerId", "amountMicros", "source", "reference"], "title": "CreditRequest", "type": "object"}, "ConfigureAutoTopUpRequest": {"properties": {"isEnabled": {"title": "Isenabled", "type": "boolean"}, "triggerThresholdMicros": {"minimum": 0, "title": "Triggerthresholdmicros", "type": "integer"}, "topUpAmountMicros": {"exclusiveMinimum": 0, "title": "Topupamountmicros", "type": "integer"}}, "required": ["isEnabled", "triggerThresholdMicros", "topUpAmountMicros"], "title": "ConfigureAutoTopUpRequest", "type": "object"}, "CreateTopUpRequest": {"properties": {"amountMicros": {"exclusiveMinimum": 0, "title": "Amountmicros", "type": "integer"}, "successUrl": {"minLength": 1, "title": "Successurl", "type": "string"}, "cancelUrl": {"minLength": 1, "title": "Cancelurl", "type": "string"}}, "required": ["amountMicros", "successUrl", "cancelUrl"], "title": "CreateTopUpRequest", "type": "object"}, "WithdrawRequest": {"properties": {"amountMicros": {"exclusiveMinimum": 0, "title": "Amountmicros", "type": "integer"}, "idempotencyKey": {"maxLength": 500, "minLength": 1, "title": "Idempotencykey", "type": "string"}, "description": {"default": "", "title": "Description", "type": "string"}}, "required": ["amountMicros", "idempotencyKey"], "title": "WithdrawRequest", "type": "object"}, "PreCheckResponse": {"properties": {"allowed": {"title": "Allowed", "type": "boolean"}, "reason": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Reason"}, "balanceMicros": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Balancemicros"}, "runId": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Runid"}, "costLimitMicros": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Costlimitmicros"}, "hardStopBalanceMicros": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Hardstopbalancemicros"}}, "required": ["allowed"], "title": "PreCheckResponse", "type": "object"}, "PreCheckRequest": {"properties": {"customerId": {"format": "uuid", "title": "Customerid", "type": "string"}, "startRun": {"default": false, "title": "Startrun", "type": "boolean"}, "runMetadata": {"anyOf": [{"additionalProperties": true, "type": "object"}, {"type": "null"}], "title": "Runmetadata"}, "externalRunId": {"default": "", "title": "Externalrunid", "type": "string"}}, "required": ["customerId"], "title": "PreCheckRequest", "type": "object"}, "RefundRequest": {"properties": {"usageEventId": {"format": "uuid", "title": "Usageeventid", "type": "string"}, "reason": {"default": "", "title": "Reason", "type": "string"}, "idempotencyKey": {"maxLength": 500, "minLength": 1, "title": "Idempotencykey", "type": "string"}}, "required": ["usageEventId", "idempotencyKey"], "title": "RefundRequest", "type": "object"}, "TenantBillingPeriodListResponse": {"properties": {"data": {"items": {"$ref": "#/components/schemas/TenantBillingPeriodOut"}, "title": "Data", "type": "array"}, "nextCursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Nextcursor"}, "hasMore": {"title": "Hasmore", "type": "boolean"}}, "required": ["data", "hasMore"], "title": "TenantBillingPeriodListResponse", "type": "object"}, "TenantBillingPeriodOut": {"properties": {"id": {"title": "Id", "type": "string"}, "periodStart": {"title": "Periodstart", "type": "string"}, "periodEnd": {"title": "Periodend", "type": "string"}, "status": {"title": "Status", "type": "string"}, "totalUsageCostMicros": {"title": "Totalusagecostmicros", "type": "integer"}, "eventCount": {"title": "Eventcount", "type": "integer"}, "platformFeeMicros": {"title": "Platformfeemicros", "type": "integer"}}, "required": ["id", "periodStart", "periodEnd", "status", "totalUsageCostMicros", "eventCount", "platformFeeMicros"], "title": "TenantBillingPeriodOut", "type": "object"}, "TenantInvoiceListResponse": {"properties": {"data": {"items": {"$ref": "#/components/schemas/TenantInvoiceOut"}, "title": "Data", "type": "array"}, "nextCursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Nextcursor"}, "hasMore": {"title": "Hasmore", "type": "boolean"}}, "required": ["data", "hasMore"], "title": "TenantInvoiceListResponse", "type": "object"}, "TenantInvoiceOut": {"properties": {"id": {"title": "Id", "type": "string"}, "billingPeriodId": {"title": "Billingperiodid", "type": "string"}, "stripeInvoiceId": {"title": "Stripeinvoiceid", "type": "string"}, "totalAmountMicros": {"title": "Totalamountmicros", "type": "integer"}, "status": {"title": "Status", "type": "string"}, "createdAt": {"title": "Createdat", "type": "string"}}, "required": ["id", "billingPeriodId", "stripeInvoiceId", "totalAmountMicros", "status", "createdAt"], "title": "TenantInvoiceOut", "type": "object"}, "RevenueAnalyticsResponse": {"properties": {"totalProviderCostMicros": {"title": "Totalprovidercostmicros", "type": "integer"}, "totalBilledCostMicros": {"title": "Totalbilledcostmicros", "type": "integer"}, "totalMarkupMicros": {"title": "Totalmarkupmicros", "type": "integer"}, "daily": {"items": {"additionalProperties": true, "type": "object"}, "title": "Daily", "type": "array"}}, "required": ["totalProviderCostMicros", "totalBilledCostMicros", "totalMarkupMicros", "daily"], "title": "RevenueAnalyticsResponse", "type": "object"}}, "securitySchemes": {"ApiKeyAuth": {"type": "http", "scheme": "bearer"}}}, "servers": []}
+{
+  "components": {
+    "schemas": {
+      "BalanceResponse": {
+        "properties": {
+          "balanceMicros": {
+            "title": "Balancemicros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "balanceMicros",
+          "currency"
+        ],
+        "title": "BalanceResponse",
+        "type": "object"
+      },
+      "ConfigureAutoTopUpRequest": {
+        "properties": {
+          "isEnabled": {
+            "title": "Isenabled",
+            "type": "boolean"
+          },
+          "topUpAmountMicros": {
+            "exclusiveMinimum": 0,
+            "title": "Topupamountmicros",
+            "type": "integer"
+          },
+          "triggerThresholdMicros": {
+            "minimum": 0,
+            "title": "Triggerthresholdmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "isEnabled",
+          "triggerThresholdMicros",
+          "topUpAmountMicros"
+        ],
+        "title": "ConfigureAutoTopUpRequest",
+        "type": "object"
+      },
+      "CreateTopUpRequest": {
+        "properties": {
+          "amountMicros": {
+            "exclusiveMinimum": 0,
+            "title": "Amountmicros",
+            "type": "integer"
+          },
+          "cancelUrl": {
+            "minLength": 1,
+            "title": "Cancelurl",
+            "type": "string"
+          },
+          "successUrl": {
+            "minLength": 1,
+            "title": "Successurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amountMicros",
+          "successUrl",
+          "cancelUrl"
+        ],
+        "title": "CreateTopUpRequest",
+        "type": "object"
+      },
+      "CreditRequest": {
+        "properties": {
+          "amountMicros": {
+            "exclusiveMinimum": 0,
+            "maximum": 999999999999,
+            "title": "Amountmicros",
+            "type": "integer"
+          },
+          "customerId": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Customerid",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotencykey"
+          },
+          "reference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId",
+          "amountMicros",
+          "source",
+          "reference"
+        ],
+        "title": "CreditRequest",
+        "type": "object"
+      },
+      "DebitCreditResponse": {
+        "properties": {
+          "newBalanceMicros": {
+            "title": "Newbalancemicros",
+            "type": "integer"
+          },
+          "transactionId": {
+            "title": "Transactionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "newBalanceMicros",
+          "transactionId"
+        ],
+        "title": "DebitCreditResponse",
+        "type": "object"
+      },
+      "DebitRequest": {
+        "properties": {
+          "amountMicros": {
+            "exclusiveMinimum": 0,
+            "maximum": 999999999999,
+            "title": "Amountmicros",
+            "type": "integer"
+          },
+          "customerId": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Customerid",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotencykey"
+          },
+          "reference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId",
+          "amountMicros",
+          "reference"
+        ],
+        "title": "DebitRequest",
+        "type": "object"
+      },
+      "PreCheckRequest": {
+        "properties": {
+          "customerId": {
+            "format": "uuid",
+            "title": "Customerid",
+            "type": "string"
+          },
+          "externalRunId": {
+            "default": "",
+            "title": "Externalrunid",
+            "type": "string"
+          },
+          "runMetadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runmetadata"
+          },
+          "startRun": {
+            "default": false,
+            "title": "Startrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "customerId"
+        ],
+        "title": "PreCheckRequest",
+        "type": "object"
+      },
+      "PreCheckResponse": {
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "balanceMicros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balancemicros"
+          },
+          "costLimitMicros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costlimitmicros"
+          },
+          "hardStopBalanceMicros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardstopbalancemicros"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          }
+        },
+        "required": [
+          "allowed"
+        ],
+        "title": "PreCheckResponse",
+        "type": "object"
+      },
+      "RefundRequest": {
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "usageEventId": {
+            "format": "uuid",
+            "title": "Usageeventid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usageEventId",
+          "idempotencyKey"
+        ],
+        "title": "RefundRequest",
+        "type": "object"
+      },
+      "RevenueAnalyticsResponse": {
+        "properties": {
+          "daily": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "totalBilledCostMicros": {
+            "title": "Totalbilledcostmicros",
+            "type": "integer"
+          },
+          "totalMarkupMicros": {
+            "title": "Totalmarkupmicros",
+            "type": "integer"
+          },
+          "totalProviderCostMicros": {
+            "title": "Totalprovidercostmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalProviderCostMicros",
+          "totalBilledCostMicros",
+          "totalMarkupMicros",
+          "daily"
+        ],
+        "title": "RevenueAnalyticsResponse",
+        "type": "object"
+      },
+      "TenantBillingPeriodListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantBillingPeriodOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "data",
+          "hasMore"
+        ],
+        "title": "TenantBillingPeriodListResponse",
+        "type": "object"
+      },
+      "TenantBillingPeriodOut": {
+        "properties": {
+          "eventCount": {
+            "title": "Eventcount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "periodEnd": {
+            "title": "Periodend",
+            "type": "string"
+          },
+          "periodStart": {
+            "title": "Periodstart",
+            "type": "string"
+          },
+          "platformFeeMicros": {
+            "title": "Platformfeemicros",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "totalUsageCostMicros": {
+            "title": "Totalusagecostmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "periodStart",
+          "periodEnd",
+          "status",
+          "totalUsageCostMicros",
+          "eventCount",
+          "platformFeeMicros"
+        ],
+        "title": "TenantBillingPeriodOut",
+        "type": "object"
+      },
+      "TenantInvoiceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantInvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "data",
+          "hasMore"
+        ],
+        "title": "TenantInvoiceListResponse",
+        "type": "object"
+      },
+      "TenantInvoiceOut": {
+        "properties": {
+          "billingPeriodId": {
+            "title": "Billingperiodid",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stripeInvoiceId": {
+            "title": "Stripeinvoiceid",
+            "type": "string"
+          },
+          "totalAmountMicros": {
+            "title": "Totalamountmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "billingPeriodId",
+          "stripeInvoiceId",
+          "totalAmountMicros",
+          "status",
+          "createdAt"
+        ],
+        "title": "TenantInvoiceOut",
+        "type": "object"
+      },
+      "WithdrawRequest": {
+        "properties": {
+          "amountMicros": {
+            "exclusiveMinimum": 0,
+            "title": "Amountmicros",
+            "type": "integer"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amountMicros",
+          "idempotencyKey"
+        ],
+        "title": "WithdrawRequest",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "ClerkJWTAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "title": "NinjaAPI",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/analytics/revenue": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_revenue_analytics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueAnalyticsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Revenue Analytics"
+      }
+    },
+    "/credit": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_credit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebitCreditResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Credit"
+      }
+    },
+    "/customers/{customer_id}/auto-top-up": {
+      "put": {
+        "operationId": "api_v1_billing_endpoints_configure_auto_top_up",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureAutoTopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Configure Auto Top Up"
+      }
+    },
+    "/customers/{customer_id}/balance": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_get_balance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Get Balance"
+      }
+    },
+    "/customers/{customer_id}/refund": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_refund_usage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Refund Usage"
+      }
+    },
+    "/customers/{customer_id}/top-up": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_create_top_up",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Create Top Up"
+      }
+    },
+    "/customers/{customer_id}/transactions": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_get_transactions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Get Transactions"
+      }
+    },
+    "/customers/{customer_id}/withdraw": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_withdraw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Withdraw"
+      }
+    },
+    "/debit": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_debit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebitCreditResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Debit"
+      }
+    },
+    "/pre-check": {
+      "post": {
+        "operationId": "api_v1_billing_endpoints_pre_check",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreCheckResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "Pre Check"
+      }
+    },
+    "/tenant/billing-periods": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_list_billing_periods",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantBillingPeriodListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "List Billing Periods"
+      }
+    },
+    "/tenant/invoices": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_list_invoices",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantInvoiceListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "ClerkJWTAuth": []
+          }
+        ],
+        "summary": "List Invoices"
+      }
+    }
+  },
+  "servers": []
+}
