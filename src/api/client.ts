@@ -1,5 +1,11 @@
 import createClient, { type Middleware } from "openapi-fetch";
 
+import type { paths as BillingPaths } from "./generated/billing";
+import type { paths as MeteringPaths } from "./generated/metering";
+import type { paths as MePaths } from "./generated/me";
+import type { paths as PlatformPaths } from "./generated/platform";
+import type { paths as TenantPaths } from "./generated/tenant";
+
 let _getToken: (() => Promise<string | null>) | null = null;
 
 /**
@@ -23,16 +29,16 @@ const authMiddleware: Middleware = {
   },
 };
 
-function createApiClient(basePath: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = createClient<any>({
+function createApiClient<Paths extends {}>(basePath: string) {
+  const client = createClient<Paths>({
     baseUrl: `${import.meta.env.VITE_API_URL || ""}${basePath}`,
   });
   client.use(authMiddleware);
   return client;
 }
 
-export const platformApi = createApiClient("/api/v1/platform");
-export const meteringApi = createApiClient("/api/v1/metering");
-export const billingApi = createApiClient("/api/v1/billing");
-export const tenantApi = createApiClient("/api/v1/tenant");
+export const platformApi = createApiClient<PlatformPaths>("/api/v1/platform");
+export const meteringApi = createApiClient<MeteringPaths>("/api/v1/metering");
+export const billingApi = createApiClient<BillingPaths>("/api/v1/billing");
+export const tenantApi = createApiClient<TenantPaths>("/api/v1/tenant");
+export const meApi = createApiClient<MePaths>("/api/v1/me");
