@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   Users,
   CreditCard,
-  Package,
   DollarSign,
   Download,
   Settings,
@@ -36,7 +35,6 @@ export const navSections: NavSection[] = [
     items: [
       { title: "Events", url: "/events", icon: Activity },
       { title: "Pricing Cards", url: "/pricing-cards", icon: CreditCard },
-      { title: "Products", url: "/products", icon: Package },
     ],
   },
   {

@@ -1,5 +1,4 @@
 import { createLazyFileRoute } from "@tanstack/react-router";
-import { OnboardingLayout } from "@/features/onboarding/components/onboarding-layout";
 import { OnboardingWizard } from "@/features/onboarding/components/onboarding-wizard";
 
 export const Route = createLazyFileRoute("/onboarding")({
@@ -8,8 +7,10 @@ export const Route = createLazyFileRoute("/onboarding")({
 
 function OnboardingPage() {
   return (
-    <OnboardingLayout>
-      <OnboardingWizard />
-    </OnboardingLayout>
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="w-full max-w-md px-4">
+        <OnboardingWizard />
+      </div>
+    </div>
   );
 }

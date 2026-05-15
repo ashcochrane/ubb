@@ -1,45 +1,50 @@
-// src/features/events/api/types.ts
-
 export interface UsageEvent {
   id: string;
-  timestamp: string; // ISO date-time
-  customerKey: string;
-  groupKey: string; // empty = ungrouped
-  cardKey: string;
-  dimension: string;
-  quantity: number;
-  unitPrice: number; // dollars per unit (e.g. 0.00000015)
-  cost: number; // quantity * unitPrice in dollars
+  effectiveAt: string;
+  customerId: string;
+  customerExternalId: string;
+  group: string | null;
+  cardId: string | null;
+  cardSlug: string | null;
+  cardName: string | null;
+  provider: string;
+  usageMetrics: Record<string, number>;
+  providerCostMicros: number | null;
+  billedCostMicros: number | null;
 }
 
 export interface StagedEvent {
-  timestamp: string; // "YYYY-MM-DD" or ISO
-  customerKey: string;
-  groupKey: string;
-  cardKey: string;
-  dimension: string;
-  quantity: number;
+  // UI-only: backend sets effective_at via auto_now_add; this is for staging display only
+  effectiveAt: string;
+  customerExternalId: string;
+  group: string;
+  pricingCard: string;  // was: cardSlug — backend expects pricing_card (camelCase: pricingCard)
+  usageMetrics: Record<string, number>;
+  idempotencyKey?: string;
 }
 
 export interface ValidationError {
-  field: "timestamp" | "customerKey" | "cardKey" | "dimension" | "quantity";
+  field: "effectiveAt" | "customerExternalId" | "pricingCard" | "usageMetrics" | "quantity";
   message: string;
-  warning?: boolean; // true = warning only, false = hard error
+  warning?: boolean;
 }
 
 export interface EventFilters {
-  dateFrom: string;
-  dateTo: string;
-  customerKey: string; // empty = all
-  groupKey: string; // empty = all, "(ungrouped)" = ungrouped only
-  cardKey: string; // empty = all
+  dateFrom?: string;
+  dateTo?: string;
+  customerId?: string;
+  group?: string | null; // null = filter to ungrouped events only
+  cardSlug?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface EventsListResponse {
   events: UsageEvent[];
   totalCount: number;
-  totalCostDollars: number;
-  estimatedCsvBytes: number;
+  totalCostMicros: number;
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export interface FilterOption {
@@ -47,31 +52,34 @@ export interface FilterOption {
   eventCount: number;
 }
 
+export interface DimensionPriceInfo {
+  costPerUnitMicros: number;
+  unitQuantity: number;
+  pricingType: string;
+}
+
 export interface EventFilterOptions {
   customers: FilterOption[];
   groups: FilterOption[];
   cards: FilterOption[];
   ungroupedCount: number;
-  /** Map of cardKey -> dimension keys available on that card */
-  cardDimensions: Record<string, string[]>;
-  /** Map of dimension -> unit price in dollars */
-  dimensionPrices: Record<string, number>;
+  cardDimensions: Record<string, string[]>; // cardSlug -> [metricName]
+  dimensionPrices: Record<string, DimensionPriceInfo>;  // metricName -> price info object
 }
 
-export type AuditAction = "added" | "edited" | "reversed";
+export type AuditAction = "added" | "reversed";
 
 export interface AuditEntry {
   id: string;
   action: AuditAction;
-  title: string;
-  reason?: string;
+  reason: string;
   rowCount: number;
   author: string;
-  date: string; // ISO
-  reversedDate?: string; // ISO, only if reversed
+  createdAt: string;
+  reversedAt: string | null;
 }
 
 export interface PushResult {
   pushedCount: number;
-  auditEntryId: string;
+  batchId: string;
 }

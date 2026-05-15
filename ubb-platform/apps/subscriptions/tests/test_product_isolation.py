@@ -78,9 +78,8 @@ class TestSubscriptionsProductIsolation(TestCase):
         card = Card.objects.create(
             tenant=tenant,
             name="Test Card",
+            slug="test_card",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -95,8 +94,7 @@ class TestSubscriptionsProductIsolation(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req-isolation-1",
                 "idempotency_key": "idem-isolation-1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",

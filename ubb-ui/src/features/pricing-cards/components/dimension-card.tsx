@@ -15,18 +15,18 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
   const [collapsed, setCollapsed] = useState(false);
   const { register, watch, setValue } = useFormContext<WizardFormValues>();
 
-  const key = watch(`dimensions.${index}.key`);
-  const type = watch(`dimensions.${index}.type`);
-  const price = watch(`dimensions.${index}.price`);
-  const isDuplicate = key ? duplicateKeys.has(key) : false;
+  const metricName = watch(`dimensions.${index}.metricName`);
+  const pricingType = watch(`dimensions.${index}.pricingType`);
+  const costPerUnitMicros = watch(`dimensions.${index}.costPerUnitMicros`);
+  const isDuplicate = metricName ? duplicateKeys.has(metricName) : false;
 
   return (
     <div className="rounded-md border border-border bg-bg-surface px-4 py-3 transition-colors hover:border-border-mid">
       <div className="flex items-center justify-between">
         <div className="text-[12px] font-medium">
           Dimension {index + 1}
-          {collapsed && key && (
-            <span className="ml-2 font-mono text-muted-foreground">{key}</span>
+          {collapsed && metricName && (
+            <span className="ml-2 font-mono text-muted-foreground">{metricName}</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -46,9 +46,9 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <div>
-              <label className="mb-1 block text-muted font-medium">Metric key</label>
+              <label className="mb-1 block text-muted font-medium">Metric name</label>
               <input
-                {...register(`dimensions.${index}.key`)}
+                {...register(`dimensions.${index}.metricName`)}
                 placeholder="e.g. input_tokens"
                 className={cn(
                   "w-full rounded-lg border bg-background px-3 py-1.5 font-mono text-[12px] outline-none focus:border-muted-foreground",
@@ -56,7 +56,7 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
                 )}
               />
               {isDuplicate && (
-                <p className="mt-0.5 text-muted text-red">(duplicate key!)</p>
+                <p className="mt-0.5 text-muted text-red">(duplicate metric name!)</p>
               )}
               <p className="mt-0.5 text-muted text-muted-foreground">
                 Must match the key your SDK sends.
@@ -67,20 +67,20 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
               <div className="flex rounded-lg border border-border">
                 <button
                   type="button"
-                  onClick={() => setValue(`dimensions.${index}.type`, "per_unit")}
+                  onClick={() => setValue(`dimensions.${index}.pricingType`, "per_unit")}
                   className={cn(
                     "px-3 py-1.5 text-label transition-colors",
-                    type === "per_unit" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
+                    pricingType === "per_unit" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
                   )}
                 >
                   Per unit
                 </button>
                 <button
                   type="button"
-                  onClick={() => setValue(`dimensions.${index}.type`, "flat")}
+                  onClick={() => setValue(`dimensions.${index}.pricingType`, "flat")}
                   className={cn(
                     "px-3 py-1.5 text-label transition-colors",
-                    type === "flat" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
+                    pricingType === "flat" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent",
                   )}
                 >
                   Flat
@@ -89,29 +89,61 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-muted font-medium">Unit price ($)</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-muted font-medium">Your cost (micros)</label>
               <input
                 type="number"
-                step="any"
-                {...register(`dimensions.${index}.price`, { valueAsNumber: true })}
-                placeholder="0.00000010"
-                className="w-full rounded-lg border border-border bg-background py-1.5 pl-7 pr-3 font-mono text-[12px] outline-none focus:border-muted-foreground"
+                step="1"
+                min="0"
+                {...register(`dimensions.${index}.costPerUnitMicros`, { valueAsNumber: true })}
+                placeholder="e.g. 100"
+                className="w-full rounded-lg border border-border bg-background py-1.5 px-3 font-mono text-[12px] outline-none focus:border-muted-foreground"
               />
+              <p className="mt-0.5 text-muted text-muted-foreground">
+                {pricingType === "per_unit" ? "Price per single unit." : "Fixed cost each time this fires."}
+                {costPerUnitMicros > 0 && (
+                  <> ({(costPerUnitMicros / 1_000_000).toFixed(8).replace(/0+$/, "").replace(/\.$/, "")} USD)</>
+                )}
+              </p>
+              {pricingType === "per_unit" && costPerUnitMicros > 1_000 && (
+                <div className="mt-1 rounded-md bg-amber-light px-2 py-1 text-muted text-amber-text">
+                  This seems high for a per-unit price. Double-check.
+                </div>
+              )}
             </div>
-            <p className="mt-0.5 text-muted text-muted-foreground">
-              {type === "per_unit" ? "Price per single unit." : "Fixed cost each time this fires."}
-            </p>
-            {type === "per_unit" && price > 0.001 && (
-              <div className="mt-1 rounded-md bg-amber-light px-2 py-1 text-muted text-amber-text">
-                This seems high for a per-unit price. Double-check.
-              </div>
-            )}
+
+            <div>
+              <label className="mb-1 block text-muted font-medium">Provider cost (micros)</label>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                {...register(`dimensions.${index}.providerCostPerUnitMicros`, {
+                  setValueAs: (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+                })}
+                placeholder="optional"
+                className="w-full rounded-lg border border-border bg-background py-1.5 px-3 font-mono text-[12px] outline-none focus:border-muted-foreground"
+              />
+              <p className="mt-0.5 text-muted text-muted-foreground">
+                What the provider charges you. Used for margin display.
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1 block text-muted font-medium">Unit quantity</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                {...register(`dimensions.${index}.unitQuantity`, { valueAsNumber: true })}
+                placeholder="1"
+                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-[12px] outline-none focus:border-muted-foreground"
+              />
+              <p className="mt-0.5 text-muted text-muted-foreground">e.g. 1000000 for "per 1M"</p>
+            </div>
             <div>
               <label className="mb-1 block text-muted font-medium">Display label</label>
               <input
@@ -128,15 +160,16 @@ export function DimensionCard({ index, onRemove, onDuplicate, duplicateKeys }: D
                 className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-[12px] outline-none focus:border-muted-foreground"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-muted font-medium">Display price</label>
-              <input
-                {...register(`dimensions.${index}.displayPrice`)}
-                placeholder="e.g. $0.10"
-                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-[12px] outline-none focus:border-muted-foreground"
-              />
-              <p className="mt-0.5 text-muted text-muted-foreground">Auto-calculated if blank.</p>
-            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-muted font-medium">Currency</label>
+            <input
+              {...register(`dimensions.${index}.currency`)}
+              placeholder="USD"
+              maxLength={3}
+              className="w-32 rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-[12px] outline-none focus:border-muted-foreground"
+            />
           </div>
         </div>
       )}

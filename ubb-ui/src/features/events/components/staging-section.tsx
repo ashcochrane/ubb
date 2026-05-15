@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, X, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatCostMicros } from "@/lib/format";
 import type { EventFilterOptions, StagedEvent, ValidationError } from "../api/types";
 
 interface StagingSectionProps {
@@ -16,19 +17,31 @@ interface StagingSectionProps {
   pushResult: string | null;
 }
 
+/** Extract the single metric name from usageMetrics (one-metric-per-row strategy). */
+function getMetric(ev: StagedEvent): string {
+  return Object.keys(ev.usageMetrics)[0] ?? "";
+}
+
+/** Extract the single quantity from usageMetrics. */
+function getQty(ev: StagedEvent): number {
+  return Object.values(ev.usageMetrics)[0] ?? 0;
+}
+
 function validate(r: StagedEvent, opts: EventFilterOptions): ValidationError[] {
   const e: ValidationError[] = [];
-  if (!r.timestamp) e.push({ field: "timestamp", message: "Date required" });
-  if (!r.customerKey) e.push({ field: "customerKey", message: "Customer required" });
-  else if (!opts.customers.some((c) => c.key === r.customerKey))
-    e.push({ field: "customerKey", message: `Unknown: ${r.customerKey}`, warning: true });
-  if (!r.cardKey) e.push({ field: "cardKey", message: "Card required" });
-  else if (!opts.cards.some((c) => c.key === r.cardKey))
-    e.push({ field: "cardKey", message: `Unknown card: ${r.cardKey}` });
-  if (!r.dimension) e.push({ field: "dimension", message: "Dimension required" });
-  else if (r.cardKey && opts.cardDimensions[r.cardKey] && !opts.cardDimensions[r.cardKey]!.includes(r.dimension))
-    e.push({ field: "dimension", message: `${r.dimension} not on ${r.cardKey}` });
-  if (!r.quantity || r.quantity <= 0) e.push({ field: "quantity", message: "Qty must be > 0" });
+  if (!r.effectiveAt) e.push({ field: "effectiveAt", message: "Date required" });
+  if (!r.customerExternalId) e.push({ field: "customerExternalId", message: "Customer required" });
+  else if (!opts.customers.some((c) => c.key === r.customerExternalId))
+    e.push({ field: "customerExternalId", message: `Unknown: ${r.customerExternalId}`, warning: true });
+  if (!r.pricingCard) e.push({ field: "pricingCard", message: "Card required" });
+  else if (!opts.cards.some((c) => c.key === r.pricingCard))
+    e.push({ field: "pricingCard", message: `Unknown card: ${r.pricingCard}` });
+  const metric = getMetric(r);
+  if (!metric) e.push({ field: "usageMetrics", message: "Metric required" });
+  else if (r.pricingCard && opts.cardDimensions[r.pricingCard] && !opts.cardDimensions[r.pricingCard]!.includes(metric))
+    e.push({ field: "usageMetrics", message: `${metric} not on ${r.pricingCard}` });
+  const qty = getQty(r);
+  if (!qty || qty <= 0) e.push({ field: "quantity", message: "Qty must be > 0" });
   return e;
 }
 
@@ -75,26 +88,52 @@ export function StagingSection({
   isPushing,
   pushResult,
 }: StagingSectionProps) {
-  const [editingCell, setEditingCell] = useState<{ row: number; field: keyof StagedEvent } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ row: number; field: string } | null>(null);
 
   const allValidations = events.map((ev) => validate(ev, filterOptions));
   const errorCount = allValidations.filter((v) => v.some((e) => !e.warning)).length;
   const canPush = events.length > 0 && errorCount === 0 && reason.trim().length > 0;
 
-  let totalCost = 0;
+  // Estimated total cost from staging grid (in micros)
+  let totalCostMicros = 0;
   for (const ev of events) {
-    const up = filterOptions.dimensionPrices[ev.dimension] ?? 0;
-    totalCost += ev.quantity * up;
+    for (const [metricName, qty] of Object.entries(ev.usageMetrics)) {
+      const priceInfo = filterOptions.dimensionPrices[metricName];
+      const unitCost = priceInfo ? priceInfo.costPerUnitMicros / priceInfo.unitQuantity : 0;
+      totalCostMicros += qty * unitCost;
+    }
   }
 
   function updateEvent(idx: number, partial: Partial<StagedEvent>) {
     const updated = [...events];
     updated[idx] = { ...updated[idx]!, ...partial };
-    if ("cardKey" in partial && partial.cardKey) {
-      const dims = filterOptions.cardDimensions[partial.cardKey];
-      updated[idx]!.dimension = dims?.length === 1 ? dims[0]! : "";
-    }
     onEventsChange(updated);
+  }
+
+  /** Update the metric name (key) in usageMetrics, preserving the quantity. */
+  function updateMetric(idx: number, newMetric: string) {
+    const ev = events[idx]!;
+    const qty = getQty(ev);
+    const newMetrics: Record<string, number> = newMetric ? { [newMetric]: qty } : {};
+    updateEvent(idx, { usageMetrics: newMetrics });
+  }
+
+  /** Update the quantity in usageMetrics, preserving the metric name. */
+  function updateQty(idx: number, qty: number) {
+    const ev = events[idx]!;
+    const metric = getMetric(ev);
+    const newMetrics: Record<string, number> = metric ? { [metric]: qty } : {};
+    updateEvent(idx, { usageMetrics: newMetrics });
+  }
+
+  /** When card changes, auto-select the first dimension if only one exists. */
+  function updateCard(idx: number, pricingCard: string) {
+    const dims = filterOptions.cardDimensions[pricingCard] ?? [];
+    const currentMetric = getMetric(events[idx]!);
+    const qty = getQty(events[idx]!);
+    const newMetric = dims.length === 1 ? dims[0]! : (dims.includes(currentMetric) ? currentMetric : "");
+    const newMetrics: Record<string, number> = newMetric ? { [newMetric]: qty } : {};
+    updateEvent(idx, { pricingCard, usageMetrics: newMetrics });
   }
 
   function removeEvent(idx: number) {
@@ -140,10 +179,10 @@ export function StagingSection({
 
       {/* Table */}
       <div className="max-h-[220px] overflow-auto">
-        <table className="w-full min-w-[780px] border-collapse text-[10px]">
+        <table className="w-full min-w-[720px] border-collapse text-[10px]">
           <thead>
             <tr>
-              {["", "TIME", "CUSTOMER", "GROUP", "CARD", "DIMENSION", "QTY", "UNIT PRICE", "COST", ""].map((h, i) => (
+              {["", "TIME", "CUSTOMER", "GROUP", "CARD", "METRIC", "QTY", "EST. COST", ""].map((h, i) => (
                 <th key={i} className={cn(
                   "sticky top-0 z-[2] border-b border-border bg-bg-subtle p-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-text-muted",
                   i === 0 && "w-[22px]",
@@ -151,11 +190,10 @@ export function StagingSection({
                   i === 2 && "w-[82px] text-left",
                   i === 3 && "w-[82px] text-left",
                   i === 4 && "w-[82px] text-left",
-                  i === 5 && "w-[78px] text-left",
+                  i === 5 && "w-[90px] text-left",
                   i === 6 && "w-[50px] text-right",
                   i === 7 && "w-[80px] text-right",
-                  i === 8 && "w-[56px] text-right",
-                  i === 9 && "w-[24px]",
+                  i === 8 && "w-[24px]",
                 )}>
                   {h}
                 </th>
@@ -165,94 +203,101 @@ export function StagingSection({
           <tbody>
             {events.map((ev, i) => {
               const errors = allValidations[i]!;
-              const up = filterOptions.dimensionPrices[ev.dimension] ?? 0;
-              const cost = ev.quantity * up;
-              const upStr = up ? up.toFixed(10).replace(/0+$/, "").replace(/\.$/, ".0") : "\u2014";
-              const costStr = up && ev.quantity ? `$${cost.toFixed(6)}` : "\u2014";
+              const metric = getMetric(ev);
+              const qty = getQty(ev);
+              const priceInfo = filterOptions.dimensionPrices[metric];
+              const unitCost = priceInfo ? priceInfo.costPerUnitMicros / priceInfo.unitQuantity : 0;
+              const estCostMicros = qty * unitCost;
+              const costStr = estCostMicros > 0 ? formatCostMicros(Math.round(estCostMicros)) : "\u2014";
               const isEditing = editingCell?.row === i;
 
               return (
                 <tr key={i} className="border-b border-bg-subtle last:border-0 hover:bg-bg-page">
                   <td className="p-1 text-center"><ValidationIcon errors={errors} /></td>
-                  <td className={cn("p-1", editCell, cellOutline(errors, "timestamp"))}>
-                    {isEditing && editingCell.field === "timestamp" ? (
-                      <input type="date" defaultValue={ev.timestamp} autoFocus className={cn(inputClass, "font-mono")}
-                        onBlur={(e) => { updateEvent(i, { timestamp: e.target.value }); setEditingCell(null); }}
+                  {/* effectiveAt */}
+                  <td className={cn("p-1", editCell, cellOutline(errors, "effectiveAt"))}>
+                    {isEditing && editingCell.field === "effectiveAt" ? (
+                      <input type="date" defaultValue={ev.effectiveAt} autoFocus className={cn(inputClass, "font-mono")}
+                        onBlur={(e) => { updateEvent(i, { effectiveAt: e.target.value }); setEditingCell(null); }}
                         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
                     ) : (
-                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "timestamp" })}>
-                        {ev.timestamp || <span className="font-sans italic text-amber-text">set date</span>}
+                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "effectiveAt" })}>
+                        {ev.effectiveAt || <span className="font-sans italic text-amber-text">set date</span>}
                       </span>
                     )}
                   </td>
-                  <td className={cn("p-1", editCell, cellOutline(errors, "customerKey"))}>
-                    {isEditing && editingCell.field === "customerKey" ? (
-                      <select defaultValue={ev.customerKey} autoFocus className={inputClass}
-                        onBlur={(e) => { updateEvent(i, { customerKey: e.target.value }); setEditingCell(null); }}
-                        onChange={(e) => { updateEvent(i, { customerKey: e.target.value }); setEditingCell(null); }}>
+                  {/* customerExternalId */}
+                  <td className={cn("p-1", editCell, cellOutline(errors, "customerExternalId"))}>
+                    {isEditing && editingCell.field === "customerExternalId" ? (
+                      <select defaultValue={ev.customerExternalId} autoFocus className={inputClass}
+                        onBlur={(e) => { updateEvent(i, { customerExternalId: e.target.value }); setEditingCell(null); }}
+                        onChange={(e) => { updateEvent(i, { customerExternalId: e.target.value }); setEditingCell(null); }}>
                         <option value="">Select...</option>
                         {filterOptions.customers.map((c) => <option key={c.key} value={c.key}>{c.key}</option>)}
                       </select>
                     ) : (
-                      <span className="font-medium text-accent-text" onClick={() => setEditingCell({ row: i, field: "customerKey" })}>
-                        {ev.customerKey || <span className="font-normal italic text-amber-text">set customer</span>}
+                      <span className="font-medium text-accent-text" onClick={() => setEditingCell({ row: i, field: "customerExternalId" })}>
+                        {ev.customerExternalId || <span className="font-normal italic text-amber-text">set customer</span>}
                       </span>
                     )}
                   </td>
+                  {/* group */}
                   <td className={cn("p-1", editCell)}>
-                    {isEditing && editingCell.field === "groupKey" ? (
-                      <select defaultValue={ev.groupKey} autoFocus className={inputClass}
-                        onBlur={(e) => { updateEvent(i, { groupKey: e.target.value }); setEditingCell(null); }}
-                        onChange={(e) => { updateEvent(i, { groupKey: e.target.value }); setEditingCell(null); }}>
+                    {isEditing && editingCell.field === "group" ? (
+                      <select defaultValue={ev.group} autoFocus className={inputClass}
+                        onBlur={(e) => { updateEvent(i, { group: e.target.value }); setEditingCell(null); }}
+                        onChange={(e) => { updateEvent(i, { group: e.target.value }); setEditingCell(null); }}>
                         <option value="">(none)</option>
                         {filterOptions.groups.map((g) => <option key={g.key} value={g.key}>{g.key}</option>)}
                       </select>
                     ) : (
-                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "groupKey" })}>
-                        {ev.groupKey || <span className="text-text-muted">&mdash;</span>}
+                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "group" })}>
+                        {ev.group || <span className="text-text-muted">&mdash;</span>}
                       </span>
                     )}
                   </td>
-                  <td className={cn("p-1", editCell, cellOutline(errors, "cardKey"))}>
-                    {isEditing && editingCell.field === "cardKey" ? (
-                      <select defaultValue={ev.cardKey} autoFocus className={inputClass}
-                        onBlur={(e) => { updateEvent(i, { cardKey: e.target.value }); setEditingCell(null); }}
-                        onChange={(e) => { updateEvent(i, { cardKey: e.target.value }); setEditingCell(null); }}>
+                  {/* pricingCard */}
+                  <td className={cn("p-1", editCell, cellOutline(errors, "pricingCard"))}>
+                    {isEditing && editingCell.field === "pricingCard" ? (
+                      <select defaultValue={ev.pricingCard} autoFocus className={inputClass}
+                        onBlur={(e) => { updateCard(i, e.target.value); setEditingCell(null); }}
+                        onChange={(e) => { updateCard(i, e.target.value); setEditingCell(null); }}>
                         <option value="">Select...</option>
                         {filterOptions.cards.map((c) => <option key={c.key} value={c.key}>{c.key}</option>)}
                       </select>
                     ) : (
-                      <span className="text-accent-text" onClick={() => setEditingCell({ row: i, field: "cardKey" })}>
-                        {ev.cardKey}
+                      <span className="text-accent-text" onClick={() => setEditingCell({ row: i, field: "pricingCard" })}>
+                        {ev.pricingCard || <span className="italic text-amber-text">set card</span>}
                       </span>
                     )}
                   </td>
-                  <td className={cn("p-1", editCell, cellOutline(errors, "dimension"))}>
-                    {isEditing && editingCell.field === "dimension" ? (
-                      <select defaultValue={ev.dimension} autoFocus className={inputClass}
-                        onBlur={(e) => { updateEvent(i, { dimension: e.target.value }); setEditingCell(null); }}
-                        onChange={(e) => { updateEvent(i, { dimension: e.target.value }); setEditingCell(null); }}>
+                  {/* metric (from usageMetrics key) */}
+                  <td className={cn("p-1", editCell, cellOutline(errors, "usageMetrics"))}>
+                    {isEditing && editingCell.field === "metric" ? (
+                      <select defaultValue={metric} autoFocus className={inputClass}
+                        onBlur={(e) => { updateMetric(i, e.target.value); setEditingCell(null); }}
+                        onChange={(e) => { updateMetric(i, e.target.value); setEditingCell(null); }}>
                         <option value="">Select...</option>
-                        {(filterOptions.cardDimensions[ev.cardKey] ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
+                        {(filterOptions.cardDimensions[ev.pricingCard] ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
                       </select>
                     ) : (
-                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "dimension" })}>
-                        {ev.dimension}
+                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "metric" })}>
+                        {metric || <span className="italic text-amber-text">set metric</span>}
                       </span>
                     )}
                   </td>
+                  {/* qty (from usageMetrics value) */}
                   <td className={cn("p-1 text-right", editCell, cellOutline(errors, "quantity"))}>
-                    {isEditing && editingCell.field === "quantity" ? (
-                      <input type="number" defaultValue={ev.quantity} autoFocus className={cn(inputClass, "text-right font-mono")}
-                        onBlur={(e) => { updateEvent(i, { quantity: parseFloat(e.target.value) || 0 }); setEditingCell(null); }}
+                    {isEditing && editingCell.field === "qty" ? (
+                      <input type="number" defaultValue={qty} autoFocus className={cn(inputClass, "text-right font-mono")}
+                        onBlur={(e) => { updateQty(i, parseFloat(e.target.value) || 0); setEditingCell(null); }}
                         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
                     ) : (
-                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "quantity" })}>
-                        {ev.quantity.toLocaleString()}
+                      <span className="font-mono text-accent-text" onClick={() => setEditingCell({ row: i, field: "qty" })}>
+                        {qty.toLocaleString()}
                       </span>
                     )}
                   </td>
-                  <td className="p-1 text-right font-mono text-[9px] text-text-muted">{upStr}</td>
                   <td className="p-1 text-right font-mono font-medium">{costStr}</td>
                   <td className="p-1 text-center">
                     <button className="text-text-muted hover:text-red-text" onClick={() => removeEvent(i)}>
@@ -277,7 +322,7 @@ export function StagingSection({
           />
           {events.length > 0 && (
             <span className="font-mono text-[10px] text-text-muted">
-              Total: ${totalCost.toFixed(4)}
+              Est. total: {formatCostMicros(Math.round(totalCostMicros))}
             </span>
           )}
         </div>

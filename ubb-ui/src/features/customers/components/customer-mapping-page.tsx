@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useCustomerMapping } from "../api/queries";
 import type { CustomerFilterKey } from "../api/types";
 import { SyncStatusBar } from "./sync-status-bar";
@@ -12,7 +12,7 @@ import { CustomerTable } from "./customer-table";
 import { OrphanedEventsSection } from "./orphaned-events-section";
 
 export function CustomerMappingPage() {
-  const tenantMode = useAuthStore((s) => s.tenantMode);
+  const { tenantMode } = useAuth();
   const { data, isLoading } = useCustomerMapping();
   const [activeFilter, setActiveFilter] = useState<CustomerFilterKey>("all");
   const [searchQuery, setSearchQuery] = useState("");

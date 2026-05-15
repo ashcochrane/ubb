@@ -27,7 +27,7 @@ class GroupEndpointTest(TestCase):
         body = response.json()
         self.assertEqual(body["name"], "Property Search")
         self.assertEqual(body["slug"], "property_search")
-        self.assertEqual(body["margin_pct"], 65.0)
+        self.assertEqual(body["marginPct"], 65.0)
 
     def test_create_group_duplicate_slug_returns_409(self):
         Group.objects.create(tenant=self.tenant, name="G1", slug="dup_slug")
@@ -55,7 +55,7 @@ class GroupEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json()["parent_id"], str(parent.id))
+        self.assertEqual(response.json()["parentId"], str(parent.id))
 
     def test_list_groups(self):
         Group.objects.create(tenant=self.tenant, name="G1", slug="g1")
@@ -96,7 +96,7 @@ class GroupEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["margin_pct"], 70.0)
+        self.assertEqual(response.json()["marginPct"], 70.0)
 
     def test_delete_group_archives(self):
         g = Group.objects.create(tenant=self.tenant, name="G1", slug="g1")

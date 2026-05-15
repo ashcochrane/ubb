@@ -106,13 +106,13 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         handled server-side via the billing outbox handler, NOT by the SDK."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_1", "billed_cost_micros": 1_500_000,
+                "eventId": "evt_1", "billedCostMicros": 1_500_000,
             }
         )
 
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
-            event_type="chat_completion", provider="openai",
+            pricing_card="gpt_4o",
             usage_metrics={"tokens": 100},
         )
         self.assertEqual(result.event_id, "evt_1")
@@ -133,12 +133,12 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=False)
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_2", "billed_cost_micros": 1_500_000,
+                "eventId": "evt_2", "billedCostMicros": 1_500_000,
             }
         )
         result = client.record_usage(
             customer_id="cust_1", request_id="r2", idempotency_key="i2",
-            event_type="chat_completion", provider="openai",
+            pricing_card="gpt_4o",
             usage_metrics={"tokens": 100},
         )
         self.assertEqual(result.event_id, "evt_2")
@@ -152,12 +152,12 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         """When billing is enabled but billed_cost is 0, no debit call."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_3", "billed_cost_micros": 0,
+                "eventId": "evt_3", "billedCostMicros": 0,
             }
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            event_type="test", provider="test",
+            pricing_card="test_card",
             usage_metrics={"tokens": 1},
         )
         self.assertEqual(result.event_id, "evt_3")
@@ -170,12 +170,12 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         """When billing is enabled but billed_cost is None, no debit call."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_4",
+                "eventId": "evt_4",
             }
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r4", idempotency_key="i4",
-            event_type="test", provider="test",
+            pricing_card="test_card",
             usage_metrics={"tokens": 1},
         )
         self.assertEqual(result.event_id, "evt_4")
@@ -187,7 +187,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=False, billing=True)
         with self.assertRaises(UBBError):
             client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
-                                event_type="test", provider="test", usage_metrics={"tokens": 1})
+                                pricing_card="test_card", usage_metrics={"tokens": 1})
         client.close()
 
 

@@ -57,13 +57,13 @@ class UBBClientTest(unittest.TestCase):
     def test_record_usage(self, mock_met_request):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_1",
-                "provider_cost_micros": 500_000, "billed_cost_micros": 1_500_000,
+                "eventId": "evt_1",
+                "providerCostMicros": 500_000, "billedCostMicros": 1_500_000,
             }
         )
         result = self.client.record_usage(
             customer_id="c1", request_id="r1", idempotency_key="i1",
-            event_type="chat_completion", provider="openai",
+            pricing_card="gpt_4o",
             usage_metrics={"tokens": 100},
         )
         self.assertEqual(result.event_id, "evt_1")

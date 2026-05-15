@@ -34,9 +34,8 @@ class TestMeteringOnlyTenant(TestCase):
         card = Card.objects.create(
             tenant=self.tenant,
             name="Test Card",
+            slug="test_card_met",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -53,8 +52,7 @@ class TestMeteringOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card_met",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
@@ -62,7 +60,7 @@ class TestMeteringOnlyTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("event_id", body)
+        self.assertIn("eventId", body)
 
     def test_can_get_usage_history_on_metering_endpoint(self):
         response = self.http_client.get(
@@ -72,7 +70,7 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
+        self.assertIn("hasMore", body)
 
     def test_gets_403_on_billing_balance(self):
         response = self.http_client.get(
@@ -133,7 +131,7 @@ class TestBillingOnlyTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("balance_micros", body)
+        self.assertIn("balanceMicros", body)
         self.assertIn("currency", body)
 
     def test_can_pre_check_on_billing_endpoint(self):
@@ -165,7 +163,7 @@ class TestBillingOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
+        self.assertIn("hasMore", body)
 
     def test_gets_403_on_metering_usage(self):
         response = self.http_client.post(
@@ -174,8 +172,7 @@ class TestBillingOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_2",
                 "idempotency_key": "idem_iso_2",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "some_card",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
@@ -211,9 +208,8 @@ class TestBothProductsTenant(TestCase):
         card = Card.objects.create(
             tenant=self.tenant,
             name="Test Card",
+            slug="test_card_both",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -230,8 +226,7 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card_both",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
@@ -253,7 +248,7 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["balance_micros"], 10_000_000)
+        self.assertEqual(body["balanceMicros"], 10_000_000)
 
     def test_can_pre_check_on_billing_endpoint(self):
         response = self.http_client.post(
@@ -285,8 +280,7 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card_both",
                 "usage_metrics": {"tokens": 2},
             }),
             content_type="application/json",
@@ -301,4 +295,4 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         balance_body = response.json()
-        self.assertEqual(balance_body["balance_micros"], 10_000_000)
+        self.assertEqual(balance_body["balanceMicros"], 10_000_000)

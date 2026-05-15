@@ -5,11 +5,11 @@ import { calculateCosts, calculateDistribution, projectCosts } from "../lib/calc
 
 const BAR_COLORS = ["#378ADD", "#7F77DD", "#D85A30", "#3B6D11", "#854F0B"];
 
-/** Wrapper that remounts the simulator when dimension keys change. */
+/** Wrapper that remounts the simulator when dimension metricNames change. */
 export function DryRunSimulator() {
   const { watch } = useFormContext<WizardFormValues>();
   const dimensions = watch("dimensions");
-  const keysStr = dimensions.map((d) => d.key).join(",");
+  const keysStr = dimensions.map((d) => d.metricName).join(",");
   return <DryRunSimulatorInner key={keysStr} />;
 }
 
@@ -19,7 +19,7 @@ function DryRunSimulatorInner() {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     for (const d of dimensions) {
-      init[d.key] = d.type === "flat" ? 1 : 1000;
+      init[d.metricName] = d.pricingType === "flat" ? 1 : 1000;
     }
     return init;
   });
@@ -30,8 +30,8 @@ function DryRunSimulatorInner() {
 
   const dominant = distribution.length > 0 && distribution[0]!.percentage > 90 ? distribution[0]! : null;
 
-  const setQty = (key: string, value: number) => {
-    setQuantities((prev) => ({ ...prev, [key]: value }));
+  const setQty = (metricName: string, value: number) => {
+    setQuantities((prev) => ({ ...prev, [metricName]: value }));
   };
 
   return (
@@ -50,17 +50,17 @@ function DryRunSimulatorInner() {
 
       <div className="space-y-1.5">
         {result.dimensions.map((d) => (
-          <div key={d.key} className="grid grid-cols-[130px_100px_1fr] items-center gap-2">
-            <span className="font-mono text-label text-muted-foreground">{d.key}</span>
+          <div key={d.metricName} className="grid grid-cols-[130px_100px_1fr] items-center gap-2">
+            <span className="font-mono text-label text-muted-foreground">{d.metricName}</span>
             <input
               type="number"
-              value={quantities[d.key] ?? ""}
-              onChange={(e) => setQty(d.key, Number(e.target.value) || 0)}
+              value={quantities[d.metricName] ?? ""}
+              onChange={(e) => setQty(d.metricName, Number(e.target.value) || 0)}
               className="rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-label outline-none focus:border-muted-foreground"
             />
             <span className="text-right font-mono text-label text-muted-foreground">
               {d.quantity > 0
-                ? `${d.quantity.toLocaleString()} × $${d.price} = $${d.cost.toFixed(6)}`
+                ? `${d.quantity.toLocaleString()} × $${d.priceDollars.toFixed(8).replace(/0+$/, "")} = $${d.cost.toFixed(6)}`
                 : "—"}
             </span>
           </div>
@@ -69,7 +69,7 @@ function DryRunSimulatorInner() {
 
       <div className="mt-3 border-t border-border pt-2 space-y-1">
         {result.dimensions.map((d) => (
-          <div key={d.key} className="flex justify-between text-label">
+          <div key={d.metricName} className="flex justify-between text-label">
             <span className="text-muted-foreground">{d.label}</span>
             <span className="font-mono font-medium">${d.cost.toFixed(6)}</span>
           </div>
@@ -93,7 +93,7 @@ function DryRunSimulatorInner() {
           <div className="flex h-2 overflow-hidden rounded-full">
             {distribution.map((d, i) => (
               <div
-                key={d.key}
+                key={d.metricName}
                 className="h-full"
                 style={{
                   width: `${Math.max(d.percentage, 0.3)}%`,
@@ -104,7 +104,7 @@ function DryRunSimulatorInner() {
           </div>
           <div className="mt-1 flex flex-wrap gap-3">
             {distribution.map((d, i) => (
-              <div key={d.key} className="flex items-center gap-1 text-muted text-muted-foreground">
+              <div key={d.metricName} className="flex items-center gap-1 text-muted text-muted-foreground">
                 <div className="h-2 w-2 rounded-full" style={{ backgroundColor: BAR_COLORS[i % BAR_COLORS.length] }} />
                 {d.label} {d.percentage.toFixed(1)}%
               </div>

@@ -28,6 +28,13 @@ class Tenant(BaseModel):
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
     group_label = models.CharField(max_length=100, default="Products", help_text="Display label for groups in the UI.")
+    default_margin_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text="UX default margin % for new cards. 0 = pass-through. Not used at runtime.",
+    )
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "ubb_tenant"

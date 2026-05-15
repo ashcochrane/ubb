@@ -25,9 +25,10 @@ export function PricingCardItem({ card }: PricingCardItemProps) {
           {card.status === "active" ? "Active" : "Draft"}
         </span>
       </div>
-      <div className="mt-1.5 font-mono text-muted text-muted-foreground">{card.cardId}</div>
+      <div className="mt-1.5 font-mono text-muted text-muted-foreground">{card.slug}</div>
       <div className="mt-1 text-muted text-muted-foreground">
-        {card.dimensions.length} dimension{card.dimensions.length !== 1 ? "s" : ""} · v{card.version}
+        {card.dimensions.length} dimension{card.dimensions.length !== 1 ? "s" : ""}
+        {card.groupName && <> · {card.groupName}</>}
       </div>
     </Link>
   );

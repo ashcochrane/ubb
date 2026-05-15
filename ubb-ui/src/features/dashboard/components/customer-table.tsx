@@ -1,10 +1,10 @@
 import { Download } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatEventCount } from "@/lib/format";
-import type { CustomerRow } from "../api/types";
+import { formatCostMicros, formatEventCount } from "@/lib/format";
+import type { DashboardCustomerRow } from "../api/types";
 
 interface CustomerTableProps {
-  customers: CustomerRow[];
+  customers: DashboardCustomerRow[];
   onExport?: () => void;
 }
 
@@ -29,7 +29,6 @@ export function CustomerTable({ customers, onExport }: CustomerTableProps) {
           <tr>
             <Th>Customer</Th>
             <Th align="right">Revenue</Th>
-            <Th align="center">Type</Th>
             <Th align="right">API costs</Th>
             <Th align="right">Margin</Th>
             <Th>Margin %</Th>
@@ -39,7 +38,7 @@ export function CustomerTable({ customers, onExport }: CustomerTableProps) {
         <tbody>
           {customers.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-6 py-10 text-center text-[13px] text-text-muted">
+              <td colSpan={6} className="px-6 py-10 text-center text-[13px] text-text-muted">
                 No customers in the current view.
               </td>
             </tr>
@@ -50,30 +49,27 @@ export function CustomerTable({ customers, onExport }: CustomerTableProps) {
                 className="border-b border-bg-subtle last:border-0 transition-colors hover:bg-bg-page"
               >
                 <Td>
-                  <div className="font-semibold">{c.name}</div>
+                  <div className="font-semibold">{c.externalId}</div>
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">{c.customerId}</div>
                 </Td>
                 <Td align="right" mono>
-                  ${c.revenue.toLocaleString()}
-                </Td>
-                <Td align="center">
-                  <TypeBadge type={c.revenueType} />
+                  {formatCostMicros(c.revenueMicros)}
                 </Td>
                 <Td align="right" mono>
-                  ${c.apiCosts.toLocaleString()}
+                  {formatCostMicros(c.apiCostsMicros)}
                 </Td>
                 <Td align="right" mono>
-                  <span className={cn(c.margin < 0 && "text-red")}>
-                    {c.margin < 0
-                      ? `−$${Math.abs(c.margin).toLocaleString()}`
-                      : `$${c.margin.toLocaleString()}`}
+                  <span className={cn(c.marginMicros < 0 && "text-red")}>
+                    {c.marginMicros < 0
+                      ? `−${formatCostMicros(Math.abs(c.marginMicros))}`
+                      : formatCostMicros(c.marginMicros)}
                   </span>
                 </Td>
                 <Td>
                   <MarginCell percentage={c.marginPercentage} />
                 </Td>
                 <Td align="right" mono className="text-text-muted">
-                  {formatEventCount(c.events)}
+                  {formatEventCount(c.eventCount)}
                 </Td>
               </tr>
             ))
@@ -128,21 +124,6 @@ function Td({
     >
       {children}
     </td>
-  );
-}
-
-function TypeBadge({ type }: { type: "Sub" | "Usage" }) {
-  return (
-    <span
-      className={cn(
-        "inline-block rounded-full px-2.5 py-[3px] text-[10px] font-semibold",
-        type === "Sub"
-          ? "bg-blue-light text-blue-text"
-          : "bg-amber-light text-amber-text",
-      )}
-    >
-      {type}
-    </span>
   );
 }
 

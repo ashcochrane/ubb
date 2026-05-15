@@ -14,7 +14,6 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
-import { Route as AppProductsIndexRouteImport } from './routes/_app/products/index'
 import { Route as AppPricingCardsIndexRouteImport } from './routes/_app/pricing-cards/index'
 import { Route as AppExportIndexRouteImport } from './routes/_app/export/index'
 import { Route as AppEventsIndexRouteImport } from './routes/_app/events/index'
@@ -45,11 +44,6 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProductsIndexRoute = AppProductsIndexRouteImport.update({
-  id: '/products/',
-  path: '/products/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPricingCardsIndexRoute = AppPricingCardsIndexRouteImport.update({
@@ -105,7 +99,6 @@ export interface FileRoutesByFullPath {
   '/events/': typeof AppEventsIndexRoute
   '/export/': typeof AppExportIndexRoute
   '/pricing-cards/': typeof AppPricingCardsIndexRoute
-  '/products/': typeof AppProductsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -119,7 +112,6 @@ export interface FileRoutesByTo {
   '/events': typeof AppEventsIndexRoute
   '/export': typeof AppExportIndexRoute
   '/pricing-cards': typeof AppPricingCardsIndexRoute
-  '/products': typeof AppProductsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -135,7 +127,6 @@ export interface FileRoutesById {
   '/_app/events/': typeof AppEventsIndexRoute
   '/_app/export/': typeof AppExportIndexRoute
   '/_app/pricing-cards/': typeof AppPricingCardsIndexRoute
-  '/_app/products/': typeof AppProductsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -151,7 +142,6 @@ export interface FileRouteTypes {
     | '/events/'
     | '/export/'
     | '/pricing-cards/'
-    | '/products/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -165,7 +155,6 @@ export interface FileRouteTypes {
     | '/events'
     | '/export'
     | '/pricing-cards'
-    | '/products'
     | '/settings'
   id:
     | '__root__'
@@ -180,7 +169,6 @@ export interface FileRouteTypes {
     | '/_app/events/'
     | '/_app/export/'
     | '/_app/pricing-cards/'
-    | '/_app/products/'
     | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -225,13 +213,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof AppSettingsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/products/': {
-      id: '/_app/products/'
-      path: '/products'
-      fullPath: '/products/'
-      preLoaderRoute: typeof AppProductsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/pricing-cards/': {
@@ -295,7 +276,6 @@ interface AppRouteChildren {
   AppEventsIndexRoute: typeof AppEventsIndexRoute
   AppExportIndexRoute: typeof AppExportIndexRoute
   AppPricingCardsIndexRoute: typeof AppPricingCardsIndexRoute
-  AppProductsIndexRoute: typeof AppProductsIndexRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -308,7 +288,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppEventsIndexRoute: AppEventsIndexRoute,
   AppExportIndexRoute: AppExportIndexRoute,
   AppPricingCardsIndexRoute: AppPricingCardsIndexRoute,
-  AppProductsIndexRoute: AppProductsIndexRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

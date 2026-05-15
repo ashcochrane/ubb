@@ -17,12 +17,15 @@ interface FilterStripProps {
 
 type OpenPopover = "date" | "cust" | "grp" | "card" | null;
 
-function formatDateRange(from: string, to: string): string {
+function formatDateRange(from: string | undefined, to: string | undefined): string {
+  if (!from && !to) return "All time";
   const fmt = (d: string) => {
     const dt = new Date(d + "T00:00:00");
     return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   };
-  return `${fmt(from)} \u2014 ${fmt(to)}`;
+  if (from && to) return `${fmt(from)} \u2014 ${fmt(to)}`;
+  if (from) return `From ${fmt(from)}`;
+  return `To ${fmt(to!)}`;
 }
 
 export function FilterStrip({
@@ -55,10 +58,10 @@ export function FilterStrip({
     setAnchorRect(null);
   }, []);
 
-  const hasAnyFilter = filters.customerKey || filters.groupKey || filters.cardKey;
+  const hasAnyFilter = filters.customerId || filters.group !== undefined || filters.cardSlug;
 
   function clearAll() {
-    onFiltersChange({ ...filters, customerKey: "", groupKey: "", cardKey: "" });
+    onFiltersChange({ ...filters, customerId: undefined, group: undefined, cardSlug: undefined });
   }
 
   const pillBase =
@@ -89,14 +92,14 @@ export function FilterStrip({
       <button
         className={cn(
           pillBase,
-          filters.customerKey ? "border-accent-border" : "border-border-mid",
+          filters.customerId ? "border-accent-border" : "border-border-mid",
         )}
         onClick={(e) => openPopover("cust", e.currentTarget)}
       >
         <div className="leading-tight">
           <div className="text-[9px] font-bold uppercase tracking-[0.06em] text-text-muted">Customer</div>
-          <div className={cn("text-[11px]", filters.customerKey ? "font-medium text-accent-text" : "text-text-secondary")}>
-            {filters.customerKey || "All customers"}
+          <div className={cn("text-[11px]", filters.customerId ? "font-medium text-accent-text" : "text-text-secondary")}>
+            {filters.customerId || "All customers"}
           </div>
         </div>
         <ChevronDown className="h-2.5 w-2.5 text-text-muted" />
@@ -106,16 +109,16 @@ export function FilterStrip({
       <button
         className={cn(
           pillBase,
-          filters.groupKey ? "border-accent-border" : "border-border-mid",
+          filters.group !== undefined ? "border-accent-border" : "border-border-mid",
         )}
         onClick={(e) => openPopover("grp", e.currentTarget)}
       >
         <div className="leading-tight">
           <div className="text-[9px] font-bold uppercase tracking-[0.06em] text-text-muted">Group</div>
-          <div className={cn("text-[11px]", filters.groupKey ? "font-medium text-accent-text" : "text-text-secondary")}>
-            {filters.groupKey === "(ungrouped)"
+          <div className={cn("text-[11px]", filters.group !== undefined ? "font-medium text-accent-text" : "text-text-secondary")}>
+            {filters.group === null
               ? `Ungrouped (${filterOptions.ungroupedCount})`
-              : filters.groupKey || "All groups"}
+              : filters.group || "All groups"}
           </div>
         </div>
         <ChevronDown className="h-2.5 w-2.5 text-text-muted" />
@@ -125,14 +128,14 @@ export function FilterStrip({
       <button
         className={cn(
           pillBase,
-          filters.cardKey ? "border-accent-border" : "border-border-mid",
+          filters.cardSlug ? "border-accent-border" : "border-border-mid",
         )}
         onClick={(e) => openPopover("card", e.currentTarget)}
       >
         <div className="leading-tight">
           <div className="text-[9px] font-bold uppercase tracking-[0.06em] text-text-muted">Pricing card</div>
-          <div className={cn("text-[11px]", filters.cardKey ? "font-medium text-accent-text" : "text-text-secondary")}>
-            {filters.cardKey || "All cards"}
+          <div className={cn("text-[11px]", filters.cardSlug ? "font-medium text-accent-text" : "text-text-secondary")}>
+            {filters.cardSlug || "All cards"}
           </div>
         </div>
         <ChevronDown className="h-2.5 w-2.5 text-text-muted" />
@@ -144,7 +147,7 @@ export function FilterStrip({
       {filterOptions.ungroupedCount > 0 && (
         <button
           className="rounded-full border border-amber-border bg-amber-light px-3 py-1.5 text-[10px] font-medium text-amber-text"
-          onClick={() => onFiltersChange({ ...filters, groupKey: "(ungrouped)" })}
+          onClick={() => onFiltersChange({ ...filters, group: null })}
         >
           {filterOptions.ungroupedCount} ungrouped
         </button>
@@ -163,11 +166,11 @@ export function FilterStrip({
       {/* Popovers */}
       {openPop === "date" && (
         <DatePopover
-          dateFrom={filters.dateFrom}
-          dateTo={filters.dateTo}
+          dateFrom={filters.dateFrom ?? ""}
+          dateTo={filters.dateTo ?? ""}
           activePreset={datePreset}
           onApply={(from, to, preset) => {
-            onFiltersChange({ ...filters, dateFrom: from, dateTo: to });
+            onFiltersChange({ ...filters, dateFrom: from || undefined, dateTo: to || undefined });
             onDatePresetChange(preset);
             closePopover();
           }}
@@ -178,9 +181,9 @@ export function FilterStrip({
       {openPop === "cust" && (
         <FilterPopover
           items={filterOptions.customers}
-          selected={filters.customerKey}
+          selected={filters.customerId ?? ""}
           allLabel="All customers"
-          onPick={(k) => { onFiltersChange({ ...filters, customerKey: k }); closePopover(); }}
+          onPick={(k) => { onFiltersChange({ ...filters, customerId: k || undefined }); closePopover(); }}
           onClose={closePopover}
           anchorRect={anchorRect}
         />
@@ -191,9 +194,13 @@ export function FilterStrip({
             { key: "(ungrouped)", eventCount: filterOptions.ungroupedCount },
             ...filterOptions.groups,
           ]}
-          selected={filters.groupKey}
+          selected={filters.group === null ? "(ungrouped)" : (filters.group ?? "")}
           allLabel="All groups"
-          onPick={(k) => { onFiltersChange({ ...filters, groupKey: k }); closePopover(); }}
+          onPick={(k) => {
+            const group = k === "(ungrouped)" ? null : (k || undefined);
+            onFiltersChange({ ...filters, group });
+            closePopover();
+          }}
           onClose={closePopover}
           anchorRect={anchorRect}
         />
@@ -201,9 +208,9 @@ export function FilterStrip({
       {openPop === "card" && (
         <FilterPopover
           items={filterOptions.cards}
-          selected={filters.cardKey}
+          selected={filters.cardSlug ?? ""}
           allLabel="All cards"
-          onPick={(k) => { onFiltersChange({ ...filters, cardKey: k }); closePopover(); }}
+          onPick={(k) => { onFiltersChange({ ...filters, cardSlug: k || undefined }); closePopover(); }}
           onClose={closePopover}
           anchorRect={anchorRect}
         />

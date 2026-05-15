@@ -86,13 +86,16 @@ class ClerkJWTAuth(HttpBearer):
         if not clerk_user_id:
             return None
 
+        request.clerk_user_id = clerk_user_id
+
         try:
             tenant_user = TenantUser.objects.select_related("tenant").get(
                 clerk_user_id=clerk_user_id
             )
+            request.tenant = tenant_user.tenant
+            request.tenant_user = tenant_user
+            return tenant_user
         except TenantUser.DoesNotExist:
-            return None
-
-        request.tenant = tenant_user.tenant
-        request.tenant_user = tenant_user
-        return tenant_user
+            request.tenant = None
+            request.tenant_user = None
+            return clerk_user_id  # Truthy sentinel — valid JWT but no TenantUser yet

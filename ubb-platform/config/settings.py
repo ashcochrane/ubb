@@ -256,6 +256,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
 # Clerk (dashboard auth)
 CLERK_ISSUER_URL = os.environ.get("CLERK_ISSUER_URL", "")
+CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

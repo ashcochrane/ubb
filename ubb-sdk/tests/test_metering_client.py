@@ -20,12 +20,12 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "evt_1",
-            "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
+            "eventId": "evt_1",
+            "providerCostMicros": 500_000, "billedCostMicros": 1_000_000,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
-            event_type="chat_completion", provider="openai",
+            pricing_card="gpt_4o",
             usage_metrics={"input_tokens": 100, "output_tokens": 50},
         )
         self.assertIsInstance(result, RecordUsageResult)
@@ -39,12 +39,12 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_with_group(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "evt_3",
-            "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
+            "eventId": "evt_3",
+            "providerCostMicros": 500_000, "billedCostMicros": 1_000_000,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            event_type="chat_completion", provider="openai",
+            pricing_card="gpt_4o",
             usage_metrics={"tokens": 100},
             group="proj_1",
         )
@@ -57,12 +57,12 @@ class MeteringClientTest(unittest.TestCase):
     def test_get_usage(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
-                {"id": "e1", "request_id": "r1", "cost_micros": 10000,
-                 "event_type": "chat_completion", "provider": "openai",
-                 "effective_at": "2025-01-01T00:00:00Z"},
+                {"id": "e1", "requestId": "r1", "costMicros": 10000,
+                 "cardSlug": "gpt_4o", "cardName": "GPT-4o", "provider": "openai",
+                 "effectiveAt": "2025-01-01T00:00:00Z"},
             ],
-            "next_cursor": "cur_abc",
-            "has_more": True,
+            "nextCursor": "cur_abc",
+            "hasMore": True,
         })
         result = self.client.get_usage(customer_id="cust_1")
         self.assertIsInstance(result, PaginatedResponse)
@@ -70,6 +70,7 @@ class MeteringClientTest(unittest.TestCase):
         self.assertIsInstance(result.data[0], UsageEvent)
         self.assertTrue(result.has_more)
         self.assertEqual(result.next_cursor, "cur_abc")
+        self.assertEqual(result.data[0].card_slug, "gpt_4o")
         # Verify endpoint
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/customers/cust_1/usage")
@@ -77,7 +78,7 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.get")
     def test_get_usage_with_cursor_and_limit(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "data": [], "next_cursor": None, "has_more": False,
+            "data": [], "nextCursor": None, "hasMore": False,
         })
         self.client.get_usage(customer_id="cust_1", cursor="cur_xyz", limit=10)
         call_kwargs = mock_get.call_args
@@ -87,7 +88,7 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.get")
     def test_get_usage_with_group_filter(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "data": [], "next_cursor": None, "has_more": False,
+            "data": [], "nextCursor": None, "hasMore": False,
         })
         self.client.get_usage(customer_id="cust_1", group="proj_1")
         call_kwargs = mock_get.call_args
@@ -101,7 +102,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBAuthError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                event_type="test", provider="test", usage_metrics={"tokens": 1},
+                pricing_card="test_card", usage_metrics={"tokens": 1},
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -111,7 +112,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBAPIError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                event_type="test", provider="test", usage_metrics={"tokens": 1},
+                pricing_card="test_card", usage_metrics={"tokens": 1},
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -123,7 +124,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConflictError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                event_type="test", provider="test", usage_metrics={"tokens": 1},
+                pricing_card="test_card", usage_metrics={"tokens": 1},
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -132,7 +133,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                event_type="test", provider="test", usage_metrics={"tokens": 1},
+                pricing_card="test_card", usage_metrics={"tokens": 1},
             )
         self.assertIsNotNone(ctx.exception.original)
 
@@ -142,7 +143,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                event_type="test", provider="test", usage_metrics={"tokens": 1},
+                pricing_card="test_card", usage_metrics={"tokens": 1},
             )
         self.assertIn("Could not connect", str(ctx.exception))
 
@@ -160,6 +161,30 @@ class MeteringClientTest(unittest.TestCase):
         with patch.object(self.client._http, "close") as mock_close:
             self.client.close()
             mock_close.assert_called_once()
+
+
+    # ---- pricing_card replaces event_type + provider ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_sends_pricing_card(self, mock_post):
+        """Body should contain pricingCard (camelCase) and not eventType or event_type."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "eventId": "evt_5",
+            "providerCostMicros": 300_000, "billedCostMicros": 600_000,
+        })
+        result = self.client.record_usage(
+            customer_id="cust_1", request_id="r5", idempotency_key="i5",
+            pricing_card="gpt_4o",
+            usage_metrics={"input_tokens": 200, "output_tokens": 80},
+        )
+        self.assertIsInstance(result, RecordUsageResult)
+        self.assertEqual(result.event_id, "evt_5")
+        body = mock_post.call_args.kwargs["json"]
+        self.assertIn("pricingCard", body)
+        self.assertEqual(body["pricingCard"], "gpt_4o")
+        self.assertNotIn("eventType", body)
+        self.assertNotIn("event_type", body)
+        self.assertNotIn("provider", body)
 
 
 if __name__ == "__main__":

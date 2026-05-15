@@ -56,6 +56,13 @@ class GroupFieldTest(TestCase):
 
 
 class GroupPricingIntegrationTest(TestCase):
+    """Tests that group is stored on the event and that explicit Rate costs are used.
+
+    After Task 6/7, pricing is purely rate-based (no TenantMarkup margin resolver).
+    The `group` field is stored for grouping/analytics; it no longer changes billed cost.
+    Explicit dual costs (provider vs billed) are set directly on Rate.
+    """
+
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
@@ -64,53 +71,49 @@ class GroupPricingIntegrationTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
-        from apps.metering.pricing.models import Card, Rate, TenantMarkup
-        card = Card.objects.create(
+        from apps.metering.pricing.models import Card, Rate
+        self.card = Card.objects.create(
             tenant=self.tenant,
             name="Test Card",
+            slug="test_card",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
-            card=card,
+            card=self.card,
             metric_name="requests",
-            cost_per_unit_micros=1_000_000,
+            cost_per_unit_micros=2_500_000,
+            provider_cost_per_unit_micros=1_000_000,
             unit_quantity=1,
-        )
-        TenantMarkup.objects.create(tenant=self.tenant, margin_pct=30)
-        from apps.platform.groups.models import Group
-        Group.objects.create(
-            tenant=self.tenant, name="Premium", slug="premium", margin_pct=60,
         )
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_group_affects_billed_cost(self, mock_process):
+    def test_group_stored_on_event_and_costs_from_rate(self, mock_process):
+        """group is stored on the event; billed/provider costs come from Rate."""
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_gp1",
             idempotency_key="idem_gp1",
-            event_type="test_event",
-            provider="test_provider",
+            pricing_card="test_card",
             usage_metrics={"requests": 1},
             group="premium",
         )
-        # 60% margin: $1.00 / 0.40 = $2.50
+        # Costs come from Rate directly (no margin resolver)
         self.assertEqual(result["billed_cost_micros"], 2_500_000)
         self.assertEqual(result["provider_cost_micros"], 1_000_000)
+        event = UsageEvent.objects.get(id=result["event_id"])
+        self.assertEqual(event.group, "premium")
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_no_group_uses_default_margin(self, mock_process):
+    def test_no_group_uses_rate_costs(self, mock_process):
+        """Without a group, costs are still from Rate (no default margin applied)."""
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_gp2",
             idempotency_key="idem_gp2",
-            event_type="test_event",
-            provider="test_provider",
+            pricing_card="test_card",
             usage_metrics={"requests": 1},
         )
-        from decimal import Decimal
-        expected = int(Decimal("1000000") / Decimal("0.70"))
-        self.assertEqual(result["billed_cost_micros"], expected)
+        self.assertEqual(result["billed_cost_micros"], 2_500_000)
+        self.assertEqual(result["provider_cost_micros"], 1_000_000)

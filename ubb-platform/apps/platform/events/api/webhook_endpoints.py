@@ -2,6 +2,7 @@ from ninja import NinjaAPI, Schema, Field
 from ninja.errors import HttpError
 
 from core.auth import ApiKeyAuth
+from core.clerk_auth import ClerkJWTAuth
 from core.url_validation import validate_webhook_url
 from apps.platform.events.webhook_models import TenantWebhookConfig
 
@@ -21,7 +22,7 @@ class WebhookConfigResponse(Schema):
     created_at: str
 
 
-webhook_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_webhooks_v1")
+webhook_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_webhooks_v1")
 
 
 @webhook_api.post("/configs", response={201: WebhookConfigResponse})

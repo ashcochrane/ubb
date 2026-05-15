@@ -1,3 +1,7 @@
+from decimal import Decimal
+
+import pytest
+from django.db import IntegrityError
 from django.test import TestCase
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -53,3 +57,22 @@ class TenantProductsFieldTest(TestCase):
         tenant.refresh_from_db()
         # Products are sorted alphabetically on save
         self.assertEqual(tenant.products, ["billing", "metering"])
+
+
+@pytest.mark.django_db
+class TestTenantDefaultMargin:
+    def test_defaults_to_zero(self):
+        tenant = Tenant.objects.create(name="Acme", products=["metering"])
+        assert tenant.default_margin_pct == Decimal("0.00")
+
+    def test_accepts_percentage(self):
+        tenant = Tenant.objects.create(
+            name="Acme", products=["metering"], default_margin_pct=Decimal("25.00"),
+        )
+        tenant.refresh_from_db()
+        assert tenant.default_margin_pct == Decimal("25.00")
+
+
+def test_tenant_onboarding_completed_at_defaults_to_none(db):
+    tenant = Tenant.objects.create(name="t", products=["metering"])
+    assert tenant.onboarding_completed_at is None

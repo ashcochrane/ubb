@@ -1,5 +1,5 @@
-"""Verify auth boundaries: Clerk JWT works on platform API,
-but is rejected on machine-to-machine APIs (metering, billing, etc.)."""
+"""Verify dual auth: both Clerk JWT (dashboard) and API key (machine) are
+accepted on all tenant-facing APIs."""
 import json
 import pytest
 from unittest.mock import patch
@@ -50,7 +50,7 @@ class TestDualAuthOnPlatformAPI:
 
 
 @pytest.mark.django_db
-class TestClerkJWTRejectedOnMachineAPIs:
+class TestClerkJWTAcceptedOnProductAPIs:
     def setup_method(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -58,24 +58,29 @@ class TestClerkJWTRejectedOnMachineAPIs:
         )
         TenantUser.objects.create(
             tenant=self.tenant,
-            clerk_user_id="user_blocked",
-            email="blocked@test.com",
+            clerk_user_id="user_dashboard",
+            email="dashboard@test.com",
         )
 
     @patch("core.clerk_auth.verify_clerk_token")
-    def test_clerk_jwt_rejected_on_metering_api(self, mock_verify):
-        mock_verify.return_value = {"sub": "user_blocked"}
+    def test_clerk_jwt_accepted_on_metering_api(self, mock_verify):
+        mock_verify.return_value = {"sub": "user_dashboard"}
         resp = self.http_client.get(
             "/api/v1/metering/pricing/cards",
             HTTP_AUTHORIZATION="Bearer fake.jwt.token",
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 200
 
     @patch("core.clerk_auth.verify_clerk_token")
-    def test_clerk_jwt_rejected_on_billing_api(self, mock_verify):
-        mock_verify.return_value = {"sub": "user_blocked"}
+    def test_clerk_jwt_accepted_on_billing_api(self, mock_verify):
+        mock_verify.return_value = {"sub": "user_dashboard"}
         resp = self.http_client.get(
             "/api/v1/billing/customers/00000000-0000-0000-0000-000000000000/balance",
             HTTP_AUTHORIZATION="Bearer fake.jwt.token",
         )
+        # Auth succeeded — endpoint returns 404 for missing customer, not 401
+        assert resp.status_code == 404
+
+    def test_no_auth_returns_401_on_metering(self):
+        resp = self.http_client.get("/api/v1/metering/pricing/cards")
         assert resp.status_code == 401

@@ -27,8 +27,9 @@ from apps.subscriptions.api.schemas import (
 from apps.subscriptions.economics.services import EconomicsService
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from core.auth import ApiKeyAuth, ProductAccess
+from core.clerk_auth import ClerkJWTAuth
 
-subscriptions_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_subscriptions_v1")
+subscriptions_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_subscriptions_v1")
 
 _product_check = ProductAccess("subscriptions")
 

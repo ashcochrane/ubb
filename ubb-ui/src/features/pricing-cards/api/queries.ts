@@ -17,10 +17,10 @@ export function useTemplates() {
   });
 }
 
-export function useProducts() {
+export function useGroups() {
   return useQuery({
-    queryKey: ["products"],
-    queryFn: () => pricingCardsApi.getProducts(),
+    queryKey: ["pricing-card-groups"],
+    queryFn: () => pricingCardsApi.getGroups(),
   });
 }
 

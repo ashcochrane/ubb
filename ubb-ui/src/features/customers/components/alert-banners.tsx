@@ -1,6 +1,6 @@
 // src/features/customers/components/alert-banners.tsx
 import { AlertCircle } from "lucide-react";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import type { CustomerMappingStats } from "../api/types";
 
 interface AlertBannersProps {
@@ -14,7 +14,7 @@ export function AlertBanners({
   onFilterUnmapped,
   onScrollToOrphans,
 }: AlertBannersProps) {
-  const tenantMode = useAuthStore((s) => s.tenantMode);
+  const { tenantMode } = useAuth();
 
   return (
     <div className="space-y-2">

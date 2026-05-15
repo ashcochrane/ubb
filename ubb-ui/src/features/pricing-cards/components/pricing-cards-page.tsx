@@ -13,7 +13,7 @@ export function PricingCardsPage() {
   const filtered = cards?.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.provider.toLowerCase().includes(search.toLowerCase()) ||
-    c.cardId.toLowerCase().includes(search.toLowerCase()),
+    c.slug.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (

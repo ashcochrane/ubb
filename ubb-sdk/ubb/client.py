@@ -152,15 +152,22 @@ class UBBClient:
             external_run_id=external_run_id,
         )
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     event_type: str, provider: str, usage_metrics: dict,
-                     group: str | None = None,
-                     run_id: str | None = None) -> RecordUsageResult:
+    def record_usage(
+        self,
+        customer_id: str,
+        request_id: str,
+        idempotency_key: str,
+        pricing_card: str,
+        usage_metrics: dict,
+        group: str | None = None,
+        run_id: str | None = None,
+    ) -> RecordUsageResult:
         """Record a usage event via metering.
 
-        Delegates to metering.record_usage(). Wallet deduction is handled
-        server-side via the billing outbox handler — the SDK does NOT call
-        billing.debit() to avoid double-debit.
+        Delegates to metering.record_usage(). Pricing is resolved server-side
+        via the pricing_card slug. Wallet deduction is handled server-side via
+        the billing outbox handler — the SDK does NOT call billing.debit() to
+        avoid double-debit.
 
         If run_id is provided, the event is associated with the run and
         the run's hard stop limits are checked. Raises UBBHardStopError
@@ -173,8 +180,7 @@ class UBBClient:
             customer_id=customer_id,
             request_id=request_id,
             idempotency_key=idempotency_key,
-            event_type=event_type,
-            provider=provider,
+            pricing_card=pricing_card,
             usage_metrics=usage_metrics,
             group=group,
             run_id=run_id,

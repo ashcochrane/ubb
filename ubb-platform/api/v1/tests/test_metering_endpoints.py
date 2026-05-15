@@ -8,7 +8,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService
 from apps.billing.wallets.models import Wallet
-from apps.metering.pricing.models import Card, Rate, TenantMarkup
+from apps.metering.pricing.models import Card, Rate
 
 
 class MeteringProductGatingTest(TestCase):
@@ -35,9 +35,8 @@ class MeteringProductGatingTest(TestCase):
         card = Card.objects.create(
             tenant=self.tenant_with_metering,
             name="Test Card",
+            slug="test_card",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -56,8 +55,7 @@ class MeteringProductGatingTest(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req_gate_1",
                 "idempotency_key": "idem_gate_1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
@@ -73,8 +71,7 @@ class MeteringProductGatingTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_met_1",
                 "idempotency_key": "idem_met_1",
-                "event_type": "test_event",
-                "provider": "test_provider",
+                "pricing_card": "test_card",
                 "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
@@ -82,7 +79,7 @@ class MeteringProductGatingTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("event_id", body)
+        self.assertIn("eventId", body)
 
     def test_tenant_without_metering_gets_403_on_usage_history(self):
         customer = Customer.objects.create(
@@ -102,70 +99,7 @@ class MeteringProductGatingTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
-
-
-class PricingMarkupsCRUDTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(name="Test", products=["metering"])
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
-
-    def test_create_and_list_markup(self):
-        resp = self.http_client.post(
-            "/api/v1/metering/pricing/markups",
-            data=json.dumps({
-                "event_type": "llm_call",
-                "provider": "openai",
-                "margin_pct": 20.0,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        markup = resp.json()
-        self.assertEqual(markup["margin_pct"], 20.0)
-
-        resp = self.http_client.get("/api/v1/metering/pricing/markups", **self._auth())
-        self.assertEqual(len(resp.json()), 1)
-
-    def test_update_markup_versions(self):
-        markup = TenantMarkup.objects.create(
-            tenant=self.tenant, event_type="llm_call", provider="openai",
-            margin_pct=20.0,
-        )
-        resp = self.http_client.put(
-            f"/api/v1/metering/pricing/markups/{markup.id}",
-            data=json.dumps({
-                "event_type": "llm_call",
-                "provider": "openai",
-                "margin_pct": 30.0,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        new_markup = resp.json()
-        self.assertEqual(new_markup["margin_pct"], 30.0)
-        self.assertNotEqual(new_markup["id"], str(markup.id))
-
-        markup.refresh_from_db()
-        self.assertIsNotNone(markup.valid_to)
-
-    def test_delete_markup_expires(self):
-        markup = TenantMarkup.objects.create(
-            tenant=self.tenant, event_type="llm_call", provider="openai",
-            margin_pct=20.0,
-        )
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/markups/{markup.id}", **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        markup.refresh_from_db()
-        self.assertIsNotNone(markup.valid_to)
+        self.assertIn("hasMore", body)
 
 
 class MeteringRunEndpointTest(TestCase):
@@ -185,9 +119,8 @@ class MeteringRunEndpointTest(TestCase):
         card = Card.objects.create(
             tenant=self.tenant,
             name="Test Card",
+            slug="test_card_run",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -204,8 +137,7 @@ class MeteringRunEndpointTest(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": "req_1",
             "idempotency_key": "idem_1",
-            "event_type": "test_event",
-            "provider": "test_provider",
+            "pricing_card": "test_card_run",
             "usage_metrics": {"tokens": 1_000_000},
         }
         data.update(extra)
@@ -224,9 +156,9 @@ class MeteringRunEndpointTest(TestCase):
         resp = self._record(run_id=str(run.id))
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["run_id"], str(run.id))
-        self.assertEqual(body["run_total_cost_micros"], 1_000_000)
-        self.assertFalse(body["hard_stop"])
+        self.assertEqual(body["runId"], str(run.id))
+        self.assertEqual(body["runTotalCostMicros"], 1_000_000)
+        self.assertFalse(body["hardStop"])
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_hard_stop_returns_429(self, mock_process):
@@ -251,9 +183,9 @@ class MeteringRunEndpointTest(TestCase):
         )
         self.assertEqual(resp.status_code, 429)
         body = resp.json()
-        self.assertTrue(body["hard_stop"])
+        self.assertTrue(body["hardStop"])
         self.assertEqual(body["reason"], "cost_limit_exceeded")
-        self.assertEqual(body["run_id"], str(run.id))
+        self.assertEqual(body["runId"], str(run.id))
 
         # Run should be killed
         run.refresh_from_db()
@@ -269,7 +201,7 @@ class MeteringRunEndpointTest(TestCase):
         resp = self._record(run_id=str(run.id))
         self.assertEqual(resp.status_code, 409)
         body = resp.json()
-        self.assertEqual(body["error"], "run_not_active")
+        self.assertEqual(body["error"], "run_not_active")  # value stays snake_case
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_close_run_success(self, mock_process):
@@ -286,10 +218,10 @@ class MeteringRunEndpointTest(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["run_id"], str(run.id))
+        self.assertEqual(body["runId"], str(run.id))
         self.assertEqual(body["status"], "completed")
-        self.assertEqual(body["total_cost_micros"], 1_000_000)
-        self.assertEqual(body["event_count"], 1)
+        self.assertEqual(body["totalCostMicros"], 1_000_000)
+        self.assertEqual(body["eventCount"], 1)
 
     def test_close_run_not_found_returns_404(self):
         import uuid
@@ -319,9 +251,8 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         card = Card.objects.create(
             tenant=self.tenant,
             name="Test Card",
+            slug="test_card_hard_stop",
             provider="test_provider",
-            event_type="test_event",
-            dimensions={},
         )
         Rate.objects.create(
             card=card,
@@ -335,8 +266,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
                 customer=self.customer,
                 request_id=f"req_analytics_{i}",
                 idempotency_key=f"idem_analytics_{i}",
-                event_type="test_event",
-                provider="test_provider",
+                pricing_card="test_card_hard_stop",
                 usage_metrics={"tokens": 1},
             )
 
@@ -350,8 +280,17 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["total_events"], 3)
-        self.assertEqual(body["total_billed_cost_micros"], 3_000_000)
+        self.assertEqual(body["totalEvents"], 3)
+        self.assertEqual(body["totalBilledCostMicros"], 3_000_000)
+        # Verify by_card aggregation
+        self.assertIn("byCard", body)
+        self.assertIsInstance(body["byCard"], list)
+        self.assertEqual(len(body["byCard"]), 1)
+        card_entry = body["byCard"][0]
+        self.assertEqual(card_entry["cardSlug"], "test_card_hard_stop")
+        self.assertEqual(card_entry["cardName"], "Test Card")
+        self.assertEqual(card_entry["eventCount"], 3)
+        self.assertEqual(card_entry["totalCostMicros"], 3_000_000)
 
     def test_usage_analytics_requires_metering_product(self):
         tenant_no_metering = Tenant.objects.create(
@@ -363,3 +302,35 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class CardOutShapeTest(TestCase):
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(name="T", products=["metering"])
+        self.api_key, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.card = Card.objects.create(
+            tenant=self.tenant, name="GPT-4o", slug="gpt_4o",
+            provider="openai", status="active",
+        )
+        Rate.objects.create(
+            card=self.card, metric_name="input_tokens",
+            cost_per_unit_micros=3_000,
+            provider_cost_per_unit_micros=2_500,
+            unit_quantity=1_000_000, label="Input", unit="per 1M tokens",
+        )
+
+    def test_card_out_has_dimensions_not_rates(self):
+        resp = self.http_client.get(
+            f"/api/v1/metering/pricing/cards/{self.card.id}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Renamed from rates -> dimensions
+        assert "dimensions" in body
+        assert "rates" not in body
+        # eventType gone
+        assert "eventType" not in body
+        # Each dimension has providerCostPerUnitMicros
+        assert "providerCostPerUnitMicros" in body["dimensions"][0]

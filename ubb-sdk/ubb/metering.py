@@ -78,25 +78,42 @@ class MeteringClient:
 
     # ---- public API ----
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     event_type: str, provider: str, usage_metrics: dict,
-                     group: str | None = None,
-                     run_id: str | None = None) -> RecordUsageResult:
-        """Record a usage event via POST /api/v1/metering/usage."""
+    def record_usage(
+        self,
+        customer_id: str,
+        request_id: str,
+        idempotency_key: str,
+        pricing_card: str,
+        usage_metrics: dict,
+        group: str | None = None,
+        run_id: str | None = None,
+    ) -> RecordUsageResult:
+        """Record a usage event via POST /api/v1/metering/usage.
+
+        Pricing is resolved by the server via the pricing_card slug. The server
+        looks up the tenant's Card by slug and applies the stored per-metric rates.
+        """
         body: dict = {
-            "customer_id": customer_id,
-            "request_id": request_id,
-            "idempotency_key": idempotency_key,
-            "event_type": event_type,
-            "provider": provider,
-            "usage_metrics": usage_metrics,
+            "customerId": customer_id,
+            "requestId": request_id,
+            "idempotencyKey": idempotency_key,
+            "pricingCard": pricing_card,
+            "usageMetrics": usage_metrics,
         }
         if group is not None:
             body["group"] = group
         if run_id is not None:
-            body["run_id"] = run_id
+            body["runId"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)
-        return RecordUsageResult(**r.json())
+        body = r.json()
+        return RecordUsageResult(
+            event_id=body.get("eventId", ""),
+            provider_cost_micros=body.get("providerCostMicros"),
+            billed_cost_micros=body.get("billedCostMicros"),
+            run_id=body.get("runId"),
+            run_total_cost_micros=body.get("runTotalCostMicros"),
+            hard_stop=body.get("hardStop", False),
+        )
 
     def _request_usage_once(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Like _request_once but handles run-specific error codes."""
@@ -110,11 +127,11 @@ class MeteringClient:
             raise UBBAuthError("Invalid or revoked API key")
         if response.status_code == 429:
             body = response.json()
-            if body.get("hard_stop"):
+            if body.get("hardStop"):
                 raise UBBHardStopError(
-                    run_id=body.get("run_id", ""),
+                    run_id=body.get("runId", ""),
                     reason=body.get("reason", ""),
-                    total_cost_micros=body.get("total_cost_micros", 0),
+                    total_cost_micros=body.get("totalCostMicros", 0),
                 )
             # Regular 429 (rate limited)
             detail = self._extract_error_detail(response)
@@ -130,7 +147,7 @@ class MeteringClient:
             body = response.json()
             if body.get("error") == "run_not_active":
                 raise UBBRunNotActiveError(
-                    run_id=body.get("run_id", ""),
+                    run_id=body.get("runId", ""),
                     status=body.get("status", ""),
                 )
             raise UBBConflictError(self._extract_error_detail(response))
@@ -155,7 +172,13 @@ class MeteringClient:
     def close_run(self, run_id: str) -> CloseRunResult:
         """Close (complete) a run via POST /api/v1/metering/runs/{run_id}/close."""
         r = self._request("post", f"/api/v1/metering/runs/{run_id}/close")
-        return CloseRunResult(**r.json())
+        body = r.json()
+        return CloseRunResult(
+            run_id=body.get("runId", ""),
+            status=body.get("status", ""),
+            total_cost_micros=body.get("totalCostMicros", 0),
+            event_count=body.get("eventCount", 0),
+        )
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   group: str | None = None) -> PaginatedResponse[UsageEvent]:
@@ -170,17 +193,18 @@ class MeteringClient:
         events = [
             UsageEvent(
                 id=str(item["id"]),
-                request_id=item["request_id"],
-                cost_micros=item["cost_micros"],
-                effective_at=item["effective_at"],
-                event_type=item.get("event_type", ""),
+                request_id=item["requestId"],
+                cost_micros=item["costMicros"],
+                effective_at=item["effectiveAt"],
+                card_slug=item.get("cardSlug", ""),
+                card_name=item.get("cardName", ""),
                 provider=item.get("provider", ""),
-                provider_cost_micros=item.get("provider_cost_micros"),
-                billed_cost_micros=item.get("billed_cost_micros"),
+                provider_cost_micros=item.get("providerCostMicros"),
+                billed_cost_micros=item.get("billedCostMicros"),
             )
             for item in body["data"]
         ]
-        return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+        return PaginatedResponse(data=events, next_cursor=body.get("nextCursor"), has_more=body["hasMore"])
 
     def get_usage_analytics(self, start_date: str | None = None,
                             end_date: str | None = None) -> UsageAnalyticsResult:
@@ -191,7 +215,14 @@ class MeteringClient:
         if end_date:
             params["end_date"] = end_date
         r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
-        return UsageAnalyticsResult(**r.json())
+        body = r.json()
+        return UsageAnalyticsResult(
+            total_events=body["totalEvents"],
+            total_billed_cost_micros=body["totalBilledCostMicros"],
+            total_provider_cost_micros=body["totalProviderCostMicros"],
+            by_provider=body["byProvider"],
+            by_card=body["byCard"],
+        )
 
     def close(self) -> None:
         self._http.close()

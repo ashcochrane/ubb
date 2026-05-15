@@ -5,7 +5,7 @@ export function CardPreview() {
   const { watch } = useFormContext<WizardFormValues>();
   const name = watch("name");
   const provider = watch("provider");
-  const cardId = watch("cardId");
+  const slug = watch("slug");
 
   return (
     <div className="rounded-md bg-bg-subtle px-3.5 py-3">
@@ -26,9 +26,9 @@ export function CardPreview() {
               {provider}
             </div>
           )}
-          {cardId && (
+          {slug && (
             <div className="font-mono text-label text-muted-foreground">
-              {cardId}
+              {slug}
             </div>
           )}
         </div>

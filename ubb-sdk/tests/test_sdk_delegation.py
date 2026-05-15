@@ -86,7 +86,7 @@ class TestMeteringDelegationRequiresMetering:
     def test_record_usage_requires_metering(self):
         with pytest.raises(UBBError, match="metering"):
             self.client.record_usage("cust1", "r1", "i1",
-                                     event_type="test", provider="test",
+                                     pricing_card="test_card",
                                      usage_metrics={"tokens": 1})
 
     def test_pre_check_without_metering_delegates_to_billing(self):

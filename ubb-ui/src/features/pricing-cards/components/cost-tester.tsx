@@ -18,8 +18,8 @@ export function CostTester() {
     [result.total],
   );
 
-  const setQty = (key: string, value: number) => {
-    setQuantities((prev) => ({ ...prev, [key]: value }));
+  const setQty = (metricName: string, value: number) => {
+    setQuantities((prev) => ({ ...prev, [metricName]: value }));
   };
 
   if (dimensions.length === 0) return null;
@@ -38,18 +38,18 @@ export function CostTester() {
 
       <div className="space-y-1.5">
         {result.dimensions.map((d) => (
-          <div key={d.key} className="grid grid-cols-[1fr_100px_120px] items-center gap-2">
-            <span className="font-mono text-label text-muted-foreground">{d.key}</span>
+          <div key={d.metricName} className="grid grid-cols-[1fr_100px_120px] items-center gap-2">
+            <span className="font-mono text-label text-muted-foreground">{d.metricName}</span>
             <input
               type="number"
-              value={quantities[d.key] ?? ""}
-              onChange={(e) => setQty(d.key, Number(e.target.value) || 0)}
-              placeholder={d.type === "flat" ? "1" : "1000"}
+              value={quantities[d.metricName] ?? ""}
+              onChange={(e) => setQty(d.metricName, Number(e.target.value) || 0)}
+              placeholder={d.pricingType === "flat" ? "1" : "1000"}
               className="rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-label outline-none focus:border-muted-foreground"
             />
             <span className="text-right font-mono text-label text-muted-foreground">
               {d.quantity > 0
-                ? `${d.quantity.toLocaleString()} × $${d.price} = $${d.cost.toFixed(6)}`
+                ? `${d.quantity.toLocaleString()} × $${d.priceDollars.toFixed(8).replace(/0+$/, "")} = $${d.cost.toFixed(6)}`
                 : "—"}
             </span>
           </div>

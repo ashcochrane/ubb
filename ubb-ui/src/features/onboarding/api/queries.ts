@@ -1,25 +1,23 @@
-import { useMutation } from "@tanstack/react-query";
-import { toastOnError } from "@/lib/mutations";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { onboardingApi } from "./provider";
-import type { ValidateKeyRequest, MatchCustomersRequest, ActivateRequest } from "./types";
+import type { CreateTenantRequest, CreateTenantResponse } from "./types";
 
-export function useValidateStripeKey() {
-  return useMutation({
-    mutationFn: (req: ValidateKeyRequest) => onboardingApi.validateStripeKey(req),
-    onError: toastOnError("Couldn't validate Stripe key"),
+export function useCreateTenant() {
+  const qc = useQueryClient();
+  return useMutation<CreateTenantResponse, Error, CreateTenantRequest>({
+    mutationFn: (req) => onboardingApi.createTenant(req),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
   });
 }
 
-export function useMatchCustomers() {
-  return useMutation({
-    mutationFn: (req: MatchCustomersRequest) => onboardingApi.matchCustomers(req),
-    onError: toastOnError("Couldn't match customers"),
-  });
-}
-
-export function useActivateOnboarding() {
-  return useMutation({
-    mutationFn: (req: ActivateRequest) => onboardingApi.activateOnboarding(req),
-    onError: toastOnError("Couldn't activate onboarding"),
+export function useCompleteOnboarding() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: () => onboardingApi.completeOnboarding(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
   });
 }

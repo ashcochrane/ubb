@@ -10,12 +10,12 @@ export function StepDetails() {
   const nameRegistration = register("name");
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     nameRegistration.onChange(e);
-    setValue("cardId", slugify(e.target.value));
+    setValue("slug", slugify(e.target.value));
   };
 
   const handleRegenerate = () => {
     const name = watch("name");
-    if (name) setValue("cardId", slugifyWithSuffix(name));
+    if (name) setValue("slug", slugifyWithSuffix(name));
   };
 
   return (
@@ -46,10 +46,10 @@ export function StepDetails() {
           </div>
 
           <div>
-            <label className="mb-1 block text-label font-medium">Card ID</label>
+            <label className="mb-1 block text-label font-medium">Slug</label>
             <div className="flex gap-1.5">
               <input
-                {...register("cardId")}
+                {...register("slug")}
                 placeholder="auto-generated"
                 className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-[12px] text-muted-foreground outline-none focus:border-muted-foreground"
               />
@@ -64,6 +64,7 @@ export function StepDetails() {
             <p className="mt-0.5 text-muted text-muted-foreground">
               Referenced in SDK calls. Auto-derived from name.
             </p>
+            {errors.slug && <p className="mt-0.5 text-muted text-red">{errors.slug.message}</p>}
           </div>
         </div>
       </div>

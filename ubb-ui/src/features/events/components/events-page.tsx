@@ -22,15 +22,23 @@ import { AuditTrail } from "./audit-trail";
 
 type DatePreset = "7d" | "30d" | "90d" | "all";
 
+/** Empty staged event — one metric per row (usageMetrics has a single key). */
+function emptyRow(): StagedEvent {
+  return {
+    effectiveAt: "2026-03-20",
+    customerExternalId: "",
+    group: "",
+    pricingCard: "",
+    usageMetrics: {},
+  };
+}
+
 export function EventsPage() {
   const { data: filterOptions, isLoading } = useEventFilterOptions();
 
   const [filters, setFilters] = useState<EventFilters>({
     dateFrom: "2026-02-18",
     dateTo: "2026-03-20",
-    customerKey: "",
-    groupKey: "",
-    cardKey: "",
   });
   const [datePreset, setDatePreset] = useState<DatePreset | null>("30d");
 
@@ -42,7 +50,9 @@ export function EventsPage() {
   const [reason, setReason] = useState("");
   const [pushResult, setPushResult] = useState<string | null>(null);
   const [showRecorded, setShowRecorded] = useState(false);
-  const [eventOverrides, setEventOverrides] = useState<Record<number, Partial<{ customerKey: string; groupKey: string }>>>({});
+  const [eventOverrides, setEventOverrides] = useState<
+    Record<number, Partial<{ customerExternalId: string; group: string | null }>>
+  >({});
 
   const pushMutation = usePushEvents();
   const reverseMutation = useReverseAuditEntry();
@@ -51,19 +61,26 @@ export function EventsPage() {
   const handleModeChange = useCallback((mode: AddMode) => {
     setAddMode(mode);
     if (mode === "row" && stagedEvents.length === 0) {
-      setStagedEvents([{ timestamp: "2026-03-20", customerKey: "", groupKey: "", cardKey: "", dimension: "", quantity: 0 }]);
+      setStagedEvents([emptyRow()]);
     }
   }, [stagedEvents.length]);
 
+  /**
+   * Parse pasted/uploaded rows (TSV: effectiveAt, customerExternalId, group, cardSlug, metric, quantity).
+   * One row = one StagedEvent with a single-key usageMetrics.
+   */
   const handlePaste = useCallback((rows: string[][]) => {
-    const parsed: StagedEvent[] = rows.map((p) => ({
-      timestamp: p[0] ?? "",
-      customerKey: p[1] ?? "",
-      groupKey: p[2] ?? "",
-      cardKey: p[3] ?? "",
-      dimension: p[4] ?? "",
-      quantity: parseFloat(p[5] ?? "0") || 0,
-    }));
+    const parsed: StagedEvent[] = rows.map((p) => {
+      const metric = p[4] ?? "";
+      const qty = parseFloat(p[5] ?? "0") || 0;
+      return {
+        effectiveAt: p[0] ?? "",
+        customerExternalId: p[1] ?? "",
+        group: p[2] ?? "",
+        pricingCard: p[3] ?? "",
+        usageMetrics: metric ? { [metric]: qty } : {},
+      };
+    });
     setStagedEvents((prev) => [...prev, ...parsed]);
     setAddMode(null);
   }, []);
@@ -74,7 +91,7 @@ export function EventsPage() {
   }, [handlePaste]);
 
   const handleAddRow = useCallback(() => {
-    setStagedEvents((prev) => [...prev, { timestamp: "2026-03-20", customerKey: "", groupKey: "", cardKey: "", dimension: "", quantity: 0 }]);
+    setStagedEvents((prev) => [...prev, emptyRow()]);
   }, []);
 
   const handleClearStaged = useCallback(() => {
@@ -178,8 +195,7 @@ export function EventsPage() {
         <>
           <StatusBar
             totalCount={eventsData.totalCount}
-            totalCostDollars={eventsData.totalCostDollars}
-            estimatedCsvBytes={eventsData.estimatedCsvBytes}
+            totalCostMicros={eventsData.totalCostMicros}
             showRecorded={showRecorded}
             onToggleRecorded={() => setShowRecorded((v) => !v)}
           />

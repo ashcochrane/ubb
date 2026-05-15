@@ -9,7 +9,11 @@ import { IntegrationSnippet } from "./integration-snippet";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/format";
 
-export function StepReview() {
+interface StepReviewProps {
+  onSuccess?: (cardId: string) => void;
+}
+
+export function StepReview({ onSuccess }: StepReviewProps = {}) {
   const { watch, getValues } = useFormContext<WizardFormValues>();
   const navigate = useNavigate();
   const createCard = useCreateCard();
@@ -18,40 +22,46 @@ export function StepReview() {
 
   const name = watch("name");
   const provider = watch("provider");
-  const cardId = watch("cardId");
+  const slug = watch("slug");
   const dimensions = watch("dimensions");
 
   const checks = [
-    { label: "All dimensions have non-zero prices", pass: dimensions.every((d) => d.price > 0) },
-    { label: "No duplicate metric keys", pass: new Set(dimensions.map((d) => d.key)).size === dimensions.length },
-    { label: "Unit prices within expected ranges", pass: dimensions.every((d) => d.type === "flat" ? d.price <= 100 : d.price <= 1) },
-    { label: "Card ID is valid", pass: cardId.length > 0 && /^[a-z0-9_]+$/.test(cardId) },
+    { label: "All dimensions have non-zero prices", pass: dimensions.every((d) => d.costPerUnitMicros > 0) },
+    { label: "No duplicate metric names", pass: new Set(dimensions.map((d) => d.metricName)).size === dimensions.length },
+    { label: "Unit prices within expected ranges", pass: dimensions.every((d) => d.pricingType === "flat" ? d.costPerUnitMicros <= 100_000_000 : d.costPerUnitMicros <= 1_000_000) },
+    { label: "Slug is valid", pass: slug.length > 0 && /^[a-z][a-z0-9_]*$/.test(slug) },
   ];
 
   const buildRequest = (status: "active" | "draft") => {
     const values = getValues();
     return {
       name: values.name,
-      cardId: values.cardId,
+      slug: values.slug,
       provider: values.provider,
-      pricingPattern: values.pricingPattern,
       dimensions: values.dimensions,
       description: values.description,
       pricingSourceUrl: values.pricingSourceUrl,
-      product: values.product,
+      groupId: values.groupId,
       status,
     };
   };
 
   const handleActivate = async () => {
-    await createCard.mutateAsync(buildRequest("active"));
+    const card = await createCard.mutateAsync(buildRequest("active"));
     setActivated(true);
     setShowConfirm(false);
+    if (onSuccess) {
+      onSuccess(card.id);
+    }
   };
 
   const handleSaveDraft = async () => {
-    await createCard.mutateAsync(buildRequest("draft"));
-    navigate({ to: "/pricing-cards" });
+    const card = await createCard.mutateAsync(buildRequest("draft"));
+    if (onSuccess) {
+      onSuccess(card.id);
+    } else {
+      navigate({ to: "/pricing-cards" });
+    }
   };
 
   if (activated) {
@@ -63,7 +73,7 @@ export function StepReview() {
         <h2 className="text-[16px] font-medium">{name} is live</h2>
         <p className="text-[12px] text-muted-foreground">
           Your card is now actively calculating costs for every event sent to{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-label">{cardId}</code>
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-label">{slug}</code>
         </p>
         <IntegrationSnippet />
       </div>
@@ -77,11 +87,11 @@ export function StepReview() {
           <div>
             <div className="text-[15px] font-medium">{name}</div>
             <div className="text-label text-muted-foreground">
-              {provider} <span className="font-mono">{cardId}</span>
+              {provider} <span className="font-mono">{slug}</span>
             </div>
           </div>
           <span className="rounded-full bg-amber-light px-2 py-0.5 text-muted text-amber-text">
-            Draft v1
+            Draft
           </span>
         </div>
 
@@ -92,11 +102,11 @@ export function StepReview() {
         </div>
         <div className="divide-y divide-border">
           {dimensions.map((d) => (
-            <div key={d.key} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-1.5">
-              <span className="font-mono text-label">{d.key}</span>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-muted">{d.type === "per_unit" ? "per unit" : "flat"}</span>
+            <div key={d.metricName} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-1.5">
+              <span className="font-mono text-label">{d.metricName}</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-muted">{d.pricingType === "per_unit" ? "per unit" : "flat"}</span>
               <span className="text-label text-muted-foreground">{d.unit}</span>
-              <span className="font-mono text-[12px] font-medium">{d.displayPrice || formatPrice(d.price * 1_000_000, d.type === "per_unit" ? 1_000_000 : 1, d.unit)}</span>
+              <span className="font-mono text-[12px] font-medium">{formatPrice(d.costPerUnitMicros, d.unitQuantity, d.unit)}</span>
             </div>
           ))}
         </div>

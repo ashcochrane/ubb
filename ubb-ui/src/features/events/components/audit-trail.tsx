@@ -11,9 +11,13 @@ interface AuditTrailProps {
 
 const ACTION_STYLES: Record<string, { pill: string; label: string }> = {
   added: { pill: "bg-blue-light text-blue-text", label: "Added" },
-  edited: { pill: "bg-amber-light text-amber-text", label: "Edited" },
   reversed: { pill: "bg-red-light text-red-text", label: "Reversed" },
 };
+
+function deriveTitle(entry: AuditEntry): string {
+  const verb = entry.action === "added" ? "Added" : "Reversed";
+  return `${verb} ${entry.rowCount} event${entry.rowCount !== 1 ? "s" : ""}`;
+}
 
 export function AuditTrail({
   entries,
@@ -29,6 +33,7 @@ export function AuditTrail({
           const isReversed = entry.action === "reversed";
           const style = ACTION_STYLES[entry.action] ?? ACTION_STYLES.added!;
           const isReversingThis = reversingId === entry.id;
+          const title = deriveTitle(entry);
 
           return (
             <div
@@ -45,16 +50,16 @@ export function AuditTrail({
                       {style.label}
                     </span>
                     <span className={cn("text-[12px] font-medium", isReversed && "line-through")}>
-                      {entry.title}
+                      {title}
                     </span>
                   </div>
                   {entry.reason && (
                     <div className="mt-0.5 text-label text-text-secondary">{entry.reason}</div>
                   )}
                   <div className="mt-0.5 text-muted text-text-muted">
-                    {formatShortDate(entry.date)}
+                    {formatShortDate(entry.createdAt)}
                     {entry.author && ` by ${entry.author}`}
-                    {entry.reversedDate && ` \u2014 Reversed ${formatShortDate(entry.reversedDate)}`}
+                    {entry.reversedAt && ` \u2014 Reversed ${formatShortDate(entry.reversedAt)}`}
                   </div>
                 </div>
                 <div className="text-right">

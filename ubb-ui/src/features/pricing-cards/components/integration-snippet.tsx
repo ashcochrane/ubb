@@ -3,18 +3,15 @@ import type { WizardFormValues } from "../lib/schema";
 
 export function IntegrationSnippet() {
   const { watch } = useFormContext<WizardFormValues>();
-  const cardId = watch("cardId");
-  const product = watch("product");
+  const slug = watch("slug");
   const dimensions = watch("dimensions");
 
   const usageLines = dimensions
-    .map((d) => `    ${d.key}: ${d.type === "flat" ? "1" : `${d.key}Count`}`)
+    .map((d) => `    ${d.metricName}: ${d.pricingType === "flat" ? "1" : `${d.metricName}Count`}`)
     .join(",\n");
 
-  const productLine = product ? `\n  product: "${product}",` : "";
-
   const snippet = `meter.track({
-  pricing_card: "${cardId}",${productLine}
+  pricing_card: "${slug}",
   usage: {
 ${usageLines}
   }
@@ -39,9 +36,6 @@ ${usageLines}
       <pre className="overflow-x-auto rounded-md bg-bg-subtle px-3 py-2.5 font-mono text-muted leading-[1.8] text-muted-foreground">
         {snippet}
       </pre>
-      <p className="mt-1.5 text-muted text-muted-foreground">
-        This snippet updates automatically when you assign a product.
-      </p>
     </div>
   );
 }

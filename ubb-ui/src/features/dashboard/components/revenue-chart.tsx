@@ -10,8 +10,8 @@ import {
 } from "recharts";
 import { ChartCard } from "@/components/shared/chart-card";
 import { ChartLegend } from "@/components/shared/chart-legend";
-import { formatDollars } from "@/lib/format";
-import type { RevenueTimeSeries } from "../api/types";
+import { formatCostMicros } from "@/lib/format";
+import type { DailyChartPoint } from "../api/types";
 import {
   CHART_MARGIN_DASH,
   CHART_RED,
@@ -19,7 +19,7 @@ import {
 } from "../lib/chart-colors";
 
 interface RevenueChartProps {
-  data: RevenueTimeSeries[];
+  data: DailyChartPoint[];
 }
 
 export function RevenueChart({ data }: RevenueChartProps) {
@@ -46,7 +46,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
           <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
             <XAxis
-              dataKey="label"
+              dataKey="date"
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               tickLine={false}
               axisLine={false}
@@ -56,7 +56,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v: number) => formatDollars(v)}
+              tickFormatter={(v: number) => formatCostMicros(v)}
               width={56}
             />
             <Tooltip
@@ -67,13 +67,13 @@ export function RevenueChart({ data }: RevenueChartProps) {
                 background: "var(--color-card)",
               }}
               formatter={(value, name) => [
-                value == null ? "—" : formatDollars(Number(value)),
+                value == null ? "—" : formatCostMicros(Number(value)),
                 name,
               ]}
             />
             <Area
               type="monotone"
-              dataKey="revenue"
+              dataKey="revenueMicros"
               name="Revenue"
               stroke={CHART_TERRACOTTA}
               fill={CHART_TERRACOTTA}
@@ -83,7 +83,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             />
             <Area
               type="monotone"
-              dataKey="apiCosts"
+              dataKey="apiCostsMicros"
               name="API costs"
               stroke={CHART_RED}
               fill={CHART_RED}
@@ -93,7 +93,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             />
             <Line
               type="monotone"
-              dataKey="margin"
+              dataKey="marginMicros"
               name="Margin"
               stroke={CHART_MARGIN_DASH}
               strokeWidth={1.5}

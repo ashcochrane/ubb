@@ -45,7 +45,7 @@ class BillingProductGatingTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("balance_micros", body)
+        self.assertIn("balanceMicros", body)
         self.assertIn("currency", body)
 
     def test_tenant_without_billing_gets_403_on_pre_check(self):
@@ -100,7 +100,7 @@ class BillingProductGatingTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
+        self.assertIn("hasMore", body)
 
     def test_tenant_without_billing_gets_403_on_invoices(self):
         response = self.http_client.get(
@@ -117,7 +117,7 @@ class BillingProductGatingTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
+        self.assertIn("hasMore", body)
 
 
 class BillingDebitEndpointTest(TestCase):
@@ -150,8 +150,8 @@ class BillingDebitEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["new_balance_micros"], 8_500_000)
-        self.assertIn("transaction_id", body)
+        self.assertEqual(body["newBalanceMicros"], 8_500_000)
+        self.assertIn("transactionId", body)
 
     def test_debit_reduces_balance(self):
         self.http_client.post(
@@ -180,7 +180,7 @@ class BillingDebitEndpointTest(TestCase):
         )
         body = response.json()
         from apps.billing.wallets.models import WalletTransaction
-        txn = WalletTransaction.objects.get(id=body["transaction_id"])
+        txn = WalletTransaction.objects.get(id=body["transactionId"])
         self.assertEqual(txn.transaction_type, "DEBIT")
         self.assertEqual(txn.amount_micros, -2_000_000)
         self.assertEqual(txn.reference_id, "evt_789")
@@ -264,8 +264,8 @@ class BillingCreditEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["new_balance_micros"], 5_000_000)
-        self.assertIn("transaction_id", body)
+        self.assertEqual(body["newBalanceMicros"], 5_000_000)
+        self.assertIn("transactionId", body)
 
     def test_credit_increases_balance(self):
         self.http_client.post(
@@ -296,7 +296,7 @@ class BillingCreditEndpointTest(TestCase):
         )
         body = response.json()
         from apps.billing.wallets.models import WalletTransaction
-        txn = WalletTransaction.objects.get(id=body["transaction_id"])
+        txn = WalletTransaction.objects.get(id=body["transactionId"])
         self.assertEqual(txn.transaction_type, "ADJUSTMENT")
         self.assertEqual(txn.amount_micros, 3_000_000)
         self.assertEqual(txn.reference_id, "gw_001")
@@ -428,7 +428,7 @@ class DebitCreditHardeningTest(TestCase):
         self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp2.status_code, 200)
         # Same transaction ID returned
-        self.assertEqual(resp1.json()["transaction_id"], resp2.json()["transaction_id"])
+        self.assertEqual(resp1.json()["transactionId"], resp2.json()["transactionId"])
         # Only debited once
         wallet = Wallet.objects.get(customer=customer)
         self.assertEqual(wallet.balance_micros, 8_000_000)
@@ -458,7 +458,7 @@ class DebitCreditHardeningTest(TestCase):
         )
         self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp2.status_code, 200)
-        self.assertEqual(resp1.json()["transaction_id"], resp2.json()["transaction_id"])
+        self.assertEqual(resp1.json()["transactionId"], resp2.json()["transactionId"])
         wallet = Wallet.objects.get(customer=customer)
         self.assertEqual(wallet.balance_micros, 3_000_000)
 
@@ -579,12 +579,12 @@ class PreCheckRunTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
-        self.assertIsNotNone(body["run_id"])
-        self.assertEqual(body["cost_limit_micros"], 10_000_000)
-        self.assertEqual(body["hard_stop_balance_micros"], -5_000_000)
+        self.assertIsNotNone(body["runId"])
+        self.assertEqual(body["costLimitMicros"], 10_000_000)
+        self.assertEqual(body["hardStopBalanceMicros"], -5_000_000)
 
         # Run exists in DB
-        run = Run.objects.get(id=body["run_id"])
+        run = Run.objects.get(id=body["runId"])
         self.assertEqual(run.status, "active")
         self.assertEqual(run.balance_snapshot_micros, 20_000_000)
 
@@ -596,7 +596,7 @@ class PreCheckRunTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertFalse(body["allowed"])
-        self.assertIsNone(body["run_id"])
+        self.assertIsNone(body["runId"])
         self.assertEqual(Run.objects.count(), 0)
 
     def test_pre_check_without_start_run_returns_null_run(self):
@@ -604,7 +604,7 @@ class PreCheckRunTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
-        self.assertIsNone(body["run_id"])
+        self.assertIsNone(body["runId"])
 
 
 class TopUpWithoutConnectorTest(TestCase):

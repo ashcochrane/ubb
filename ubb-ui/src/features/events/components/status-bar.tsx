@@ -1,17 +1,15 @@
-import { formatFileSize } from "@/lib/format";
+import { formatCostMicros } from "@/lib/format";
 
 interface StatusBarProps {
   totalCount: number;
-  totalCostDollars: number;
-  estimatedCsvBytes: number;
+  totalCostMicros: number;
   showRecorded: boolean;
   onToggleRecorded: () => void;
 }
 
 export function StatusBar({
   totalCount,
-  totalCostDollars,
-  estimatedCsvBytes,
+  totalCostMicros,
   showRecorded,
   onToggleRecorded,
 }: StatusBarProps) {
@@ -22,10 +20,7 @@ export function StatusBar({
           {totalCount.toLocaleString()} rows
         </span>
         <span className="font-mono">
-          ${totalCostDollars.toLocaleString(undefined, { minimumFractionDigits: 2 })} total
-        </span>
-        <span className="font-mono text-[10px] text-text-muted">
-          ~{formatFileSize(estimatedCsvBytes)} as CSV
+          {formatCostMicros(totalCostMicros)} total
         </span>
       </div>
       <button

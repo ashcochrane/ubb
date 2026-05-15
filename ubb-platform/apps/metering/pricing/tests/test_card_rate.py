@@ -1,10 +1,8 @@
-import hashlib
-import json
-
 from django.db import IntegrityError
 from django.test import TestCase
 
 from apps.metering.pricing.models import Card, Rate
+from apps.platform.groups.models import Group
 from apps.platform.tenants.models import Tenant
 
 
@@ -16,66 +14,150 @@ class CardModelTest(TestCase):
         card = Card.objects.create(
             tenant=self.tenant,
             name="GPT-4o Pricing",
+            slug="gpt_4o",
             provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
         )
         card.refresh_from_db()
         self.assertEqual(card.name, "GPT-4o Pricing")
+        self.assertEqual(card.slug, "gpt_4o")
         self.assertEqual(card.provider, "openai")
-        self.assertEqual(card.event_type, "llm_call")
-        self.assertEqual(card.dimensions, {"model": "gpt-4o"})
         self.assertEqual(card.status, "active")
-        self.assertTrue(len(card.dimensions_hash) > 0)
-
-    def test_dimensions_hash_computed_on_save(self):
-        card = Card.objects.create(
-            tenant=self.tenant,
-            name="GPT-4o Pricing",
-            provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
-        )
-        expected = hashlib.sha256(
-            json.dumps({"model": "gpt-4o"}, sort_keys=True).encode()
-        ).hexdigest()
-        self.assertEqual(card.dimensions_hash, expected)
 
     def test_unique_active_card(self):
         Card.objects.create(
             tenant=self.tenant,
             name="GPT-4o Pricing",
+            slug="gpt_4o_unique1",
             provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
         )
         with self.assertRaises(IntegrityError):
             Card.objects.create(
                 tenant=self.tenant,
                 name="GPT-4o Pricing Duplicate",
+                slug="gpt_4o_unique1",
                 provider="openai",
-                event_type="llm_call",
-                dimensions={"model": "gpt-4o"},
             )
 
     def test_archived_card_does_not_conflict(self):
         Card.objects.create(
             tenant=self.tenant,
             name="GPT-4o Pricing Old",
+            slug="gpt_4o_archived",
             provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
             status="archived",
         )
         # Should NOT raise — archived cards are excluded from unique constraint
         card = Card.objects.create(
             tenant=self.tenant,
             name="GPT-4o Pricing New",
+            slug="gpt_4o_archived",
             provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
         )
         self.assertEqual(card.status, "active")
+
+
+class CardSlugTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Slug Test Tenant")
+
+    def test_create_card_with_slug(self):
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="Gemini 2 Flash",
+            slug="gemini_2_flash",
+            provider="google",
+        )
+        card.refresh_from_db()
+        self.assertEqual(card.slug, "gemini_2_flash")
+
+    def test_slug_unique_per_tenant_active(self):
+        Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing",
+            slug="gpt_4o",
+            provider="openai",
+        )
+        with self.assertRaises(IntegrityError):
+            Card.objects.create(
+                tenant=self.tenant,
+                name="GPT-4o Pricing Dup",
+                slug="gpt_4o",
+                provider="openai",
+            )
+
+    def test_slug_unique_allows_archived_duplicate(self):
+        Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing Old",
+            slug="gpt_4o_dup",
+            provider="openai",
+            status="archived",
+        )
+        # Should NOT raise — archived cards are excluded from slug unique constraint
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing New",
+            slug="gpt_4o_dup",
+            provider="openai",
+        )
+        self.assertEqual(card.slug, "gpt_4o_dup")
+        self.assertEqual(card.status, "active")
+
+    def test_draft_status(self):
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="Draft Card",
+            slug="draft_card",
+            provider="openai",
+            status="draft",
+        )
+        card.refresh_from_db()
+        self.assertEqual(card.status, "draft")
+
+    def test_card_with_group(self):
+        group = Group.objects.create(
+            tenant=self.tenant,
+            name="LLM Models",
+            slug="llm_models",
+        )
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing",
+            slug="gpt_4o_grouped",
+            provider="openai",
+            group=group,
+        )
+        card.refresh_from_db()
+        self.assertEqual(card.group, group)
+        self.assertIn(card, group.pricing_cards.all())
+
+    def test_card_group_set_null_on_delete(self):
+        group = Group.objects.create(
+            tenant=self.tenant,
+            name="Temp Group",
+            slug="temp_group",
+        )
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing",
+            slug="gpt_4o_null_group",
+            provider="openai",
+            group=group,
+        )
+        group.delete()
+        card.refresh_from_db()
+        self.assertIsNone(card.group)
+
+    def test_pricing_source_url(self):
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing",
+            slug="gpt_4o_url",
+            provider="openai",
+            pricing_source_url="https://openai.com/pricing",
+        )
+        card.refresh_from_db()
+        self.assertEqual(card.pricing_source_url, "https://openai.com/pricing")
 
 
 class RateModelTest(TestCase):
@@ -84,9 +166,8 @@ class RateModelTest(TestCase):
         self.card = Card.objects.create(
             tenant=self.tenant,
             name="GPT-4o Pricing",
+            slug="gpt_4o_rate",
             provider="openai",
-            event_type="llm_call",
-            dimensions={"model": "gpt-4o"},
         )
 
     def test_create_rate(self):
@@ -138,3 +219,75 @@ class RateModelTest(TestCase):
             cost_per_unit_micros=300_000,
         )
         self.assertEqual(self.card.rates.count(), 2)
+
+
+class RatePricingTypeTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Rate Type Tenant")
+        self.card = Card.objects.create(
+            tenant=self.tenant,
+            name="GPT-4o Pricing",
+            slug="gpt_4o_pricing_type",
+            provider="openai",
+        )
+
+    def test_per_unit_rate(self):
+        rate = Rate.objects.create(
+            card=self.card,
+            metric_name="input_tokens",
+            pricing_type="per_unit",
+            label="Input Tokens",
+            unit="per 1M tokens",
+            cost_per_unit_micros=75_000,
+            unit_quantity=1_000_000,
+        )
+        rate.refresh_from_db()
+        self.assertEqual(rate.pricing_type, "per_unit")
+        self.assertEqual(rate.label, "Input Tokens")
+        self.assertEqual(rate.unit, "per 1M tokens")
+
+    def test_flat_rate(self):
+        rate = Rate.objects.create(
+            card=self.card,
+            metric_name="api_call",
+            pricing_type="flat",
+            label="API Call",
+            unit="per call",
+            cost_per_unit_micros=500_000,
+        )
+        rate.refresh_from_db()
+        self.assertEqual(rate.pricing_type, "flat")
+        self.assertEqual(rate.label, "API Call")
+        self.assertEqual(rate.unit, "per call")
+
+    def test_flat_calculate_cost_ignores_quantity(self):
+        rate = Rate.objects.create(
+            card=self.card,
+            metric_name="api_call_flat",
+            pricing_type="flat",
+            cost_per_unit_micros=500_000,
+        )
+        # Flat rate should return cost_per_unit_micros regardless of units
+        self.assertEqual(rate.calculate_cost_micros(1), 500_000)
+        self.assertEqual(rate.calculate_cost_micros(100), 500_000)
+        self.assertEqual(rate.calculate_cost_micros(1_000_000), 500_000)
+
+    def test_per_unit_calculate_cost_unchanged(self):
+        rate = Rate.objects.create(
+            card=self.card,
+            metric_name="output_tokens",
+            pricing_type="per_unit",
+            cost_per_unit_micros=75_000,
+            unit_quantity=1_000_000,
+        )
+        # Same as existing calculation
+        self.assertEqual(rate.calculate_cost_micros(1_000_000), 75_000)
+        self.assertEqual(rate.calculate_cost_micros(1_000), 75)
+
+    def test_default_pricing_type_is_per_unit(self):
+        rate = Rate.objects.create(
+            card=self.card,
+            metric_name="default_type",
+            cost_per_unit_micros=75_000,
+        )
+        self.assertEqual(rate.pricing_type, "per_unit")

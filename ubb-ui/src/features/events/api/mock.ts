@@ -15,6 +15,9 @@ import {
   mockFilterOptions,
 } from "./mock-data";
 
+// In-memory audit trail (mutable so pushEvents can append)
+let _auditEntries: AuditEntry[] = [...mockAuditEntries];
+
 export async function getFilterOptions(): Promise<EventFilterOptions> {
   await mockDelay();
   return structuredClone(mockFilterOptions);
@@ -25,31 +28,35 @@ export async function getEvents(filters: EventFilters): Promise<EventsListRespon
   const allEvents = generateMockEvents(25);
 
   let totalCount = 247614;
-  let totalCostDollars = 4218.23;
+  let totalCostMicros = 4_218_230_000; // ~$4,218.23
 
-  if (filters.customerKey) {
+  if (filters.customerId) {
     totalCount = Math.round(totalCount / 10);
-    totalCostDollars = Math.round(totalCostDollars / 10 * 100) / 100;
+    totalCostMicros = Math.round(totalCostMicros / 10);
   }
-  if (filters.groupKey === "(ungrouped)") {
+  if (filters.group === null) {
+    // ungrouped filter
     totalCount = 142;
-    totalCostDollars = 4.87;
-  } else if (filters.groupKey) {
+    totalCostMicros = 4_870_000; // ~$4.87
+  } else if (filters.group) {
     totalCount = Math.round(totalCount * 0.33);
-    totalCostDollars = Math.round(totalCostDollars * 0.33 * 100) / 100;
+    totalCostMicros = Math.round(totalCostMicros * 0.33);
   }
-  if (filters.cardKey) {
+  if (filters.cardSlug) {
     totalCount = Math.round(totalCount * 0.4);
-    totalCostDollars = Math.round(totalCostDollars * 0.4 * 100) / 100;
+    totalCostMicros = Math.round(totalCostMicros * 0.4);
   }
 
-  const estimatedCsvBytes = Math.max(100, totalCount * 75);
+  // Apply date filter: just return same events (mock ignores date range but passes it through)
+  void filters.dateFrom;
+  void filters.dateTo;
 
   return {
     events: allEvents,
     totalCount,
-    totalCostDollars,
-    estimatedCsvBytes,
+    totalCostMicros,
+    nextCursor: totalCount > 25 ? "cursor-page-2" : null,
+    hasMore: totalCount > 25,
   };
 }
 
@@ -57,22 +64,36 @@ export async function pushEvents(
   events: StagedEvent[],
   reason: string,
 ): Promise<PushResult> {
-  void reason;
   await mockDelay(800);
+  const batchId = `audit-${Date.now()}`;
+  const newEntry: AuditEntry = {
+    id: batchId,
+    action: "added",
+    reason,
+    rowCount: events.length,
+    author: "current.user@example.com",
+    createdAt: new Date().toISOString(),
+    reversedAt: null,
+  };
+  _auditEntries = [newEntry, ..._auditEntries];
   return {
     pushedCount: events.length,
-    auditEntryId: `audit-${Date.now()}`,
+    batchId,
   };
 }
 
 export async function getAuditTrail(): Promise<AuditEntry[]> {
   await mockDelay();
-  return structuredClone(mockAuditEntries);
+  return structuredClone(_auditEntries);
 }
 
 export async function reverseAuditEntry(entryId: string): Promise<void> {
   await mockDelay(600);
-  void entryId;
+  _auditEntries = _auditEntries.map((e) =>
+    e.id === entryId
+      ? { ...e, action: "reversed" as const, reversedAt: new Date().toISOString() }
+      : e,
+  );
 }
 
 export async function exportCsv(filters: EventFilters): Promise<{ downloadUrl: string }> {

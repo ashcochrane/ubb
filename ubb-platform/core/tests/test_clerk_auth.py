@@ -35,11 +35,15 @@ class TestClerkJWTAuth:
         assert result is None
 
     @patch("core.clerk_auth.verify_clerk_token")
-    def test_valid_token_unknown_user_returns_none(self, mock_verify):
+    def test_valid_token_unknown_user_returns_clerk_user_id(self, mock_verify):
+        """Valid JWT with no matching TenantUser returns the clerk_user_id string (truthy sentinel)."""
         mock_verify.return_value = {"sub": "user_unknown"}
         request = self.factory.get("/api/v1/platform/customers")
         result = self.auth.authenticate(request, "valid.jwt.token")
-        assert result is None
+        assert result == "user_unknown"
+        assert request.tenant_user is None
+        assert request.tenant is None
+        assert request.clerk_user_id == "user_unknown"
 
     @patch("core.clerk_auth.verify_clerk_token")
     def test_sets_tenant_user_on_request(self, mock_verify):

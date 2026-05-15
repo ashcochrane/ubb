@@ -21,15 +21,15 @@ class TestCustomerListEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
-        assert "next_cursor" in body
-        assert "has_more" in body
+        assert "nextCursor" in body
+        assert "hasMore" in body
 
     def test_list_customers_filter_by_status(self):
         resp = self.http_client.get("/api/v1/platform/customers?status=active", **self.headers)
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 1
-        assert body["data"][0]["external_id"] == "cust_1"
+        assert body["data"][0]["externalId"] == "cust_1"
 
     def test_list_customers_search(self):
         resp = self.http_client.get("/api/v1/platform/customers?search=cust_2", **self.headers)
@@ -61,7 +61,7 @@ class TestCustomerDetailEndpoint:
         resp = self.http_client.get(f"/api/v1/platform/customers/{self.customer.id}", **self.headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["external_id"] == "cust_1"
+        assert body["externalId"] == "cust_1"
         assert body["status"] == "active"
 
     def test_get_customer_not_found(self):

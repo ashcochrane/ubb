@@ -28,7 +28,8 @@ class UsageEvent:
     request_id: str
     cost_micros: int
     effective_at: str
-    event_type: str = ""
+    card_slug: str = ""
+    card_name: str = ""
     provider: str = ""
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
@@ -39,7 +40,7 @@ class UsageAnalyticsResult:
     total_billed_cost_micros: int
     total_provider_cost_micros: int
     by_provider: list[dict]
-    by_event_type: list[dict]
+    by_card: list[dict]
 
 
 # ---- Billing ----

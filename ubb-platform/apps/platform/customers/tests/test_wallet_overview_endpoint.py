@@ -28,7 +28,7 @@ class TestWalletOverviewEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 1
-        assert body["data"][0]["customer_external_id"] == "c2"
+        assert body["data"][0]["customerExternalId"] == "c2"
 
     def test_excludes_other_tenants(self):
         other = Tenant.objects.create(name="Other", products=["metering", "billing"])

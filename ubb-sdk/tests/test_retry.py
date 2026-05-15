@@ -256,8 +256,8 @@ class TestClientRetryIntegration(unittest.TestCase):
         with patch.object(client._http, "post") as mock_post:
             mock_post.return_value = MagicMock(
                 status_code=429,
-                json=lambda: {"hard_stop": True, "run_id": "r1",
-                              "reason": "cost", "total_cost_micros": 100},
+                json=lambda: {"hardStop": True, "runId": "r1",
+                              "reason": "cost", "totalCostMicros": 100},
             )
             with self.assertRaises(UBBHardStopError):
                 client._request_usage("post", "/api/v1/metering/usage", json={})

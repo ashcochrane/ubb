@@ -108,7 +108,7 @@ function TemplateOption({
     >
       <div className="text-[12px] font-medium">{template.name}</div>
       <div className="text-label text-muted-foreground">
-        {template.dimensionCount} dimensions
+        {template.dimensions.length} dimensions
       </div>
     </button>
   );

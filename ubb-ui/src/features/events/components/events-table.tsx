@@ -1,32 +1,31 @@
 import { cn } from "@/lib/utils";
+import { formatCostMicros } from "@/lib/format";
 import type { EventFilterOptions, UsageEvent } from "../api/types";
 
 interface EventsTableProps {
   events: UsageEvent[];
   filterOptions: EventFilterOptions;
-  onUpdateEvent: (idx: number, field: "customerKey" | "groupKey", value: string) => void;
+  onUpdateEvent: (idx: number, field: "customerExternalId" | "group", value: string | null) => void;
 }
 
 export function EventsTable({ events, filterOptions, onUpdateEvent }: EventsTableProps) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-bg-surface">
       <div className="max-h-[380px] overflow-auto">
-        <table className="w-full min-w-[780px] border-collapse text-[10px]">
+        <table className="w-full min-w-[820px] border-collapse text-[10px]">
           <thead>
             <tr>
-              {["", "TIME", "CUSTOMER", "GROUP", "CARD", "DIMENSION", "QTY", "UNIT PRICE", "COST", ""].map((h, i) => (
+              {["", "TIME", "CUSTOMER", "GROUP", "CARD", "METRICS", "COST", ""].map((h, i) => (
                 <th key={i} className={cn(
                   "sticky top-0 z-[2] border-t border-b border-border bg-bg-subtle px-1.5 py-2.5 text-[10px] font-bold uppercase tracking-[0.06em] text-text-muted",
                   i === 0 && "w-[22px]",
                   i === 1 && "w-[88px] text-left",
-                  i === 2 && "w-[82px] text-left",
-                  i === 3 && "w-[82px] text-left",
-                  i === 4 && "w-[82px] text-left",
-                  i === 5 && "w-[78px] text-left",
-                  i === 6 && "w-[50px] text-right",
-                  i === 7 && "w-[80px] text-right",
-                  i === 8 && "w-[56px] text-right",
-                  i === 9 && "w-[24px]",
+                  i === 2 && "w-[90px] text-left",
+                  i === 3 && "w-[90px] text-left",
+                  i === 4 && "w-[90px] text-left",
+                  i === 5 && "text-left",
+                  i === 6 && "w-[72px] text-right",
+                  i === 7 && "w-[24px]",
                 )}>
                   {h}
                 </th>
@@ -35,11 +34,10 @@ export function EventsTable({ events, filterOptions, onUpdateEvent }: EventsTabl
           </thead>
           <tbody>
             {events.map((ev, i) => {
-              const ts = formatTimestamp(ev.timestamp);
-              const upStr = ev.unitPrice
-                .toFixed(10)
-                .replace(/0+$/, "")
-                .replace(/\.$/, ".0");
+              const ts = formatTimestamp(ev.effectiveAt);
+              const metricsStr = Object.entries(ev.usageMetrics)
+                .map(([k, v]) => `${k}=${v.toLocaleString()}`)
+                .join(", ");
 
               return (
                 <tr key={ev.id} className="border-b border-bg-subtle last:border-0 transition-colors hover:bg-bg-page">
@@ -47,32 +45,28 @@ export function EventsTable({ events, filterOptions, onUpdateEvent }: EventsTabl
                   <td className="px-1.5 py-3.5 font-mono text-text-muted">{ts}</td>
                   <td className="px-1.5 py-3.5">
                     <EditableCell
-                      value={ev.customerKey}
+                      value={ev.customerExternalId}
                       options={filterOptions.customers.map((c) => c.key)}
-                      onChange={(v) => onUpdateEvent(i, "customerKey", v)}
+                      onChange={(v) => onUpdateEvent(i, "customerExternalId", v)}
                     />
                   </td>
                   <td className="px-1.5 py-3.5">
                     <EditableCell
-                      value={ev.groupKey}
+                      value={ev.group ?? ""}
                       options={filterOptions.groups.map((g) => g.key)}
                       emptyLabel="none"
                       isMono
-                      onChange={(v) => onUpdateEvent(i, "groupKey", v)}
+                      onChange={(v) => onUpdateEvent(i, "group", v || null)}
                     />
                   </td>
-                  <td className="px-1.5 py-3.5 text-text-muted opacity-60">{ev.cardKey}</td>
+                  <td className="px-1.5 py-3.5 text-text-muted opacity-60">
+                    {ev.cardName ?? ev.cardSlug ?? "—"}
+                  </td>
                   <td className="px-1.5 py-3.5 font-mono text-text-secondary opacity-60">
-                    {ev.dimension}
-                  </td>
-                  <td className="px-1.5 py-3.5 text-right font-mono opacity-60">
-                    {ev.quantity.toLocaleString()}
-                  </td>
-                  <td className="px-1.5 py-3.5 text-right font-mono text-[9px] text-text-muted opacity-60">
-                    {upStr}
+                    {metricsStr || "—"}
                   </td>
                   <td className="px-1.5 py-3.5 text-right font-mono font-medium">
-                    ${ev.cost.toFixed(6)}
+                    {ev.billedCostMicros != null ? formatCostMicros(ev.billedCostMicros) : "—"}
                   </td>
                   <td className="px-1.5 py-3.5" />
                 </tr>

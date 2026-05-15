@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const COLUMNS = ["date", "customer", "group", "pricing_card", "dimension", "quantity"];
+const COLUMNS = ["date", "customer_external_id", "group", "card_slug", "metric", "quantity"];
 
 interface PasteAreaProps {
   onParse: (rows: string[][]) => void;
