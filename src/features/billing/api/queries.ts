@@ -1,21 +1,24 @@
 // src/features/billing/api/queries.ts
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toastOnError } from "@/lib/mutations";
 import { billingMarginApi } from "./provider";
-import type { UpdateMarginRequest } from "./types";
+import type { UpdateDefaultMarginRequest } from "./types";
 
-export function useMarginDashboard() {
+const QUERY_KEY = ["default-margin"] as const;
+
+export function useDefaultMargin() {
   return useQuery({
-    queryKey: ["margin-dashboard"],
-    queryFn: () => billingMarginApi.getMarginDashboard(),
+    queryKey: QUERY_KEY,
+    queryFn: () => billingMarginApi.getDefaultMargin(),
   });
 }
 
-export function useUpdateMargin() {
-  const queryClient = useQueryClient();
+export function useUpdateDefaultMargin() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (req: UpdateMarginRequest) => billingMarginApi.updateMargin(req),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["margin-dashboard"] }),
-    onError: toastOnError("Couldn't update margin"),
+    mutationFn: (req: UpdateDefaultMarginRequest) =>
+      billingMarginApi.updateDefaultMargin(req),
+    onSuccess: (data) => qc.setQueryData(QUERY_KEY, data),
+    onError: toastOnError("Couldn't update default margin"),
   });
 }
