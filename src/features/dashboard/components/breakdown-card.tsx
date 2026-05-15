@@ -1,47 +1,69 @@
-// src/features/dashboard/components/breakdown-card.tsx
-import type { ProductBreakdown } from "../api/types";
+import { ChartCard } from "@/components/shared/chart-card";
+import { formatCostMicros } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import type { GroupBreakdown } from "../api/types";
+
+// Client-side color palette — assigned by index, never from the API.
+const COLOR_PALETTE = [
+  "#4a7fa8",
+  "#6a5aaa",
+  "#b84848",
+  "#a16a4a",
+  "#b5ad9e",
+  "#3a8050",
+  "#9a8e80",
+];
+
+function paletteColor(index: number): string {
+  return COLOR_PALETTE[index % COLOR_PALETTE.length]!;
+}
 
 interface BreakdownCardProps {
   title: string;
-  items: ProductBreakdown[];
-  /** Override bar fill color (e.g. teal for margin bars). Defaults to item.color. */
+  items: GroupBreakdown[];
+  /** Optional override for the bar fill color (e.g. accent terracotta for margin view). */
   barColor?: string;
-  formatValue?: (value: number) => string;
+  formatValue?: (valueMicros: number) => string;
 }
 
 export function BreakdownCard({ title, items, barColor, formatValue }: BreakdownCardProps) {
-  const fmt = formatValue ?? ((v: number) => `$${v.toLocaleString()}`);
+  const fmt = formatValue ?? formatCostMicros;
   const maxPercentage = Math.max(...items.map((i) => i.percentage));
 
   return (
-    <div className="rounded-xl border border-border px-4 py-3.5">
-      <div className="mb-3 text-[13px] font-semibold">{title}</div>
-      <div className="space-y-2.5">
-        {items.map((item) => (
-          <div key={item.key} className="flex items-center gap-2.5 border-b border-border/50 pb-2 last:border-0 last:pb-0">
-            <div
-              className="h-2 w-2 shrink-0 rounded-sm"
-              style={{ backgroundColor: item.color }}
+    <ChartCard title={title}>
+      <div>
+        {items.map((item, idx) => (
+          <div
+            key={item.key}
+            className={cn(
+              "flex items-center gap-3 border-b border-bg-subtle py-2.5",
+              "last:border-0",
+            )}
+          >
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: paletteColor(idx) }}
             />
-            <span className="flex-1 text-[12px] text-muted-foreground">{item.label}</span>
-            <div className="w-11">
-              <div className="h-1 rounded-full bg-muted">
-                <div
-                  className="h-1 rounded-full"
-                  style={{
-                    width: `${(item.percentage / maxPercentage) * 100}%`,
-                    backgroundColor: barColor ?? item.color,
-                  }}
-                />
-              </div>
+            <span className="flex-1 text-[13px]">{item.label}</span>
+            <span className="min-w-[65px] text-right font-mono text-[13px] font-semibold">
+              {fmt(item.valueMicros)}
+            </span>
+            <div className="h-[5px] w-[72px] overflow-hidden rounded-full bg-bg-subtle">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${(item.percentage / maxPercentage) * 100}%`,
+                  backgroundColor: barColor ?? paletteColor(idx),
+                }}
+              />
             </div>
-            <span className="w-14 text-right font-mono text-[11px] font-semibold">{fmt(item.value)}</span>
-            <span className="w-10 text-right font-mono text-[10px] text-muted-foreground">
+            <span className="min-w-[34px] text-right text-[11px] font-medium text-text-muted">
               {item.percentage}%
             </span>
           </div>
         ))}
       </div>
-    </div>
+    </ChartCard>
   );
 }

@@ -6,10 +6,47 @@ import {
 } from "./calculations";
 import type { Dimension } from "../api/types";
 
+// Prices in micros (integer). $0.000001/token, $0.000002/token, $0.10/request flat.
 const tokenDimensions: Dimension[] = [
-  { key: "input_tokens", type: "per_unit", price: 0.0000001, label: "Input tokens", unit: "per 1M tokens" },
-  { key: "output_tokens", type: "per_unit", price: 0.0000004, label: "Output tokens", unit: "per 1M tokens" },
-  { key: "grounding_requests", type: "flat", price: 0.035, label: "Grounding requests", unit: "per request" },
+  {
+    id: "dim-1",
+    metricName: "input_tokens",
+    pricingType: "per_unit",
+    costPerUnitMicros: 1, // $0.000001 per token
+    providerCostPerUnitMicros: null,
+    unitQuantity: 1,
+    currency: "USD",
+    label: "Input tokens",
+    unit: "per token",
+    validFrom: "2024-01-01T00:00:00Z",
+    validTo: null,
+  },
+  {
+    id: "dim-2",
+    metricName: "output_tokens",
+    pricingType: "per_unit",
+    costPerUnitMicros: 2, // $0.000002 per token
+    providerCostPerUnitMicros: null,
+    unitQuantity: 1,
+    currency: "USD",
+    label: "Output tokens",
+    unit: "per token",
+    validFrom: "2024-01-01T00:00:00Z",
+    validTo: null,
+  },
+  {
+    id: "dim-3",
+    metricName: "grounding_requests",
+    pricingType: "flat",
+    costPerUnitMicros: 100_000, // $0.10 per request
+    providerCostPerUnitMicros: null,
+    unitQuantity: 1,
+    currency: "USD",
+    label: "Grounding requests",
+    unit: "per request",
+    validFrom: "2024-01-01T00:00:00Z",
+    validTo: null,
+  },
 ];
 
 describe("calculateCosts", () => {
@@ -20,10 +57,14 @@ describe("calculateCosts", () => {
       grounding_requests: 1,
     });
 
-    expect(result.dimensions[0].cost).toBeCloseTo(0.00015, 8);
-    expect(result.dimensions[1].cost).toBeCloseTo(0.00032, 8);
-    expect(result.dimensions[2].cost).toBeCloseTo(0.035, 8);
-    expect(result.total).toBeCloseTo(0.03547, 5);
+    // 1500 * (1/1_000_000) = 0.0015
+    expect(result.dimensions[0]!.cost).toBeCloseTo(0.0015, 6);
+    // 800 * (2/1_000_000) = 0.0016
+    expect(result.dimensions[1]!.cost).toBeCloseTo(0.0016, 6);
+    // flat $0.10
+    expect(result.dimensions[2]!.cost).toBeCloseTo(0.1, 6);
+    // total = 0.0015 + 0.0016 + 0.1 = 0.1031
+    expect(result.total).toBeCloseTo(0.1031, 5);
   });
 
   it("returns zero cost for flat dimension with zero quantity", () => {
@@ -50,8 +91,9 @@ describe("calculateDistribution", () => {
     });
     const dist = calculateDistribution(costs);
 
-    expect(dist[0].key).toBe("grounding_requests");
-    expect(dist[0].percentage).toBeGreaterThan(90);
+    // grounding_requests ($0.10) dominates over input ($0.0015) and output ($0.0016)
+    expect(dist[0]!.metricName).toBe("grounding_requests");
+    expect(dist[0]!.percentage).toBeGreaterThan(90);
     expect(dist.reduce((s, d) => s + d.percentage, 0)).toBeCloseTo(100, 1);
   });
 

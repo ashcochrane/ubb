@@ -1,26 +1,17 @@
-// src/features/dashboard/api/types.ts
-
 export type TimeRange = "7d" | "30d" | "90d" | "YTD";
 
-export interface DailyDataPoint {
-  date: string; // "YYYY-MM-DD"
-  label: string; // "D Mon" for display
+export interface Sparklines {
+  revenue: number[];          // micros
+  apiCosts: number[];         // micros
+  grossMargin: number[];      // micros
+  marginPct: number[];
+  costPerRev: number[];
 }
 
-export interface RevenueTimeSeries extends DailyDataPoint {
-  revenue: number;
-  apiCosts: number;
-  margin: number;
-}
-
-export interface CostByProductPoint extends DailyDataPoint {
-  [productKey: string]: number | string; // dynamic product keys + date/label
-}
-
-export interface StatsData {
-  revenue: number;
-  apiCosts: number;
-  grossMargin: number;
+export interface StatsResponse {
+  revenueMicros: number;
+  apiCostsMicros: number;
+  grossMarginMicros: number;
   marginPercentage: number;
   costPerDollarRevenue: number;
   revenuePrevChange: number;
@@ -28,39 +19,46 @@ export interface StatsData {
   marginPrevChange: number;
   marginPctPrevChange: number;
   costPerRevPrevChange: number;
+  sparklines: Sparklines;
 }
 
-export interface ProductBreakdown {
+export interface DailyChartPoint {
+  date: string;
+  revenueMicros: number;
+  apiCostsMicros: number;
+  marginMicros: number;
+}
+
+export interface StackedSeries {
+  series: { key: string; label: string }[];
+  data: Array<{ date: string; [key: string]: number | string }>;
+}
+
+export interface GroupBreakdown {
   key: string;
   label: string;
-  color: string;
-  value: number;
+  valueMicros: number;
   percentage: number;
 }
 
-export interface CustomerRow {
-  name: string;
+export interface ChartsResponse {
+  revenueTimeSeries: DailyChartPoint[];
+  costByGroup: StackedSeries;
+  costByCard: StackedSeries;
+  revenueByGroup: GroupBreakdown[];
+  marginByGroup: GroupBreakdown[];
+}
+
+export interface DashboardCustomerRow {
   customerId: string;
-  revenue: number;
-  revenueType: "Sub" | "Usage";
-  apiCosts: number;
-  margin: number;
+  externalId: string;
+  revenueMicros: number;
+  apiCostsMicros: number;
+  marginMicros: number;
   marginPercentage: number;
-  events: number;
+  eventCount: number;
 }
 
-export interface CostSeries {
-  key: string;
-  label: string;
-  color: string;
-}
-
-export interface DashboardData {
-  stats: StatsData;
-  revenueTimeSeries: RevenueTimeSeries[];
-  costByProduct: { series: CostSeries[]; data: CostByProductPoint[] };
-  costByCard: { series: CostSeries[]; data: CostByProductPoint[] };
-  revenueByProduct: ProductBreakdown[];
-  marginByProduct: ProductBreakdown[];
-  customers: CustomerRow[];
+export interface CustomersResponse {
+  customers: DashboardCustomerRow[];
 }

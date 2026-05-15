@@ -39,7 +39,7 @@ export function StepSource() {
 
       {sourceType === "template" && templates.length > 0 && (
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-muted-foreground">
+          <label className="text-label font-medium text-muted-foreground">
             Choose a template
           </label>
           <div className="grid grid-cols-3 gap-2.5">
@@ -74,14 +74,14 @@ function SourceOption({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-3.5 py-3 text-left transition-colors",
+        "rounded-md border border-border bg-bg-surface px-3.5 py-3 text-left transition-colors",
         selected
           ? "border-2 border-foreground"
-          : "border-border hover:border-muted-foreground hover:bg-accent",
+          : "hover:border-border-mid hover:shadow-md",
       )}
     >
       <div className="text-[13px] font-medium">{title}</div>
-      <div className="text-[11px] text-muted-foreground">{subtitle}</div>
+      <div className="text-label text-muted-foreground">{subtitle}</div>
     </button>
   );
 }
@@ -100,15 +100,15 @@ function TemplateOption({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-3 py-2.5 text-left transition-colors",
+        "rounded-md border border-border bg-bg-surface px-3 py-2.5 text-left transition-colors",
         selected
           ? "border-2 border-foreground"
-          : "border-border hover:border-muted-foreground hover:bg-accent",
+          : "hover:border-border-mid hover:shadow-md",
       )}
     >
       <div className="text-[12px] font-medium">{template.name}</div>
-      <div className="text-[11px] text-muted-foreground">
-        {template.dimensionCount} dimensions
+      <div className="text-label text-muted-foreground">
+        {template.dimensions.length} dimensions
       </div>
     </button>
   );

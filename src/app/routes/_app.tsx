@@ -3,32 +3,26 @@ import { UserButton } from "@clerk/react";
 import { User } from "lucide-react";
 import { NavShell } from "@/components/shared/nav-shell";
 import { RouteError } from "@/components/shared/route-error";
-import { useAuthStore } from "@/stores/auth-store";
 import { API_PROVIDER } from "@/lib/api-provider";
+import { queryClient } from "@/lib/query-client";
+import { meQueryOptions } from "@/features/auth/api/queries";
 
 const noAuthMode = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY && API_PROVIDER === "mock";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async ({ context }) => {
-    // No-auth dev mode: only when mock provider AND no Clerk key
-    if (noAuthMode) {
-      const { activeTenantId } = useAuthStore.getState();
-      if (!activeTenantId) {
-        useAuthStore.getState().setTenant("tenant-mock-001", "billing");
-      }
-      return;
-    }
-
-    // Real auth: check Clerk
-    if (!context.auth?.isSignedIn) {
+    // Clerk signin check (skipped in no-auth dev mode)
+    if (!noAuthMode && !context.auth?.isSignedIn) {
       throw redirect({ to: "/sign-in" });
     }
 
-    // TODO (Phase 7 - API Integration): Fetch tenant context from backend
-    // and call useAuthStore.getState().setTenant(tenantId, mode) here.
-    // Until then, Clerk-authenticated users will have empty tenant state.
+    // Tenant / onboarding check via /me
+    const me = await queryClient.ensureQueryData(meQueryOptions);
+    if (!me.tenantUser || !me.onboardingCompleted) {
+      throw redirect({ to: "/onboarding" });
+    }
   },
-  errorComponent: ({ error }) => <RouteError error={error} />,
+  errorComponent: RouteError,
   component: AppLayout,
 });
 

@@ -1,72 +1,90 @@
-// src/features/dashboard/components/stats-grid.tsx
-import { cn } from "@/lib/utils";
-import type { StatsData } from "../api/types";
+import { StatCard } from "@/components/shared/stat-card";
+import { Sparkline } from "@/components/shared/sparkline";
+import { formatCostMicros } from "@/lib/format";
+import type { StatsResponse } from "../api/types";
+import {
+  CHART_GREEN,
+  CHART_RED,
+  CHART_STONE,
+  CHART_TERRACOTTA,
+} from "../lib/chart-colors";
 
 interface StatsGridProps {
-  stats: StatsData;
+  stats: StatsResponse;
+  sparklines: StatsResponse["sparklines"];
 }
 
-interface StatCardProps {
-  label: string;
-  value: string;
-  change: string;
-  positive: boolean;
-  /** Apply green color to the value (e.g. for margin stats) */
-  greenValue?: boolean;
-}
-
-function StatCard({ label, value, change, positive, greenValue }: StatCardProps) {
+export function StatsGrid({ stats, sparklines }: StatsGridProps) {
   return (
-    <div className="rounded-lg bg-accent/50 px-3 py-2.5">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn(
-        "mt-1 text-[17px] font-semibold tracking-tight",
-        greenValue && "text-[#3B6D11]",
-      )}>
-        {value}
-      </div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground/60">
-        {positive ? "+" : ""}{change}
-      </div>
-    </div>
-  );
-}
-
-export function StatsGrid({ stats }: StatsGridProps) {
-  return (
-    <div className="grid grid-cols-5 gap-2">
+    <div className="grid grid-cols-5 gap-3.5">
       <StatCard
+        variant="raised"
         label="Revenue"
-        value={`$${stats.revenue.toLocaleString()}`}
-        change={`${stats.revenuePrevChange}% vs prev`}
-        positive={stats.revenuePrevChange > 0}
+        value={formatCostMicros(stats.revenueMicros)}
+        trend={signedTrend(stats.revenuePrevChange)}
+        trendLabel={signedPercent(stats.revenuePrevChange)}
+        sparkline={<Sparkline data={sparklines.revenue} color={CHART_TERRACOTTA} />}
       />
       <StatCard
+        variant="raised"
         label="API costs"
-        value={`$${stats.apiCosts.toLocaleString()}`}
-        change={`${stats.costsPrevChange}% vs prev`}
-        positive={stats.costsPrevChange < 0}
+        // Inverted trend: costs going DOWN is good ("up" in UX terms).
+        value={formatCostMicros(stats.apiCostsMicros)}
+        trend={signedTrend(-stats.costsPrevChange)}
+        trendLabel={signedPercent(stats.costsPrevChange)}
+        sparkline={<Sparkline data={sparklines.apiCosts} color={CHART_RED} />}
       />
       <StatCard
+        variant="raised"
         label="Gross margin"
-        value={`$${stats.grossMargin.toLocaleString()}`}
-        change={`${stats.marginPrevChange}% vs prev`}
-        positive={stats.marginPrevChange > 0}
-        greenValue
+        value={formatCostMicros(stats.grossMarginMicros)}
+        trend={signedTrend(stats.marginPrevChange)}
+        trendLabel={signedPercent(stats.marginPrevChange)}
+        sparkline={<Sparkline data={sparklines.grossMargin} color={CHART_GREEN} />}
       />
       <StatCard
+        variant="raised"
         label="Margin %"
         value={`${stats.marginPercentage}%`}
-        change={`${stats.marginPctPrevChange}pp vs prev`}
-        positive={stats.marginPctPrevChange > 0}
-        greenValue
+        trend={signedTrend(stats.marginPctPrevChange)}
+        trendLabel={signedPoint(stats.marginPctPrevChange)}
+        sparkline={<Sparkline data={sparklines.marginPct} color={CHART_TERRACOTTA} />}
       />
       <StatCard
+        variant="raised"
         label="Cost / $1 rev"
-        value={`$${stats.costPerDollarRevenue}`}
-        change={`${stats.costPerRevPrevChange}% vs prev`}
-        positive={stats.costPerRevPrevChange < 0}
+        value={`$${stats.costPerDollarRevenue.toFixed(3)}`}
+        trend={costPerRevTrend(stats.costPerRevPrevChange)}
+        trendLabel={deadbandPercent(stats.costPerRevPrevChange)}
+        sparkline={<Sparkline data={sparklines.costPerRev} color={CHART_STONE} />}
       />
     </div>
   );
+}
+
+// Trend label helpers.
+function signedPercent(value: number): string {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value}% vs prev`;
+}
+
+function signedPoint(value: number): string {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value}pp vs prev`;
+}
+
+function deadbandPercent(value: number): string {
+  return `±${Math.abs(value)}% vs prev`;
+}
+
+// Signed trend: exact zero is flat (not down).
+function signedTrend(delta: number): "up" | "down" | "flat" {
+  if (delta === 0) return "flat";
+  return delta > 0 ? "up" : "down";
+}
+
+// Cost-per-revenue has a wider deadband: small changes render flat, not up/down.
+function costPerRevTrend(delta: number): "up" | "down" | "flat" {
+  if (Math.abs(delta) < 1) return "flat";
+  return delta < 0 ? "up" : "down";
 }

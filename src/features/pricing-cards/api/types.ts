@@ -1,51 +1,68 @@
 export type PricingType = "per_unit" | "flat";
-export type PricingPattern = "token" | "request" | "mixed";
 export type CardStatus = "draft" | "active" | "archived";
-export type SourceType = "template" | "custom";
 
 export interface Dimension {
-  key: string;
-  type: PricingType;
-  price: number;
+  id: string;
+  metricName: string;
+  pricingType: PricingType;
+  costPerUnitMicros: number;
+  providerCostPerUnitMicros: number | null;
+  unitQuantity: number;
+  currency: string;
   label: string;
   unit: string;
-  displayPrice?: string;
+  validFrom: string;
+  validTo: string | null;
+}
+
+export interface DimensionInput {
+  metricName: string;
+  pricingType: PricingType;
+  costPerUnitMicros: number;
+  providerCostPerUnitMicros: number | null;
+  unitQuantity: number;
+  currency: string;
+  label: string;
+  unit: string;
 }
 
 export interface PricingCard {
   id: string;
-  cardId: string;
+  slug: string;
   name: string;
   provider: string;
-  pricingPattern: PricingPattern;
+  description: string;
+  pricingSourceUrl: string;
+  groupId: string | null;
+  groupName: string | null;
   status: CardStatus;
   dimensions: Dimension[];
-  description?: string;
-  pricingSourceUrl?: string;
-  product?: string;
-  version: number;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface CreateCardRequest {
+  name: string;
+  slug: string;
+  provider: string;
+  description: string;
+  pricingSourceUrl: string;
+  groupId: string | null;
+  status: CardStatus;
+  dimensions: DimensionInput[];
+}
+
+export interface CardListResponse {
+  data: PricingCard[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+// UI-only: bundled card-creation templates. Not a backend type.
 export interface Template {
   id: string;
   name: string;
   provider: string;
-  dimensionCount: number;
-  pricingPattern: PricingPattern;
-  dimensions: Dimension[];
-  description?: string;
-}
-
-export interface CreateCardRequest {
-  name: string;
-  cardId: string;
-  provider: string;
-  pricingPattern: PricingPattern;
-  dimensions: Dimension[];
-  description?: string;
-  pricingSourceUrl?: string;
-  product?: string;
-  status: CardStatus;
+  description: string;
+  dimensions: DimensionInput[];
 }

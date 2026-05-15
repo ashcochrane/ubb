@@ -10,21 +10,29 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
-import { Route as AppProductsIndexRouteImport } from './routes/_app/products/index'
 import { Route as AppPricingCardsIndexRouteImport } from './routes/_app/pricing-cards/index'
 import { Route as AppExportIndexRouteImport } from './routes/_app/export/index'
+import { Route as AppEventsIndexRouteImport } from './routes/_app/events/index'
 import { Route as AppCustomersIndexRouteImport } from './routes/_app/customers/index'
 import { Route as AppBillingIndexRouteImport } from './routes/_app/billing/index'
 import { Route as AppPricingCardsNewRouteImport } from './routes/_app/pricing-cards/new'
+import { Route as AppPricingCardsCardIdRouteImport } from './routes/_app/pricing-cards/$cardId'
+import { Route as AppCustomersCustomerIdRouteImport } from './routes/_app/customers/$customerId'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/onboarding.lazy').then((d) => d.Route))
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -33,15 +41,10 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
-} as any)
+} as any).lazy(() => import('./routes/_app/index.lazy').then((d) => d.Route))
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProductsIndexRoute = AppProductsIndexRouteImport.update({
-  id: '/products/',
-  path: '/products/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPricingCardsIndexRoute = AppPricingCardsIndexRouteImport.update({
@@ -53,6 +56,13 @@ const AppExportIndexRoute = AppExportIndexRouteImport.update({
   id: '/export/',
   path: '/export/',
   getParentRoute: () => AppRoute,
+} as any).lazy(() =>
+  import('./routes/_app/export/index.lazy').then((d) => d.Route),
+)
+const AppEventsIndexRoute = AppEventsIndexRouteImport.update({
+  id: '/events/',
+  path: '/events/',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
   id: '/customers/',
@@ -63,87 +73,120 @@ const AppBillingIndexRoute = AppBillingIndexRouteImport.update({
   id: '/billing/',
   path: '/billing/',
   getParentRoute: () => AppRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/_app/billing/index.lazy').then((d) => d.Route),
+)
 const AppPricingCardsNewRoute = AppPricingCardsNewRouteImport.update({
   id: '/pricing-cards/new',
   path: '/pricing-cards/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPricingCardsCardIdRoute = AppPricingCardsCardIdRouteImport.update({
+  id: '/pricing-cards/$cardId',
+  path: '/pricing-cards/$cardId',
+  getParentRoute: () => AppRoute,
+} as any).lazy(() =>
+  import('./routes/_app/pricing-cards/$cardId.lazy').then((d) => d.Route),
+)
+const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
+  id: '/customers/$customerId',
+  path: '/customers/$customerId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/billing/': typeof AppBillingIndexRoute
   '/customers/': typeof AppCustomersIndexRoute
+  '/events/': typeof AppEventsIndexRoute
   '/export/': typeof AppExportIndexRoute
   '/pricing-cards/': typeof AppPricingCardsIndexRoute
-  '/products/': typeof AppProductsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/': typeof AppIndexRoute
+  '/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/billing': typeof AppBillingIndexRoute
   '/customers': typeof AppCustomersIndexRoute
+  '/events': typeof AppEventsIndexRoute
   '/export': typeof AppExportIndexRoute
   '/pricing-cards': typeof AppPricingCardsIndexRoute
-  '/products': typeof AppProductsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/_app/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
   '/_app/pricing-cards/new': typeof AppPricingCardsNewRoute
   '/_app/billing/': typeof AppBillingIndexRoute
   '/_app/customers/': typeof AppCustomersIndexRoute
+  '/_app/events/': typeof AppEventsIndexRoute
   '/_app/export/': typeof AppExportIndexRoute
   '/_app/pricing-cards/': typeof AppPricingCardsIndexRoute
-  '/_app/products/': typeof AppProductsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/onboarding'
     | '/sign-in'
+    | '/customers/$customerId'
+    | '/pricing-cards/$cardId'
     | '/pricing-cards/new'
     | '/billing/'
     | '/customers/'
+    | '/events/'
     | '/export/'
     | '/pricing-cards/'
-    | '/products/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/onboarding'
     | '/sign-in'
     | '/'
+    | '/customers/$customerId'
+    | '/pricing-cards/$cardId'
     | '/pricing-cards/new'
     | '/billing'
     | '/customers'
+    | '/events'
     | '/export'
     | '/pricing-cards'
-    | '/products'
     | '/settings'
   id:
     | '__root__'
     | '/_app'
+    | '/onboarding'
     | '/sign-in'
     | '/_app/'
+    | '/_app/customers/$customerId'
+    | '/_app/pricing-cards/$cardId'
     | '/_app/pricing-cards/new'
     | '/_app/billing/'
     | '/_app/customers/'
+    | '/_app/events/'
     | '/_app/export/'
     | '/_app/pricing-cards/'
-    | '/_app/products/'
     | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  OnboardingRoute: typeof OnboardingRoute
   SignInRoute: typeof SignInRoute
 }
 
@@ -154,6 +197,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -177,13 +227,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/products/': {
-      id: '/_app/products/'
-      path: '/products'
-      fullPath: '/products/'
-      preLoaderRoute: typeof AppProductsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/pricing-cards/': {
       id: '/_app/pricing-cards/'
       path: '/pricing-cards'
@@ -196,6 +239,13 @@ declare module '@tanstack/react-router' {
       path: '/export'
       fullPath: '/export/'
       preLoaderRoute: typeof AppExportIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/events/': {
+      id: '/_app/events/'
+      path: '/events'
+      fullPath: '/events/'
+      preLoaderRoute: typeof AppEventsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/customers/': {
@@ -219,28 +269,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPricingCardsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/pricing-cards/$cardId': {
+      id: '/_app/pricing-cards/$cardId'
+      path: '/pricing-cards/$cardId'
+      fullPath: '/pricing-cards/$cardId'
+      preLoaderRoute: typeof AppPricingCardsCardIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/customers/$customerId': {
+      id: '/_app/customers/$customerId'
+      path: '/customers/$customerId'
+      fullPath: '/customers/$customerId'
+      preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
+  AppPricingCardsCardIdRoute: typeof AppPricingCardsCardIdRoute
   AppPricingCardsNewRoute: typeof AppPricingCardsNewRoute
   AppBillingIndexRoute: typeof AppBillingIndexRoute
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
+  AppEventsIndexRoute: typeof AppEventsIndexRoute
   AppExportIndexRoute: typeof AppExportIndexRoute
   AppPricingCardsIndexRoute: typeof AppPricingCardsIndexRoute
-  AppProductsIndexRoute: typeof AppProductsIndexRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
+  AppPricingCardsCardIdRoute: AppPricingCardsCardIdRoute,
   AppPricingCardsNewRoute: AppPricingCardsNewRoute,
   AppBillingIndexRoute: AppBillingIndexRoute,
   AppCustomersIndexRoute: AppCustomersIndexRoute,
+  AppEventsIndexRoute: AppEventsIndexRoute,
   AppExportIndexRoute: AppExportIndexRoute,
   AppPricingCardsIndexRoute: AppPricingCardsIndexRoute,
-  AppProductsIndexRoute: AppProductsIndexRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 
@@ -248,6 +316,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  OnboardingRoute: OnboardingRoute,
   SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport

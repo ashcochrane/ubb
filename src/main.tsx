@@ -8,6 +8,16 @@ import "./styles/app.css";
 
 import { API_PROVIDER } from "./lib/api-provider";
 
+if (
+  import.meta.env.VITE_API_PROVIDER === "api" &&
+  !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+) {
+  throw new Error(
+    "VITE_CLERK_PUBLISHABLE_KEY is required when VITE_API_PROVIDER=api. " +
+      "Set it in .env.local, or use VITE_API_PROVIDER=mock for no-auth dev mode.",
+  );
+}
+
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const noAuthMode = !clerkPubKey && API_PROVIDER === "mock";
 
@@ -61,7 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     {noAuthMode ? (
       <NoAuthApp />
     ) : (
-      <ClerkProvider publishableKey={clerkPubKey!}>
+      <ClerkProvider publishableKey={clerkPubKey as string}>
         <ClerkApp />
       </ClerkProvider>
     )}

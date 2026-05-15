@@ -1,0 +1,373 @@
+{
+  "components": {
+    "schemas": {
+      "BalanceResponse": {
+        "properties": {
+          "balance_micros": {
+            "title": "Balance Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "balance_micros",
+          "currency"
+        ],
+        "title": "BalanceResponse",
+        "type": "object"
+      },
+      "InvoiceOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stripe_invoice_id": {
+            "title": "Stripe Invoice Id",
+            "type": "string"
+          },
+          "total_amount_micros": {
+            "title": "Total Amount Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "total_amount_micros",
+          "status",
+          "stripe_invoice_id",
+          "created_at"
+        ],
+        "title": "InvoiceOut",
+        "type": "object"
+      },
+      "PaginatedInvoices": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedInvoices",
+        "type": "object"
+      },
+      "PaginatedTransactions": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedTransactions",
+        "type": "object"
+      },
+      "TopUpRequest": {
+        "properties": {
+          "amount_micros": {
+            "exclusiveMinimum": 0,
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "cancel_url": {
+            "minLength": 1,
+            "title": "Cancel Url",
+            "type": "string"
+          },
+          "success_url": {
+            "minLength": 1,
+            "title": "Success Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_micros",
+          "success_url",
+          "cancel_url"
+        ],
+        "title": "TopUpRequest",
+        "type": "object"
+      },
+      "TopUpResponse": {
+        "properties": {
+          "checkout_url": {
+            "title": "Checkout Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkout_url"
+        ],
+        "title": "TopUpResponse",
+        "type": "object"
+      },
+      "TransactionOut": {
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "balance_after_micros": {
+            "title": "Balance After Micros",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "transaction_type": {
+            "title": "Transaction Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "transaction_type",
+          "amount_micros",
+          "balance_after_micros",
+          "description",
+          "created_at"
+        ],
+        "title": "TransactionOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "WidgetJWTAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "title": "NinjaAPI",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/balance": {
+      "get": {
+        "operationId": "api_v1_me_endpoints_get_balance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "WidgetJWTAuth": []
+          }
+        ],
+        "summary": "Get Balance"
+      }
+    },
+    "/invoices": {
+      "get": {
+        "operationId": "api_v1_me_endpoints_get_invoices",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInvoices"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "WidgetJWTAuth": []
+          }
+        ],
+        "summary": "Get Invoices"
+      }
+    },
+    "/top-up": {
+      "post": {
+        "operationId": "api_v1_me_endpoints_create_top_up",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopUpResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "WidgetJWTAuth": []
+          }
+        ],
+        "summary": "Create Top Up"
+      }
+    },
+    "/transactions": {
+      "get": {
+        "operationId": "api_v1_me_endpoints_get_transactions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTransactions"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "WidgetJWTAuth": []
+          }
+        ],
+        "summary": "Get Transactions"
+      }
+    }
+  },
+  "servers": []
+}

@@ -1,11 +1,17 @@
-import type { Dimension } from "../api/types";
+/** Minimal shape needed for cost calculation — works with both Dimension and DimensionInput */
+interface CalcDimension {
+  metricName: string;
+  pricingType: "per_unit" | "flat";
+  costPerUnitMicros: number;
+  label: string;
+}
 
 export interface DimensionCost {
-  key: string;
+  metricName: string;
   label: string;
   quantity: number;
-  price: number;
-  type: "per_unit" | "flat";
+  priceDollars: number;
+  pricingType: "per_unit" | "flat";
   cost: number;
 }
 
@@ -15,20 +21,21 @@ export interface CostResult {
 }
 
 export function calculateCosts(
-  dimensions: Dimension[],
+  dimensions: CalcDimension[],
   quantities: Record<string, number>,
 ): CostResult {
   const results: DimensionCost[] = dimensions.map((dim) => {
-    const qty = quantities[dim.key] ?? 0;
+    const qty = quantities[dim.metricName] ?? 0;
+    const priceDollars = dim.costPerUnitMicros / 1_000_000;
     const cost =
-      dim.type === "flat" ? (qty > 0 ? dim.price : 0) : qty * dim.price;
+      dim.pricingType === "flat" ? (qty > 0 ? priceDollars : 0) : qty * priceDollars;
 
     return {
-      key: dim.key,
+      metricName: dim.metricName,
       label: dim.label,
       quantity: qty,
-      price: dim.price,
-      type: dim.type,
+      priceDollars,
+      pricingType: dim.pricingType,
       cost,
     };
   });
@@ -39,12 +46,12 @@ export function calculateCosts(
 
 export function calculateDistribution(
   result: CostResult,
-): Array<{ key: string; label: string; percentage: number }> {
+): Array<{ metricName: string; label: string; percentage: number }> {
   if (result.total === 0) return [];
 
   return result.dimensions
     .map((d) => ({
-      key: d.key,
+      metricName: d.metricName,
       label: d.label,
       percentage: (d.cost / result.total) * 100,
     }))

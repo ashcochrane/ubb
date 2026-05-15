@@ -30,6 +30,6 @@ function RootLayout() {
   );
 }
 
-function RootError({ error }: { error: Error }) {
-  return <RouteError error={error} />;
+function RootError({ error, reset }: { error: Error; reset: () => void }) {
+  return <RouteError error={error} reset={reset} />;
 }

@@ -1,74 +1,113 @@
-// src/features/dashboard/components/cost-by-product-chart.tsx
 import {
-  AreaChart,
   Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
 } from "recharts";
-import type { CostByProductPoint, CostSeries } from "../api/types";
+import { ChartCard } from "@/components/shared/chart-card";
+import { ChartLegend } from "@/components/shared/chart-legend";
+import { formatCostMicros } from "@/lib/format";
+import type { StackedSeries } from "../api/types";
 
-interface CostByProductChartProps {
-  title: string;
-  series: CostSeries[];
-  data: CostByProductPoint[];
+// Client-side color palette — assigned by index, never from the API.
+const COLOR_PALETTE = [
+  "#4a7fa8",
+  "#6a5aaa",
+  "#b84848",
+  "#a16a4a",
+  "#b5ad9e",
+  "#3a8050",
+  "#9a8e80",
+];
+
+function paletteColor(index: number): string {
+  return COLOR_PALETTE[index % COLOR_PALETTE.length]!;
 }
 
-export function CostBreakdownChart({ title, series, data }: CostByProductChartProps) {
+interface CostBreakdownChartProps {
+  title: string;
+  series: StackedSeries["series"];
+  data: StackedSeries["data"];
+}
+
+export function CostBreakdownChart({ title, series, data }: CostBreakdownChartProps) {
+  const [primary, ...rest] = series;
+
   return (
-    <div className="rounded-xl border border-border px-4 py-3.5">
-      <div className="mb-1 text-[13px] font-semibold">{title}</div>
-      <div className="mb-3 flex flex-wrap gap-3">
-        {series.map((s) => (
-          <div key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
-            {s.label}
-          </div>
-        ))}
-      </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-            tickLine={false}
-            axisLine={false}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: number) => `$${v}`}
-            width={50}
-          />
-          <Tooltip
-            contentStyle={{
-              fontSize: 11,
-              borderRadius: 8,
-              border: "1px solid var(--color-border)",
-              background: "var(--color-card)",
-            }}
-            formatter={(value, name) => [`$${Number(value).toFixed(2)}`, name]}
-          />
-          {series.map((s) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color}
-              fill={s.color}
-              fillOpacity={0.08}
-              strokeWidth={1.5}
-              stackId="1"
+    <ChartCard
+      title={title}
+      legend={
+        <ChartLegend
+          variant="dot"
+          items={series.map((s, i) => ({ label: s.label, color: paletteColor(i) }))}
+        />
+      }
+    >
+      <div
+        role="img"
+        aria-label={`${title} over the selected time range`}
+        className="h-[180px] w-full"
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
             />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+            <YAxis
+              tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => formatCostMicros(v)}
+              width={48}
+            />
+            <Tooltip
+              contentStyle={{
+                fontSize: 11,
+                borderRadius: 8,
+                border: "1px solid var(--color-border)",
+                background: "var(--color-card)",
+              }}
+              formatter={(value, name) => [
+                value == null ? "—" : formatCostMicros(Number(value)),
+                name,
+              ]}
+            />
+            {primary && (
+              <Area
+                type="monotone"
+                dataKey={primary.key}
+                name={primary.label}
+                stroke={paletteColor(0)}
+                fill={paletteColor(0)}
+                fillOpacity={0.07}
+                strokeWidth={1.8}
+                isAnimationActive={false}
+              />
+            )}
+            {rest.map((s, i) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={paletteColor(i + 1)}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartCard>
   );
 }

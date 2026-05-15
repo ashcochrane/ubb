@@ -13,7 +13,7 @@ export function PricingCardsPage() {
   const filtered = cards?.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.provider.toLowerCase().includes(search.toLowerCase()) ||
-    c.cardId.toLowerCase().includes(search.toLowerCase()),
+    c.slug.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -44,7 +44,7 @@ export function PricingCardsPage() {
       {isLoading ? (
         <div className="grid grid-cols-3 gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24 rounded-md" />
           ))}
         </div>
       ) : filtered && filtered.length > 0 ? (

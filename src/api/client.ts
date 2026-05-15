@@ -29,6 +29,7 @@ const authMiddleware: Middleware = {
   },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 function createApiClient<Paths extends {}>(basePath: string) {
   const client = createClient<Paths>({
     baseUrl: `${import.meta.env.VITE_API_URL || ""}${basePath}`,

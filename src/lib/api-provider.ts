@@ -17,3 +17,8 @@ export const API_PROVIDER = getApiProvider();
 export function selectProvider<T>(providers: Record<ApiProvider, T>): T {
   return providers[API_PROVIDER];
 }
+
+/** Simulated network delay for mock API providers. */
+export function mockDelay(ms = 300): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
-import { WizardStepper } from "./wizard-stepper";
+import { Stepper } from "@/components/shared/stepper";
 import { StepSource } from "./step-source";
 import { StepDetails } from "./step-details";
 import { StepDimensions } from "./step-dimensions";
@@ -15,16 +15,20 @@ const defaultValues: WizardFormValues = {
   templateId: undefined,
   name: "",
   provider: "",
-  providerCustom: undefined,
-  cardId: "",
-  pricingPattern: "token",
+  slug: "",
   description: "",
   pricingSourceUrl: "",
+  groupId: null,
+  status: "draft",
   dimensions: [],
-  product: undefined,
 };
 
-export function NewCardWizard() {
+interface NewCardWizardProps {
+  onSuccess?: (cardId: string) => void;
+  onSkip?: () => void;
+}
+
+export function NewCardWizard({ onSuccess, onSkip }: NewCardWizardProps = {}) {
   const [step, setStep] = useState(0);
   const navigate = useNavigate();
   const { data: templates = [] } = useTemplates();
@@ -55,7 +59,6 @@ export function NewCardWizard() {
         if (template) {
           form.setValue("name", template.name);
           form.setValue("provider", template.provider);
-          form.setValue("pricingPattern", template.pricingPattern);
           form.setValue("dimensions", structuredClone(template.dimensions));
           form.setValue("description", template.description ?? "");
         }
@@ -65,16 +68,16 @@ export function NewCardWizard() {
     if (step === 1) {
       const name = form.getValues("name");
       const provider = form.getValues("provider");
-      const cardId = form.getValues("cardId");
+      const slug = form.getValues("slug");
       if (!name.trim()) { setStepError("Card name is required."); return; }
       if (!provider.trim()) { setStepError("Provider is required."); return; }
-      if (!cardId.trim()) { setStepError("Card ID is required."); return; }
+      if (!slug.trim()) { setStepError("Slug is required."); return; }
     }
 
     if (step === 2) {
       const dimensions = form.getValues("dimensions");
       if (dimensions.length === 0) { setStepError("Add at least one dimension."); return; }
-      if (dimensions.some((d) => !d.key.trim())) { setStepError("All dimensions need a metric key."); return; }
+      if (dimensions.some((d) => !d.metricName.trim())) { setStepError("All dimensions need a metric name."); return; }
     }
 
     setStep((s) => Math.min(s + 1, 3));
@@ -90,17 +93,26 @@ export function NewCardWizard() {
 
   return (
     <div className="mx-auto max-w-[640px]">
-      <WizardStepper currentStep={step} />
+      <Stepper
+        steps={[
+          { label: "Source" },
+          { label: "Details" },
+          { label: "Dimensions" },
+          { label: "Review & test" },
+        ]}
+        currentIndex={step}
+        className="mb-6"
+      />
 
       <FormProvider {...form}>
         {step === 0 && <StepSource />}
         {step === 1 && <StepDetails />}
         {step === 2 && <StepDimensions />}
-        {step === 3 && <StepReview />}
+        {step === 3 && <StepReview onSuccess={onSuccess} />}
       </FormProvider>
 
       {stepError && (
-        <p className="mt-3 text-center text-[12px] text-red-500">{stepError}</p>
+        <p className="mt-3 text-center text-[12px] text-red">{stepError}</p>
       )}
 
       <div className="mt-4 flex justify-between">
@@ -113,13 +125,24 @@ export function NewCardWizard() {
             Back
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={goToCards}
-            className="rounded-md border border-border px-4 py-1.5 text-[12.5px] text-muted-foreground hover:bg-accent"
-          >
-            Cancel
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={goToCards}
+              className="rounded-md border border-border px-4 py-1.5 text-[12.5px] text-muted-foreground hover:bg-accent"
+            >
+              Cancel
+            </button>
+            {onSkip && (
+              <button
+                type="button"
+                onClick={onSkip}
+                className="text-[12px] text-muted-foreground underline"
+              >
+                Skip for now
+              </button>
+            )}
+          </div>
         )}
         {step < 3 && (
           <button

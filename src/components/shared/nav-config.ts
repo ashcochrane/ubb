@@ -2,10 +2,10 @@ import {
   LayoutDashboard,
   Users,
   CreditCard,
-  Package,
   DollarSign,
   Download,
   Settings,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,8 +33,8 @@ export const navSections: NavSection[] = [
   {
     label: "METERING",
     items: [
+      { title: "Events", url: "/events", icon: Activity },
       { title: "Pricing Cards", url: "/pricing-cards", icon: CreditCard },
-      { title: "Products", url: "/products", icon: Package },
     ],
   },
   {

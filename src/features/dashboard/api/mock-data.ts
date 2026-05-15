@@ -1,12 +1,13 @@
 import type {
-  DashboardData,
-  RevenueTimeSeries,
-  CostByProductPoint,
-  CostSeries,
-  ProductBreakdown,
-  CustomerRow,
-  StatsData,
+  StatsResponse,
+  ChartsResponse,
+  CustomersResponse,
+  DailyChartPoint,
+  StackedSeries,
+  GroupBreakdown,
 } from "./types";
+
+// ─── Date helpers ────────────────────────────────────────────────────────────
 
 function generateDays(count: number): { date: string; label: string }[] {
   const days: { date: string; label: string }[] = [];
@@ -16,8 +17,8 @@ function generateDays(count: number): { date: string; label: string }[] {
   for (let i = count - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const date = d.toISOString().split("T")[0];
-    const label = `${d.getDate()} ${months[d.getMonth()]}`;
+    const date = d.toISOString().split("T")[0]!;
+    const label = `${d.getDate()} ${months[d.getMonth()]!}`;
     days.push({ date, label });
   }
   return days;
@@ -29,92 +30,135 @@ function wave(base: number, amplitude: number, phase: number, day: number): numb
   return Math.max(0, Math.round((base + amplitude * Math.sin((day + phase) * 0.22) + noise) * 100) / 100);
 }
 
+// ─── Time series ─────────────────────────────────────────────────────────────
+
 const days30 = generateDays(30);
 
-const revenueTimeSeries: RevenueTimeSeries[] = days30.map((d, i) => {
-  const revenue = wave(280, 40, 0, i);
-  const apiCosts = wave(42, 8, 2, i);
+// Raw dollar values per day (× 1_000_000 to convert to micros)
+const M = 1_000_000;
+
+const revenueTimeSeries: DailyChartPoint[] = days30.map((d, i) => {
+  const revenueDollars = wave(280, 40, 0, i);
+  const apiCostsDollars = wave(42, 8, 2, i);
   return {
-    ...d,
-    revenue,
-    apiCosts,
-    margin: Math.round((revenue - apiCosts) * 100) / 100,
+    date: d.date,
+    revenueMicros: Math.round(revenueDollars * M),
+    apiCostsMicros: Math.round(apiCostsDollars * M),
+    marginMicros: Math.round((revenueDollars - apiCostsDollars) * M),
   };
 });
 
-const productSeries: CostSeries[] = [
-  { key: "property_search", label: "Property search", color: "#378ADD" },
-  { key: "doc_summariser", label: "Doc summariser", color: "#7F77DD" },
-  { key: "content_gen", label: "Content gen", color: "#D85A30" },
+// ─── Stacked cost series (by group) ──────────────────────────────────────────
+
+const groupSeries = [
+  { key: "property_search", label: "Property search" },
+  { key: "doc_summariser",  label: "Doc summariser" },
+  { key: "content_gen",     label: "Content gen" },
 ];
 
-const costByProductData: CostByProductPoint[] = days30.map((d, i) => ({
-  ...d,
-  property_search: wave(28, 8, 0, i),
-  doc_summariser: wave(9, 3, 2, i),
-  content_gen: wave(4, 2, 5, i),
+const costByGroupData = days30.map((d, i) => ({
+  date: d.date,
+  property_search: Math.round(wave(28, 8, 0, i) * M),
+  doc_summariser:  Math.round(wave(9, 3, 2, i) * M),
+  content_gen:     Math.round(wave(4, 2, 5, i) * M),
 }));
 
-const cardSeries: CostSeries[] = [
-  { key: "gemini_2_flash", label: "Gemini 2.0 Flash", color: "#D85A30" },
-  { key: "claude_sonnet", label: "Claude Sonnet", color: "#D4537E" },
-  { key: "gpt_4o", label: "GPT-4o", color: "#BA7517" },
-  { key: "google_places", label: "Google Places", color: "#888780" },
-  { key: "serper", label: "Serper", color: "#B4B2A9" },
-];
-
-const costByCardData: CostByProductPoint[] = days30.map((d, i) => ({
-  ...d,
-  gemini_2_flash: wave(23, 6, 0, i),
-  claude_sonnet: wave(10, 3, 2, i),
-  gpt_4o: wave(5, 1.5, 4, i),
-  google_places: wave(2, 0.8, 3, i),
-  serper: wave(1.2, 0.5, 1, i),
-}));
-
-// Hardcoded to match mockup values — consistent with stats
-const revenueByProduct: ProductBreakdown[] = [
-  { key: "property_search", label: "Property search", color: "#378ADD", value: 4631, percentage: 55 },
-  { key: "doc_summariser", label: "Doc summariser", color: "#7F77DD", value: 2526, percentage: 30 },
-  { key: "content_gen", label: "Content gen", color: "#D85A30", value: 1263, percentage: 15 },
-];
-
-// Use product colors for dots, bar color is separate (handled in component)
-const marginByProduct: ProductBreakdown[] = [
-  { key: "property_search", label: "Property search", color: "#378ADD", value: 3783, percentage: 81.7 },
-  { key: "doc_summariser", label: "Doc summariser", color: "#7F77DD", value: 2252, percentage: 89.2 },
-  { key: "content_gen", label: "Content gen", color: "#D85A30", value: 1138, percentage: 90.1 },
-];
-
-const customers: CustomerRow[] = [
-  { name: "Acme Corp", customerId: "acme_corp", revenue: 2400, revenueType: "Sub", apiCosts: 312, margin: 2088, marginPercentage: 87.0, events: 14200 },
-  { name: "BrightPath Ltd", customerId: "brightpath", revenue: 1800, revenueType: "Sub", apiCosts: 247, margin: 1553, marginPercentage: 86.3, events: 11400 },
-  { name: "NovaTech Inc", customerId: "novatech", revenue: 950, revenueType: "Usage", apiCosts: 189, margin: 761, marginPercentage: 80.1, events: 6800 },
-  { name: "Helios Digital", customerId: "helios", revenue: 720, revenueType: "Sub", apiCosts: 198, margin: 522, marginPercentage: 72.5, events: 9400 },
-  { name: "ClearView Analytics", customerId: "clearview", revenue: 150, revenueType: "Usage", apiCosts: 142, margin: 8, marginPercentage: 5.3, events: 8200 },
-  { name: "Eko Systems", customerId: "eko", revenue: 90, revenueType: "Usage", apiCosts: 118, margin: -28, marginPercentage: -31.1, events: 7900 },
-];
-
-// Hardcoded stats matching mockup
-const stats: StatsData = {
-  revenue: 8420,
-  apiCosts: 1247,
-  grossMargin: 7173,
-  marginPercentage: 85.2,
-  costPerDollarRevenue: 0.148,
-  revenuePrevChange: 14.2,
-  costsPrevChange: 12.3,
-  marginPrevChange: 14.5,
-  marginPctPrevChange: 0.2,
-  costPerRevPrevChange: -0.3,
+const costByGroup: StackedSeries = {
+  series: groupSeries,
+  data: costByGroupData,
 };
 
-export const mockDashboardData: DashboardData = {
-  stats,
+// ─── Stacked cost series (by card) ───────────────────────────────────────────
+
+const cardSeries = [
+  { key: "gemini_2_flash", label: "Gemini 2.0 Flash" },
+  { key: "claude_sonnet",  label: "Claude Sonnet" },
+  { key: "gpt_4o",         label: "GPT-4o" },
+  { key: "google_places",  label: "Google Places" },
+  { key: "serper",         label: "Serper" },
+];
+
+const costByCardData = days30.map((d, i) => ({
+  date: d.date,
+  gemini_2_flash: Math.round(wave(23, 6, 0, i) * M),
+  claude_sonnet:  Math.round(wave(10, 3, 2, i) * M),
+  gpt_4o:         Math.round(wave(5, 1.5, 4, i) * M),
+  google_places:  Math.round(wave(2, 0.8, 3, i) * M),
+  serper:         Math.round(wave(1.2, 0.5, 1, i) * M),
+}));
+
+const costByCard: StackedSeries = {
+  series: cardSeries,
+  data: costByCardData,
+};
+
+// ─── Group breakdowns ─────────────────────────────────────────────────────────
+
+const revenueByGroup: GroupBreakdown[] = [
+  { key: "property_search", label: "Property search", valueMicros: 4_631_000_000, percentage: 55 },
+  { key: "doc_summariser",  label: "Doc summariser",  valueMicros: 2_526_000_000, percentage: 30 },
+  { key: "content_gen",     label: "Content gen",     valueMicros: 1_263_000_000, percentage: 15 },
+];
+
+const marginByGroup: GroupBreakdown[] = [
+  { key: "property_search", label: "Property search", valueMicros: 3_783_000_000, percentage: 81.7 },
+  { key: "doc_summariser",  label: "Doc summariser",  valueMicros: 2_252_000_000, percentage: 89.2 },
+  { key: "content_gen",     label: "Content gen",     valueMicros: 1_138_000_000, percentage: 90.1 },
+];
+
+// ─── Sparklines (derived from time series) ───────────────────────────────────
+
+const sparklineRevenue    = revenueTimeSeries.map((d) => d.revenueMicros);
+const sparklineApiCosts   = revenueTimeSeries.map((d) => d.apiCostsMicros);
+const sparklineGrossMargin = revenueTimeSeries.map((d) => d.marginMicros);
+const sparklineMarginPct  = revenueTimeSeries.map((d) =>
+  d.revenueMicros > 0
+    ? Math.round(((d.revenueMicros - d.apiCostsMicros) / d.revenueMicros) * 1000) / 10
+    : 0,
+);
+const sparklineCostPerRev = revenueTimeSeries.map((d) =>
+  d.revenueMicros > 0
+    ? Math.round((d.apiCostsMicros / d.revenueMicros) * 1000) / 1000
+    : 0,
+);
+
+// ─── Exported mock shapes ─────────────────────────────────────────────────────
+
+export const mockStats: StatsResponse = {
+  revenueMicros:       8_420_000_000,
+  apiCostsMicros:      1_247_000_000,
+  grossMarginMicros:   7_173_000_000,
+  marginPercentage:    85.2,
+  costPerDollarRevenue: 0.148,
+  revenuePrevChange:   14.2,
+  costsPrevChange:     12.3,
+  marginPrevChange:    14.5,
+  marginPctPrevChange: 0.2,
+  costPerRevPrevChange: -0.3,
+  sparklines: {
+    revenue:     sparklineRevenue,
+    apiCosts:    sparklineApiCosts,
+    grossMargin: sparklineGrossMargin,
+    marginPct:   sparklineMarginPct,
+    costPerRev:  sparklineCostPerRev,
+  },
+};
+
+export const mockCharts: ChartsResponse = {
   revenueTimeSeries,
-  costByProduct: { series: productSeries, data: costByProductData },
-  costByCard: { series: cardSeries, data: costByCardData },
-  revenueByProduct,
-  marginByProduct,
-  customers,
+  costByGroup,
+  costByCard,
+  revenueByGroup,
+  marginByGroup,
+};
+
+export const mockCustomers: CustomersResponse = {
+  customers: [
+    { customerId: "acme_corp",  externalId: "Acme Corp",           revenueMicros: 2_400_000_000, apiCostsMicros: 312_000_000, marginMicros: 2_088_000_000, marginPercentage: 87.0, eventCount: 14200 },
+    { customerId: "brightpath", externalId: "BrightPath Ltd",      revenueMicros: 1_800_000_000, apiCostsMicros: 247_000_000, marginMicros: 1_553_000_000, marginPercentage: 86.3, eventCount: 11400 },
+    { customerId: "novatech",   externalId: "NovaTech Inc",        revenueMicros:   950_000_000, apiCostsMicros: 189_000_000, marginMicros:   761_000_000, marginPercentage: 80.1, eventCount: 6800  },
+    { customerId: "helios",     externalId: "Helios Digital",      revenueMicros:   720_000_000, apiCostsMicros: 198_000_000, marginMicros:   522_000_000, marginPercentage: 72.5, eventCount: 9400  },
+    { customerId: "clearview",  externalId: "ClearView Analytics", revenueMicros:   150_000_000, apiCostsMicros: 142_000_000, marginMicros:     8_000_000, marginPercentage: 5.3,  eventCount: 8200  },
+    { customerId: "eko",        externalId: "Eko Systems",         revenueMicros:    90_000_000, apiCostsMicros: 118_000_000, marginMicros:   -28_000_000, marginPercentage: -31.1, eventCount: 7900 },
+  ],
 };

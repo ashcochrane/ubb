@@ -1,10 +1,18 @@
-// src/features/dashboard/api/mock.ts
-import type { DashboardData } from "./types";
-import { mockDashboardData } from "./mock-data";
+import { mockDelay } from "@/lib/api-provider";
+import type { ChartsResponse, CustomersResponse, StatsResponse, TimeRange } from "./types";
+import { mockCharts, mockCustomers, mockStats } from "./mock-data";
 
-const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
+export async function getStats(_range: TimeRange): Promise<StatsResponse> {
+  await mockDelay();
+  return structuredClone(mockStats);
+}
 
-export async function getDashboard(): Promise<DashboardData> {
-  await delay();
-  return structuredClone(mockDashboardData);
+export async function getCharts(_range: TimeRange): Promise<ChartsResponse> {
+  await mockDelay();
+  return structuredClone(mockCharts);
+}
+
+export async function getCustomers(_range: TimeRange): Promise<CustomersResponse> {
+  await mockDelay();
+  return structuredClone(mockCustomers);
 }

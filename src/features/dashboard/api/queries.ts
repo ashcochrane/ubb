@@ -1,10 +1,12 @@
-// src/features/dashboard/api/queries.ts
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "./provider";
+import type { TimeRange } from "./types";
 
-export function useDashboard() {
-  return useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => dashboardApi.getDashboard(),
-  });
-}
+export const useDashboardStats = (range: TimeRange) =>
+  useQuery({ queryKey: ["dashboard", "stats", range], queryFn: () => dashboardApi.getStats(range) });
+
+export const useDashboardCharts = (range: TimeRange) =>
+  useQuery({ queryKey: ["dashboard", "charts", range], queryFn: () => dashboardApi.getCharts(range) });
+
+export const useDashboardCustomers = (range: TimeRange) =>
+  useQuery({ queryKey: ["dashboard", "customers", range], queryFn: () => dashboardApi.getCustomers(range) });

@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UBB — Design System v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:wght@700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-page:#f4f2ee;--bg-subtle:#ece8e2;--bg-surface:#fcfaf7;--bg-raised:#ffffff;
+  --border:#e2ddd5;--border-mid:#d4cdc2;--border-strong:#b5ad9e;
+  --text-primary:#2e2520;--text-secondary:#6d6358;--text-muted:#9a8e80;--text-inverse:#fcfaf7;
+  --accent:#a16a4a;--accent-hover:#b07855;--accent-dark:#855638;--accent-light:#f0e0d2;--accent-ghost:#f8f0e8;--accent-text:#5a3520;--accent-border:#d4ad90;
+  --stone:#c2a68e;--stone-light:#ede4da;
+  --amber:#a07020;--amber-light:#fdf4e4;--amber-text:#5a3e10;--amber-border:#e0c070;
+  --blue:#4a7fa8;--blue-light:#eaf1f7;--blue-text:#1e4060;--blue-border:#b0cce0;
+  --red:#b84848;--red-light:#faecec;--red-text:#6a1e1e;--red-border:#e0a0a0;
+  --green:#3a8050;--green-light:#eaf5ee;--green-text:#1a4a28;--green-border:#a0cca8;
+  --purple:#6a5aaa;--purple-light:#f0eefa;--purple-text:#3a2a6a;--purple-border:#c0b0e0;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(46,37,32,0.04);--shadow-md:0 2px 8px rgba(46,37,32,0.06);--shadow-lg:0 4px 20px rgba(46,37,32,0.08);
+  --font-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-serif:'Cormorant',Georgia,serif;
+  --font-mono:'DM Mono','SF Mono',ui-monospace,monospace;
+  --ease:0.15s ease;
+}
+body{font-family:var(--font-sans);background:var(--bg-page);color:var(--text-primary);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.page{max-width:1100px;margin:0 auto;padding:40px 32px 80px}
+h1{font-family:var(--font-sans);font-size:28px;font-weight:700;letter-spacing:-0.5px;margin-bottom:6px}
+h2{font-family:var(--font-sans);font-size:18px;font-weight:700;letter-spacing:-0.3px;margin:48px 0 20px;padding-bottom:10px;border-bottom:1.5px solid var(--border)}
+h3{font-family:var(--font-sans);font-size:13px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted);margin:28px 0 12px}
+p{color:var(--text-secondary);font-size:13px;line-height:1.7;max-width:640px;margin-bottom:8px}
+code{font-family:var(--font-mono);font-size:11px;background:var(--bg-subtle);padding:2px 6px;border-radius:4px;color:var(--text-primary)}
+.tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:var(--radius-pill);background:var(--accent-light);color:var(--accent-text);display:inline-block;margin-left:6px;vertical-align:middle}
+.section-desc{margin-bottom:20px}
+
+.color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:16px}
+.swatch{border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border)}
+.swatch-color{height:64px}
+.swatch-info{padding:8px 10px;background:var(--bg-surface)}
+.swatch-name{font-size:11px;font-weight:600;color:var(--text-primary)}
+.swatch-var{font-size:10px;color:var(--text-muted);font-family:var(--font-mono)}
+.swatch-hex{font-size:10px;color:var(--text-secondary);font-family:var(--font-mono);margin-top:1px}
+
+.comp-grid{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+.label{font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;display:block;margin-bottom:4px}
+
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;white-space:nowrap;font-family:var(--font-sans);transition:all var(--ease);text-decoration:none}
+.btn-primary{background:var(--text-primary);color:var(--text-inverse);border-color:var(--text-primary)}
+.btn-primary:hover{background:#3d3530}
+.btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-accent:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-ghost{background:var(--accent-ghost);color:var(--accent-text);border-color:var(--accent-border)}
+.btn-ghost:hover{background:var(--accent-light)}
+.btn-outline{background:var(--bg-surface);color:var(--text-secondary);border-color:var(--border-mid)}
+.btn-outline:hover{background:var(--bg-subtle);color:var(--text-primary)}
+.btn-destructive{background:transparent;color:var(--red);border-color:var(--border-mid)}
+.btn-destructive:hover{background:var(--red-light);border-color:var(--red-border);color:var(--red-text)}
+.btn-sm{padding:5px 12px;font-size:11px}
+.btn-lg{padding:9px 20px;font-size:13px}
+
+.badge{font-size:10px;font-weight:600;padding:3px 9px;border-radius:var(--radius-pill);white-space:nowrap;display:inline-block}
+.badge-accent{background:var(--accent-light);color:var(--accent-text)}
+.badge-green{background:var(--green-light);color:var(--green-text)}
+.badge-blue{background:var(--blue-light);color:var(--blue-text)}
+.badge-amber{background:var(--amber-light);color:var(--amber-text)}
+.badge-red{background:var(--red-light);color:var(--red-text)}
+.badge-purple{background:var(--purple-light);color:var(--purple-text)}
+.badge-muted{background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border)}
+
+.card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px}
+.card-title{font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px}
+.info-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:12px;border-bottom:1px solid var(--bg-subtle)}
+.info-row:last-child{border-bottom:none}
+.info-row .il{color:var(--text-secondary)}
+.info-row .iv{color:var(--text-primary);font-weight:500}
+
+.input{width:100%;padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-surface);font-size:13px;color:var(--text-primary);font-family:var(--font-sans);outline:none;transition:border-color var(--ease)}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(161,106,74,0.12)}
+.input::placeholder{color:var(--text-muted)}
+.input-label{font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;display:block}
+.input-hint{font-size:11px;color:var(--text-muted);margin-top:4px}
+
+.toggle{width:36px;height:20px;border-radius:10px;background:var(--border-mid);position:relative;cursor:pointer;flex-shrink:0;transition:background 0.15s}
+.toggle.on{background:var(--accent)}
+.toggle-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15);transition:left 0.15s}
+.toggle.on .toggle-knob{left:18px}
+
+.check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border-mid);background:var(--bg-surface);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check.checked{background:var(--accent);border-color:var(--accent)}
+
+.usage-bar-wrap{background:var(--bg-subtle);border-radius:var(--radius-pill);height:8px;overflow:hidden}
+.usage-bar{height:100%;border-radius:var(--radius-pill);background:var(--accent);transition:width 0.3s ease}
+.usage-bar.warn{background:var(--amber)}
+.usage-bar.over{background:var(--red)}
+
+.mg-pill{font-size:10px;padding:2px 7px;border-radius:var(--radius-pill);font-weight:600}
+.mg-good{background:var(--green-light);color:var(--green-text)}
+.mg-low{background:var(--amber-light);color:var(--amber-text)}
+.mg-warn{background:var(--red-light);color:var(--red-text)}
+
+.tier-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-pill);font-size:11px;font-weight:500}
+.tier-flat{background:var(--accent-light);color:var(--accent-text);border:1px solid var(--accent-border)}
+.tier-usage{background:var(--blue-light);color:var(--blue-text);border:1px solid var(--blue-border)}
+.tier-margin{background:var(--purple-light);color:var(--purple-text);border:1px solid var(--purple-border)}
+
+.banner{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--radius-md);border:1px solid}
+.banner-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+.banner-title{font-size:12px;font-weight:600}
+.banner-sub{font-size:11px;margin-top:1px}
+.banner-accent{background:var(--accent-ghost);border-color:var(--accent-border)}
+.banner-accent .banner-icon{background:var(--accent-light);color:var(--accent-text)}
+.banner-accent .banner-title{color:var(--accent-text)}
+.banner-accent .banner-sub{color:var(--accent-dark)}
+.banner-amber{background:var(--amber-light);border-color:var(--amber-border)}
+.banner-amber .banner-icon{background:#f0d088;color:var(--amber-text)}
+.banner-amber .banner-title{color:var(--amber-text)}
+.banner-red{background:var(--red-light);border-color:var(--red-border)}
+.banner-red .banner-icon{background:#f0b0b0;color:var(--red-text)}
+.banner-red .banner-title{color:var(--red-text)}
+.banner-blue{background:var(--blue-light);border-color:var(--blue-border)}
+.banner-blue .banner-icon{background:#b0c8e0;color:var(--blue-text)}
+.banner-blue .banner-title{color:var(--blue-text)}
+
+.nav-demo{display:flex;align-items:center;gap:2px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:4px}
+.nav-item{padding:5px 12px;border-radius:var(--radius-pill);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all var(--ease)}
+.nav-item:hover{background:var(--bg-subtle);color:var(--text-primary)}
+.nav-item.active{background:var(--accent-ghost);color:var(--accent-text);font-weight:500}
+
+.tabs-underline{display:flex;border-bottom:1.5px solid var(--border);gap:0}
+.tab-u{padding:8px 16px;font-size:12px;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1.5px}
+.tab-u:hover{color:var(--text-primary)}
+.tab-u.on{color:var(--accent-text);font-weight:600;border-bottom-color:var(--accent)}
+.tab-badge{font-size:9px;font-weight:600;padding:1px 5px;border-radius:8px;background:var(--border);color:var(--text-muted);margin-left:4px}
+.tab-u.on .tab-badge{background:var(--accent-light);color:var(--accent-text)}
+
+.avatar{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.av-sm{width:22px;height:22px;font-size:8px}
+.av-md{width:32px;height:32px;font-size:11px}
+.av-lg{width:44px;height:44px;font-size:15px}
+.av-accent{background:var(--accent-light);color:var(--accent-text)}
+.av-amber{background:var(--amber-light);color:var(--amber-text)}
+.av-muted{background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.mt8{margin-top:8px}
+.flex-gap{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
+hr{border:none;border-top:1px solid var(--border);margin:8px 0}
+
+.token-table{width:100%;border-collapse:collapse;font-size:12px}
+.token-table th{text-align:left;padding:8px 12px;background:var(--bg-subtle);font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border)}
+.token-table td{padding:8px 12px;border-bottom:1px solid var(--bg-subtle);vertical-align:top}
+.token-table tr:last-child td{border-bottom:none}
+.token-table tr:hover td{background:var(--bg-subtle)}
+.token-table td:first-child{font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)}
+.token-table td:nth-child(2){font-family:var(--font-mono);font-size:11px;color:var(--accent-text)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div style="margin-bottom:40px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <div style="font-family:var(--font-serif);font-size:52px;font-weight:700;letter-spacing:-1px;line-height:1;color:var(--text-primary);margin-bottom:2px;">ubb<span style="color:var(--accent);">.</span></div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:8px;">Design System v2 — Warm Stone + Terracotta · Apr 2026</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-pill);">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);"></div>
+          <span style="font-size:11px;font-weight:600;color:var(--text-primary);">Cormorant 700 · DM Sans · DM Mono</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);">Replaces sage/olive v1 palette</div>
+      </div>
+    </div>
+    <p style="max-width:600px;">Evolved from the original sage/olive design system. Retains the warm parchment foundation and DM Sans + Cormorant type pairing, but replaces the green accent palette with a <strong style="color:var(--text-primary);">warm stone + soft terracotta</strong> direction. The accent colour (<code>#a16a4a</code>) is used sparingly — active states, wordmark dot, focus rings. Data colours do the talking.</p>
+  </div>
+
+  <!-- LOGO & IDENTITY -->
+  <h2>Logo & Identity</h2>
+  <p class="section-desc">Same wordmark rules — Cormorant 700, lowercase. The dot colour changes to terracotta. Favicon background is terracotta with a dark charcoal dot.</p>
+
+  <h3>Wordmark — approved colour combinations</h3>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+    <div style="border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);">
+      <div style="padding:28px 24px;background:var(--bg-page);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-size:42px;font-weight:700;letter-spacing:-1px;color:var(--text-primary);">ubb<span style="color:var(--accent);">.</span></span>
+      </div>
+      <div style="padding:10px 14px;background:var(--bg-surface);border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;">Nav / default</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Charcoal text + terracotta dot · parchment bg</div>
+        <div style="margin-top:6px;display:inline-block;padding:2px 8px;background:var(--accent-ghost);border:1px solid var(--accent-border);border-radius:var(--radius-pill);font-size:9px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:0.05em;">Primary use</div>
+      </div>
+    </div>
+    <div style="border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);">
+      <div style="padding:28px 24px;background:var(--text-primary);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-size:42px;font-weight:700;letter-spacing:-1px;color:var(--bg-surface);">ubb<span style="color:var(--accent);">.</span></span>
+      </div>
+      <div style="padding:10px 14px;background:var(--bg-surface);border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;">Dark context</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Cream text + terracotta dot · dark bg</div>
+      </div>
+    </div>
+    <div style="border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);">
+      <div style="padding:28px 24px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-size:42px;font-weight:700;letter-spacing:-1px;color:var(--bg-surface);">ubb<span style="color:var(--accent-dark);">.</span></span>
+      </div>
+      <div style="padding:10px 14px;background:var(--bg-surface);border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;">Accent context</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Cream text + dark dot · terracotta bg</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Favicon</h3>
+  <div style="display:flex;gap:16px;align-items:flex-end;margin-bottom:20px;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="width:64px;height:64px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-weight:700;font-size:28px;color:var(--bg-surface);letter-spacing:-1px;line-height:1;">u<span style="color:var(--accent-dark);">.</span></span>
+      </div>
+      <span style="font-size:10px;color:var(--text-muted);">64px</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="width:32px;height:32px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-weight:700;font-size:15px;color:var(--bg-surface);letter-spacing:-0.5px;line-height:1;">u<span style="color:var(--accent-dark);">.</span></span>
+      </div>
+      <span style="font-size:10px;color:var(--text-muted);">32px</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="width:16px;height:16px;border-radius:3px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:var(--font-serif);font-weight:700;font-size:8px;color:var(--bg-surface);line-height:1;">u<span style="color:var(--accent-dark);">.</span></span>
+      </div>
+      <span style="font-size:10px;color:var(--text-muted);">16px</span>
+    </div>
+    <div style="margin-left:16px;padding:14px 18px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:12px;color:var(--text-secondary);line-height:1.7;max-width:280px;">
+      <strong style="color:var(--text-primary);display:block;margin-bottom:4px;">Favicon spec</strong>
+      Background: <code>#a16a4a</code> (terracotta)<br>
+      Letter: Cormorant 700 · <code>#fcfaf7</code> (cream)<br>
+      Dot: <code>#855638</code> (accent-dark)<br>
+      Corner radius: ~22% of size
+    </div>
+  </div>
+
+  <h3>Nav bar — live implementation</h3>
+  <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;height:46px;padding:0 20px;gap:24px;border-bottom:1px solid var(--border);">
+      <span style="font-family:var(--font-serif);font-size:21px;font-weight:700;letter-spacing:-0.5px;color:var(--text-primary);flex-shrink:0;">ubb<span style="color:var(--accent);">.</span></span>
+      <div style="width:1px;height:22px;background:var(--border);"></div>
+      <div style="display:flex;gap:1px;">
+        <div style="padding:5px 11px;border-radius:var(--radius-pill);font-size:12px;color:var(--text-secondary);">Dashboard</div>
+        <div style="padding:5px 11px;border-radius:var(--radius-pill);font-size:12px;color:var(--text-secondary);">Customers</div>
+        <div style="padding:5px 11px;border-radius:var(--radius-pill);background:var(--accent-ghost);color:var(--accent-text);font-size:12px;font-weight:500;">Usage</div>
+        <div style="padding:5px 11px;border-radius:var(--radius-pill);font-size:12px;color:var(--text-secondary);">Invoices</div>
+      </div>
+    </div>
+    <div style="padding:8px 14px;background:var(--bg-page);font-size:10px;color:var(--text-muted);">Nav at 46px height · Cormorant 21px · wordmark at sidebar/content intersection · terracotta dot · active: accent-ghost bg</div>
+  </div>
+
+  <h3>Typography — DM Sans (body) + Cormorant (display) + DM Mono (code)</h3>
+  <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:8px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-family:var(--font-serif);font-size:32px;font-weight:700;letter-spacing:-0.5px;">ORG-1042 — Acme Corp</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">Cormorant 700 · 32px · page titles</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-size:20px;font-weight:700;letter-spacing:-0.4px;">Usage this billing period</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Sans 700 · 20px · section headings</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-size:14px;font-weight:600;">Generate invoice</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Sans 600 · 14px · card titles</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-size:13px;color:var(--text-secondary);">Customer has exceeded their included units for the current billing cycle.</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Sans 400 · 13px · body</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-size:12px;">API Calls · 84,200 / 100,000 units</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Sans 400 · 12px · UI labels</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg-subtle);">
+      <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-primary);">gemini_2_flash · pricing_card_id</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Mono 400 · 12px · slugs, code</span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;">
+      <span style="font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted);">Billing details</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);flex-shrink:0;margin-left:16px;">DM Sans 700 · 10px · ALL CAPS · section labels</span>
+    </div>
+    <div style="margin-top:16px;padding:14px;background:var(--accent-ghost);border:1px solid var(--accent-border);border-radius:var(--radius-md);font-size:12px;color:var(--accent-text);line-height:1.7;">
+      <strong>Rule:</strong> Cormorant is used <em>only</em> for the wordmark and the top-level org/customer identifier. Everything else is DM Sans. Code/slugs use DM Mono.
+    </div>
+  </div>
+
+
+  <!-- COLOUR PALETTE -->
+  <h2>Colour Palette</h2>
+  <p class="section-desc">Warm stone foundation with a soft terracotta accent. The accent is used <strong style="color:var(--text-primary);">sparingly</strong> — active states, wordmark dot, focus rings, margin bars. Data colours (blue, purple, red) provide the visual energy in charts and tables.</p>
+
+  <h3>Backgrounds & Surfaces</h3>
+  <div class="color-grid">
+    <div class="swatch"><div class="swatch-color" style="background:#f4f2ee;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Page</div><div class="swatch-var">--bg-page</div><div class="swatch-hex">#f4f2ee</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#ece8e2;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Subtle</div><div class="swatch-var">--bg-subtle</div><div class="swatch-hex">#ece8e2</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#fcfaf7;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Surface</div><div class="swatch-var">--bg-surface</div><div class="swatch-hex">#fcfaf7</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#ffffff;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Raised</div><div class="swatch-var">--bg-raised</div><div class="swatch-hex">#ffffff</div></div></div>
+  </div>
+
+  <h3>Terracotta — Primary Accent <span class="tag">UBB v2</span></h3>
+  <p>Soft, dusty terracotta/clay. Earthy and considered without being saturated. Use for active nav states, wordmark dot, focus rings, toggle/checkbox checked states, and margin bars.</p>
+  <div class="color-grid" style="margin-top:12px;">
+    <div class="swatch"><div class="swatch-color" style="background:#a16a4a;"></div><div class="swatch-info"><div class="swatch-name">Accent</div><div class="swatch-var">--accent</div><div class="swatch-hex">#a16a4a</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#b07855;"></div><div class="swatch-info"><div class="swatch-name">Accent Hover</div><div class="swatch-var">--accent-hover</div><div class="swatch-hex">#b07855</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#855638;"></div><div class="swatch-info"><div class="swatch-name">Accent Dark</div><div class="swatch-var">--accent-dark</div><div class="swatch-hex">#855638 — pressed</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f0e0d2;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Accent Light</div><div class="swatch-var">--accent-light</div><div class="swatch-hex">#f0e0d2 — tints</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f8f0e8;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Accent Ghost</div><div class="swatch-var">--accent-ghost</div><div class="swatch-hex">#f8f0e8 — nav active bg</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#5a3520;"></div><div class="swatch-info"><div class="swatch-name">Accent Text</div><div class="swatch-var">--accent-text</div><div class="swatch-hex">#5a3520</div></div></div>
+  </div>
+
+  <h3>Stone — Supporting Neutral</h3>
+  <div class="color-grid" style="margin-top:12px;">
+    <div class="swatch"><div class="swatch-color" style="background:#c2a68e;"></div><div class="swatch-info"><div class="swatch-name">Stone</div><div class="swatch-var">--stone</div><div class="swatch-hex">#c2a68e</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#ede4da;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Stone Light</div><div class="swatch-var">--stone-light</div><div class="swatch-hex">#ede4da</div></div></div>
+  </div>
+
+  <h3>Borders & Text</h3>
+  <div class="color-grid">
+    <div class="swatch"><div class="swatch-color" style="background:#e2ddd5;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Border</div><div class="swatch-var">--border</div><div class="swatch-hex">#e2ddd5 — default</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#d4cdc2;border-bottom:1px solid var(--border);"></div><div class="swatch-info"><div class="swatch-name">Border Mid</div><div class="swatch-var">--border-mid</div><div class="swatch-hex">#d4cdc2 — hover</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#2e2520;"></div><div class="swatch-info"><div class="swatch-name">Text Primary</div><div class="swatch-var">--text-primary</div><div class="swatch-hex">#2e2520</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#6d6358;"></div><div class="swatch-info"><div class="swatch-name">Text Secondary</div><div class="swatch-var">--text-secondary</div><div class="swatch-hex">#6d6358</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#9a8e80;"></div><div class="swatch-info"><div class="swatch-name">Text Muted</div><div class="swatch-var">--text-muted</div><div class="swatch-hex">#9a8e80</div></div></div>
+  </div>
+
+  <h3>Data Colours — Charts & Indicators</h3>
+  <p>These carry the visual weight in dashboards. Desaturated enough to feel cohesive with the warm stone base.</p>
+  <div class="color-grid">
+    <div class="swatch"><div class="swatch-color" style="background:#4a7fa8;"></div><div class="swatch-info"><div class="swatch-name">Blue</div><div class="swatch-var">--blue</div><div class="swatch-hex">#4a7fa8 — primary data</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#6a5aaa;"></div><div class="swatch-info"><div class="swatch-name">Purple</div><div class="swatch-var">--purple</div><div class="swatch-hex">#6a5aaa — secondary data</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#b84848;"></div><div class="swatch-info"><div class="swatch-name">Red</div><div class="swatch-var">--red</div><div class="swatch-hex">#b84848 — cost / danger</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#3a8050;"></div><div class="swatch-info"><div class="swatch-name">Green</div><div class="swatch-var">--green</div><div class="swatch-hex">#3a8050 — positive / active</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#a07020;"></div><div class="swatch-info"><div class="swatch-name">Amber</div><div class="swatch-var">--amber</div><div class="swatch-hex">#a07020 — warning / draft</div></div></div>
+  </div>
+
+  <h3>Semantic Colours — UBB context</h3>
+  <p>Amber = approaching usage limit / draft. Red = over limit / overdue. Blue = processing / subscription. Green = paid / active. Purple = pending approval.</p>
+  <div class="color-grid">
+    <div class="swatch"><div class="swatch-color" style="background:#fdf4e4;"></div><div class="swatch-info"><div class="swatch-name">Amber Light</div><div class="swatch-var">--amber-light</div><div class="swatch-hex">approaching limit</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#faecec;"></div><div class="swatch-info"><div class="swatch-name">Red Light</div><div class="swatch-var">--red-light</div><div class="swatch-hex">over limit / overdue</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#eaf1f7;"></div><div class="swatch-info"><div class="swatch-name">Blue Light</div><div class="swatch-var">--blue-light</div><div class="swatch-hex">processing / pending</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#eaf5ee;"></div><div class="swatch-info"><div class="swatch-name">Green Light</div><div class="swatch-var">--green-light</div><div class="swatch-hex">paid / active</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f0eefa;"></div><div class="swatch-info"><div class="swatch-name">Purple Light</div><div class="swatch-var">--purple-light</div><div class="swatch-hex">pending approval</div></div></div>
+  </div>
+
+
+  <!-- BUTTONS -->
+  <h2>Buttons</h2>
+  <p class="section-desc">Primary buttons use <strong style="color:var(--text-primary);">dark charcoal (#2e2520)</strong> — not the accent colour. Accent buttons are reserved for high-emphasis actions like "Activate card". This keeps the UI calm.</p>
+
+  <h3>Variants</h3>
+  <div class="comp-grid">
+    <div><span class="label">Primary (dark)</span><button class="btn btn-primary">Generate invoice</button></div>
+    <div><span class="label">Accent</span><button class="btn btn-accent">Activate card</button></div>
+    <div><span class="label">Ghost</span><button class="btn btn-ghost">View usage</button></div>
+    <div><span class="label">Outline</span><button class="btn btn-outline">Export CSV</button></div>
+    <div><span class="label">Destructive</span><button class="btn btn-destructive">Delete plan</button></div>
+  </div>
+
+  <h3>Sizes</h3>
+  <div class="comp-grid" style="align-items:center;">
+    <div><span class="label">Large</span><button class="btn btn-primary btn-lg">Send invoice to customer</button></div>
+    <div><span class="label">Default</span><button class="btn btn-primary">Add metric</button></div>
+    <div><span class="label">Small</span><button class="btn btn-primary btn-sm">Apply</button></div>
+  </div>
+
+  <h3>Action pairs</h3>
+  <div class="comp-grid mt8">
+    <button class="btn btn-outline">Save as draft</button>
+    <button class="btn btn-accent">Activate card</button>
+  </div>
+  <div class="comp-grid mt8">
+    <button class="btn btn-ghost">Back</button>
+    <button class="btn btn-primary">Next</button>
+  </div>
+
+
+  <!-- BADGES -->
+  <h2>Badges & Status Pills</h2>
+  <h3>Billing status badges</h3>
+  <div class="comp-grid">
+    <div><span class="label">Active</span><span class="badge badge-green">Active</span></div>
+    <div><span class="label">Paid</span><span class="badge badge-green">Paid</span></div>
+    <div><span class="label">Sub</span><span class="badge" style="background:var(--blue-light);color:var(--blue-text);">Sub</span></div>
+    <div><span class="label">Usage</span><span class="badge badge-amber">Usage</span></div>
+    <div><span class="label">Draft</span><span class="badge badge-amber">Draft</span></div>
+    <div><span class="label">Overdue</span><span class="badge badge-red">Overdue</span></div>
+    <div><span class="label">Cancelled</span><span class="badge badge-muted">Cancelled</span></div>
+    <div><span class="label">Approval</span><span class="badge badge-purple">Approval needed</span></div>
+  </div>
+
+  <h3>Billing tier chips <span class="tag">UBB-specific</span></h3>
+  <div class="comp-grid mt8">
+    <div><span class="label">Flat rate</span><span class="tier-chip tier-flat">Flat rate</span></div>
+    <div><span class="label">Usage-based</span><span class="tier-chip tier-usage">Usage-based</span></div>
+    <div><span class="label">Usage + margin</span><span class="tier-chip tier-margin">Usage + margin</span></div>
+  </div>
+
+
+  <!-- USAGE METERS -->
+  <h2>Usage Meters <span class="tag">UBB-specific</span></h2>
+  <p class="section-desc">Terracotta fill at normal. Amber at 80%+. Red at 100%+ (over limit).</p>
+  <div style="display:flex;flex-direction:column;gap:16px;margin-top:8px;max-width:480px;">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><span style="font-size:12px;font-weight:500;">API calls</span><span style="font-size:12px;color:var(--text-secondary);">42,000 / 100,000</span></div>
+      <div class="usage-bar-wrap"><div class="usage-bar" style="width:42%;"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;"><span style="font-size:11px;color:var(--text-muted);">42% used</span><span class="mg-pill mg-good">On track</span></div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><span style="font-size:12px;font-weight:500;">Storage (GB)</span><span style="font-size:12px;color:var(--text-secondary);">84 / 100</span></div>
+      <div class="usage-bar-wrap"><div class="usage-bar warn" style="width:84%;"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;"><span style="font-size:11px;color:var(--amber-text);">84% — approaching limit</span><span class="mg-pill mg-low">Near limit</span></div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><span style="font-size:12px;font-weight:500;">Seats</span><span style="font-size:12px;color:var(--red-text);font-weight:600;">14 / 10 — over limit</span></div>
+      <div class="usage-bar-wrap"><div class="usage-bar over" style="width:100%;"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;"><span style="font-size:11px;color:var(--red-text);">4 seats over — overage charges apply</span><span class="mg-pill mg-warn">Over limit</span></div>
+    </div>
+  </div>
+
+
+  <!-- NAVIGATION -->
+  <h2>Navigation</h2>
+  <h3>Pill nav</h3>
+  <div class="nav-demo" style="width:fit-content;">
+    <div class="nav-item">Dashboard</div>
+    <div class="nav-item active">Usage</div>
+    <div class="nav-item">Customers</div>
+    <div class="nav-item">Invoices</div>
+  </div>
+  <p style="margin-top:8px;">Active: <code>--accent-ghost</code> bg, <code>--accent-text</code> colour. Hover: <code>--bg-subtle</code>.</p>
+
+  <h3>Underline tabs</h3>
+  <div class="tabs-underline" style="margin-top:10px;">
+    <div class="tab-u on">Overview</div>
+    <div class="tab-u">Usage <span class="tab-badge">3</span></div>
+    <div class="tab-u">Invoices</div>
+    <div class="tab-u">Alerts <span class="tab-badge">1</span></div>
+  </div>
+
+
+  <!-- CARDS -->
+  <h2>Cards & Panels</h2>
+  <div class="grid2" style="margin-top:4px;">
+    <div>
+      <span class="label">Info card</span>
+      <div class="card mt8">
+        <div class="card-title">Customer</div>
+        <div class="info-row"><span class="il">Company</span><span class="iv">Acme Corp</span></div>
+        <div class="info-row"><span class="il">Plan</span><span class="iv">Growth — usage-based</span></div>
+        <div class="info-row"><span class="il">Period end</span><span class="iv">30 Apr 2026</span></div>
+        <div class="info-row"><span class="il">Invoice</span><span class="iv"><span class="badge badge-amber">Pending</span></span></div>
+      </div>
+    </div>
+    <div>
+      <span class="label">Card with actions</span>
+      <div class="card mt8">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <span style="font-size:14px;font-weight:600;">This period's metrics</span>
+          <button class="btn btn-outline btn-sm">Export CSV</button>
+        </div>
+        <div class="info-row"><span class="il">API calls</span><span class="iv">42,000 units</span></div>
+        <div class="info-row"><span class="il">Storage</span><span class="iv">84 GB</span></div>
+        <div class="info-row"><span class="il">Seats</span><span class="iv" style="color:var(--red-text);font-weight:700;">14 (over by 4)</span></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- BANNERS -->
+  <h2>Alert Banners</h2>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+    <div class="banner banner-accent"><div class="banner-icon">✓</div><div><div class="banner-title">Invoice sent — billing@acme.com</div><div class="banner-sub">INV-1084 · $4,210.00 · due 14 May 2026</div></div></div>
+    <div class="banner banner-amber"><div class="banner-icon">!</div><div><div class="banner-title">Acme Corp approaching storage limit</div><div class="banner-sub">84% used · overage billing at $0.08/GB beyond 100GB</div></div></div>
+    <div class="banner banner-red"><div class="banner-icon">!</div><div><div class="banner-title">3 customers over their seat limit</div><div class="banner-sub">Overage charges will apply at next billing cycle</div></div></div>
+    <div class="banner banner-blue"><div class="banner-icon">i</div><div><div class="banner-title">Payment processing</div><div class="banner-sub">INV-1081 · $3,140.00 · Stripe payment pending</div></div></div>
+  </div>
+
+
+  <!-- FORM CONTROLS -->
+  <h2>Form Controls</h2>
+  <div class="grid2 mt8">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label class="input-label">Customer name</label><input class="input" type="text" placeholder="e.g. Acme Corp"></div>
+      <div><label class="input-label">Billing email</label><input class="input" type="text" placeholder="billing@acmecorp.com"><span class="input-hint">Where invoices will be sent</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;flex-direction:column;gap:10px;padding:12px;background:var(--bg-page);border:1px solid var(--border);border-radius:var(--radius-sm);">
+        <div style="display:flex;align-items:center;gap:10px;"><div class="toggle on"><div class="toggle-knob"></div></div><div><div style="font-size:12px;font-weight:500;">Auto-generate invoices</div><div style="font-size:11px;color:var(--text-muted);">Generate at end of each billing period</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px;"><div class="toggle"><div class="toggle-knob"></div></div><div><div style="font-size:12px;font-weight:500;">Overage alerts</div><div style="font-size:11px;color:var(--text-muted);">Notify customer at 80% usage</div></div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;"><div class="check checked"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4l2 2 3-3" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span style="font-size:12px;">Include usage breakdown in invoice PDF</span></div>
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;"><div class="check"></div><span style="font-size:12px;">Apply automatic early payment discount</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:16px;padding:14px;background:var(--accent-ghost);border:1px solid var(--accent-border);border-radius:var(--radius-md);font-size:12px;color:var(--accent-text);line-height:1.7;">
+    <strong>Focus ring:</strong> <code>box-shadow: 0 0 0 3px rgba(161, 106, 74, 0.12)</code> + <code>border-color: var(--accent)</code>
+  </div>
+
+
+  <!-- AVATARS -->
+  <h2>Avatars</h2>
+  <div class="comp-grid" style="align-items:flex-end;">
+    <div><span class="label">Large</span><div class="flex-gap mt8"><div class="avatar av-lg av-accent">SJ</div><div class="avatar av-lg av-amber">AC</div><div class="avatar av-lg av-muted">DK</div></div></div>
+    <div><span class="label">Medium</span><div class="flex-gap mt8"><div class="avatar av-md av-accent">SJ</div><div class="avatar av-md av-amber">JS</div><div class="avatar av-md av-muted">MT</div></div></div>
+    <div><span class="label">Small</span><div class="flex-gap mt8"><div class="avatar av-sm av-accent">SJ</div><div class="avatar av-sm av-amber">JS</div><div class="avatar av-sm av-muted">DK</div></div></div>
+  </div>
+
+
+  <!-- SPACING & RADIUS -->
+  <h2>Spacing & Radius Scale</h2>
+  <div class="grid2">
+    <div>
+      <h3>Spacing</h3>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--space-1</code><span style="color:var(--text-muted);">4px</span><span style="display:inline-block;width:4px;height:12px;background:var(--accent);border-radius:2px;"></span></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--space-2</code><span style="color:var(--text-muted);">8px</span><span style="display:inline-block;width:8px;height:12px;background:var(--accent);border-radius:2px;"></span></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--space-4</code><span style="color:var(--text-muted);">16px</span><span style="display:inline-block;width:16px;height:12px;background:var(--accent);border-radius:2px;"></span></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--space-6</code><span style="color:var(--text-muted);">24px · card padding</span><span style="display:inline-block;width:24px;height:12px;background:var(--accent);border-radius:2px;"></span></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--space-8</code><span style="color:var(--text-muted);">32px · section gaps</span><span style="display:inline-block;width:32px;height:12px;background:var(--accent);border-radius:2px;"></span></div>
+      </div>
+    </div>
+    <div>
+      <h3>Border Radius</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--radius-sm</code><span style="color:var(--text-muted);">6px — inputs</span><div style="width:40px;height:22px;background:var(--accent-light);border:1px solid var(--accent-border);border-radius:6px;"></div></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--radius-md</code><span style="color:var(--text-muted);">10px — cards</span><div style="width:40px;height:22px;background:var(--accent-light);border:1px solid var(--accent-border);border-radius:10px;"></div></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--radius-lg</code><span style="color:var(--text-muted);">14px — modals</span><div style="width:40px;height:22px;background:var(--accent-light);border:1px solid var(--accent-border);border-radius:14px;"></div></div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px;"><code>--radius-pill</code><span style="color:var(--text-muted);">999px — buttons</span><div style="width:60px;height:22px;background:var(--accent);border-radius:999px;"></div></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- SHADCN MAPPING -->
+  <h2>shadcn-ui Token Mapping</h2>
+  <p class="section-desc">Paste into <code>globals.css</code> under <code>:root</code>. Key change from v1: <code>--primary</code> is charcoal, <code>--ring</code> is terracotta.</p>
+
+  <div style="background:var(--text-primary);border-radius:var(--radius-md);padding:20px;overflow-x:auto;margin-top:8px;">
+    <pre style="font-family:var(--font-mono);font-size:11px;color:var(--accent-light);line-height:1.8;">:root {
+  /* UBB v2 × shadcn-ui — warm stone + terracotta       */
+
+  --background:           #f4f2ee;  /* bg-page            */
+  --foreground:           #2e2520;  /* text-primary        */
+  --card:                 #fcfaf7;  /* bg-surface          */
+  --card-foreground:      #2e2520;
+  --popover:              #fcfaf7;
+  --popover-foreground:   #2e2520;
+  --muted:                #ece8e2;  /* bg-subtle           */
+  --muted-foreground:     #9a8e80;  /* text-muted          */
+
+  /* Primary — dark charcoal (primary buttons)            */
+  --primary:              #2e2520;
+  --primary-foreground:   #fcfaf7;
+
+  /* Secondary — accent ghost                             */
+  --secondary:            #f8f0e8;  /* accent-ghost        */
+  --secondary-foreground: #5a3520;  /* accent-text         */
+
+  /* Accent — terracotta                                  */
+  --accent:               #f0e0d2;  /* accent-light        */
+  --accent-foreground:    #5a3520;
+
+  /* Destructive                                          */
+  --destructive:          #b84848;
+  --destructive-foreground: #ffffff;
+
+  /* Borders & inputs                                     */
+  --border:               #e2ddd5;
+  --input:                #e2ddd5;
+  --ring:                 #a16a4a;  /* focus = terracotta  */
+
+  --radius:               0.625rem; /* 10px                */
+}</pre>
+  </div>
+
+  <div style="margin-top:16px;">
+    <table class="token-table" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;">
+      <tr><th>Component</th><th>Variant</th><th>Notes</th></tr>
+      <tr><td>Button</td><td>variant="default"</td><td>Charcoal bg (#2e2520) → cream text. <code>rounded-full</code>.</td></tr>
+      <tr><td>Button</td><td>variant="secondary"</td><td>Accent-ghost bg → accent-text.</td></tr>
+      <tr><td>Button</td><td>variant="outline"</td><td>Border-mid border, surface bg.</td></tr>
+      <tr><td>Badge</td><td>variant="default"</td><td>Green-light + green-text for active states.</td></tr>
+      <tr><td>Input</td><td>focus state</td><td>Ring: terracotta (#a16a4a). 3px spread, 12% opacity.</td></tr>
+      <tr><td>Tabs</td><td>active underline</td><td>2px solid terracotta. Text: accent-text.</td></tr>
+      <tr><td>Switch</td><td>checked</td><td>Background: terracotta (#a16a4a). Knob: white.</td></tr>
+      <tr><td>Progress</td><td>usage bar</td><td>Terracotta fill → amber at 80% → red at 100%+.</td></tr>
+    </table>
+  </div>
+
+
+  <!-- WHAT CHANGED -->
+  <h2>What changed from v1</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+    <div style="padding:16px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-md);">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;text-decoration:line-through;color:var(--text-muted);">v1 — Sage / Olive</div>
+      <div style="font-size:11px;color:var(--text-secondary);line-height:1.8;">
+        Primary accent: <strong>#9aad3c</strong> (sage)<br>
+        Primary button: sage bg<br>
+        Focus ring: sage<br>
+        Nav active: sage-ghost
+      </div>
+    </div>
+    <div style="padding:16px;background:var(--accent-ghost);border:1px solid var(--accent-border);border-radius:var(--radius-md);">
+      <div style="font-size:13px;font-weight:700;color:var(--accent-text);margin-bottom:10px;">v2 — Warm Stone + Terracotta</div>
+      <div style="font-size:11px;color:var(--accent-text);line-height:1.8;">
+        Primary accent: <strong>#a16a4a</strong> (terracotta)<br>
+        Primary button: <strong>charcoal bg</strong> (not accent)<br>
+        Focus ring: terracotta<br>
+        Nav active: accent-ghost<br>
+        New: DM Mono for code/slugs<br>
+        New: --stone neutral ramp
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px;padding:14px 16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:12px;color:var(--text-secondary);line-height:1.9;">
+    <strong style="color:var(--text-primary);">What stays the same:</strong> page bg warmth, surface/raised distinction, DM Sans + Cormorant type pairing, all semantic colours (amber / red / blue / green / purple), badge shapes, card structure, radius scale, spacing scale, shadow tokens.
+  </div>
+
+</div>
+</body>
+</html>
