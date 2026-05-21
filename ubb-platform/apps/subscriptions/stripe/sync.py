@@ -5,7 +5,7 @@ import stripe
 from django.utils import timezone
 
 from apps.subscriptions.models import StripeSubscription
-from apps.platform.customers.models import Customer
+from apps.platform.queries import get_tenant_stripe_account, get_customers_by_stripe_id
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +22,20 @@ def sync_subscriptions(tenant):
 
     Returns dict with counts: {"synced": N, "skipped": N, "errors": N}
     """
-    if not tenant.stripe_connected_account_id:
+    connected_account = get_tenant_stripe_account(tenant.id)
+    if not connected_account:
         logger.warning("Tenant has no stripe_connected_account_id", extra={
             "data": {"tenant_id": str(tenant.id)},
         })
         return {"synced": 0, "skipped": 0, "errors": 0}
 
-    # Build a lookup of stripe_customer_id -> Customer for this tenant
-    customers_by_stripe_id = {
-        c.stripe_customer_id: c
-        for c in Customer.objects.filter(
-            tenant=tenant,
-            stripe_customer_id__gt="",
-        )
-    }
+    # Build a lookup of stripe_customer_id -> customer_id for this tenant
+    customers_by_stripe_id = get_customers_by_stripe_id(tenant.id)
 
     try:
         subscriptions = stripe.Subscription.list(
             status="all",
-            stripe_account=tenant.stripe_connected_account_id,
+            stripe_account=connected_account,
             expand=["data.plan.product"],
         )
     except stripe.error.StripeError:
@@ -54,8 +49,8 @@ def sync_subscriptions(tenant):
     errors = 0
 
     for stripe_sub in subscriptions.auto_paging_iter():
-        customer = customers_by_stripe_id.get(stripe_sub.customer)
-        if not customer:
+        customer_id = customers_by_stripe_id.get(stripe_sub.customer)
+        if not customer_id:
             logger.info("Skipping subscription — no matching customer", extra={
                 "data": {
                     "stripe_subscription_id": stripe_sub.id,
@@ -70,7 +65,7 @@ def sync_subscriptions(tenant):
                 stripe_subscription_id=stripe_sub.id,
                 defaults={
                     "tenant": tenant,
-                    "customer": customer,
+                    "customer_id": customer_id,
                     "stripe_product_name": stripe_sub.plan.product.name,
                     "status": stripe_sub.status,
                     "amount_micros": stripe_sub.plan.amount * 10_000,

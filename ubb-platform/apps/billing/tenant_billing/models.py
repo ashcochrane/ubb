@@ -117,3 +117,22 @@ class TenantInvoiceLineItem(BaseModel):
 
     def __str__(self):
         return f"LineItem({self.product}: {self.amount_micros})"
+
+
+class BillingTenantConfig(BaseModel):
+    tenant = models.OneToOneField(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="billing_config"
+    )
+    stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
+    platform_fee_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=1.00
+    )
+    min_balance_micros = models.BigIntegerField(default=0)
+    run_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    hard_stop_balance_micros = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_billing_tenant_config"
+
+    def __str__(self):
+        return f"BillingTenantConfig({self.tenant.name})"

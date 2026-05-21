@@ -95,3 +95,17 @@ class WalletTransaction(BaseModel):
 
     def __str__(self):
         return f"WalletTxn({self.transaction_type}: {self.amount_micros})"
+
+
+class CustomerBillingProfile(BaseModel):
+    customer = models.OneToOneField(
+        "customers.Customer", on_delete=models.CASCADE,
+        related_name="billing_profile"
+    )
+    min_balance_micros = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_customer_billing_profile"
+
+    def __str__(self):
+        return f"CustomerBillingProfile({self.customer.external_id})"

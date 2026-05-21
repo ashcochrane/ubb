@@ -123,6 +123,19 @@ class Command(BaseCommand):
                 tenant.onboarding_completed_at = timezone.now()
             tenant.save(update_fields=["products", "onboarding_completed_at", "updated_at"])
 
+        # Create or update billing config for this tenant
+        from apps.billing.tenant_billing.models import BillingTenantConfig
+        billing_config, bc_created = BillingTenantConfig.objects.get_or_create(
+            tenant=tenant,
+            defaults={
+                "platform_fee_percentage": Decimal(options["platform_fee"]),
+            },
+        )
+        if not bc_created:
+            billing_config.platform_fee_percentage = Decimal(options["platform_fee"])
+            billing_config.save(update_fields=["platform_fee_percentage", "updated_at"])
+        self.stdout.write(f"{'Created' if bc_created else 'Updated'} billing config")
+
         # Create TenantUser if clerk_user_id provided
         if options["clerk_user_id"]:
             tu, tu_created = TenantUser.objects.get_or_create(

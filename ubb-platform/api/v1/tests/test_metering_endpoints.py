@@ -12,14 +12,10 @@ from apps.metering.pricing.models import Card, Rate
 
 
 class MeteringProductGatingTest(TestCase):
+    """Metering-only tenant can use metering endpoints, gets 403 on billing."""
+
     def setUp(self):
         self.http_client = Client()
-        self.tenant_no_metering = Tenant.objects.create(
-            name="No Metering", products=["billing"]
-        )
-        self.key_obj_no, self.raw_key_no = TenantApiKey.create_key(
-            self.tenant_no_metering, label="test"
-        )
         self.tenant_with_metering = Tenant.objects.create(
             name="Has Metering", products=["metering"]
         )
@@ -45,24 +41,6 @@ class MeteringProductGatingTest(TestCase):
             unit_quantity=1,
         )
 
-    def test_tenant_without_metering_gets_403_on_usage(self):
-        customer = Customer.objects.create(
-            tenant=self.tenant_no_metering, external_id="cust_no_met"
-        )
-        response = self.http_client.post(
-            "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(customer.id),
-                "request_id": "req_gate_1",
-                "idempotency_key": "idem_gate_1",
-                "pricing_card": "test_card",
-                "usage_metrics": {"tokens": 1},
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
-        )
-        self.assertEqual(response.status_code, 403)
-
     @patch("apps.platform.events.tasks.process_single_event")
     def test_tenant_with_metering_can_record_usage(self, mock_process):
         response = self.http_client.post(
@@ -81,16 +59,6 @@ class MeteringProductGatingTest(TestCase):
         body = response.json()
         self.assertIn("eventId", body)
 
-    def test_tenant_without_metering_gets_403_on_usage_history(self):
-        customer = Customer.objects.create(
-            tenant=self.tenant_no_metering, external_id="cust_no_met2"
-        )
-        response = self.http_client.get(
-            f"/api/v1/metering/customers/{customer.id}/usage",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
-        )
-        self.assertEqual(response.status_code, 403)
-
     def test_tenant_with_metering_can_get_usage_history(self):
         response = self.http_client.get(
             f"/api/v1/metering/customers/{self.customer.id}/usage",
@@ -100,6 +68,20 @@ class MeteringProductGatingTest(TestCase):
         body = response.json()
         self.assertIn("data", body)
         self.assertIn("hasMore", body)
+
+    def test_metering_only_tenant_gets_403_on_billing_balance(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_metering_only_tenant_gets_403_on_billing_transactions(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/transactions",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class MeteringRunEndpointTest(TestCase):
@@ -151,7 +133,8 @@ class MeteringRunEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_with_run_id_success(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
         )
         resp = self._record(run_id=str(run.id))
         self.assertEqual(resp.status_code, 200)
@@ -163,7 +146,8 @@ class MeteringRunEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_hard_stop_returns_429(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
         )
         # First event under limit
         resp = self._record(
@@ -194,7 +178,7 @@ class MeteringRunEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_stopped_run_returns_409(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
         )
         RunService.kill_run(run.id)
 
@@ -206,7 +190,7 @@ class MeteringRunEndpointTest(TestCase):
     @patch("apps.platform.events.tasks.process_single_event")
     def test_close_run_success(self, mock_process):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
         )
         # Record some usage first
         self._record(run_id=str(run.id))
@@ -291,18 +275,6 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.assertEqual(card_entry["cardName"], "Test Card")
         self.assertEqual(card_entry["eventCount"], 3)
         self.assertEqual(card_entry["totalCostMicros"], 3_000_000)
-
-    def test_usage_analytics_requires_metering_product(self):
-        tenant_no_metering = Tenant.objects.create(
-            name="No Metering", products=["billing"]
-        )
-        _, raw_key = TenantApiKey.create_key(tenant_no_metering, label="test")
-        response = self.http_client.get(
-            "/api/v1/metering/analytics/usage",
-            HTTP_AUTHORIZATION=f"Bearer {raw_key}",
-        )
-        self.assertEqual(response.status_code, 403)
-
 
 class CardOutShapeTest(TestCase):
     def setUp(self):

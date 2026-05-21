@@ -2,7 +2,7 @@ from datetime import date
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
-from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod, TenantInvoice
 from apps.billing.tenant_billing.tasks import generate_tenant_platform_invoices
 
 
@@ -12,6 +12,11 @@ class PlatformInvoiceStripeTest(TestCase):
             name="Test",
             stripe_connected_account_id="acct_test",
             stripe_customer_id="cus_tenant_test",  # Tenant as UBB's customer
+            platform_fee_percentage=1.00,
+        )
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant,
+            stripe_customer_id="cus_tenant_test",
             platform_fee_percentage=1.00,
         )
         self.period = TenantBillingPeriod.objects.create(

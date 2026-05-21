@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.billing.tenant_billing.models import TenantBillingPeriod
+from apps.billing.tenant_billing.models import TenantBillingPeriod, BillingTenantConfig
 from apps.billing.tenant_billing.services import TenantBillingService
 
 
@@ -88,6 +88,10 @@ class CloseBillingPeriodTest(TestCase):
             name="Test", stripe_connected_account_id="acct_test",
             platform_fee_percentage=Decimal("2.50"),
         )
+        BillingTenantConfig.objects.create(
+            tenant=self.tenant,
+            platform_fee_percentage=Decimal("2.50"),
+        )
 
     def test_close_period_calculates_fee_with_decimal(self):
         period = TenantBillingPeriod.objects.create(
@@ -105,8 +109,9 @@ class CloseBillingPeriodTest(TestCase):
 
     def test_close_period_decimal_precision(self):
         """Verify no floating-point precision loss."""
-        self.tenant.platform_fee_percentage = Decimal("0.33")
-        self.tenant.save()
+        BillingTenantConfig.objects.filter(tenant=self.tenant).update(
+            platform_fee_percentage=Decimal("0.33"),
+        )
         period = TenantBillingPeriod.objects.create(
             tenant=self.tenant,
             period_start=date(2026, 1, 1),

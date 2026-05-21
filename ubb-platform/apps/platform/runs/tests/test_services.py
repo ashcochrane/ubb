@@ -11,16 +11,16 @@ class RunServiceCreateTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             products=["metering", "billing"],
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1"
         )
 
-    def test_create_run_snapshots_tenant_limits_and_balance(self):
+    def test_create_run_with_explicit_limits(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=3_000_000
+            self.tenant, self.customer, balance_snapshot_micros=3_000_000,
+            cost_limit_micros=10_000_000,
+            hard_stop_balance_micros=-5_000_000,
         )
         self.assertEqual(run.status, "active")
         self.assertEqual(run.balance_snapshot_micros, 3_000_000)
@@ -32,11 +32,8 @@ class RunServiceCreateTest(TestCase):
         self.assertEqual(run.customer_id, self.customer.id)
 
     def test_create_run_null_limits(self):
-        self.tenant.run_cost_limit_micros = None
-        self.tenant.hard_stop_balance_micros = None
-        self.tenant.save()
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=0
+            self.tenant, self.customer, balance_snapshot_micros=0,
         )
         self.assertIsNone(run.cost_limit_micros)
         self.assertIsNone(run.hard_stop_balance_micros)
@@ -55,16 +52,17 @@ class RunServiceAccumulateTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             products=["metering", "billing"],
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1"
         )
+        self.cost_limit = 10_000_000
+        self.hard_stop = -5_000_000
 
     def test_accumulate_cost_increments_total_and_count(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         result = RunService.accumulate_cost(run.id, 3_000_000)
         self.assertEqual(result.total_cost_micros, 3_000_000)
@@ -76,7 +74,8 @@ class RunServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_ceiling_exceeded_raises(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         # Accumulate up to 9M (under 10M limit)
         RunService.accumulate_cost(run.id, 9_000_000)
@@ -96,7 +95,8 @@ class RunServiceAccumulateTest(TestCase):
         # balance=3M, hard_stop_balance=-5M
         # So total cost can go up to 8M before floor is hit (3M - 8M = -5M)
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=3_000_000
+            self.tenant, self.customer, balance_snapshot_micros=3_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         RunService.accumulate_cost(run.id, 7_000_000)  # est balance = -4M, above -5M
 
@@ -112,12 +112,8 @@ class RunServiceAccumulateTest(TestCase):
         self.assertEqual(run.total_cost_micros, 7_000_000)
 
     def test_accumulate_cost_null_limits_never_stops(self):
-        self.tenant.run_cost_limit_micros = None
-        self.tenant.hard_stop_balance_micros = None
-        self.tenant.save()
-
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=1_000_000
+            self.tenant, self.customer, balance_snapshot_micros=1_000_000,
         )
         # Accumulate a huge amount — no limits should fire
         result = RunService.accumulate_cost(run.id, 999_999_999_999)
@@ -126,7 +122,8 @@ class RunServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_exact_ceiling_allowed(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         # Accumulate exactly to the limit (10M)
         result = RunService.accumulate_cost(run.id, 10_000_000)
@@ -135,14 +132,16 @@ class RunServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_one_over_ceiling_raises(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         with self.assertRaises(HardStopExceeded):
             RunService.accumulate_cost(run.id, 10_000_001)
 
     def test_accumulate_cost_on_killed_run_raises_not_active(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         RunService.kill_run(run.id)
 
@@ -152,7 +151,8 @@ class RunServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_on_completed_run_raises_not_active(self):
         run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
+            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
+            cost_limit_micros=self.cost_limit, hard_stop_balance_micros=self.hard_stop,
         )
         RunService.complete_run(run.id)
 

@@ -191,7 +191,7 @@ class TestUsageRecordedHandler:
             "tenant_id": str(tenant.id),
             "customer_id": str(referred.id),
             "cost_micros": 1_000_000,
-            "raw_cost_micros": 200_000,
+            "provider_cost_micros": 200_000,
             "event_type": "api_call",
             "event_id": "evt-1",
         })

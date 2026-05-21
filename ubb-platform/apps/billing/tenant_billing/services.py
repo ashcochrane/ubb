@@ -103,10 +103,12 @@ class TenantBillingService:
                     "amount_micros": fee,
                 })
         else:
-            # Legacy fallback: single percentage
+            # Legacy fallback: single percentage from billing config
+            from apps.billing.queries import get_billing_config
+            billing_config = get_billing_config(tenant.id)
             raw_fee = (
                 Decimal(period.total_usage_cost_micros)
-                * tenant.platform_fee_percentage
+                * billing_config.platform_fee_percentage
                 / Decimal(100)
             )
             fee = int(raw_fee)

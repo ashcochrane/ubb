@@ -139,6 +139,7 @@ def reconcile_topups_with_stripe():
     Rate-limited to avoid Stripe API limits.
     """
     from apps.billing.topups.models import TopUpAttempt
+    from apps.platform.queries import get_tenant_stripe_account
 
     cutoff = timezone.now() - timedelta(hours=48)
 
@@ -153,7 +154,7 @@ def reconcile_topups_with_stripe():
         try:
             charge = stripe.Charge.retrieve(
                 attempt.stripe_charge_id,
-                stripe_account=attempt.customer.tenant.stripe_connected_account_id,
+                stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
             )
         except stripe.error.StripeError:
             logger.warning("Stripe charge fetch failed", extra={"data": {

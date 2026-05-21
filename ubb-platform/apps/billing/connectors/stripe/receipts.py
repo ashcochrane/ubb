@@ -25,8 +25,10 @@ class ReceiptService:
             return
 
         import stripe
+        from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 
-        connected_account = customer.tenant.stripe_connected_account_id
+        connected_account = get_tenant_stripe_account(customer.tenant_id)
+        customer_stripe_id = get_customer_stripe_id(customer.id)
         amount_cents = micros_to_cents(top_up_attempt.amount_micros)
 
         try:
@@ -34,7 +36,7 @@ class ReceiptService:
                 stripe.Invoice.create,
                 retryable=True,
                 idempotency_key=f"receipt-{top_up_attempt.id}",
-                customer=customer.stripe_customer_id,
+                customer=customer_stripe_id,
                 auto_advance=False,
                 collection_method="send_invoice",
                 days_until_due=0,
@@ -45,7 +47,7 @@ class ReceiptService:
                 stripe.InvoiceItem.create,
                 retryable=True,
                 idempotency_key=f"receipt-item-{top_up_attempt.id}",
-                customer=customer.stripe_customer_id,
+                customer=customer_stripe_id,
                 invoice=stripe_invoice.id,
                 amount=amount_cents,
                 currency="usd",

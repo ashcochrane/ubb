@@ -52,7 +52,8 @@ def handle_usage_recorded_billing(event_id, payload):
             )
 
             # Check min balance threshold and suspend if needed
-            threshold = customer.get_min_balance()
+            from apps.billing.queries import get_customer_min_balance
+            threshold = get_customer_min_balance(customer.id, tenant.id)
             if wallet.balance_micros < -threshold and customer.status == "active":
                 customer.status = "suspended"
                 customer.save(update_fields=["status", "updated_at"])

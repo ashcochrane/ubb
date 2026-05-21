@@ -15,13 +15,13 @@ class ProductAccessTest(TestCase):
         return request
 
     def test_raises_403_when_tenant_lacks_product(self):
-        tenant = Tenant.objects.create(name="No Products", products=[])
+        tenant = Tenant.objects.create(name="Metering Only", products=["metering"])
         request = self._make_request(tenant)
-        checker = ProductAccess("metering")
+        checker = ProductAccess("billing")
         with self.assertRaises(HttpError) as ctx:
             checker(request)
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertIn("metering", str(ctx.exception))
+        self.assertIn("billing", str(ctx.exception))
 
     def test_passes_when_tenant_has_the_product(self):
         tenant = Tenant.objects.create(
@@ -43,10 +43,10 @@ class ProductAccessTest(TestCase):
 
     def test_raises_403_when_tenant_has_different_product(self):
         tenant = Tenant.objects.create(
-            name="Billing Only", products=["billing"]
+            name="Metering Only", products=["metering"]
         )
         request = self._make_request(tenant)
-        checker = ProductAccess("metering")
+        checker = ProductAccess("billing")
         with self.assertRaises(HttpError) as ctx:
             checker(request)
         self.assertEqual(ctx.exception.status_code, 403)

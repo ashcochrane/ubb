@@ -46,7 +46,7 @@ def handle_usage_recorded_referrals(event_id, payload):
         return
 
     # Calculate reward
-    raw_cost_micros = payload.get("raw_cost_micros")
+    raw_cost_micros = payload.get("provider_cost_micros")
     reward_micros = RewardService.calculate_reward(
         referral, cost_micros, raw_cost_micros=raw_cost_micros
     )

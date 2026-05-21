@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                         ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                         ("created_at", models.DateTimeField(auto_now_add=True)),
                         ("updated_at", models.DateTimeField(auto_now=True)),
-                        ("deleted_at", models.DateTimeField(blank=True, null=True)),
+                        ("deleted_at", models.DateTimeField(blank=True, db_index=True, default=None, null=True)),
                         ("customer", models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name="wallet", to="customers.customer")),
                         ("balance_micros", models.BigIntegerField(default=0)),
                         ("currency", models.CharField(default="USD", max_length=3)),

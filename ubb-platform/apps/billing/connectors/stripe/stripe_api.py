@@ -11,6 +11,7 @@ from apps.billing.stripe.services.stripe_service import (
     validate_amount_micros,
     micros_to_cents,
 )
+from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -19,11 +20,14 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
     """Create Stripe Checkout session for top-up."""
     validate_amount_micros(amount_micros)
     amount_cents = micros_to_cents(amount_micros)
+    customer_stripe_id = get_customer_stripe_id(customer.id)
+    connected_account = get_tenant_stripe_account(customer.tenant_id)
+
     session = stripe_call(
         stripe.checkout.Session.create,
         retryable=True,
         idempotency_key=f"checkout-{top_up_attempt.id}",
-        customer=customer.stripe_customer_id,
+        customer=customer_stripe_id,
         client_reference_id=str(top_up_attempt.id),
         mode="payment",
         line_items=[{
@@ -36,7 +40,7 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
         }],
         success_url=success_url,
         cancel_url=cancel_url,
-        stripe_account=customer.tenant.stripe_connected_account_id,
+        stripe_account=connected_account,
     )
     top_up_attempt.stripe_checkout_session_id = session.id
     top_up_attempt.save(update_fields=["stripe_checkout_session_id", "updated_at"])
@@ -50,13 +54,14 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     """
     validate_amount_micros(amount_micros)
     amount_cents = micros_to_cents(amount_micros)
-    connected_account = customer.tenant.stripe_connected_account_id
+    customer_stripe_id = get_customer_stripe_id(customer.id)
+    connected_account = get_tenant_stripe_account(customer.tenant_id)
 
     payment_methods = stripe_call(
         stripe.PaymentMethod.list,
         retryable=True,
         idempotency_key=None,  # list is naturally idempotent
-        customer=customer.stripe_customer_id,
+        customer=customer_stripe_id,
         type="card",
         stripe_account=connected_account,
     )
@@ -67,7 +72,7 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
         stripe.PaymentIntent.create,
         retryable=True,
         idempotency_key=f"charge-{top_up_attempt.id}",
-        customer=customer.stripe_customer_id,
+        customer=customer_stripe_id,
         amount=amount_cents,
         currency="usd",
         payment_method=payment_methods.data[0].id,

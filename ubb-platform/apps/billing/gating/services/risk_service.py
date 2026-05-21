@@ -36,19 +36,25 @@ class RiskService:
         except Wallet.DoesNotExist:
             balance = 0
 
-        threshold = customer.get_min_balance()
+        from apps.billing.queries import get_customer_min_balance
+        threshold = get_customer_min_balance(customer.id, customer.tenant_id)
         if balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "run_id": None}
 
         result = {"allowed": True, "reason": None, "balance_micros": balance, "run_id": None}
 
-        # Optionally create a Run, snapshotting wallet balance and tenant limits
+        # Optionally create a Run, snapshotting wallet balance and billing config limits
         if create_run:
+            from apps.billing.queries import get_billing_config
             from apps.platform.runs.services import RunService
+
+            billing_config = get_billing_config(customer.tenant_id)
             run = RunService.create_run(
                 tenant=customer.tenant,
                 customer=customer,
                 balance_snapshot_micros=balance,
+                cost_limit_micros=billing_config.run_cost_limit_micros,
+                hard_stop_balance_micros=billing_config.hard_stop_balance_micros,
                 metadata=run_metadata or {},
                 external_run_id=external_run_id,
             )
