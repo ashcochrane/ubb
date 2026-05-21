@@ -8,6 +8,7 @@ def test_create_widget_token():
         base_url="http://localhost:8001",
         widget_secret="test_secret_key_1234567890",
         tenant_id="tid_abc123",
+        max_retries=0,
     )
     token = client.create_widget_token(customer_id="cust_abc123")
     decoded = jwt.decode(token, "test_secret_key_1234567890", algorithms=["HS256"])
@@ -18,7 +19,7 @@ def test_create_widget_token():
 
 
 def test_create_widget_token_no_secret_raises():
-    client = UBBClient(api_key="ubb_test_abc123")
+    client = UBBClient(api_key="ubb_test_abc123", max_retries=0)
     try:
         client.create_widget_token(customer_id="cust_abc123")
         assert False, "Should have raised"
@@ -27,7 +28,7 @@ def test_create_widget_token_no_secret_raises():
 
 
 def test_create_widget_token_no_tenant_id_raises():
-    client = UBBClient(api_key="ubb_test_abc123", widget_secret="secret")
+    client = UBBClient(api_key="ubb_test_abc123", widget_secret="secret", max_retries=0)
     try:
         client.create_widget_token(customer_id="cust_abc123")
         assert False, "Should have raised"

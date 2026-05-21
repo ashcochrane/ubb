@@ -74,6 +74,19 @@ class TestSubscriptionsProductIsolation(TestCase):
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
+        from apps.metering.pricing.models import Card, Rate
+        card = Card.objects.create(
+            tenant=tenant,
+            name="Test Card",
+            slug="test_card",
+            provider="test_provider",
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
         response = self.http_client.post(
             "/api/v1/metering/usage",
@@ -81,7 +94,8 @@ class TestSubscriptionsProductIsolation(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req-isolation-1",
                 "idempotency_key": "idem-isolation-1",
-                "cost_micros": 500_000,
+                "pricing_card": "test_card",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",

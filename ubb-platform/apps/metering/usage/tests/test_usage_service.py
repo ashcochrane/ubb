@@ -4,7 +4,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService, HardStopExceeded, RunNotActive
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import Card, Rate
 from apps.metering.usage.models import UsageEvent
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.usage_service import UsageService
@@ -158,36 +158,35 @@ class UsageServicePricingTest(TestCase):
         )
         self.wallet = Wallet.objects.create(customer=self.customer)
 
-        ProviderRate.objects.create(
+        self.card = Card.objects.create(
             tenant=self.tenant,
+            name="Gemini Flash",
+            slug="gemini_flash",
             provider="google_gemini",
-            event_type="gemini_api_call",
+        )
+        Rate.objects.create(
+            card=self.card,
             metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
             cost_per_unit_micros=75_000,
             unit_quantity=1_000_000,
         )
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
+        Rate.objects.create(
+            card=self.card,
             metric_name="output_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
             cost_per_unit_micros=300_000,
             unit_quantity=1_000_000,
         )
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics(self, mock_process):
+    def test_record_usage_with_pricing_card(self, mock_process):
+        """Record usage via pricing_card slug — both costs returned."""
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_priced_1",
             idempotency_key="idem_priced_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
+            pricing_card="gemini_flash",
             usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
         )
         self.assertEqual(result["provider_cost_micros"], 75_000)
         self.assertEqual(result["billed_cost_micros"], 75_000)
@@ -196,25 +195,21 @@ class UsageServicePricingTest(TestCase):
         self.assertEqual(self.wallet.balance_micros, 0)
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics_and_markup(self, mock_process):
-        TenantMarkup.objects.create(
-            tenant=self.tenant,
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            markup_percentage_micros=20_000_000,
+    def test_record_usage_with_explicit_provider_rate(self, mock_process):
+        """When Rate has provider_cost_per_unit_micros set, both costs differ."""
+        self.card.rates.filter(metric_name="input_tokens").update(
+            provider_cost_per_unit_micros=60_000
         )
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_markup_1",
-            idempotency_key="idem_markup_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
+            request_id="req_margin_1",
+            idempotency_key="idem_margin_1",
+            pricing_card="gemini_flash",
             usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
         )
-        self.assertEqual(result["provider_cost_micros"], 75_000)
-        self.assertEqual(result["billed_cost_micros"], 75_000 + 15_000)
+        self.assertEqual(result["provider_cost_micros"], 60_000)
+        self.assertEqual(result["billed_cost_micros"], 75_000)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_legacy_cost_micros_still_works(self, mock_process):
@@ -230,36 +225,33 @@ class UsageServicePricingTest(TestCase):
         self.assertIsNone(result["new_balance_micros"])
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_event_stores_provenance(self, mock_process):
+    def test_pricing_card_event_stores_provenance(self, mock_process):
+        """Record via slug — provenance is written on the event."""
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_prov_1",
             idempotency_key="idem_prov_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
+            pricing_card="gemini_flash",
             usage_metrics={"input_tokens": 500},
-            properties={"model": "gemini-2.0-flash"},
         )
         event = UsageEvent.objects.get(
             idempotency_key="idem_prov_1", tenant=self.tenant, customer=self.customer
         )
-        self.assertEqual(event.event_type, "gemini_api_call")
+        self.assertEqual(event.card_slug, "gemini_flash")
         self.assertEqual(event.provider, "google_gemini")
         self.assertIn("engine_version", event.pricing_provenance)
         self.assertIn("input_tokens", event.pricing_provenance["metrics"])
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_idempotent_includes_dual_costs(self, mock_process):
+    def test_pricing_card_idempotent_includes_dual_costs(self, mock_process):
         kwargs = dict(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_idem_priced",
             idempotency_key="idem_idem_priced",
-            event_type="gemini_api_call",
-            provider="google_gemini",
+            pricing_card="gemini_flash",
             usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
         )
         result1 = UsageService.record_usage(**kwargs)
         result2 = UsageService.record_usage(**kwargs)
@@ -292,19 +284,21 @@ class UsageServiceEventEmissionTest(TestCase):
         self.assertEqual(outbox.payload["tenant_id"], str(self.tenant.id))
         self.assertEqual(outbox.payload["customer_id"], str(self.customer.id))
         self.assertEqual(outbox.payload["cost_micros"], 1_000_000)
-        self.assertEqual(outbox.payload["event_type"], "")
         self.assertEqual(outbox.payload["event_id"], result["event_id"])
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_writes_billed_cost_for_priced_events(self, mock_process):
         from apps.platform.events.models import OutboxEvent
 
-        ProviderRate.objects.create(
+        card = Card.objects.create(
             tenant=self.tenant,
+            name="Gemini Flash",
+            slug="gemini_flash_billed",
             provider="google_gemini",
-            event_type="gemini_api_call",
+        )
+        Rate.objects.create(
+            card=card,
             metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
             cost_per_unit_micros=75_000,
             unit_quantity=1_000_000,
         )
@@ -313,14 +307,11 @@ class UsageServiceEventEmissionTest(TestCase):
             customer=self.customer,
             request_id="req_emit_2",
             idempotency_key="idem_emit_2",
-            event_type="gemini_api_call",
-            provider="google_gemini",
+            pricing_card="gemini_flash_billed",
             usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
         )
         outbox = OutboxEvent.objects.get(event_type="usage.recorded")
         self.assertEqual(outbox.payload["cost_micros"], 75_000)  # billed_cost_micros
-        self.assertEqual(outbox.payload["event_type"], "gemini_api_call")
         self.assertEqual(outbox.payload["event_id"], result["event_id"])
 
 
@@ -534,4 +525,101 @@ class UsageServiceRunTest(TestCase):
                 idempotency_key="idem_killed",
                 cost_micros=1_000_000,
                 run_id=run.id,
+            )
+
+
+class UsageServiceSlugTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test", stripe_connected_account_id="acct_test"
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1"
+        )
+        self.card = Card.objects.create(
+            tenant=self.tenant,
+            name="Gemini Flash",
+            slug="gemini_2_flash",
+            provider="google",
+        )
+        Rate.objects.create(
+            card=self.card,
+            metric_name="input_tokens",
+            pricing_type="per_unit",
+            cost_per_unit_micros=75_000,
+            unit_quantity=1_000_000,
+        )
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_with_pricing_card_slug(self, mock_process):
+        result = UsageService.record_usage(
+            tenant=self.tenant,
+            customer=self.customer,
+            request_id="req_slug_1",
+            idempotency_key="idem_slug_1",
+            pricing_card="gemini_2_flash",
+            usage_metrics={"input_tokens": 1_000_000},
+        )
+        self.assertEqual(result["provider_cost_micros"], 75_000)
+        self.assertEqual(result["billed_cost_micros"], 75_000)
+        event = UsageEvent.objects.get(id=result["event_id"])
+        self.assertEqual(event.card_id, self.card.id)
+        self.assertEqual(event.card_slug, "gemini_2_flash")
+        self.assertEqual(event.provider, "google")
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_slug_not_found_raises(self, mock_process):
+        from apps.metering.pricing.services.pricing_service import PricingError
+        with self.assertRaises(PricingError):
+            UsageService.record_usage(
+                tenant=self.tenant,
+                customer=self.customer,
+                request_id="req_slug_bad",
+                idempotency_key="idem_slug_bad",
+                pricing_card="nonexistent",
+                usage_metrics={"input_tokens": 100},
+            )
+
+    # test_legacy_event_type_provider_still_works removed — the event_type/provider
+    # legacy path no longer exists in UsageService.record_usage (dropped in Task 7).
+    # The slug path (pricing_card=) is now the only route for metric-priced events.
+
+
+class RecordUsageSlugSnapshotTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="T", products=["metering"])
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        from apps.metering.pricing.models import Card, Rate
+        self.card = Card.objects.create(
+            tenant=self.tenant, name="GPT-4o", slug="gpt_4o",
+            provider="openai", status="active",
+        )
+        Rate.objects.create(
+            card=self.card, metric_name="input_tokens",
+            cost_per_unit_micros=3_000, provider_cost_per_unit_micros=2_500,
+            unit_quantity=1_000_000,
+        )
+
+    def test_record_with_slug_writes_snapshots(self):
+        from apps.metering.usage.models import UsageEvent
+        UsageService.record_usage(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="k1",
+            pricing_card="gpt_4o", usage_metrics={"input_tokens": 1_000_000},
+        )
+        event = UsageEvent.objects.get(idempotency_key="k1")
+        self.assertEqual(event.card_slug, "gpt_4o")
+        self.assertEqual(event.card_name, "GPT-4o")
+        self.assertEqual(event.provider, "openai")
+        self.assertEqual(event.card, self.card)
+        self.assertEqual(event.provider_cost_micros, 2_500)
+        self.assertEqual(event.billed_cost_micros, 3_000)
+
+    def test_record_requires_pricing_card(self):
+        from apps.metering.pricing.services.pricing_service import PricingError
+        with self.assertRaises((ValueError, PricingError)):
+            UsageService.record_usage(
+                tenant=self.tenant, customer=self.customer,
+                request_id="r2", idempotency_key="k2",
+                usage_metrics={"input_tokens": 1},
             )

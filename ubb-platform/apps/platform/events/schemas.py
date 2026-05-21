@@ -21,7 +21,6 @@ class UsageRecorded:
     cost_micros: int
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
-    event_type: str = ""
     provider: str = ""
     auto_topup_attempt_id: str | None = None
     run_id: str | None = None
@@ -146,3 +145,17 @@ class CustomerSuspended:
     customer_id: str
     reason: str
     balance_micros: int
+
+
+@dataclass(frozen=True)
+class TenantProvisionedEvent:
+    """Emitted when a new tenant is provisioned via onboarding.
+
+    No handlers registered today. Billing/subscriptions apps may subscribe
+    in future to bootstrap product-specific state.
+    """
+    EVENT_TYPE = "tenant.provisioned"
+
+    tenant_id: str
+    clerk_user_id: str
+    mode: str

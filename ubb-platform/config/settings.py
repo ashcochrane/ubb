@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.platform.customers",
     "apps.platform.events",
     "apps.platform.runs",
+    "apps.platform.groups",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
@@ -252,6 +253,10 @@ LOGGING = {
 # Stripe
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+# Clerk (dashboard auth)
+CLERK_ISSUER_URL = os.environ.get("CLERK_ISSUER_URL", "")
+CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

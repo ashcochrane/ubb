@@ -4,9 +4,10 @@ from ninja import NinjaAPI, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
 from core.auth import ApiKeyAuth
+from core.clerk_auth import ClerkJWTAuth
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
-tenant_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_tenant_v1")
+tenant_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_tenant_v1")
 
 
 class TenantBillingPeriodOut(Schema):

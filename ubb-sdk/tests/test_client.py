@@ -24,6 +24,7 @@ class UBBClientTest(unittest.TestCase):
     def setUp(self):
         self.client = UBBClient(api_key="ubb_live_test123",
                                 base_url="http://localhost:8001",
+                                max_retries=0,
                                 metering=True, billing=True)
 
     def tearDown(self):
@@ -33,7 +34,7 @@ class UBBClientTest(unittest.TestCase):
 
     def test_pre_check_metering_only_no_event_type(self):
         """Without event_type and no billing, pre_check returns trivially allowed."""
-        client = UBBClient(api_key="test", metering=True, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
         result = client.pre_check(customer_id="cust_123")
         self.assertTrue(result.allowed)
         self.assertTrue(result.can_proceed)
@@ -56,14 +57,17 @@ class UBBClientTest(unittest.TestCase):
     def test_record_usage(self, mock_met_request):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_1", "new_balance_micros": 8500000, "suspended": False,
+                "eventId": "evt_1",
+                "providerCostMicros": 500_000, "billedCostMicros": 1_500_000,
             }
         )
         result = self.client.record_usage(
-            customer_id="c1", request_id="r1", idempotency_key="i1", cost_micros=1500000,
+            customer_id="c1", request_id="r1", idempotency_key="i1",
+            pricing_card="gpt_4o",
+            usage_metrics={"tokens": 100},
         )
-        self.assertEqual(result.new_balance_micros, 8500000)
-        self.assertFalse(result.suspended)
+        self.assertEqual(result.event_id, "evt_1")
+        self.assertEqual(result.billed_cost_micros, 1_500_000)
 
     # --- create_customer (uses metering._request for platform API) ---
 
@@ -96,7 +100,7 @@ class UBBClientTest(unittest.TestCase):
     # --- Billing-required methods raise UBBError when billing disabled ---
 
     def test_get_balance_raises_without_billing(self):
-        client = UBBClient(api_key="test", metering=True, billing=False)
+        client = UBBClient(api_key="test", max_retries=0, metering=True, billing=False)
         with self.assertRaises(UBBError):
             client.get_balance("c1")
         client.close()
@@ -124,7 +128,7 @@ class UBBClientTest(unittest.TestCase):
     def test_get_usage(self):
         expected = PaginatedResponse(
             data=[UsageEvent(id="e1", request_id="r1", cost_micros=10000,
-                             metadata={}, effective_at="2025-01-01T00:00:00Z")],
+                             effective_at="2025-01-01T00:00:00Z")],
             next_cursor="cur_abc", has_more=True,
         )
         self.client.metering.get_usage = MagicMock(return_value=expected)
@@ -163,11 +167,11 @@ class UBBClientTest(unittest.TestCase):
         self.assertIsInstance(result, AutoTopUpResult)
         self.assertEqual(result.status, "enabled")
 
-    # --- withdraw (delegates to billing.debit) ---
+    # --- withdraw (delegates to billing.withdraw) ---
 
     def test_withdraw(self):
-        self.client.billing.debit = MagicMock(
-            return_value={"transaction_id": "txn_1", "new_balance_micros": 5000000}
+        self.client.billing.withdraw = MagicMock(
+            return_value=WithdrawResult(transaction_id="txn_1", balance_micros=5000000)
         )
         result = self.client.withdraw(customer_id="c1", amount_micros=10_000,
                                       idempotency_key="w1")
@@ -175,11 +179,11 @@ class UBBClientTest(unittest.TestCase):
         self.assertEqual(result.transaction_id, "txn_1")
         self.assertEqual(result.balance_micros, 5000000)
 
-    # --- refund_usage (delegates to billing.credit) ---
+    # --- refund_usage (delegates to billing.refund) ---
 
     def test_refund_usage(self):
-        self.client.billing.credit = MagicMock(
-            return_value={"transaction_id": "ref_1", "new_balance_micros": 11000000}
+        self.client.billing.refund = MagicMock(
+            return_value=RefundResult(refund_id="ref_1", balance_micros=11000000)
         )
         result = self.client.refund_usage(
             customer_id="c1", usage_event_id="evt_1", idempotency_key="rf1", reason="mistake",

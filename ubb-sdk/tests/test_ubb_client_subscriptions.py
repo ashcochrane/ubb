@@ -7,6 +7,7 @@ class TestUBBClientSubscriptions:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
             metering=True,
             subscriptions=True,
         )
@@ -19,6 +20,7 @@ class TestUBBClientSubscriptions:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
             metering=True,
             subscriptions=False,
         )
@@ -29,6 +31,7 @@ class TestUBBClientSubscriptions:
         client = UBBClient(
             api_key="ubb_live_test",
             base_url="http://localhost:8001",
+            max_retries=0,
         )
         assert client.subscriptions is None
         client.close()

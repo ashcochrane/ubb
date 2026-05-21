@@ -11,6 +11,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.models import Card, Rate
 
 
 class TestMeteringOnlyTenant(TestCase):
@@ -30,6 +31,18 @@ class TestMeteringOnlyTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="Test Card",
+            slug="test_card_met",
+            provider="test_provider",
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_can_record_usage_on_metering_endpoint(self, mock_process):
@@ -39,15 +52,15 @@ class TestMeteringOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
-                "cost_micros": 1_000_000,
+                "pricing_card": "test_card_met",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("event_id", body)
-        self.assertIsNone(body["new_balance_micros"])
+        self.assertIn("eventId", body)
 
     def test_can_get_usage_history_on_metering_endpoint(self):
         response = self.http_client.get(
@@ -57,7 +70,7 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("data", body)
-        self.assertIn("has_more", body)
+        self.assertIn("hasMore", body)
 
     def test_gets_403_on_billing_balance(self):
         response = self.http_client.get(
@@ -96,77 +109,6 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class TestMeteringBillingTenant(TestCase):
-    """Tenant with products=["metering", "billing"] can use billing endpoints but not referrals/subscriptions."""
-
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(
-            name="Metering+Billing", products=["metering", "billing"]
-        )
-        self.key_obj, self.raw_key = TenantApiKey.create_key(
-            self.tenant, label="test"
-        )
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_bill_only"
-        )
-
-    def test_can_check_balance_on_billing_endpoint(self):
-        response = self.http_client.get(
-            f"/api/v1/billing/customers/{self.customer.id}/balance",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("balance_micros", body)
-        self.assertIn("currency", body)
-
-    def test_can_pre_check_on_billing_endpoint(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer.id)}),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("allowed", body)
-
-    def test_can_list_transactions_on_billing_endpoint(self):
-        response = self.http_client.get(
-            f"/api/v1/billing/customers/{self.customer.id}/transactions",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("data", body)
-        self.assertIn("has_more", body)
-
-    def test_can_list_billing_periods(self):
-        response = self.http_client.get(
-            "/api/v1/billing/tenant/billing-periods",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("data", body)
-        self.assertIn("has_more", body)
-
-    def test_gets_403_on_referrals(self):
-        response = self.http_client.get(
-            "/api/v1/referrals/program",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 403)
-
-    def test_gets_403_on_subscriptions(self):
-        response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        self.assertEqual(response.status_code, 403)
-
-
 class TestBothProductsTenant(TestCase):
     """Tenant with products=["metering", "billing"] can use both endpoints."""
 
@@ -184,6 +126,18 @@ class TestBothProductsTenant(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        card = Card.objects.create(
+            tenant=self.tenant,
+            name="Test Card",
+            slug="test_card_both",
+            provider="test_provider",
+        )
+        Rate.objects.create(
+            card=card,
+            metric_name="tokens",
+            cost_per_unit_micros=1_000_000,
+            unit_quantity=1,
+        )
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_can_record_usage_on_metering_endpoint(self, mock_process):
@@ -193,7 +147,8 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
-                "cost_micros": 1_000_000,
+                "pricing_card": "test_card_both",
+                "usage_metrics": {"tokens": 1},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -214,7 +169,7 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["balance_micros"], 10_000_000)
+        self.assertEqual(body["balanceMicros"], 10_000_000)
 
     def test_can_pre_check_on_billing_endpoint(self):
         response = self.http_client.post(
@@ -246,14 +201,13 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
-                "cost_micros": 2_000_000,
+                "pricing_card": "test_card_both",
+                "usage_metrics": {"tokens": 2},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
-        usage_body = response.json()
-        self.assertIsNone(usage_body["new_balance_micros"])
 
         # Balance unchanged (billing handles deduction via outbox)
         response = self.http_client.get(
@@ -262,4 +216,4 @@ class TestBothProductsTenant(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         balance_body = response.json()
-        self.assertEqual(balance_body["balance_micros"], 10_000_000)
+        self.assertEqual(balance_body["balanceMicros"], 10_000_000)

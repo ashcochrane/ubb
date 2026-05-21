@@ -34,6 +34,7 @@ class UBBClient:
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
                  timeout: float = 10.0, widget_secret: str | None = None,
                  tenant_id: str | None = None,
+                 max_retries: int = 3,
                  metering: bool = True, billing: bool = False,
                  subscriptions: bool = False,
                  referrals: bool = False) -> None:
@@ -48,22 +49,22 @@ class UBBClient:
         from ubb.billing import BillingClient
 
         self.metering: MeteringClient | None = (
-            MeteringClient(api_key, base_url, timeout) if metering else None
+            MeteringClient(api_key, base_url, timeout, max_retries=max_retries) if metering else None
         )
         self.billing: BillingClient | None = (
-            BillingClient(api_key, base_url, timeout) if billing else None
+            BillingClient(api_key, base_url, timeout, max_retries=max_retries) if billing else None
         )
 
         from ubb.subscriptions import SubscriptionsClient
 
         self.subscriptions: SubscriptionsClient | None = (
-            SubscriptionsClient(api_key, base_url, timeout) if subscriptions else None
+            SubscriptionsClient(api_key, base_url, timeout, max_retries=max_retries) if subscriptions else None
         )
 
         from ubb.referrals import ReferralsClient
 
         self.referrals: ReferralsClient | None = (
-            ReferralsClient(api_key, base_url, timeout) if referrals else None
+            ReferralsClient(api_key, base_url, timeout, max_retries=max_retries) if referrals else None
         )
 
     def __enter__(self) -> UBBClient:
@@ -151,17 +152,22 @@ class UBBClient:
             external_run_id=external_run_id,
         )
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int | None = None, metadata: dict | None = None,
-                     event_type: str | None = None, provider: str | None = None,
-                     usage_metrics: dict | None = None, properties: dict | None = None,
-                     group_keys: dict | None = None,
-                     run_id: str | None = None) -> RecordUsageResult:
+    def record_usage(
+        self,
+        customer_id: str,
+        request_id: str,
+        idempotency_key: str,
+        pricing_card: str,
+        usage_metrics: dict,
+        group: str | None = None,
+        run_id: str | None = None,
+    ) -> RecordUsageResult:
         """Record a usage event via metering.
 
-        Delegates to metering.record_usage(). Wallet deduction is handled
-        server-side via the billing outbox handler — the SDK does NOT call
-        billing.debit() to avoid double-debit.
+        Delegates to metering.record_usage(). Pricing is resolved server-side
+        via the pricing_card slug. Wallet deduction is handled server-side via
+        the billing outbox handler — the SDK does NOT call billing.debit() to
+        avoid double-debit.
 
         If run_id is provided, the event is associated with the run and
         the run's hard stop limits are checked. Raises UBBHardStopError
@@ -174,13 +180,9 @@ class UBBClient:
             customer_id=customer_id,
             request_id=request_id,
             idempotency_key=idempotency_key,
-            cost_micros=cost_micros,
-            metadata=metadata,
-            event_type=event_type,
-            provider=provider,
+            pricing_card=pricing_card,
             usage_metrics=usage_metrics,
-            properties=properties,
-            group_keys=group_keys,
+            group=group,
             run_id=run_id,
         )
 
@@ -236,33 +238,16 @@ class UBBClient:
 
     def withdraw(self, customer_id: str, amount_micros: int,
                  idempotency_key: str, description: str = "") -> WithdrawResult:
-        """Withdraw from customer wallet. Requires billing product.
-
-        Note: This delegates to billing.debit with a withdraw reference.
-        The billing client doesn't have a dedicated withdraw endpoint yet,
-        so we use the debit endpoint.
-        """
-        billing = self._require_billing()
-        result = billing.debit(customer_id, amount_micros, f"withdraw:{idempotency_key}")
-        return WithdrawResult(
-            transaction_id=result.get("transaction_id", ""),
-            balance_micros=result.get("new_balance_micros", 0),
+        """Withdraw from customer wallet. Requires billing product."""
+        return self._require_billing().withdraw(
+            customer_id, amount_micros, idempotency_key, description,
         )
 
     def refund_usage(self, customer_id: str, usage_event_id: str,
                      idempotency_key: str, reason: str = "") -> RefundResult:
-        """Refund a usage event. Requires billing product.
-
-        Delegates to billing.credit with a refund reference.
-        """
-        billing = self._require_billing()
-        result = billing.credit(
-            customer_id, amount_micros=0,
-            source="refund", reference=f"refund:{usage_event_id}:{idempotency_key}",
-        )
-        return RefundResult(
-            refund_id=result.get("transaction_id", ""),
-            balance_micros=result.get("new_balance_micros", 0),
+        """Refund a usage event. Requires billing product."""
+        return self._require_billing().refund(
+            customer_id, usage_event_id, idempotency_key, reason,
         )
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,

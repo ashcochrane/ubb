@@ -1,13 +1,26 @@
 from django.contrib import admin
 
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import Card, Rate
 
 
-@admin.register(ProviderRate)
-class ProviderRateAdmin(admin.ModelAdmin):
+@admin.register(Card)
+class CardAdmin(admin.ModelAdmin):
     list_display = (
+        "name",
+        "slug",
+        "tenant",
         "provider",
-        "event_type",
+        "status",
+        "created_at",
+    )
+    list_filter = ("provider", "status")
+    search_fields = ("name", "slug", "provider", "tenant__name")
+
+
+@admin.register(Rate)
+class RateAdmin(admin.ModelAdmin):
+    list_display = (
+        "card",
         "metric_name",
         "cost_per_unit_micros",
         "unit_quantity",
@@ -15,20 +28,5 @@ class ProviderRateAdmin(admin.ModelAdmin):
         "valid_from",
         "valid_to",
     )
-    list_filter = ("provider", "event_type", "currency")
-    search_fields = ("provider", "event_type", "metric_name")
-
-
-@admin.register(TenantMarkup)
-class TenantMarkupAdmin(admin.ModelAdmin):
-    list_display = (
-        "tenant",
-        "event_type",
-        "provider",
-        "markup_percentage_micros",
-        "fixed_uplift_micros",
-        "valid_from",
-        "valid_to",
-    )
-    list_filter = ("event_type", "provider")
-    search_fields = ("tenant__name", "event_type", "provider")
+    list_filter = ("metric_name", "currency")
+    search_fields = ("metric_name", "card__name")

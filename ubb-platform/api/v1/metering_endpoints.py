@@ -5,23 +5,25 @@ from django.db.models import Sum, Count
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import NinjaAPI
+from ninja import NinjaAPI, Router
 
+from api.v1.middleware import CamelCaseRenderer
 from core.auth import ApiKeyAuth, ProductAccess
+from core.clerk_auth import ClerkJWTAuth
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     PaginatedUsageResponse,
-    ProviderRateIn, ProviderRateOut,
-    TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
+    CreateCardRequest, UpdateCardRequest, DimensionIn,
+    CardOut, CardListResponse,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
 
-metering_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_metering_v1")
+metering_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_metering_v1", renderer=CamelCaseRenderer(), default_router=Router(by_alias=True))
 
 _product_check = ProductAccess("metering")
 
@@ -34,20 +36,17 @@ def record_usage(request, payload: RecordUsageRequest):
     from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
+
     try:
         result = UsageService.record_usage(
             tenant=request.auth.tenant,
             customer=customer,
             request_id=payload.request_id,
             idempotency_key=payload.idempotency_key,
-            cost_micros=payload.cost_micros,
-            metadata=payload.metadata,
-            event_type=payload.event_type,
-            provider=payload.provider,
-            usage_metrics=payload.usage_metrics,
-            properties=payload.properties,
-            group_keys=payload.group_keys,
+            usage_metrics=payload.usage_metrics if payload.usage_metrics else None,
+            group=payload.group,
             run_id=payload.run_id,
+            pricing_card=payload.pricing_card,
         )
     except HardStopExceeded as e:
         from django.db import transaction
@@ -77,7 +76,7 @@ def record_usage(request, payload: RecordUsageRequest):
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
-              group_key: str = None, group_value: str = None):
+              group: str = None):
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -85,8 +84,8 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
 
     qs = customer.usage_events.all().order_by("-effective_at", "-id")
 
-    if group_key and group_value:
-        qs = qs.filter(group_keys__contains={group_key: group_value})
+    if group:
+        qs = qs.filter(group=group)
 
     if cursor:
         try:
@@ -110,11 +109,11 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
                 "id": e.id,
                 "request_id": e.request_id,
                 "cost_micros": e.cost_micros,
-                "event_type": e.event_type,
                 "provider": e.provider,
+                "card_slug": e.card_slug or "",
+                "card_name": e.card_name or "",
                 "provider_cost_micros": e.provider_cost_micros,
                 "billed_cost_micros": e.billed_cost_micros,
-                "metadata": e.metadata,
                 "effective_at": e.effective_at.isoformat(),
             }
             for e in events
@@ -143,167 +142,253 @@ def close_run(request, run_id: UUID):
     }
 
 
-# --- Pricing Rates CRUD ---
+# --- Pricing Cards CRUD ---
 
 
-def _rate_to_out(rate):
+def _card_to_out(card):
+    dimensions = card.rates.filter(valid_to__isnull=True).order_by("metric_name")
     return {
-        "id": rate.id,
-        "provider": rate.provider,
-        "event_type": rate.event_type,
-        "metric_name": rate.metric_name,
-        "dimensions": rate.dimensions,
-        "cost_per_unit_micros": rate.cost_per_unit_micros,
-        "unit_quantity": rate.unit_quantity,
-        "currency": rate.currency,
-        "valid_from": rate.valid_from.isoformat(),
-        "valid_to": rate.valid_to.isoformat() if rate.valid_to else None,
+        "id": str(card.id),
+        "slug": card.slug,
+        "name": card.name,
+        "provider": card.provider,
+        "description": card.description,
+        "pricing_source_url": card.pricing_source_url,
+        "group_id": str(card.group_id) if card.group_id else None,
+        "group_name": card.group.name if card.group_id else None,
+        "status": card.status,
+        "dimensions": [
+            {
+                "id": str(r.id),
+                "metric_name": r.metric_name,
+                "pricing_type": r.pricing_type,
+                "cost_per_unit_micros": r.cost_per_unit_micros,
+                "provider_cost_per_unit_micros": r.provider_cost_per_unit_micros,
+                "unit_quantity": r.unit_quantity,
+                "currency": r.currency,
+                "label": r.label,
+                "unit": r.unit,
+                "valid_from": r.valid_from.isoformat(),
+                "valid_to": None,
+            }
+            for r in dimensions
+        ],
+        "created_at": card.created_at.isoformat(),
+        "updated_at": card.updated_at.isoformat(),
     }
 
 
-@metering_api.get("/pricing/rates", response=list[ProviderRateOut])
-def list_rates(request):
+@metering_api.post("/pricing/cards", response={201: CardOut})
+def create_card(request, payload: CreateCardRequest):
     _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
+    from apps.metering.pricing.models import Card, Rate
+    from apps.platform.groups.models import Group
 
-    rates = ProviderRate.objects.filter(
-        tenant=request.auth.tenant, valid_to__isnull=True,
-    ).order_by("provider", "event_type", "metric_name")
-    return [_rate_to_out(r) for r in rates]
+    group = None
+    if payload.group_id:
+        group = get_object_or_404(Group, id=payload.group_id, tenant=request.auth.tenant)
 
-
-@metering_api.post("/pricing/rates", response=ProviderRateOut)
-def create_rate(request, payload: ProviderRateIn):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rate = ProviderRate.objects.create(
+    card = Card.objects.create(
         tenant=request.auth.tenant,
+        name=payload.name,
+        slug=payload.slug,
         provider=payload.provider,
-        event_type=payload.event_type,
+        description=payload.description,
+        pricing_source_url=payload.pricing_source_url,
+        group=group,
+        status=payload.status,
+    )
+    for d in payload.dimensions:
+        Rate.objects.create(
+            card=card,
+            metric_name=d.metric_name,
+            pricing_type=d.pricing_type,
+            cost_per_unit_micros=d.cost_per_unit_micros,
+            provider_cost_per_unit_micros=d.provider_cost_per_unit_micros,
+            unit_quantity=d.unit_quantity,
+            currency=d.currency,
+            label=d.label,
+            unit=d.unit,
+        )
+    return 201, _card_to_out(card)
+
+
+@metering_api.get("/pricing/cards", response=CardListResponse)
+def list_cards(request, cursor: str = None, limit: int = 50):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    limit = min(max(limit, 1), 100)
+    qs = Card.objects.filter(
+        tenant=request.auth.tenant, status__in=["active", "draft"],
+    ).select_related("group").order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            from ninja.errors import HttpError
+            raise HttpError(400, "Invalid cursor")
+
+    cards = list(qs[:limit + 1])
+    has_more = len(cards) > limit
+    cards = cards[:limit]
+
+    next_cursor = None
+    if has_more and cards:
+        last = cards[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [_card_to_out(c) for c in cards],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@metering_api.get("/pricing/cards/{card_id}", response=CardOut)
+def get_card(request, card_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    return _card_to_out(card)
+
+
+@metering_api.patch("/pricing/cards/{card_id}", response=CardOut)
+def update_card(request, card_id: UUID, payload: UpdateCardRequest):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+    from apps.platform.groups.models import Group
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    update_fields = ["updated_at"]
+    if payload.name is not None:
+        card.name = payload.name
+        update_fields.append("name")
+    if payload.description is not None:
+        card.description = payload.description
+        update_fields.append("description")
+    if payload.pricing_source_url is not None:
+        card.pricing_source_url = payload.pricing_source_url
+        update_fields.append("pricing_source_url")
+    if payload.group_id is not None:
+        if payload.group_id == "":
+            card.group = None
+        else:
+            card.group = get_object_or_404(Group, id=payload.group_id, tenant=request.auth.tenant)
+        update_fields.append("group")
+    if payload.status is not None:
+        card.status = payload.status
+        update_fields.append("status")
+    card.save(update_fields=update_fields)
+    return _card_to_out(card)
+
+
+@metering_api.delete("/pricing/cards/{card_id}")
+def delete_card(request, card_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.models import Card
+
+    card = get_object_or_404(
+        Card, id=card_id, tenant=request.auth.tenant, status="active",
+    )
+    card.status = "archived"
+    card.save(update_fields=["status", "updated_at"])
+    return {"status": "archived"}
+
+
+# --- Nested Rate management on Cards ---
+
+
+@metering_api.post("/pricing/cards/{card_id}/rates", response={201: dict})
+def add_card_rate(request, card_id: UUID, payload: DimensionIn):
+    _product_check(request)
+    from apps.metering.pricing.models import Card, Rate
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
+    rate = Rate.objects.create(
+        card=card,
         metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
+        pricing_type=payload.pricing_type,
         cost_per_unit_micros=payload.cost_per_unit_micros,
+        provider_cost_per_unit_micros=payload.provider_cost_per_unit_micros,
         unit_quantity=payload.unit_quantity,
         currency=payload.currency,
+        label=payload.label,
+        unit=payload.unit,
     )
-    return _rate_to_out(rate)
+    return 201, {
+        "id": str(rate.id),
+        "metric_name": rate.metric_name,
+        "pricing_type": rate.pricing_type,
+        "cost_per_unit_micros": rate.cost_per_unit_micros,
+        "provider_cost_per_unit_micros": rate.provider_cost_per_unit_micros,
+        "unit_quantity": rate.unit_quantity,
+        "currency": rate.currency,
+        "label": rate.label,
+        "unit": rate.unit,
+        "valid_from": rate.valid_from.isoformat(),
+        "valid_to": None,
+    }
 
 
-@metering_api.put("/pricing/rates/{rate_id}", response=ProviderRateOut)
-def update_rate(request, rate_id: UUID, payload: ProviderRateIn):
-    """Soft-expire old rate and create new version."""
+@metering_api.put("/pricing/cards/{card_id}/rates/{rate_id}", response=dict)
+def update_card_rate(request, card_id: UUID, rate_id: UUID, payload: DimensionIn):
+    """Soft-expire old rate, create new version."""
     _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
+    from apps.metering.pricing.models import Card, Rate
 
+    from django.db import transaction
+
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
     old_rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
+        Rate, id=rate_id, card=card, valid_to__isnull=True,
     )
     now = timezone.now()
-    old_rate.valid_to = now
-    old_rate.save(update_fields=["valid_to", "updated_at"])
+    with transaction.atomic():
+        old_rate.valid_to = now
+        old_rate.save(update_fields=["valid_to", "updated_at"])
 
-    new_rate = ProviderRate.objects.create(
-        tenant=request.auth.tenant,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
-        cost_per_unit_micros=payload.cost_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        currency=payload.currency,
-    )
-    return _rate_to_out(new_rate)
+        new_rate = Rate.objects.create(
+            card=card,
+            metric_name=payload.metric_name,
+            pricing_type=payload.pricing_type,
+            cost_per_unit_micros=payload.cost_per_unit_micros,
+            provider_cost_per_unit_micros=payload.provider_cost_per_unit_micros,
+            unit_quantity=payload.unit_quantity,
+            currency=payload.currency,
+            label=payload.label,
+            unit=payload.unit,
+        )
+
+    return {
+        "id": str(new_rate.id),
+        "metric_name": new_rate.metric_name,
+        "pricing_type": new_rate.pricing_type,
+        "cost_per_unit_micros": new_rate.cost_per_unit_micros,
+        "provider_cost_per_unit_micros": new_rate.provider_cost_per_unit_micros,
+        "unit_quantity": new_rate.unit_quantity,
+        "currency": new_rate.currency,
+        "label": new_rate.label,
+        "unit": new_rate.unit,
+        "valid_from": new_rate.valid_from.isoformat(),
+        "valid_to": None,
+    }
 
 
-@metering_api.delete("/pricing/rates/{rate_id}")
-def delete_rate(request, rate_id: UUID):
+@metering_api.delete("/pricing/cards/{card_id}/rates/{rate_id}")
+def delete_card_rate(request, card_id: UUID, rate_id: UUID):
     _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
+    from apps.metering.pricing.models import Card, Rate
 
+    card = get_object_or_404(Card, id=card_id, tenant=request.auth.tenant)
     rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
+        Rate, id=rate_id, card=card, valid_to__isnull=True,
     )
     rate.valid_to = timezone.now()
     rate.save(update_fields=["valid_to", "updated_at"])
-    return {"status": "deleted"}
-
-
-# --- Pricing Markups CRUD ---
-
-
-def _markup_to_out(markup):
-    return {
-        "id": markup.id,
-        "event_type": markup.event_type,
-        "provider": markup.provider,
-        "markup_percentage_micros": markup.markup_percentage_micros,
-        "fixed_uplift_micros": markup.fixed_uplift_micros,
-        "valid_from": markup.valid_from.isoformat(),
-        "valid_to": markup.valid_to.isoformat() if markup.valid_to else None,
-    }
-
-
-@metering_api.get("/pricing/markups", response=list[TenantMarkupOut])
-def list_markups(request):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    markups = TenantMarkup.objects.filter(
-        tenant=request.auth.tenant, valid_to__isnull=True,
-    ).order_by("event_type", "provider")
-    return [_markup_to_out(m) for m in markups]
-
-
-@metering_api.post("/pricing/markups", response=TenantMarkupOut)
-def create_markup(request, payload: TenantMarkupIn):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    markup = TenantMarkup.objects.create(
-        tenant=request.auth.tenant,
-        event_type=payload.event_type,
-        provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
-    )
-    return _markup_to_out(markup)
-
-
-@metering_api.put("/pricing/markups/{markup_id}", response=TenantMarkupOut)
-def update_markup(request, markup_id: UUID, payload: TenantMarkupIn):
-    """Soft-expire old markup and create new version."""
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    old_markup = get_object_or_404(
-        TenantMarkup, id=markup_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    now = timezone.now()
-    old_markup.valid_to = now
-    old_markup.save(update_fields=["valid_to", "updated_at"])
-
-    new_markup = TenantMarkup.objects.create(
-        tenant=request.auth.tenant,
-        event_type=payload.event_type,
-        provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
-    )
-    return _markup_to_out(new_markup)
-
-
-@metering_api.delete("/pricing/markups/{markup_id}")
-def delete_markup(request, markup_id: UUID):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    markup = get_object_or_404(
-        TenantMarkup, id=markup_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    markup.valid_to = timezone.now()
-    markup.save(update_fields=["valid_to", "updated_at"])
-    return {"status": "deleted"}
+    return {"status": "deactivated"}
 
 
 # --- Analytics ---
@@ -338,8 +423,8 @@ def usage_analytics(request, start_date: date = None, end_date: date = None):
         ).order_by("-total_cost_micros")
     )
 
-    by_event_type = list(
-        qs.exclude(event_type="").values("event_type").annotate(
+    by_card = list(
+        qs.exclude(card_slug="").values("card_slug", "card_name").annotate(
             event_count=Count("id"),
             total_cost_micros=Sum(effective_cost),
         ).order_by("-total_cost_micros")
@@ -350,5 +435,5 @@ def usage_analytics(request, start_date: date = None, end_date: date = None):
         "total_billed_cost_micros": totals["total_billed_cost_micros"] or 0,
         "total_provider_cost_micros": totals["total_provider_cost_micros"] or 0,
         "by_provider": by_provider,
-        "by_event_type": by_event_type,
+        "by_card": by_card,
     }

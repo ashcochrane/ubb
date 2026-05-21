@@ -16,7 +16,6 @@ class TestUsageRecordedSchema:
         assert event.cost_micros == 5000
         assert event.provider_cost_micros is None
         assert event.billed_cost_micros is None
-        assert event.event_type == ""
         assert event.provider == ""
 
     def test_frozen(self):

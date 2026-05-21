@@ -16,14 +16,14 @@ class TestProductClientCreation(unittest.TestCase):
     """Test that UBBClient creates the right product clients based on flags."""
 
     def test_default_creates_metering_only(self):
-        client = UBBClient(api_key="ubb_test_key")
+        client = UBBClient(api_key="ubb_test_key", max_retries=0)
         self.assertIsNotNone(client.metering)
         self.assertIsInstance(client.metering, MeteringClient)
         self.assertIsNone(client.billing)
         client.close()
 
     def test_both_products_enabled(self):
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=True)
         self.assertIsNotNone(client.metering)
         self.assertIsNotNone(client.billing)
         self.assertIsInstance(client.metering, MeteringClient)
@@ -31,19 +31,19 @@ class TestProductClientCreation(unittest.TestCase):
         client.close()
 
     def test_billing_only(self):
-        client = UBBClient(api_key="ubb_test_key", metering=False, billing=True)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=False, billing=True)
         self.assertIsNone(client.metering)
         self.assertIsNotNone(client.billing)
         client.close()
 
     def test_neither_product(self):
-        client = UBBClient(api_key="ubb_test_key", metering=False, billing=False)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=False, billing=False)
         self.assertIsNone(client.metering)
         self.assertIsNone(client.billing)
         client.close()
 
     def test_close_closes_product_clients(self):
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=True)
         with patch.object(client.metering, "close") as mock_met_close, \
              patch.object(client.billing, "close") as mock_bill_close:
             client.close()
@@ -55,7 +55,7 @@ class TestPreCheckNoBilling(unittest.TestCase):
     """pre_check without billing returns trivially allowed."""
 
     def test_pre_check_no_billing_trivially_allowed(self):
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=False)
         result = client.pre_check(customer_id="cust_1")
         self.assertIsInstance(result, PreCheckResult)
         self.assertTrue(result.allowed)
@@ -65,7 +65,7 @@ class TestPreCheckNoBilling(unittest.TestCase):
 
     def test_pre_check_with_billing_delegates(self):
         """With billing enabled, delegates to billing.pre_check."""
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=True)
         client.billing.pre_check = MagicMock(return_value={
             "allowed": True, "can_proceed": True, "balance_micros": 10_000_000,
         })
@@ -83,6 +83,7 @@ class TestPreCheckNoBilling(unittest.TestCase):
             api_key="ubb_test_key",
             widget_secret="secret123",
             tenant_id="tenant_1",
+            max_retries=0,
         )
         self.assertEqual(client._widget_secret, "secret123")
         self.assertEqual(client._tenant_id, "tenant_1")
@@ -93,7 +94,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
     """Test the orchestrated record_usage that combines metering + billing."""
 
     def setUp(self):
-        self.client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
+        self.client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=True)
 
     def tearDown(self):
         self.client.close()
@@ -105,14 +106,14 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         handled server-side via the billing outbox handler, NOT by the SDK."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_1", "new_balance_micros": 8_500_000,
-                "suspended": False, "billed_cost_micros": 1_500_000,
+                "eventId": "evt_1", "billedCostMicros": 1_500_000,
             }
         )
 
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
-            cost_micros=1_500_000,
+            pricing_card="gpt_4o",
+            usage_metrics={"tokens": 100},
         )
         self.assertEqual(result.event_id, "evt_1")
         self.assertEqual(result.billed_cost_micros, 1_500_000)
@@ -129,20 +130,19 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
     @patch.object(MeteringClient, "_request_usage")
     def test_record_usage_metering_only_no_debit_when_no_billing(self, mock_met_request):
         """When billing is not enabled, record_usage only calls metering."""
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=False)
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_2", "new_balance_micros": 10_000_000,
-                "suspended": False, "billed_cost_micros": 1_500_000,
+                "eventId": "evt_2", "billedCostMicros": 1_500_000,
             }
         )
         result = client.record_usage(
             customer_id="cust_1", request_id="r2", idempotency_key="i2",
-            cost_micros=1_500_000,
+            pricing_card="gpt_4o",
+            usage_metrics={"tokens": 100},
         )
         self.assertEqual(result.event_id, "evt_2")
-        # balance_after_micros not set because no billing debit
-        self.assertIsNone(result.balance_after_micros)
+        self.assertEqual(result.billed_cost_micros, 1_500_000)
         mock_met_request.assert_called_once()
         client.close()
 
@@ -152,18 +152,17 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         """When billing is enabled but billed_cost is 0, no debit call."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_3", "new_balance_micros": 10_000_000,
-                "suspended": False, "billed_cost_micros": 0,
+                "eventId": "evt_3", "billedCostMicros": 0,
             }
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            cost_micros=0,
+            pricing_card="test_card",
+            usage_metrics={"tokens": 1},
         )
         self.assertEqual(result.event_id, "evt_3")
         # billing debit should NOT have been called
         mock_bill_request.assert_not_called()
-        self.assertIsNone(result.balance_after_micros)
 
     @patch.object(BillingClient, "_request")
     @patch.object(MeteringClient, "_request_usage")
@@ -171,13 +170,13 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         """When billing is enabled but billed_cost is None, no debit call."""
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "event_id": "evt_4", "new_balance_micros": 10_000_000,
-                "suspended": False,
+                "eventId": "evt_4",
             }
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r4", idempotency_key="i4",
-            cost_micros=500_000,
+            pricing_card="test_card",
+            usage_metrics={"tokens": 1},
         )
         self.assertEqual(result.event_id, "evt_4")
         mock_bill_request.assert_not_called()
@@ -185,9 +184,10 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
     def test_record_usage_requires_metering(self):
         """record_usage raises UBBError when metering is not enabled."""
         from ubb.exceptions import UBBError
-        client = UBBClient(api_key="ubb_test_key", metering=False, billing=True)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=False, billing=True)
         with self.assertRaises(UBBError):
-            client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
+            client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+                                pricing_card="test_card", usage_metrics={"tokens": 1})
         client.close()
 
 
@@ -195,7 +195,7 @@ class TestOrchestratedPreCheck(unittest.TestCase):
     """Test the orchestrated pre_check that delegates to billing."""
 
     def setUp(self):
-        self.client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
+        self.client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=True)
 
     def tearDown(self):
         self.client.close()
@@ -232,7 +232,7 @@ class TestOrchestratedPreCheck(unittest.TestCase):
 
     def test_pre_check_no_billing_trivially_allowed(self):
         """Without billing, pre_check returns trivially allowed."""
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
+        client = UBBClient(api_key="ubb_test_key", max_retries=0, metering=True, billing=False)
         result = client.pre_check(customer_id="cust_1")
         self.assertTrue(result.allowed)
         self.assertTrue(result.can_proceed)
@@ -240,25 +240,24 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         client.close()
 
 
-class TestRecordUsageResultBalanceAfter(unittest.TestCase):
-    """Test that RecordUsageResult now supports optional balance_after_micros."""
+class TestRecordUsageResultFields(unittest.TestCase):
+    """Test that RecordUsageResult supports server-side pricing fields."""
 
-    def test_result_with_balance_after(self):
+    def test_result_with_pricing_fields(self):
         result = RecordUsageResult(
             event_id="evt_1",
-            new_balance_micros=8_500_000,
-            suspended=False,
-            balance_after_micros=7_000_000,
+            provider_cost_micros=500_000,
+            billed_cost_micros=1_000_000,
         )
-        self.assertEqual(result.balance_after_micros, 7_000_000)
+        self.assertEqual(result.provider_cost_micros, 500_000)
+        self.assertEqual(result.billed_cost_micros, 1_000_000)
 
-    def test_result_without_balance_after(self):
+    def test_result_minimal(self):
         result = RecordUsageResult(
             event_id="evt_1",
-            new_balance_micros=8_500_000,
-            suspended=False,
         )
-        self.assertIsNone(result.balance_after_micros)
+        self.assertIsNone(result.provider_cost_micros)
+        self.assertIsNone(result.billed_cost_micros)
 
 
 class TestPreCheckResultFields(unittest.TestCase):

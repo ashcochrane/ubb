@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.wizard{padding:1.5rem 0;max-width:620px}
+.steps{display:flex;gap:0;margin-bottom:2rem}
+.step-item{flex:1;text-align:center;position:relative}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--color-border-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--color-text-tertiary);background:var(--color-background-primary);position:relative;z-index:1}
+.step-dot.done{border-color:var(--color-text-success);background:var(--color-background-success);color:var(--color-text-success)}
+.step-dot.active{border-color:var(--color-text-primary);color:var(--color-text-primary)}
+.step-label{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+.step-label.active{color:var(--color-text-primary);font-weight:500}
+.step-line{position:absolute;top:14px;left:calc(50% + 20px);right:calc(-50% + 20px);height:1px;background:var(--color-border-tertiary)}
+.step-line.done{background:var(--color-text-success)}
+.badge-custom{display:inline-block;font-size:11px;padding:3px 10px;border-radius:20px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-bottom:1.5rem}
+.panel-title{font-size:18px;font-weight:500;margin-bottom:4px}
+.panel-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem}
+.field{margin-bottom:1.25rem}
+.field label{display:block;font-size:13px;font-weight:500;margin-bottom:4px}
+.field .hint{font-size:11px;color:var(--color-text-tertiary);margin-top:3px}
+.field input,.field select,.field textarea{width:100%;padding:8px 12px;font-size:14px}
+.field textarea{resize:vertical;min-height:56px;font-family:var(--font-sans);line-height:1.5}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row-3-1{display:grid;grid-template-columns:3fr 1fr;gap:12px}
+.id-field{display:flex;gap:0;align-items:stretch}
+.id-field input{border-radius:var(--border-radius-md) 0 0 var(--border-radius-md);font-family:var(--font-mono);font-size:13px;color:var(--color-text-secondary)}
+.id-field button{padding:0 12px;border:0.5px solid var(--color-border-secondary);border-left:none;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;background:var(--color-background-secondary);font-size:11px;color:var(--color-text-secondary);cursor:pointer;white-space:nowrap}
+.id-field button:hover{background:var(--color-border-tertiary)}
+.locked-icon{display:inline-block;width:12px;height:12px;margin-left:4px;vertical-align:middle;opacity:.5}
+.type-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:0}
+.type-opt{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px;cursor:pointer;transition:all .15s}
+.type-opt:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.type-opt.sel{border-color:var(--color-text-primary);border-width:2px}
+.type-opt-name{font-size:13px;font-weight:500;margin-bottom:2px}
+.type-opt-sub{font-size:11px;color:var(--color-text-secondary);line-height:1.4}
+.type-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:8px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);display:none}
+.nav-row{display:flex;justify-content:space-between;align-items:center;margin-top:2rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-back{padding:8px 16px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary)}
+.btn-next{padding:8px 20px;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer;border:none;background:var(--color-text-primary);color:var(--color-background-primary)}
+.btn-next:disabled{opacity:.4;cursor:not-allowed}
+.provider-row{display:flex;gap:8px;align-items:stretch}
+.provider-row select{flex:1}
+.provider-row input{flex:2;display:none}
+.section-break{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:1.5rem 0 1.25rem}
+.section-label{font-size:14px;font-weight:500;margin-bottom:4px}
+.section-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:1rem}
+.char-count{font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-top:2px}
+.preview-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-top:1.5rem;background:var(--color-background-secondary)}
+.preview-label{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+.preview-row{display:flex;align-items:center;gap:10px}
+.preview-dot{width:8px;height:8px;border-radius:50%;background:var(--color-text-warning)}
+.preview-name{font-size:15px;font-weight:500}
+.preview-provider{font-size:12px;color:var(--color-text-secondary)}
+.preview-id{font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);margin-top:4px}
+.preview-type{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.pill-draft{display:inline-block;font-size:11px;padding:2px 10px;border-radius:20px;background:var(--color-background-warning);color:var(--color-text-warning);font-weight:500;margin-left:8px}
+</style>
+
+<div class="wizard">
+  <div class="steps">
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot active">2</div><div class="step-label active">Details</div><div class="step-line"></div></div>
+    <div class="step-item"><div class="step-dot">3</div><div class="step-label">Dimensions</div><div class="step-line"></div></div>
+    <div class="step-item"><div class="step-dot">4</div><div class="step-label">Review & test</div></div>
+  </div>
+
+  <span class="badge-custom">Custom card</span>
+  <div class="panel-title">Describe this API</div>
+  <div class="panel-sub">Tell us what you're tracking. This information helps us suggest the right dimension structure in the next step and organises your dashboard.</div>
+
+  <div class="section-label">Identity</div>
+  <div class="section-sub">How this card appears across your account.</div>
+
+  <div class="field">
+    <label>Card name</label>
+    <input type="text" id="f-name" placeholder="e.g. Mapbox Geocoding API, Internal OCR Service, Twilio SMS" oninput="updatePreview()" />
+    <div class="hint">Use the API or model name your team would recognise. Be specific — include the model variant or tier if relevant.</div>
+  </div>
+
+  <div class="row2">
+    <div class="field">
+      <label>Provider</label>
+      <div class="provider-row">
+        <select id="f-provider" onchange="handleProvider(this)">
+          <option value="">Select...</option>
+          <option>Google</option>
+          <option>OpenAI</option>
+          <option>Anthropic</option>
+          <option>AWS</option>
+          <option>Azure</option>
+          <option>Cohere</option>
+          <option>Replicate</option>
+          <option>Twilio</option>
+          <option>Mapbox</option>
+          <option>Stripe</option>
+          <option value="_custom">Other (type your own)</option>
+        </select>
+        <input type="text" id="f-provider-custom" placeholder="Provider name..." oninput="updatePreview()" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Card ID</label>
+      <div class="id-field">
+        <input type="text" id="f-id" placeholder="auto-generated" oninput="updatePreview()" />
+        <button onclick="regenerateId()">Regenerate</button>
+      </div>
+      <div class="hint">Referenced in SDK calls. Auto-derived from name. Locked after activation.</div>
+    </div>
+  </div>
+
+  <hr class="section-break" />
+
+  <div class="section-label">Pricing pattern</div>
+  <div class="section-sub">How does this API charge? This helps us pre-configure the right dimensions on the next step.</div>
+
+  <div class="type-grid">
+    <div class="type-opt" id="tp-token" onclick="pickType('token')">
+      <div class="type-opt-name">Token-based</div>
+      <div class="type-opt-sub">Charges per input and/or output token. Most LLM APIs.</div>
+    </div>
+    <div class="type-opt" id="tp-request" onclick="pickType('request')">
+      <div class="type-opt-name">Per-request</div>
+      <div class="type-opt-sub">Flat fee per API call regardless of payload size.</div>
+    </div>
+    <div class="type-opt" id="tp-mixed" onclick="pickType('mixed')">
+      <div class="type-opt-name">Mixed / other</div>
+      <div class="type-opt-sub">Combination of unit-based and flat charges, or something unique.</div>
+    </div>
+  </div>
+  <div class="type-hint" id="hint-token">We'll pre-add <span style="font-family:var(--font-mono)">input_tokens</span> and <span style="font-family:var(--font-mono)">output_tokens</span> dimensions. You can adjust, rename, or add more on the next step.</div>
+  <div class="type-hint" id="hint-request">We'll pre-add a single <span style="font-family:var(--font-mono)">requests</span> dimension with flat pricing. You can add more dimensions if needed.</div>
+  <div class="type-hint" id="hint-mixed">We'll start you with a blank dimension list. Add as many cost lines as you need — per-unit, flat, or a mix of both.</div>
+
+  <hr class="section-break" />
+
+  <div class="section-label">Optional context</div>
+  <div class="section-sub">Notes for your team. Not used in cost calculations.</div>
+
+  <div class="field">
+    <label>Description</label>
+    <textarea id="f-desc" placeholder="e.g. Used for geocoding property addresses in the search pipeline. Rate-limited to 100 req/s on our current plan." oninput="countChars(this)"></textarea>
+    <div class="char-count" id="char-count">0 / 250</div>
+  </div>
+
+  <div class="field">
+    <label>Pricing source URL (optional)</label>
+    <input type="text" id="f-url" placeholder="e.g. https://cloud.google.com/maps-platform/pricing" />
+    <div class="hint">Link to the provider's pricing page. Helpful when verifying or updating prices later.</div>
+  </div>
+
+  <div class="preview-card" id="preview">
+    <div class="preview-label">Card preview</div>
+    <div class="preview-row">
+      <div class="preview-dot"></div>
+      <div>
+        <span class="preview-name" id="pv-name">Untitled card</span>
+        <span class="pill-draft">Draft</span>
+        <div class="preview-provider" id="pv-provider">No provider selected</div>
+        <div class="preview-id" id="pv-id">card_id: —</div>
+        <div class="preview-type" id="pv-type">No pricing pattern selected</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-row">
+    <button class="btn-back" onclick="sendPrompt('Show me the source selection step for custom card')">Back</button>
+    <button class="btn-next" id="btn-continue" onclick="sendPrompt('Show me the custom dimensions step pre-filled for a token-based API')">Continue to dimensions</button>
+  </div>
+</div>
+
+<script>
+let selType='';
+function pickType(t){
+  selType=t;
+  ['token','request','mixed'].forEach(k=>{
+    document.getElementById('tp-'+k).classList.toggle('sel',k===t);
+    document.getElementById('hint-'+k).style.display=k===t?'block':'none';
+  });
+  const labels={token:'Token-based',request:'Per-request',mixed:'Mixed / other'};
+  document.getElementById('pv-type').textContent='Pattern: '+labels[t];
+  updatePreview();
+}
+function handleProvider(sel){
+  const ci=document.getElementById('f-provider-custom');
+  if(sel.value==='_custom'){ci.style.display='block';ci.focus()}
+  else{ci.style.display='none';ci.value=''}
+  updatePreview();
+}
+function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').substring(0,40)}
+function updatePreview(){
+  const name=document.getElementById('f-name').value;
+  const pSel=document.getElementById('f-provider');
+  const pCustom=document.getElementById('f-provider-custom').value;
+  const provider=pSel.value==='_custom'?pCustom:pSel.value;
+  document.getElementById('pv-name').textContent=name||'Untitled card';
+  document.getElementById('pv-provider').textContent=provider||'No provider selected';
+  if(name){
+    const id=slugify(name);
+    document.getElementById('f-id').value=id;
+    document.getElementById('pv-id').textContent='card_id: '+id;
+  } else {
+    document.getElementById('pv-id').textContent='card_id: —';
+  }
+}
+function regenerateId(){
+  const name=document.getElementById('f-name').value;
+  if(name){
+    const id=slugify(name)+'_'+Math.floor(Math.random()*900+100);
+    document.getElementById('f-id').value=id;
+    document.getElementById('pv-id').textContent='card_id: '+id;
+  }
+}
+function countChars(el){
+  const c=el.value.length;
+  document.getElementById('char-count').textContent=c+' / 250';
+  if(c>250)el.value=el.value.substring(0,250);
+}
+</script></body></html>

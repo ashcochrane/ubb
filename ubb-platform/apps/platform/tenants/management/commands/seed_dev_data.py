@@ -1,8 +1,11 @@
 from decimal import Decimal
+import json
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
+from django.utils import timezone
 
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey, TenantUser
 from apps.platform.customers.models import Customer
 
 
@@ -30,21 +33,95 @@ class Command(BaseCommand):
             default="2.50",
             help="Platform fee percentage (default: 2.50)",
         )
+        parser.add_argument(
+            "--clerk-user-id",
+            default="",
+            help="Clerk user ID to link to the seeded tenant (creates TenantUser).",
+        )
+        parser.add_argument(
+            "--clerk-email",
+            default="dev@example.com",
+            help="Email for the TenantUser (default: dev@example.com).",
+        )
 
     def handle(self, *args, **options):
         # Create or get tenant
-        tenant, created = Tenant.objects.get_or_create(
-            name=options["tenant_name"],
-            defaults={
-                "stripe_connected_account_id": options["stripe_account"],
-            },
-        )
-        if not created:
-            tenant.stripe_connected_account_id = options["stripe_account"]
-            tenant.save(update_fields=["stripe_connected_account_id", "updated_at"])
-            self.stdout.write(f"Updated existing tenant: {tenant.name}")
-        else:
+        try:
+            tenant = Tenant.objects.get(name=options["tenant_name"])
+            created = False
+        except Tenant.DoesNotExist:
+            # Check if database has missing_rate_policy column (stale schema)
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='ubb_tenant' AND column_name='missing_rate_policy'
+                    )
+                """)
+                has_missing_rate_policy = cursor.fetchone()[0]
+
+            if has_missing_rate_policy:
+                # Insert using raw SQL with missing_rate_policy default
+                import secrets
+                tenant = Tenant(
+                    name=options["tenant_name"],
+                    stripe_connected_account_id=options["stripe_account"],
+                    platform_fee_percentage=Decimal(options["platform_fee"]),
+                    products=["metering"],
+                    onboarding_completed_at=timezone.now(),
+                )
+                tenant.widget_secret = secrets.token_urlsafe(48)
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO ubb_tenant (
+                            id, created_at, updated_at, name, stripe_connected_account_id,
+                            min_balance_micros, platform_fee_percentage, is_active,
+                            branding_config, metadata, widget_secret, stripe_customer_id,
+                            products, group_label, default_margin_pct, missing_rate_policy,
+                            onboarding_completed_at
+                        ) VALUES (
+                            %s, now(), now(), %s, %s, 0, %s, true, %s, %s, %s, %s,
+                            %s, %s, 0, %s, %s
+                        )
+                    """, [
+                        str(tenant.id),
+                        tenant.name,
+                        tenant.stripe_connected_account_id,
+                        str(tenant.platform_fee_percentage),
+                        json.dumps(tenant.branding_config),
+                        json.dumps(tenant.metadata),
+                        tenant.widget_secret,
+                        tenant.stripe_customer_id,
+                        json.dumps(tenant.products),
+                        tenant.group_label,
+                        'allow',
+                        timezone.now().isoformat(),
+                    ])
+                created = True
+            else:
+                # Normal ORM creation
+                tenant, created = Tenant.objects.get_or_create(
+                    name=options["tenant_name"],
+                    defaults={
+                        "stripe_connected_account_id": options["stripe_account"],
+                        "platform_fee_percentage": Decimal(options["platform_fee"]),
+                    },
+                )
+        if created:
             self.stdout.write(f"Created tenant: {tenant.name}")
+        else:
+            # Update stripe account if changed
+            if tenant.stripe_connected_account_id != options["stripe_account"]:
+                tenant.stripe_connected_account_id = options["stripe_account"]
+                tenant.save(update_fields=["stripe_connected_account_id", "updated_at"])
+            self.stdout.write(f"Updated existing tenant: {tenant.name}")
+
+            # Ensure existing tenant has metering product and is marked as onboarded
+            if "metering" not in tenant.products:
+                tenant.products = sorted({*tenant.products, "metering"})
+            if tenant.onboarding_completed_at is None:
+                tenant.onboarding_completed_at = timezone.now()
+            tenant.save(update_fields=["products", "onboarding_completed_at", "updated_at"])
 
         # Create or update billing config for this tenant
         from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -58,6 +135,20 @@ class Command(BaseCommand):
             billing_config.platform_fee_percentage = Decimal(options["platform_fee"])
             billing_config.save(update_fields=["platform_fee_percentage", "updated_at"])
         self.stdout.write(f"{'Created' if bc_created else 'Updated'} billing config")
+
+        # Create TenantUser if clerk_user_id provided
+        if options["clerk_user_id"]:
+            tu, tu_created = TenantUser.objects.get_or_create(
+                clerk_user_id=options["clerk_user_id"],
+                defaults={
+                    "tenant": tenant,
+                    "email": options["clerk_email"],
+                    "role": "owner",
+                },
+            )
+            self.stdout.write(
+                f"{'Created' if tu_created else 'Existing'} TenantUser: {tu.email}"
+            )
 
         # Create API key
         key_obj, raw_key = TenantApiKey.create_key(tenant, label="dev-seed")

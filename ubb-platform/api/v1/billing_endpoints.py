@@ -1,9 +1,10 @@
 from datetime import date
 from typing import Optional
 
-from ninja import NinjaAPI, Schema
+from ninja import NinjaAPI, Router, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
+from api.v1.schemas import CamelSchema
 from api.v1.schemas import (
     PreCheckRequest, PreCheckResponse,
     BalanceResponse,
@@ -15,6 +16,7 @@ from api.v1.schemas import (
     RevenueAnalyticsResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
+from core.clerk_auth import ClerkJWTAuth
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
@@ -22,7 +24,7 @@ from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from django.shortcuts import get_object_or_404
 
-billing_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_billing_v1")
+billing_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_billing_v1", default_router=Router(by_alias=True))
 
 _product_check = ProductAccess("billing")
 
@@ -343,7 +345,7 @@ def get_transactions(request, customer_id: str, cursor: str = None, limit: int =
 # ---------- Tenant billing endpoints ----------
 
 
-class TenantBillingPeriodOut(Schema):
+class TenantBillingPeriodOut(CamelSchema):
     id: str
     period_start: str
     period_end: str
@@ -353,13 +355,13 @@ class TenantBillingPeriodOut(Schema):
     platform_fee_micros: int
 
 
-class TenantBillingPeriodListResponse(Schema):
+class TenantBillingPeriodListResponse(CamelSchema):
     data: list[TenantBillingPeriodOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
 
-class TenantInvoiceOut(Schema):
+class TenantInvoiceOut(CamelSchema):
     id: str
     billing_period_id: str
     stripe_invoice_id: str
@@ -368,7 +370,7 @@ class TenantInvoiceOut(Schema):
     created_at: str
 
 
-class TenantInvoiceListResponse(Schema):
+class TenantInvoiceListResponse(CamelSchema):
     data: list[TenantInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool

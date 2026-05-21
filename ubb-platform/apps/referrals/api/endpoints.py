@@ -28,8 +28,9 @@ from apps.referrals.api.schemas import (
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
 from core.auth import ApiKeyAuth, ProductAccess
+from core.clerk_auth import ClerkJWTAuth
 
-referrals_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_referrals_v1")
+referrals_api = NinjaAPI(auth=[ApiKeyAuth(), ClerkJWTAuth()], urls_namespace="ubb_referrals_v1")
 
 _product_check = ProductAccess("referrals")
 

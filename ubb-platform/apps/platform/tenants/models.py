@@ -27,6 +27,14 @@ class Tenant(BaseModel):
     metadata = models.JSONField(default=dict)
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
+    group_label = models.CharField(max_length=100, default="Products", help_text="Display label for groups in the UI.")
+    default_margin_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text="UX default margin % for new cards. 0 = pass-through. Not used at runtime.",
+    )
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "ubb_tenant"
@@ -104,3 +112,28 @@ class TenantApiKey(BaseModel):
             return key_obj
         except cls.DoesNotExist:
             return None
+
+
+class TenantUser(BaseModel):
+    """Maps a Clerk user to a Tenant for dashboard authentication."""
+
+    ROLE_CHOICES = [
+        ("owner", "Owner"),
+        ("admin", "Admin"),
+        ("member", "Member"),
+    ]
+
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="tenant_users",
+    )
+    clerk_user_id = models.CharField(max_length=255, unique=True, db_index=True)
+    email = models.EmailField()
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="member")
+
+    class Meta:
+        db_table = "ubb_tenant_user"
+
+    def __str__(self):
+        return f"{self.email} ({self.role}) → {self.tenant.name}"
