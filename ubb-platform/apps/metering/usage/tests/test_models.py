@@ -49,6 +49,18 @@ class UsageEventModelTest(TestCase):
         with self.assertRaises(ValueError):
             event.delete()
 
+    def test_new_fields_have_defaults(self):
+        event = UsageEvent.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            request_id="req_defaults",
+            idempotency_key="idem_defaults",
+            cost_micros=500_000,
+        )
+        assert event.currency == "usd"
+        assert event.units is None
+        assert event.product_id == ""
+
     def test_idempotency_constraint(self):
         UsageEvent.objects.create(
             tenant=self.tenant,
