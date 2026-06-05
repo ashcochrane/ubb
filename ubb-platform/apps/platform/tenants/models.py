@@ -9,6 +9,12 @@ from core.models import BaseModel
 
 VALID_PRODUCTS = {"metering", "billing", "subscriptions", "referrals"}
 
+BILLING_MODE_CHOICES = [
+    ("meter_only", "Meter only"),
+    ("prepaid", "Prepaid credits"),
+    ("postpaid", "Postpaid"),
+]
+
 
 class Tenant(BaseModel):
     name = models.CharField(max_length=255)
@@ -27,6 +33,9 @@ class Tenant(BaseModel):
     metadata = models.JSONField(default=dict)
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
+    billing_mode = models.CharField(
+        max_length=20, choices=BILLING_MODE_CHOICES, default="meter_only", db_index=True
+    )
 
     class Meta:
         db_table = "ubb_tenant"
@@ -43,6 +52,10 @@ class Tenant(BaseModel):
         if unknown:
             raise ValidationError(
                 {"products": f"Unknown products: {', '.join(sorted(unknown))}"}
+            )
+        if self.billing_mode in ("prepaid", "postpaid") and "billing" not in (self.products or []):
+            raise ValidationError(
+                {"billing_mode": f"billing_mode '{self.billing_mode}' requires 'billing' in products."}
             )
 
     def save(self, *args, **kwargs):
