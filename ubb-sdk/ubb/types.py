@@ -17,10 +17,11 @@ class PreCheckResult:
 @dataclass(frozen=True)
 class RecordUsageResult:
     event_id: str
-    new_balance_micros: int
-    suspended: bool
+    new_balance_micros: int | None = None
+    suspended: bool = False
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
+    units: int | None = None
     balance_after_micros: int | None = None
     run_id: str | None = None
     run_total_cost_micros: int | None = None
@@ -48,9 +49,13 @@ class BalanceResult:
 class UsageEvent:
     id: str
     request_id: str
-    cost_micros: int
-    metadata: dict
-    effective_at: str
+    event_type: str | None = None
+    provider: str | None = None
+    provider_cost_micros: int | None = None
+    billed_cost_micros: int | None = None
+    units: int | None = None
+    metadata: dict | None = None
+    effective_at: str | None = None
 
 @dataclass(frozen=True)
 class TopUpResult:

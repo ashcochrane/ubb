@@ -60,11 +60,11 @@ class MeteringClient:
 
     # ---- public API ----
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int | None = None, metadata: dict | None = None,
-                     event_type: str | None = None, provider: str | None = None,
-                     usage_metrics: dict | None = None, properties: dict | None = None,
-                     tags: dict | None = None,
+    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
+                     provider_cost_micros: int, billed_cost_micros: int | None = None,
+                     units: int | None = None, provider: str = "", event_type: str = "",
+                     currency: str | None = None, tags: dict | None = None,
+                     product_id: str = "", metadata: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
         body: dict = {
@@ -72,17 +72,22 @@ class MeteringClient:
             "request_id": request_id,
             "idempotency_key": idempotency_key,
             "metadata": metadata or {},
+            "provider_cost_micros": provider_cost_micros,
         }
-        if cost_micros is not None:
-            body["cost_micros"] = cost_micros
-        if usage_metrics is not None:
-            body["event_type"] = event_type
-            body["provider"] = provider
-            body["usage_metrics"] = usage_metrics
-            if properties:
-                body["properties"] = properties
+        if billed_cost_micros is not None:
+            body["billed_cost_micros"] = billed_cost_micros
+        if units is not None:
+            body["units"] = units
+        if currency is not None:
+            body["currency"] = currency
         if tags is not None:
             body["tags"] = tags
+        if product_id:
+            body["product_id"] = product_id
+        if event_type:
+            body["event_type"] = event_type
+        if provider:
+            body["provider"] = provider
         if run_id is not None:
             body["run_id"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)

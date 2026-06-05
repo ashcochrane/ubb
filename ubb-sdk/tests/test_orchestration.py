@@ -112,7 +112,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
 
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
-            cost_micros=1_500_000,
+            provider_cost_micros=1_500_000,
         )
         self.assertEqual(result.event_id, "evt_1")
         self.assertEqual(result.billed_cost_micros, 1_500_000)
@@ -138,7 +138,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         )
         result = client.record_usage(
             customer_id="cust_1", request_id="r2", idempotency_key="i2",
-            cost_micros=1_500_000,
+            provider_cost_micros=1_500_000,
         )
         self.assertEqual(result.event_id, "evt_2")
         # balance_after_micros not set because no billing debit
@@ -158,7 +158,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            cost_micros=0,
+            provider_cost_micros=0,
         )
         self.assertEqual(result.event_id, "evt_3")
         # billing debit should NOT have been called
@@ -177,7 +177,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         )
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r4", idempotency_key="i4",
-            cost_micros=500_000,
+            provider_cost_micros=500_000,
         )
         self.assertEqual(result.event_id, "evt_4")
         mock_bill_request.assert_not_called()
@@ -187,7 +187,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         from ubb.exceptions import UBBError
         client = UBBClient(api_key="ubb_test_key", metering=False, billing=True)
         with self.assertRaises(UBBError):
-            client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
+            client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1", provider_cost_micros=1000)
         client.close()
 
 

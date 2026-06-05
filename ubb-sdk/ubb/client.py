@@ -151,11 +151,11 @@ class UBBClient:
             external_run_id=external_run_id,
         )
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str,
-                     cost_micros: int | None = None, metadata: dict | None = None,
-                     event_type: str | None = None, provider: str | None = None,
-                     usage_metrics: dict | None = None, properties: dict | None = None,
-                     tags: dict | None = None,
+    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
+                     provider_cost_micros: int, billed_cost_micros: int | None = None,
+                     units: int | None = None, provider: str = "", event_type: str = "",
+                     currency: str | None = None, tags: dict | None = None,
+                     product_id: str = "", metadata: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via metering.
 
@@ -169,18 +169,19 @@ class UBBClient:
         Raises UBBRunNotActiveError if the run is already killed/completed.
         """
         metering = self._require_metering()
-
         return metering.record_usage(
             customer_id=customer_id,
             request_id=request_id,
             idempotency_key=idempotency_key,
-            cost_micros=cost_micros,
-            metadata=metadata,
-            event_type=event_type,
+            provider_cost_micros=provider_cost_micros,
+            billed_cost_micros=billed_cost_micros,
+            units=units,
             provider=provider,
-            usage_metrics=usage_metrics,
-            properties=properties,
+            event_type=event_type,
+            currency=currency,
             tags=tags,
+            product_id=product_id,
+            metadata=metadata,
             run_id=run_id,
         )
 
