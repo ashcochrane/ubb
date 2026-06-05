@@ -41,7 +41,7 @@ def record_usage(request, payload: RecordUsageRequest):
             metadata=payload.metadata,
             event_type=payload.event_type,
             provider=payload.provider,
-            group_keys=payload.group_keys,
+            tags=payload.tags,
             run_id=payload.run_id,
         )
     except HardStopExceeded as e:
@@ -69,7 +69,7 @@ def record_usage(request, payload: RecordUsageRequest):
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
-              group_key: str = None, group_value: str = None):
+              tag_key: str = None, tag_value: str = None):
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -77,8 +77,8 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
 
     qs = customer.usage_events.all().order_by("-effective_at", "-id")
 
-    if group_key and group_value:
-        qs = qs.filter(group_keys__contains={group_key: group_value})
+    if tag_key and tag_value:
+        qs = qs.filter(tags__contains={tag_key: tag_value})
 
     if cursor:
         try:

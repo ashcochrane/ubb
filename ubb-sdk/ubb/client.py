@@ -155,7 +155,7 @@ class UBBClient:
                      cost_micros: int | None = None, metadata: dict | None = None,
                      event_type: str | None = None, provider: str | None = None,
                      usage_metrics: dict | None = None, properties: dict | None = None,
-                     group_keys: dict | None = None,
+                     tags: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via metering.
 
@@ -180,7 +180,7 @@ class UBBClient:
             provider=provider,
             usage_metrics=usage_metrics,
             properties=properties,
-            group_keys=group_keys,
+            tags=tags,
             run_id=run_id,
         )
 

@@ -64,7 +64,7 @@ class MeteringClient:
                      cost_micros: int | None = None, metadata: dict | None = None,
                      event_type: str | None = None, provider: str | None = None,
                      usage_metrics: dict | None = None, properties: dict | None = None,
-                     group_keys: dict | None = None,
+                     tags: dict | None = None,
                      run_id: str | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
         body: dict = {
@@ -81,8 +81,8 @@ class MeteringClient:
             body["usage_metrics"] = usage_metrics
             if properties:
                 body["properties"] = properties
-        if group_keys is not None:
-            body["group_keys"] = group_keys
+        if tags is not None:
+            body["tags"] = tags
         if run_id is not None:
             body["run_id"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)
@@ -125,15 +125,15 @@ class MeteringClient:
         return CloseRunResult(**r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
-                  group_key: str | None = None, group_value: str | None = None) -> PaginatedResponse[UsageEvent]:
+                  tag_key: str | None = None, tag_value: str | None = None) -> PaginatedResponse[UsageEvent]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage."""
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        if group_key is not None:
-            params["group_key"] = group_key
-        if group_value is not None:
-            params["group_value"] = group_value
+        if tag_key is not None:
+            params["tag_key"] = tag_key
+        if tag_value is not None:
+            params["tag_value"] = tag_value
         r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
         body = r.json()
         events = [UsageEvent(**item) for item in body["data"]]

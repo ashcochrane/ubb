@@ -27,7 +27,7 @@ class RecordUsageRequest(Schema):
     idempotency_key: str = Field(min_length=1, max_length=500)
     metadata: dict = Field(default_factory=dict)
     cost_micros: int = Field(gt=0, le=999_999_999_999)
-    group_keys: Optional[dict[str, str]] = None
+    tags: Optional[dict[str, str]] = None
     run_id: Optional[UUID] = None
     # Descriptive dimensions (not pricing inputs)
     event_type: Optional[str] = Field(default=None, max_length=100)

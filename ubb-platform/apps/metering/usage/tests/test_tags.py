@@ -8,7 +8,7 @@ from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 
 
-class GroupKeysValidationTest(TestCase):
+class TagsValidationTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test"
@@ -18,20 +18,20 @@ class GroupKeysValidationTest(TestCase):
         )
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_group_keys_stored_on_event(self, mock_process):
+    def test_tags_stored_on_event(self, mock_process):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_gk1",
             idempotency_key="idem_gk1",
             cost_micros=1_000_000,
-            group_keys={"department": "sales", "workflow_run": "wf_123"},
+            tags={"department": "sales", "workflow_run": "wf_123"},
         )
         event = UsageEvent.objects.get(id=result["event_id"])
-        self.assertEqual(event.group_keys, {"department": "sales", "workflow_run": "wf_123"})
+        self.assertEqual(event.tags, {"department": "sales", "workflow_run": "wf_123"})
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_group_keys_null_by_default(self, mock_process):
+    def test_tags_null_by_default(self, mock_process):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
@@ -40,10 +40,10 @@ class GroupKeysValidationTest(TestCase):
             cost_micros=1_000_000,
         )
         event = UsageEvent.objects.get(id=result["event_id"])
-        self.assertIsNone(event.group_keys)
+        self.assertIsNone(event.tags)
 
-    def test_group_keys_max_10_keys(self):
-        keys = {f"key_{i}": f"val_{i}" for i in range(11)}
+    def test_tags_max_50_keys(self):
+        keys = {f"key_{i}": f"val_{i}" for i in range(51)}
         with self.assertRaises(ValueError):
             UsageService.record_usage(
                 tenant=self.tenant,
@@ -51,10 +51,10 @@ class GroupKeysValidationTest(TestCase):
                 request_id="req_gk3",
                 idempotency_key="idem_gk3",
                 cost_micros=1_000_000,
-                group_keys=keys,
+                tags=keys,
             )
 
-    def test_group_keys_key_format_validation(self):
+    def test_tags_key_format_validation(self):
         with self.assertRaises(ValueError):
             UsageService.record_usage(
                 tenant=self.tenant,
@@ -62,10 +62,10 @@ class GroupKeysValidationTest(TestCase):
                 request_id="req_gk4",
                 idempotency_key="idem_gk4",
                 cost_micros=1_000_000,
-                group_keys={"Invalid-Key": "value"},
+                tags={"Invalid-Key": "value"},
             )
 
-    def test_group_keys_single_char_key_rejected(self):
+    def test_tags_single_char_key_rejected(self):
         """Keys must be at least 2 characters."""
         with self.assertRaises(ValueError):
             UsageService.record_usage(
@@ -74,10 +74,10 @@ class GroupKeysValidationTest(TestCase):
                 request_id="req_gk6",
                 idempotency_key="idem_gk6",
                 cost_micros=1_000_000,
-                group_keys={"x": "value"},
+                tags={"x": "value"},
             )
 
-    def test_group_keys_value_must_be_string(self):
+    def test_tags_value_must_be_string(self):
         with self.assertRaises(ValueError):
             UsageService.record_usage(
                 tenant=self.tenant,
@@ -85,11 +85,11 @@ class GroupKeysValidationTest(TestCase):
                 request_id="req_gk5",
                 idempotency_key="idem_gk5",
                 cost_micros=1_000_000,
-                group_keys={"key": 123},
+                tags={"key": 123},
             )
 
 
-class GroupKeysEndpointTest(TestCase):
+class TagsEndpointTest(TestCase):
     def setUp(self):
         self.client = Client()
         self.tenant = Tenant.objects.create(
@@ -101,7 +101,7 @@ class GroupKeysEndpointTest(TestCase):
         )
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_group_keys(self, mock_process):
+    def test_record_usage_with_tags(self, mock_process):
         response = self.client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -109,18 +109,18 @@ class GroupKeysEndpointTest(TestCase):
                 "request_id": "req_gk_ep1",
                 "idempotency_key": "idem_gk_ep1",
                 "cost_micros": 1_000_000,
-                "group_keys": {"department": "engineering"},
+                "tags": {"department": "engineering"},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
         event = UsageEvent.objects.get(idempotency_key="idem_gk_ep1")
-        self.assertEqual(event.group_keys, {"department": "engineering"})
+        self.assertEqual(event.tags, {"department": "engineering"})
 
     @skipUnlessDBFeature("supports_json_field_contains")
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_usage_filter_by_group_key(self, mock_process):
+    def test_usage_filter_by_tag(self, mock_process):
         for i, dept in enumerate(["sales", "engineering", "sales"]):
             self.client.post(
                 "/api/v1/metering/usage",
@@ -129,14 +129,14 @@ class GroupKeysEndpointTest(TestCase):
                     "request_id": f"req_filter_{i}",
                     "idempotency_key": f"idem_filter_{i}",
                     "cost_micros": 1_000_000,
-                    "group_keys": {"department": dept},
+                    "tags": {"department": dept},
                 }),
                 content_type="application/json",
                 HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
             )
 
         response = self.client.get(
-            f"/api/v1/metering/customers/{self.customer.id}/usage?group_key=department&group_value=sales",
+            f"/api/v1/metering/customers/{self.customer.id}/usage?tag_key=department&tag_value=sales",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)

@@ -28,7 +28,7 @@ class UsageEvent(BaseModel):
     provider_cost_micros = models.BigIntegerField(null=True, blank=True)
     billed_cost_micros = models.BigIntegerField(null=True, blank=True)
     pricing_provenance = models.JSONField(default=dict, blank=True)
-    group_keys = models.JSONField(null=True, blank=True)
+    tags = models.JSONField(null=True, blank=True)
     run = models.ForeignKey(
         "runs.Run", on_delete=models.CASCADE, related_name="usage_events",
         null=True, blank=True,

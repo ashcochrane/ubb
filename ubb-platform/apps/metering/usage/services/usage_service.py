@@ -10,27 +10,27 @@ from apps.platform.events.schemas import UsageRecorded
 logger = logging.getLogger(__name__)
 
 # Min 2 chars, max 64 chars, starts with letter, lowercase alphanumeric + underscores
-GROUP_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
+TAG_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
 
 
-def validate_group_keys(group_keys):
-    """Validate group_keys dict. Raises ValueError on invalid input."""
-    if group_keys is None:
+def validate_tags(tags):
+    """Validate tags dict. Raises ValueError on invalid input."""
+    if tags is None:
         return
-    if not isinstance(group_keys, dict):
-        raise ValueError("group_keys must be a dict")
-    if len(group_keys) > 10:
-        raise ValueError("group_keys cannot have more than 10 keys")
-    for key, value in group_keys.items():
-        if not GROUP_KEY_PATTERN.match(key):
+    if not isinstance(tags, dict):
+        raise ValueError("tags must be a dict")
+    if len(tags) > 50:
+        raise ValueError("tags cannot have more than 50 keys")
+    for key, value in tags.items():
+        if not TAG_KEY_PATTERN.match(key):
             raise ValueError(
-                f"group_keys key '{key}' must be lowercase alphanumeric + underscores, "
+                f"tags key '{key}' must be lowercase alphanumeric + underscores, "
                 "start with a letter, 2-64 chars"
             )
         if not isinstance(value, str):
-            raise ValueError(f"group_keys value for '{key}' must be a string")
+            raise ValueError(f"tags value for '{key}' must be a string")
         if len(value) > 256:
-            raise ValueError(f"group_keys value for '{key}' exceeds 256 chars")
+            raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
 class UsageService:
@@ -45,11 +45,11 @@ class UsageService:
         metadata=None,
         event_type=None,
         provider=None,
-        group_keys=None,
+        tags=None,
         run_id=None,
     ):
-        # 0. Validate group_keys before any DB work
-        validate_group_keys(group_keys)
+        # 0. Validate tags before any DB work
+        validate_tags(tags)
 
         # 1. Idempotency check — fast path, no wallet lookup needed
         existing = UsageEvent.objects.filter(
@@ -101,7 +101,7 @@ class UsageService:
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
                     pricing_provenance=pricing_provenance,
-                    group_keys=group_keys,
+                    tags=tags,
                     run_id=run_id,
                 )
         except IntegrityError:

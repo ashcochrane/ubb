@@ -51,16 +51,16 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(result.provider_cost_micros, 500_000)
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_group_keys(self, mock_post):
+    def test_record_usage_with_tags(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            cost_micros=1_000_000, group_keys={"project": "proj_1"},
+            cost_micros=1_000_000, tags={"project": "proj_1"},
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["group_keys"], {"project": "proj_1"})
+        self.assertEqual(body["tags"], {"project": "proj_1"})
 
     # ---- get_usage ----
 
@@ -95,14 +95,14 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(call_kwargs.kwargs["params"]["limit"], 10)
 
     @patch("ubb.metering.httpx.Client.get")
-    def test_get_usage_with_group_filter(self, mock_get):
+    def test_get_usage_with_tag_filter(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [], "next_cursor": None, "has_more": False,
         })
-        self.client.get_usage(customer_id="cust_1", group_key="project", group_value="proj_1")
+        self.client.get_usage(customer_id="cust_1", tag_key="project", tag_value="proj_1")
         call_kwargs = mock_get.call_args
-        self.assertEqual(call_kwargs.kwargs["params"]["group_key"], "project")
-        self.assertEqual(call_kwargs.kwargs["params"]["group_value"], "proj_1")
+        self.assertEqual(call_kwargs.kwargs["params"]["tag_key"], "project")
+        self.assertEqual(call_kwargs.kwargs["params"]["tag_value"], "proj_1")
 
     # ---- error handling ----
 
