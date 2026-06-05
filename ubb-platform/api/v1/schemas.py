@@ -2,7 +2,7 @@ from uuid import UUID
 from typing import Optional
 
 from ninja import Schema, Field
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 
 
 class PreCheckRequest(Schema):
@@ -26,51 +26,12 @@ class RecordUsageRequest(Schema):
     request_id: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=500)
     metadata: dict = Field(default_factory=dict)
-
-    # Mode 1: Caller-provided cost (legacy)
-    cost_micros: Optional[int] = Field(default=None, gt=0, le=999_999_999_999)
-
+    cost_micros: int = Field(gt=0, le=999_999_999_999)
     group_keys: Optional[dict[str, str]] = None
-
     run_id: Optional[UUID] = None
-
-    # Mode 2: Raw metrics (platform prices it)
+    # Descriptive dimensions (not pricing inputs)
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
-    usage_metrics: Optional[dict[str, int]] = None
-    properties: Optional[dict] = None
-
-    @field_validator("cost_micros")
-    @classmethod
-    def cost_micros_positive(cls, v):
-        # Sub-cent micros values are valid for token-level pricing
-        return v
-
-    @field_validator("usage_metrics")
-    @classmethod
-    def usage_metrics_values_non_negative(cls, v):
-        if v is not None:
-            for key, val in v.items():
-                if not isinstance(val, int) or isinstance(val, bool):
-                    raise ValueError(f"Metric '{key}' must be an integer")
-                if val < 0:
-                    raise ValueError(f"Metric '{key}' must be >= 0")
-        return v
-
-    @model_validator(mode="after")
-    def validate_intake_mode(self):
-        has_cost = self.cost_micros is not None
-        has_metrics = self.usage_metrics is not None
-        if not has_cost and not has_metrics:
-            raise ValueError("Must provide either cost_micros or usage_metrics")
-        if has_cost and has_metrics:
-            raise ValueError("Provide cost_micros OR usage_metrics, not both")
-        if has_metrics:
-            if not self.event_type:
-                raise ValueError("event_type required when using usage_metrics")
-            if not self.provider:
-                raise ValueError("provider required when using usage_metrics")
-        return self
 
 
 class RecordUsageResponse(Schema):

@@ -45,8 +45,6 @@ class UsageService:
         metadata=None,
         event_type=None,
         provider=None,
-        usage_metrics=None,
-        properties=None,
         group_keys=None,
         run_id=None,
     ):
@@ -69,23 +67,9 @@ class UsageService:
                 "hard_stop": False,
             }
 
-        # 2. Price the event if raw metrics provided
         provider_cost_micros = None
         billed_cost_micros = None
         pricing_provenance = {}
-
-        if usage_metrics is not None:
-            from apps.metering.pricing.services.pricing_service import PricingService
-            provider_cost_micros, billed_cost_micros, pricing_provenance = (
-                PricingService.price_event(
-                    tenant=tenant,
-                    event_type=event_type,
-                    provider=provider,
-                    usage_metrics=usage_metrics,
-                    properties=properties,
-                )
-            )
-            cost_micros = billed_cost_micros
 
         # 2.5 Run hard-stop check (synchronous, under select_for_update)
         run = None
@@ -114,8 +98,6 @@ class UsageService:
                     metadata=metadata or {},
                     event_type=event_type or "",
                     provider=provider or "",
-                    usage_metrics=usage_metrics or {},
-                    properties=properties or {},
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
                     pricing_provenance=pricing_provenance,

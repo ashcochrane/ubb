@@ -30,7 +30,6 @@ _product_check = ProductAccess("metering")
 def record_usage(request, payload: RecordUsageRequest):
     _product_check(request)
 
-    from apps.metering.pricing.services.pricing_service import PricingError
     from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -44,8 +43,6 @@ def record_usage(request, payload: RecordUsageRequest):
             metadata=payload.metadata,
             event_type=payload.event_type,
             provider=payload.provider,
-            usage_metrics=payload.usage_metrics,
-            properties=payload.properties,
             group_keys=payload.group_keys,
             run_id=payload.run_id,
         )
@@ -66,9 +63,6 @@ def record_usage(request, payload: RecordUsageRequest):
             "run_id": e.run_id,
             "status": e.status,
         }, status=409)
-    except PricingError as e:
-        from ninja.errors import HttpError
-        raise HttpError(422, str(e))
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))

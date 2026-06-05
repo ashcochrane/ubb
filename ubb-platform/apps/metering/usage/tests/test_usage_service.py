@@ -4,7 +4,6 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService, HardStopExceeded, RunNotActive
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
 from apps.metering.usage.models import UsageEvent
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.usage_service import UsageService
@@ -148,126 +147,6 @@ class UsageServiceCoreTest(TestCase):
         self.assertIsNone(attempt)
 
 
-class UsageServicePricingTest(TestCase):
-    def setUp(self):
-        self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
-        )
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1"
-        )
-        self.wallet = Wallet.objects.create(customer=self.customer)
-
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=75_000,
-            unit_quantity=1_000_000,
-        )
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="output_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=300_000,
-            unit_quantity=1_000_000,
-        )
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics(self, mock_process):
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_priced_1",
-            idempotency_key="idem_priced_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        self.assertEqual(result["provider_cost_micros"], 75_000)
-        self.assertEqual(result["billed_cost_micros"], 75_000)
-        # Wallet NOT deducted (billing handles this now)
-        self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance_micros, 0)
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics_and_markup(self, mock_process):
-        TenantMarkup.objects.create(
-            tenant=self.tenant,
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            markup_percentage_micros=20_000_000,
-        )
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_markup_1",
-            idempotency_key="idem_markup_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        self.assertEqual(result["provider_cost_micros"], 75_000)
-        self.assertEqual(result["billed_cost_micros"], 75_000 + 15_000)
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_legacy_cost_micros_still_works(self, mock_process):
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_legacy_1",
-            idempotency_key="idem_legacy_1",
-            cost_micros=1_000_000,
-        )
-        self.assertIsNone(result["provider_cost_micros"])
-        self.assertIsNone(result["billed_cost_micros"])
-        self.assertIsNone(result["new_balance_micros"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_event_stores_provenance(self, mock_process):
-        UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_prov_1",
-            idempotency_key="idem_prov_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 500},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        event = UsageEvent.objects.get(
-            idempotency_key="idem_prov_1", tenant=self.tenant, customer=self.customer
-        )
-        self.assertEqual(event.event_type, "gemini_api_call")
-        self.assertEqual(event.provider, "google_gemini")
-        self.assertIn("engine_version", event.pricing_provenance)
-        self.assertIn("input_tokens", event.pricing_provenance["metrics"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_idempotent_includes_dual_costs(self, mock_process):
-        kwargs = dict(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_idem_priced",
-            idempotency_key="idem_idem_priced",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        result1 = UsageService.record_usage(**kwargs)
-        result2 = UsageService.record_usage(**kwargs)
-        self.assertEqual(result1["event_id"], result2["event_id"])
-        self.assertEqual(result2["provider_cost_micros"], 75_000)
-        self.assertEqual(result2["billed_cost_micros"], 75_000)
-
-
 class UsageServiceEventEmissionTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
@@ -294,35 +173,6 @@ class UsageServiceEventEmissionTest(TestCase):
         self.assertEqual(outbox.payload["cost_micros"], 1_000_000)
         self.assertEqual(outbox.payload["event_type"], "")
         self.assertEqual(outbox.payload["event_id"], result["event_id"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_writes_billed_cost_for_priced_events(self, mock_process):
-        from apps.platform.events.models import OutboxEvent
-
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=75_000,
-            unit_quantity=1_000_000,
-        )
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_emit_2",
-            idempotency_key="idem_emit_2",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        outbox = OutboxEvent.objects.get(event_type="usage.recorded")
-        self.assertEqual(outbox.payload["cost_micros"], 75_000)  # billed_cost_micros
-        self.assertEqual(outbox.payload["event_type"], "gemini_api_call")
-        self.assertEqual(outbox.payload["event_id"], result["event_id"])
-
 
 class UsageServiceRunTest(TestCase):
     """Tests for run-aware usage recording (hard stop integration)."""
