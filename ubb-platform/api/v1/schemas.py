@@ -134,20 +134,13 @@ class DebitCreditResponse(Schema):
 
 
 class TenantMarkupIn(Schema):
-    event_type: str = Field(default="", max_length=100)
-    provider: str = Field(default="", max_length=100)
     markup_percentage_micros: int = Field(default=0, ge=0)
     fixed_uplift_micros: int = Field(default=0, ge=0)
 
 
 class TenantMarkupOut(Schema):
-    id: UUID
-    event_type: str
-    provider: str
     markup_percentage_micros: int
     fixed_uplift_micros: int
-    valid_from: str
-    valid_to: Optional[str] = None
 
 
 class CloseRunResponse(Schema):

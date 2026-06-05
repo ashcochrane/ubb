@@ -77,64 +77,72 @@ class PricingMarkupsCRUDTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(name="Test", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def test_create_and_list_markup(self):
-        resp = self.http_client.post(
-            "/api/v1/metering/pricing/markups",
-            data=json.dumps({
-                "event_type": "llm_call",
-                "provider": "openai",
-                "markup_percentage_micros": 20000000,
-                "fixed_uplift_micros": 0,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
+    def test_get_tenant_markup_no_markup_returns_zeros(self):
+        resp = self.http_client.get("/api/v1/metering/pricing/markup", **self._auth())
         self.assertEqual(resp.status_code, 200)
-        markup = resp.json()
-        self.assertEqual(markup["markup_percentage_micros"], 20000000)
+        body = resp.json()
+        self.assertEqual(body["markup_percentage_micros"], 0)
+        self.assertEqual(body["fixed_uplift_micros"], 0)
 
-        resp = self.http_client.get("/api/v1/metering/pricing/markups", **self._auth())
-        self.assertEqual(len(resp.json()), 1)
-
-    def test_update_markup_versions(self):
-        markup = TenantMarkup.objects.create(
-            tenant=self.tenant, event_type="llm_call", provider="openai",
-            markup_percentage_micros=20000000, fixed_uplift_micros=0,
-        )
+    def test_put_tenant_markup_upserts(self):
+        # Create
         resp = self.http_client.put(
-            f"/api/v1/metering/pricing/markups/{markup.id}",
-            data=json.dumps({
-                "event_type": "llm_call",
-                "provider": "openai",
-                "markup_percentage_micros": 30000000,
-                "fixed_uplift_micros": 100,
-            }),
+            "/api/v1/metering/pricing/markup",
+            data=json.dumps({"markup_percentage_micros": 20000000, "fixed_uplift_micros": 0}),
             content_type="application/json",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
-        new_markup = resp.json()
-        self.assertEqual(new_markup["markup_percentage_micros"], 30000000)
-        self.assertNotEqual(new_markup["id"], str(markup.id))
+        self.assertEqual(resp.json()["markup_percentage_micros"], 20000000)
 
-        markup.refresh_from_db()
-        self.assertIsNotNone(markup.valid_to)
+        # GET returns set values
+        resp = self.http_client.get("/api/v1/metering/pricing/markup", **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["markup_percentage_micros"], 20000000)
 
-    def test_delete_markup_expires(self):
-        markup = TenantMarkup.objects.create(
-            tenant=self.tenant, event_type="llm_call", provider="openai",
-            markup_percentage_micros=20000000,
-        )
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/markups/{markup.id}", **self._auth(),
+        # PUT again with different values updates in place — still exactly one row
+        resp = self.http_client.put(
+            "/api/v1/metering/pricing/markup",
+            data=json.dumps({"markup_percentage_micros": 30000000, "fixed_uplift_micros": 500}),
+            content_type="application/json",
+            **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
-        markup.refresh_from_db()
-        self.assertIsNotNone(markup.valid_to)
+        self.assertEqual(resp.json()["markup_percentage_micros"], 30000000)
+        self.assertEqual(TenantMarkup.objects.filter(tenant=self.tenant, customer__isnull=True).count(), 1)
+
+    def test_put_and_get_customer_markup_override(self):
+        resp = self.http_client.put(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            data=json.dumps({"markup_percentage_micros": 50000000, "fixed_uplift_micros": 0}),
+            content_type="application/json",
+            **self._auth(),
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = self.http_client.get(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth(),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["markup_percentage_micros"], 50000000)
+
+    def test_get_customer_markup_falls_back_to_tenant_default(self):
+        # Set only tenant default, no customer override
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=None, markup_percentage_micros=15000000, fixed_uplift_micros=0
+        )
+        resp = self.http_client.get(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth(),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["markup_percentage_micros"], 15000000)
 
 
 class MeteringRunEndpointTest(TestCase):

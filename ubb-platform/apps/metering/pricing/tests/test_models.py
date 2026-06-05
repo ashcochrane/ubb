@@ -12,7 +12,6 @@ class TenantMarkupTests(TestCase):
         """50% markup on 1,000,000 micros = 500,000 micros."""
         markup = TenantMarkup.objects.create(
             tenant=self.tenant,
-            event_type="llm_call",
             markup_percentage_micros=50_000_000,  # 50%
             fixed_uplift_micros=0,
         )
@@ -30,7 +29,6 @@ class TenantMarkupTests(TestCase):
         """50% markup + 100 fixed uplift on 1,000,000 micros = 500,100 micros."""
         markup = TenantMarkup.objects.create(
             tenant=self.tenant,
-            event_type="llm_call",
             markup_percentage_micros=50_000_000,  # 50%
             fixed_uplift_micros=100,
         )

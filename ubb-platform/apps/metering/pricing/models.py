@@ -5,29 +5,28 @@ from core.models import BaseModel
 
 class TenantMarkup(BaseModel):
     tenant = models.ForeignKey(
-        "tenants.Tenant",
-        on_delete=models.CASCADE,
-        related_name="markups",
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="markups",
     )
-    event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    provider = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    markup_percentage_micros = models.BigIntegerField(default=0)
+    customer = models.ForeignKey(
+        "customers.Customer", on_delete=models.CASCADE, related_name="markups",
+        null=True, blank=True,
+    )
+    markup_percentage_micros = models.BigIntegerField(default=0)  # 1_000_000 == 1%
     fixed_uplift_micros = models.BigIntegerField(default=0)
-    valid_from = models.DateTimeField(auto_now_add=True, db_index=True)
-    valid_to = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_tenant_markup"
-        indexes = [
-            models.Index(
-                fields=["tenant", "event_type", "provider"],
-                name="idx_markup_tenant_lookup",
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant"], condition=models.Q(customer__isnull=True),
+                name="uq_markup_tenant_default",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "customer"], condition=models.Q(customer__isnull=False),
+                name="uq_markup_tenant_customer",
             ),
         ]
 
     def calculate_markup_micros(self, provider_cost_micros: int) -> int:
-        """Calculate markup with round-half-up on the percentage portion."""
-        percent = (
-            provider_cost_micros * self.markup_percentage_micros + 50_000_000
-        ) // 100_000_000
+        percent = (provider_cost_micros * self.markup_percentage_micros + 50_000_000) // 100_000_000
         return percent + self.fixed_uplift_micros

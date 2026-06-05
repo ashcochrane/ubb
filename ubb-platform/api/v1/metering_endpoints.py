@@ -4,7 +4,6 @@ from uuid import UUID
 from django.db.models import Sum, Count
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from ninja import NinjaAPI
 
 from core.auth import ApiKeyAuth, ProductAccess
@@ -136,81 +135,63 @@ def close_run(request, run_id: UUID):
     }
 
 
-# --- Pricing Markups CRUD ---
+# --- Pricing Markup ---
 
 
-def _markup_to_out(markup):
-    return {
-        "id": markup.id,
-        "event_type": markup.event_type,
-        "provider": markup.provider,
-        "markup_percentage_micros": markup.markup_percentage_micros,
-        "fixed_uplift_micros": markup.fixed_uplift_micros,
-        "valid_from": markup.valid_from.isoformat(),
-        "valid_to": markup.valid_to.isoformat() if markup.valid_to else None,
-    }
-
-
-@metering_api.get("/pricing/markups", response=list[TenantMarkupOut])
-def list_markups(request):
+@metering_api.get("/pricing/markup", response=TenantMarkupOut)
+def get_tenant_markup(request):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
 
-    markups = TenantMarkup.objects.filter(
-        tenant=request.auth.tenant, valid_to__isnull=True,
-    ).order_by("event_type", "provider")
-    return [_markup_to_out(m) for m in markups]
+    markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
+    if markup is None:
+        return {"markup_percentage_micros": 0, "fixed_uplift_micros": 0}
+    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.post("/pricing/markups", response=TenantMarkupOut)
-def create_markup(request, payload: TenantMarkupIn):
+@metering_api.put("/pricing/markup", response=TenantMarkupOut)
+def upsert_tenant_markup(request, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
 
-    markup = TenantMarkup.objects.create(
+    markup, _ = TenantMarkup.objects.update_or_create(
         tenant=request.auth.tenant,
-        event_type=payload.event_type,
-        provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
+        customer=None,
+        defaults={
+            "markup_percentage_micros": payload.markup_percentage_micros,
+            "fixed_uplift_micros": payload.fixed_uplift_micros,
+        },
     )
-    return _markup_to_out(markup)
+    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.put("/pricing/markups/{markup_id}", response=TenantMarkupOut)
-def update_markup(request, markup_id: UUID, payload: TenantMarkupIn):
-    """Soft-expire old markup and create new version."""
+@metering_api.get("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+def get_customer_markup(request, customer_id: UUID):
+    _product_check(request)
+    from apps.metering.pricing.services.markup_service import MarkupService
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    markup = MarkupService.resolve(tenant=request.auth.tenant, customer=customer)
+    if markup is None:
+        return {"markup_percentage_micros": 0, "fixed_uplift_micros": 0}
+    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
+
+
+@metering_api.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
 
-    old_markup = get_object_or_404(
-        TenantMarkup, id=markup_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    now = timezone.now()
-    old_markup.valid_to = now
-    old_markup.save(update_fields=["valid_to", "updated_at"])
-
-    new_markup = TenantMarkup.objects.create(
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    markup, _ = TenantMarkup.objects.update_or_create(
         tenant=request.auth.tenant,
-        event_type=payload.event_type,
-        provider=payload.provider,
-        markup_percentage_micros=payload.markup_percentage_micros,
-        fixed_uplift_micros=payload.fixed_uplift_micros,
+        customer=customer,
+        defaults={
+            "markup_percentage_micros": payload.markup_percentage_micros,
+            "fixed_uplift_micros": payload.fixed_uplift_micros,
+        },
     )
-    return _markup_to_out(new_markup)
-
-
-@metering_api.delete("/pricing/markups/{markup_id}")
-def delete_markup(request, markup_id: UUID):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    markup = get_object_or_404(
-        TenantMarkup, id=markup_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    markup.valid_to = timezone.now()
-    markup.save(update_fields=["valid_to", "updated_at"])
-    return {"status": "deleted"}
+    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
 # --- Analytics ---
