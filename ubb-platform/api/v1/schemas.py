@@ -133,29 +133,6 @@ class DebitCreditResponse(Schema):
     transaction_id: str
 
 
-class ProviderRateIn(Schema):
-    provider: str = Field(min_length=1, max_length=100)
-    event_type: str = Field(min_length=1, max_length=100)
-    metric_name: str = Field(min_length=1, max_length=100)
-    dimensions: dict = Field(default_factory=dict)
-    cost_per_unit_micros: int = Field(ge=0)
-    unit_quantity: int = Field(gt=0, default=1_000_000)
-    currency: str = Field(default="USD", max_length=3)
-
-
-class ProviderRateOut(Schema):
-    id: UUID
-    provider: str
-    event_type: str
-    metric_name: str
-    dimensions: dict
-    cost_per_unit_micros: int
-    unit_quantity: int
-    currency: str
-    valid_from: str
-    valid_to: Optional[str] = None
-
-
 class TenantMarkupIn(Schema):
     event_type: str = Field(default="", max_length=100)
     provider: str = Field(default="", max_length=100)

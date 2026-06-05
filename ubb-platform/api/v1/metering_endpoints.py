@@ -11,7 +11,6 @@ from core.auth import ApiKeyAuth, ProductAccess
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     PaginatedUsageResponse,
-    ProviderRateIn, ProviderRateOut,
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
@@ -135,92 +134,6 @@ def close_run(request, run_id: UUID):
         "total_cost_micros": completed.total_cost_micros,
         "event_count": completed.event_count,
     }
-
-
-# --- Pricing Rates CRUD ---
-
-
-def _rate_to_out(rate):
-    return {
-        "id": rate.id,
-        "provider": rate.provider,
-        "event_type": rate.event_type,
-        "metric_name": rate.metric_name,
-        "dimensions": rate.dimensions,
-        "cost_per_unit_micros": rate.cost_per_unit_micros,
-        "unit_quantity": rate.unit_quantity,
-        "currency": rate.currency,
-        "valid_from": rate.valid_from.isoformat(),
-        "valid_to": rate.valid_to.isoformat() if rate.valid_to else None,
-    }
-
-
-@metering_api.get("/pricing/rates", response=list[ProviderRateOut])
-def list_rates(request):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rates = ProviderRate.objects.filter(
-        tenant=request.auth.tenant, valid_to__isnull=True,
-    ).order_by("provider", "event_type", "metric_name")
-    return [_rate_to_out(r) for r in rates]
-
-
-@metering_api.post("/pricing/rates", response=ProviderRateOut)
-def create_rate(request, payload: ProviderRateIn):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rate = ProviderRate.objects.create(
-        tenant=request.auth.tenant,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
-        cost_per_unit_micros=payload.cost_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        currency=payload.currency,
-    )
-    return _rate_to_out(rate)
-
-
-@metering_api.put("/pricing/rates/{rate_id}", response=ProviderRateOut)
-def update_rate(request, rate_id: UUID, payload: ProviderRateIn):
-    """Soft-expire old rate and create new version."""
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    old_rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    now = timezone.now()
-    old_rate.valid_to = now
-    old_rate.save(update_fields=["valid_to", "updated_at"])
-
-    new_rate = ProviderRate.objects.create(
-        tenant=request.auth.tenant,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        metric_name=payload.metric_name,
-        dimensions=payload.dimensions,
-        cost_per_unit_micros=payload.cost_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        currency=payload.currency,
-    )
-    return _rate_to_out(new_rate)
-
-
-@metering_api.delete("/pricing/rates/{rate_id}")
-def delete_rate(request, rate_id: UUID):
-    _product_check(request)
-    from apps.metering.pricing.models import ProviderRate
-
-    rate = get_object_or_404(
-        ProviderRate, id=rate_id, tenant=request.auth.tenant, valid_to__isnull=True,
-    )
-    rate.valid_to = timezone.now()
-    rate.save(update_fields=["valid_to", "updated_at"])
-    return {"status": "deleted"}
 
 
 # --- Pricing Markups CRUD ---

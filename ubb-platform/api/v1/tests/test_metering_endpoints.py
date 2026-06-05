@@ -9,7 +9,7 @@ from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService
 from apps.billing.wallets.models import Wallet
 from apps.billing.tenant_billing.models import BillingTenantConfig
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import TenantMarkup
 
 
 class MeteringProductGatingTest(TestCase):
@@ -70,96 +70,6 @@ class MeteringProductGatingTest(TestCase):
         body = response.json()
         self.assertIn("data", body)
         self.assertIn("has_more", body)
-
-
-class PricingRatesCRUDTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(name="Test", products=["metering"])
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
-
-    def test_create_and_list_rate(self):
-        resp = self.http_client.post(
-            "/api/v1/metering/pricing/rates",
-            data=json.dumps({
-                "provider": "openai",
-                "event_type": "llm_call",
-                "metric_name": "input_tokens",
-                "dimensions": {"model": "gpt-4o"},
-                "cost_per_unit_micros": 5000,
-                "unit_quantity": 1000000,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        rate = resp.json()
-        self.assertEqual(rate["provider"], "openai")
-        self.assertIsNone(rate["valid_to"])
-
-        # List
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.json()), 1)
-
-    def test_update_rate_versions(self):
-        rate = ProviderRate.objects.create(
-            tenant=self.tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.put(
-            f"/api/v1/metering/pricing/rates/{rate.id}",
-            data=json.dumps({
-                "provider": "openai",
-                "event_type": "llm_call",
-                "metric_name": "input_tokens",
-                "dimensions": {},
-                "cost_per_unit_micros": 7500,
-                "unit_quantity": 1000000,
-            }),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        new_rate = resp.json()
-        self.assertEqual(new_rate["cost_per_unit_micros"], 7500)
-        self.assertNotEqual(new_rate["id"], str(rate.id))
-
-        # Old rate should be expired
-        rate.refresh_from_db()
-        self.assertIsNotNone(rate.valid_to)
-
-        # Only new rate in active list
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(len(resp.json()), 1)
-        self.assertEqual(resp.json()[0]["cost_per_unit_micros"], 7500)
-
-    def test_delete_rate_expires(self):
-        rate = ProviderRate.objects.create(
-            tenant=self.tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/rates/{rate.id}", **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        rate.refresh_from_db()
-        self.assertIsNotNone(rate.valid_to)
-
-    def test_tenant_isolation(self):
-        other_tenant = Tenant.objects.create(name="Other", products=["metering"])
-        ProviderRate.objects.create(
-            tenant=other_tenant, provider="openai", event_type="llm_call",
-            metric_name="input_tokens", dimensions={},
-            cost_per_unit_micros=5000, unit_quantity=1000000,
-        )
-        resp = self.http_client.get("/api/v1/metering/pricing/rates", **self._auth())
-        self.assertEqual(len(resp.json()), 0)
 
 
 class PricingMarkupsCRUDTest(TestCase):
