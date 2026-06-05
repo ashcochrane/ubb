@@ -19,10 +19,6 @@ class IdempotencyError(UBBError):
     pass
 
 
-class PricingError(UBBError):
-    pass
-
-
 class StripeError(UBBError):
     pass
 
