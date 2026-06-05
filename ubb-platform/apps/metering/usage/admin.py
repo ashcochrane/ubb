@@ -9,7 +9,8 @@ class UsageEventAdmin(admin.ModelAdmin):
         "request_id",
         "tenant",
         "customer",
-        "cost_micros",
+        "provider_cost_micros",
+        "billed_cost_micros",
         "effective_at",
     )
     list_filter = ("tenant",)

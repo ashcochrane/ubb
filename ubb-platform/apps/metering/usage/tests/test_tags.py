@@ -24,7 +24,7 @@ class TagsValidationTest(TestCase):
             customer=self.customer,
             request_id="req_gk1",
             idempotency_key="idem_gk1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             tags={"department": "sales", "workflow_run": "wf_123"},
         )
         event = UsageEvent.objects.get(id=result["event_id"])
@@ -37,7 +37,7 @@ class TagsValidationTest(TestCase):
             customer=self.customer,
             request_id="req_gk2",
             idempotency_key="idem_gk2",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         event = UsageEvent.objects.get(id=result["event_id"])
         self.assertIsNone(event.tags)
@@ -50,7 +50,7 @@ class TagsValidationTest(TestCase):
                 customer=self.customer,
                 request_id="req_gk3",
                 idempotency_key="idem_gk3",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 tags=keys,
             )
 
@@ -61,7 +61,7 @@ class TagsValidationTest(TestCase):
                 customer=self.customer,
                 request_id="req_gk4",
                 idempotency_key="idem_gk4",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 tags={"Invalid-Key": "value"},
             )
 
@@ -73,7 +73,7 @@ class TagsValidationTest(TestCase):
                 customer=self.customer,
                 request_id="req_gk6",
                 idempotency_key="idem_gk6",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 tags={"x": "value"},
             )
 
@@ -84,7 +84,7 @@ class TagsValidationTest(TestCase):
                 customer=self.customer,
                 request_id="req_gk5",
                 idempotency_key="idem_gk5",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 tags={"key": 123},
             )
 
@@ -108,7 +108,7 @@ class TagsEndpointTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_gk_ep1",
                 "idempotency_key": "idem_gk_ep1",
-                "cost_micros": 1_000_000,
+                "provider_cost_micros": 1_000_000,
                 "tags": {"department": "engineering"},
             }),
             content_type="application/json",
@@ -128,7 +128,7 @@ class TagsEndpointTest(TestCase):
                     "customer_id": str(self.customer.id),
                     "request_id": f"req_filter_{i}",
                     "idempotency_key": f"idem_filter_{i}",
-                    "cost_micros": 1_000_000,
+                    "provider_cost_micros": 1_000_000,
                     "tags": {"department": dept},
                 }),
                 content_type="application/json",

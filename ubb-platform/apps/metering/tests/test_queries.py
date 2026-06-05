@@ -24,22 +24,22 @@ class GetPeriodTotalsTest(TestCase):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000,
+            billed_cost_micros=1_000_000,
         )
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r2", idempotency_key="i2",
-            cost_micros=2_000_000,
+            billed_cost_micros=2_000_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_cost_micros"], 3_000_000)
         self.assertEqual(totals["event_count"], 2)
 
-    def test_prefers_billed_cost_over_cost(self):
+    def test_sums_billed_cost(self):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000, billed_cost_micros=1_500_000,
+            billed_cost_micros=1_500_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_cost_micros"], 1_500_000)
@@ -54,7 +54,7 @@ class GetPeriodTotalsTest(TestCase):
         other_customer = Customer.objects.create(tenant=other_tenant, external_id="c2")
         UsageEvent.objects.create(
             tenant=other_tenant, customer=other_customer,
-            request_id="r1", idempotency_key="i1", cost_micros=5_000_000,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=5_000_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_cost_micros"], 0)
@@ -76,7 +76,7 @@ class GetCustomerUsageForPeriodTest(TestCase):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000, billed_cost_micros=1_200_000,
+            billed_cost_micros=1_200_000,
             provider_cost_micros=800_000,
         )
         events = get_customer_usage_for_period(
@@ -85,7 +85,6 @@ class GetCustomerUsageForPeriodTest(TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["billed_cost_micros"], 1_200_000)
         self.assertEqual(events[0]["provider_cost_micros"], 800_000)
-        self.assertEqual(events[0]["cost_micros"], 1_000_000)
 
     def test_returns_empty_for_no_events(self):
         events = get_customer_usage_for_period(
@@ -97,7 +96,7 @@ class GetCustomerUsageForPeriodTest(TestCase):
         other_customer = Customer.objects.create(tenant=self.tenant, external_id="c2")
         UsageEvent.objects.create(
             tenant=self.tenant, customer=other_customer,
-            request_id="r1", idempotency_key="i1", cost_micros=5_000_000,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=5_000_000,
         )
         events = get_customer_usage_for_period(
             self.tenant.id, self.customer.id, self.start, self.end,
@@ -110,10 +109,10 @@ class GetUsageEventCostTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
-    def test_returns_cost_micros(self):
+    def test_returns_billed_cost(self):
         event = UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="r1", idempotency_key="i1", cost_micros=1_000_000,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
         self.assertEqual(get_usage_event_cost(event.id), 1_000_000)
 
@@ -121,7 +120,7 @@ class GetUsageEventCostTest(TestCase):
         event = UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000, billed_cost_micros=1_500_000,
+            billed_cost_micros=1_500_000,
         )
         self.assertEqual(get_usage_event_cost(event.id), 1_500_000)
 
@@ -139,13 +138,13 @@ class GetRevenueAnalyticsTest(TestCase):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000, billed_cost_micros=1_200_000,
+            billed_cost_micros=1_200_000,
             provider_cost_micros=800_000,
         )
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r2", idempotency_key="i2",
-            cost_micros=2_000_000, billed_cost_micros=2_500_000,
+            billed_cost_micros=2_500_000,
             provider_cost_micros=1_500_000,
         )
         result = get_revenue_analytics(self.tenant.id)
@@ -169,7 +168,7 @@ class GetRevenueAnalyticsTest(TestCase):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000, provider_cost_micros=500_000,
+            billed_cost_micros=1_000_000, provider_cost_micros=500_000,
         )
         result = get_revenue_analytics(self.tenant.id, start_date=today, end_date=today)
         self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
@@ -177,13 +176,13 @@ class GetRevenueAnalyticsTest(TestCase):
         result = get_revenue_analytics(self.tenant.id, start_date=yesterday, end_date=yesterday)
         self.assertEqual(result["total_billed_cost_micros"], 0)
 
-    def test_markup_zero_when_no_provider_cost(self):
+    def test_markup_equals_billed_when_provider_cost_zero(self):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
-            cost_micros=1_000_000,
-            provider_cost_micros=None,
+            billed_cost_micros=1_000_000,
+            provider_cost_micros=0,
         )
         result = get_revenue_analytics(self.tenant.id)
         self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
-        self.assertEqual(result["total_markup_micros"], 0)
+        self.assertEqual(result["total_markup_micros"], 1_000_000)

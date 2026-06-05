@@ -13,7 +13,6 @@ class UsageEvent(BaseModel):
     )
     request_id = models.CharField(max_length=255, db_index=True)
     idempotency_key = models.CharField(max_length=500, db_index=True)
-    cost_micros = models.BigIntegerField()
     balance_after_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
 
@@ -23,10 +22,8 @@ class UsageEvent(BaseModel):
     units = models.BigIntegerField(null=True, blank=True)
     currency = models.CharField(max_length=3, default="usd")
     product_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    usage_metrics = models.JSONField(default=dict, blank=True)
-    properties = models.JSONField(default=dict, blank=True)
-    provider_cost_micros = models.BigIntegerField(null=True, blank=True)
-    billed_cost_micros = models.BigIntegerField(null=True, blank=True)
+    provider_cost_micros = models.BigIntegerField(default=0)
+    billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
     tags = models.JSONField(null=True, blank=True)
     run = models.ForeignKey(
@@ -50,7 +47,7 @@ class UsageEvent(BaseModel):
         ordering = ["-effective_at"]
 
     def __str__(self):
-        return f"UsageEvent({self.request_id}: {self.cost_micros})"
+        return f"UsageEvent({self.request_id}: {self.billed_cost_micros})"
 
     def save(self, *args, **kwargs):
         if not self._state.adding:

@@ -81,7 +81,7 @@ class TestSubscriptionsProductIsolation(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req-isolation-1",
                 "idempotency_key": "idem-isolation-1",
-                "cost_micros": 500_000,
+                "provider_cost_micros": 500_000,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",

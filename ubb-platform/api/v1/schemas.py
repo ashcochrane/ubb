@@ -26,12 +26,15 @@ class RecordUsageRequest(Schema):
     request_id: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=500)
     metadata: dict = Field(default_factory=dict)
-    cost_micros: int = Field(gt=0, le=999_999_999_999)
+    provider_cost_micros: int = Field(ge=0, le=999_999_999_999)
+    billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
+    units: Optional[int] = Field(default=None, ge=0)
+    currency: Optional[str] = Field(default=None, max_length=3)
     tags: Optional[dict[str, str]] = None
     run_id: Optional[UUID] = None
-    # Descriptive dimensions (not pricing inputs)
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
+    product_id: Optional[str] = Field(default=None, max_length=100)
 
 
 class RecordUsageResponse(Schema):
@@ -40,6 +43,7 @@ class RecordUsageResponse(Schema):
     suspended: bool
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
+    units: Optional[int] = None
     run_id: Optional[str] = None
     run_total_cost_micros: Optional[int] = None
     hard_stop: bool = False
@@ -53,11 +57,11 @@ class BalanceResponse(Schema):
 class UsageEventOut(Schema):
     id: UUID
     request_id: str
-    cost_micros: int
     event_type: str = ""
     provider: str = ""
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
+    units: Optional[int] = None
     metadata: dict
     effective_at: str
 

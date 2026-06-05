@@ -43,7 +43,7 @@ class MeteringProductGatingTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_met_1",
                 "idempotency_key": "idem_met_1",
-                "cost_micros": 1_500_000,
+                "provider_cost_micros": 1_500_000,
                 "metadata": {"model": "gpt-4"},
             }),
             content_type="application/json",
@@ -172,7 +172,7 @@ class MeteringRunEndpointTest(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": "req_1",
             "idempotency_key": "idem_1",
-            "cost_micros": 1_000_000,
+            "provider_cost_micros": 1_000_000,
         }
         data.update(extra)
         return self.http_client.post(
@@ -205,7 +205,7 @@ class MeteringRunEndpointTest(TestCase):
             run_id=str(run.id),
             request_id="req_hs1",
             idempotency_key="idem_hs1",
-            cost_micros=9_000_000,
+            provider_cost_micros=9_000_000,
         )
         self.assertEqual(resp.status_code, 200)
 
@@ -214,7 +214,7 @@ class MeteringRunEndpointTest(TestCase):
             run_id=str(run.id),
             request_id="req_hs2",
             idempotency_key="idem_hs2",
-            cost_micros=2_000_000,
+            provider_cost_micros=2_000_000,
         )
         self.assertEqual(resp.status_code, 429)
         body = resp.json()
@@ -289,7 +289,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
                 customer=self.customer,
                 request_id=f"req_analytics_{i}",
                 idempotency_key=f"idem_analytics_{i}",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
             )
 
     def _auth(self):

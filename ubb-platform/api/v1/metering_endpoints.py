@@ -2,7 +2,6 @@ from datetime import date
 from uuid import UUID
 
 from django.db.models import Sum, Count
-from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI
 
@@ -37,7 +36,11 @@ def record_usage(request, payload: RecordUsageRequest):
             customer=customer,
             request_id=payload.request_id,
             idempotency_key=payload.idempotency_key,
-            cost_micros=payload.cost_micros,
+            provider_cost_micros=payload.provider_cost_micros,
+            billed_cost_micros=payload.billed_cost_micros,
+            units=payload.units,
+            currency=payload.currency,
+            product_id=payload.product_id,
             metadata=payload.metadata,
             event_type=payload.event_type,
             provider=payload.provider,
@@ -101,11 +104,11 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
             {
                 "id": e.id,
                 "request_id": e.request_id,
-                "cost_micros": e.cost_micros,
                 "event_type": e.event_type,
                 "provider": e.provider,
                 "provider_cost_micros": e.provider_cost_micros,
                 "billed_cost_micros": e.billed_cost_micros,
+                "units": e.units,
                 "metadata": e.metadata,
                 "effective_at": e.effective_at.isoformat(),
             }
@@ -199,8 +202,7 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
 
 @metering_api.get("/analytics/usage", response=UsageAnalyticsResponse)
 def usage_analytics(request, start_date: date = None, end_date: date = None):
-    """Usage analytics. Uses billed_cost_micros (falls back to cost_micros via Coalesce)
-    to correctly aggregate both pricing modes."""
+    """Usage analytics. Aggregates billed_cost_micros and provider_cost_micros."""
     _product_check(request)
     tenant = request.auth.tenant
     qs = UsageEvent.objects.filter(tenant=tenant)
@@ -210,26 +212,23 @@ def usage_analytics(request, start_date: date = None, end_date: date = None):
     if end_date:
         qs = qs.filter(effective_at__date__lte=end_date)
 
-    # Coalesce: use billed_cost_micros if set (metric pricing), else cost_micros (legacy)
-    effective_cost = Coalesce("billed_cost_micros", "cost_micros")
-
     totals = qs.aggregate(
         total_events=Count("id"),
-        total_billed_cost_micros=Sum(effective_cost),
+        total_billed_cost_micros=Sum("billed_cost_micros"),
         total_provider_cost_micros=Sum("provider_cost_micros"),
     )
 
     by_provider = list(
         qs.exclude(provider="").values("provider").annotate(
             event_count=Count("id"),
-            total_cost_micros=Sum(effective_cost),
+            total_cost_micros=Sum("billed_cost_micros"),
         ).order_by("-total_cost_micros")
     )
 
     by_event_type = list(
         qs.exclude(event_type="").values("event_type").annotate(
             event_count=Count("id"),
-            total_cost_micros=Sum(effective_cost),
+            total_cost_micros=Sum("billed_cost_micros"),
         ).order_by("-total_cost_micros")
     )
 

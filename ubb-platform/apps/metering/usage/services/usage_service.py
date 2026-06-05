@@ -33,118 +33,54 @@ def validate_tags(tags):
             raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
+def _result(event, run_total):
+    return {
+        "event_id": str(event.id),
+        "provider_cost_micros": event.provider_cost_micros,
+        "billed_cost_micros": event.billed_cost_micros,
+        "units": event.units,
+        "new_balance_micros": None, "suspended": False,
+        "run_id": str(event.run_id) if event.run_id else None,
+        "run_total_cost_micros": run_total, "hard_stop": False,
+    }
+
+
 class UsageService:
     @staticmethod
     @transaction.atomic
-    def record_usage(
-        tenant,
-        customer,
-        request_id,
-        idempotency_key,
-        cost_micros=None,
-        metadata=None,
-        event_type=None,
-        provider=None,
-        tags=None,
-        run_id=None,
-    ):
-        # 0. Validate tags before any DB work
+    def record_usage(tenant, customer, request_id, idempotency_key, *,
+                     provider_cost_micros, billed_cost_micros=None, units=None,
+                     provider="", event_type="", currency=None, tags=None,
+                     product_id="", metadata=None, run_id=None):
         validate_tags(tags)
-
-        # 1. Idempotency check — fast path, no wallet lookup needed
         existing = UsageEvent.objects.filter(
-            tenant=tenant, customer=customer, idempotency_key=idempotency_key
-        ).first()
+            tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
-            return {
-                "event_id": str(existing.id),
-                "new_balance_micros": None,
-                "suspended": False,
-                "provider_cost_micros": existing.provider_cost_micros,
-                "billed_cost_micros": existing.billed_cost_micros,
-                "run_id": str(existing.run_id) if existing.run_id else None,
-                "run_total_cost_micros": None,
-                "hard_stop": False,
-            }
-
-        provider_cost_micros = None
-        billed_cost_micros = None
-        pricing_provenance = {}
-
-        # 2.5 Run hard-stop check (synchronous, under select_for_update)
+            return _result(existing, run_total=None)
+        from apps.metering.pricing.services.markup_service import MarkupService
+        if billed_cost_micros is None:
+            billed_cost_micros = MarkupService.apply(provider_cost_micros, tenant=tenant, customer=customer)
         run = None
         if run_id is not None:
             from apps.platform.runs.services import RunService
-
-            effective_cost_for_run = (
-                billed_cost_micros if billed_cost_micros is not None else cost_micros
-            )
-            # Locks the Run row, increments cost, checks both hard stop limits.
-            # Raises HardStopExceeded if either limit is breached — the outer
-            # @transaction.atomic rolls back, no event is created, and the
-            # caller (endpoint) handles killing the run in a separate transaction.
-            run = RunService.accumulate_cost(run_id, effective_cost_for_run or 0)
-
-        # 3. Create event (handle race via IntegrityError)
+            run = RunService.accumulate_cost(run_id, billed_cost_micros)
         try:
-            with transaction.atomic():  # savepoint
+            with transaction.atomic():
                 event = UsageEvent.objects.create(
-                    tenant=tenant,
-                    customer=customer,
-                    request_id=request_id,
-                    idempotency_key=idempotency_key,
-                    cost_micros=cost_micros,
-                    balance_after_micros=None,
-                    metadata=metadata or {},
-                    event_type=event_type or "",
-                    provider=provider or "",
+                    tenant=tenant, customer=customer, request_id=request_id,
+                    idempotency_key=idempotency_key, metadata=metadata or {},
+                    event_type=event_type or "", provider=provider or "",
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
-                    pricing_provenance=pricing_provenance,
-                    tags=tags,
-                    run_id=run_id,
-                )
+                    units=units, currency=currency or tenant.default_currency,
+                    product_id=product_id or "", tags=tags, run_id=run_id)
         except IntegrityError:
             existing = UsageEvent.objects.get(
-                tenant=tenant, customer=customer, idempotency_key=idempotency_key
-            )
-            return {
-                "event_id": str(existing.id),
-                "new_balance_micros": None,
-                "suspended": False,
-                "provider_cost_micros": existing.provider_cost_micros,
-                "billed_cost_micros": existing.billed_cost_micros,
-                "run_id": str(existing.run_id) if existing.run_id else None,
-                "run_total_cost_micros": None,
-                "hard_stop": False,
-            }
-
-        # 4. Compute effective cost for outbox event
-        # billed_cost_micros is set for metric-priced events; cost_micros is the fallback
-        # for legacy caller-provided cost mode.
-        effective_cost = billed_cost_micros if billed_cost_micros is not None else cost_micros
-
-        # 5. Write outbox event for cross-product handlers
-        # Billing's outbox handler will handle wallet deduction, suspension, and auto-topup.
+                tenant=tenant, customer=customer, idempotency_key=idempotency_key)
+            return _result(existing, run_total=None)
         write_event(UsageRecorded(
-            tenant_id=str(tenant.id),
-            customer_id=str(customer.id),
-            event_id=str(event.id),
-            cost_micros=effective_cost,
-            provider_cost_micros=provider_cost_micros,
-            billed_cost_micros=billed_cost_micros,
-            event_type=event_type or "",
-            provider=provider or "",
-            run_id=str(run_id) if run_id else None,
-        ))
-
-        return {
-            "event_id": str(event.id),
-            "new_balance_micros": None,
-            "suspended": False,
-            "provider_cost_micros": provider_cost_micros,
-            "billed_cost_micros": billed_cost_micros,
-            "run_id": str(run_id) if run_id else None,
-            "run_total_cost_micros": run.total_cost_micros if run else None,
-            "hard_stop": False,
-        }
+            tenant_id=str(tenant.id), customer_id=str(customer.id), event_id=str(event.id),
+            cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
+            billed_cost_micros=billed_cost_micros, event_type=event_type or "",
+            provider=provider or "", run_id=str(run_id) if run_id else None))
+        return _result(event, run_total=run.total_cost_micros if run else None)

@@ -32,7 +32,7 @@ def reconcile_referral(referral, period_start, period_end):
     has_actual_cost = False
 
     for event in events:
-        cost = event.get("billed_cost_micros") or event.get("cost_micros") or 0
+        cost = event.get("billed_cost_micros") or 0
         raw_cost = event.get("provider_cost_micros")
 
         total_spend += cost

@@ -34,13 +34,13 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_1",
             idempotency_key="idem_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result["new_balance_micros"])
         self.assertFalse(result["suspended"])
         # Verify event was created
         event = UsageEvent.objects.get(id=result["event_id"])
-        self.assertEqual(event.cost_micros, 1_000_000)
+        self.assertEqual(event.billed_cost_micros, 1_000_000)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_does_not_deduct_wallet(self, mock_process):
@@ -52,7 +52,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_1",
             idempotency_key="idem_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 100_000_000)
@@ -64,14 +64,14 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_2",
             idempotency_key="idem_2",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         result2 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_2",
             idempotency_key="idem_2",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertEqual(result1["event_id"], result2["event_id"])
         # Only one event created
@@ -92,7 +92,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_3",
             idempotency_key="idem_3",
-            cost_micros=10_000_000,
+            provider_cost_micros=10_000_000,
         )
         self.assertFalse(result["suspended"])
         self.customer.refresh_from_db()
@@ -106,7 +106,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_snap_1",
             idempotency_key="idem_snap_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result1["new_balance_micros"])
 
@@ -115,7 +115,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_snap_1",
             idempotency_key="idem_snap_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertEqual(result2["event_id"], result1["event_id"])
         self.assertIsNone(result2["new_balance_micros"])
@@ -138,7 +138,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_4",
             idempotency_key="idem_4",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         # No attempt created by metering -- billing handles this now
         attempt = TopUpAttempt.objects.filter(
@@ -165,7 +165,7 @@ class UsageServiceEventEmissionTest(TestCase):
             customer=self.customer,
             request_id="req_emit_1",
             idempotency_key="idem_emit_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         outbox = OutboxEvent.objects.get(event_type="usage.recorded")
         self.assertEqual(outbox.payload["tenant_id"], str(self.tenant.id))
@@ -198,7 +198,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_run_1",
             idempotency_key="idem_run_1",
-            cost_micros=3_000_000,
+            provider_cost_micros=3_000_000,
             run_id=run.id,
         )
         self.assertEqual(result["run_total_cost_micros"], 3_000_000)
@@ -220,7 +220,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_run_link",
             idempotency_key="idem_run_link",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         event = UsageEvent.objects.get(id=result["event_id"])
@@ -233,7 +233,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_no_run",
             idempotency_key="idem_no_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result["run_total_cost_micros"])
         self.assertFalse(result["hard_stop"])
@@ -254,7 +254,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_hs_1",
             idempotency_key="idem_hs_1",
-            cost_micros=9_000_000,
+            provider_cost_micros=9_000_000,
             run_id=run.id,
         )
 
@@ -265,7 +265,7 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_hs_2",
                 idempotency_key="idem_hs_2",
-                cost_micros=2_000_000,
+                provider_cost_micros=2_000_000,
                 run_id=run.id,
             )
         self.assertEqual(ctx.exception.reason, "cost_limit_exceeded")
@@ -293,7 +293,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_floor_1",
             idempotency_key="idem_floor_1",
-            cost_micros=7_000_000,
+            provider_cost_micros=7_000_000,
             run_id=run.id,
         )
 
@@ -303,7 +303,7 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_floor_2",
                 idempotency_key="idem_floor_2",
-                cost_micros=2_000_000,
+                provider_cost_micros=2_000_000,
                 run_id=run.id,
             )
         self.assertEqual(ctx.exception.reason, "balance_floor_exceeded")
@@ -320,7 +320,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_outbox_run",
             idempotency_key="idem_outbox_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         outbox = OutboxEvent.objects.filter(event_type="usage.recorded").first()
@@ -335,7 +335,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_outbox_norun",
             idempotency_key="idem_outbox_norun",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         outbox = OutboxEvent.objects.filter(event_type="usage.recorded").first()
         self.assertIsNone(outbox.payload["run_id"])
@@ -351,7 +351,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_idem_run",
             idempotency_key="idem_idem_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         self.assertEqual(result1["run_id"], str(run.id))
@@ -362,7 +362,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_idem_run",
             idempotency_key="idem_idem_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         self.assertEqual(result2["event_id"], result1["event_id"])
@@ -382,6 +382,6 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_killed",
                 idempotency_key="idem_killed",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 run_id=run.id,
             )

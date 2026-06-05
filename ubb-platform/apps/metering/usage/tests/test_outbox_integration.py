@@ -29,7 +29,7 @@ class TestUsageServiceOutbox:
                 customer=customer,
                 request_id="req1",
                 idempotency_key="idem1",
-                cost_micros=5_000_000,
+                provider_cost_micros=5_000_000,
             )
 
         assert OutboxEvent.objects.filter(event_type="usage.recorded").count() == 1

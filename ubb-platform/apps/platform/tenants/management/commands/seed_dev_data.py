@@ -103,7 +103,7 @@ class Command(BaseCommand):
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
             f'-d \'{{"customer_id": "{customer.id}", "request_id": "req-1", '
-            f'"idempotency_key": "idem-1", "cost_micros": 500000}}\' '
+            f'"idempotency_key": "idem-1", "provider_cost_micros": 500000}}\' '
             f'http://localhost:8000/api/v1/usage\n')
         self.stdout.write(f'# Me balance (widget)')
         self.stdout.write(
