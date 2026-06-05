@@ -27,3 +27,7 @@ class TestTenantBillingMode:
     def test_meter_only_with_billing_product_allowed(self):
         t = Tenant(name="T", products=["metering", "billing"], billing_mode="meter_only")
         t.full_clean(exclude=["branding_config", "metadata"])  # no raise
+
+    def test_default_currency_defaults_to_usd(self):
+        t = Tenant.objects.create(name="T", products=["metering"])
+        assert t.default_currency == "usd"
