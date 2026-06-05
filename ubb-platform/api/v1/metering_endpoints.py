@@ -201,8 +201,9 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
 
 
 @metering_api.get("/analytics/usage", response=UsageAnalyticsResponse)
-def usage_analytics(request, start_date: date = None, end_date: date = None):
-    """Usage analytics. Aggregates billed_cost_micros and provider_cost_micros."""
+def usage_analytics(request, start_date: date = None, end_date: date = None,
+                    customer_id: str = None, tag_key: str = None):
+    """Usage analytics with markup margin and customer/product/tag breakdowns."""
     _product_check(request)
     tenant = request.auth.tenant
     qs = UsageEvent.objects.filter(tenant=tenant)
@@ -211,31 +212,59 @@ def usage_analytics(request, start_date: date = None, end_date: date = None):
         qs = qs.filter(effective_at__date__gte=start_date)
     if end_date:
         qs = qs.filter(effective_at__date__lte=end_date)
+    if customer_id:
+        qs = qs.filter(customer_id=customer_id)
 
     totals = qs.aggregate(
         total_events=Count("id"),
         total_billed_cost_micros=Sum("billed_cost_micros"),
         total_provider_cost_micros=Sum("provider_cost_micros"),
     )
+    total_billed = totals["total_billed_cost_micros"] or 0
+    total_provider = totals["total_provider_cost_micros"] or 0
 
     by_provider = list(
         qs.exclude(provider="").values("provider").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
+            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+        ).order_by("-total_cost_micros")
+    )
+    by_event_type = list(
+        qs.exclude(event_type="").values("event_type").annotate(
+            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+        ).order_by("-total_cost_micros")
+    )
+    by_customer = list(
+        qs.values("customer__external_id").annotate(
+            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+        ).order_by("-total_cost_micros")
+    )
+    by_product = list(
+        qs.exclude(product_id="").values("product_id").annotate(
+            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
         ).order_by("-total_cost_micros")
     )
 
-    by_event_type = list(
-        qs.exclude(event_type="").values("event_type").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
+    by_tag = []
+    if tag_key:
+        from collections import defaultdict
+        agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0})
+        for tags, billed in qs.filter(tags__has_key=tag_key).values_list("tags", "billed_cost_micros"):
+            val = (tags or {}).get(tag_key)
+            agg[val]["event_count"] += 1
+            agg[val]["total_cost_micros"] += billed or 0
+        by_tag = [
+            {"tag_value": k, "event_count": v["event_count"], "total_cost_micros": v["total_cost_micros"]}
+            for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
+        ]
 
     return {
         "total_events": totals["total_events"] or 0,
-        "total_billed_cost_micros": totals["total_billed_cost_micros"] or 0,
-        "total_provider_cost_micros": totals["total_provider_cost_micros"] or 0,
+        "total_billed_cost_micros": total_billed,
+        "total_provider_cost_micros": total_provider,
+        "usage_markup_margin_micros": total_billed - total_provider,
         "by_provider": by_provider,
         "by_event_type": by_event_type,
+        "by_customer": by_customer,
+        "by_product": by_product,
+        "by_tag": by_tag,
     }

@@ -158,8 +158,12 @@ class UsageAnalyticsResponse(Schema):
     total_events: int
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    usage_markup_margin_micros: int
     by_provider: list[dict]
     by_event_type: list[dict]
+    by_customer: list[dict]
+    by_product: list[dict]
+    by_tag: list[dict]
 
 
 class RevenueAnalyticsResponse(Schema):

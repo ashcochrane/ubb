@@ -305,6 +305,35 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.assertEqual(body["total_events"], 3)
         self.assertEqual(body["total_billed_cost_micros"], 3_000_000)
 
+    def test_usage_analytics_dimensions(self):
+        from apps.metering.usage.services.usage_service import UsageService
+        from apps.metering.pricing.models import TenantMarkup
+        # a tenant-default markup so billed > provider (margin is non-zero)
+        TenantMarkup.objects.create(tenant=self.tenant, customer=None, markup_percentage_micros=20_000_000)  # 20%
+        other = Customer.objects.create(tenant=self.tenant, external_id="c_other")
+        UsageService.record_usage(
+            tenant=self.tenant, customer=other,
+            request_id="req_dim_1", idempotency_key="idem_dim_1",
+            provider_cost_micros=2_000_000, tags={"model": "gpt-4"}, product_id="chat",
+        )
+        response = self.http_client.get(
+            "/api/v1/metering/analytics/usage?tag_key=model", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("usage_markup_margin_micros", body)
+        self.assertEqual(
+            body["usage_markup_margin_micros"],
+            body["total_billed_cost_micros"] - body["total_provider_cost_micros"],
+        )
+        self.assertTrue(body["by_customer"])      # non-empty
+        self.assertTrue(body["by_product"])       # non-empty (the product_id="chat" event)
+        self.assertTrue(body["by_tag"])           # non-empty (tag_key=model)
+        product_ids = {row["product_id"] for row in body["by_product"]}
+        self.assertIn("chat", product_ids)
+        tag_values = {row["tag_value"] for row in body["by_tag"]}
+        self.assertIn("gpt-4", tag_values)
+
     def test_metering_only_tenant_gets_403_on_billing_balance(self):
         """Metering-only tenant cannot access billing endpoints."""
         response = self.http_client.get(
