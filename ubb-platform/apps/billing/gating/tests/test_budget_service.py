@@ -66,3 +66,22 @@ class TestBudgetService:
         BudgetService.record_spend(c.tenant_id, c.id, 1)   # incr → 1000 == cap
         res = BudgetService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+
+    def test_threshold_alert_emitted_once_on_crossing(self):
+        from apps.platform.events.models import OutboxEvent
+        c = self._cust(cap_micros=1_000, enforce_mode="advisory")
+        self._usage(c, 850, 1)                 # durable event backs the spend
+        BudgetService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
+        assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
+        self._usage(c, 10, 2)
+        BudgetService.record_usage_spend(c, 10)   # 860 — no new level
+        assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
+
+    def test_threshold_alert_dedup_on_repeated_emit(self):
+        from apps.platform.events.models import OutboxEvent
+        c = self._cust(cap_micros=1_000)
+        cfg = BudgetService.resolve_config(c)
+        BudgetService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # crosses 50%
+        BudgetService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # replay (e.g. reconciliation) — no dup
+        assert OutboxEvent.objects.filter(
+            event_type="budget.threshold_reached", payload__level=50).count() == 1

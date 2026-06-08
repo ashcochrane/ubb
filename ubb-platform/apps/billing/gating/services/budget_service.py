@@ -83,3 +83,41 @@ class BudgetService:
             return {"allowed": False, "reason": "budget_exceeded",
                     "spend_micros": spend, "cap_micros": cfg.cap_micros}
         return {"allowed": True, "reason": None, "spend_micros": spend, "cap_micros": cfg.cap_micros}
+
+    @staticmethod
+    def emit_threshold_alerts(customer, cfg, old, new, label):
+        if cfg is None or cfg.cap_micros <= 0:
+            return
+        from django.db import transaction
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import BudgetThresholdReached
+        for level in cfg.alert_levels:
+            threshold = cfg.cap_micros * level // 100
+            if old < threshold <= new:
+                already = OutboxEvent.objects.filter(
+                    event_type="budget.threshold_reached", tenant_id=customer.tenant_id,
+                    payload__customer_id=str(customer.id), payload__period=label,
+                    payload__level=level).exists()
+                if already:
+                    continue
+                with transaction.atomic():
+                    write_event(BudgetThresholdReached(
+                        tenant_id=str(customer.tenant_id), customer_id=str(customer.id),
+                        period=label, level=level, spend_micros=new, cap_micros=cfg.cap_micros,
+                        enforce_mode=cfg.enforce_mode))
+
+    @staticmethod
+    def record_usage_spend(customer, amount_micros):
+        """Post-drawdown hook: increment the counter + emit threshold alerts. Fail-open."""
+        if amount_micros <= 0:
+            return
+        cfg = BudgetService.resolve_config(customer)
+        if cfg is None or cfg.cap_micros <= 0:
+            return
+        try:
+            old, new, label = BudgetService.record_spend(customer.tenant_id, customer.id, amount_micros)
+        except Exception:
+            logger.warning("budget.record_spend_failed", extra={"data": {"customer_id": str(customer.id)}})
+            return  # fail-open: reconciliation repairs the counter
+        BudgetService.emit_threshold_alerts(customer, cfg, old, new, label)
