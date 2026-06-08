@@ -1,5 +1,6 @@
 from datetime import date
 from typing import Optional
+from uuid import UUID
 
 from ninja import NinjaAPI, Schema
 
@@ -13,6 +14,7 @@ from api.v1.schemas import (
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
     RevenueAnalyticsResponse,
+    BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
 )
 from core.auth import ApiKeyAuth, ProductAccess
 from apps.platform.customers.models import Customer
@@ -463,3 +465,76 @@ def revenue_analytics(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     from apps.metering.queries import get_revenue_analytics
     return get_revenue_analytics(request.auth.tenant.id, start_date, end_date)
+
+
+# ---------- Budget config + status ----------
+
+
+def _budget_out(cfg):
+    return {"cap_micros": cfg.cap_micros, "enforce_mode": cfg.enforce_mode,
+            "hard_stop_pct": cfg.hard_stop_pct, "alert_levels": cfg.alert_levels,
+            "fail_closed": cfg.fail_closed}
+
+
+def _upsert_budget(tenant, customer, payload):
+    from apps.billing.gating.models import BudgetConfig, default_alert_levels
+    cfg, _ = BudgetConfig.objects.update_or_create(
+        tenant=tenant, customer=customer,
+        defaults={"cap_micros": payload.cap_micros, "enforce_mode": payload.enforce_mode,
+                  "hard_stop_pct": payload.hard_stop_pct,
+                  "alert_levels": payload.alert_levels or default_alert_levels(),
+                  "fail_closed": payload.fail_closed})
+    return cfg
+
+
+@billing_api.get("/budget", response=BudgetConfigOut)
+def get_tenant_budget(request):
+    _product_check(request)
+    from apps.billing.gating.models import BudgetConfig
+    cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
+    if not cfg:
+        return {"cap_micros": 0, "enforce_mode": "advisory", "hard_stop_pct": 100,
+                "alert_levels": [50, 80, 100, 110], "fail_closed": False}
+    return _budget_out(cfg)
+
+
+@billing_api.put("/budget", response=BudgetConfigOut)
+def put_tenant_budget(request, payload: BudgetConfigIn):
+    _product_check(request)
+    return _budget_out(_upsert_budget(request.auth.tenant, None, payload))
+
+
+@billing_api.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
+def get_customer_budget(request, customer_id: UUID):
+    _product_check(request)
+    from apps.billing.gating.models import BudgetConfig
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer=customer).first()
+    if not cfg:
+        return {"cap_micros": 0, "enforce_mode": "advisory", "hard_stop_pct": 100,
+                "alert_levels": [50, 80, 100, 110], "fail_closed": False}
+    return _budget_out(cfg)
+
+
+@billing_api.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
+def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
+    _product_check(request)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    return _budget_out(_upsert_budget(request.auth.tenant, customer, payload))
+
+
+@billing_api.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
+def get_customer_budget_status(request, customer_id: UUID):
+    _product_check(request)
+    from apps.billing.gating.services.budget_service import BudgetService, _period
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    label, _s, _e = _period()
+    cfg = BudgetService.resolve_config(customer)
+    cap = cfg.cap_micros if cfg else 0
+    try:
+        spend = BudgetService.current_spend(customer.tenant_id, customer.id)
+    except Exception:
+        spend = 0
+    pct = round(spend / cap * 100, 2) if cap > 0 else 0.0
+    return {"period": label, "spend_micros": spend, "cap_micros": cap, "pct": pct,
+            "enforce_mode": cfg.enforce_mode if cfg else "advisory"}

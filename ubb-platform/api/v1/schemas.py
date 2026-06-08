@@ -171,3 +171,27 @@ class RevenueAnalyticsResponse(Schema):
     total_billed_cost_micros: int
     total_markup_micros: int
     daily: list[dict]
+
+
+class BudgetConfigIn(Schema):
+    cap_micros: int = Field(ge=0)
+    enforce_mode: str = "advisory"
+    hard_stop_pct: int = Field(default=100, ge=1, le=1000)
+    alert_levels: Optional[list[int]] = None
+    fail_closed: bool = False
+
+
+class BudgetConfigOut(Schema):
+    cap_micros: int
+    enforce_mode: str
+    hard_stop_pct: int
+    alert_levels: list[int]
+    fail_closed: bool
+
+
+class BudgetStatusOut(Schema):
+    period: str
+    spend_micros: int
+    cap_micros: int
+    pct: float
+    enforce_mode: str
