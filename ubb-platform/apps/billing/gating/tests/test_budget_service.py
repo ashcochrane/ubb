@@ -48,6 +48,22 @@ class TestBudgetService:
         c = self._cust()
         assert BudgetService.check(c)["allowed"] is True
 
+    def test_check_fail_open_when_redis_down(self):
+        from unittest.mock import patch
+        c = self._cust(cap_micros=1_000, enforce_mode="enforcing")  # default fail-open
+        with patch("apps.billing.gating.services.budget_service.cache.get",
+                   side_effect=ConnectionError("redis down")):
+            res = BudgetService.check(c)
+        assert res["allowed"] is True  # money still guarded by the Postgres credit gate
+
+    def test_check_fail_closed_when_redis_down(self):
+        from unittest.mock import patch
+        c = self._cust(cap_micros=1_000, enforce_mode="enforcing", fail_closed=True)
+        with patch("apps.billing.gating.services.budget_service.cache.get",
+                   side_effect=ConnectionError("redis down")):
+            res = BudgetService.check(c)
+        assert res["allowed"] is False and res["reason"] == "budget_unavailable"
+
     def test_check_zero_cap_inert(self):
         c = self._cust(cap_micros=0, enforce_mode="enforcing")
         BudgetService.record_spend(c.tenant_id, c.id, 999_999_999)
