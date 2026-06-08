@@ -272,6 +272,17 @@ class UBBClient:
         """Get wallet transactions. Requires billing product."""
         return self._require_billing().get_transactions(customer_id, cursor=cursor, limit=limit)
 
+    def set_budget(self, customer_id, cap_micros, enforce_mode="advisory",
+                   hard_stop_pct=100, alert_levels=None, fail_closed=False):
+        return self._require_billing().set_budget(
+            customer_id, cap_micros, enforce_mode, hard_stop_pct, alert_levels, fail_closed)
+
+    def get_budget(self, customer_id):
+        return self._require_billing().get_budget(customer_id)
+
+    def get_budget_status(self, customer_id):
+        return self._require_billing().get_budget_status(customer_id)
+
     # ---- margin delegates ----
 
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):

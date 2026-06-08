@@ -119,6 +119,22 @@ class CustomerRevenue:
     effective_from: str | None = None
     effective_to: str | None = None
 
+@dataclass(frozen=True)
+class BudgetConfig:
+    cap_micros: int | None = None
+    enforce_mode: str | None = None
+    hard_stop_pct: int | None = None
+    alert_levels: list | None = None
+    fail_closed: bool | None = None
+
+@dataclass(frozen=True)
+class BudgetStatus:
+    period: str | None = None
+    spend_micros: int | None = None
+    cap_micros: int | None = None
+    pct: float | None = None
+    enforce_mode: str | None = None
+
 T = TypeVar("T")
 
 @dataclass(frozen=True)
