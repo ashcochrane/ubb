@@ -28,6 +28,7 @@ class StripeSubscription(BaseModel):
     amount_micros = models.BigIntegerField()
     currency = models.CharField(max_length=3, default="usd")
     interval = models.CharField(max_length=10)
+    quantity = models.IntegerField(default=1)
     current_period_start = models.DateTimeField()
     current_period_end = models.DateTimeField()
     last_synced_at = models.DateTimeField()
@@ -68,4 +69,4 @@ class SubscriptionInvoice(BaseModel):
 
 
 # Import economics models so Django discovers them for migrations
-from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics  # noqa: E402, F401
+from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig  # noqa: E402, F401
