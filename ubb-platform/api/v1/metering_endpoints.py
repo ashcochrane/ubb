@@ -28,6 +28,7 @@ def record_usage(request, payload: RecordUsageRequest):
     _product_check(request)
 
     from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
+    from apps.metering.pricing.services.pricing_service import PricingError
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     try:
@@ -46,6 +47,7 @@ def record_usage(request, payload: RecordUsageRequest):
             provider=payload.provider,
             tags=payload.tags,
             run_id=payload.run_id,
+            usage_metrics=payload.usage_metrics,
         )
     except HardStopExceeded as e:
         from django.db import transaction
@@ -64,6 +66,9 @@ def record_usage(request, payload: RecordUsageRequest):
             "run_id": e.run_id,
             "status": e.status,
         }, status=409)
+    except PricingError as e:
+        return metering_api.create_response(
+            request, {"error": "pricing_error", "detail": str(e)}, status=422)
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))

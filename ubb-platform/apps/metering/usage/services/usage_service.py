@@ -49,17 +49,20 @@ class UsageService:
     @staticmethod
     @transaction.atomic
     def record_usage(tenant, customer, request_id, idempotency_key, *,
-                     provider_cost_micros, billed_cost_micros=None, units=None,
+                     provider_cost_micros=None, billed_cost_micros=None, units=None,
                      provider="", event_type="", currency=None, tags=None,
-                     product_id="", metadata=None, run_id=None):
+                     product_id="", metadata=None, run_id=None, usage_metrics=None):
         validate_tags(tags)
         existing = UsageEvent.objects.filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
             return _result(existing, run_total=None)
-        from apps.metering.pricing.services.markup_service import MarkupService
-        if billed_cost_micros is None:
-            billed_cost_micros = MarkupService.apply(provider_cost_micros, tenant=tenant, customer=customer)
+        currency = currency or tenant.default_currency
+        from apps.metering.pricing.services.pricing_service import PricingService
+        provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
+            tenant=tenant, customer=customer, event_type=event_type or "", provider=provider or "",
+            usage_metrics=usage_metrics, tags=tags, currency=currency,
+            caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros)
         run = None
         if run_id is not None:
             from apps.platform.runs.services import RunService
@@ -72,7 +75,8 @@ class UsageService:
                     event_type=event_type or "", provider=provider or "",
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
-                    units=units, currency=currency or tenant.default_currency,
+                    units=units, currency=currency, usage_metrics=usage_metrics or {},
+                    pricing_provenance=provenance,
                     product_id=product_id or "", tags=tags, run_id=run_id)
         except IntegrityError:
             existing = UsageEvent.objects.get(

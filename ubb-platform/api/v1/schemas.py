@@ -26,8 +26,9 @@ class RecordUsageRequest(Schema):
     request_id: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=500)
     metadata: dict = Field(default_factory=dict)
-    provider_cost_micros: int = Field(ge=0, le=999_999_999_999)
+    provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
+    usage_metrics: Optional[dict[str, int]] = None
     units: Optional[int] = Field(default=None, ge=0)
     currency: Optional[str] = Field(default=None, max_length=3)
     tags: Optional[dict[str, str]] = None
