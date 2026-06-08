@@ -18,11 +18,21 @@ class TestBudgetService:
             BudgetConfig.objects.create(tenant=t, customer=c, **cfg)
         return c
 
+    def _usage(self, c, billed, n):
+        # Mirror production: the UsageEvent is durably committed BEFORE record_spend runs,
+        # so a counter rebuild-on-miss reconstructs to the total that already includes it.
+        from apps.metering.usage.models import UsageEvent
+        UsageEvent.objects.create(
+            tenant=c.tenant, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+            provider_cost_micros=billed, billed_cost_micros=billed)
+
     def test_record_and_current_spend(self):
         c = self._cust(cap_micros=1_000_000)
+        self._usage(c, 300_000, 1)  # event committed first (as in production)
         old, new, label = BudgetService.record_spend(c.tenant_id, c.id, 300_000)
-        assert (old, new) == (0, 300_000)
-        old, new, label = BudgetService.record_spend(c.tenant_id, c.id, 200_000)
+        assert (old, new) == (0, 300_000)  # rebuild-on-miss = durable total (300k), already includes the event
+        self._usage(c, 200_000, 2)
+        old, new, label = BudgetService.record_spend(c.tenant_id, c.id, 200_000)  # incr path
         assert (old, new) == (300_000, 500_000)
         assert BudgetService.current_spend(c.tenant_id, c.id) == 500_000
 
@@ -50,8 +60,9 @@ class TestBudgetService:
 
     def test_enforcing_denies_at_cap(self):
         c = self._cust(cap_micros=1_000, enforce_mode="enforcing", hard_stop_pct=100)
+        self._usage(c, 999, 1)  # durable event backs the first (miss → rebuild) increment
         BudgetService.record_spend(c.tenant_id, c.id, 999)
-        assert BudgetService.check(c)["allowed"] is True
-        BudgetService.record_spend(c.tenant_id, c.id, 1)
+        assert BudgetService.check(c)["allowed"] is True   # 999 < 1000
+        BudgetService.record_spend(c.tenant_id, c.id, 1)   # incr → 1000 == cap
         res = BudgetService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"

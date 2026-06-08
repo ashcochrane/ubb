@@ -54,10 +54,12 @@ class BudgetService:
             new = cache.incr(key, amount_micros)
             return new - amount_micros, new, label
         except ValueError:
-            prior = get_customer_cost_totals(tenant_id, customer_id, start, end)["billed_cost_micros"]
-            new = prior + amount_micros
+            # Missing key. In the production drawdown path this runs AFTER the
+            # UsageEvent is committed, so the durable total already INCLUDES this
+            # event — rebuild to that total (do NOT add amount again, or we double-count).
+            new = get_customer_cost_totals(tenant_id, customer_id, start, end)["billed_cost_micros"]
             cache.set(key, new, timeout=_TTL_SECONDS)
-            return prior, new, label
+            return max(0, new - amount_micros), new, label
 
     @staticmethod
     def check(customer):
