@@ -84,6 +84,9 @@ def handle_usage_recorded_billing(event_id, payload):
         # Accumulate billing period (outside the wallet lock)
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
 
+        from apps.billing.gating.services.budget_service import BudgetService
+        BudgetService.record_usage_spend(customer, billed_cost_micros)
+
 
 def handle_customer_deleted_billing(event_id, payload):
     """Outbox handler: clean up billing resources when customer is deleted.

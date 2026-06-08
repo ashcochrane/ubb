@@ -281,6 +281,28 @@ class TestBillingOutboxHandler:
         customer.refresh_from_db()
         assert customer.status == "active"
 
+    def test_drawdown_invokes_budget_record(self):
+        from unittest.mock import patch
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+
+        tenant = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                       stripe_connected_account_id="acct_test")
+        customer = Customer.objects.create(tenant=tenant, external_id="ext_b")
+        w = Wallet.objects.create(customer=customer)
+        w.balance_micros = 10_000_000
+        w.save(update_fields=["balance_micros"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        with patch("apps.billing.gating.services.budget_service.BudgetService.record_usage_spend") as mock_rec:
+            handle_usage_recorded_billing(str(event.id), event.payload)
+        mock_rec.assert_called_once()
+        assert str(mock_rec.call_args.args[0].id) == str(customer.id)  # the customer
+        assert mock_rec.call_args.args[1] == 2_000_000                 # billed amount
+
 
 class TestBillingHandlerEmitsBalanceLow:
     """After wallet deduction, if balance drops below auto-topup threshold,
