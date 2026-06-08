@@ -4,7 +4,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
-from apps.subscriptions.economics.services import EconomicsService
+from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.stripe.sync import sync_subscriptions
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task(queue="ubb_economics")
 def calculate_all_economics_task():
-    """Daily task: recalculate unit economics for all subscriptions tenants."""
+    """Daily task: snapshot margin for all metering tenants."""
     today = timezone.now().date()
     period_start = today.replace(day=1)
     if today.month == 12:
@@ -21,25 +21,25 @@ def calculate_all_economics_task():
         period_end = today.replace(month=today.month + 1, day=1)
 
     tenants = Tenant.objects.filter(
-        products__contains=["subscriptions"],
+        products__contains=["metering"],
         is_active=True,
     )
 
     for tenant in tenants:
         try:
-            results = EconomicsService.calculate_all_economics(
+            results = MarginService.snapshot_all(
                 tenant.id, period_start, period_end,
             )
             logger.info(
-                "Economics calculated",
+                "Margin snapshots calculated",
                 extra={"data": {
                     "tenant_id": str(tenant.id),
-                    "customers": len(results),
+                    "snapshots": len(results),
                 }},
             )
         except Exception:
             logger.exception(
-                "Economics calculation failed",
+                "Margin snapshot failed",
                 extra={"data": {"tenant_id": str(tenant.id)}},
             )
 

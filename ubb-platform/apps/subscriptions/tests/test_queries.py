@@ -34,8 +34,9 @@ class TestGetEconomicsSummary:
             date(2026, 1, 1), date(2026, 2, 1),
         )
         assert result == {
-            "total_revenue_micros": 0,
-            "total_cost_micros": 0,
+            "subscription_revenue_micros": 0,
+            "usage_billed_micros": 0,
+            "provider_cost_micros": 0,
             "total_margin_micros": 0,
             "customer_count": 0,
         }
@@ -51,16 +52,18 @@ class TestGetEconomicsSummary:
             tenant=tenant, customer=c1,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
             subscription_revenue_micros=100_000_000,
-            usage_cost_micros=30_000_000,
-            gross_margin_micros=70_000_000,
+            usage_billed_micros=30_000_000,
+            provider_cost_micros=20_000_000,
+            gross_margin_micros=110_000_000,
             margin_percentage=70,
         )
         CustomerEconomics.objects.create(
             tenant=tenant, customer=c2,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
             subscription_revenue_micros=200_000_000,
-            usage_cost_micros=80_000_000,
-            gross_margin_micros=120_000_000,
+            usage_billed_micros=80_000_000,
+            provider_cost_micros=60_000_000,
+            gross_margin_micros=220_000_000,
             margin_percentage=60,
         )
 
@@ -69,9 +72,10 @@ class TestGetEconomicsSummary:
             date(2026, 1, 1), date(2026, 2, 1),
         )
         assert result == {
-            "total_revenue_micros": 300_000_000,
-            "total_cost_micros": 110_000_000,
-            "total_margin_micros": 190_000_000,
+            "subscription_revenue_micros": 300_000_000,
+            "usage_billed_micros": 110_000_000,
+            "provider_cost_micros": 80_000_000,
+            "total_margin_micros": 330_000_000,
             "customer_count": 2,
         }
 

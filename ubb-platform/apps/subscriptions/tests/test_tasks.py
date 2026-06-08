@@ -1,23 +1,15 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from apps.platform.tenants.models import Tenant
 
 
 @pytest.mark.django_db
 class TestCalculateAllEconomicsTask:
-    def test_runs_for_subscriptions_tenants_only(self):
+    def test_runs_for_metering_tenants(self):
         from apps.subscriptions.tasks import calculate_all_economics_task
-
-        Tenant.objects.create(name="metering-only", products=["metering"])
-        sub_tenant = Tenant.objects.create(
-            name="sub-tenant", products=["metering", "subscriptions"],
-        )
-
-        with patch(
-            "apps.subscriptions.tasks.EconomicsService.calculate_all_economics"
-        ) as mock_calc:
+        t = Tenant.objects.create(name="metering-only", products=["metering"])
+        with patch("apps.subscriptions.tasks.MarginService.snapshot_all") as mock_calc:
             mock_calc.return_value = []
             calculate_all_economics_task()
-
             assert mock_calc.call_count == 1
-            assert mock_calc.call_args[0][0] == sub_tenant.id
+            assert mock_calc.call_args[0][0] == t.id

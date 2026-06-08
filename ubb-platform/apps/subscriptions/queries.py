@@ -35,13 +35,15 @@ def get_economics_summary(tenant_id, period_start: date, period_end: date):
         period_end__lte=period_end,
     )
     totals = qs.aggregate(
-        total_revenue=Sum("subscription_revenue_micros"),
-        total_cost=Sum("usage_cost_micros"),
+        total_subscription_revenue=Sum("subscription_revenue_micros"),
+        total_usage_billed=Sum("usage_billed_micros"),
+        total_provider_cost=Sum("provider_cost_micros"),
         total_margin=Sum("gross_margin_micros"),
     )
     return {
-        "total_revenue_micros": totals["total_revenue"] or 0,
-        "total_cost_micros": totals["total_cost"] or 0,
+        "subscription_revenue_micros": totals["total_subscription_revenue"] or 0,
+        "usage_billed_micros": totals["total_usage_billed"] or 0,
+        "provider_cost_micros": totals["total_provider_cost"] or 0,
         "total_margin_micros": totals["total_margin"] or 0,
         "customer_count": qs.count(),
     }

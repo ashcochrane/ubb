@@ -1,69 +1,64 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Sum
-
 from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics
-from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.economics.revenue import RevenueService
 
 
-class EconomicsService:
+def _compose(subscription_revenue, usage_billed, provider_cost):
+    total_revenue = subscription_revenue + usage_billed
+    margin = total_revenue - provider_cost
+    pct = (Decimal(margin) / Decimal(total_revenue) * 100).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP) if total_revenue > 0 else Decimal("0")
+    return total_revenue, margin, pct
+
+
+class MarginService:
     @staticmethod
-    def calculate_customer_economics(tenant_id, customer_id, period_start, period_end):
-        """Calculate unit economics for a single customer in a period.
+    def compute_live(tenant_id, customer_id, start_date, end_date) -> dict:
+        """Live margin for any window from UsageEvent + revenue. No persistence."""
+        from apps.metering.queries import get_customer_cost_totals
+        costs = get_customer_cost_totals(tenant_id, customer_id, start_date, end_date)
+        subscription_revenue = RevenueService.revenue_for_window(
+            tenant_id, customer_id, start_date, end_date)
+        _, margin, pct = _compose(subscription_revenue, costs["billed_cost_micros"], costs["provider_cost_micros"])
+        return {
+            "customer_id": str(customer_id),
+            "subscription_revenue_micros": subscription_revenue,
+            "usage_billed_micros": costs["billed_cost_micros"],
+            "provider_cost_micros": costs["provider_cost_micros"],
+            "gross_margin_micros": margin,
+            "margin_percentage": float(pct),
+            "event_count": costs["event_count"],
+        }
 
-        Revenue: from synced Stripe invoices (SubscriptionInvoice)
-        Cost: from event-bus accumulated usage data (CustomerCostAccumulator)
-        """
-        # Revenue from synced Stripe invoices
-        revenue = SubscriptionInvoice.objects.filter(
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            period_start__gte=period_start,
-            period_end__lte=period_end,
-        ).aggregate(total=Sum("amount_paid_micros"))["total"] or 0
-
-        # Usage cost from accumulator (populated by event bus handler)
-        cost = CustomerCostAccumulator.objects.filter(
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            period_start__gte=period_start,
-            period_end__lte=period_end,
-        ).aggregate(total=Sum("total_cost_micros"))["total"] or 0
-
-        margin = revenue - cost
-        if revenue > 0:
-            margin_pct = (Decimal(margin) / Decimal(revenue) * 100).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-        else:
-            margin_pct = Decimal("0")
-
-        economics, _ = CustomerEconomics.objects.update_or_create(
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            period_start=period_start,
+    @staticmethod
+    def snapshot_customer(tenant_id, customer_id, period_start, period_end) -> CustomerEconomics:
+        """Monthly snapshot from the accumulator + full-month revenue. Persists CustomerEconomics."""
+        acc = CustomerCostAccumulator.objects.filter(
+            tenant_id=tenant_id, customer_id=customer_id, period_start=period_start).first()
+        provider_cost = acc.total_provider_cost_micros if acc else 0
+        usage_billed = acc.total_billed_cost_micros if acc else 0
+        subscription_revenue = RevenueService.revenue_for_window(
+            tenant_id, customer_id, period_start, period_end)
+        _, margin, pct = _compose(subscription_revenue, usage_billed, provider_cost)
+        econ, _ = CustomerEconomics.objects.update_or_create(
+            tenant_id=tenant_id, customer_id=customer_id, period_start=period_start,
             defaults={
                 "period_end": period_end,
-                "subscription_revenue_micros": revenue,
-                "usage_cost_micros": cost,
+                "subscription_revenue_micros": subscription_revenue,
+                "usage_billed_micros": usage_billed,
+                "provider_cost_micros": provider_cost,
                 "gross_margin_micros": margin,
-                "margin_percentage": margin_pct,
-            },
-        )
-        return economics
+                "margin_percentage": pct,
+            })
+        return econ
 
     @staticmethod
-    def calculate_all_economics(tenant_id, period_start, period_end):
-        """Calculate unit economics for all customers with active subscriptions."""
-        customer_ids = StripeSubscription.objects.filter(
-            tenant_id=tenant_id,
-            status="active",
-        ).values_list("customer_id", flat=True).distinct()
-
-        results = []
-        for customer_id in customer_ids:
-            result = EconomicsService.calculate_customer_economics(
-                tenant_id, customer_id, period_start, period_end,
-            )
-            results.append(result)
-        return results
+    def snapshot_all(tenant_id, period_start, period_end):
+        """Snapshot every customer with cost or revenue activity this period."""
+        from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerRevenueProfile
+        ids = set(CustomerCostAccumulator.objects.filter(
+            tenant_id=tenant_id, period_start=period_start).values_list("customer_id", flat=True))
+        ids |= set(CustomerRevenueProfile.objects.filter(
+            tenant_id=tenant_id).values_list("customer_id", flat=True))
+        return [MarginService.snapshot_customer(tenant_id, cid, period_start, period_end) for cid in ids]

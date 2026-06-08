@@ -21,9 +21,10 @@ class TestSubscriptionsProductIsolation(TestCase):
             name="metering-only", products=["metering"],
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-iso-1")
 
         response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
+            f"/api/v1/subscriptions/customers/{customer.id}/subscription",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
@@ -33,9 +34,10 @@ class TestSubscriptionsProductIsolation(TestCase):
             name="billing-tenant", products=["metering", "billing"],
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-iso-2")
 
         response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
+            f"/api/v1/subscriptions/customers/{customer.id}/subscription",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
@@ -45,9 +47,10 @@ class TestSubscriptionsProductIsolation(TestCase):
             name="sub-tenant", products=["metering", "subscriptions"],
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-iso-3")
 
         response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
+            f"/api/v1/subscriptions/customers/{customer.id}/subscription",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertNotEqual(response.status_code, 403)
