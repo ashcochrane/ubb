@@ -42,7 +42,10 @@ class BudgetService:
         if val is not None:
             return int(val)
         total = get_customer_cost_totals(tenant_id, customer_id, start, end)["billed_cost_micros"]
-        cache.set(key, total, timeout=_TTL_SECONDS)
+        try:
+            cache.set(key, total, timeout=_TTL_SECONDS)
+        except Exception:
+            pass  # Redis write failure — still return the authoritative Postgres total
         return total
 
     @staticmethod
@@ -122,15 +125,21 @@ class BudgetService:
 
     @staticmethod
     def record_usage_spend(customer, amount_micros):
-        """Post-drawdown hook: increment the counter + emit threshold alerts. Fail-open."""
+        """Post-drawdown hook: increment the counter + emit threshold alerts. Fully fail-open.
+
+        Runs after the wallet is already charged, so it must NEVER raise into the
+        drawdown handler (that would dead-letter an already-charged event). Every
+        step — config lookup, counter increment, alert emission — is best-effort;
+        the hourly reconciliation repairs any missed counter/alert from the ledger.
+        """
         if amount_micros <= 0:
             return
-        cfg = BudgetService.resolve_config(customer)
-        if cfg is None or cfg.cap_micros <= 0:
-            return
         try:
+            cfg = BudgetService.resolve_config(customer)
+            if cfg is None or cfg.cap_micros <= 0:
+                return
             old, new, label = BudgetService.record_spend(customer.tenant_id, customer.id, amount_micros)
+            BudgetService.emit_threshold_alerts(customer, cfg, old, new, label)
         except Exception:
-            logger.warning("budget.record_spend_failed", extra={"data": {"customer_id": str(customer.id)}})
-            return  # fail-open: reconciliation repairs the counter
-        BudgetService.emit_threshold_alerts(customer, cfg, old, new, label)
+            logger.warning("budget.record_usage_spend_failed",
+                           extra={"data": {"customer_id": str(customer.id)}})

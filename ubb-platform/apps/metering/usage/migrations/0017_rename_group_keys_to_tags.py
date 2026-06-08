@@ -13,9 +13,13 @@ def swap_gin_index(apps, schema_editor):
 def unswap_gin_index(apps, schema_editor):
     if connection.vendor == "postgresql":
         schema_editor.execute("DROP INDEX IF EXISTS idx_usage_event_tags;")
+        # On reverse, the RunPython runs BEFORE the RenameField is undone, so the
+        # column is still named `tags` here. Build the index on `tags`; the
+        # subsequent RenameField(tags -> group_keys) reversal carries the index
+        # (Postgres tracks columns by OID) so it ends up on group_keys as in 0011.
         schema_editor.execute(
             "CREATE INDEX IF NOT EXISTS idx_usage_event_group_keys "
-            "ON ubb_usage_event USING GIN (group_keys jsonb_path_ops);"
+            "ON ubb_usage_event USING GIN (tags jsonb_path_ops);"
         )
 
 
