@@ -61,4 +61,71 @@ class MarginService:
             tenant_id=tenant_id, period_start=period_start).values_list("customer_id", flat=True))
         ids |= set(CustomerRevenueProfile.objects.filter(
             tenant_id=tenant_id).values_list("customer_id", flat=True))
-        return [MarginService.snapshot_customer(tenant_id, cid, period_start, period_end) for cid in ids]
+        results = []
+        for cid in ids:
+            econ = MarginService.snapshot_customer(tenant_id, cid, period_start, period_end)
+            MarginService.evaluate_and_emit(econ)
+            results.append(econ)
+        return results
+
+    @staticmethod
+    def _threshold(tenant_id, customer_id):
+        from apps.subscriptions.economics.models import MarginThresholdConfig
+        cfg = MarginThresholdConfig.objects.filter(tenant_id=tenant_id, customer_id=customer_id).first()
+        if cfg:
+            return cfg
+        return MarginThresholdConfig.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
+
+    @staticmethod
+    def evaluate_and_emit(econ):
+        """Set is_unprofitable + emit margin webhooks, at most once per period (transition-safe)."""
+        from decimal import Decimal
+        from django.db import transaction
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import MarginCustomerUnprofitable, MarginProviderCostSpike
+        from apps.subscriptions.economics.models import CustomerEconomics
+
+        cfg = MarginService._threshold(econ.tenant_id, econ.customer_id)
+        min_pct = Decimal(cfg.min_margin_pct) if cfg else Decimal("0")
+        spike_pct = Decimal(cfg.provider_cost_spike_pct) if cfg else Decimal("25")
+        consecutive = cfg.consecutive_periods if cfg else 1
+
+        # This period's prior flag (from the last snapshot of THIS period); emit only on transition.
+        prev_flag = econ.is_unprofitable
+        recent = list(CustomerEconomics.objects.filter(
+            tenant_id=econ.tenant_id, customer_id=econ.customer_id,
+            period_start__lte=econ.period_start).order_by("-period_start")[:consecutive])
+        below = len(recent) >= consecutive and all(e.margin_percentage < min_pct for e in recent)
+
+        if below != prev_flag:
+            econ.is_unprofitable = below
+            econ.save(update_fields=["is_unprofitable", "updated_at"])
+        if below and not prev_flag:
+            with transaction.atomic():
+                write_event(MarginCustomerUnprofitable(
+                    tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
+                    period_start=econ.period_start.isoformat(),
+                    gross_margin_micros=econ.gross_margin_micros,
+                    margin_pct=float(econ.margin_percentage), threshold_pct=float(min_pct)))
+
+        prev = (CustomerEconomics.objects.filter(
+            tenant_id=econ.tenant_id, customer_id=econ.customer_id,
+            period_start__lt=econ.period_start).order_by("-period_start").first())
+        if prev and prev.provider_cost_micros > 0:
+            rise = (Decimal(econ.provider_cost_micros - prev.provider_cost_micros)
+                    / Decimal(prev.provider_cost_micros) * 100)
+            if rise >= spike_pct:
+                already = OutboxEvent.objects.filter(
+                    event_type="margin.provider_cost_spike", tenant_id=econ.tenant_id,
+                    payload__customer_id=str(econ.customer_id),
+                    payload__period_start=econ.period_start.isoformat()).exists()
+                if not already:
+                    with transaction.atomic():
+                        write_event(MarginProviderCostSpike(
+                            tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
+                            period_start=econ.period_start.isoformat(),
+                            prev_provider_cost_micros=prev.provider_cost_micros,
+                            current_provider_cost_micros=econ.provider_cost_micros,
+                            prev_margin_pct=float(prev.margin_percentage),
+                            current_margin_pct=float(econ.margin_percentage)))
