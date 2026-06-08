@@ -74,6 +74,7 @@ def sync_subscriptions(tenant):
                     "current_period_start": _unix_to_datetime(stripe_sub.current_period_start),
                     "current_period_end": _unix_to_datetime(stripe_sub.current_period_end),
                     "last_synced_at": timezone.now(),
+                    "quantity": getattr(stripe_sub, "quantity", 1) or 1,
                 },
             )
             synced += 1

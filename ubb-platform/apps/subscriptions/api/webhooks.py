@@ -50,6 +50,7 @@ def handle_subscription_created(event):
             "current_period_start": _unix_to_datetime(stripe_sub.current_period_start),
             "current_period_end": _unix_to_datetime(stripe_sub.current_period_end),
             "last_synced_at": timezone.now(),
+            "quantity": getattr(stripe_sub, "quantity", 1) or 1,
         },
     )
 
@@ -65,9 +66,10 @@ def handle_subscription_updated(event):
         sub.current_period_start = _unix_to_datetime(stripe_sub.current_period_start)
         sub.current_period_end = _unix_to_datetime(stripe_sub.current_period_end)
         sub.last_synced_at = timezone.now()
+        sub.quantity = getattr(stripe_sub, "quantity", 1) or 1
         sub.save(update_fields=[
             "status", "current_period_start", "current_period_end",
-            "last_synced_at", "updated_at",
+            "last_synced_at", "updated_at", "quantity",
         ])
 
 

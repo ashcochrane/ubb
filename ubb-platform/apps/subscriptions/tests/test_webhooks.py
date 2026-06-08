@@ -31,6 +31,7 @@ class TestHandleSubscriptionCreated:
         event.data.object.plan.amount = 4900  # cents
         event.data.object.plan.currency = "usd"
         event.data.object.plan.interval = "month"
+        event.data.object.quantity = 5
 
         handle_subscription_created(event)
 
@@ -40,6 +41,7 @@ class TestHandleSubscriptionCreated:
         assert sub.stripe_product_name == "Pro Plan"
         assert sub.amount_micros == 49_000_000  # 4900 cents * 10_000
         assert sub.status == "active"
+        assert sub.quantity == 5
 
 
     def test_duplicate_delivery_is_idempotent(self):
@@ -66,6 +68,7 @@ class TestHandleSubscriptionCreated:
         event.data.object.plan.amount = 4900
         event.data.object.plan.currency = "usd"
         event.data.object.plan.interval = "month"
+        event.data.object.quantity = 1
 
         handle_subscription_created(event)
         handle_subscription_created(event)
@@ -98,6 +101,7 @@ class TestHandleSubscriptionUpdated:
         event.data.object.status = "past_due"
         event.data.object.current_period_start = 1738368000
         event.data.object.current_period_end = 1740960000
+        event.data.object.quantity = 1
 
         handle_subscription_updated(event)
 
