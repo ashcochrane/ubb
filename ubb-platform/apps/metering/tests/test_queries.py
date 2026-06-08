@@ -186,3 +186,48 @@ class GetRevenueAnalyticsTest(TestCase):
         result = get_revenue_analytics(self.tenant.id)
         self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
         self.assertEqual(result["total_markup_micros"], 1_000_000)
+
+
+class GetCostTotalsTest(TestCase):
+    def setUp(self):
+        from django.utils import timezone
+        self.tenant = Tenant.objects.create(name="T")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        self.start = timezone.now().date().replace(day=1)
+        self.end = (self.start.replace(month=self.start.month % 12 + 1, day=1)
+                    if self.start.month < 12 else self.start.replace(year=self.start.year + 1, month=1, day=1))
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r1", idempotency_key="i1",
+            provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai",
+            product_id="chat", tags={"model": "gpt-4"})
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r2", idempotency_key="i2",
+            provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai",
+            product_id="chat", tags={"model": "gpt-4"})
+
+    def test_customer_cost_totals(self):
+        from apps.metering.queries import get_customer_cost_totals
+        t = get_customer_cost_totals(self.tenant.id, self.customer.id, self.start, self.end)
+        assert t["provider_cost_micros"] == 1_000_000
+        assert t["billed_cost_micros"] == 1_300_000
+        assert t["event_count"] == 2
+
+    def test_per_customer_cost_totals(self):
+        from apps.metering.queries import get_per_customer_cost_totals
+        rows = get_per_customer_cost_totals(self.tenant.id, self.start, self.end)
+        assert len(rows) == 1
+        assert rows[0]["billed_cost_micros"] == 1_300_000
+
+    def test_dimensional_margin_by_provider(self):
+        from apps.metering.queries import get_dimensional_margin
+        rows = get_dimensional_margin(self.tenant.id, group_by="provider",
+                                      start_date=self.start, end_date=self.end)
+        assert rows[0]["dimension"] == "openai"
+        assert rows[0]["margin_micros"] == 300_000
+
+    def test_dimensional_margin_by_tag(self):
+        from apps.metering.queries import get_dimensional_margin
+        rows = get_dimensional_margin(self.tenant.id, tag_key="model",
+                                      start_date=self.start, end_date=self.end)
+        assert rows[0]["dimension"] == "gpt-4"
+        assert rows[0]["margin_micros"] == 300_000

@@ -143,3 +143,74 @@ def get_customer_usage_for_period(
     ).values("billed_cost_micros", "provider_cost_micros")
 
     return list(events)
+
+
+def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> dict:
+    """Provider + billed cost totals for one customer over [start, end)."""
+    from apps.metering.usage.models import UsageEvent
+    agg = UsageEvent.objects.filter(
+        tenant_id=tenant_id, customer_id=customer_id,
+        effective_at__date__gte=start_date, effective_at__date__lt=end_date,
+    ).aggregate(
+        provider=Sum("provider_cost_micros"), billed=Sum("billed_cost_micros"),
+        count=Count("id"),
+    )
+    return {
+        "provider_cost_micros": agg["provider"] or 0,
+        "billed_cost_micros": agg["billed"] or 0,
+        "event_count": agg["count"] or 0,
+    }
+
+
+def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
+    """Per-customer provider + billed totals over [start, end)."""
+    from apps.metering.usage.models import UsageEvent
+    rows = (UsageEvent.objects.filter(
+        tenant_id=tenant_id,
+        effective_at__date__gte=start_date, effective_at__date__lt=end_date,
+    ).values("customer_id").annotate(
+        provider_cost_micros=Sum("provider_cost_micros"),
+        billed_cost_micros=Sum("billed_cost_micros"),
+        event_count=Count("id"),
+    ).order_by("-billed_cost_micros"))
+    return [dict(r) for r in rows]
+
+
+def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
+                           start_date=None, end_date=None) -> list[dict]:
+    """Usage-only margin (billed - provider) grouped by a column or a tag key.
+
+    group_by in {"provider", "event_type", "product_id"}; OR tag_key for tags->>key.
+    Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
+    """
+    from apps.metering.usage.models import UsageEvent
+    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lt=end_date)
+
+    def _row(dim, provider, billed, count):
+        return {"dimension": dim, "provider_cost_micros": provider or 0,
+                "billed_cost_micros": billed or 0,
+                "margin_micros": (billed or 0) - (provider or 0), "event_count": count}
+
+    if tag_key:
+        from collections import defaultdict
+        agg = defaultdict(lambda: {"p": 0, "b": 0, "n": 0})
+        for tags, p, b in qs.filter(tags__has_key=tag_key).values_list(
+                "tags", "provider_cost_micros", "billed_cost_micros"):
+            k = (tags or {}).get(tag_key)
+            agg[k]["p"] += p or 0
+            agg[k]["b"] += b or 0
+            agg[k]["n"] += 1
+        rows = [_row(k, v["p"], v["b"], v["n"]) for k, v in agg.items()]
+        return sorted(rows, key=lambda r: -r["margin_micros"])
+
+    if group_by not in ("provider", "event_type", "product_id"):
+        raise ValueError("group_by must be provider, event_type, or product_id")
+    grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(
+        prov_sum=Sum("provider_cost_micros"), billed_sum=Sum("billed_cost_micros"),
+        cnt=Count("id")).order_by())
+    rows = [_row(g[group_by], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
+    return sorted(rows, key=lambda r: -r["margin_micros"])
