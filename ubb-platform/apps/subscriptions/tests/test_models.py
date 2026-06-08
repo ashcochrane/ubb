@@ -115,10 +115,12 @@ class TestCustomerCostAccumulator:
         acc = CustomerCostAccumulator.objects.create(
             tenant=tenant, customer=customer,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
-            total_cost_micros=5_000_000, event_count=10,
+            total_provider_cost_micros=4_000_000, total_billed_cost_micros=5_000_000,
+            event_count=10,
         )
         acc.refresh_from_db()
-        assert acc.total_cost_micros == 5_000_000
+        assert acc.total_provider_cost_micros == 4_000_000
+        assert acc.total_billed_cost_micros == 5_000_000
         assert acc.event_count == 10
 
     def test_accumulator_unique_constraint(self):
