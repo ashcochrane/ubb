@@ -33,6 +33,8 @@ class CustomerEconomics(BaseModel):
     usage_billed_micros = models.BigIntegerField(default=0)
     provider_cost_micros = models.BigIntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
+    total_revenue_micros = models.BigIntegerField(default=0)
+    revenue_mode = models.CharField(max_length=20, blank=True, default="")
     margin_percentage = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     is_unprofitable = models.BooleanField(default=False)
 

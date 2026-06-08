@@ -25,6 +25,7 @@ class Customer(SoftDeleteMixin, BaseModel):
     )
     min_balance_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
+    revenue_mode = models.CharField(max_length=20, blank=True, default="")  # "" | "billed" | "metered_only"
 
     class Meta:
         db_table = "ubb_customer"
