@@ -49,3 +49,34 @@ class RevenueService:
     def revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
         return (RevenueService.manual_revenue_for_window(tenant_id, customer_id, start_date, end_date)
                 + RevenueService.stripe_revenue_for_window(tenant_id, customer_id, start_date, end_date))
+
+    @staticmethod
+    def resolve_revenue_mode(tenant, customer):
+        mode = getattr(customer, "revenue_mode", "") or ""
+        if mode:
+            return mode
+        return "metered_only" if tenant.billing_mode == "meter_only" else "billed"
+
+    @staticmethod
+    def subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date) -> int:
+        from apps.subscriptions.models import StripeSubscription
+        subs = StripeSubscription.objects.filter(
+            tenant_id=tenant_id, customer_id=customer_id,
+            status__in=["active", "trialing", "past_due"])
+        total = 0
+        for sub in subs:
+            per_interval = sub.amount_micros * sub.quantity
+            monthly = per_interval // 12 if sub.interval == "year" else per_interval
+            for m_start, m_end in _month_iter(start_date, end_date):
+                w_start = max(start_date, m_start)
+                w_end = min(end_date, m_end)
+                overlap_days = (w_end - w_start).days
+                if overlap_days <= 0:
+                    continue
+                total += monthly * overlap_days // _days_in_month(m_start.year, m_start.month)
+        return total
+
+    @staticmethod
+    def accrued_subscription_revenue(tenant_id, customer_id, start_date, end_date) -> int:
+        return (RevenueService.manual_revenue_for_window(tenant_id, customer_id, start_date, end_date)
+                + RevenueService.subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date))
