@@ -161,7 +161,7 @@ class TestMeteringBillingTenant(TestCase):
 
     def test_gets_403_on_subscriptions(self):
         response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
+            "/api/v1/subscriptions/customers/00000000-0000-0000-0000-000000000000/subscription",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)
