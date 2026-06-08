@@ -38,7 +38,8 @@ class MarginEndpointsTest(TestCase):
         b = r.json()
         assert b["provider_cost_micros"] == 1_000_000
         assert b["usage_billed_micros"] == 1_300_000
-        assert b["gross_margin_micros"] == b["subscription_revenue_micros"] + 1_300_000 - 1_000_000
+        # metered_only mode: usage excluded from revenue; margin = subscription_revenue - provider_cost
+        assert b["gross_margin_micros"] == b["subscription_revenue_micros"] - 1_000_000
 
     def test_by_dimension_provider(self):
         r = self.http.get("/api/v1/margin/by-dimension?provider=1", **self._auth())

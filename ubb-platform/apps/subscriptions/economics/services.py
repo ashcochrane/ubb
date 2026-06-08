@@ -4,12 +4,13 @@ from apps.subscriptions.economics.models import CustomerCostAccumulator, Custome
 from apps.subscriptions.economics.revenue import RevenueService
 
 
-def _compose(subscription_revenue, usage_billed, provider_cost):
-    total_revenue = subscription_revenue + usage_billed
+def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
+    usage_revenue = usage_billed if revenue_mode == "billed" else 0
+    total_revenue = subscription_revenue + usage_revenue
     margin = total_revenue - provider_cost
     pct = (Decimal(margin) / Decimal(total_revenue) * 100).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP) if total_revenue > 0 else Decimal("0")
-    return total_revenue, margin, pct
+    return total_revenue, usage_revenue, margin, pct
 
 
 class MarginService:
@@ -17,15 +18,24 @@ class MarginService:
     def compute_live(tenant_id, customer_id, start_date, end_date) -> dict:
         """Live margin for any window from UsageEvent + revenue. No persistence."""
         from apps.metering.queries import get_customer_cost_totals
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
         costs = get_customer_cost_totals(tenant_id, customer_id, start_date, end_date)
-        subscription_revenue = RevenueService.revenue_for_window(
+        tenant = Tenant.objects.get(id=tenant_id)
+        customer = Customer.objects.get(id=customer_id)
+        mode = RevenueService.resolve_revenue_mode(tenant, customer)
+        subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, start_date, end_date)
-        _, margin, pct = _compose(subscription_revenue, costs["billed_cost_micros"], costs["provider_cost_micros"])
+        total_revenue, usage_revenue, margin, pct = _compose(
+            subscription_revenue, costs["billed_cost_micros"], costs["provider_cost_micros"], mode)
         return {
             "customer_id": str(customer_id),
+            "revenue_mode": mode,
             "subscription_revenue_micros": subscription_revenue,
             "usage_billed_micros": costs["billed_cost_micros"],
+            "usage_revenue_micros": usage_revenue,
             "provider_cost_micros": costs["provider_cost_micros"],
+            "total_revenue_micros": total_revenue,
             "gross_margin_micros": margin,
             "margin_percentage": float(pct),
             "event_count": costs["event_count"],
@@ -34,13 +44,19 @@ class MarginService:
     @staticmethod
     def snapshot_customer(tenant_id, customer_id, period_start, period_end) -> CustomerEconomics:
         """Monthly snapshot from the accumulator + full-month revenue. Persists CustomerEconomics."""
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
         acc = CustomerCostAccumulator.objects.filter(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start).first()
         provider_cost = acc.total_provider_cost_micros if acc else 0
         usage_billed = acc.total_billed_cost_micros if acc else 0
-        subscription_revenue = RevenueService.revenue_for_window(
+        tenant = Tenant.objects.get(id=tenant_id)
+        customer = Customer.objects.get(id=customer_id)
+        mode = RevenueService.resolve_revenue_mode(tenant, customer)
+        subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, period_start, period_end)
-        _, margin, pct = _compose(subscription_revenue, usage_billed, provider_cost)
+        total_revenue, usage_revenue, margin, pct = _compose(
+            subscription_revenue, usage_billed, provider_cost, mode)
         econ, _ = CustomerEconomics.objects.update_or_create(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start,
             defaults={
@@ -48,6 +64,8 @@ class MarginService:
                 "subscription_revenue_micros": subscription_revenue,
                 "usage_billed_micros": usage_billed,
                 "provider_cost_micros": provider_cost,
+                "total_revenue_micros": total_revenue,
+                "revenue_mode": mode,
                 "gross_margin_micros": margin,
                 "margin_percentage": pct,
             })
