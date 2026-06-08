@@ -48,6 +48,7 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
         mock_event.data.object.plan.amount = 4900
         mock_event.data.object.plan.currency = "usd"
         mock_event.data.object.plan.interval = "month"
+        mock_event.data.object.quantity = 1
 
         mock_stripe.Webhook.construct_event.return_value = mock_event
 
