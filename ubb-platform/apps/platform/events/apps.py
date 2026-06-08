@@ -23,6 +23,8 @@ class EventsConfig(AppConfig):
             "billing.topup_requested",
             "billing.customer_suspended",
             "referral.payout_due",
+            "margin.customer_unprofitable",
+            "margin.provider_cost_spike",
         ]
         for event_type in event_types:
             handler_registry.register(

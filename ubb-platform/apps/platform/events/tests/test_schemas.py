@@ -142,3 +142,19 @@ class TestCustomerSuspendedSchema:
             balance_micros=-5100000,
         )
         assert event.reason == "min_balance_exceeded"
+
+
+class TestMarginEventContracts:
+    def test_margin_event_contracts(self):
+        from dataclasses import asdict
+        from apps.platform.events.schemas import MarginCustomerUnprofitable, MarginProviderCostSpike
+        e1 = MarginCustomerUnprofitable(
+            tenant_id="t", customer_id="c", period_start="2026-06-01",
+            gross_margin_micros=-500, margin_pct=-5.0, threshold_pct=0.0)
+        assert e1.EVENT_TYPE == "margin.customer_unprofitable"
+        assert asdict(e1)["customer_id"] == "c"
+        e2 = MarginProviderCostSpike(
+            tenant_id="t", customer_id="c", period_start="2026-06-01",
+            prev_provider_cost_micros=100, current_provider_cost_micros=200,
+            prev_margin_pct=20.0, current_margin_pct=5.0)
+        assert e2.EVENT_TYPE == "margin.provider_cost_spike"

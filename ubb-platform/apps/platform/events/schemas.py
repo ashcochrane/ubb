@@ -146,3 +146,26 @@ class CustomerSuspended:
     customer_id: str
     reason: str
     balance_micros: int
+
+
+@dataclass(frozen=True)
+class MarginCustomerUnprofitable:
+    EVENT_TYPE = "margin.customer_unprofitable"
+    tenant_id: str
+    customer_id: str
+    period_start: str
+    gross_margin_micros: int = 0
+    margin_pct: float = 0.0
+    threshold_pct: float = 0.0
+
+
+@dataclass(frozen=True)
+class MarginProviderCostSpike:
+    EVENT_TYPE = "margin.provider_cost_spike"
+    tenant_id: str
+    customer_id: str
+    period_start: str
+    prev_provider_cost_micros: int = 0
+    current_provider_cost_micros: int = 0
+    prev_margin_pct: float = 0.0
+    current_margin_pct: float = 0.0
