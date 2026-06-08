@@ -7,7 +7,7 @@ from ubb.exceptions import (
 )
 from ubb.types import (
     BalanceResult, TopUpResult, WalletTransaction, PaginatedResponse,
-    BudgetConfig, BudgetStatus,
+    BudgetConfig, BudgetStatus, UsageInvoice,
 )
 
 
@@ -149,6 +149,19 @@ class BillingClient:
     def get_budget_status(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/budget/status")
         return BudgetStatus(**r.json())
+
+    def get_usage_invoices(self, customer_id):
+        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
+        return [UsageInvoice(**row) for row in r.json()]
+
+    def get_postpaid_config(self):
+        r = self._request("get", "/api/v1/billing/postpaid-config")
+        return r.json()["usage_line_item_group_by"]
+
+    def set_postpaid_config(self, usage_line_item_group_by=""):
+        r = self._request("put", "/api/v1/billing/postpaid-config",
+                          json={"usage_line_item_group_by": usage_line_item_group_by})
+        return r.json()["usage_line_item_group_by"]
 
     def close(self) -> None:
         self._http.close()

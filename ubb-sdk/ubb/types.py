@@ -135,6 +135,16 @@ class BudgetStatus:
     pct: float | None = None
     enforce_mode: str | None = None
 
+@dataclass(frozen=True)
+class UsageInvoice:
+    period_start: str | None = None
+    period_end: str | None = None
+    total_billed_micros: int | None = None
+    currency: str | None = None
+    status: str | None = None
+    stripe_invoice_id: str | None = None
+    skip_reason: str | None = None
+
 T = TypeVar("T")
 
 @dataclass(frozen=True)

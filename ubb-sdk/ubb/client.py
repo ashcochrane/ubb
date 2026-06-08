@@ -283,6 +283,15 @@ class UBBClient:
     def get_budget_status(self, customer_id):
         return self._require_billing().get_budget_status(customer_id)
 
+    def get_usage_invoices(self, customer_id):
+        return self._require_billing().get_usage_invoices(customer_id)
+
+    def get_postpaid_config(self):
+        return self._require_billing().get_postpaid_config()
+
+    def set_postpaid_config(self, usage_line_item_group_by=""):
+        return self._require_billing().set_postpaid_config(usage_line_item_group_by)
+
     # ---- margin delegates ----
 
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
