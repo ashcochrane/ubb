@@ -37,6 +37,7 @@ class Tenant(BaseModel):
         max_length=20, choices=BILLING_MODE_CHOICES, default="meter_only", db_index=True
     )
     default_currency = models.CharField(max_length=3, default="usd")
+    require_cost_card_coverage = models.BooleanField(default=False)
 
     class Meta:
         db_table = "ubb_tenant"
