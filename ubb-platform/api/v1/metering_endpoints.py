@@ -6,13 +6,17 @@ from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI
 
 from core.auth import ApiKeyAuth, ProductAccess
+from django.utils import timezone
+
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     PaginatedUsageResponse,
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
+    RateCardIn, RateCardOut,
 )
+from apps.metering.pricing.models import RateCard
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
 from apps.metering.usage.services.usage_service import UsageService
@@ -273,3 +277,103 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "by_product": by_product,
         "by_tag": by_tag,
     }
+
+
+# --- Rate Cards ---
+
+_billing_check = ProductAccess("billing")
+
+
+def _rate_card_to_out(c):
+    return {
+        "id": str(c.id),
+        "card_type": c.card_type,
+        "metric_name": c.metric_name,
+        "provider": c.provider,
+        "event_type": c.event_type,
+        "dimensions": c.dimensions,
+        "pricing_model": c.pricing_model,
+        "rate_per_unit_micros": c.rate_per_unit_micros,
+        "unit_quantity": c.unit_quantity,
+        "fixed_micros": c.fixed_micros,
+        "currency": c.currency,
+        "product_id": c.product_id,
+        "customer_id": str(c.customer_id) if c.customer_id else None,
+        "valid_from": c.valid_from.isoformat(),
+        "valid_to": c.valid_to.isoformat() if c.valid_to else None,
+    }
+
+
+def _gate_card_type(request, card_type):
+    _product_check(request)
+    if card_type == "price":
+        _billing_check(request)
+
+
+@metering_api.get("/pricing/rate-cards", response=list[RateCardOut])
+def list_rate_cards(request, card_type: str = None):
+    _product_check(request)
+    qs = RateCard.objects.filter(tenant=request.auth.tenant, valid_to__isnull=True)
+    if card_type:
+        qs = qs.filter(card_type=card_type)
+    return [_rate_card_to_out(c) for c in qs.order_by("card_type", "provider", "event_type", "metric_name")]
+
+
+@metering_api.post("/pricing/rate-cards", response=RateCardOut)
+def create_rate_card(request, payload: RateCardIn):
+    _gate_card_type(request, payload.card_type)
+    customer = None
+    if payload.customer_id:
+        customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
+    card = RateCard.objects.create(
+        tenant=request.auth.tenant,
+        customer=customer,
+        card_type=payload.card_type,
+        metric_name=payload.metric_name,
+        provider=payload.provider,
+        event_type=payload.event_type,
+        dimensions=payload.dimensions,
+        pricing_model=payload.pricing_model,
+        rate_per_unit_micros=payload.rate_per_unit_micros,
+        unit_quantity=payload.unit_quantity,
+        fixed_micros=payload.fixed_micros,
+        currency=payload.currency,
+        product_id=payload.product_id,
+    )
+    return _rate_card_to_out(card)
+
+
+@metering_api.put("/pricing/rate-cards/{card_id}", response=RateCardOut)
+def update_rate_card(request, card_id: UUID, payload: RateCardIn):
+    _gate_card_type(request, payload.card_type)
+    old = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
+    old.valid_to = timezone.now()
+    old.save(update_fields=["valid_to", "updated_at"])
+    customer = None
+    if payload.customer_id:
+        customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
+    card = RateCard.objects.create(
+        tenant=request.auth.tenant,
+        customer=customer,
+        card_type=payload.card_type,
+        metric_name=payload.metric_name,
+        provider=payload.provider,
+        event_type=payload.event_type,
+        dimensions=payload.dimensions,
+        pricing_model=payload.pricing_model,
+        rate_per_unit_micros=payload.rate_per_unit_micros,
+        unit_quantity=payload.unit_quantity,
+        fixed_micros=payload.fixed_micros,
+        currency=payload.currency,
+        product_id=payload.product_id,
+    )
+    return _rate_card_to_out(card)
+
+
+@metering_api.delete("/pricing/rate-cards/{card_id}")
+def delete_rate_card(request, card_id: UUID):
+    _product_check(request)
+    card = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
+    card.valid_to = timezone.now()
+    card.save(update_fields=["valid_to", "updated_at"])
+    return {"status": "deleted"}

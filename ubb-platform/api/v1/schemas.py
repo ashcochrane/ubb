@@ -216,3 +216,36 @@ class PostpaidConfigIn(Schema):
 
 class PostpaidConfigOut(Schema):
     usage_line_item_group_by: str
+
+
+class RateCardIn(Schema):
+    card_type: str
+    metric_name: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="", max_length=100)
+    event_type: str = Field(default="", max_length=100)
+    dimensions: dict = Field(default_factory=dict)
+    pricing_model: str = "per_unit"
+    rate_per_unit_micros: int = Field(default=0, ge=0)
+    unit_quantity: int = Field(default=1_000_000, gt=0)
+    fixed_micros: int = Field(default=0, ge=0)
+    currency: str = Field(default="usd", max_length=3)
+    product_id: str = Field(default="", max_length=100)
+    customer_id: Optional[UUID] = None
+
+
+class RateCardOut(Schema):
+    id: str
+    card_type: str
+    metric_name: str
+    provider: str
+    event_type: str
+    dimensions: dict
+    pricing_model: str
+    rate_per_unit_micros: int
+    unit_quantity: int
+    fixed_micros: int
+    currency: str
+    product_id: str
+    customer_id: Optional[str] = None
+    valid_from: str
+    valid_to: Optional[str] = None
