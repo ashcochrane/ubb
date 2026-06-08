@@ -28,3 +28,12 @@ class MarginThresholdOut(Schema):
     min_margin_pct: float
     consecutive_periods: int
     provider_cost_spike_pct: float
+
+
+class RevenueModeIn(Schema):
+    revenue_mode: str = ""
+
+
+class RevenueModeOut(Schema):
+    revenue_mode: str
+    resolved: str

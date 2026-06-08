@@ -11,7 +11,8 @@ from apps.subscriptions.economics.models import (
     CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
 from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.api.margin_schemas import (
-    RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut)
+    RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut,
+    RevenueModeIn, RevenueModeOut)
 
 margin_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_margin_v1")
 _product_check = ProductAccess("metering")
@@ -37,21 +38,26 @@ def _window(start_date, end_date):
 def margin_summary(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     s, e = _window(start_date, end_date)
+    tenant = request.auth.tenant
     from apps.metering.queries import get_per_customer_cost_totals
     from apps.subscriptions.economics.revenue import RevenueService
-    rows = get_per_customer_cost_totals(request.auth.tenant.id, s, e)
-    total_provider = total_billed = total_sub = 0
+    rows = get_per_customer_cost_totals(tenant.id, s, e)
+    cust = {c.id: c for c in Customer.objects.filter(
+        id__in=[r["customer_id"] for r in rows], tenant=tenant)}
+    total_provider = total_billed = total_sub = total_usage_rev = 0
     for r in rows:
         total_provider += r["provider_cost_micros"]
         total_billed += r["billed_cost_micros"]
-        total_sub += RevenueService.revenue_for_window(
-            request.auth.tenant.id, r["customer_id"], s, e)
-    total_revenue = total_sub + total_billed
+        total_sub += RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
+        if RevenueService.resolve_revenue_mode(tenant, cust[r["customer_id"]]) == "billed":
+            total_usage_rev += r["billed_cost_micros"]
+    total_revenue = total_sub + total_usage_rev
     margin = total_revenue - total_provider
     return {
         "period": {"start": s.isoformat(), "end": e.isoformat()},
         "subscription_revenue_micros": total_sub,
         "usage_billed_micros": total_billed,
+        "usage_revenue_micros": total_usage_rev,
         "provider_cost_micros": total_provider,
         "total_revenue_micros": total_revenue,
         "gross_margin_micros": margin,
@@ -140,6 +146,32 @@ def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
             "effective_to": p.effective_to.isoformat() if p.effective_to else None}
 
 
+_VALID_MODES = {"", "billed", "metered_only"}
+
+
+@margin_api.get("/customers/{customer_id}/revenue-mode", response=RevenueModeOut)
+def get_revenue_mode(request, customer_id: UUID):
+    _product_check(request)
+    from apps.subscriptions.economics.revenue import RevenueService
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    return {"revenue_mode": customer.revenue_mode,
+            "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
+
+
+@margin_api.put("/customers/{customer_id}/revenue-mode", response=RevenueModeOut)
+def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
+    _product_check(request)
+    from apps.subscriptions.economics.revenue import RevenueService
+    if payload.revenue_mode not in _VALID_MODES:
+        return margin_api.create_response(
+            request, {"error": "invalid_revenue_mode", "detail": payload.revenue_mode}, status=422)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    customer.revenue_mode = payload.revenue_mode
+    customer.save(update_fields=["revenue_mode", "updated_at"])
+    return {"revenue_mode": customer.revenue_mode,
+            "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
+
+
 @margin_api.get("/{customer_id}/trend")
 def margin_trend(request, customer_id: UUID, periods: int = 6):
     _product_check(request)
@@ -171,16 +203,25 @@ def customer_margin(request, customer_id: UUID, start_date: date = None, end_dat
 def list_margin(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     s, e = _window(start_date, end_date)
+    tenant = request.auth.tenant
     from apps.metering.queries import get_per_customer_cost_totals
     from apps.subscriptions.economics.revenue import RevenueService
+    rows = get_per_customer_cost_totals(tenant.id, s, e)
+    cust = {c.id: c for c in Customer.objects.filter(
+        id__in=[r["customer_id"] for r in rows], tenant=tenant)}
     out = []
-    for r in get_per_customer_cost_totals(request.auth.tenant.id, s, e):
-        sub = RevenueService.revenue_for_window(request.auth.tenant.id, r["customer_id"], s, e)
-        revenue = sub + r["billed_cost_micros"]
+    for r in rows:
+        customer_obj = cust[r["customer_id"]]
+        sub = RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
+        usage_rev = (r["billed_cost_micros"]
+                     if RevenueService.resolve_revenue_mode(tenant, customer_obj) == "billed"
+                     else 0)
+        revenue = sub + usage_rev
         margin = revenue - r["provider_cost_micros"]
         out.append({"customer_id": str(r["customer_id"]),
                     "subscription_revenue_micros": sub,
                     "usage_billed_micros": r["billed_cost_micros"],
+                    "usage_revenue_micros": usage_rev,
                     "provider_cost_micros": r["provider_cost_micros"],
                     "gross_margin_micros": margin,
                     "margin_percentage": round(margin / revenue * 100, 2) if revenue else 0.0})
