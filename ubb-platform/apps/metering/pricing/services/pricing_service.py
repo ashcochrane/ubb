@@ -1,0 +1,93 @@
+from django.db.models import Q
+from django.utils import timezone
+
+from apps.metering.pricing.models import RateCard
+
+PRICING_ENGINE_VERSION = "2.0.0"
+
+
+class PricingError(Exception):
+    pass
+
+
+class PricingService:
+    @staticmethod
+    def _dimensions_match(card_dimensions, tags):
+        tags = tags or {}
+        for k, v in (card_dimensions or {}).items():
+            if str(tags.get(k)) != str(v):
+                return False
+        return True
+
+    @staticmethod
+    def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
+        base = list(RateCard.objects.filter(
+            tenant=tenant, card_type=card_type, provider=provider or "", event_type=event_type or "",
+            metric_name=metric_name, currency=currency, valid_from__lte=as_of,
+        ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of)))
+        owners = ([customer.id] if customer is not None else []) + [None]
+        for owner in owners:
+            cands = [c for c in base if c.customer_id == owner
+                     and PricingService._dimensions_match(c.dimensions, tags)]
+            if cands:
+                cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
+                return cands[0]
+        return None
+
+    @staticmethod
+    def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
+              caller_provider_cost, caller_billed, as_of=None):
+        as_of = as_of or timezone.now()
+        usage_metrics = usage_metrics or {}
+        prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
+
+        # ---- COST ----
+        if caller_provider_cost is not None:
+            provider_cost = caller_provider_cost
+            prov["cost_source"] = "caller"
+        else:
+            provider_cost = 0
+            uncosted = []
+            for metric, units in usage_metrics.items():
+                card = PricingService._resolve_card(tenant, customer, "cost", provider,
+                                                    event_type, metric, tags, currency, as_of)
+                if card is None:
+                    uncosted.append(metric)
+                    continue
+                amt = card.compute(units)
+                provider_cost += amt
+                prov["metrics"].append({"metric": metric, "units": units, "card_type": "cost",
+                    "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
+            prov["cost_source"] = "rate_card"
+            if uncosted:
+                prov["uncosted_metrics"] = uncosted
+                if getattr(tenant, "require_cost_card_coverage", False):
+                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
+
+        # ---- PRICE ----
+        if caller_billed is not None:
+            billed = caller_billed
+            prov["price_source"] = "caller"
+        else:
+            price_total, matched = 0, False
+            for metric, units in usage_metrics.items():
+                card = PricingService._resolve_card(tenant, customer, "price", provider,
+                                                    event_type, metric, tags, currency, as_of)
+                if card is None:
+                    continue
+                matched = True
+                amt = card.compute(units)
+                price_total += amt
+                prov["metrics"].append({"metric": metric, "units": units, "card_type": "price",
+                    "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
+            if matched:
+                billed = price_total
+                prov["price_source"] = "rate_card"
+            else:
+                from apps.metering.pricing.services.markup_service import MarkupService
+                billed = MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
+                prov["price_source"] = "markup"
+
+        prov["provider_cost_micros"] = provider_cost
+        prov["billed_cost_micros"] = billed
+        return provider_cost, billed, prov
