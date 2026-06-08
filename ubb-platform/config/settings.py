@@ -213,6 +213,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.gating.tasks.reconcile_budget_counters",
         "schedule": crontab(minute=15),  # hourly at :15
     },
+    "close-postpaid-usage-periods": {
+        "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",
+        "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 1st 02:00 UTC
+    },
+    "reconcile-postpaid-usage": {
+        "task": "apps.billing.invoicing.tasks.reconcile_postpaid_usage",
+        "schedule": crontab(minute=45),  # hourly at :45
+    },
 }
 
 # UBB Platform Settings

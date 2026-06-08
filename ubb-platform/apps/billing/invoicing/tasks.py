@@ -1,6 +1,8 @@
 import logging
+from datetime import timedelta
 
 from celery import shared_task
+from django.utils import timezone
 
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
@@ -36,3 +38,52 @@ def reconcile_missing_receipts():
                 "Failed to reconcile missing receipt",
                 extra={"data": {"attempt_id": str(attempt.id)}},
             )
+
+
+def _prior_month():
+    today = timezone.now().date()
+    end = today.replace(day=1)  # first of THIS month (exclusive end)
+    if end.month == 1:
+        start = end.replace(year=end.year - 1, month=12, day=1)
+    else:
+        start = end.replace(month=end.month - 1, day=1)
+    return start, end
+
+
+@shared_task(queue="ubb_billing")
+def close_postpaid_usage_periods():
+    """Monthly: push each postpaid customer's prior-month usage to Stripe."""
+    from apps.platform.tenants.models import Tenant
+    from apps.platform.customers.models import Customer
+    from apps.metering.usage.models import UsageEvent
+    from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+
+    start, end = _prior_month()
+    for tenant in Tenant.objects.filter(billing_mode="postpaid", is_active=True):
+        cust_ids = (UsageEvent.objects.filter(
+            tenant=tenant, effective_at__date__gte=start, effective_at__date__lt=end)
+            .values_list("customer_id", flat=True).distinct())
+        for customer in Customer.objects.filter(id__in=cust_ids):
+            try:
+                PostpaidUsageService.push_customer_period(tenant, customer, start, end)
+            except Exception:
+                logger.exception("postpaid.close_failed",
+                                 extra={"data": {"customer_id": str(customer.id)}})
+
+
+@shared_task(queue="ubb_billing")
+def reconcile_postpaid_usage():
+    """Hourly: reclaim stale 'pushing' rows and retry 'pending'/'failed' ones."""
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+
+    stale = timezone.now() - timedelta(minutes=30)
+    CustomerUsageInvoice.objects.filter(status="pushing", updated_at__lt=stale).update(status="pending")
+    for rec in CustomerUsageInvoice.objects.filter(
+            status__in=["pending", "failed"]).select_related("tenant", "customer"):
+        try:
+            PostpaidUsageService.push_customer_period(
+                rec.tenant, rec.customer, rec.period_start, rec.period_end)
+        except Exception:
+            logger.exception("postpaid.reconcile_failed",
+                             extra={"data": {"usage_invoice_id": str(rec.id)}})
