@@ -15,6 +15,7 @@ from api.v1.schemas import (
     DebitRequest, CreditRequest, DebitCreditResponse,
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
+    UsageInvoiceOut, PostpaidConfigIn, PostpaidConfigOut,
 )
 from core.auth import ApiKeyAuth, ProductAccess
 from apps.platform.customers.models import Customer
@@ -538,3 +539,50 @@ def get_customer_budget_status(request, customer_id: UUID):
     pct = round(spend / cap * 100, 2) if cap > 0 else 0.0
     return {"period": label, "spend_micros": spend, "cap_micros": cap, "pct": pct,
             "enforce_mode": cfg.enforce_mode if cfg else "advisory"}
+
+
+# ---------- Postpaid usage-invoice + config ----------
+
+
+@billing_api.get("/customers/{customer_id}/usage-invoices", response=list[UsageInvoiceOut])
+def list_customer_usage_invoices(request, customer_id: UUID):
+    _product_check(request)
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    rows = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant, customer=customer).order_by("-period_start")
+    return [{"period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat(),
+             "total_billed_micros": r.total_billed_micros, "currency": r.currency, "status": r.status,
+             "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason} for r in rows]
+
+
+@billing_api.get("/tenant/usage-invoices")
+def list_tenant_usage_invoices(request, period: str = None):
+    _product_check(request)
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    qs = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant).select_related("customer")
+    if period:
+        from datetime import date
+        y, m = period.split("-")
+        qs = qs.filter(period_start=date(int(y), int(m), 1))
+    return {"invoices": [{"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
+             "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
+             "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason}
+            for r in qs.order_by("-period_start")]}
+
+
+@billing_api.get("/postpaid-config", response=PostpaidConfigOut)
+def get_postpaid_config(request):
+    _product_check(request)
+    from apps.billing.invoicing.models import PostpaidUsageConfig
+    cfg = PostpaidUsageConfig.objects.filter(tenant=request.auth.tenant).first()
+    return {"usage_line_item_group_by": cfg.usage_line_item_group_by if cfg else ""}
+
+
+@billing_api.put("/postpaid-config", response=PostpaidConfigOut)
+def put_postpaid_config(request, payload: PostpaidConfigIn):
+    _product_check(request)
+    from apps.billing.invoicing.models import PostpaidUsageConfig
+    cfg, _ = PostpaidUsageConfig.objects.update_or_create(
+        tenant=request.auth.tenant,
+        defaults={"usage_line_item_group_by": payload.usage_line_item_group_by})
+    return {"usage_line_item_group_by": cfg.usage_line_item_group_by}

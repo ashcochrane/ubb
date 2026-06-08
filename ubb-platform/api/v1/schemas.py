@@ -195,3 +195,21 @@ class BudgetStatusOut(Schema):
     cap_micros: int
     pct: float
     enforce_mode: str
+
+
+class UsageInvoiceOut(Schema):
+    period_start: str
+    period_end: str
+    total_billed_micros: int
+    currency: str
+    status: str
+    stripe_invoice_id: str = ""
+    skip_reason: str = ""
+
+
+class PostpaidConfigIn(Schema):
+    usage_line_item_group_by: str = ""
+
+
+class PostpaidConfigOut(Schema):
+    usage_line_item_group_by: str
