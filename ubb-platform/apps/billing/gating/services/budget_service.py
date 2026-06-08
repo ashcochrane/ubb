@@ -108,6 +108,19 @@ class BudgetService:
                         enforce_mode=cfg.enforce_mode))
 
     @staticmethod
+    def reconcile_customer(customer):
+        cfg = BudgetService.resolve_config(customer)
+        if cfg is None or cfg.cap_micros <= 0:
+            return
+        label, start, end = _period()
+        total = get_customer_cost_totals(customer.tenant_id, customer.id, start, end)["billed_cost_micros"]
+        try:
+            cache.set(_key(customer.id, label), total, timeout=_TTL_SECONDS)
+        except Exception:
+            return
+        BudgetService.emit_threshold_alerts(customer, cfg, 0, total, label)  # fires only not-yet-sent levels
+
+    @staticmethod
     def record_usage_spend(customer, amount_micros):
         """Post-drawdown hook: increment the counter + emit threshold alerts. Fail-open."""
         if amount_micros <= 0:

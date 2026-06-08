@@ -209,6 +209,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.platform.events.tasks_webhook_cleanup.cleanup_webhook_delivery_attempts",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
     },
+    "reconcile-budget-counters": {
+        "task": "apps.billing.gating.tasks.reconcile_budget_counters",
+        "schedule": crontab(minute=15),  # hourly at :15
+    },
 }
 
 # UBB Platform Settings
