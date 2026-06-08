@@ -219,3 +219,25 @@ class TestRiskServiceBudget:
                    side_effect=ConnectionError("redis down")):
             res = RiskService.check(c)
         assert res["allowed"] is True
+
+    def test_postpaid_negative_balance_still_allowed(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="pp")
+        Wallet.objects.create(customer=c, balance_micros=-9_999_999)  # deep negative
+        assert RiskService.check(c)["allowed"] is True  # postpaid never gates on credit balance
+
+    def test_postpaid_budget_cap_still_enforced(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.metering.usage.models import UsageEvent
+        t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="pp")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="enforcing")
+        UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
+                                  provider_cost_micros=1_000, billed_cost_micros=1_000)
+        BudgetService.record_spend(t.id, c.id, 1_000)
+        res = RiskService.check(c)
+        assert res["allowed"] is False and res["reason"] == "budget_exceeded"

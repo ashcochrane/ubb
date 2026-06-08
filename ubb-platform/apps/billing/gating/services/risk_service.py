@@ -38,7 +38,7 @@ class RiskService:
 
         from apps.billing.queries import get_customer_min_balance
         threshold = get_customer_min_balance(customer.id, customer.tenant_id)
-        if balance < -threshold:
+        if customer.tenant.billing_mode != "postpaid" and balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "run_id": None}
 
         from apps.billing.gating.services.budget_service import BudgetService
