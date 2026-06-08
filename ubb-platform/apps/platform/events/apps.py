@@ -26,6 +26,7 @@ class EventsConfig(AppConfig):
             "margin.customer_unprofitable",
             "margin.provider_cost_spike",
             "budget.threshold_reached",
+            "usage.invoice_pushed",
         ]
         for event_type in event_types:
             handler_registry.register(

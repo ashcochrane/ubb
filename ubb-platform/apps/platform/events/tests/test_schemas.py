@@ -167,3 +167,12 @@ def test_budget_threshold_event_contract():
                                level=80, spend_micros=800, cap_micros=1000, enforce_mode="advisory")
     assert e.EVENT_TYPE == "budget.threshold_reached"
     assert asdict(e)["level"] == 80
+
+
+def test_usage_invoice_pushed_contract():
+    from dataclasses import asdict
+    from apps.platform.events.schemas import UsageInvoicePushed
+    e = UsageInvoicePushed(tenant_id="t", customer_id="c", period_start="2026-06",
+                           total_billed_micros=1000, line_item_count=2, stripe_invoice_id="in_1")
+    assert e.EVENT_TYPE == "usage.invoice_pushed"
+    assert asdict(e)["line_item_count"] == 2

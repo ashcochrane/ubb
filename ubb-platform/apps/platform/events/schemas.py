@@ -181,3 +181,14 @@ class BudgetThresholdReached:
     spend_micros: int = 0
     cap_micros: int = 0
     enforce_mode: str = "advisory"
+
+
+@dataclass(frozen=True)
+class UsageInvoicePushed:
+    EVENT_TYPE = "usage.invoice_pushed"
+    tenant_id: str
+    customer_id: str
+    period_start: str
+    total_billed_micros: int = 0
+    line_item_count: int = 0
+    stripe_invoice_id: str = ""
