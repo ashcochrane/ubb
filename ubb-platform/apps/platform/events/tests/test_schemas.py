@@ -158,3 +158,12 @@ class TestMarginEventContracts:
             prev_provider_cost_micros=100, current_provider_cost_micros=200,
             prev_margin_pct=20.0, current_margin_pct=5.0)
         assert e2.EVENT_TYPE == "margin.provider_cost_spike"
+
+
+def test_budget_threshold_event_contract():
+    from dataclasses import asdict
+    from apps.platform.events.schemas import BudgetThresholdReached
+    e = BudgetThresholdReached(tenant_id="t", customer_id="c", period="2026-06",
+                               level=80, spend_micros=800, cap_micros=1000, enforce_mode="advisory")
+    assert e.EVENT_TYPE == "budget.threshold_reached"
+    assert asdict(e)["level"] == 80

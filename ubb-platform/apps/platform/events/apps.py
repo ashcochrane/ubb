@@ -25,6 +25,7 @@ class EventsConfig(AppConfig):
             "referral.payout_due",
             "margin.customer_unprofitable",
             "margin.provider_cost_spike",
+            "budget.threshold_reached",
         ]
         for event_type in event_types:
             handler_registry.register(

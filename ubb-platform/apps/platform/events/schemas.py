@@ -169,3 +169,15 @@ class MarginProviderCostSpike:
     current_provider_cost_micros: int = 0
     prev_margin_pct: float = 0.0
     current_margin_pct: float = 0.0
+
+
+@dataclass(frozen=True)
+class BudgetThresholdReached:
+    EVENT_TYPE = "budget.threshold_reached"
+    tenant_id: str
+    customer_id: str
+    period: str
+    level: int = 0
+    spend_micros: int = 0
+    cap_micros: int = 0
+    enforce_mode: str = "advisory"
