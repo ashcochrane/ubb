@@ -18,31 +18,27 @@ def _current_period_bounds():
 
 
 def handle_usage_recorded_subscriptions(event_id, payload):
-    """Accumulate usage cost for unit economics calculation.
-
-    Outbox handler for usage.recorded events on subscriptions tenants.
-    Uses atomic F() increment — no SELECT needed for the hot path.
-    """
-    cost_micros = payload.get("cost_micros", 0)
-    if cost_micros <= 0:
+    """Accumulate provider + billed usage cost for margin. Atomic F() increment."""
+    provider = payload.get("provider_cost_micros", 0) or 0
+    billed = payload.get("billed_cost_micros", payload.get("cost_micros", 0)) or 0
+    if billed <= 0 and provider <= 0:
         return
 
     from apps.subscriptions.economics.models import CustomerCostAccumulator
 
     period_start, period_end = _current_period_bounds()
 
-    # Try atomic increment first (fast path — row already exists)
     rows = CustomerCostAccumulator.objects.filter(
         tenant_id=payload["tenant_id"],
         customer_id=payload["customer_id"],
         period_start=period_start,
     ).update(
-        total_cost_micros=F("total_cost_micros") + cost_micros,
+        total_provider_cost_micros=F("total_provider_cost_micros") + provider,
+        total_billed_cost_micros=F("total_billed_cost_micros") + billed,
         event_count=F("event_count") + 1,
     )
 
     if rows == 0:
-        # Row doesn't exist yet — create it
         from django.db import IntegrityError
         try:
             CustomerCostAccumulator.objects.create(
@@ -50,16 +46,17 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 customer_id=payload["customer_id"],
                 period_start=period_start,
                 period_end=period_end,
-                total_cost_micros=cost_micros,
+                total_provider_cost_micros=provider,
+                total_billed_cost_micros=billed,
                 event_count=1,
             )
         except IntegrityError:
-            # Lost race — retry the update
             CustomerCostAccumulator.objects.filter(
                 tenant_id=payload["tenant_id"],
                 customer_id=payload["customer_id"],
                 period_start=period_start,
             ).update(
-                total_cost_micros=F("total_cost_micros") + cost_micros,
+                total_provider_cost_micros=F("total_provider_cost_micros") + provider,
+                total_billed_cost_micros=F("total_billed_cost_micros") + billed,
                 event_count=F("event_count") + 1,
             )

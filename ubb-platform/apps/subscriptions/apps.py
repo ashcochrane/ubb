@@ -14,5 +14,5 @@ class SubscriptionsConfig(AppConfig):
             "usage.recorded",
             "subscriptions.cost_accumulator",
             handle_usage_recorded_subscriptions,
-            requires_product="subscriptions",
+            requires_product="metering",
         )
