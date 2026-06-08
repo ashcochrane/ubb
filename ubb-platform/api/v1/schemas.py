@@ -48,6 +48,8 @@ class RecordUsageResponse(Schema):
     run_id: Optional[str] = None
     run_total_cost_micros: Optional[int] = None
     hard_stop: bool = False
+    usage_metrics: Optional[dict] = None
+    pricing_provenance: Optional[dict] = None
 
 
 class BalanceResponse(Schema):

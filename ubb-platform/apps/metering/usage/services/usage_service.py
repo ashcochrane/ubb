@@ -42,6 +42,8 @@ def _result(event, run_total):
         "new_balance_micros": None, "suspended": False,
         "run_id": str(event.run_id) if event.run_id else None,
         "run_total_cost_micros": run_total, "hard_stop": False,
+        "usage_metrics": event.usage_metrics,
+        "pricing_provenance": event.pricing_provenance,
     }
 
 
