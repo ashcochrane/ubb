@@ -9,6 +9,7 @@ from ubb.exceptions import (
 from ubb.types import (
     RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse,
     CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
+    RateCard,
 )
 
 
@@ -192,6 +193,27 @@ class MeteringClient:
     def get_customer_revenue(self, customer_id):
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
         return CustomerRevenue(**r.json())
+
+    def create_rate_card(self, *, card_type, metric_name, provider="", event_type="",
+                         dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
+                         unit_quantity=1_000_000, fixed_micros=0, currency="usd",
+                         product_id="", customer_id=None):
+        body = {"card_type": card_type, "metric_name": metric_name, "provider": provider,
+                "event_type": event_type, "dimensions": dimensions or {}, "pricing_model": pricing_model,
+                "rate_per_unit_micros": rate_per_unit_micros, "unit_quantity": unit_quantity,
+                "fixed_micros": fixed_micros, "currency": currency, "product_id": product_id,
+                "customer_id": customer_id}
+        r = self._request("post", "/api/v1/pricing/rate-cards", json=body)
+        return RateCard(**r.json())
+
+    def list_rate_cards(self, card_type=None):
+        params = {"card_type": card_type} if card_type else None
+        r = self._request("get", "/api/v1/pricing/rate-cards", params=params)
+        return [RateCard(**row) for row in r.json()]
+
+    def delete_rate_card(self, card_id):
+        self._request("delete", f"/api/v1/pricing/rate-cards/{card_id}")
+        return True
 
     def close(self) -> None:
         self._http.close()

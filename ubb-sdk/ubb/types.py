@@ -152,3 +152,21 @@ class PaginatedResponse(Generic[T]):
     data: list[T]
     next_cursor: str | None
     has_more: bool
+
+@dataclass(frozen=True)
+class RateCard:
+    id: str | None = None
+    card_type: str | None = None
+    metric_name: str | None = None
+    provider: str | None = None
+    event_type: str | None = None
+    dimensions: dict | None = None
+    pricing_model: str | None = None
+    rate_per_unit_micros: int | None = None
+    unit_quantity: int | None = None
+    fixed_micros: int | None = None
+    currency: str | None = None
+    product_id: str | None = None
+    customer_id: str | None = None
+    valid_from: str | None = None
+    valid_to: str | None = None
