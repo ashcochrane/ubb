@@ -41,6 +41,12 @@ class RiskService:
         if balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "run_id": None}
 
+        from apps.billing.gating.services.budget_service import BudgetService
+        budget = BudgetService.check(customer)
+        if not budget["allowed"]:
+            return {"allowed": False, "reason": budget["reason"],
+                    "balance_micros": balance, "run_id": None}
+
         result = {"allowed": True, "reason": None, "balance_micros": balance, "run_id": None}
 
         # Optionally create a Run, snapshotting wallet balance and billing config limits
