@@ -303,6 +303,24 @@ class TestBillingOutboxHandler:
         assert str(mock_rec.call_args.args[0].id) == str(customer.id)  # the customer
         assert mock_rec.call_args.args[1] == 2_000_000                 # billed amount
 
+    def test_postpaid_tenant_skips_wallet_deduction(self):
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+        tenant = Tenant.objects.create(name="PP", products=["metering", "billing"],
+                                       billing_mode="postpaid")
+        customer = Customer.objects.create(tenant=tenant, external_id="pp1")
+        w = Wallet.objects.create(customer=customer)
+        w.balance_micros = 10_000_000
+        w.save(update_fields=["balance_micros"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        handle_usage_recorded_billing(str(event.id), event.payload)
+        w.refresh_from_db()
+        assert w.balance_micros == 10_000_000  # untouched — postpaid is invoiced, not drawn down
+
 
 class TestBillingHandlerEmitsBalanceLow:
     """After wallet deduction, if balance drops below auto-topup threshold,
