@@ -194,6 +194,15 @@ class MeteringClient:
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
         return CustomerRevenue(**r.json())
 
+    def set_revenue_mode(self, customer_id, revenue_mode=""):
+        r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue-mode",
+                          json={"revenue_mode": revenue_mode})
+        return r.json()
+
+    def get_revenue_mode(self, customer_id):
+        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue-mode")
+        return r.json()
+
     def create_rate_card(self, *, card_type, metric_name, provider="", event_type="",
                          dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
                          unit_quantity=1_000_000, fixed_micros=0, currency="usd",
