@@ -85,6 +85,40 @@ class WalletTransaction:
     reference_id: str
     created_at: str
 
+@dataclass(frozen=True)
+class CustomerMargin:
+    customer_id: str
+    subscription_revenue_micros: int | None = None
+    usage_billed_micros: int | None = None
+    provider_cost_micros: int | None = None
+    gross_margin_micros: int | None = None
+    margin_percentage: float | None = None
+
+@dataclass(frozen=True)
+class DimensionMargin:
+    dimension: str | None = None
+    provider_cost_micros: int | None = None
+    billed_cost_micros: int | None = None
+    margin_micros: int | None = None
+    event_count: int | None = None
+
+@dataclass(frozen=True)
+class MarginTrendPoint:
+    period_start: str
+    provider_cost_micros: int | None = None
+    usage_billed_micros: int | None = None
+    subscription_revenue_micros: int | None = None
+    gross_margin_micros: int | None = None
+    margin_percentage: float | None = None
+
+@dataclass(frozen=True)
+class CustomerRevenue:
+    recurring_amount_micros: int | None = None
+    interval: str | None = None
+    currency: str | None = None
+    effective_from: str | None = None
+    effective_to: str | None = None
+
 T = TypeVar("T")
 
 @dataclass(frozen=True)

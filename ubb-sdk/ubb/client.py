@@ -7,6 +7,7 @@ from ubb.types import (
     PreCheckResult, RecordUsageResult, CloseRunResult, CustomerResult,
     BalanceResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
     RefundResult, WalletTransaction, PaginatedResponse,
+    CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
 )
 
 
@@ -270,6 +271,31 @@ class UBBClient:
                          limit: int = 50) -> PaginatedResponse[WalletTransaction]:
         """Get wallet transactions. Requires billing product."""
         return self._require_billing().get_transactions(customer_id, cursor=cursor, limit=limit)
+
+    # ---- margin delegates ----
+
+    def get_customer_margin(self, customer_id, start_date=None, end_date=None):
+        return self._require_metering().get_customer_margin(customer_id, start_date, end_date)
+
+    def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
+                                start_date=None, end_date=None):
+        return self._require_metering().get_margin_by_dimension(
+            provider=provider, product=product, tag_key=tag_key,
+            start_date=start_date, end_date=end_date)
+
+    def get_unprofitable_customers(self, period_start=None):
+        return self._require_metering().get_unprofitable_customers(period_start)
+
+    def get_margin_trend(self, customer_id, periods=6):
+        return self._require_metering().get_margin_trend(customer_id, periods)
+
+    def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
+                             currency="usd", effective_from=None, effective_to=None):
+        return self._require_metering().set_customer_revenue(
+            customer_id, recurring_amount_micros, interval, currency, effective_from, effective_to)
+
+    def get_customer_revenue(self, customer_id):
+        return self._require_metering().get_customer_revenue(customer_id)
 
     # ---- lifecycle ----
 

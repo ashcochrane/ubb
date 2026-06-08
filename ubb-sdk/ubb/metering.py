@@ -6,7 +6,10 @@ from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
     UBBHardStopError, UBBRunNotActiveError,
 )
-from ubb.types import RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse
+from ubb.types import (
+    RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse,
+    CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
+)
 
 
 class MeteringClient:
@@ -143,6 +146,52 @@ class MeteringClient:
         body = r.json()
         events = [UsageEvent(**item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+
+    def get_customer_margin(self, customer_id, start_date=None, end_date=None):
+        params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
+        r = self._request("get", f"/api/v1/margin/{customer_id}", params=params)
+        return CustomerMargin(**{k: v for k, v in r.json().items()
+                                 if k in CustomerMargin.__dataclass_fields__})
+
+    def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
+                                start_date=None, end_date=None):
+        params = {}
+        if provider:
+            params["provider"] = 1
+        if product:
+            params["product"] = 1
+        if tag_key:
+            params["tag_key"] = tag_key
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        r = self._request("get", "/api/v1/margin/by-dimension", params=params)
+        return [DimensionMargin(**row) for row in r.json()["rows"]]
+
+    def get_unprofitable_customers(self, period_start=None):
+        params = {"period_start": period_start} if period_start else {}
+        r = self._request("get", "/api/v1/margin/unprofitable", params=params)
+        return r.json()["customers"]
+
+    def get_margin_trend(self, customer_id, periods=6):
+        r = self._request("get", f"/api/v1/margin/{customer_id}/trend", params={"periods": periods})
+        return [MarginTrendPoint(**p) for p in r.json()["points"]]
+
+    def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
+                             currency="usd", effective_from=None, effective_to=None):
+        body = {"recurring_amount_micros": recurring_amount_micros, "interval": interval,
+                "currency": currency}
+        if effective_from:
+            body["effective_from"] = effective_from
+        if effective_to:
+            body["effective_to"] = effective_to
+        r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue", json=body)
+        return CustomerRevenue(**r.json())
+
+    def get_customer_revenue(self, customer_id):
+        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
+        return CustomerRevenue(**r.json())
 
     def close(self) -> None:
         self._http.close()
