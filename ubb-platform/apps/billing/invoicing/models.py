@@ -41,3 +41,49 @@ class Invoice(BaseModel):
 
     def __str__(self):
         return f"Invoice({self.customer.external_id}: {self.status})"
+
+
+USAGE_INVOICE_STATUS = [
+    ("pending", "Pending"), ("pushing", "Pushing"), ("pushed", "Pushed"),
+    ("skipped", "Skipped"), ("failed", "Failed"),
+]
+
+
+class CustomerUsageInvoice(BaseModel):
+    """A postpaid customer's usage for one calendar month, pushed to Stripe as line items."""
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="usage_invoices")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="usage_invoices")
+    period_start = models.DateField()
+    period_end = models.DateField()
+    total_billed_micros = models.BigIntegerField(default=0)
+    currency = models.CharField(max_length=3, default="usd")
+    status = models.CharField(max_length=10, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
+    stripe_invoice_id = models.CharField(max_length=255, blank=True, default="")
+    skip_reason = models.CharField(max_length=50, blank=True, default="")
+    pushed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_customer_usage_invoice"
+        constraints = [models.UniqueConstraint(
+            fields=["customer", "period_start"], name="uq_usage_invoice_customer_period")]
+
+    def __str__(self):
+        return f"UsageInvoice({self.customer_id}: {self.period_start} {self.status})"
+
+
+class UsageInvoiceLineItem(BaseModel):
+    usage_invoice = models.ForeignKey(CustomerUsageInvoice, on_delete=models.CASCADE, related_name="line_items")
+    dimension = models.CharField(max_length=255, blank=True, default="")
+    amount_micros = models.BigIntegerField(default=0)
+    stripe_invoice_item_id = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "ubb_usage_invoice_line_item"
+
+
+class PostpaidUsageConfig(BaseModel):
+    tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="postpaid_config")
+    usage_line_item_group_by = models.CharField(max_length=64, blank=True, default="")
+
+    class Meta:
+        db_table = "ubb_postpaid_usage_config"
