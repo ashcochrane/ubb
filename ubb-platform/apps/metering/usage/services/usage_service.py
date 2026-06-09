@@ -66,12 +66,14 @@ class UsageService:
             usage_metrics=usage_metrics, tags=tags, currency=currency,
             caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros)
         run = None
-        if run_id is not None:
-            from apps.platform.runs.services import RunService
-            run = RunService.accumulate_cost(run_id, billed_cost_micros)
         owner_id = customer.resolve_billing_owner().id
         try:
             with transaction.atomic():
+                if run_id is not None:
+                    from apps.platform.runs.services import RunService
+                    run = RunService.accumulate_cost(
+                        run_id, billed_cost_micros,
+                        tenant_id=tenant.id, customer_id=customer.id)
                 event = UsageEvent.objects.create(
                     tenant=tenant, customer=customer, request_id=request_id,
                     idempotency_key=idempotency_key, metadata=metadata or {},

@@ -267,6 +267,29 @@ class MeteringRunEndpointTest(TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_cross_tenant_run_id_is_404_and_not_mutated(self, mock_process):
+        other_tenant = Tenant.objects.create(name="Victim", products=["metering"])
+        other_customer = Customer.objects.create(tenant=other_tenant, external_id="victim_c")
+        victim_run = RunService.create_run(other_tenant, other_customer, balance_snapshot_micros=20_000_000)
+        resp = self._record(run_id=str(victim_run.id), request_id="req_idor1", idempotency_key="idem_idor1")
+        self.assertEqual(resp.status_code, 404)
+        victim_run.refresh_from_db()
+        self.assertEqual(victim_run.total_cost_micros, 0)
+        self.assertEqual(victim_run.event_count, 0)
+        self.assertEqual(victim_run.status, "active")
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_cross_customer_same_tenant_run_id_is_404(self, mock_process):
+        cust_b = Customer.objects.create(tenant=self.tenant, external_id="cust_b")
+        run_b = RunService.create_run(self.tenant, cust_b, balance_snapshot_micros=20_000_000)
+        resp = self._record(run_id=str(run_b.id), request_id="req_idor2", idempotency_key="idem_idor2")
+        self.assertEqual(resp.status_code, 404)
+        run_b.refresh_from_db()
+        self.assertEqual(run_b.total_cost_micros, 0)
+        self.assertEqual(run_b.event_count, 0)
+        self.assertEqual(run_b.status, "active")
+
 
 class MeteringUsageAnalyticsEndpointTest(TestCase):
     def setUp(self):

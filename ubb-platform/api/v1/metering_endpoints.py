@@ -19,6 +19,7 @@ from api.v1.schemas import (
 from apps.metering.pricing.models import RateCard
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
+from apps.platform.runs.models import Run
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
 
@@ -35,6 +36,8 @@ def record_usage(request, payload: RecordUsageRequest):
     from apps.metering.pricing.services.pricing_service import PricingError
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
+    if payload.run_id is not None:
+        get_object_or_404(Run, id=payload.run_id, tenant=request.auth.tenant, customer=customer)
     try:
         result = UsageService.record_usage(
             tenant=request.auth.tenant,
@@ -56,7 +59,8 @@ def record_usage(request, payload: RecordUsageRequest):
     except HardStopExceeded as e:
         from django.db import transaction
         with transaction.atomic():
-            RunService.kill_run(payload.run_id, reason=e.reason)
+            RunService.kill_run(payload.run_id, reason=e.reason,
+                                tenant_id=request.auth.tenant.id, customer_id=customer.id)
         return metering_api.create_response(request, {
             "error": "hard_stop_exceeded",
             "reason": e.reason,

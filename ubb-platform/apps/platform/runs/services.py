@@ -52,7 +52,7 @@ class RunService:
         )
 
     @staticmethod
-    def accumulate_cost(run_id, cost_micros):
+    def accumulate_cost(run_id, cost_micros, *, tenant_id=None, customer_id=None):
         """Atomically accumulate cost on a run and check both hard stop conditions.
 
         Must be called inside @transaction.atomic.
@@ -68,7 +68,12 @@ class RunService:
         On failure, the Run is NOT modified — the caller handles killing it
         in a separate transaction after the outer @transaction.atomic rolls back.
         """
-        run = Run.objects.select_for_update().get(id=run_id)
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
 
         if run.status != "active":
             raise RunNotActive(run_id=str(run.id), status=run.status)
@@ -101,12 +106,17 @@ class RunService:
         return run
 
     @staticmethod
-    def kill_run(run_id, reason=""):
+    def kill_run(run_id, reason="", *, tenant_id=None, customer_id=None):
         """Mark a run as killed. Idempotent — no-op if already in a terminal state.
 
         Must be called inside @transaction.atomic.
         """
-        run = Run.objects.select_for_update().get(id=run_id)
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
         if run.status in ("killed", "completed", "failed"):
             return run
         run.status = "killed"

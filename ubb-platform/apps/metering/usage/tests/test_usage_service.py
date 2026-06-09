@@ -385,3 +385,29 @@ class UsageServiceRunTest(TestCase):
                 provider_cost_micros=1_000_000,
                 run_id=run.id,
             )
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_concurrent_duplicate_does_not_double_count_run(self, mock_process):
+        run = RunService.create_run(self.tenant, self.customer, balance_snapshot_micros=100_000_000)
+        UsageService.record_usage(tenant=self.tenant, customer=self.customer,
+            request_id="req_dup", idempotency_key="idem_dup",
+            provider_cost_micros=5_000_000, run_id=run.id)
+        run.refresh_from_db()
+        self.assertEqual(run.total_cost_micros, 5_000_000)
+        self.assertEqual(run.event_count, 1)
+        orig_filter = UsageEvent.objects.filter
+        class _MissingFirst:
+            def first(self): return None
+        def _fake_filter(*args, **kwargs):
+            if "idempotency_key" in kwargs:
+                return _MissingFirst()
+            return orig_filter(*args, **kwargs)
+        with patch.object(UsageEvent.objects, "filter", side_effect=_fake_filter):
+            UsageService.record_usage(tenant=self.tenant, customer=self.customer,
+                request_id="req_dup", idempotency_key="idem_dup",
+                provider_cost_micros=5_000_000, run_id=run.id)
+        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant, customer=self.customer,
+            idempotency_key="idem_dup").count(), 1)
+        run.refresh_from_db()
+        self.assertEqual(run.event_count, 1)          # fails today: 2
+        self.assertEqual(run.total_cost_micros, 5_000_000)  # fails today: 10_000_000
