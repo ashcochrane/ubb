@@ -63,12 +63,15 @@ def close_postpaid_usage_periods():
         cust_ids = (UsageEvent.objects.filter(
             tenant=tenant, effective_at__date__gte=start, effective_at__date__lt=end)
             .values_list("customer_id", flat=True).distinct())
-        for customer in Customer.objects.filter(id__in=cust_ids):
+        targets = set()
+        for c in Customer.objects.filter(id__in=list(cust_ids)):
+            targets.add(c.parent_id if (c.account_type == "seat" and c.parent_id) else c.id)
+        for target in Customer.objects.filter(id__in=list(targets)):
             try:
-                PostpaidUsageService.push_customer_period(tenant, customer, start, end)
+                PostpaidUsageService.push_customer_period(tenant, target, start, end)
             except Exception:
                 logger.exception("postpaid.close_failed",
-                                 extra={"data": {"customer_id": str(customer.id)}})
+                                 extra={"data": {"customer_id": str(target.id)}})
 
 
 @shared_task(queue="ubb_billing")
