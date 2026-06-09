@@ -159,6 +159,11 @@ class PaginatedResponse(Generic[T]):
     has_more: bool
 
 @dataclass(frozen=True)
+class TenantMarkup:
+    markup_percentage_micros: int | None = None
+    fixed_uplift_micros: int | None = None
+
+@dataclass(frozen=True)
 class RateCard:
     id: str | None = None
     lineage_id: str | None = None

@@ -333,6 +333,20 @@ class UBBClient:
     def get_customer_revenue(self, customer_id):
         return self._require_metering().get_customer_revenue(customer_id)
 
+    # ---- markup delegates ----
+
+    def get_markup(self):
+        return self._require_metering().get_markup()
+
+    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0):
+        return self._require_metering().set_markup(markup_percentage_micros=markup_percentage_micros, fixed_uplift_micros=fixed_uplift_micros)
+
+    def get_customer_markup(self, customer_id):
+        return self._require_metering().get_customer_markup(customer_id)
+
+    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0):
+        return self._require_metering().set_customer_markup(customer_id, markup_percentage_micros=markup_percentage_micros, fixed_uplift_micros=fixed_uplift_micros)
+
     # ---- lifecycle ----
 
     def close(self) -> None:

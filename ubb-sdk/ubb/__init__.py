@@ -6,7 +6,7 @@ from ubb.referrals import ReferralsClient
 from ubb.types import (
     PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
     UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult,
-    WalletTransaction, PaginatedResponse,
+    WalletTransaction, PaginatedResponse, TenantMarkup,
 )
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
@@ -17,7 +17,7 @@ __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     "PreCheckResult", "RecordUsageResult", "CustomerResult", "BalanceResult",
     "UsageEvent", "TopUpResult", "AutoTopUpResult", "WithdrawResult", "RefundResult",
-    "WalletTransaction", "PaginatedResponse",
+    "WalletTransaction", "PaginatedResponse", "TenantMarkup",
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
 ]

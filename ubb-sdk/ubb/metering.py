@@ -9,7 +9,7 @@ from ubb.exceptions import (
 from ubb.types import (
     RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse,
     CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
-    RateCard,
+    RateCard, TenantMarkup,
 )
 
 
@@ -303,6 +303,30 @@ class MeteringClient:
             params["dimensions"] = dimensions
         r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
         return r.json()
+
+    # ---- markup methods ----
+
+    def get_markup(self) -> TenantMarkup:
+        r = self._request("get", "/api/v1/metering/pricing/markup")
+        return self._to_markup(r.json())
+
+    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkup:
+        r = self._request("put", "/api/v1/metering/pricing/markup", json={
+            "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
+        return self._to_markup(r.json())
+
+    def get_customer_markup(self, customer_id) -> TenantMarkup:
+        r = self._request("get", f"/api/v1/metering/pricing/customers/{customer_id}/markup")
+        return self._to_markup(r.json())
+
+    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkup:
+        r = self._request("put", f"/api/v1/metering/pricing/customers/{customer_id}/markup", json={
+            "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
+        return self._to_markup(r.json())
+
+    @staticmethod
+    def _to_markup(d):
+        return TenantMarkup(**{k: v for k, v in d.items() if k in TenantMarkup.__dataclass_fields__})
 
     def close(self) -> None:
         self._http.close()

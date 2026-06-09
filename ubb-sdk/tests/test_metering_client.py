@@ -5,7 +5,7 @@ from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import RecordUsageResult, UsageEvent, PaginatedResponse
+from ubb.types import RecordUsageResult, UsageEvent, PaginatedResponse, TenantMarkup
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -339,6 +339,60 @@ class MeteringClientTest(unittest.TestCase):
         self.assertNotIn("end_date", params)
         self.assertNotIn("customer_id", params)
         self.assertNotIn("group_by", params)
+
+
+    # ---- markup methods ----
+
+    @patch("ubb.metering.httpx.Client.put")
+    def test_set_markup(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 20_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.set_markup(markup_percentage_micros=20_000_000, fixed_uplift_micros=0)
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 20_000_000)
+        self.assertEqual(result.fixed_uplift_micros, 0)
+        call_args = mock_put.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
+        body = call_args.kwargs["json"]
+        self.assertEqual(body["markup_percentage_micros"], 20_000_000)
+        self.assertEqual(body["fixed_uplift_micros"], 0)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_markup(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 10_000_000, "fixed_uplift_micros": 500_000,
+        })
+        result = self.client.get_markup()
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 10_000_000)
+        self.assertEqual(result.fixed_uplift_micros, 500_000)
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
+
+    @patch("ubb.metering.httpx.Client.put")
+    def test_set_customer_markup(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.set_customer_markup("cust_1", markup_percentage_micros=5_000_000)
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 5_000_000)
+        call_args = mock_put.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
+        body = call_args.kwargs["json"]
+        self.assertEqual(body["markup_percentage_micros"], 5_000_000)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_customer_markup(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.get_customer_markup("cust_1")
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 5_000_000)
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
 
 
 if __name__ == "__main__":
