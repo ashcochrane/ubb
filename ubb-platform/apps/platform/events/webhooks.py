@@ -7,6 +7,7 @@ import time
 import httpx
 
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
+from core.url_validation import validate_webhook_url
 
 logger = logging.getLogger("ubb.webhooks")
 
@@ -63,6 +64,18 @@ def _deliver_to_config(config, event):
         webhook_config=config,
         outbox_event=event,
     )
+
+    # SSRF / DNS-rebinding guard: the create-time check is stale by delivery time.
+    # TODO(SSRF): pin connection to validated IP to fully close DNS-rebind window
+    try:
+        validate_webhook_url(config.url)
+    except ValueError as e:
+        attempt.success = False
+        attempt.error_message = f"blocked: {e}"[:500]
+        attempt.save()
+        logger.warning("webhook.delivery_blocked", extra={"data": {
+            "config_id": str(config.id), "event_id": str(event.id), "reason": str(e)[:200]}})
+        return
 
     try:
         with httpx.Client(timeout=WEBHOOK_TIMEOUT) as client:
