@@ -51,6 +51,11 @@ class MarginService:
         for d in per_seat:
             for k in keys:
                 totals[k] += d.get(k, 0) or 0
+        business_sub = RevenueService.accrued_subscription_revenue(
+            tenant_id, business.id, start_date, end_date)
+        totals["subscription_revenue_micros"] += business_sub
+        totals["total_revenue_micros"] += business_sub
+        totals["gross_margin_micros"] += business_sub
         return {"business_id": str(business.id), "external_id": business.external_id,
                 "totals": totals, "seats": per_seat}
 

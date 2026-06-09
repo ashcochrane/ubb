@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
 from apps.platform.customers.models import Customer
 
 logger = logging.getLogger(__name__)
@@ -37,20 +38,21 @@ def handle_subscription_created(event):
         )
         raise  # Re-raise so webhook framework retries
 
+    amount_micros, seat_qty, interval = _sum_items(stripe_sub)
     StripeSubscription.objects.get_or_create(
         stripe_subscription_id=stripe_sub.id,
         defaults={
             "tenant": customer.tenant,
             "customer": customer,
-            "stripe_product_name": stripe_sub.plan.product.name,
+            "stripe_product_name": _product_name(stripe_sub),
             "status": stripe_sub.status,
-            "amount_micros": stripe_sub.plan.amount * 10_000,  # cents to micros
-            "currency": stripe_sub.plan.currency,
-            "interval": stripe_sub.plan.interval,
-            "current_period_start": _unix_to_datetime(stripe_sub.current_period_start),
-            "current_period_end": _unix_to_datetime(stripe_sub.current_period_end),
+            "amount_micros": amount_micros,
+            "currency": stripe_sub.get("currency", "usd"),
+            "interval": interval,
+            "current_period_start": _period_start(stripe_sub),
+            "current_period_end": _period_end(stripe_sub),
             "last_synced_at": timezone.now(),
-            "quantity": getattr(stripe_sub, "quantity", 1) or 1,
+            "quantity": seat_qty,
         },
     )
 
@@ -62,13 +64,18 @@ def handle_subscription_updated(event):
         sub = StripeSubscription.objects.select_for_update().get(
             stripe_subscription_id=stripe_sub.id
         )
+        amount_micros, seat_qty, interval = _sum_items(stripe_sub)
         sub.status = stripe_sub.status
-        sub.current_period_start = _unix_to_datetime(stripe_sub.current_period_start)
-        sub.current_period_end = _unix_to_datetime(stripe_sub.current_period_end)
+        sub.stripe_product_name = _product_name(stripe_sub) or sub.stripe_product_name
+        sub.amount_micros = amount_micros
+        sub.interval = interval
+        sub.current_period_start = _period_start(stripe_sub)
+        sub.current_period_end = _period_end(stripe_sub)
         sub.last_synced_at = timezone.now()
-        sub.quantity = getattr(stripe_sub, "quantity", 1) or 1
+        sub.quantity = seat_qty
         sub.save(update_fields=[
-            "status", "current_period_start", "current_period_end",
+            "status", "stripe_product_name", "amount_micros", "interval",
+            "current_period_start", "current_period_end",
             "last_synced_at", "updated_at", "quantity",
         ])
 

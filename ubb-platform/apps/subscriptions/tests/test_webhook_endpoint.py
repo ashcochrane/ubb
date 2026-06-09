@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.utils import timezone
+from apps.subscriptions.tests.test_sync import FakeStripeSub, _licensed_item
 
 
 class TestSubscriptionsWebhookEndpoint(TestCase):
@@ -39,16 +40,9 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
         mock_event.id = "evt_wh_1"
         mock_event.type = "customer.subscription.created"
         mock_event.account = "acct_wh_test"
-        mock_event.data.object.id = "sub_wh_1"
-        mock_event.data.object.customer = "cus_wh"
-        mock_event.data.object.status = "active"
-        mock_event.data.object.current_period_start = 1738368000
-        mock_event.data.object.current_period_end = 1740960000
-        mock_event.data.object.plan.product.name = "Pro"
-        mock_event.data.object.plan.amount = 4900
-        mock_event.data.object.plan.currency = "usd"
-        mock_event.data.object.plan.interval = "month"
-        mock_event.data.object.quantity = 1
+        mock_event.data.object = FakeStripeSub(
+            id="sub_wh_1", customer="cus_wh", status="active", currency="usd",
+            items={"data": [_licensed_item(4900, qty=1, product_name="Pro")]})
 
         mock_stripe.Webhook.construct_event.return_value = mock_event
 

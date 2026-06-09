@@ -3,6 +3,17 @@ from unittest.mock import MagicMock
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests.test_sync import FakeStripeSub, _licensed_item
+
+
+def _sub_event(account, sub_id, customer, status, *, items):
+    """Build a webhook event whose data.object is a Basil-shaped subscription (items.data[])."""
+    event = MagicMock()
+    event.account = account
+    event.data.object = FakeStripeSub(
+        id=sub_id, customer=customer, status=status, currency="usd",
+        items={"data": items})
+    return event
 
 
 @pytest.mark.django_db
@@ -20,18 +31,10 @@ class TestHandleSubscriptionCreated:
             tenant=tenant, external_id="cust-1", stripe_customer_id="cus_abc",
         )
 
-        event = MagicMock()
-        event.account = "acct_123"
-        event.data.object.id = "sub_new"
-        event.data.object.customer = "cus_abc"
-        event.data.object.status = "active"
-        event.data.object.current_period_start = 1738368000  # unix timestamp
-        event.data.object.current_period_end = 1740960000
-        event.data.object.plan.product.name = "Pro Plan"
-        event.data.object.plan.amount = 4900  # cents
-        event.data.object.plan.currency = "usd"
-        event.data.object.plan.interval = "month"
-        event.data.object.quantity = 5
+        event = _sub_event("acct_123", "sub_new", "cus_abc", "active", items=[
+            _licensed_item(4900, qty=1, product_name="Pro Plan"),  # access $49
+            _licensed_item(0, qty=5),                              # 5 seats @ $0
+        ])
 
         handle_subscription_created(event)
 
@@ -57,18 +60,9 @@ class TestHandleSubscriptionCreated:
             tenant=tenant, external_id="cust-1", stripe_customer_id="cus_dup",
         )
 
-        event = MagicMock()
-        event.account = "acct_dup"
-        event.data.object.id = "sub_dup"
-        event.data.object.customer = "cus_dup"
-        event.data.object.status = "active"
-        event.data.object.current_period_start = 1738368000
-        event.data.object.current_period_end = 1740960000
-        event.data.object.plan.product.name = "Pro Plan"
-        event.data.object.plan.amount = 4900
-        event.data.object.plan.currency = "usd"
-        event.data.object.plan.interval = "month"
-        event.data.object.quantity = 1
+        event = _sub_event("acct_dup", "sub_dup", "cus_dup", "active", items=[
+            _licensed_item(4900, qty=1, product_name="Pro Plan"),
+        ])
 
         handle_subscription_created(event)
         handle_subscription_created(event)
@@ -96,17 +90,18 @@ class TestHandleSubscriptionUpdated:
             current_period_start=now, current_period_end=now, last_synced_at=now,
         )
 
-        event = MagicMock()
-        event.data.object.id = "sub_upd"
-        event.data.object.status = "past_due"
-        event.data.object.current_period_start = 1738368000
-        event.data.object.current_period_end = 1740960000
-        event.data.object.quantity = 1
+        event = _sub_event(None, "sub_upd", customer.stripe_customer_id, "past_due", items=[
+            _licensed_item(4900, qty=1, product_name="Pro"),  # access $49
+            _licensed_item(1000, qty=4),                      # grew to 4 seats @ $10
+        ])
 
         handle_subscription_updated(event)
 
         sub.refresh_from_db()
         assert sub.status == "past_due"
+        # update re-sums the items, so amount_micros + seat qty reflect the new shape
+        assert sub.amount_micros == (4900 + 1000 * 4) * 10_000
+        assert sub.quantity == 4
 
 
 @pytest.mark.django_db

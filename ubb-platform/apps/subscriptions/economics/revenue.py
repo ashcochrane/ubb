@@ -65,7 +65,7 @@ class RevenueService:
             status__in=["active", "trialing", "past_due"])
         total = 0
         for sub in subs:
-            per_interval = sub.amount_micros * sub.quantity
+            per_interval = sub.amount_micros
             monthly = per_interval // 12 if sub.interval == "year" else per_interval
             for m_start, m_end in _month_iter(start_date, end_date):
                 w_start = max(start_date, m_start)
