@@ -10,6 +10,7 @@ from apps.billing.connectors.stripe.handlers import handle_balance_low_stripe
 
 @pytest.mark.django_db
 class TestHandleBalanceLowStripe:
+    @pytest.mark.django_db(transaction=True)
     def test_creates_attempt_and_dispatches_task_when_stripe_configured(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],

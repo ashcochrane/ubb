@@ -115,54 +115,39 @@ def charge_auto_topup_task(attempt_id):
 
 @shared_task(queue="ubb_billing")
 def reconcile_topups_with_stripe():
-    """Daily spot-check: compare succeeded TopUpAttempts against Stripe charges.
-
-    Queries Stripe for each attempt with a stripe_charge_id from the last 48 hours.
-    Flags mismatches (amount, status, refunds) for investigation.
-    Rate-limited to avoid Stripe API limits.
-    """
+    """Stripe-driven repair sweep: credit any succeeded auto-topup PaymentIntent that has no
+    local wallet credit. Lookback exceeds Stripe's 3-day webhook-retry horizon so it only
+    repairs genuinely-lost events. Idempotent via apply_topup_credit (auto_topup:{pi_id})."""
     from apps.billing.topups.models import TopUpAttempt
-    from apps.platform.queries import get_tenant_stripe_account
+    from apps.billing.topups.services import AutoTopUpService
+    from apps.billing.wallets.models import WalletTransaction
+    from apps.platform.tenants.models import Tenant
 
-    cutoff = timezone.now() - timedelta(hours=48)
-
-    attempts = TopUpAttempt.objects.filter(
-        status="succeeded",
-        stripe_charge_id__isnull=False,
-        updated_at__gte=cutoff,
-    ).select_related("customer__tenant")
-
-    mismatches = 0
-    for attempt in attempts.iterator():
+    cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
+    repaired = 0
+    accounts = (Tenant.objects.exclude(stripe_connected_account_id="")
+                .exclude(stripe_connected_account_id__isnull=True)
+                .values_list("stripe_connected_account_id", flat=True).distinct())
+    for account in accounts:
         try:
-            charge = stripe.Charge.retrieve(
-                attempt.stripe_charge_id,
-                stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
-            )
+            pis = stripe.PaymentIntent.list(created={"gte": cutoff}, limit=100, stripe_account=account)
         except stripe.error.StripeError:
-            logger.warning("Stripe charge fetch failed", extra={"data": {
-                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id,
-            }})
+            logger.warning("Reconcile: PI list failed", extra={"data": {"account": account}})
             continue
-
-        expected_micros = attempt.amount_micros
-        actual_micros = charge.amount * 10_000
-
-        if charge.status != "succeeded" or actual_micros != expected_micros or charge.refunded:
-            mismatches += 1
-            logger.error("Stripe reconciliation mismatch", extra={"data": {
-                "attempt_id": str(attempt.id),
-                "charge_id": attempt.stripe_charge_id,
-                "expected_micros": expected_micros,
-                "actual_micros": actual_micros,
-                "charge_status": charge.status,
-                "refunded": charge.refunded,
-            }})
-
-        time.sleep(0.1)  # Rate limit: ~10 req/sec
-
-    if mismatches > 0:
-        logger.error(
-            "Stripe reconciliation completed with mismatches",
-            extra={"data": {"mismatch_count": mismatches}},
-        )
+        for pi in pis.auto_paging_iter():
+            attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+            if not attempt_id or getattr(pi, "status", "") != "succeeded":
+                continue
+            if WalletTransaction.objects.filter(idempotency_key=f"auto_topup:{pi.id}").exists():
+                continue
+            try:
+                attempt = TopUpAttempt.objects.get(id=attempt_id)
+            except (TopUpAttempt.DoesNotExist, ValueError):
+                continue
+            if AutoTopUpService.apply_topup_credit(attempt, pi):
+                repaired += 1
+                logger.warning("Reconcile repaired uncredited auto-topup",
+                               extra={"data": {"attempt_id": str(attempt.id), "pi": pi.id}})
+            time.sleep(0.1)
+    if repaired:
+        logger.warning("Auto-topup reconcile repaired credits", extra={"data": {"repaired": repaired}})
