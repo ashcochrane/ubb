@@ -69,6 +69,7 @@ class UsageService:
         if run_id is not None:
             from apps.platform.runs.services import RunService
             run = RunService.accumulate_cost(run_id, billed_cost_micros)
+        owner_id = customer.resolve_billing_owner().id
         try:
             with transaction.atomic():
                 event = UsageEvent.objects.create(
@@ -79,7 +80,8 @@ class UsageService:
                     billed_cost_micros=billed_cost_micros,
                     units=units, currency=currency, usage_metrics=usage_metrics or {},
                     pricing_provenance=provenance,
-                    product_id=product_id or "", tags=tags, run_id=run_id)
+                    product_id=product_id or "", tags=tags, run_id=run_id,
+                    billing_owner_id=owner_id)
         except IntegrityError:
             existing = UsageEvent.objects.get(
                 tenant=tenant, customer=customer, idempotency_key=idempotency_key)
@@ -88,5 +90,6 @@ class UsageService:
             tenant_id=str(tenant.id), customer_id=str(customer.id), event_id=str(event.id),
             cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
             billed_cost_micros=billed_cost_micros, event_type=event_type or "",
-            provider=provider or "", run_id=str(run_id) if run_id else None))
+            provider=provider or "", run_id=str(run_id) if run_id else None,
+            billing_owner_id=str(owner_id)))
         return _result(event, run_total=run.total_cost_micros if run else None)

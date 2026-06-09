@@ -25,6 +25,7 @@ class UsageRecorded:
     provider: str = ""
     auto_topup_attempt_id: str | None = None
     run_id: str | None = None
+    billing_owner_id: str = ""
 
 
 @dataclass(frozen=True)
