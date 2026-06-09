@@ -151,3 +151,33 @@ def reconcile_topups_with_stripe():
             time.sleep(0.1)
     if repaired:
         logger.warning("Auto-topup reconcile repaired credits", extra={"data": {"repaired": repaired}})
+
+    # Secondary: amount/refund audit of locally-succeeded attempts (drift detection).
+    from apps.platform.queries import get_tenant_stripe_account
+    audit_cutoff = timezone.now() - timedelta(hours=48)
+    audit_attempts = TopUpAttempt.objects.filter(
+        status="succeeded", stripe_charge_id__isnull=False, updated_at__gte=audit_cutoff,
+    ).select_related("customer__tenant")
+    mismatches = 0
+    for attempt in audit_attempts.iterator():
+        try:
+            charge = stripe.Charge.retrieve(
+                attempt.stripe_charge_id,
+                stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
+            )
+        except stripe.error.StripeError:
+            logger.warning("Stripe charge fetch failed", extra={"data": {
+                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id}})
+            continue
+        expected_micros = attempt.amount_micros
+        actual_micros = charge.amount * 10_000
+        if charge.status != "succeeded" or actual_micros != expected_micros or charge.refunded:
+            mismatches += 1
+            logger.error("Stripe reconciliation mismatch", extra={"data": {
+                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id,
+                "expected_micros": expected_micros, "actual_micros": actual_micros,
+                "charge_status": charge.status, "refunded": charge.refunded}})
+        time.sleep(0.1)
+    if mismatches > 0:
+        logger.error("Stripe reconciliation completed with mismatches",
+                     extra={"data": {"mismatch_count": mismatches}})

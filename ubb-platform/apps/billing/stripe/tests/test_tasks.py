@@ -98,9 +98,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             stripe_charge_id=charge_id,
         )
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_no_mismatch_for_matching_charge(self, mock_sleep, mock_retrieve):
+    def test_no_mismatch_for_matching_charge(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_ok", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
@@ -114,9 +116,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             "ch_ok", stripe_account="acct_test",
         )
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_flags_amount_mismatch(self, mock_sleep, mock_retrieve):
+    def test_flags_amount_mismatch(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_bad", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
@@ -128,9 +132,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             reconcile_topups_with_stripe()
         self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_flags_refunded_charge(self, mock_sleep, mock_retrieve):
+    def test_flags_refunded_charge(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_refunded", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
