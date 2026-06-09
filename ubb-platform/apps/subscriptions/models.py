@@ -68,5 +68,41 @@ class SubscriptionInvoice(BaseModel):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"
 
 
+class TenantBillingPlan(BaseModel):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="billing_plans")
+    key = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    access_fee_micros = models.BigIntegerField(default=0)
+    per_seat_micros = models.BigIntegerField(default=0)
+    interval = models.CharField(max_length=5, default="month")  # month|year
+    usage_mode = models.CharField(max_length=12, default="invoice_item")  # invoice_item|none
+    stripe_access_product_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_access_price_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_seat_product_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_seat_price_id = models.CharField(max_length=255, blank=True, default="")
+    provisioned_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_billing_plan"
+        constraints = [models.UniqueConstraint(fields=["tenant", "key"], name="uq_billing_plan_tenant_key")]
+
+
+class CustomerSubscriptionItem(BaseModel):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="sub_items")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="sub_items")
+    stripe_subscription = models.ForeignKey(
+        "subscriptions.StripeSubscription", on_delete=models.CASCADE, related_name="line_items"
+    )
+    stripe_subscription_item_id = models.CharField(max_length=255, unique=True)
+    axis = models.CharField(max_length=8)  # access|seat
+    stripe_price_id = models.CharField(max_length=255)
+    unit_amount_micros = models.BigIntegerField(default=0)
+    quantity = models.IntegerField(default=1)
+    plan = models.ForeignKey(TenantBillingPlan, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_customer_sub_item"
+
+
 # Import economics models so Django discovers them for migrations
 from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig  # noqa: E402, F401
