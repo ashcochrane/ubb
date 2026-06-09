@@ -13,7 +13,23 @@ logger = logging.getLogger("ubb.billing")
 class PostpaidUsageService:
     @staticmethod
     def aggregate_lines(tenant, customer, period_start, period_end):
-        """(total_micros, [(dimension_label, amount_micros), ...]); lines ALWAYS sum to total."""
+        """(total_micros, [(label, amount_micros), ...]); lines ALWAYS sum to total.
+        A BUSINESS aggregates across its seats with one line per seat (external_id)."""
+        from apps.metering.usage.models import UsageEvent
+        if customer.account_type == "business":
+            seats = {s.id: s.external_id for s in customer.seats.all()}
+            if not seats:
+                return 0, []
+            qs = UsageEvent.objects.filter(
+                tenant=tenant, customer_id__in=list(seats.keys()),
+                effective_at__date__gte=period_start, effective_at__date__lt=period_end)
+            agg = defaultdict(int)
+            for cid, billed in qs.values_list("customer_id", "billed_cost_micros"):
+                agg[seats.get(cid, "(seat)")] += billed or 0
+            lines = sorted(agg.items(), key=lambda kv: -kv[1])
+            total = sum(a for _, a in lines)
+            return total, lines
+
         from apps.billing.invoicing.models import PostpaidUsageConfig
         cfg = PostpaidUsageConfig.objects.filter(tenant=tenant).first()
         group_by = cfg.usage_line_item_group_by if cfg else ""
