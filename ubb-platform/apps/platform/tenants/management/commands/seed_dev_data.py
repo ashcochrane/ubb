@@ -92,20 +92,34 @@ class Command(BaseCommand):
         self.stdout.write(f"Stripe CID:     {customer.stripe_customer_id or '(not set)'}")
         self.stdout.write(f"Widget JWT:     {widget_token}")
         self.stdout.write("=" * 60)
-        self.stdout.write("\nTest commands:\n")
+        self.stdout.write("\nTest commands (server: python manage.py runserver 8001):\n")
         self.stdout.write(f'# Health check')
-        self.stdout.write(f'curl http://localhost:8000/api/v1/health\n')
-        self.stdout.write(f'# Get balance')
+        self.stdout.write(f'curl http://localhost:8001/api/v1/health\n')
+        self.stdout.write(f'# Get wallet balance')
         self.stdout.write(f'curl -H "Authorization: Bearer {raw_key}" '
-                          f'http://localhost:8000/api/v1/customers/{customer.id}/balance\n')
-        self.stdout.write(f'# Record usage')
+                          f'http://localhost:8001/api/v1/billing/customers/{customer.id}/balance\n')
+        self.stdout.write(f'# Create a cost rate card (2 micros per input_token)')
+        self.stdout.write(
+            f'curl -X POST -H "Authorization: Bearer {raw_key}" '
+            f'-H "Content-Type: application/json" '
+            f'-d \'{{"card_type": "cost", "metric_name": "input_tokens", '
+            f'"pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1}}\' '
+            f'http://localhost:8001/api/v1/metering/pricing/rate-cards\n')
+        self.stdout.write(f'# Record a usage event (engine computes COGS from rate card)')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
             f'-d \'{{"customer_id": "{customer.id}", "request_id": "req-1", '
-            f'"idempotency_key": "idem-1", "provider_cost_micros": 500000}}\' '
-            f'http://localhost:8000/api/v1/usage\n')
-        self.stdout.write(f'# Me balance (widget)')
+            f'"idempotency_key": "idem-1", "product_id": "search", '
+            f'"usage_metrics": {{"input_tokens": 1000}}}}\' '
+            f'http://localhost:8001/api/v1/metering/usage\n')
+        self.stdout.write(f'# Per-customer cost analytics')
+        self.stdout.write(
+            f'curl -H "Authorization: Bearer {raw_key}" '
+            f'"http://localhost:8001/api/v1/metering/analytics/usage?customer_id={customer.id}"\n')
+        self.stdout.write(f'# Me balance (widget JWT)')
         self.stdout.write(
             f'curl -H "Authorization: Bearer {widget_token}" '
-            f'http://localhost:8000/api/v1/me/balance\n')
+            f'http://localhost:8001/api/v1/me/balance\n')
+        self.stdout.write(
+            f'# SDK quickstart — see ubb-sdk/README.md for the full Journey-1 happy path\n')
