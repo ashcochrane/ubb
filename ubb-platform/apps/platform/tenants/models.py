@@ -38,6 +38,7 @@ class Tenant(BaseModel):
     )
     default_currency = models.CharField(max_length=3, default="usd")
     require_cost_card_coverage = models.BooleanField(default=False)
+    charges_enabled = models.BooleanField(default=False)
 
     class Meta:
         db_table = "ubb_tenant"
@@ -119,3 +120,14 @@ class TenantApiKey(BaseModel):
             return key_obj
         except cls.DoesNotExist:
             return None
+
+
+class ConnectOAuthState(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="connect_oauth_states")
+    state = models.CharField(max_length=128, unique=True, db_index=True)
+    return_url = models.CharField(max_length=2000, blank=True, default="")
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "ubb_connect_oauth_state"
