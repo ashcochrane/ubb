@@ -185,3 +185,12 @@ def test_auto_topup_requires_action_contract():
                                 amount_micros=20_000_000, code="authentication_required")
     assert e.EVENT_TYPE == "auto_topup.requires_action"
     assert asdict(e)["amount_micros"] == 20_000_000
+
+
+def test_balance_overage_contract():
+    from dataclasses import asdict
+    from apps.platform.events.schemas import BalanceOverage
+    e = BalanceOverage(tenant_id="t", customer_id="c", balance_micros=-500,
+                       overage_limit_micros=0, overage_micros=500)
+    assert e.EVENT_TYPE == "billing.balance_overage"
+    assert asdict(e)["overage_micros"] == 500

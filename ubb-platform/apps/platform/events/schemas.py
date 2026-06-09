@@ -203,3 +203,13 @@ class AutoTopupRequiresAction:
     attempt_id: str
     amount_micros: int = 0
     code: str = ""
+
+
+@dataclass(frozen=True)
+class BalanceOverage:
+    EVENT_TYPE = "billing.balance_overage"
+    tenant_id: str
+    customer_id: str
+    balance_micros: int = 0
+    overage_limit_micros: int = 0
+    overage_micros: int = 0

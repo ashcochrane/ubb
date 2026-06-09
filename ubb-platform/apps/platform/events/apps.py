@@ -28,6 +28,7 @@ class EventsConfig(AppConfig):
             "budget.threshold_reached",
             "usage.invoice_pushed",
             "auto_topup.requires_action",
+            "billing.balance_overage",
         ]
         for event_type in event_types:
             handler_registry.register(
