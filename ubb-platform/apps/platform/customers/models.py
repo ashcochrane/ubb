@@ -42,6 +42,14 @@ class Customer(SoftDeleteMixin, BaseModel):
             ),
         ]
 
+    def resolve_billing_owner(self):
+        """The Customer whose wallet/card/auto-top-up funds this customer:
+        the business for a POOLED seat, otherwise self."""
+        if self.account_type == "seat" and self.parent_id:
+            if self.parent.billing_topology == "pooled":
+                return self.parent
+        return self
+
     def soft_delete(self):
         """Soft delete customer and emit outbox event for product cleanup."""
         with transaction.atomic():
