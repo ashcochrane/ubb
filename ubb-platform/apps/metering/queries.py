@@ -196,7 +196,10 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         d = dict(r)
         d["bucket"] = d["bucket"].isoformat() if d.get("bucket") else None
         if group_by and group_by in d:
-            d["dimension"] = d.pop(group_by)
+            raw_dim = d.pop(group_by)
+            # Map empty string or None to the unattributed sentinel so no events
+            # are silently dropped and every timeseries bucket reconciles to the total.
+            d["dimension"] = raw_dim if raw_dim else "(unattributed)"
         d["markup_micros"] = (d["billed_cost_micros"] or 0) - (d["provider_cost_micros"] or 0)
         out.append(d)
     return out

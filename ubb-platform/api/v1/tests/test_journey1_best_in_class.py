@@ -60,6 +60,8 @@ def _no_outbox_dispatch():
 # cards below. Asserted exactly so every reconciliation below is precise.
 COST_ALPHA = 200   # rate 2/unit * 100 units, unit_quantity=1
 COST_BETA = 500    # rate 5/unit * 100 units, unit_quantity=1
+# Unattributed event: recorded with an explicit provider_cost_micros (no service tag).
+COST_UNATTR = 300
 
 
 def _force_day(event_id, day):
@@ -121,18 +123,36 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             assert res.agent_id == agent
             _force_day(res.event_id, day)
 
-        # Expected grand-total provider cost (COGS) across all 8 events.
-        grand_total = sum(expected_cost[svc] for _, svc, _, _ in
-                          [(p, s, a, d) for (p, s, a, d) in matrix])
-        assert grand_total == 4 * COST_ALPHA + 4 * COST_BETA == 2800
+        # ---- 3b. One extra event for C1 with NO service tag -> service_id="" ----
+        # This event MUST appear as "(unattributed)" in the service_id breakdown
+        # so that the breakdown reconciles to the new grand total.
+        unattr_res = client.record_usage(
+            customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
+            provider_cost_micros=COST_UNATTR,
+            # Deliberately no service/agent/product tags so all three dimension
+            # fields are empty strings on the stored event.
+        )
+        assert unattr_res.provider_cost_micros == COST_UNATTR
+        assert unattr_res.service_id == ""
+        _force_day(unattr_res.event_id, 1)  # pin to day 1 alongside other day-1 events
 
-        # Per-dimension expected provider-cost totals (computed from the matrix).
+        # Expected grand-total provider cost (COGS) across all 9 events (8 matrix + 1 unattr).
+        grand_total = sum(expected_cost[svc] for _, svc, _, _ in
+                          [(p, s, a, d) for (p, s, a, d) in matrix]) + COST_UNATTR
+        assert grand_total == 4 * COST_ALPHA + 4 * COST_BETA + COST_UNATTR == 3100
+
+        # Per-dimension expected provider-cost totals (matrix events + unattributed event).
+        # The unattributed event contributes to the "(unattributed)" bucket in each dimension.
         exp_by_product, exp_by_service, exp_by_agent = {}, {}, {}
         for product, service, agent, _ in matrix:
             cost = expected_cost[service]
             exp_by_product[product] = exp_by_product.get(product, 0) + cost
             exp_by_service[service] = exp_by_service.get(service, 0) + cost
             exp_by_agent[agent] = exp_by_agent.get(agent, 0) + cost
+        # The extra unattributed event has no service/agent/product tags.
+        exp_by_service["(unattributed)"] = COST_UNATTR
+        exp_by_product["(unattributed)"] = COST_UNATTR
+        exp_by_agent["(unattributed)"] = COST_UNATTR
 
         # ---- 4. multi-dimension COGS breakdown via the SDK (no client joins) ----
         rep = client.usage_analytics(
@@ -148,9 +168,11 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         by_service = _as_map(breakdowns["service_id"])
         by_agent = _as_map(breakdowns["agent_id"])
 
-        # (a) per-service totals reflect alpha=2/unit (200 each) vs beta=5/unit (500 each).
-        assert by_service == exp_by_service == {"alpha": 800, "beta": 2000}
-        # (b) every breakdown sums to the SAME grand-total provider cost.
+        # (a) per-service totals reflect alpha=2/unit (200 each) vs beta=5/unit (500 each),
+        #     PLUS an "(unattributed)" row for the event with no service tag.
+        assert by_service == exp_by_service == {
+            "alpha": 800, "beta": 2000, "(unattributed)": COST_UNATTR}
+        # (b) every breakdown sums to the SAME grand-total provider cost (including unattributed).
         assert sum(by_product.values()) == grand_total
         assert sum(by_service.values()) == grand_total
         assert sum(by_agent.values()) == grand_total
@@ -173,7 +195,10 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         for row in series:
             svc = row["dimension"]
             ts_by_service[svc] = ts_by_service.get(svc, 0) + (row["provider_cost_micros"] or 0)
-        assert ts_by_service == by_service == {"alpha": 800, "beta": 2000}
+        # Timeseries totals per service must match the step-4 dimensional breakdown
+        # (alpha, beta, AND the "(unattributed)" bucket from the no-service-tag event).
+        assert ts_by_service == by_service == {
+            "alpha": 800, "beta": 2000, "(unattributed)": COST_UNATTR}
 
         # ---- 6. rate-card version history + point-in-time as_of ----
         alpha_card_id = batch["created"][0]   # the {"service":"alpha"} cost card

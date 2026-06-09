@@ -305,7 +305,8 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                 key = dim[4:]
                 if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", key):
                     return 422, {"error": f"invalid tag dimension {dim}"}
-                rows = list(
+                # Events that have the key (non-NULL dimension value).
+                rows_with_key = list(
                     qs.filter(tags__has_key=key)
                     .annotate(dimension=KeyTextTransform(key, "tags"))
                     .values("dimension")
@@ -316,11 +317,27 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                     )
                     .order_by("-total_billed_cost_micros")
                 )
+                # Events that are MISSING the key -> bucket as "(unattributed)".
+                unattr_qs = qs.exclude(tags__has_key=key)
+                unattr_agg = unattr_qs.aggregate(
+                    event_count=Count("id"),
+                    total_provider_cost_micros=Sum("provider_cost_micros"),
+                    total_billed_cost_micros=Sum("billed_cost_micros"),
+                )
+                if (unattr_agg["event_count"] or 0) > 0:
+                    rows_with_key.append({
+                        "dimension": "(unattributed)",
+                        "event_count": unattr_agg["event_count"] or 0,
+                        "total_provider_cost_micros": unattr_agg["total_provider_cost_micros"] or 0,
+                        "total_billed_cost_micros": unattr_agg["total_billed_cost_micros"] or 0,
+                    })
+                rows = sorted(rows_with_key, key=lambda r: -(r["total_billed_cost_micros"] or 0))
             elif dim in _ANALYTICS_ALLOWED_COLS:
                 col = "customer__external_id" if dim == "customer" else dim
-                base = qs if dim == "customer" else qs.exclude(**{col: ""})
+                # Run over the FULL qs (no exclusion) so every event is counted.
+                # customer always has an external_id so no "(unattributed)" needed there.
                 rows = list(
-                    base.values(col)
+                    qs.values(col)
                     .annotate(
                         event_count=Count("id"),
                         total_provider_cost_micros=Sum("provider_cost_micros"),
@@ -329,7 +346,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                     .order_by("-total_billed_cost_micros")
                 )
                 for r in rows:
-                    r["dimension"] = r.pop(col)
+                    raw_val = r.pop(col)
+                    # Map empty string or None to the sentinel for non-customer cols
+                    if dim != "customer" and not raw_val:
+                        raw_val = "(unattributed)"
+                    r["dimension"] = raw_val
             else:
                 return 422, {"error": f"unknown dimension {dim}"}
             breakdowns[dim] = rows
@@ -411,7 +432,7 @@ def list_rate_cards(request, card_type: str = None, include_history: bool = Fals
     if card_type:
         qs = qs.filter(card_type=card_type)
     return [_rate_card_to_out(c) for c in qs.order_by(
-        "card_type", "provider", "event_type", "metric_name", "-valid_from")]
+        "card_type", "provider", "event_type", "metric_name", "-valid_from", "id")]
 
 
 @metering_api.post("/pricing/rate-cards", response={200: RateCardOut, 422: dict})
@@ -555,7 +576,7 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
 def rate_card_history(request, lineage_id: UUID):
     _product_check(request)
     qs = RateCard.objects.filter(
-        tenant=request.auth.tenant, lineage_id=lineage_id).order_by("-valid_from")
+        tenant=request.auth.tenant, lineage_id=lineage_id).order_by("-valid_from", "id")
     return [_rate_card_to_out(c) for c in qs]
 
 

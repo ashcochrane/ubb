@@ -546,3 +546,74 @@ class UsageTimeseriesEndpointTest(TestCase):
         resp = self.client.get("/api/v1/metering/analytics/usage/timeseries?granularity=year",
                                HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 422
+
+
+class DimensionBreakdownReconciliationTest(TestCase):
+    """Breakdowns using dimensions=[...] must reconcile to the grand total.
+
+    An event with an empty service_id must NOT be silently excluded; it must
+    appear as a '(unattributed)' row so that the sum of the breakdown equals
+    the top-line total_provider_cost_micros.
+    """
+
+    def setUp(self):
+        from apps.metering.usage.models import UsageEvent
+
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Reconcile Tenant", products=["metering"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_reconcile"
+        )
+        # Event 1: has a service tag -> service_id = "svcA"
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r_rec_1", idempotency_key="i_rec_1",
+            provider_cost_micros=100_000, billed_cost_micros=100_000,
+            service_id="svcA",
+        )
+        # Event 2: NO service tag -> service_id is empty string (the default)
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r_rec_2", idempotency_key="i_rec_2",
+            provider_cost_micros=100_000, billed_cost_micros=100_000,
+            service_id="",
+        )
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    def test_empty_service_id_bucketed_as_unattributed(self):
+        """The breakdown must contain an '(unattributed)' row for the empty service_id
+        event, and the row totals must sum to the overall total_provider_cost_micros."""
+        resp = self.http_client.get(
+            f"/api/v1/metering/analytics/usage"
+            f"?customer_id={self.customer.id}&dimensions=service_id",
+            **self._auth(),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+
+        # Grand total is both events combined: 200_000
+        grand_total = body["total_provider_cost_micros"]
+        self.assertEqual(grand_total, 200_000)
+
+        breakdown = body["breakdowns"]["service_id"]
+        dim_map = {row["dimension"]: row["total_provider_cost_micros"] for row in breakdown}
+
+        # The named-service event must still appear
+        self.assertIn("svcA", dim_map)
+        self.assertEqual(dim_map["svcA"], 100_000)
+
+        # The empty-service event must appear as "(unattributed)"
+        self.assertIn("(unattributed)", dim_map, f"breakdown rows: {breakdown}")
+        self.assertEqual(dim_map["(unattributed)"], 100_000)
+
+        # The breakdown must reconcile to the grand total
+        breakdown_sum = sum(dim_map.values())
+        self.assertEqual(
+            breakdown_sum, grand_total,
+            f"breakdown sum {breakdown_sum} != grand total {grand_total}; rows: {breakdown}",
+        )
