@@ -223,6 +223,53 @@ class UBBClient:
         r = metering._request("get", f"/api/v1/platform/accounts/business/{external_id}")
         return r.json()
 
+    # ---- subscription orchestration (plan / subscribe / seats) ----
+
+    def create_plan(self, key: str, name: str, *, access_fee_micros: int = 0,
+                    per_seat_micros: int = 0, interval: str = "month",
+                    usage_mode: str = "invoice_item") -> dict:
+        """Define a tenant billing plan via the platform API.
+
+        Calls POST /api/v1/platform/plans and returns the created plan as a dict.
+        """
+        metering = self._require_metering()
+        r = metering._request("post", "/api/v1/platform/plans", json={
+            "key": key,
+            "name": name,
+            "access_fee_micros": access_fee_micros,
+            "per_seat_micros": per_seat_micros,
+            "interval": interval,
+            "usage_mode": usage_mode,
+        })
+        return r.json()
+
+    def subscribe_customer(self, external_id: str, plan_key: str,
+                           seats: int = 0) -> dict:
+        """Subscribe an end-customer to a plan (access fee + seats).
+
+        Calls POST /api/v1/platform/customers/{external_id}/subscribe and returns
+        the response dict (subscription_id, amount_micros, quantity).
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/platform/customers/{external_id}/subscribe",
+            json={"plan_key": plan_key, "seats": seats},
+        )
+        return r.json()
+
+    def set_seats(self, external_id: str, seats: int) -> dict:
+        """Change a customer's subscribed seat count.
+
+        Calls POST /api/v1/platform/customers/{external_id}/seats and returns
+        the response dict ({"seats": seats}).
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/platform/customers/{external_id}/seats",
+            json={"seats": seats},
+        )
+        return r.json()
+
     def get_tenant_config(self) -> dict:
         """Get the tenant's own configuration.
 

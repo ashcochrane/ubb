@@ -1,8 +1,11 @@
+import uuid
+
 from django.db import IntegrityError
 from ninja import NinjaAPI, Schema
 
 from core.auth import ApiKeyAuth
 from apps.platform.customers.models import Customer
+from api.v1.schemas import PlanIn, PlanOut, SubscribeIn, SeatsIn
 
 
 class CreateCustomerRequest(Schema):
@@ -88,3 +91,96 @@ def get_business(request, external_id: str):
         "pooled_balance_micros": pooled_balance,
         "seats": seats,
     }
+
+
+def _plan_out(plan):
+    return {
+        "id": str(plan.id),
+        "key": plan.key,
+        "name": plan.name,
+        "access_fee_micros": plan.access_fee_micros,
+        "per_seat_micros": plan.per_seat_micros,
+        "interval": plan.interval,
+        "usage_mode": plan.usage_mode,
+    }
+
+
+@platform_api.post("/plans", response={201: PlanOut, 422: dict})
+def create_plan(request, payload: PlanIn):
+    from apps.subscriptions.models import TenantBillingPlan
+
+    try:
+        plan = TenantBillingPlan.objects.create(
+            tenant=request.auth.tenant,
+            key=payload.key,
+            name=payload.name,
+            access_fee_micros=payload.access_fee_micros,
+            per_seat_micros=payload.per_seat_micros,
+            interval=payload.interval,
+            usage_mode=payload.usage_mode,
+        )
+    except IntegrityError:
+        return 422, {"error": f"plan with key '{payload.key}' already exists"}
+    return 201, _plan_out(plan)
+
+
+@platform_api.post("/customers/{external_id}/subscribe", response={200: dict, 404: dict, 422: dict})
+def subscribe_customer(request, external_id: str, payload: SubscribeIn):
+    from apps.subscriptions.models import TenantBillingPlan
+    from apps.subscriptions.orchestration.service import (
+        SubscriptionOrchestrator,
+        OrchestrationError,
+    )
+
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        return 404, {"error": "customer not found"}
+
+    plan = TenantBillingPlan.objects.filter(tenant=tenant, key=payload.plan_key).first()
+    if plan is None:
+        return 404, {"error": f"plan with key '{payload.plan_key}' not found"}
+
+    try:
+        mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
+    except OrchestrationError as e:
+        return 422, {"error": str(e)}
+
+    return 200, {
+        "subscription_id": mirror.stripe_subscription_id,
+        "amount_micros": mirror.amount_micros,
+        "quantity": mirror.quantity,
+    }
+
+
+@platform_api.post("/customers/{external_id}/seats", response={200: dict, 404: dict, 422: dict})
+def set_customer_seats(request, external_id: str, payload: SeatsIn):
+    from apps.subscriptions.models import CustomerSubscriptionItem
+    from apps.subscriptions.orchestration.service import (
+        SubscriptionOrchestrator,
+        OrchestrationError,
+    )
+
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        return 404, {"error": "customer not found"}
+
+    business = customer.resolve_billing_owner()
+    seat_item = (
+        CustomerSubscriptionItem.objects.filter(customer=business, axis="seat")
+        .order_by("-created_at")
+        .first()
+    )
+    if seat_item is None or seat_item.plan is None:
+        return 404, {"error": "no seat subscription item for this customer"}
+
+    change_event_id = str(uuid.uuid4())
+    try:
+        SubscriptionOrchestrator.set_seats(
+            business, seat_item.plan, payload.seats, change_event_id=change_event_id
+        )
+    except OrchestrationError as e:
+        return 422, {"error": str(e)}
+
+    return 200, {"seats": payload.seats}

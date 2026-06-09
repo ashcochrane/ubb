@@ -295,3 +295,31 @@ class TenantConfigIn(Schema):
     billing_mode: Optional[str] = None
     products: Optional[list[str]] = None
     require_cost_card_coverage: Optional[bool] = None
+
+
+class PlanIn(Schema):
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=255)
+    access_fee_micros: int = Field(default=0, ge=0)
+    per_seat_micros: int = Field(default=0, ge=0)
+    interval: str = "month"
+    usage_mode: str = "invoice_item"
+
+
+class PlanOut(Schema):
+    id: str
+    key: str
+    name: str
+    access_fee_micros: int
+    per_seat_micros: int
+    interval: str
+    usage_mode: str
+
+
+class SubscribeIn(Schema):
+    plan_key: str = Field(min_length=1, max_length=64)
+    seats: int = Field(default=0, ge=0)
+
+
+class SeatsIn(Schema):
+    seats: int = Field(ge=0)

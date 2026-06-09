@@ -324,5 +324,63 @@ class ConnectClientTest(unittest.TestCase):
         self.assertTrue(result["onboarded"])
 
 
+class SubscriptionOrchestrationClientTest(unittest.TestCase):
+    """Tests for UBBClient.create_plan / subscribe_customer / set_seats."""
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_create_plan(self):
+        plan = {
+            "id": "p1", "key": "pro", "name": "Pro",
+            "access_fee_micros": 50_000_000, "per_seat_micros": 8_000_000,
+            "interval": "month", "usage_mode": "invoice_item",
+        }
+        mock_resp = MagicMock(status_code=201, json=lambda: plan)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.create_plan(
+            "pro", "Pro", access_fee_micros=50_000_000, per_seat_micros=8_000_000,
+        )
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/plans", json={
+                "key": "pro",
+                "name": "Pro",
+                "access_fee_micros": 50_000_000,
+                "per_seat_micros": 8_000_000,
+                "interval": "month",
+                "usage_mode": "invoice_item",
+            },
+        )
+        self.assertEqual(result["key"], "pro")
+
+    def test_subscribe_customer(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"subscription_id": "sub_1", "amount_micros": 130_000_000, "quantity": 10},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.subscribe_customer("biz", "pro", seats=10)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscribe",
+            json={"plan_key": "pro", "seats": 10},
+        )
+        self.assertEqual(result["subscription_id"], "sub_1")
+        self.assertEqual(result["quantity"], 10)
+
+    def test_set_seats(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"seats": 12})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.set_seats("biz", 12)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/seats",
+            json={"seats": 12},
+        )
+        self.assertEqual(result["seats"], 12)
+
+
 if __name__ == "__main__":
     unittest.main()
