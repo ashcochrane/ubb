@@ -2,6 +2,8 @@ from django.db import models
 
 from core.models import BaseModel
 
+RESERVED_DIM_KEYS = ("product", "service", "agent")
+
 
 class UsageEvent(BaseModel):
     """Immutable usage event record."""
@@ -22,6 +24,8 @@ class UsageEvent(BaseModel):
     units = models.BigIntegerField(null=True, blank=True)
     currency = models.CharField(max_length=3, default="usd")
     product_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    service_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    agent_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
     provider_cost_micros = models.BigIntegerField(default=0)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
@@ -45,6 +49,8 @@ class UsageEvent(BaseModel):
         indexes = [
             models.Index(fields=["customer", "-effective_at"], name="idx_usage_customer_effective"),
             models.Index(fields=["tenant", "-effective_at"], name="idx_usage_tenant_effective"),
+            models.Index(fields=["tenant", "product_id", "service_id", "agent_id", "-effective_at"],
+                         name="idx_usage_attribution"),
         ]
         ordering = ["-effective_at"]
 

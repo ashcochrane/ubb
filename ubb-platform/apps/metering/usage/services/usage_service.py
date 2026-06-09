@@ -44,6 +44,8 @@ def _result(event, run_total):
         "run_total_cost_micros": run_total, "hard_stop": False,
         "usage_metrics": event.usage_metrics,
         "pricing_provenance": event.pricing_provenance,
+        "service_id": event.service_id,
+        "agent_id": event.agent_id,
     }
 
 
@@ -65,6 +67,11 @@ class UsageService:
             tenant=tenant, customer=customer, event_type=event_type or "", provider=provider or "",
             usage_metrics=usage_metrics, tags=tags, currency=currency,
             caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros)
+        _tags = tags or {}
+        service_id = _tags.get("service", "")
+        agent_id = _tags.get("agent", "")
+        if not product_id:
+            product_id = _tags.get("product", "") or ""
         run = None
         owner_id = customer.resolve_billing_owner().id
         try:
@@ -83,7 +90,8 @@ class UsageService:
                     units=units, currency=currency, usage_metrics=usage_metrics or {},
                     pricing_provenance=provenance,
                     product_id=product_id or "", tags=tags, run_id=run_id,
-                    billing_owner_id=owner_id)
+                    billing_owner_id=owner_id,
+                    service_id=service_id, agent_id=agent_id)
         except IntegrityError:
             existing = UsageEvent.objects.get(
                 tenant=tenant, customer=customer, idempotency_key=idempotency_key)

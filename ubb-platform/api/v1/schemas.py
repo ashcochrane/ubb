@@ -51,6 +51,8 @@ class RecordUsageResponse(Schema):
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
+    service_id: str = ""
+    agent_id: str = ""
 
 
 class BalanceResponse(Schema):

@@ -29,6 +29,8 @@ class RecordUsageResult:
     usage_metrics: dict | None = None
     pricing_provenance: dict | None = None
     uncosted_metrics: list | None = None
+    service_id: str = ""
+    agent_id: str = ""
 
 @dataclass(frozen=True)
 class CloseRunResult:
