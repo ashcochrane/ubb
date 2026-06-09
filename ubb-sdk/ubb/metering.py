@@ -65,19 +65,23 @@ class MeteringClient:
     # ---- public API ----
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
-                     provider_cost_micros: int, billed_cost_micros: int | None = None,
+                     provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      product_id: str = "", metadata: dict | None = None,
-                     run_id: str | None = None) -> RecordUsageResult:
+                     run_id: str | None = None,
+                     usage_metrics: dict | None = None) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage."""
         body: dict = {
             "customer_id": customer_id,
             "request_id": request_id,
             "idempotency_key": idempotency_key,
             "metadata": metadata or {},
-            "provider_cost_micros": provider_cost_micros,
         }
+        if provider_cost_micros is not None:
+            body["provider_cost_micros"] = provider_cost_micros
+        if usage_metrics is not None:
+            body["usage_metrics"] = usage_metrics
         if billed_cost_micros is not None:
             body["billed_cost_micros"] = billed_cost_micros
         if units is not None:
@@ -217,17 +221,26 @@ class MeteringClient:
                 "rate_per_unit_micros": rate_per_unit_micros, "unit_quantity": unit_quantity,
                 "fixed_micros": fixed_micros, "currency": currency, "product_id": product_id,
                 "customer_id": customer_id}
-        r = self._request("post", "/api/v1/pricing/rate-cards", json=body)
+        r = self._request("post", "/api/v1/metering/pricing/rate-cards", json=body)
         return RateCard(**r.json())
 
     def list_rate_cards(self, card_type=None):
         params = {"card_type": card_type} if card_type else None
-        r = self._request("get", "/api/v1/pricing/rate-cards", params=params)
+        r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params)
         return [RateCard(**row) for row in r.json()]
 
     def delete_rate_card(self, card_id):
-        self._request("delete", f"/api/v1/pricing/rate-cards/{card_id}")
+        self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")
         return True
+
+    def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None, tag_key=None):
+        """Cost + margin analytics with customer/product/tag breakdowns via
+        GET /api/v1/metering/analytics/usage."""
+        params = {k: v for k, v in {
+            "start_date": start_date, "end_date": end_date,
+            "customer_id": customer_id, "tag_key": tag_key}.items() if v}
+        r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
+        return r.json()
 
     def close(self) -> None:
         self._http.close()

@@ -31,7 +31,7 @@ class RateCardClientTest(unittest.TestCase):
         self.assertEqual(card.rate_per_unit_micros, 5000)
         self.assertEqual(card.id, "rc1")
         self.assertEqual(card.card_type, "cost")
-        self.assertEqual(mock_post.call_args.args[0], "/api/v1/pricing/rate-cards")
+        self.assertEqual(mock_post.call_args.args[0], "/api/v1/metering/pricing/rate-cards")
 
     @patch("ubb.metering.httpx.Client.post")
     def test_create_rate_card_body(self, mock_post):
@@ -55,7 +55,7 @@ class RateCardClientTest(unittest.TestCase):
         self.assertEqual(len(cards), 1)
         self.assertIsInstance(cards[0], RateCard)
         self.assertEqual(cards[0].metric_name, "input_tokens")
-        self.assertEqual(mock_get.call_args.args[0], "/api/v1/pricing/rate-cards")
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/metering/pricing/rate-cards")
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_with_card_type(self, mock_get):
@@ -75,7 +75,7 @@ class RateCardClientTest(unittest.TestCase):
         mock_delete.return_value = MagicMock(status_code=200, json=lambda: {"status": "deleted"})
         result = self.client.delete_rate_card("rc1")
         self.assertTrue(result)
-        self.assertEqual(mock_delete.call_args.args[0], "/api/v1/pricing/rate-cards/rc1")
+        self.assertEqual(mock_delete.call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc1")
 
 
 if __name__ == "__main__":

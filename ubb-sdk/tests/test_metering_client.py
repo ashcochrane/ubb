@@ -52,6 +52,7 @@ class MeteringClientTest(unittest.TestCase):
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["provider_cost_micros"], 500_000)
         self.assertEqual(body["billed_cost_micros"], 1_000_000)
+        # No usage_metrics supplied → must not appear in body
         self.assertNotIn("usage_metrics", body)
 
     @patch("ubb.metering.httpx.Client.post")
@@ -175,6 +176,64 @@ class MeteringClientTest(unittest.TestCase):
         with patch.object(self.client._http, "close") as mock_close:
             self.client.close()
             mock_close.assert_called_once()
+
+    # ---- record_usage with usage_metrics (no provider_cost_micros) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_with_usage_metrics_no_cost(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_m1", "new_balance_micros": 9_000_000, "suspended": False,
+        })
+        result = self.client.record_usage(
+            customer_id="c", request_id="r", idempotency_key="i",
+            usage_metrics={"input_tokens": 1000},
+        )
+        self.assertIsInstance(result, RecordUsageResult)
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
+        self.assertNotIn("provider_cost_micros", body)
+
+    # ---- rate-card URL correctness ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_create_rate_card_url(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "id": "rc_1", "card_type": "cost", "metric_name": "input_tokens",
+            "provider": "", "event_type": "", "dimensions": {},
+            "pricing_model": "per_unit", "rate_per_unit_micros": 0,
+            "unit_quantity": 1_000_000, "fixed_micros": 0, "currency": "usd",
+            "product_id": "", "customer_id": None,
+        })
+        self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        call_args = mock_post.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_rate_cards_url(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+        self.client.list_rate_cards()
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+    @patch("ubb.metering.httpx.Client.delete")
+    def test_delete_rate_card_url(self, mock_delete):
+        mock_delete.return_value = MagicMock(status_code=204, json=lambda: {})
+        self.client.delete_rate_card("rc_42")
+        call_args = mock_delete.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc_42")
+
+    # ---- usage_analytics ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_url_and_params(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"rows": []})
+        result = self.client.usage_analytics(customer_id="c", tag_key="agent")
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
+        params = call_args.kwargs["params"]
+        self.assertEqual(params["customer_id"], "c")
+        self.assertEqual(params["tag_key"], "agent")
+        self.assertEqual(result, {"rows": []})
 
 
 if __name__ == "__main__":
