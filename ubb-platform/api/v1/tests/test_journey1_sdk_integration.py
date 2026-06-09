@@ -20,30 +20,36 @@ from apps.metering.pricing.models import RateCard
 
 
 @pytest.fixture
-def celery_eager():
-    """Run the on-commit outbox dispatch (process_single_event.delay) in-process.
+def _no_outbox_dispatch():
+    """Neutralize the transactional-outbox Celery dispatch for this test.
 
-    record_usage fires a transactional-outbox Celery task on commit. Under
-    live_server there is no Celery worker / broker, so we run the task eagerly
-    (synchronously, no broker) for the duration of the test. This keeps the test
-    a real HTTP / routing / pricing exercise while making the async event
-    fan-out deterministic. Restored afterwards.
+    record_usage writes an OutboxEvent and fires
+    ``transaction.on_commit(lambda: process_single_event.delay(...))`` (see
+    apps/platform/events/outbox.py). Under live_server there is no Celery
+    worker / broker, so that ``.delay()`` tries to publish to the real AMQP
+    broker and raises ``kombu.exceptions.OperationalError`` (ConnectionRefused)
+    on the commit hook -> the /api/v1/metering/usage request returns HTTP 500.
+
+    Flipping the global ``app.conf.task_always_eager`` is unreliable across the
+    full suite: earlier tests mutate that global Celery state, and the on-commit
+    hook runs on the live_server thread, so the flag is not guaranteed to be in
+    effect at dispatch time. Patching the dispatch symbol to a no-op removes the
+    broker dependency entirely and is deterministic regardless of global state.
+    Because live_server runs in this same process, the patch applies to the
+    server thread too.
+
+    This does NOT weaken the test: the HTTP response (routing, pricing/COGS, and
+    the SDK response contract) is computed synchronously before commit; only the
+    fire-and-forget async fan-out is suppressed.
     """
-    from config.celery import app
+    from unittest.mock import patch
 
-    prev_eager = app.conf.task_always_eager
-    prev_propagate = app.conf.task_eager_propagates
-    app.conf.task_always_eager = True
-    app.conf.task_eager_propagates = True
-    try:
+    with patch("apps.platform.events.tasks.process_single_event.delay"):
         yield
-    finally:
-        app.conf.task_always_eager = prev_eager
-        app.conf.task_eager_propagates = prev_propagate
 
 
 @pytest.mark.django_db(transaction=True)
-def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, celery_eager):
+def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_dispatch):
     from ubb.metering import MeteringClient
 
     tenant = Tenant.objects.create(name="J1", products=["metering"])
