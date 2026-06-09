@@ -364,3 +364,27 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_usage_analytics_breakdowns_include_provider_cost(self):
+        from apps.metering.usage.models import UsageEvent
+        c = Customer.objects.create(tenant=self.tenant, external_id="acme")
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
+            provider_cost_micros=300_000, billed_cost_micros=500_000, product_id="search",
+        )
+        resp = self.http_client.get(
+            f"/api/v1/metering/analytics/usage?customer_id={c.id}",
+            **self._auth(),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(
+            any(r["customer__external_id"] == "acme" and r["total_provider_cost_micros"] == 300_000
+                for r in body["by_customer"]),
+            f"by_customer rows: {body['by_customer']}",
+        )
+        self.assertTrue(
+            any(r["product_id"] == "search" and r["total_provider_cost_micros"] == 300_000
+                for r in body["by_product"]),
+            f"by_product rows: {body['by_product']}",
+        )

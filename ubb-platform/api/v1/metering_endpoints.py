@@ -238,35 +238,51 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 
     by_provider = list(
         qs.exclude(provider="").values("provider").annotate(
-            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+            event_count=Count("id"),
+            total_cost_micros=Sum("billed_cost_micros"),
+            total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
     by_event_type = list(
         qs.exclude(event_type="").values("event_type").annotate(
-            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+            event_count=Count("id"),
+            total_cost_micros=Sum("billed_cost_micros"),
+            total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
     by_customer = list(
         qs.values("customer__external_id").annotate(
-            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+            event_count=Count("id"),
+            total_cost_micros=Sum("billed_cost_micros"),
+            total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
     by_product = list(
         qs.exclude(product_id="").values("product_id").annotate(
-            event_count=Count("id"), total_cost_micros=Sum("billed_cost_micros"),
+            event_count=Count("id"),
+            total_cost_micros=Sum("billed_cost_micros"),
+            total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
 
     by_tag = []
     if tag_key:
         from collections import defaultdict
-        agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0})
-        for tags, billed in qs.filter(tags__has_key=tag_key).values_list("tags", "billed_cost_micros"):
+        agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0, "total_provider_cost_micros": 0})
+        for tags, billed, provider in qs.filter(tags__has_key=tag_key).values_list(
+            "tags", "billed_cost_micros", "provider_cost_micros"
+        ):
             val = (tags or {}).get(tag_key)
             agg[val]["event_count"] += 1
             agg[val]["total_cost_micros"] += billed or 0
+            agg[val]["total_provider_cost_micros"] += provider or 0
         by_tag = [
-            {"tag_value": k, "event_count": v["event_count"], "total_cost_micros": v["total_cost_micros"]}
+            {
+                "tag_value": k,
+                "event_count": v["event_count"],
+                "total_cost_micros": v["total_cost_micros"],
+                "total_provider_cost_micros": v["total_provider_cost_micros"],
+            }
             for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
         ]
 
