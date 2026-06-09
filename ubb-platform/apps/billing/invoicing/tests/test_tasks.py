@@ -1,3 +1,5 @@
+import datetime
+
 import pytest
 from unittest.mock import patch, MagicMock
 from django.utils import timezone
@@ -40,3 +42,75 @@ class TestPostpaidClose:
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call"):
             close_postpaid_usage_periods()
         assert not CustomerUsageInvoice.objects.filter(tenant=t).exists()  # prepaid is not invoiced
+
+
+def _seq_ids():
+    n = {"i": 0}
+    def f(*a, **k):
+        n["i"] += 1
+        return MagicMock(id=f"obj_{n['i']}")
+    return f
+
+
+@pytest.mark.django_db
+class TestPostpaidReconcile:
+    PS = datetime.date(2026, 6, 1)
+    PE = datetime.date(2026, 7, 1)
+
+    def _tenant_customer(self):
+        t = Tenant.objects.create(name="PP", products=["metering", "billing"],
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+        c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
+        return t, c
+
+    def test_stale_pushing_row_is_reclaimed_and_repushed_with_same_rec_id_keys(self):
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        t, c = self._tenant_customer()
+        UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+            provider_cost_micros=1, billed_cost_micros=1_000_000)
+        rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
+            period_end=self.PE, status="pushing", total_billed_micros=1_000_000)
+        stale = timezone.now() - datetime.timedelta(minutes=45)
+        CustomerUsageInvoice.objects.filter(id=rec.id).update(updated_at=stale)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call",
+                   side_effect=_seq_ids()) as mock_sc, \
+             patch("apps.platform.events.tasks.process_single_event"):
+            reconcile_postpaid_usage()
+        rec.refresh_from_db()
+        assert rec.status == "pushed"
+        assert rec.line_items.count() == 1
+        keys = [ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list]
+        assert keys
+        assert all(str(rec.id) in k for k in keys)
+        assert any(k == f"usage-invoice-{rec.id}" for k in keys)
+        assert any(k == f"usage-finalize-{rec.id}" for k in keys)
+
+    def test_fresh_pushing_row_is_left_alone(self):
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        t, c = self._tenant_customer()
+        rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
+            period_end=self.PE, status="pushing", total_billed_micros=1_000_000)
+        fresh = timezone.now() - datetime.timedelta(minutes=5)
+        CustomerUsageInvoice.objects.filter(id=rec.id).update(updated_at=fresh)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc:
+            reconcile_postpaid_usage()
+        rec.refresh_from_db()
+        assert rec.status == "pushing"
+        mock_sc.assert_not_called()
+
+    def test_failed_row_is_retried(self):
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        t, c = self._tenant_customer()
+        UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+            provider_cost_micros=1, billed_cost_micros=1_000_000)
+        rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
+            period_end=self.PE, status="failed", total_billed_micros=0)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call",
+                   side_effect=_seq_ids()), \
+             patch("apps.platform.events.tasks.process_single_event"):
+            reconcile_postpaid_usage()
+        rec.refresh_from_db()
+        assert rec.status == "pushed"
