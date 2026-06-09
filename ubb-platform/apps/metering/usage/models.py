@@ -32,6 +32,7 @@ class UsageEvent(BaseModel):
         null=True, blank=True,
     )
     effective_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    billing_owner_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "ubb_usage_event"

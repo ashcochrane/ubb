@@ -78,6 +78,7 @@ class WalletTransaction(BaseModel):
     description = models.TextField(blank=True, default="")
     reference_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     idempotency_key = models.CharField(max_length=500, blank=True, null=True, db_index=True)
+    usage_event_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "ubb_wallet_transaction"
