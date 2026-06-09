@@ -235,12 +235,20 @@ class MeteringClient:
         self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")
         return True
 
-    def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None, tag_key=None):
+    def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None,
+                        tag_key=None, dimensions=None):
         """Cost + margin analytics with customer/product/tag breakdowns via
-        GET /api/v1/metering/analytics/usage."""
+        GET /api/v1/metering/analytics/usage.
+
+        Pass ``dimensions`` as a list of strings (e.g. ``["product_id", "tag:region"]``)
+        to receive a ``breakdowns`` dict in the response.  httpx encodes a list as
+        repeated query parameters, matching what django-ninja expects.
+        """
         params = {k: v for k, v in {
             "start_date": start_date, "end_date": end_date,
             "customer_id": customer_id, "tag_key": tag_key}.items() if v}
+        if dimensions is not None:
+            params["dimensions"] = dimensions
         r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
         return r.json()
 

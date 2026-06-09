@@ -254,6 +254,37 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(params["tag_key"], "agent")
         self.assertEqual(result, {"rows": []})
 
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_dimensions_sent_as_repeated_params(self, mock_get):
+        """dimensions list is forwarded as-is so httpx encodes repeated params."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "total_events": 1,
+            "breakdowns": {"product_id": [{"dimension": "search", "event_count": 1,
+                                           "total_provider_cost_micros": 300_000,
+                                           "total_billed_cost_micros": 500_000}]},
+        })
+        result = self.client.usage_analytics(
+            customer_id="c1",
+            dimensions=["product_id", "service_id", "tag:region"],
+        )
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
+        params = call_args.kwargs["params"]
+        # dimensions list is passed straight through — httpx will repeat the key
+        self.assertEqual(params["dimensions"], ["product_id", "service_id", "tag:region"])
+        self.assertEqual(params["customer_id"], "c1")
+        # breakdowns dict is returned transparently
+        self.assertIn("breakdowns", result)
+        self.assertIn("product_id", result["breakdowns"])
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_no_dimensions_no_key(self, mock_get):
+        """When dimensions is omitted the key must not appear in the request params."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"total_events": 0})
+        self.client.usage_analytics()
+        params = mock_get.call_args.kwargs["params"]
+        self.assertNotIn("dimensions", params)
+
 
 if __name__ == "__main__":
     unittest.main()

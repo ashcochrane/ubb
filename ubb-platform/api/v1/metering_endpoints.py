@@ -1,9 +1,11 @@
+import re
 from datetime import date
 from uuid import UUID
 
 from django.db.models import Sum, Count
+from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
-from ninja import NinjaAPI
+from ninja import NinjaAPI, Query
 
 from core.auth import ApiKeyAuth, ProductAccess
 from django.utils import timezone
@@ -215,9 +217,13 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
 # --- Analytics ---
 
 
-@metering_api.get("/analytics/usage", response=UsageAnalyticsResponse)
+_ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "service_id", "agent_id"}
+
+
+@metering_api.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: dict})
 def usage_analytics(request, start_date: date = None, end_date: date = None,
-                    customer_id: str = None, tag_key: str = None):
+                    customer_id: str = None, tag_key: str = None,
+                    dimensions: list[str] = Query(None)):
     """Usage analytics with markup margin and customer/product/tag breakdowns."""
     _product_check(request)
     tenant = request.auth.tenant
@@ -288,7 +294,45 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
         ]
 
-    return {
+    breakdowns: dict = {}
+    if dimensions:
+        if len(dimensions) > 6:
+            return 422, {"error": "at most 6 dimensions"}
+        for dim in dimensions:
+            if dim.startswith("tag:"):
+                key = dim[4:]
+                if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", key):
+                    return 422, {"error": f"invalid tag dimension {dim}"}
+                rows = list(
+                    qs.filter(tags__has_key=key)
+                    .annotate(dimension=KeyTextTransform(key, "tags"))
+                    .values("dimension")
+                    .annotate(
+                        event_count=Count("id"),
+                        total_provider_cost_micros=Sum("provider_cost_micros"),
+                        total_billed_cost_micros=Sum("billed_cost_micros"),
+                    )
+                    .order_by("-total_billed_cost_micros")
+                )
+            elif dim in _ANALYTICS_ALLOWED_COLS:
+                col = "customer__external_id" if dim == "customer" else dim
+                base = qs if dim == "customer" else qs.exclude(**{col: ""})
+                rows = list(
+                    base.values(col)
+                    .annotate(
+                        event_count=Count("id"),
+                        total_provider_cost_micros=Sum("provider_cost_micros"),
+                        total_billed_cost_micros=Sum("billed_cost_micros"),
+                    )
+                    .order_by("-total_billed_cost_micros")
+                )
+                for r in rows:
+                    r["dimension"] = r.pop(col)
+            else:
+                return 422, {"error": f"unknown dimension {dim}"}
+            breakdowns[dim] = rows
+
+    return 200, {
         "total_events": totals["total_events"] or 0,
         "total_billed_cost_micros": total_billed,
         "total_provider_cost_micros": total_provider,
@@ -298,6 +342,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "by_customer": by_customer,
         "by_product": by_product,
         "by_tag": by_tag,
+        "breakdowns": breakdowns,
     }
 
 

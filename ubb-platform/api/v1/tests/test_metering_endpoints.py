@@ -365,6 +365,45 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_usage_analytics_multi_dimension_breakdown(self):
+        from apps.platform.customers.models import Customer
+        from apps.metering.usage.models import UsageEvent
+        c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
+        UsageEvent.objects.create(
+            tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
+            provider_cost_micros=300_000, billed_cost_micros=500_000, product_id="search",
+            service_id="svcA", agent_id="ag1", tags={"region": "us"},
+        )
+        resp = self.http_client.get(
+            f"/api/v1/metering/analytics/usage?customer_id={c.id}"
+            "&dimensions=product_id&dimensions=service_id&dimensions=tag:region",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        b = resp.json()["breakdowns"]
+        self.assertTrue(
+            any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 300_000
+                for r in b["product_id"]),
+            f"product_id rows: {b.get('product_id')}",
+        )
+        self.assertTrue(
+            any(r["dimension"] == "svcA" and r["total_provider_cost_micros"] == 300_000
+                for r in b["service_id"]),
+            f"service_id rows: {b.get('service_id')}",
+        )
+        self.assertTrue(
+            any(r["dimension"] == "us" and r["total_provider_cost_micros"] == 300_000
+                for r in b["tag:region"]),
+            f"tag:region rows: {b.get('tag:region')}",
+        )
+
+    def test_usage_analytics_rejects_unknown_dimension(self):
+        resp = self.http_client.get(
+            "/api/v1/metering/analytics/usage?dimensions=ssn",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 422)
+
     def test_usage_analytics_breakdowns_include_provider_cost(self):
         from apps.metering.usage.models import UsageEvent
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")

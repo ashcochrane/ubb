@@ -170,6 +170,7 @@ class UsageAnalyticsResponse(Schema):
     by_customer: list[dict]
     by_product: list[dict]
     by_tag: list[dict]
+    breakdowns: dict = {}
 
 
 class RevenueAnalyticsResponse(Schema):
