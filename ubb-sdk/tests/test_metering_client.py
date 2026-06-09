@@ -193,6 +193,25 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
         self.assertNotIn("provider_cost_micros", body)
 
+    # ---- record_usage tolerates extra server fields (usage_metrics/provenance/uncosted) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_full_server_body_with_extra_fields(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "e1", "suspended": False,
+            "provider_cost_micros": 2000, "billed_cost_micros": 2000,
+            "usage_metrics": {"input_tokens": 1000},
+            "pricing_provenance": {"engine_version": "x"},
+            "uncosted_metrics": ["foo"],
+        })
+        res = self.client.record_usage(
+            customer_id="c", request_id="r", idempotency_key="i",
+            usage_metrics={"input_tokens": 1000},
+        )
+        self.assertIsInstance(res, RecordUsageResult)
+        self.assertEqual(res.provider_cost_micros, 2000)
+        self.assertEqual(res.uncosted_metrics, ["foo"])
+
     # ---- rate-card URL correctness ----
 
     @patch("ubb.metering.httpx.Client.post")

@@ -99,7 +99,9 @@ class MeteringClient:
         if run_id is not None:
             body["run_id"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)
-        return RecordUsageResult(**r.json())
+        data = r.json()
+        return RecordUsageResult(**{k: v for k, v in data.items()
+                                    if k in RecordUsageResult.__dataclass_fields__})
 
     def _request_usage(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Like _request but handles run-specific error codes."""

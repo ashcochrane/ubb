@@ -26,6 +26,9 @@ class RecordUsageResult:
     run_id: str | None = None
     run_total_cost_micros: int | None = None
     hard_stop: bool = False
+    usage_metrics: dict | None = None
+    pricing_provenance: dict | None = None
+    uncosted_metrics: list | None = None
 
 @dataclass(frozen=True)
 class CloseRunResult:

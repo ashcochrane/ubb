@@ -11,20 +11,6 @@ This exists because mocked-httpx unit tests let real wire-level mismatches ship
 undetected (e.g. a `/api/v1/metering/pricing/rate-cards` 404, or a response body
 the SDK can't deserialize). A live-server test exercises real URL routing and
 the real response contract end to end.
-
-NOTE (defect this test surfaces): the live server's RecordUsageResponse returns
-`usage_metrics`, `pricing_provenance` and `uncosted_metrics` in addition to the
-fields the SDK's `RecordUsageResult` dataclass declares. The SDK constructs the
-result with the strict `RecordUsageResult(**r.json())`, so calling
-`record_usage()` against the real server raises TypeError on those extra fields
-(the mocked SDK unit tests return a trimmed body and never hit this). Until the
-SDK is hardened (e.g. filter to dataclass fields, as it already does for
-CustomerMargin), this test asserts the computed COGS from the raw server
-response obtained through the SDK's own authenticated HTTP client + request
-path -- still real routing, real pricing, same wire -- and records the strict
-deserialization failure explicitly. The Journey-1 acceptance signal (per-customer
-/ per-product COGS read back) goes through the SDK's `usage_analytics()`, which
-returns a plain dict and is unaffected.
 """
 import pytest
 
@@ -81,25 +67,14 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, celery_eager)
         assert card.metric_name == "output_tokens"
 
         # (b) record usage with usage_metrics and NO caller cost -> engine computes COGS.
-        #     Build the body exactly as MeteringClient.record_usage does, then POST through
-        #     the SDK's own authenticated HTTP client + request path so we exercise the real
-        #     route and the real response contract.
-        body = {
-            "customer_id": str(customer.id),
-            "request_id": "r1",
-            "idempotency_key": "i1",
-            "metadata": {},
-            "usage_metrics": {"input_tokens": 1000},
-            "product_id": "search",
-        }
-        resp = client._request_usage("post", "/api/v1/metering/usage", json=body)
-        payload = resp.json()
+        #     Drive the SDK's real record_usage() over HTTP: real route, real response
+        #     contract, real (tolerant) deserialization into RecordUsageResult.
+        res = client.record_usage(customer_id=str(customer.id), request_id="r1",
+                                  idempotency_key="i1", product_id="search",
+                                  usage_metrics={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
-        assert payload["provider_cost_micros"] == 2000  # 1000 * 2
-        # The live response carries usage_metrics / pricing_provenance / uncosted_metrics
-        # alongside the documented fields -- the wire-level shape the SDK's strict
-        # RecordUsageResult(**body) currently chokes on (see module docstring).
-        assert payload["usage_metrics"] == {"input_tokens": 1000}
+        assert res.provider_cost_micros == 2000  # 1000 * 2
+        assert res.uncosted_metrics == []   # input_tokens HAS a cost card
 
         # (c) analytics returns per-customer + per-product PROVIDER cost (COGS) via the SDK.
         rep = client.usage_analytics(customer_id=str(customer.id))
