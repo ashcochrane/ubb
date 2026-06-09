@@ -68,6 +68,15 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     if not payment_methods.data:
         return None
 
+    default_pm = None
+    try:
+        cust = stripe_call(stripe.Customer.retrieve, retryable=True, idempotency_key=None,
+                           id=customer_stripe_id, stripe_account=connected_account)
+        default_pm = (cust.get("invoice_settings") or {}).get("default_payment_method")
+    except Exception:
+        default_pm = None
+    pm_id = default_pm or payment_methods.data[0].id
+
     intent = stripe_call(
         stripe.PaymentIntent.create,
         retryable=True,
@@ -75,9 +84,10 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
         customer=customer_stripe_id,
         amount=amount_cents,
         currency="usd",
-        payment_method=payment_methods.data[0].id,
+        payment_method=pm_id,
         off_session=True,
         confirm=True,
+        metadata={"topup_attempt_id": str(top_up_attempt.id)},
         stripe_account=connected_account,
     )
     return intent
