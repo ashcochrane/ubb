@@ -63,40 +63,6 @@ class SubscriptionsClient:
         r = self._request("post", "/api/v1/subscriptions/sync")
         return r.json()
 
-    def get_economics(self, period_start: str | None = None,
-                      period_end: str | None = None) -> dict:
-        """Get unit economics for all customers via GET /api/v1/subscriptions/economics."""
-        params = {}
-        if period_start:
-            params["period_start"] = period_start
-        if period_end:
-            params["period_end"] = period_end
-        r = self._request("get", "/api/v1/subscriptions/economics", params=params)
-        return r.json()
-
-    def get_customer_economics(self, customer_id: str,
-                               period_start: str | None = None,
-                               period_end: str | None = None) -> dict:
-        """Get unit economics for a single customer via GET /api/v1/subscriptions/economics/{customer_id}."""
-        params = {}
-        if period_start:
-            params["period_start"] = period_start
-        if period_end:
-            params["period_end"] = period_end
-        r = self._request("get", f"/api/v1/subscriptions/economics/{customer_id}", params=params)
-        return r.json()
-
-    def get_economics_summary(self, period_start: str | None = None,
-                              period_end: str | None = None) -> dict:
-        """Get economics summary via GET /api/v1/subscriptions/economics/summary."""
-        params = {}
-        if period_start:
-            params["period_start"] = period_start
-        if period_end:
-            params["period_end"] = period_end
-        r = self._request("get", "/api/v1/subscriptions/economics/summary", params=params)
-        return r.json()
-
     def get_subscription(self, customer_id: str) -> dict:
         """Get a customer's subscription via GET /api/v1/subscriptions/customers/{customer_id}/subscription."""
         r = self._request("get", f"/api/v1/subscriptions/customers/{customer_id}/subscription")
