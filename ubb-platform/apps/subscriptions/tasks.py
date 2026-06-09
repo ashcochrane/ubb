@@ -66,29 +66,34 @@ def reconcile_cost_accumulators():
 
     drift = 0
     for period_start, period_end in ((prev_start, prev_end), (cur_start, cur_end)):
-        for tenant in Tenant.objects.filter(
-            products__contains=["metering"],
-            is_active=True,
-        ):
-            for r in get_per_customer_cost_totals(tenant.id, period_start, period_end):
-                acc, _ = CustomerCostAccumulator.objects.get_or_create(
-                    tenant_id=tenant.id,
-                    customer_id=r["customer_id"],
-                    period_start=period_start,
-                    defaults={"period_end": period_end},
-                )
-                if (
-                    acc.total_provider_cost_micros != r["provider_cost_micros"]
-                    or acc.total_billed_cost_micros != r["billed_cost_micros"]
-                    or acc.event_count != r["event_count"]
-                ):
+        for tenant in Tenant.objects.filter(products__contains=["metering"], is_active=True):
+            ledger = {r["customer_id"]: r
+                      for r in get_per_customer_cost_totals(tenant.id, period_start, period_end)}
+            seen = set()
+            for acc in CustomerCostAccumulator.objects.filter(
+                    tenant_id=tenant.id, period_start=period_start):
+                seen.add(acc.customer_id)
+                r = ledger.get(acc.customer_id)
+                prov = r["provider_cost_micros"] if r else 0
+                bill = r["billed_cost_micros"] if r else 0
+                cnt = r["event_count"] if r else 0
+                if (acc.total_provider_cost_micros != prov
+                        or acc.total_billed_cost_micros != bill
+                        or acc.event_count != cnt):
                     drift += 1
                     CustomerCostAccumulator.objects.filter(id=acc.id).update(
-                        period_end=period_end,
-                        total_provider_cost_micros=r["provider_cost_micros"],
-                        total_billed_cost_micros=r["billed_cost_micros"],
-                        event_count=r["event_count"],
-                    )
+                        period_end=period_end, total_provider_cost_micros=prov,
+                        total_billed_cost_micros=bill, event_count=cnt)
+            for cid, r in ledger.items():
+                if cid in seen:
+                    continue
+                CustomerCostAccumulator.objects.create(
+                    tenant_id=tenant.id, customer_id=cid, period_start=period_start,
+                    period_end=period_end,
+                    total_provider_cost_micros=r["provider_cost_micros"],
+                    total_billed_cost_micros=r["billed_cost_micros"],
+                    event_count=r["event_count"])
+                drift += 1
 
     logger.info("cost_accumulator_reconcile", extra={"data": {"drift_count": drift}})
 

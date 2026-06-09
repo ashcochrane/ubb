@@ -80,7 +80,7 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     )
 
     # Run the reconcile — it should create the correct prior-month accumulator
-    # and leave the wrong current-month one zeroed / uncreated.
+    # AND zero out the stale current-month one (bidirectional reconcile).
     reconcile_cost_accumulators()
 
     # Prior-month accumulator must now reflect the ledger
@@ -91,12 +91,18 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     assert acc.total_billed_cost_micros == 700_000
     assert acc.event_count == 1
 
-    # Current-month accumulator should have been zeroed out (event not in that period)
-    cur_acc = CustomerCostAccumulator.objects.filter(
+    # The stale current-month accumulator must have been ZEROED (event is not in
+    # that period).  This is the bidirectional fix: existing accumulators whose
+    # ledger value is 0 must be updated to 0/0/0, not left at stale positive values.
+    cur_acc = CustomerCostAccumulator.objects.get(
         tenant=t, customer=c, period_start=cur_start
-    ).first()
-    # The reconcile does not delete stale accumulators — that's fine; it only
-    # sets values for periods that have ledger rows.  The current-month entry
-    # remains at its stale values (no ledger events in cur month for this customer).
-    # The key assertion is that the prior-month entry now exists and is correct.
-    assert acc.total_provider_cost_micros == 500_000
+    )
+    assert cur_acc.total_provider_cost_micros == 0, (
+        f"stale accumulator was not zeroed: provider={cur_acc.total_provider_cost_micros}"
+    )
+    assert cur_acc.total_billed_cost_micros == 0, (
+        f"stale accumulator was not zeroed: billed={cur_acc.total_billed_cost_micros}"
+    )
+    assert cur_acc.event_count == 0, (
+        f"stale accumulator was not zeroed: event_count={cur_acc.event_count}"
+    )

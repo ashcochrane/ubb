@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.db.models import F
 from django.utils import timezone
@@ -34,16 +35,18 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         return
 
     # Resolve the event's effective_at to bucket into the correct calendar month.
+    # Validate UUID format BEFORE the DB query so a malformed id (e.g. "evt-1"
+    # in tests) raises ValueError here rather than DataError inside the atomic block.
     from apps.metering.usage.models import UsageEvent
     eff = None
     ev_id = payload.get("event_id")
     if ev_id:
         try:
+            uuid.UUID(str(ev_id))
             eff = UsageEvent.objects.filter(id=ev_id).values_list(
                 "effective_at", flat=True
             ).first()
-        except Exception:
-            # Non-UUID ids (e.g. "evt-1" in tests) raise DataError on Postgres.
+        except (ValueError, TypeError):
             eff = None
     basis = eff.date() if eff else timezone.now().date()
     period_start, period_end = _period_bounds_for(basis)

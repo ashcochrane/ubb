@@ -27,7 +27,7 @@ class PostpaidUsageService:
             agg = defaultdict(int)
             for cid, billed in qs.values_list("customer_id", "billed_cost_micros"):
                 agg[seats.get(cid, "(seat)")] += billed or 0
-            lines = sorted(agg.items(), key=lambda kv: -kv[1])
+            lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
             total = sum(a for _, a in lines)
             return total, lines
 
@@ -53,7 +53,7 @@ class PostpaidUsageService:
         else:  # "product_id"
             for pid, billed in qs.values_list("product_id", "billed_cost_micros"):
                 agg[pid or "(other)"] += billed or 0
-        lines = sorted(agg.items(), key=lambda kv: -kv[1])
+        lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
         total = sum(a for _, a in lines)  # total IS the sum of lines, by construction
         return total, lines
 
