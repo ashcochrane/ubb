@@ -18,37 +18,44 @@ Operate on `request.auth.tenant` ONLY (never a tenant_id in path/body). PATCH so
 
 **SDK:** `get_tenant_config()` + `update_tenant_config(*, billing_mode=None, products=None, require_cost_card_coverage=None)` (drop None keys). All fields already exist on `Tenant` → no model change.
 
-## 2. Stripe Connect onboarding (M, one field migration)
-**Recommended: Express, UBB-managed, Stripe-hosted AccountLink** — self-serve KYC hosted by Stripe (UBB only issues a one-use link), fits the existing platform-charges-on-behalf model (`stripe_account=connected_account` everywhere), minimal new surface (reuses the webhook pipeline). *(Liability posture is Decision A.)*
+## 2. Stripe Connect onboarding — STANDARD OAuth (DECIDED; M)
+**The tenant connects their OWN existing Stripe account via Standard OAuth** ("Connect to Stripe"). This is the industry standard (Metronome/Orb/Lago/m3ter/Chargebee all integrate with the merchant's own account; none provision Express sub-merchants — that's the marketplace model). It keeps the tenant as **merchant-of-record** with **Stripe-branded invoices**, leaves KYC + dispute/chargeback + negative-balance liability with the tenant and Stripe (minimal UBB burden — UBB is a connected app, NOT a payment facilitator), and "improves as Stripe improves." **The codebase already passes `stripe_account=<connected_account>` on every call → ZERO charge-path code changes; only onboarding differs.** (Research brief: `docs/plans/2026-06-09-wave3-stripe-connect-research.md` if saved; summary in this design.)
 
-- **Migration:** `Tenant.charges_enabled = BooleanField(default=False)` (the webhook is its only writer). Reuse the blank `stripe_connected_account_id`.
-- **Service** `apps/billing/connectors/stripe/connect.py`: `create_or_get_connect_account(tenant)` — `Account.create(type="express", country="US", capabilities={card_payments, transfers}, metadata={ubb_tenant_id}, idempotency_key="connect-acct-{tenant.id}")` (NOT scoped with `stripe_account=` — it creates the account *on the platform*; the idempotency key guards retry-before-persist), persist `acct_` onto the calling tenant only; `create_onboarding_link(account_id, return_url, refresh_url)` — `AccountLink.create(type="account_onboarding")` → single-use ~5-min URL.
-- **Endpoints** new router `/api/v1/connect/` (`ApiKeyAuth`, mounted before the catch-all `api/v1/`): `POST /connect/onboard {return_url, refresh_url} -> {onboarding_url, account_id, charges_enabled}`; `GET /connect/status -> {account_id, charges_enabled, onboarded}` (reads Tenant fields; live `Account.retrieve` fallback if `charges_enabled` is False so a missed webhook can't stick). Scoped to `request.auth.tenant`. NOT gated behind `ProductAccess('billing')` (a meter_only tenant may connect before flipping billing_mode).
-- **Webhook:** `"account.updated": handle_account_updated` in `WEBHOOK_HANDLERS` — match `Tenant` by `stripe_connected_account_id == event.account`, set `charges_enabled = bool(acct.charges_enabled and acct.payouts_enabled)`, idempotent.
-- **Charge gating:** add a `charges_enabled` check at the charge choke points (`charge_saved_payment_method`/`create_checkout_session`/postpaid finalize) so UBB never charges an account that started but hasn't cleared KYC.
-- **Security:** caller = tenant's own key; `acct_` persisted to the calling tenant only; no Stripe secret ever returned (only the hosted URL + the non-secret `acct_`); AccountLink single-use/short-lived; USD preserved (`country="US"`). **Preflight:** platform Connect must be enabled on `STRIPE_SECRET_KEY` or `Account.create` fails — gate behind a config check with a clear error.
-- **SDK:** `start_connect_onboarding(return_url, refresh_url)`, `get_connect_status()`.
-- Wave-4 note: charge model will be **destination charges + `application_fee_amount`** (operator revenue) — but that lands in Wave 4.
+- **Config:** `STRIPE_CONNECT_CLIENT_ID` (the operator's Stripe Connect platform-app client id) + the configured redirect URI. Preflight: error clearly if `STRIPE_CONNECT_CLIENT_ID` is unset.
+- **Migrations (2, additive):** `Tenant.charges_enabled = BooleanField(default=False)`; a `ConnectOAuthState` model `(tenant FK, state CharField unique/indexed, return_url, created_at, expires_at, used BooleanField)` — the single-use CSRF/identity nonce for the browser-initiated callback.
+- **Service** `apps/billing/connectors/stripe/connect.py` (platform `stripe.api_key`, NOT `stripe_account=`): `build_authorize_url(tenant, return_url)` — create a `ConnectOAuthState` (unguessable `secrets.token_urlsafe` state, short expiry), return `https://connect.stripe.com/oauth/authorize?response_type=code&client_id=<id>&scope=read_write&state=<state>`; `complete_oauth(code, state)` — validate the state (exists, unused, unexpired) → `stripe.OAuth.token(grant_type="authorization_code", code=code)` → `stripe_user_id` (the connected `acct_`) → persist onto THAT state's tenant only → mark state used → `Account.retrieve(stripe_account=acct)` to set `charges_enabled`.
+- **Endpoints** new router `/api/v1/connect/` (mounted before the catch-all `api/v1/`):
+  - `POST /connect/start` (**ApiKeyAuth**) `{return_url}` → `{authorize_url}` (scoped to `request.auth.tenant`).
+  - `GET /connect/callback?code=&state=` (**NO auth** — browser redirect from Stripe; the single-use `state` is the identity+CSRF guard) → completes the exchange, then HTTP-redirects to the state's `return_url` (success/failure query param). Validate state strictly (unknown/used/expired → error, never mutate).
+  - `GET /connect/status` (**ApiKeyAuth**) → `{account_id, charges_enabled, onboarded}` (reads Tenant; live `Account.retrieve` fallback if `charges_enabled` is False so a missed webhook can't stick). NOT gated behind `ProductAccess('billing')` (a meter_only tenant may connect first).
+- **Webhooks** (add to `WEBHOOK_HANDLERS`): `account.updated` → match `Tenant` by `stripe_connected_account_id == event.account`, set `charges_enabled = bool(acct.charges_enabled)`, idempotent; `account.application.deauthorized` → the tenant revoked the connection → clear `stripe_connected_account_id` + `charges_enabled=False`.
+- **Charge gating:** add a `charges_enabled` check at the charge choke points (`charge_saved_payment_method`/`create_checkout_session`/postpaid finalize) so UBB never charges a connected account that isn't charge-ready.
+- **Security:** `/start` + `/status` scoped to the tenant's own key; the callback is identified solely by the single-use, expiring `state` (CSRF + identity); UBB stores only the non-secret `acct_` (no long-lived API secret — the OAuth token model); USD preserved.
+- **SDK:** `start_connect_onboarding(return_url) -> {authorize_url}`, `get_connect_status() -> dict`.
+- Wave-4 note: charge model will be **direct charges on the connected account** (already in place via `stripe_account=`); subscription/price/invoice creation on the Standard connected account works identically — that orchestration is Wave 4.
 
 ## 3. SDK markup (S, no server change — endpoints already exist)
 Server `metering_endpoints.py:163-216` + `schemas.py:146-153` confirmed present (`ProductAccess('metering')`; `1_000_000 micros == 1%`). Add `@dataclass(frozen=True) TenantMarkup {markup_percentage_micros, fixed_uplift_micros}` (`types.py`), and on `MeteringClient` (keyword-only money args, tolerant construction): `get_markup()` (GET `/pricing/markup`, never 404s, `{0,0}` unset), `set_markup(*, markup_percentage_micros=0, fixed_uplift_micros=0)` (PUT), `get_customer_markup(customer_id)` (GET, **404s on unknown customer**, returns the *resolved* value), `set_customer_markup(customer_id, *, ...)` (PUT). Four `UBBClient` delegates. Document `get_customer_markup` returns the *resolved* value (`{0,0}` doesn't prove an override).
 
-## 4. Open owner decisions
-- **A — Stripe Connect account type (liability posture).** *Recommend Express.* Express = UBB is platform-of-record → UBB carries dispute/negative-balance liability + must surface in tenant ToS; tenants get a limited Express Dashboard; UBB has strong control to drive PaymentIntents/Invoices (needed for Wave-4 orchestration). Standard+OAuth = tenants bear their own merchant liability + keep a full Stripe Dashboard, but adds an OAuth callback + app registration and weakens UBB's control. Endpoints/webhook/SDK/`charges_enabled` are identical either way.
-- **B — Tenant signup scope.** *Recommend defer* (self-config only; a new tenant still gets its first key via admin/seed). Wave 4 doesn't need it.
-- **C — Can a tenant grant ITSELF the `billing`/`subscriptions` product?** Commercial call: if products gate paid tiers / `platform_fee` terms → make `products` operator-only (tenant sets only `billing_mode` + `require_cost_card_coverage`; `billing_mode→prepaid/postpaid` returns 422 "enable billing first" until an operator grants it). If fully self-serve OSS → keep `products` tenant-settable.
+## 4. Decisions (RESOLVED)
+- **A — Connect model: STANDARD OAuth** (the tenant connects their own Stripe). Chosen over Express because Express would make UBB the platform-of-record (KYC owner, dispute/fraud responsibility, negative-balance backstop → payment-facilitator burden) — the opposite of the owner's "minimize our regulatory burden, Stripe-branded invoices, improve-as-Stripe-improves" stance, and against the industry standard. Zero charge-path changes (already `stripe_account=`).
+- **B — Tenant signup: DEFERRED.** Self-config only; a new tenant still gets its first key via admin/seed. Wave 4 doesn't need it.
+- **C — `products` is TENANT-SETTABLE** (self-serve). UBB monetizes via the per-usage `platform_fee`, not by gating products, so self-enablement leaks no revenue and keeps onboarding zero-friction. Revisit if paid product tiers are ever introduced.
+- **D — SDK markup return type: typed dataclass** (`TenantMarkup`), consistent with the `CustomerRevenue` sibling. (Engineer's call.)
 
 ## 5. Build sequence + capstone
 1. SDK markup (S) — pure additive; de-risks the SDK piggyback pattern. 2. Tenant-config API (S) — no migration. 3. Stripe Connect (M) — `charges_enabled` migration + `connect.py` + `/connect/` router + `account.updated` webhook + charge gating.
 
-**Capstone (SDK-only, proves self-serve config + onboarding):**
+**Capstone (SDK-only, proves self-serve config + OAuth onboarding):**
 ```python
 c = UBBClient(api_key=tenant_key)
 c.set_markup(markup_percentage_micros=20_000_000)
 c.update_tenant_config(billing_mode="prepaid", products=["metering","billing"])
 assert c.get_tenant_config()["billing_mode"] == "prepaid"
-link = c.start_connect_onboarding(return_url=..., refresh_url=...)   # hosted KYC at link["onboarding_url"]
-# account.updated webhook flips charges_enabled
+res = c.start_connect_onboarding(return_url="https://tenant.example/done")
+assert res["authorize_url"].startswith("https://connect.stripe.com/oauth/authorize")  # the "Connect to Stripe" URL
+# tenant authorizes → Stripe redirects to /connect/callback?code&state → we exchange + persist acct_;
+# (test drives the callback directly with stripe.OAuth.token mocked) then account.updated webhook flips charges_enabled
 assert c.get_connect_status()["onboarded"] is True
 ```
-Proves a tenant self-configures billing + margin AND starts Stripe Connect onboarding with zero operator/DB action — the exact D+ gaps closed and the exact preconditions Wave 4 needs (`billing_mode`, `products`, a real `stripe_connected_account_id`, `charges_enabled`). **Scope boundary:** Wave 3 makes config self-serve; it does NOT create `Subscription`/`SubscriptionItem` on the connected account — that's Wave 4.
+Proves a tenant self-configures billing + margin AND connects its own Stripe via OAuth with zero operator/DB action — the exact D+ gaps closed and the exact preconditions Wave 4 needs (`billing_mode`, `products`, a real `stripe_connected_account_id`, `charges_enabled`). **Scope boundary:** Wave 3 makes config self-serve; it does NOT create `Subscription`/`SubscriptionItem` on the connected account — that's Wave 4.
