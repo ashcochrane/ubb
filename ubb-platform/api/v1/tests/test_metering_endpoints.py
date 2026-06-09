@@ -456,3 +456,34 @@ class RateCardValidationTest(TestCase):
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
         assert "unknown_metric" in resp.json().get("uncosted_metrics", [])
+
+
+class UsageTimeseriesEndpointTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(name="Timeseries Tenant", products=["metering"])
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def test_usage_timeseries_daily_buckets(self):
+        import datetime
+        from django.utils import timezone
+        from apps.platform.customers.models import Customer
+        from apps.metering.usage.models import UsageEvent
+        c = Customer.objects.create(tenant=self.tenant, external_id="acme")
+        for i, day in enumerate([1, 2, 3]):
+            e = UsageEvent.objects.create(tenant=self.tenant, customer=c, request_id=f"r{i}",
+                idempotency_key=f"i{i}", provider_cost_micros=100_000, billed_cost_micros=150_000)
+            UsageEvent.objects.filter(id=e.id).update(
+                effective_at=timezone.make_aware(timezone.datetime(2026, 6, day, 12, 0)))
+        resp = self.client.get(
+            "/api/v1/metering/analytics/usage/timeseries?customer_id=%s&granularity=day&start_date=2026-06-01&end_date=2026-07-01" % c.id,
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 200
+        series = resp.json()["series"]
+        assert len(series) == 3
+        assert sum(b["provider_cost_micros"] for b in series) == 300_000
+
+    def test_usage_timeseries_invalid_granularity_422(self):
+        resp = self.client.get("/api/v1/metering/analytics/usage/timeseries?granularity=year",
+                               HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 422

@@ -16,6 +16,7 @@ from api.v1.schemas import (
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
+    UsageTimeseriesResponse,
     RateCardIn, RateCardOut,
 )
 from apps.metering.pricing.models import RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES
@@ -344,6 +345,24 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "by_tag": by_tag,
         "breakdowns": breakdowns,
     }
+
+
+@metering_api.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: dict})
+def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
+                     customer_id: str = None, group_by: str = None):
+    """Time-series spend rollup: daily or hourly COGS per tenant/customer."""
+    _product_check(request)
+    if granularity not in ("hour", "day"):
+        return 422, {"error": "granularity must be hour or day"}
+    if group_by is not None and group_by not in ("provider", "event_type", "product_id", "service_id", "agent_id"):
+        return 422, {"error": "invalid group_by"}
+    # guardrail: cap hourly windows to ~92 days
+    if granularity == "hour" and start_date and end_date and (end_date - start_date).days > 92:
+        return 422, {"error": "hourly window too large (max 92 days)"}
+    from apps.metering.queries import get_usage_timeseries
+    series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
+        customer_id=customer_id, group_by=group_by, start_date=start_date, end_date=end_date)
+    return 200, {"granularity": granularity, "group_by": group_by or "", "series": series}
 
 
 # --- Rate Cards ---

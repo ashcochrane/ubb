@@ -162,6 +162,46 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
     }
 
 
+def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
+                         group_by=None, start_date=None, end_date=None) -> list[dict]:
+    """Time-series spend rollup: daily or hourly COGS per tenant, optionally per customer/dimension.
+
+    Returns list of dicts with bucket (ISO string), provider_cost_micros, billed_cost_micros,
+    markup_micros, event_count, and optionally dimension (when group_by is set).
+    """
+    from django.db.models.functions import TruncHour
+    from apps.metering.usage.models import UsageEvent
+
+    trunc = TruncHour if granularity == "hour" else TruncDate
+    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+    if customer_id:
+        qs = qs.filter(customer_id=customer_id)
+    if start_date:
+        qs = qs.filter(effective_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(effective_at__date__lt=end_date)
+
+    valid_group_by = ("provider", "event_type", "product_id", "service_id", "agent_id")
+    cols = ["bucket"]
+    if group_by in valid_group_by:
+        cols.append(group_by)
+
+    rows = (qs.annotate(bucket=trunc("effective_at")).values(*cols).annotate(
+        provider_cost_micros=Sum("provider_cost_micros"),
+        billed_cost_micros=Sum("billed_cost_micros"),
+        event_count=Count("id")).order_by("bucket"))
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["bucket"] = d["bucket"].isoformat() if d.get("bucket") else None
+        if group_by and group_by in d:
+            d["dimension"] = d.pop(group_by)
+        d["markup_micros"] = (d["billed_cost_micros"] or 0) - (d["provider_cost_micros"] or 0)
+        out.append(d)
+    return out
+
+
 def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
     """Per-customer provider + billed totals over [start, end)."""
     from apps.metering.usage.models import UsageEvent

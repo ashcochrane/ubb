@@ -180,6 +180,12 @@ class RevenueAnalyticsResponse(Schema):
     daily: list[dict]
 
 
+class UsageTimeseriesResponse(Schema):
+    granularity: str
+    group_by: str = ""
+    series: list[dict]
+
+
 class BudgetConfigIn(Schema):
     cap_micros: int = Field(ge=0)
     enforce_mode: str = "advisory"

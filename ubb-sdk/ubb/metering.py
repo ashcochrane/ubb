@@ -235,6 +235,24 @@ class MeteringClient:
         self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")
         return True
 
+    def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,
+                         customer_id=None, group_by=None) -> dict:
+        """Time-series spend rollup via GET /api/v1/metering/analytics/usage/timeseries.
+
+        Returns dict with ``granularity``, ``group_by``, and ``series`` (list of bucket dicts).
+        """
+        params: dict = {"granularity": granularity}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        if customer_id is not None:
+            params["customer_id"] = customer_id
+        if group_by is not None:
+            params["group_by"] = group_by
+        r = self._request("get", "/api/v1/metering/analytics/usage/timeseries", params=params)
+        return r.json()
+
     def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None,
                         tag_key=None, dimensions=None):
         """Cost + margin analytics with customer/product/tag breakdowns via

@@ -285,6 +285,61 @@ class MeteringClientTest(unittest.TestCase):
         params = mock_get.call_args.kwargs["params"]
         self.assertNotIn("dimensions", params)
 
+    # ---- usage_timeseries ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_url_and_params(self, mock_get):
+        """usage_timeseries sends correct path and query parameters."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "day",
+            "group_by": "",
+            "series": [
+                {"bucket": "2026-06-01", "provider_cost_micros": 100_000,
+                 "billed_cost_micros": 150_000, "markup_micros": 50_000, "event_count": 1},
+            ],
+        })
+        result = self.client.usage_timeseries(
+            granularity="day",
+            start_date="2026-06-01",
+            end_date="2026-07-01",
+            customer_id="cust_1",
+        )
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage/timeseries")
+        params = call_args.kwargs["params"]
+        self.assertEqual(params["granularity"], "day")
+        self.assertEqual(params["start_date"], "2026-06-01")
+        self.assertEqual(params["end_date"], "2026-07-01")
+        self.assertEqual(params["customer_id"], "cust_1")
+        self.assertNotIn("group_by", params)
+        self.assertEqual(result["granularity"], "day")
+        self.assertEqual(len(result["series"]), 1)
+        self.assertEqual(result["series"][0]["provider_cost_micros"], 100_000)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_group_by_forwarded(self, mock_get):
+        """group_by param is forwarded when provided."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "hour", "group_by": "provider", "series": [],
+        })
+        self.client.usage_timeseries(granularity="hour", group_by="provider")
+        params = mock_get.call_args.kwargs["params"]
+        self.assertEqual(params["granularity"], "hour")
+        self.assertEqual(params["group_by"], "provider")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_omits_none_params(self, mock_get):
+        """start_date/end_date/customer_id/group_by are omitted when None."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "day", "group_by": "", "series": [],
+        })
+        self.client.usage_timeseries()
+        params = mock_get.call_args.kwargs["params"]
+        self.assertNotIn("start_date", params)
+        self.assertNotIn("end_date", params)
+        self.assertNotIn("customer_id", params)
+        self.assertNotIn("group_by", params)
+
 
 if __name__ == "__main__":
     unittest.main()
