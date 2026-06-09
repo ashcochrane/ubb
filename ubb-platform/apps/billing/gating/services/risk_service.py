@@ -6,15 +6,19 @@ from apps.billing.gating.models import RiskConfig
 class RiskService:
     @staticmethod
     def check(customer, create_run=False, run_metadata=None, external_run_id=""):
-        if customer.status == "suspended":
-            return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None, "run_id": None}
-        if customer.status == "closed":
-            return {"allowed": False, "reason": "account_closed", "balance_micros": None, "run_id": None}
+        from apps.billing.accounts import resolve_billing_owner
+        owner = resolve_billing_owner(customer)
+        # Status: gate if the seat OR its billing-owner (business) is suspended/closed
+        for who in ([customer] if owner.id == customer.id else [customer, owner]):
+            if who.status == "suspended":
+                return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None, "run_id": None}
+            if who.status == "closed":
+                return {"allowed": False, "reason": "account_closed", "balance_micros": None, "run_id": None}
         try:
             config = customer.tenant.risk_config
         except RiskConfig.DoesNotExist:
             config = None
-        # Fixed-window rate limiting (degrades gracefully if Redis is down)
+        # Fixed-window rate limiting (per-seat; degrades gracefully if Redis is down)
         if config and config.max_requests_per_minute and config.max_requests_per_minute > 0:
             try:
                 cache_key = f"ratelimit:{customer.id}:rpm"
@@ -28,19 +32,19 @@ class RiskService:
             except Exception:
                 pass  # Degrade: skip rate limiting if cache is unavailable
 
-        # Affordability check
+        # Affordability check: read wallet from billing owner (business for pooled seat, else self)
         from apps.billing.wallets.models import Wallet
         try:
-            wallet = Wallet.objects.get(customer=customer)
-            balance = wallet.balance_micros
+            balance = Wallet.objects.get(customer=owner).balance_micros
         except Wallet.DoesNotExist:
             balance = 0
 
         from apps.billing.queries import get_customer_min_balance
-        threshold = get_customer_min_balance(customer.id, customer.tenant_id)
-        if customer.tenant.billing_mode != "postpaid" and balance < -threshold:
+        threshold = get_customer_min_balance(owner.id, owner.tenant_id)
+        if owner.tenant.billing_mode != "postpaid" and balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "run_id": None}
 
+        # Budget cap: checked per-seat (customer, not owner)
         from apps.billing.gating.services.budget_service import BudgetService
         budget = BudgetService.check(customer)
         if not budget["allowed"]:

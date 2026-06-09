@@ -241,3 +241,26 @@ class TestRiskServiceBudget:
         BudgetService.record_spend(t.id, c.id, 1_000)
         res = RiskService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+
+    def test_suspended_business_gates_its_seat(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
+                                      billing_topology="pooled", status="suspended")
+        seat = Customer.objects.create(tenant=t, external_id="s1", account_type="seat", parent=biz)
+        Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        res = RiskService.check(seat)
+        assert res["allowed"] is False and res["reason"] == "insufficient_funds"
+
+    def test_pooled_seat_affordability_reads_business_wallet(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
+                                      billing_topology="pooled")
+        seat = Customer.objects.create(tenant=t, external_id="s1", account_type="seat", parent=biz)
+        Wallet.objects.create(customer=biz, balance_micros=-9_999_999)  # business pool deep negative
+        assert RiskService.check(seat)["allowed"] is False
