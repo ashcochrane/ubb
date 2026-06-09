@@ -120,5 +120,28 @@ class RateCardClientTest(unittest.TestCase):
         self.assertEqual(mock_delete.call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc1")
 
 
+    @patch("ubb.metering.httpx.Client.post")
+    def test_bulk_create_rate_cards(self, mock_post):
+        batch_response = {"created": ["rc-a", "rc-b"], "count": 2}
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: batch_response)
+        cards = [
+            {"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
+             "rate_per_unit_micros": 2, "unit_quantity": 1},
+            {"card_type": "cost", "metric_name": "images", "pricing_model": "flat",
+             "fixed_micros": 500},
+        ]
+        result = self.client.bulk_create_rate_cards(cards)
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["created"], ["rc-a", "rc-b"])
+        # assert correct path
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/metering/pricing/rate-cards/batch")
+        # assert body structure
+        body = mock_post.call_args.kwargs["json"]
+        self.assertIn("cards", body)
+        self.assertEqual(len(body["cards"]), 2)
+        self.assertEqual(body["cards"][0]["metric_name"], "tokens")
+
+
 if __name__ == "__main__":
     unittest.main()

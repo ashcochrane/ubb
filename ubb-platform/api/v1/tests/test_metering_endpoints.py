@@ -482,6 +482,41 @@ class RateCardValidationTest(TestCase):
         assert h[1]["valid_to"] is not None and h[0]["valid_to"] is None
 
 
+class RateCardBatchCreateTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(name="Batch RateCard Tenant", products=["metering"])
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def test_bulk_create_rate_cards(self):
+        body = {"cards": [
+            {"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
+             "rate_per_unit_micros": 2, "unit_quantity": 1},
+            {"card_type": "cost", "metric_name": "images", "pricing_model": "flat", "fixed_micros": 500},
+        ]}
+        resp = self.client.post("/api/v1/metering/pricing/rate-cards/batch",
+            data=json.dumps(body), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code in (200, 201)
+        assert resp.json()["count"] == 2
+        from apps.metering.pricing.models import RateCard
+        assert RateCard.objects.filter(tenant=self.tenant).count() == 2
+
+    def test_bulk_create_is_atomic_on_invalid(self):
+        from apps.metering.pricing.models import RateCard
+        before = RateCard.objects.filter(tenant=self.tenant).count()
+        body = {"cards": [
+            {"card_type": "cost", "metric_name": "ok", "pricing_model": "per_unit",
+             "rate_per_unit_micros": 1, "unit_quantity": 1},
+            {"card_type": "BOGUS", "metric_name": "bad"},
+        ]}
+        resp = self.client.post("/api/v1/metering/pricing/rate-cards/batch",
+            data=json.dumps(body), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 422
+        assert RateCard.objects.filter(tenant=self.tenant).count() == before  # zero created
+
+
 class UsageTimeseriesEndpointTest(TestCase):
     def setUp(self):
         self.client = Client()

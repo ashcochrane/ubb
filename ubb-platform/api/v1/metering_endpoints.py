@@ -18,7 +18,7 @@ from api.v1.schemas import (
     CloseRunResponse,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
-    RateCardIn, RateCardOut, RateCardUpdateIn,
+    RateCardIn, RateCardOut, RateCardUpdateIn, RateCardBatchIn,
 )
 from apps.metering.pricing.models import RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES
 from api.v1.pagination import encode_cursor, apply_cursor_filter
@@ -442,6 +442,47 @@ def create_rate_card(request, payload: RateCardIn):
         product_id=payload.product_id,
     )
     return 200, _rate_card_to_out(card)
+
+
+@metering_api.post("/pricing/rate-cards/batch", response={200: dict, 422: dict})
+def bulk_create_rate_cards(request, payload: RateCardBatchIn):
+    cards = payload.cards
+    if not cards or len(cards) > 100:
+        return 422, {"error": "cards must be 1..100"}
+    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
+    valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
+    # Pre-validate EVERY card before creating any (all-or-nothing)
+    for i, c in enumerate(cards):
+        if c.card_type not in valid_types:
+            return 422, {"error": f"cards[{i}].card_type invalid"}
+        if c.pricing_model not in valid_models:
+            return 422, {"error": f"cards[{i}].pricing_model invalid"}
+        # Replicate product-gating from single-create: price cards need billing product
+        if c.card_type == "price":
+            _billing_check(request)
+    created = []
+    with transaction.atomic():
+        for c in cards:
+            customer = None
+            if c.customer_id:
+                customer = get_object_or_404(Customer, id=c.customer_id, tenant=request.auth.tenant)
+            obj = RateCard.objects.create(
+                tenant=request.auth.tenant,
+                customer=customer,
+                card_type=c.card_type,
+                metric_name=c.metric_name,
+                provider=c.provider,
+                event_type=c.event_type,
+                dimensions=c.dimensions,
+                pricing_model=c.pricing_model,
+                rate_per_unit_micros=c.rate_per_unit_micros,
+                unit_quantity=c.unit_quantity,
+                fixed_micros=c.fixed_micros,
+                currency=c.currency,
+                product_id=c.product_id,
+            )
+            created.append(str(obj.id))
+    return 200, {"created": created, "count": len(created)}
 
 
 _RATE_CARD_COPY_FIELDS = (

@@ -275,3 +275,7 @@ class RateCardOut(Schema):
     customer_id: Optional[str] = None
     valid_from: str
     valid_to: Optional[str] = None
+
+
+class RateCardBatchIn(Schema):
+    cards: list[RateCardIn]

@@ -254,6 +254,17 @@ class MeteringClient:
         r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params or None)
         return [self._rate_card(row) for row in r.json()]
 
+    def bulk_create_rate_cards(self, cards: list[dict]) -> dict:
+        """Atomically create multiple rate cards via POST /api/v1/metering/pricing/rate-cards/batch.
+
+        All cards are validated before any are created; if any card is invalid the
+        entire batch is rejected (no partial writes).  Returns a dict with ``created``
+        (list of new card IDs) and ``count``.
+        """
+        r = self._request("post", "/api/v1/metering/pricing/rate-cards/batch",
+                          json={"cards": cards})
+        return r.json()
+
     def delete_rate_card(self, card_id):
         self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")
         return True
