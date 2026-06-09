@@ -31,7 +31,7 @@ def test_close_rolls_seats_into_one_business_invoice():
     from apps.billing.invoicing.tasks import close_postpaid_usage_periods, _prior_month
     from apps.billing.invoicing.models import CustomerUsageInvoice
     t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="postpaid",
-                              stripe_connected_account_id="acct_x")
+                              stripe_connected_account_id="acct_x", charges_enabled=True)
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
                                   billing_topology="allocated", stripe_customer_id="cus_biz")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
@@ -75,7 +75,7 @@ def test_close_invoices_soft_deleted_seat_usage():
     from django.utils import timezone
     from apps.billing.invoicing.tasks import close_postpaid_usage_periods, _prior_month
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="postpaid", stripe_connected_account_id="acct_x")
+    t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="postpaid", stripe_connected_account_id="acct_x", charges_enabled=True)
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business", billing_topology="allocated", stripe_customer_id="cus_biz")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     start, _end = _prior_month()

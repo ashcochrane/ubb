@@ -198,8 +198,36 @@ def handle_invoice_paid(event):
             tenant_invoice.save(update_fields=["status", "paid_at", "updated_at"])
 
 
+def handle_account_updated(event):
+    """Handle account.updated — sync the connected account's charges_enabled.
+
+    The Connect account arrives in event.data.object (with .id + .charges_enabled).
+    """
+    from apps.platform.tenants.models import Tenant
+    acct = event.data.object
+    t = Tenant.objects.filter(stripe_connected_account_id=acct.id).first()
+    if t:
+        t.charges_enabled = bool(getattr(acct, "charges_enabled", False))
+        t.save(update_fields=["charges_enabled", "updated_at"])
+
+
+def handle_account_deauthorized(event):
+    """Handle account.application.deauthorized — clear the connected account.
+
+    The deauthorized connected account is carried in event.account.
+    """
+    from apps.platform.tenants.models import Tenant
+    t = Tenant.objects.filter(stripe_connected_account_id=event.account).first()
+    if t:
+        t.stripe_connected_account_id = ""
+        t.charges_enabled = False
+        t.save(update_fields=["stripe_connected_account_id", "charges_enabled", "updated_at"])
+
+
 WEBHOOK_HANDLERS = {
     "checkout.session.completed": handle_checkout_completed,
+    "account.updated": handle_account_updated,
+    "account.application.deauthorized": handle_account_deauthorized,
     "invoice.paid": handle_invoice_paid,
     "invoice.payment_failed": handle_invoice_payment_failed,
     "charge.dispute.created": handle_charge_dispute_created,

@@ -251,6 +251,30 @@ class UBBClient:
         r = metering._request("patch", "/api/v1/tenant/config", json=body)
         return r.json()
 
+    # ---- Stripe Connect onboarding ----
+
+    def start_connect_onboarding(self, return_url: str = "") -> dict:
+        """Begin Stripe Connect OAuth onboarding for the tenant.
+
+        Calls POST /api/v1/connect/start and returns the response dict,
+        which contains ``authorize_url`` — redirect the tenant there to
+        connect their Stripe account.
+        """
+        metering = self._require_metering()
+        r = metering._request("post", "/api/v1/connect/start",
+                              json={"return_url": return_url})
+        return r.json()
+
+    def get_connect_status(self) -> dict:
+        """Get the tenant's Stripe Connect status.
+
+        Calls GET /api/v1/connect/status and returns the response dict
+        (account_id, charges_enabled, onboarded).
+        """
+        metering = self._require_metering()
+        r = metering._request("get", "/api/v1/connect/status")
+        return r.json()
+
     # ---- billing delegates ----
 
     def get_balance(self, customer_id: str) -> BalanceResult:

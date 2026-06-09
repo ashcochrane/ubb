@@ -14,7 +14,8 @@ class TestPostpaidClose:
         from apps.billing.invoicing.tasks import close_postpaid_usage_periods, _prior_month
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t = Tenant.objects.create(name="PP", products=["metering", "billing"],
-                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x",
+                                  charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         start, end = _prior_month()
         ev = UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
@@ -59,7 +60,8 @@ class TestPostpaidReconcile:
 
     def _tenant_customer(self):
         t = Tenant.objects.create(name="PP", products=["metering", "billing"],
-                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x",
+                                  charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         return t, c
 

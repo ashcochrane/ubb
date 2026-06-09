@@ -25,6 +25,10 @@ def handle_balance_low_stripe(event_id, payload):
     if not get_tenant_stripe_account(tenant_id):
         return  # No Stripe connector -- tenant handles via webhook
 
+    from apps.platform.tenants.models import Tenant
+    if not Tenant.objects.filter(id=tenant_id, charges_enabled=True).exists():
+        return  # Connected account is not charge-ready -- never charge it
+
     from apps.billing.connectors.stripe.tasks import charge_auto_topup_task
 
     with transaction.atomic():

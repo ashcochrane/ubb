@@ -11,9 +11,22 @@ from apps.billing.stripe.services.stripe_service import (
     validate_amount_micros,
     micros_to_cents,
 )
+from core.exceptions import StripeFatalError
 from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+def _charges_ready(tenant_id) -> bool:
+    """True only if the tenant has a connected account that is charge-ready.
+
+    Guards every customer-facing charge so UBB never charges a connected account
+    that Stripe has not enabled for charges.
+    """
+    from apps.platform.tenants.models import Tenant
+    return Tenant.objects.filter(
+        id=tenant_id, charges_enabled=True,
+    ).exclude(stripe_connected_account_id="").exists()
 
 
 def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_url, cancel_url):
@@ -22,6 +35,8 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
     amount_cents = micros_to_cents(amount_micros)
     customer_stripe_id = get_customer_stripe_id(customer.id)
     connected_account = get_tenant_stripe_account(customer.tenant_id)
+    if not connected_account or not _charges_ready(customer.tenant_id):
+        raise StripeFatalError("connected account is not charge-ready (charges_enabled=False)")
 
     session = stripe_call(
         stripe.checkout.Session.create,
@@ -56,6 +71,8 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     amount_cents = micros_to_cents(amount_micros)
     customer_stripe_id = get_customer_stripe_id(customer.id)
     connected_account = get_tenant_stripe_account(customer.tenant_id)
+    if not connected_account or not _charges_ready(customer.tenant_id):
+        return None  # Connected account not charge-ready -- skip (mirror no-PM skip)
 
     payment_methods = stripe_call(
         stripe.PaymentMethod.list,

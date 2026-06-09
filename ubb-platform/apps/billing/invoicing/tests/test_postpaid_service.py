@@ -50,7 +50,8 @@ class TestAggregate:
 class TestPush:
     def _setup(self, with_sub=False):
         t = Tenant.objects.create(name="T", products=["metering", "billing"],
-                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x",
+                                  charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
             provider_cost_micros=600_000, billed_cost_micros=1_000_000)
@@ -119,7 +120,8 @@ class TestPush:
         from unittest.mock import patch, MagicMock, call
         from core.exceptions import StripeFatalError
         t = Tenant.objects.create(name="T", products=["metering", "billing"],
-                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x",
+                                  charges_enabled=True)
         biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
                                       billing_topology="allocated", stripe_customer_id="cus_biz")
         # "acme.corp/east" and "acme-corp-east" both fold to "acme_corp_east" under the old slug

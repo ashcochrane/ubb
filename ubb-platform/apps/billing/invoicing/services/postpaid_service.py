@@ -78,6 +78,11 @@ class PostpaidUsageService:
                 rec.status, rec.skip_reason = "skipped", "no_stripe_customer"
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
+            if not tenant.stripe_connected_account_id or not tenant.charges_enabled:
+                # Connected account not charge-ready -- never push an invoice to it.
+                rec.status, rec.skip_reason = "skipped", "not_charge_ready"
+                rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
+                return rec
             rec.status = "pushing"
             rec.save(update_fields=["total_billed_micros", "status", "updated_at"])
 

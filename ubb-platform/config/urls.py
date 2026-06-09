@@ -11,6 +11,7 @@ from apps.subscriptions.api.margin_endpoints import margin_api
 from apps.referrals.api.endpoints import referrals_api
 from apps.platform.events.api.webhook_endpoints import webhook_api
 from api.v1.platform_endpoints import platform_api
+from api.v1.connect_endpoints import connect_api, connect_callback
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -26,5 +27,7 @@ urlpatterns = [
     path("api/v1/webhooks/config/", webhook_api.urls),
     path("api/v1/platform/", platform_api.urls),
     path("api/v1/webhooks/stripe", stripe_webhook),
+    path("api/v1/connect/callback", connect_callback),
+    path("api/v1/connect/", connect_api.urls),
     path("api/v1/", api.urls),
 ]

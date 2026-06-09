@@ -14,7 +14,7 @@ class TestHandleBalanceLowStripe:
     def test_creates_attempt_and_dispatches_task_when_stripe_configured(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test123",
+            stripe_connected_account_id="acct_test123", charges_enabled=True,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -70,7 +70,7 @@ class TestHandleBalanceLowStripe:
     def test_skips_when_no_auto_topup_config(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test123",
+            stripe_connected_account_id="acct_test123", charges_enabled=True,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -93,7 +93,7 @@ class TestHandleBalanceLowStripe:
     def test_skips_when_already_pending_attempt(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test123",
+            stripe_connected_account_id="acct_test123", charges_enabled=True,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)

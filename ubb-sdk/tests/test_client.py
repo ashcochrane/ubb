@@ -280,5 +280,49 @@ class TenantConfigClientTest(unittest.TestCase):
         )
 
 
+class ConnectClientTest(unittest.TestCase):
+    """Tests for UBBClient.start_connect_onboarding and get_connect_status."""
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_start_connect_onboarding_calls_correct_endpoint(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"authorize_url": "https://connect.stripe.com/oauth/authorize?x=1"},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.start_connect_onboarding(return_url="https://x/done")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/connect/start", json={"return_url": "https://x/done"},
+        )
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["authorize_url"].startswith("https://connect.stripe.com"))
+
+    def test_start_connect_onboarding_defaults_empty_return_url(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"authorize_url": "https://c/x"})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.start_connect_onboarding()
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/connect/start", json={"return_url": ""},
+        )
+
+    def test_get_connect_status_calls_correct_endpoint(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"account_id": "acct_x", "charges_enabled": True, "onboarded": True},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.get_connect_status()
+        self.client.metering._request.assert_called_once_with("get", "/api/v1/connect/status")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["account_id"], "acct_x")
+        self.assertTrue(result["onboarded"])
+
+
 if __name__ == "__main__":
     unittest.main()
