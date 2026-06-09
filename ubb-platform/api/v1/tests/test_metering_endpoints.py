@@ -388,3 +388,32 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
                 for r in body["by_product"]),
             f"by_product rows: {body['by_product']}",
         )
+
+
+class RateCardValidationTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(name="RateCard Tenant", products=["metering"])
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def test_create_rate_card_rejects_invalid_card_type(self):
+        resp = self.client.post("/api/v1/metering/pricing/rate-cards",
+            data=json.dumps({"card_type": "costs", "metric_name": "input_tokens"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 422
+
+    def test_create_rate_card_rejects_invalid_pricing_model(self):
+        resp = self.client.post("/api/v1/metering/pricing/rate-cards",
+            data=json.dumps({"card_type": "cost", "metric_name": "input_tokens", "pricing_model": "graduated"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 422
+
+    def test_record_usage_surfaces_uncosted_metrics(self):
+        # A metric with NO matching cost card -> the response lists it as uncosted.
+        c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
+        resp = self.client.post("/api/v1/metering/usage",
+            data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
+                  "usage_metrics": {"unknown_metric": 100}}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert resp.status_code == 200
+        assert "unknown_metric" in resp.json().get("uncosted_metrics", [])

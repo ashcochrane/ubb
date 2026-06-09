@@ -16,7 +16,7 @@ from api.v1.schemas import (
     UsageAnalyticsResponse,
     RateCardIn, RateCardOut,
 )
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
@@ -80,6 +80,8 @@ def record_usage(request, payload: RecordUsageRequest):
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))
+    provenance = result.get("pricing_provenance") or {}
+    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return result
 
 
@@ -339,9 +341,15 @@ def list_rate_cards(request, card_type: str = None):
     return [_rate_card_to_out(c) for c in qs.order_by("card_type", "provider", "event_type", "metric_name")]
 
 
-@metering_api.post("/pricing/rate-cards", response=RateCardOut)
+@metering_api.post("/pricing/rate-cards", response={200: RateCardOut, 422: dict})
 def create_rate_card(request, payload: RateCardIn):
     _gate_card_type(request, payload.card_type)
+    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
+    valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
+    if payload.card_type not in valid_types:
+        return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
+    if payload.pricing_model not in valid_models:
+        return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
     customer = None
     if payload.customer_id:
         customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -360,7 +368,7 @@ def create_rate_card(request, payload: RateCardIn):
         currency=payload.currency,
         product_id=payload.product_id,
     )
-    return _rate_card_to_out(card)
+    return 200, _rate_card_to_out(card)
 
 
 @metering_api.put("/pricing/rate-cards/{card_id}", response=RateCardOut)

@@ -50,6 +50,7 @@ class RecordUsageResponse(Schema):
     hard_stop: bool = False
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
+    uncosted_metrics: list[str] = []
 
 
 class BalanceResponse(Schema):
