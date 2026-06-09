@@ -48,15 +48,22 @@ def create_customer(request, payload: CreateCustomerRequest):
             return 422, {"error": "business requires billing_topology pooled|allocated"}
         topology = payload.billing_topology
     try:
-        customer = Customer.objects.create(
-            tenant=tenant,
-            external_id=payload.external_id,
-            stripe_customer_id=payload.stripe_customer_id,
-            metadata=payload.metadata,
-            account_type=at,
-            parent=parent,
-            billing_topology=topology,
-        )
+        from django.db import transaction
+        with transaction.atomic():
+            customer = Customer.objects.create(
+                tenant=tenant,
+                external_id=payload.external_id,
+                stripe_customer_id=payload.stripe_customer_id,
+                metadata=payload.metadata,
+                account_type=at,
+                parent=parent,
+                billing_topology=topology,
+            )
+            # Roster grew: push the new live seat count to Stripe on commit so the
+            # subscription's per-seat quantity stays in lock-step with the roster.
+            if at == "seat" and parent is not None:
+                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+                sync_seat_quantity_on_commit(parent)
         return 201, {
             "id": str(customer.id),
             "external_id": customer.external_id,

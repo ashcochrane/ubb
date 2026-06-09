@@ -163,6 +163,11 @@ def handle_invoice_payment_failed(event):
             return
         customer.status = "suspended"
         customer.save(update_fields=["status", "updated_at"])
+        # A suspended seat leaves the active roster: push the decremented seat
+        # count to the business's subscription on commit.
+        if customer.account_type == "seat" and customer.parent_id:
+            from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+            sync_seat_quantity_on_commit(customer.parent)
 
 
 def handle_charge_dispute_created(event):
@@ -256,6 +261,10 @@ def handle_charge_dispute_closed(event):
                     "threshold": threshold,
                 }},
             )
+            # A suspended seat leaves the active roster: decrement the business sub.
+            if customer.account_type == "seat" and customer.parent_id:
+                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+                sync_seat_quantity_on_commit(customer.parent)
 
 
 def handle_charge_refunded(event):

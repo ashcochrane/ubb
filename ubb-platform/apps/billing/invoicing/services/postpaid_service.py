@@ -119,6 +119,40 @@ class PostpaidUsageService:
     def _push_to_stripe(tenant, customer, rec, lines, period_start):
         connected = tenant.stripe_connected_account_id
         currency = (tenant.default_currency or "usd").lower()
+
+        # Usage rides the billing OWNER's bill (pooled seat -> business). The close
+        # task already targets the owner, but resolve defensively so a seat passed
+        # directly still lands on the same wallet/subscription as access + seats.
+        owner = customer.resolve_billing_owner()
+
+        # Find the owner's open subscription. If one exists we PIN the usage
+        # InvoiceItems to it (subscription=<id>) so they land on the SAME upcoming
+        # subscription invoice as the access-fee + per-seat lines -- one coherent
+        # bill -- instead of relying on Stripe's accidental pending-item sweep.
+        from apps.subscriptions.models import StripeSubscription
+        sub = (
+            StripeSubscription.objects.filter(
+                tenant=tenant, customer=owner,
+                status__in=["active", "trialing", "past_due", "unpaid"],
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        sub_id = sub.stripe_subscription_id if sub else None
+
+        # Late-push guard: if the cycle already CLOSED (latest invoice paid/void),
+        # a pinned InvoiceItem would never sweep onto a bill -- route to a
+        # standalone invoice instead and shout. Best-effort; a retrieve failure
+        # must not abort the push (we still pin and let the reconciler/sweep cope).
+        cycle_closed = False
+        if sub_id:
+            cycle_closed = PostpaidUsageService._subscription_cycle_closed(
+                sub_id, connected, rec)
+
+        item_kwargs = {}
+        if sub_id and not cycle_closed:
+            item_kwargs["subscription"] = sub_id
+
         items = []
         for i, (label, amount) in enumerate(lines):
             cents = micros_to_cents(amount)
@@ -128,22 +162,52 @@ class PostpaidUsageService:
             item = stripe_call(
                 stripe.InvoiceItem.create, retryable=True,
                 idempotency_key=f"usage-item-{rec.id}-{i}",
-                customer=customer.stripe_customer_id, amount=cents, currency=currency,
-                description=desc, stripe_account=connected)
+                customer=owner.stripe_customer_id, amount=cents, currency=currency,
+                description=desc, stripe_account=connected, **item_kwargs)
             items.append((label, amount, item.id))
 
-        from apps.subscriptions.models import StripeSubscription
-        has_sub = StripeSubscription.objects.filter(
-            tenant=tenant, customer=customer, status="active").exists()
+        # Standalone invoice when (a) there is no subscription to ride, or (b) the
+        # subscription's cycle already closed so the items can't sweep onto it.
         standalone_id = None
-        if not has_sub:
+        if sub_id is None or cycle_closed:
             inv = stripe_call(
                 stripe.Invoice.create, retryable=True,
                 idempotency_key=f"usage-invoice-{rec.id}",
-                customer=customer.stripe_customer_id, auto_advance=False, stripe_account=connected)
+                customer=owner.stripe_customer_id, auto_advance=False, stripe_account=connected)
             stripe_call(
                 stripe.Invoice.finalize_invoice, retryable=True,
                 idempotency_key=f"usage-finalize-{rec.id}", invoice=inv.id,
                 auto_advance=True, stripe_account=connected)
             standalone_id = inv.id
         return standalone_id, items
+
+    @staticmethod
+    def _subscription_cycle_closed(sub_id, connected, rec):
+        """True if the subscription's latest invoice is already finalized
+        (paid/void) -- i.e. the cycle closed before usage swept onto it.
+
+        Best-effort + loud: any retrieve failure returns False (prefer pinning).
+        """
+        try:
+            sub_obj = stripe_call(
+                stripe.Subscription.retrieve, retryable=True,
+                idempotency_key=f"usage-sub-retrieve-{rec.id}",
+                id=sub_id, expand=["latest_invoice"], stripe_account=connected)
+        except Exception:
+            logger.warning("usage.sub_retrieve_failed",
+                           extra={"data": {"subscription_id": sub_id}})
+            return False
+        latest = (sub_obj or {}).get("latest_invoice") if isinstance(sub_obj, dict) \
+            else getattr(sub_obj, "latest_invoice", None)
+        status = None
+        if isinstance(latest, dict):
+            status = latest.get("status")
+        elif latest is not None:
+            status = getattr(latest, "status", None)
+        if status in ("paid", "void"):
+            logger.error("usage_item_after_invoice_close",
+                         extra={"data": {"subscription_id": sub_id,
+                                         "latest_invoice_status": status,
+                                         "usage_invoice_id": str(rec.id)}})
+            return True
+        return False

@@ -51,7 +51,12 @@ class Customer(SoftDeleteMixin, BaseModel):
         return self
 
     def soft_delete(self):
-        """Soft delete customer and emit outbox event for product cleanup."""
+        """Soft delete customer and emit outbox event for product cleanup.
+
+        Removing a seat shrinks the business roster: push the decremented live
+        seat count to Stripe on commit so a removed seat never keeps billing as a
+        ghost on the subscription's per-seat quantity.
+        """
         with transaction.atomic():
             super().soft_delete()
             from apps.platform.events.outbox import write_event
@@ -60,6 +65,9 @@ class Customer(SoftDeleteMixin, BaseModel):
                 tenant_id=str(self.tenant_id),
                 customer_id=str(self.id),
             ))
+            if self.account_type == "seat" and self.parent_id:
+                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+                sync_seat_quantity_on_commit(self.parent)
 
     def __str__(self):
         return f"Customer({self.external_id})"

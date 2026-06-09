@@ -1,5 +1,6 @@
 import datetime
 import pytest
+from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
@@ -114,6 +115,81 @@ class TestPush:
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
         assert rec.status == "skipped" and rec.skip_reason == "no_stripe_customer"
         mock_sc.assert_not_called()
+
+    def test_usage_items_pinned_to_subscription_when_active(self):
+        """(a) Active sub -> InvoiceItem.create carries subscription=<sub_id>, NO standalone Invoice."""
+        from unittest.mock import patch, MagicMock
+        t, c = self._setup(with_sub=True)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
+             patch("apps.platform.events.tasks.process_single_event"):
+            mock_sc.return_value = MagicMock(id="ii_1", latest_invoice=None)
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == ""
+        item_calls = [ck for ck in mock_sc.call_args_list
+                      if ck.kwargs.get("idempotency_key", "").startswith(f"usage-item-{rec.id}")]
+        assert item_calls, "expected an InvoiceItem.create call"
+        for ck in item_calls:
+            assert ck.kwargs.get("subscription") == "sub_1"
+        # No standalone Invoice path
+        keys = [ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list]
+        assert not any(k.startswith(f"usage-invoice-{rec.id}") for k in keys)
+
+    def test_usage_standalone_when_no_subscription(self):
+        """(b) No sub -> standalone Invoice.create + finalize; items NOT pinned."""
+        from unittest.mock import patch, MagicMock
+        t, c = self._setup(with_sub=False)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
+             patch("apps.platform.events.tasks.process_single_event"):
+            mock_sc.return_value = MagicMock(id="obj_1")
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == "obj_1"
+        item_calls = [ck for ck in mock_sc.call_args_list
+                      if ck.kwargs.get("idempotency_key", "").startswith(f"usage-item-{rec.id}")]
+        for ck in item_calls:
+            assert "subscription" not in ck.kwargs
+        keys = [ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list]
+        assert any(k.startswith(f"usage-invoice-{rec.id}") for k in keys)
+
+    def test_usage_pinned_when_subscription_unpaid(self):
+        """(c) status='unpaid' still PINS (no standalone) — widened status filter."""
+        from unittest.mock import patch, MagicMock
+        from apps.subscriptions.models import StripeSubscription
+        t, c = self._setup(with_sub=False)
+        now = timezone.now()
+        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_unpaid",
+            stripe_product_name="Pro", status="unpaid", amount_micros=1, currency="usd",
+            interval="month", current_period_start=now, current_period_end=now, last_synced_at=now)
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
+             patch("apps.platform.events.tasks.process_single_event"):
+            mock_sc.return_value = MagicMock(id="ii_1", latest_invoice=None)
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == ""
+        item_calls = [ck for ck in mock_sc.call_args_list
+                      if ck.kwargs.get("idempotency_key", "").startswith(f"usage-item-{rec.id}")]
+        assert item_calls and all(ck.kwargs.get("subscription") == "sub_unpaid" for ck in item_calls)
+        keys = [ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list]
+        assert not any(k.startswith(f"usage-invoice-{rec.id}") for k in keys)
+
+    def test_late_push_guard_routes_to_standalone_when_cycle_closed(self):
+        """Late-push guard: sub's latest_invoice already paid -> standalone + no pin."""
+        from unittest.mock import patch, MagicMock
+        t, c = self._setup(with_sub=True)
+
+        def fake_stripe_call(fn, *args, **kwargs):
+            # The subscription retrieve is the only call that passes expand=.
+            if "expand" in kwargs:
+                return {"id": "sub_1", "latest_invoice": {"id": "in_old", "status": "paid"}}
+            return MagicMock(id="obj_1")
+
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call",
+                   side_effect=fake_stripe_call), \
+             patch("apps.platform.events.tasks.process_single_event"):
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == "obj_1"  # standalone
 
     def test_slug_collision_both_seats_invoiced(self):
         """F5: two labels that fold to the same slug must each get a distinct line item."""
