@@ -4,7 +4,9 @@ import json
 import logging
 import time
 
+import httpcore
 import httpx
+from httpcore._backends.sync import SyncBackend
 
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
 from core.url_validation import validate_webhook_url
@@ -12,6 +14,58 @@ from core.url_validation import validate_webhook_url
 logger = logging.getLogger("ubb.webhooks")
 
 WEBHOOK_TIMEOUT = 10  # seconds
+
+
+class _PinnedIPBackend(SyncBackend):
+    """httpcore network backend that pins TCP connections to a pre-validated IP.
+
+    DNS resolution is bypassed: connect_tcp replaces the hostname with the IP
+    address that was already validated by validate_webhook_url.  TLS SNI and
+    certificate verification are unaffected because httpcore resolves the SNI
+    hostname independently from origin.host, not from the host passed to
+    connect_tcp — see httpcore/_sync/connection.py::HTTPConnection._connect
+    where start_tls(server_hostname=self._origin.host.decode("ascii")) is
+    called on the stream returned by connect_tcp, using the original hostname.
+    """
+
+    def __init__(self, validated_ip: str) -> None:
+        self._validated_ip = validated_ip
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options=None,
+    ):
+        # Replace the hostname with the pre-validated IP.  The caller
+        # (HTTPConnection._connect) will subsequently call start_tls with
+        # the original hostname for SNI + certificate verification.
+        return super().connect_tcp(
+            host=self._validated_ip,
+            port=port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
+class _PinnedIPTransport(httpx.HTTPTransport):
+    """httpx transport that pins TCP connections to a pre-validated IP.
+
+    Constructs a normal HTTPTransport (preserving verify=True, SSL context
+    setup, etc.) and then replaces the httpcore connection pool's network
+    backend with _PinnedIPBackend so that every TCP connect goes to the
+    validated IP rather than re-resolving the hostname.
+    """
+
+    def __init__(self, validated_ip: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # self._pool is an httpcore.ConnectionPool created by HTTPTransport.__init__.
+        # We swap its _network_backend after construction to avoid duplicating the
+        # SSL context / limits setup that HTTPTransport already handles.
+        self._pool._network_backend = _PinnedIPBackend(validated_ip)
 
 
 def compute_signature(payload_bytes: bytes, secret: str) -> str:
@@ -65,10 +119,11 @@ def _deliver_to_config(config, event):
         outbox_event=event,
     )
 
-    # SSRF / DNS-rebinding guard: the create-time check is stale by delivery time.
-    # TODO(SSRF): pin connection to validated IP to fully close DNS-rebind window
+    # SSRF / DNS-rebinding guard: re-validate at delivery time (Fix A) and pin
+    # the TCP connection to the validated IP (Fix B) so the hostname cannot
+    # re-resolve to a private address between this check and httpx's connect.
     try:
-        validate_webhook_url(config.url)
+        validated_ip = validate_webhook_url(config.url)
     except ValueError as e:
         attempt.success = False
         attempt.error_message = f"blocked: {e}"[:500]
@@ -77,8 +132,9 @@ def _deliver_to_config(config, event):
             "config_id": str(config.id), "event_id": str(event.id), "reason": str(e)[:200]}})
         return
 
+    transport = _PinnedIPTransport(validated_ip)
     try:
-        with httpx.Client(timeout=WEBHOOK_TIMEOUT) as client:
+        with httpx.Client(timeout=WEBHOOK_TIMEOUT, transport=transport) as client:
             response = client.post(config.url, content=payload_bytes, headers=headers)
         attempt.status_code = response.status_code
         attempt.success = 200 <= response.status_code < 300

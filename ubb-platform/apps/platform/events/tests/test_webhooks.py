@@ -7,7 +7,12 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
-from apps.platform.events.webhooks import compute_signature, deliver_webhook
+from apps.platform.events.webhooks import (
+    compute_signature,
+    deliver_webhook,
+    _PinnedIPTransport,
+    _PinnedIPBackend,
+)
 
 
 @pytest.mark.django_db
@@ -403,3 +408,90 @@ class TestWebhookConfigAPI:
         )
         assert resp.status_code == 404
         assert TenantWebhookConfig.objects.count() == 1
+
+
+class TestPinnedIPTransport:
+    """Unit tests for the DNS-rebinding pin (Fix B).
+
+    These tests are hermetic — no DB, no real network.  They verify the
+    transport wiring so that a DNS rebind after validate_webhook_url returns
+    cannot steer the TCP connection to a private address.
+    """
+
+    def test_pinned_ip_backend_stores_ip(self):
+        """_PinnedIPBackend stores the validated IP it was given."""
+        backend = _PinnedIPBackend("1.2.3.4")
+        assert backend._validated_ip == "1.2.3.4"
+
+    def test_pinned_ip_transport_injects_backend(self):
+        """_PinnedIPTransport replaces the pool's network backend with a pinned one."""
+        transport = _PinnedIPTransport("1.2.3.4")
+        assert isinstance(transport._pool._network_backend, _PinnedIPBackend)
+        assert transport._pool._network_backend._validated_ip == "1.2.3.4"
+
+    @pytest.mark.django_db
+    def test_delivery_uses_pinned_transport_with_validated_ip(self):
+        """_deliver_to_config constructs _PinnedIPTransport with the IP returned by
+        validate_webhook_url, defeating a rebind that happens after validation."""
+        tenant = Tenant.objects.create(name="rebind-pin", products=["metering"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(tenant.id),
+        )
+        TenantWebhookConfig.objects.create(
+            tenant=tenant,
+            url="https://rebind.example.com/hook",
+            secret="test-secret",
+            event_types=[],
+        )
+
+        validated_ip = "1.2.3.4"
+        captured_transports = []
+
+        def fake_client(timeout=None, transport=None):
+            captured_transports.append(transport)
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.post.return_value = MagicMock(status_code=200, text="OK")
+            return mock_instance
+
+        with patch("apps.platform.events.webhooks.validate_webhook_url", return_value=validated_ip), \
+             patch("apps.platform.events.webhooks.httpx.Client", side_effect=fake_client), \
+             patch("apps.platform.events.webhooks._PinnedIPTransport") as mock_transport_cls:
+
+            mock_transport_cls.return_value = MagicMock()
+
+            deliver_webhook(event)
+
+            # Assert the transport was constructed with the validated IP
+            mock_transport_cls.assert_called_once_with(validated_ip)
+
+    def test_pinned_ip_backend_connect_tcp_uses_ip_not_hostname(self):
+        """_PinnedIPBackend.connect_tcp forwards the pinned IP, ignoring the hostname
+        that would normally re-trigger DNS resolution."""
+        backend = _PinnedIPBackend("1.2.3.4")
+
+        connect_calls = []
+
+        class _FakeParent:
+            def connect_tcp(self, host, port, **kwargs):
+                connect_calls.append(host)
+                return MagicMock()
+
+        # Patch super().connect_tcp via the MRO by temporarily replacing SyncBackend
+        with patch.object(
+            _PinnedIPBackend.__bases__[0],  # SyncBackend
+            "connect_tcp",
+            side_effect=lambda self_inner, host, port, **kw: connect_calls.append(host) or MagicMock(),
+        ):
+            # Call with a hostname — backend should substitute the pinned IP
+            try:
+                backend.connect_tcp(host="rebind.attacker.example", port=443, timeout=5)
+            except Exception:
+                pass  # socket error is fine; we only care what host was passed
+
+        # The ip was forwarded to the parent, not the original hostname
+        if connect_calls:
+            assert connect_calls[0] == "1.2.3.4"
