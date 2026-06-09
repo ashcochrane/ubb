@@ -303,6 +303,7 @@ class ChargeDisputeClosedTest(TestCase):
 
     def test_deducts_wallet_on_lost_dispute(self):
         event = MagicMock()
+        event.data.object.id = "dp_test_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 500  # 500 cents = 5_000_000 micros
@@ -316,10 +317,11 @@ class ChargeDisputeClosedTest(TestCase):
             wallet=self.wallet, transaction_type="DISPUTE_DEDUCTION",
         )
         self.assertEqual(txn.amount_micros, -5_000_000)
-        self.assertEqual(txn.idempotency_key, "dispute:ch_dispute_2")
+        self.assertEqual(txn.idempotency_key, "dispute:dp_test_1")
 
     def test_skips_won_dispute(self):
         event = MagicMock()
+        event.data.object.id = "dp_won_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "won"
         event.data.object.amount = 500
@@ -335,6 +337,7 @@ class ChargeDisputeClosedTest(TestCase):
 
     def test_idempotent_on_duplicate(self):
         event = MagicMock()
+        event.data.object.id = "dp_idem_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 500
@@ -351,6 +354,7 @@ class ChargeDisputeClosedTest(TestCase):
 
     def test_skips_unknown_charge(self):
         event = MagicMock()
+        event.data.object.id = "dp_unknown_1"
         event.data.object.charge = "ch_unknown"
         event.data.object.status = "lost"
         event.data.object.amount = 500
@@ -363,6 +367,7 @@ class ChargeDisputeClosedTest(TestCase):
 
     def test_dispute_closed_null_amount(self):
         event = MagicMock()
+        event.data.object.id = "dp_null_amt_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = None
@@ -381,6 +386,7 @@ class ChargeDisputeClosedTest(TestCase):
         # Balance: 10M, dispute: 1100 cents = 11M micros → balance = -1M
         # Default min_balance is 0, so -1M < -0 → suspend
         event = MagicMock()
+        event.data.object.id = "dp_suspend_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 1100  # 1100 cents = 11_000_000 micros
@@ -394,6 +400,7 @@ class ChargeDisputeClosedTest(TestCase):
     def test_dispute_no_suspend_when_above_min(self):
         """Dispute deduction that keeps balance above min_balance does not suspend."""
         event = MagicMock()
+        event.data.object.id = "dp_nosuspend_1"
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 200  # 200 cents = 2_000_000 micros → balance = 8M
@@ -426,6 +433,8 @@ class ChargeRefundedTest(TestCase):
         event.data.object.id = "ch_refund_1"
         event.data.object.amount_refunded = 300  # 300 cents = 3_000_000 micros
         event.account = "acct_test"
+        r = MagicMock(); r.id = "re_single"; r.amount = 300
+        event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
 
@@ -435,13 +444,15 @@ class ChargeRefundedTest(TestCase):
             wallet=self.wallet, transaction_type="STRIPE_REFUND",
         )
         self.assertEqual(txn.amount_micros, -3_000_000)
-        self.assertEqual(txn.idempotency_key, "stripe_refund:ch_refund_1")
+        self.assertEqual(txn.idempotency_key, "stripe_refund:re_single")
 
     def test_idempotent_on_duplicate(self):
         event = MagicMock()
         event.data.object.id = "ch_refund_1"
         event.data.object.amount_refunded = 300
         event.account = "acct_test"
+        r = MagicMock(); r.id = "re_idem"; r.amount = 300
+        event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
         handle_charge_refunded(event)
@@ -457,6 +468,8 @@ class ChargeRefundedTest(TestCase):
         event.data.object.id = "ch_unknown"
         event.data.object.amount_refunded = 300
         event.account = "acct_test"
+        r = MagicMock(); r.id = "re_unknown"; r.amount = 300
+        event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
 
@@ -467,6 +480,7 @@ class ChargeRefundedTest(TestCase):
         event = MagicMock()
         event.data.object.id = "ch_refund_1"
         event.data.object.amount_refunded = None
+        event.data.object.refunds.data = []
         event.account = "acct_test"
 
         handle_charge_refunded(event)
@@ -476,6 +490,32 @@ class ChargeRefundedTest(TestCase):
         self.assertFalse(WalletTransaction.objects.filter(
             transaction_type="STRIPE_REFUND",
         ).exists())
+
+    def test_two_partial_refunds_both_debited(self):
+        from apps.billing.wallets.models import WalletTransaction
+        # Partial refund #1: $1 (re_1)
+        event1 = MagicMock()
+        event1.data.object.id = "ch_refund_1"
+        event1.data.object.amount_refunded = 100
+        event1.account = "acct_test"
+        r1 = MagicMock(); r1.id = "re_1"; r1.amount = 100
+        event1.data.object.refunds.data = [r1]
+        handle_charge_refunded(event1)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 9_000_000)
+        # Partial refund #2: another $1 (re_2), same charge (cumulative 200c)
+        event2 = MagicMock()
+        event2.data.object.id = "ch_refund_1"
+        event2.data.object.amount_refunded = 200
+        event2.account = "acct_test"
+        r2a = MagicMock(); r2a.id = "re_1"; r2a.amount = 100
+        r2b = MagicMock(); r2b.id = "re_2"; r2b.amount = 100
+        event2.data.object.refunds.data = [r2a, r2b]
+        handle_charge_refunded(event2)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 8_000_000)  # BUG TODAY: stays 9_000_000
+        self.assertEqual(WalletTransaction.objects.filter(transaction_type="STRIPE_REFUND").count(), 2)
+        self.assertTrue(WalletTransaction.objects.filter(idempotency_key="stripe_refund:re_2").exists())
 
 
 class InvoicePaidTenantInvoiceTest(TestCase):

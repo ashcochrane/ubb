@@ -197,6 +197,7 @@ def handle_charge_dispute_closed(event):
     """Handle charge.dispute.closed — auto-deduct wallet if dispute lost."""
     dispute = event.data.object
     charge_id = dispute.charge
+    dispute_id = getattr(dispute, "id", None) or charge_id
     connected_account = event.account
 
     if dispute.status != "lost":
@@ -220,10 +221,10 @@ def handle_charge_dispute_closed(event):
     with transaction.atomic():
         wallet, customer = lock_for_billing(attempt.customer_id)
 
-        # Idempotency: check for existing dispute deduction
+        # Idempotency: key on dispute id (not charge id) so each distinct dispute is tracked
         from apps.billing.wallets.models import WalletTransaction
         existing = WalletTransaction.objects.filter(
-            wallet=wallet, idempotency_key=f"dispute:{charge_id}",
+            wallet=wallet, idempotency_key=f"dispute:{dispute_id}",
         ).first()
         if existing:
             return
@@ -238,7 +239,7 @@ def handle_charge_dispute_closed(event):
             balance_after_micros=wallet.balance_micros,
             description=f"Dispute lost: {charge_id}",
             reference_id=str(attempt.id),
-            idempotency_key=f"dispute:{charge_id}",
+            idempotency_key=f"dispute:{dispute_id}",
         )
 
         # Suspend customer if balance dropped below min_balance threshold
@@ -258,7 +259,13 @@ def handle_charge_dispute_closed(event):
 
 
 def handle_charge_refunded(event):
-    """Handle charge.refunded — deduct wallet for Stripe-initiated refund."""
+    """Handle charge.refunded — deduct wallet for Stripe-initiated refund.
+
+    Each individual refund on the charge is processed as a separate WalletTransaction
+    keyed on `stripe_refund:{refund.id}`, enabling correct handling of partial refunds
+    (Stripe fires one charge.refunded event per refund, so charge-keyed idempotency
+    would silently drop refund #2+).
+    """
     charge = event.data.object
     charge_id = charge.id
     connected_account = event.account
@@ -270,36 +277,48 @@ def handle_charge_refunded(event):
     if not attempt:
         return
 
-    if not charge.amount_refunded:
-        logger.warning(
-            "Charge refunded with null/zero amount_refunded",
-            extra={"data": {"charge_id": charge_id}},
-        )
-        return
-    refunded_micros = charge.amount_refunded * 10_000
+    refunds_obj = getattr(charge, "refunds", None)
+    refund_list = list(getattr(refunds_obj, "data", None) or [])
+    if not refund_list:
+        if not charge.amount_refunded:
+            logger.warning(
+                "Charge refunded with null/zero amount and no refund list",
+                extra={"data": {"charge_id": charge_id}},
+            )
+            return
+        # Fallback: synthesise a single entry from the top-level amount_refunded
+        refund_list = [type("R", (), {"id": charge_id, "amount": charge.amount_refunded})()]
+
+    from apps.billing.wallets.models import WalletTransaction
+    from django.db import IntegrityError
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(attempt.customer_id)
 
-        from apps.billing.wallets.models import WalletTransaction
-        existing = WalletTransaction.objects.filter(
-            wallet=wallet, idempotency_key=f"stripe_refund:{charge_id}",
-        ).first()
-        if existing:
-            return
-
-        wallet.balance_micros -= refunded_micros
-        wallet.save(update_fields=["balance_micros", "updated_at"])
-
-        WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type="STRIPE_REFUND",
-            amount_micros=-refunded_micros,
-            balance_after_micros=wallet.balance_micros,
-            description=f"Stripe refund: {charge_id}",
-            reference_id=str(attempt.id),
-            idempotency_key=f"stripe_refund:{charge_id}",
-        )
+        for refund in refund_list:
+            refund_id = getattr(refund, "id", None)
+            refund_amount = getattr(refund, "amount", None)
+            if not refund_id or not refund_amount:
+                continue
+            key = f"stripe_refund:{refund_id}"
+            if WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).exists():
+                continue
+            refunded_micros = refund_amount * 10_000
+            try:
+                with transaction.atomic():  # savepoint for race-safe exactly-once (I2 pattern)
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        transaction_type="STRIPE_REFUND",
+                        amount_micros=-refunded_micros,
+                        balance_after_micros=wallet.balance_micros - refunded_micros,
+                        description=f"Stripe refund: {refund_id}",
+                        reference_id=str(attempt.id),
+                        idempotency_key=key,
+                    )
+            except IntegrityError:
+                continue  # raced redelivery — already applied
+            wallet.balance_micros -= refunded_micros
+            wallet.save(update_fields=["balance_micros", "updated_at"])
 
 
 def handle_payment_intent_succeeded(event):
