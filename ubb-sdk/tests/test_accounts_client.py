@@ -44,7 +44,7 @@ class AccountsClientTest(unittest.TestCase):
         )
 
         ubb.metering._request.assert_called_once_with(
-            "post", "/api/v1/customers", json={
+            "post", "/api/v1/platform/customers", json={
                 "external_id": "biz",
                 "stripe_customer_id": "",
                 "metadata": {},
@@ -60,8 +60,8 @@ class AccountsClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.get")
     def test_get_business_hits_correct_url(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: BUSINESS_FIXTURE)
-        result = self.client._request("get", "/api/v1/accounts/business/biz")
-        self.assertEqual(mock_get.call_args.args[0], "/api/v1/accounts/business/biz")
+        result = self.client._request("get", "/api/v1/platform/accounts/business/biz")
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/platform/accounts/business/biz")
         self.assertEqual(result.json(), BUSINESS_FIXTURE)
 
     @patch("ubb.metering.httpx.Client.get")
@@ -75,7 +75,7 @@ class AccountsClientTest(unittest.TestCase):
         result = ubb.get_business("biz")
 
         ubb.metering._request.assert_called_once_with(
-            "get", "/api/v1/accounts/business/biz"
+            "get", "/api/v1/platform/accounts/business/biz"
         )
         self.assertIsInstance(result, dict)
         self.assertEqual(result["external_id"], "biz")
