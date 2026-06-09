@@ -321,6 +321,25 @@ class TestBillingOutboxHandler:
         w.refresh_from_db()
         assert w.balance_micros == 10_000_000  # untouched — postpaid is invoiced, not drawn down
 
+    def test_pooled_seat_debits_business_wallet_records_spend_on_seat(self):
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        tenant = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=tenant, external_id="biz", account_type="business",
+                                      billing_topology="pooled")
+        seat = Customer.objects.create(tenant=tenant, external_id="s1", account_type="seat", parent=biz)
+        bw = Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(seat.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        handle_usage_recorded_billing(str(event.id), event.payload)
+        bw.refresh_from_db()
+        assert bw.balance_micros == 8_000_000  # the BUSINESS pool was debited
+        assert not Wallet.objects.filter(customer=seat).exists()  # seat has no wallet
+        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="USAGE_DEDUCTION").count() == 1
+
 
 class TestBillingHandlerEmitsBalanceLow:
     """After wallet deduction, if balance drops below auto-topup threshold,

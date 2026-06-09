@@ -28,24 +28,23 @@ def handle_usage_recorded_billing(event_id, payload):
     billed_cost_micros = payload.get("cost_micros", 0)
 
     if billed_cost_micros > 0:
+        from apps.platform.customers.models import Customer
+        seat = Customer.objects.get(id=payload["customer_id"])
         if tenant.billing_mode == "postpaid":
-            # No prepaid balance to draw down — usage is invoiced at month close.
-            from apps.platform.customers.models import Customer
-            customer = Customer.objects.get(id=payload["customer_id"])
+            pass  # no prepaid balance to draw down
         else:
             from apps.billing.wallets.models import WalletTransaction
             from apps.billing.locking import lock_for_billing
             from apps.billing.topups.models import AutoTopUpConfig
             from apps.platform.events.outbox import write_event
             from apps.platform.events.schemas import BalanceLow, CustomerSuspended
+            from apps.billing.accounts import resolve_billing_owner_id
 
+            owner_id = resolve_billing_owner_id(seat)
             with transaction.atomic():
-                # lock_for_billing acquires locks in canonical order: Wallet -> Customer
-                wallet, customer = lock_for_billing(payload["customer_id"])
-
+                wallet, owner = lock_for_billing(owner_id)
                 wallet.balance_micros -= billed_cost_micros
                 wallet.save(update_fields=["balance_micros", "updated_at"])
-
                 WalletTransaction.objects.create(
                     wallet=wallet,
                     transaction_type="USAGE_DEDUCTION",
@@ -58,13 +57,13 @@ def handle_usage_recorded_billing(event_id, payload):
 
                 # Check min balance threshold and suspend if needed
                 from apps.billing.queries import get_customer_min_balance
-                threshold = get_customer_min_balance(customer.id, tenant.id)
-                if wallet.balance_micros < -threshold and customer.status == "active":
-                    customer.status = "suspended"
-                    customer.save(update_fields=["status", "updated_at"])
+                threshold = get_customer_min_balance(owner.id, tenant.id)
+                if wallet.balance_micros < -threshold and owner.status == "active":
+                    owner.status = "suspended"
+                    owner.save(update_fields=["status", "updated_at"])
                     write_event(CustomerSuspended(
                         tenant_id=str(tenant.id),
-                        customer_id=str(customer.id),
+                        customer_id=str(owner.id),
                         reason="min_balance_exceeded",
                         balance_micros=wallet.balance_micros,
                     ))
@@ -72,7 +71,7 @@ def handle_usage_recorded_billing(event_id, payload):
                 # Check auto-topup threshold → emit BalanceLow
                 try:
                     config = AutoTopUpConfig.objects.get(
-                        customer=customer, is_enabled=True
+                        customer=owner, is_enabled=True
                     )
                 except AutoTopUpConfig.DoesNotExist:
                     config = None
@@ -80,16 +79,16 @@ def handle_usage_recorded_billing(event_id, payload):
                 if config and wallet.balance_micros < config.trigger_threshold_micros:
                     write_event(BalanceLow(
                         tenant_id=str(tenant.id),
-                        customer_id=str(customer.id),
+                        customer_id=str(owner.id),
                         balance_micros=wallet.balance_micros,
                         threshold_micros=config.trigger_threshold_micros,
                         suggested_topup_micros=config.top_up_amount_micros,
                     ))
 
-        # Shared tail — both modes:
+        # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
         from apps.billing.gating.services.budget_service import BudgetService
-        BudgetService.record_usage_spend(customer, billed_cost_micros)
+        BudgetService.record_usage_spend(seat, billed_cost_micros)
 
 
 def handle_customer_deleted_billing(event_id, payload):
