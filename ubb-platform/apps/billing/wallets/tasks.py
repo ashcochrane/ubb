@@ -41,7 +41,7 @@ def reconcile_wallet_balances():
     )
 
 
-GRACE = timedelta(hours=2)       # >= the live outbox retry/DLQ horizon (minutes-scale)
+GRACE = timedelta(hours=6)       # > the live outbox retry/DLQ horizon (~2h43m: backoff 30s,2m,10m,30m,2h x5) + headroom
 LOOKBACK = timedelta(days=7)
 REPAIR_SPIKE_THRESHOLD = 25
 
@@ -52,6 +52,7 @@ def reconcile_usage_drawdowns():
     Anti-joins on WalletTransaction.usage_event_id (cutover-safe). Owner pinned on the event."""
     from django.db import transaction, IntegrityError
     from apps.platform.tenants.models import Tenant
+    from apps.platform.customers.models import Customer
     from apps.metering.usage.models import UsageEvent
     from apps.billing.wallets.models import Wallet, WalletTransaction
     from apps.billing.locking import lock_for_billing
@@ -65,7 +66,10 @@ def reconcile_usage_drawdowns():
             tenant=tenant, billed_cost_micros__gt=0,
             effective_at__gte=since, effective_at__lt=settled_before)
         for ev in events.iterator():
-            owner_id = ev.billing_owner_id or ev.customer_id
+            owner_id = ev.billing_owner_id
+            if owner_id is None:  # defensive: pre-backfill row -> re-resolve via the shared resolver (parity with the live path)
+                cust = Customer.objects.filter(id=ev.customer_id).first()
+                owner_id = cust.resolve_billing_owner().id if cust else ev.customer_id
             ow = Wallet.objects.filter(customer_id=owner_id).first()
             if ow and WalletTransaction.objects.filter(
                     wallet=ow, usage_event_id=ev.id, transaction_type="USAGE_DEDUCTION").exists():

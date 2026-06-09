@@ -11,7 +11,7 @@ from apps.billing.wallets.tasks import reconcile_usage_drawdowns
 def _old_event(t, c, owner_id, billed, key_suffix):
     e = UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key=key_suffix,
                                   billed_cost_micros=billed, billing_owner_id=owner_id)
-    UsageEvent.objects.filter(id=e.id).update(effective_at=timezone.now() - datetime.timedelta(hours=5))
+    UsageEvent.objects.filter(id=e.id).update(effective_at=timezone.now() - datetime.timedelta(hours=8))
     return e
 
 
