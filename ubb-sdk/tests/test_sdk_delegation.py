@@ -177,10 +177,13 @@ class TestCreateCustomerDelegation:
         result = client.create_customer("ext1", stripe_customer_id="cus_123")
 
         client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers", json={
+            "post", "/api/v1/customers", json={
                 "external_id": "ext1",
                 "stripe_customer_id": "cus_123",
                 "metadata": {},
+                "account_type": "individual",
+                "parent_external_id": "",
+                "billing_topology": "",
             }
         )
         assert result.external_id == "ext1"

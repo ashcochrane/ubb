@@ -77,10 +77,13 @@ class UBBClientTest(unittest.TestCase):
                                              stripe_customer_id="cus_abc")
         self.assertEqual(result.external_id, "u42")
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers", json={
+            "post", "/api/v1/customers", json={
                 "external_id": "u42",
                 "stripe_customer_id": "cus_abc",
                 "metadata": {},
+                "account_type": "individual",
+                "parent_external_id": "",
+                "billing_topology": "",
             }
         )
 

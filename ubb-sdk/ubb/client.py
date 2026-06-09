@@ -193,19 +193,35 @@ class UBBClient:
     # ---- platform-level methods (use metering's HTTP client) ----
 
     def create_customer(self, external_id: str, stripe_customer_id: str = "",
-                        metadata: dict | None = None) -> CustomerResult:
+                        metadata: dict | None = None,
+                        account_type: str = "individual",
+                        parent_external_id: str = "",
+                        billing_topology: str = "") -> CustomerResult:
         """Create a new customer via the platform API.
 
         Uses metering's HTTP client (metering is always present) to call
-        POST /api/v1/platform/customers.
+        POST /api/v1/customers.
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/platform/customers", json={
+        r = metering._request("post", "/api/v1/customers", json={
             "external_id": external_id,
             "stripe_customer_id": stripe_customer_id,
             "metadata": metadata or {},
+            "account_type": account_type,
+            "parent_external_id": parent_external_id,
+            "billing_topology": billing_topology,
         })
         return CustomerResult(**r.json())
+
+    def get_business(self, external_id: str) -> dict:
+        """Get a business account view via the platform API.
+
+        Uses metering's HTTP client to call
+        GET /api/v1/accounts/business/{external_id}.
+        """
+        metering = self._require_metering()
+        r = metering._request("get", f"/api/v1/accounts/business/{external_id}")
+        return r.json()
 
     # ---- billing delegates ----
 
