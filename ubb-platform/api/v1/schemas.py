@@ -279,3 +279,19 @@ class RateCardOut(Schema):
 
 class RateCardBatchIn(Schema):
     cards: list[RateCardIn]
+
+
+class TenantConfigOut(Schema):
+    name: str
+    billing_mode: str
+    products: list[str]
+    require_cost_card_coverage: bool
+    default_currency: str
+    stripe_connected_account_id: str
+    is_active: bool
+
+
+class TenantConfigIn(Schema):
+    billing_mode: Optional[str] = None
+    products: Optional[list[str]] = None
+    require_cost_card_coverage: Optional[bool] = None

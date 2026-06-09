@@ -3,6 +3,7 @@ from typing import Optional
 from ninja import NinjaAPI, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
+from api.v1.schemas import TenantConfigOut, TenantConfigIn
 from core.auth import ApiKeyAuth
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 
@@ -117,3 +118,47 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+
+def _config_out(t):
+    return {
+        "name": t.name,
+        "billing_mode": t.billing_mode,
+        "products": t.products,
+        "require_cost_card_coverage": t.require_cost_card_coverage,
+        "default_currency": t.default_currency,
+        "stripe_connected_account_id": t.stripe_connected_account_id,
+        "is_active": t.is_active,
+    }
+
+
+@tenant_api.get("/config", response=TenantConfigOut)
+def get_tenant_config(request):
+    return _config_out(request.auth.tenant)
+
+
+@tenant_api.patch("/config", response={200: TenantConfigOut, 422: dict})
+def update_tenant_config(request, payload: TenantConfigIn):
+    from django.core.exceptions import ValidationError
+    from apps.metering.pricing.models import RateCard
+    t = request.auth.tenant
+    if payload.require_cost_card_coverage is True and not t.require_cost_card_coverage:
+        if not RateCard.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
+            return 422, {
+                "error": "require_cost_card_coverage cannot be enabled with zero active cost rate cards",
+                "code": "no_cost_cards",
+            }
+    if payload.billing_mode is not None:
+        t.billing_mode = payload.billing_mode
+    if payload.products is not None:
+        t.products = payload.products
+    if payload.require_cost_card_coverage is not None:
+        t.require_cost_card_coverage = payload.require_cost_card_coverage
+    try:
+        t.save()
+    except ValidationError as e:
+        msg = "; ".join(
+            f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
+        )
+        return 422, {"error": msg, "code": "invalid_config"}
+    return 200, _config_out(t)

@@ -217,5 +217,68 @@ class UBBClientTest(unittest.TestCase):
             mock_bill_close.assert_called_once()
 
 
+class TenantConfigClientTest(unittest.TestCase):
+    """Tests for UBBClient.get_tenant_config and update_tenant_config."""
+
+    CONFIG_FIXTURE = {
+        "name": "TestTenant",
+        "billing_mode": "meter_only",
+        "products": ["metering"],
+        "require_cost_card_coverage": False,
+        "default_currency": "usd",
+        "stripe_connected_account_id": "acct_test",
+        "is_active": True,
+    }
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_get_tenant_config_calls_correct_endpoint(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: self.CONFIG_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.get_tenant_config()
+        self.client.metering._request.assert_called_once_with("get", "/api/v1/tenant/config")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["billing_mode"], "meter_only")
+        self.assertIn("metering", result["products"])
+
+    def test_update_tenant_config_sends_only_non_none_fields(self):
+        updated = {**self.CONFIG_FIXTURE, "billing_mode": "postpaid", "products": ["metering", "billing"]}
+        mock_resp = MagicMock(status_code=200, json=lambda: updated)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.update_tenant_config(billing_mode="postpaid",
+                                                   products=["metering", "billing"])
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config",
+            json={"billing_mode": "postpaid", "products": ["metering", "billing"]},
+        )
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["billing_mode"], "postpaid")
+
+    def test_update_tenant_config_omits_none_fields(self):
+        """Only require_cost_card_coverage=True is set; billing_mode and products are omitted."""
+        updated = {**self.CONFIG_FIXTURE, "require_cost_card_coverage": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: updated)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_tenant_config(require_cost_card_coverage=True)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config",
+            json={"require_cost_card_coverage": True},
+        )
+
+    def test_update_tenant_config_empty_call_sends_empty_body(self):
+        """Calling with no args sends an empty body."""
+        mock_resp = MagicMock(status_code=200, json=lambda: self.CONFIG_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_tenant_config()
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config", json={},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

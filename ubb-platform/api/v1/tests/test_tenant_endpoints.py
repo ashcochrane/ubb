@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -69,3 +70,71 @@ class TenantInvoicesEndpointTest(TestCase):
         body = response.json()
         self.assertEqual(len(body["data"]), 1)
         self.assertEqual(body["data"][0]["total_amount_micros"], 500_000_000)
+
+
+class TenantConfigEndpointTest(TestCase):
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="ConfigTest",
+            stripe_connected_account_id="acct_cfg",
+            platform_fee_percentage=1.00,
+            products=["metering"],
+            billing_mode="meter_only",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cfg-test")
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    # --- GET ---
+
+    def test_get_config_returns_200_with_expected_keys(self):
+        response = self.http_client.get("/api/v1/tenant/config", **self._auth())
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        for key in ("billing_mode", "products", "require_cost_card_coverage",
+                    "stripe_connected_account_id", "is_active"):
+            self.assertIn(key, body, f"missing key: {key}")
+        self.assertEqual(body["billing_mode"], "meter_only")
+        self.assertIn("metering", body["products"])
+
+    # --- PATCH: happy path ---
+
+    def test_patch_billing_mode_and_products(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"billing_mode": "postpaid", "products": ["metering", "billing"]}),
+            content_type="application/json",
+            **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.billing_mode, "postpaid")
+        self.assertIn("billing", self.tenant.products)
+
+    # --- PATCH: require_cost_card_coverage=true with no active cost cards → 422 ---
+
+    def test_patch_require_cost_card_coverage_without_cost_cards_returns_422(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"require_cost_card_coverage": True}),
+            content_type="application/json",
+            **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertEqual(body.get("code"), "no_cost_cards")
+
+    # --- PATCH: billing_mode=prepaid with no billing product → 422 ---
+
+    def test_patch_billing_mode_prepaid_without_billing_product_returns_422(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"billing_mode": "prepaid"}),
+            content_type="application/json",
+            **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertEqual(body.get("code"), "invalid_config")

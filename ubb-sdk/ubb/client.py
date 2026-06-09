@@ -223,6 +223,34 @@ class UBBClient:
         r = metering._request("get", f"/api/v1/platform/accounts/business/{external_id}")
         return r.json()
 
+    def get_tenant_config(self) -> dict:
+        """Get the tenant's own configuration.
+
+        Calls GET /api/v1/tenant/config and returns the response as a dict.
+        """
+        metering = self._require_metering()
+        r = metering._request("get", "/api/v1/tenant/config")
+        return r.json()
+
+    def update_tenant_config(self, *, billing_mode: str | None = None,
+                              products: list[str] | None = None,
+                              require_cost_card_coverage: bool | None = None) -> dict:
+        """Update the tenant's own configuration.
+
+        Calls PATCH /api/v1/tenant/config with only the provided (non-None) fields.
+        Returns the updated config as a dict.
+        """
+        metering = self._require_metering()
+        body = {}
+        if billing_mode is not None:
+            body["billing_mode"] = billing_mode
+        if products is not None:
+            body["products"] = products
+        if require_cost_card_coverage is not None:
+            body["require_cost_card_coverage"] = require_cost_card_coverage
+        r = metering._request("patch", "/api/v1/tenant/config", json=body)
+        return r.json()
+
     # ---- billing delegates ----
 
     def get_balance(self, customer_id: str) -> BalanceResult:
