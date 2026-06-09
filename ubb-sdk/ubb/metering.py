@@ -194,6 +194,11 @@ class MeteringClient:
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
         return CustomerRevenue(**r.json())
 
+    def get_business_margin(self, external_id, start_date=None, end_date=None):
+        params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
+        r = self._request("get", f"/api/v1/margin/business/{external_id}", params=params)
+        return r.json()
+
     def set_revenue_mode(self, customer_id, revenue_mode=""):
         r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue-mode",
                           json={"revenue_mode": revenue_mode})

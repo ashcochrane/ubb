@@ -172,6 +172,15 @@ def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
             "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
 
 
+@margin_api.get("/business/{external_id}")
+def business_margin(request, external_id: str, start_date: date = None, end_date: date = None):
+    _product_check(request)
+    biz = get_object_or_404(Customer, tenant=request.auth.tenant,
+                            external_id=external_id, account_type="business")
+    s, e = _window(start_date, end_date)
+    return MarginService.compute_business(request.auth.tenant.id, biz, s, e)
+
+
 @margin_api.get("/{customer_id}/trend")
 def margin_trend(request, customer_id: UUID, periods: int = 6):
     _product_check(request)

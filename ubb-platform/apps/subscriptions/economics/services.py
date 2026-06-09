@@ -42,6 +42,19 @@ class MarginService:
         }
 
     @staticmethod
+    def compute_business(tenant_id, business, start_date, end_date) -> dict:
+        seats = list(business.seats.all())
+        per_seat = [MarginService.compute_live(tenant_id, s.id, start_date, end_date) for s in seats]
+        keys = ["subscription_revenue_micros", "usage_revenue_micros", "provider_cost_micros",
+                "total_revenue_micros", "gross_margin_micros", "event_count"]
+        totals = {k: 0 for k in keys}
+        for d in per_seat:
+            for k in keys:
+                totals[k] += d.get(k, 0) or 0
+        return {"business_id": str(business.id), "external_id": business.external_id,
+                "totals": totals, "seats": per_seat}
+
+    @staticmethod
     def snapshot_customer(tenant_id, customer_id, period_start, period_end) -> CustomerEconomics:
         """Monthly snapshot from the accumulator + full-month revenue. Persists CustomerEconomics."""
         from apps.platform.tenants.models import Tenant
