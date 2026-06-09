@@ -561,9 +561,16 @@ def list_tenant_usage_invoices(request, period: str = None):
     from apps.billing.invoicing.models import CustomerUsageInvoice
     qs = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant).select_related("customer")
     if period:
+        import re
         from datetime import date
-        y, m = period.split("-")
-        qs = qs.filter(period_start=date(int(y), int(m), 1))
+        from ninja.errors import HttpError
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise HttpError(400, "period must be YYYY-MM")
+        y_str, m_str = period.split("-")
+        m_int = int(m_str)
+        if not (1 <= m_int <= 12):
+            raise HttpError(400, "period month must be between 01 and 12")
+        qs = qs.filter(period_start=date(int(y_str), m_int, 1))
     return {"invoices": [{"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
              "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
              "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason}

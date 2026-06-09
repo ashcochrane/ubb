@@ -704,3 +704,40 @@ class TopUpWithConnectorTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class TenantUsageInvoicePeriodValidationTest(TestCase):
+    """#13 — ?period bad input must return 400, not 500."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Period Test Tenant", products=["metering", "billing"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def _get(self, period):
+        return self.http_client.get(
+            f"/api/v1/billing/tenant/usage-invoices?period={period}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_period_non_numeric_returns_400(self):
+        response = self._get("abc")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_no_dash_returns_400(self):
+        response = self._get("2026")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_month_out_of_range_returns_400(self):
+        response = self._get("2026-13")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_month_zero_returns_400(self):
+        response = self._get("2026-00")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_valid_returns_200(self):
+        response = self._get("2026-06")
+        self.assertEqual(response.status_code, 200)

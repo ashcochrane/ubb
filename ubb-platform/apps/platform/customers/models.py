@@ -26,7 +26,6 @@ class Customer(SoftDeleteMixin, BaseModel):
         default="active",
         db_index=True,
     )
-    min_balance_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
     revenue_mode = models.CharField(max_length=20, blank=True, default="")  # "" | "billed" | "metered_only"
     account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)

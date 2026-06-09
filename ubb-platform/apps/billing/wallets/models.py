@@ -1,4 +1,4 @@
-from django.db import models, transaction
+from django.db import models
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
@@ -28,42 +28,6 @@ class Wallet(SoftDeleteMixin, BaseModel):
     def __str__(self):
         return f"Wallet({self.customer.external_id}: {self.balance_micros})"
 
-    @transaction.atomic
-    def deduct(self, amount_micros, description="", reference_id=""):
-        """Deduct from wallet balance. Allows negative balance."""
-        wallet = Wallet.objects.select_for_update().get(pk=self.pk)
-        wallet.balance_micros -= amount_micros
-        wallet.save(update_fields=["balance_micros", "updated_at"])
-        self.balance_micros = wallet.balance_micros
-
-        txn = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type="USAGE_DEDUCTION",
-            amount_micros=-amount_micros,
-            balance_after_micros=wallet.balance_micros,
-            description=description,
-            reference_id=reference_id,
-        )
-        return txn
-
-    @transaction.atomic
-    def credit(self, amount_micros, description="", reference_id="",
-               transaction_type="TOP_UP"):
-        """Credit wallet balance."""
-        wallet = Wallet.objects.select_for_update().get(pk=self.pk)
-        wallet.balance_micros += amount_micros
-        wallet.save(update_fields=["balance_micros", "updated_at"])
-        self.balance_micros = wallet.balance_micros
-
-        txn = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type=transaction_type,
-            amount_micros=amount_micros,
-            balance_after_micros=wallet.balance_micros,
-            description=description,
-            reference_id=reference_id,
-        )
-        return txn
 
 
 class WalletTransaction(BaseModel):
