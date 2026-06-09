@@ -45,6 +45,17 @@ class PricingService:
         if caller_provider_cost is not None:
             provider_cost = caller_provider_cost
             prov["cost_source"] = "caller"
+            # When the strict coverage flag is on, every metric in usage_metrics must have
+            # a matching cost card even when the caller supplies the aggregate cost.
+            # Without this check the caller-cost path silently bypasses the guarantee.
+            if usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
+                uncosted = [m for m in usage_metrics
+                            if PricingService._resolve_card(
+                                tenant, customer, "cost", provider,
+                                event_type, m, tags, currency, as_of) is None]
+                if uncosted:
+                    prov["uncosted_metrics"] = uncosted
+                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
         else:
             provider_cost = 0
             uncosted = []

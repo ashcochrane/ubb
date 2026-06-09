@@ -69,6 +69,39 @@ for row in analytics["by_tag"]:
     print(row)
 ```
 
+### 4. Multi-dimension cost breakdown
+
+Pass `dimensions` as a list to slice COGS by any combination of `product_id`,
+`service_id`, `agent_id`, or any `tag:key` you tag events with. The response
+includes a `breakdowns` dict keyed by dimension name — each value is a list of
+per-value rows. An `(unattributed)` bucket collects events that have no value
+for that dimension, so the rows always reconcile to `total_provider_cost_micros`.
+
+```python
+analytics = client.usage_analytics(
+    customer_id="cust-uuid-here",
+    dimensions=["product_id", "service_id", "agent_id"],
+)
+
+for dim, rows in analytics["breakdowns"].items():
+    for row in rows:
+        print(dim, row["value"], row["total_provider_cost_micros"])
+# dim="product_id"  value="search"         total_provider_cost_micros=45000
+# dim="product_id"  value="(unattributed)" total_provider_cost_micros=3000
+```
+
+### 5. Time-series spend rollup
+
+```python
+series = client.usage_timeseries(
+    customer_id="cust-uuid-here",
+    granularity="day",   # "hour" | "day" | "week" | "month"
+    group_by="service_id",
+)
+for bucket in series["series"]:
+    print(bucket["period_start"], bucket.get("service_id"), bucket["total_provider_cost_micros"])
+```
+
 ## Money representation
 
 All amounts are integer **micros**: `1_000_000 micros = $1.00`. This avoids floating-point
@@ -104,8 +137,13 @@ client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider="", event_type="", currency=None, tags=None,
     product_id="", metadata=None, run_id=None, usage_metrics=None)
 
-# usage_analytics  → dict
-client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None)
+# usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
+client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None,
+    dimensions=None)
+
+# usage_timeseries  → dict
+client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
+    customer_id=None, group_by=None)
 ```
 
 ## RecordUsageResult fields

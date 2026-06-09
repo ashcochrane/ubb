@@ -68,3 +68,43 @@ class TestPricing:
             PricingService.price(tenant=t, customer=c, event_type="e", provider="o",
                 usage_metrics={"tok": 100}, tags=None, currency="usd",
                 caller_provider_cost=None, caller_billed=None)
+
+    def test_caller_cost_path_respects_coverage_when_strict(self):
+        # Strict flag ON + metric with no cost card + caller-supplied provider cost
+        # must still raise PricingError (the bypass was silently skipping the coverage check).
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c2")
+        with pytest.raises(PricingError):
+            PricingService.price(
+                tenant=t, customer=c, event_type="e", provider="o",
+                usage_metrics={"unmatched_metric": 100}, tags=None, currency="usd",
+                caller_provider_cost=500, caller_billed=None,
+            )
+
+    def test_caller_cost_path_strict_flag_off_does_not_raise(self):
+        # Strict flag OFF: caller-cost path must not raise even if metrics have no cost card.
+        t = self._t()  # require_cost_card_coverage defaults to False
+        c = Customer.objects.create(tenant=t, external_id="c3")
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics={"unmatched_metric": 100}, tags=None, currency="usd",
+            caller_provider_cost=500, caller_billed=None,
+        )
+        assert prov == 500 and p["cost_source"] == "caller"
+
+    def test_caller_cost_path_strict_all_metrics_covered_does_not_raise(self):
+        # Strict flag ON but all metrics have a cost card: caller-cost path must not raise.
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c4")
+        RateCard.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+            metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics={"tok": 100}, tags=None, currency="usd",
+            caller_provider_cost=500, caller_billed=None,
+        )
+        assert prov == 500 and p["cost_source"] == "caller"
