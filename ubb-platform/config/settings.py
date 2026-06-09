@@ -221,6 +221,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.invoicing.tasks.reconcile_postpaid_usage",
         "schedule": crontab(minute=45),  # hourly at :45
     },
+    "reconcile-usage-drawdowns": {
+        "task": "apps.billing.wallets.tasks.reconcile_usage_drawdowns",
+        "schedule": crontab(minute=40),  # hourly at :40
+    },
 }
 
 # UBB Platform Settings
