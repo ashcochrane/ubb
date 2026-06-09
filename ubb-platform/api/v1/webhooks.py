@@ -22,6 +22,8 @@ from apps.billing.connectors.stripe.webhooks import (
     handle_charge_dispute_closed,
     handle_charge_refunded,
     handle_invoice_payment_failed,
+    handle_payment_intent_succeeded,
+    handle_payment_intent_payment_failed,
 )
 
 logger = logging.getLogger(__name__)
@@ -203,4 +205,6 @@ WEBHOOK_HANDLERS = {
     "charge.dispute.created": handle_charge_dispute_created,
     "charge.dispute.closed": handle_charge_dispute_closed,
     "charge.refunded": handle_charge_refunded,
+    "payment_intent.succeeded": handle_payment_intent_succeeded,
+    "payment_intent.payment_failed": handle_payment_intent_payment_failed,
 }

@@ -300,3 +300,38 @@ def handle_charge_refunded(event):
             reference_id=str(attempt.id),
             idempotency_key=f"stripe_refund:{charge_id}",
         )
+
+
+def handle_payment_intent_succeeded(event):
+    """Backstop: credit the wallet for a succeeded auto-topup PaymentIntent (idempotent)."""
+    pi = event.data.object
+    attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+    if not attempt_id:
+        return
+    from apps.billing.topups.services import AutoTopUpService
+    try:
+        attempt = TopUpAttempt.objects.get(id=attempt_id)
+    except (TopUpAttempt.DoesNotExist, ValueError):
+        return
+    AutoTopUpService.apply_topup_credit(attempt, pi)
+
+
+def handle_payment_intent_payment_failed(event):
+    """Mark an auto-topup attempt failed when its PaymentIntent fails (idempotent)."""
+    pi = event.data.object
+    attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+    if not attempt_id:
+        return
+    try:
+        attempt = TopUpAttempt.objects.get(id=attempt_id)
+    except (TopUpAttempt.DoesNotExist, ValueError):
+        return
+    with transaction.atomic():
+        attempt = lock_top_up_attempt(attempt.id)
+        if attempt.status in ("succeeded", "failed", "superseded"):
+            return
+        attempt.status = "failed"
+        lpe = getattr(pi, "last_payment_error", None)
+        attempt.failure_reason = {"error_type": "PaymentIntentFailed",
+                                  "message": getattr(lpe, "message", "") if lpe else ""}
+        attempt.save(update_fields=["status", "failure_reason", "updated_at"])
