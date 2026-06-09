@@ -214,6 +214,11 @@ class MeteringClient:
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue-mode")
         return r.json()
 
+    @staticmethod
+    def _rate_card(row):
+        return RateCard(**{k: v for k, v in row.items()
+                           if k in RateCard.__dataclass_fields__})
+
     def create_rate_card(self, *, card_type, metric_name, provider="", event_type="",
                          dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
                          unit_quantity=1_000_000, fixed_micros=0, currency="usd",
@@ -224,12 +229,30 @@ class MeteringClient:
                 "fixed_micros": fixed_micros, "currency": currency, "product_id": product_id,
                 "customer_id": customer_id}
         r = self._request("post", "/api/v1/metering/pricing/rate-cards", json=body)
-        return RateCard(**r.json())
+        return self._rate_card(r.json())
 
-    def list_rate_cards(self, card_type=None):
-        params = {"card_type": card_type} if card_type else None
-        r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params)
-        return [RateCard(**row) for row in r.json()]
+    def update_rate_card(self, card_id, **fields):
+        """Soft-version a rate card via PUT. Only the provided ``fields`` change;
+        unspecified fields are copied from the active version. Returns the new
+        version (same ``lineage_id``, new ``id``)."""
+        r = self._request("put", f"/api/v1/metering/pricing/rate-cards/{card_id}", json=fields)
+        return self._rate_card(r.json())
+
+    def get_rate_card_history(self, lineage_id):
+        """Return every version sharing ``lineage_id``, newest first."""
+        r = self._request("get", f"/api/v1/metering/pricing/rate-cards/{lineage_id}/history")
+        return [self._rate_card(row) for row in r.json()]
+
+    def list_rate_cards(self, card_type=None, include_history=False, as_of=None):
+        params = {}
+        if card_type:
+            params["card_type"] = card_type
+        if include_history:
+            params["include_history"] = include_history
+        if as_of is not None:
+            params["as_of"] = as_of
+        r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params or None)
+        return [self._rate_card(row) for row in r.json()]
 
     def delete_rate_card(self, card_id):
         self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")

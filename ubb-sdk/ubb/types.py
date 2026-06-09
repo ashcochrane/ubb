@@ -161,6 +161,7 @@ class PaginatedResponse(Generic[T]):
 @dataclass(frozen=True)
 class RateCard:
     id: str | None = None
+    lineage_id: str | None = None
     card_type: str | None = None
     metric_name: str | None = None
     provider: str | None = None

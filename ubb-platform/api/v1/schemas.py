@@ -243,8 +243,24 @@ class RateCardIn(Schema):
     customer_id: Optional[UUID] = None
 
 
+class RateCardUpdateIn(Schema):
+    card_type: Optional[str] = None
+    metric_name: Optional[str] = Field(default=None, max_length=100)
+    provider: Optional[str] = Field(default=None, max_length=100)
+    event_type: Optional[str] = Field(default=None, max_length=100)
+    dimensions: Optional[dict] = None
+    pricing_model: Optional[str] = None
+    rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
+    unit_quantity: Optional[int] = Field(default=None, gt=0)
+    fixed_micros: Optional[int] = Field(default=None, ge=0)
+    currency: Optional[str] = Field(default=None, max_length=3)
+    product_id: Optional[str] = Field(default=None, max_length=100)
+    customer_id: Optional[UUID] = None
+
+
 class RateCardOut(Schema):
     id: str
+    lineage_id: str
     card_type: str
     metric_name: str
     provider: str

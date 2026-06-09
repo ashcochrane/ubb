@@ -1,8 +1,9 @@
 import re
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
-from django.db.models import Sum, Count
+from django.db import transaction
+from django.db.models import Sum, Count, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Query
@@ -17,7 +18,7 @@ from api.v1.schemas import (
     CloseRunResponse,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
-    RateCardIn, RateCardOut,
+    RateCardIn, RateCardOut, RateCardUpdateIn,
 )
 from apps.metering.pricing.models import RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES
 from api.v1.pagination import encode_cursor, apply_cursor_filter
@@ -373,6 +374,7 @@ _billing_check = ProductAccess("billing")
 def _rate_card_to_out(c):
     return {
         "id": str(c.id),
+        "lineage_id": str(c.lineage_id),
         "card_type": c.card_type,
         "metric_name": c.metric_name,
         "provider": c.provider,
@@ -397,12 +399,19 @@ def _gate_card_type(request, card_type):
 
 
 @metering_api.get("/pricing/rate-cards", response=list[RateCardOut])
-def list_rate_cards(request, card_type: str = None):
+def list_rate_cards(request, card_type: str = None, include_history: bool = False,
+                    as_of: datetime = None):
     _product_check(request)
-    qs = RateCard.objects.filter(tenant=request.auth.tenant, valid_to__isnull=True)
+    qs = RateCard.objects.filter(tenant=request.auth.tenant)
+    if as_of is not None:
+        qs = qs.filter(valid_from__lte=as_of).filter(
+            Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
+    elif not include_history:
+        qs = qs.filter(valid_to__isnull=True)
     if card_type:
         qs = qs.filter(card_type=card_type)
-    return [_rate_card_to_out(c) for c in qs.order_by("card_type", "provider", "event_type", "metric_name")]
+    return [_rate_card_to_out(c) for c in qs.order_by(
+        "card_type", "provider", "event_type", "metric_name", "-valid_from")]
 
 
 @metering_api.post("/pricing/rate-cards", response={200: RateCardOut, 422: dict})
@@ -435,31 +444,78 @@ def create_rate_card(request, payload: RateCardIn):
     return 200, _rate_card_to_out(card)
 
 
-@metering_api.put("/pricing/rate-cards/{card_id}", response=RateCardOut)
-def update_rate_card(request, card_id: UUID, payload: RateCardIn):
-    _gate_card_type(request, payload.card_type)
-    old = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
-    old.valid_to = timezone.now()
-    old.save(update_fields=["valid_to", "updated_at"])
-    customer = None
-    if payload.customer_id:
-        customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    card = RateCard.objects.create(
-        tenant=request.auth.tenant,
-        customer=customer,
-        card_type=payload.card_type,
-        metric_name=payload.metric_name,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        dimensions=payload.dimensions,
-        pricing_model=payload.pricing_model,
-        rate_per_unit_micros=payload.rate_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        fixed_micros=payload.fixed_micros,
-        currency=payload.currency,
-        product_id=payload.product_id,
-    )
-    return _rate_card_to_out(card)
+_RATE_CARD_COPY_FIELDS = (
+    "card_type", "metric_name", "provider", "event_type", "dimensions",
+    "pricing_model", "rate_per_unit_micros", "unit_quantity", "fixed_micros",
+    "currency", "product_id",
+)
+
+
+@metering_api.put("/pricing/rate-cards/{card_id}", response={200: RateCardOut, 422: dict})
+def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
+    # Resolve the target: by id (any version), falling back to the active card
+    # sharing that lineage. Only active (valid_to IS NULL) versions are editable.
+    changes = payload.dict(exclude_unset=True)
+
+    with transaction.atomic():
+        old = RateCard.objects.filter(
+            id=card_id, tenant=request.auth.tenant, valid_to__isnull=True
+        ).first()
+        if old is None:
+            target = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant)
+            old = RateCard.objects.filter(
+                tenant=request.auth.tenant, lineage_id=target.lineage_id,
+                valid_to__isnull=True,
+            ).first()
+            if old is None:
+                from ninja.errors import HttpError
+                raise HttpError(404, "No active version for this rate card")
+
+        # Build the new version: copy all fields from old, apply request changes.
+        new_values = {f: getattr(old, f) for f in _RATE_CARD_COPY_FIELDS}
+        for f in _RATE_CARD_COPY_FIELDS:
+            if f in changes:
+                new_values[f] = changes[f]
+
+        customer = old.customer
+        if "customer_id" in changes:
+            if changes["customer_id"]:
+                customer = get_object_or_404(
+                    Customer, id=changes["customer_id"], tenant=request.auth.tenant)
+            else:
+                customer = None
+
+        # Preserve the Wave 1 enum validation.
+        valid_types = {c[0] for c in CARD_TYPE_CHOICES}
+        valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
+        if new_values["card_type"] not in valid_types:
+            return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
+        if new_values["pricing_model"] not in valid_models:
+            return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
+
+        _gate_card_type(request, new_values["card_type"])
+
+        # Close the old version, then open the new one. valid_from on the new row
+        # (auto_now_add) is >= the old row's valid_to, so the windows never overlap
+        # and the active-row partial unique constraint always sees exactly one.
+        old.valid_to = timezone.now()
+        old.save(update_fields=["valid_to", "updated_at"])
+
+        card = RateCard.objects.create(
+            tenant=request.auth.tenant,
+            customer=customer,
+            lineage_id=old.lineage_id,
+            **new_values,
+        )
+    return 200, _rate_card_to_out(card)
+
+
+@metering_api.get("/pricing/rate-cards/{lineage_id}/history", response=list[RateCardOut])
+def rate_card_history(request, lineage_id: UUID):
+    _product_check(request)
+    qs = RateCard.objects.filter(
+        tenant=request.auth.tenant, lineage_id=lineage_id).order_by("-valid_from")
+    return [_rate_card_to_out(c) for c in qs]
 
 
 @metering_api.delete("/pricing/rate-cards/{card_id}")

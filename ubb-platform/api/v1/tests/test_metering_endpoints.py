@@ -457,6 +457,30 @@ class RateCardValidationTest(TestCase):
         assert resp.status_code == 200
         assert "unknown_metric" in resp.json().get("uncosted_metrics", [])
 
+    def test_rate_card_update_keeps_lineage_and_versions_history(self):
+        # create a cost card
+        r1 = self.client.post("/api/v1/metering/pricing/rate-cards",
+            data={"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
+                  "rate_per_unit_micros": 2, "unit_quantity": 1},
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert r1.status_code in (200, 201)
+        card1 = r1.json(); cid = card1["id"]; lineage = card1["lineage_id"]
+        # update the rate
+        r2 = self.client.put(f"/api/v1/metering/pricing/rate-cards/{cid}",
+            data={"rate_per_unit_micros": 9}, content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert r2.status_code == 200
+        card2 = r2.json()
+        assert card2["lineage_id"] == lineage  # same lineage
+        assert card2["id"] != cid              # new version row
+        # history: both versions, newest first
+        h = self.client.get(f"/api/v1/metering/pricing/rate-cards/{lineage}/history",
+                            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
+        assert len(h) == 2
+        assert h[0]["rate_per_unit_micros"] == 9 and h[1]["rate_per_unit_micros"] == 2
+        # old version has valid_to set; new version valid_to is null
+        assert h[1]["valid_to"] is not None and h[0]["valid_to"] is None
+
 
 class UsageTimeseriesEndpointTest(TestCase):
     def setUp(self):

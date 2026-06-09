@@ -5,8 +5,8 @@ from ubb.types import RateCard
 
 
 RATE_CARD_FIXTURE = {
-    "id": "rc1", "card_type": "cost", "metric_name": "input_tokens", "provider": "openai",
-    "event_type": "chat", "dimensions": {}, "pricing_model": "per_unit",
+    "id": "rc1", "lineage_id": "lin1", "card_type": "cost", "metric_name": "input_tokens",
+    "provider": "openai", "event_type": "chat", "dimensions": {}, "pricing_model": "per_unit",
     "rate_per_unit_micros": 5000, "unit_quantity": 1000000, "fixed_micros": 0,
     "currency": "usd", "product_id": "", "customer_id": None,
     "valid_from": "2026-06-08T00:00:00", "valid_to": None,
@@ -55,7 +55,49 @@ class RateCardClientTest(unittest.TestCase):
         self.assertEqual(len(cards), 1)
         self.assertIsInstance(cards[0], RateCard)
         self.assertEqual(cards[0].metric_name, "input_tokens")
+        self.assertEqual(cards[0].lineage_id, "lin1")
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_rate_cards_include_history_and_as_of(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: [RATE_CARD_FIXTURE])
+        self.client.list_rate_cards(include_history=True, as_of="2026-06-08T00:00:00")
+        params = mock_get.call_args.kwargs.get("params") or {}
+        self.assertEqual(params.get("include_history"), True)
+        self.assertEqual(params.get("as_of"), "2026-06-08T00:00:00")
+
+    @patch("ubb.metering.httpx.Client.put")
+    def test_update_rate_card(self, mock_put):
+        updated = {**RATE_CARD_FIXTURE, "id": "rc2", "rate_per_unit_micros": 9000}
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: updated)
+        card = self.client.update_rate_card("rc1", rate_per_unit_micros=9000)
+        self.assertIsInstance(card, RateCard)
+        self.assertEqual(card.id, "rc2")
+        self.assertEqual(card.lineage_id, "lin1")
+        self.assertEqual(card.rate_per_unit_micros, 9000)
+        self.assertEqual(mock_put.call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc1")
+        self.assertEqual(mock_put.call_args.kwargs["json"], {"rate_per_unit_micros": 9000})
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_rate_card_history(self, mock_get):
+        v2 = {**RATE_CARD_FIXTURE, "id": "rc2", "rate_per_unit_micros": 9000}
+        v1 = {**RATE_CARD_FIXTURE, "valid_to": "2026-06-09T00:00:00"}
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: [v2, v1])
+        history = self.client.get_rate_card_history("lin1")
+        self.assertEqual(len(history), 2)
+        self.assertTrue(all(isinstance(c, RateCard) for c in history))
+        self.assertEqual(history[0].rate_per_unit_micros, 9000)
+        self.assertEqual(history[1].valid_to, "2026-06-09T00:00:00")
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/metering/pricing/rate-cards/lin1/history")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_create_rate_card_tolerates_extra_fields(self, mock_post):
+        # server adds a field the dataclass doesn't know about -> no crash
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {**RATE_CARD_FIXTURE, "future_field": "x"})
+        card = self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        self.assertEqual(card.id, "rc1")
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_with_card_type(self, mock_get):

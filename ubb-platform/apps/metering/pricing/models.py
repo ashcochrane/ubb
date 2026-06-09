@@ -1,5 +1,6 @@
 import hashlib
 import json
+import uuid
 
 from django.db import models
 
@@ -56,6 +57,7 @@ class RateCard(BaseModel):
     tiers = models.JSONField(default=list, blank=True)
     currency = models.CharField(max_length=3, default="usd")
     product_id = models.CharField(max_length=100, blank=True, default="")
+    lineage_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     valid_from = models.DateTimeField(auto_now_add=True, db_index=True)
     valid_to = models.DateTimeField(null=True, blank=True)
 
