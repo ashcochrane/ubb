@@ -10,6 +10,9 @@ CUSTOMER_STATUS_CHOICES = [
     ("closed", "Closed"),
 ]
 
+ACCOUNT_TYPE_CHOICES = [("individual", "Individual"), ("business", "Business"), ("seat", "Seat")]
+BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
+
 
 class Customer(SoftDeleteMixin, BaseModel):
     tenant = models.ForeignKey(
@@ -26,6 +29,9 @@ class Customer(SoftDeleteMixin, BaseModel):
     min_balance_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
     revenue_mode = models.CharField(max_length=20, blank=True, default="")  # "" | "billed" | "metered_only"
+    account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
+    billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
 
     class Meta:
         db_table = "ubb_customer"
