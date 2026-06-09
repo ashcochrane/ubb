@@ -113,3 +113,47 @@ class TestPush:
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
         assert rec.status == "skipped" and rec.skip_reason == "no_stripe_customer"
         mock_sc.assert_not_called()
+
+    def test_slug_collision_both_seats_invoiced(self):
+        """F5: two labels that fold to the same slug must each get a distinct line item."""
+        from unittest.mock import patch, MagicMock, call
+        from core.exceptions import StripeFatalError
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="postpaid", stripe_connected_account_id="acct_x")
+        biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
+                                      billing_topology="allocated", stripe_customer_id="cus_biz")
+        # "acme.corp/east" and "acme-corp-east" both fold to "acme_corp_east" under the old slug
+        s1 = Customer.objects.create(tenant=t, external_id="acme.corp/east", account_type="seat", parent=biz)
+        s2 = Customer.objects.create(tenant=t, external_id="acme-corp-east", account_type="seat", parent=biz)
+        UsageEvent.objects.create(tenant=t, customer=s1, request_id="r1", idempotency_key="ik1",
+                                  provider_cost_micros=1, billed_cost_micros=400_000)
+        UsageEvent.objects.create(tenant=t, customer=s2, request_id="r2", idempotency_key="ik2",
+                                  provider_cost_micros=1, billed_cost_micros=600_000)
+
+        # Faithfully model Stripe idempotency: first call for a key is accepted; replay with
+        # different params raises StripeFatalError.
+        stripe_cache = {}
+
+        def fake_stripe_call(fn, *args, **kwargs):
+            key = kwargs.get("idempotency_key")
+            amount = kwargs.get("amount")
+            desc = kwargs.get("description")
+            if key and amount is not None:
+                if key in stripe_cache:
+                    cached_amount, cached_desc = stripe_cache[key]
+                    if (cached_amount, cached_desc) != (amount, desc):
+                        raise StripeFatalError(f"Idempotency key reuse with different params: {key}")
+                else:
+                    stripe_cache[key] = (amount, desc)
+            return MagicMock(id=f"ii_{key}")
+
+        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call",
+                   side_effect=fake_stripe_call), \
+             patch("apps.platform.events.tasks.process_single_event"):
+            rec = PostpaidUsageService.push_customer_period(t, biz, PS, PE)
+
+        rec.refresh_from_db()
+        assert rec.status == "pushed", f"Expected pushed, got {rec.status}"
+        assert rec.line_items.count() == 2
+        item_ids = list(rec.line_items.values_list("stripe_invoice_item_id", flat=True))
+        assert len(set(item_ids)) == 2, f"Expected 2 distinct stripe IDs, got {item_ids}"

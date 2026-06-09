@@ -17,7 +17,8 @@ class PostpaidUsageService:
         A BUSINESS aggregates across its seats with one line per seat (external_id)."""
         from apps.metering.usage.models import UsageEvent
         if customer.account_type == "business":
-            seats = {s.id: s.external_id for s in customer.seats.all()}
+            from apps.platform.customers.models import Customer
+            seats = {s.id: s.external_id for s in Customer.all_objects.filter(parent=customer)}
             if not seats:
                 return 0, []
             qs = UsageEvent.objects.filter(
@@ -114,15 +115,14 @@ class PostpaidUsageService:
         connected = tenant.stripe_connected_account_id
         currency = (tenant.default_currency or "usd").lower()
         items = []
-        for label, amount in lines:
+        for i, (label, amount) in enumerate(lines):
             cents = micros_to_cents(amount)
             if cents <= 0:
                 continue
-            slug = "".join(ch if ch.isalnum() else "_" for ch in (label or "usage"))[:40]
             desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
             item = stripe_call(
                 stripe.InvoiceItem.create, retryable=True,
-                idempotency_key=f"usage-item-{rec.id}-{slug}",
+                idempotency_key=f"usage-item-{rec.id}-{i}",
                 customer=customer.stripe_customer_id, amount=cents, currency=currency,
                 description=desc, stripe_account=connected)
             items.append((label, amount, item.id))

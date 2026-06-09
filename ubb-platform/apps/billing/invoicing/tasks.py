@@ -64,9 +64,9 @@ def close_postpaid_usage_periods():
             tenant=tenant, effective_at__date__gte=start, effective_at__date__lt=end)
             .values_list("customer_id", flat=True).distinct())
         targets = set()
-        for c in Customer.objects.filter(id__in=list(cust_ids)):
+        for c in Customer.all_objects.filter(id__in=list(cust_ids)):
             targets.add(c.parent_id if (c.account_type == "seat" and c.parent_id) else c.id)
-        for target in Customer.objects.filter(id__in=list(targets)):
+        for target in Customer.all_objects.filter(id__in=list(targets)):
             try:
                 PostpaidUsageService.push_customer_period(tenant, target, start, end)
             except Exception:
