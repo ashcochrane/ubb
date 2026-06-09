@@ -20,10 +20,11 @@ def lock_for_billing(customer_id):
     from apps.billing.wallets.models import Wallet
     from apps.platform.customers.models import Customer
 
-    wallet, _created = Wallet.objects.select_for_update().get_or_create(
-        customer_id=customer_id,
-        defaults={"balance_micros": 0, "currency": "USD"},
-    )
+    wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
+    if wallet is None:
+        wallet = Wallet.objects.create(customer_id=customer_id, balance_micros=0, currency="USD")
+    elif wallet.deleted_at is not None:
+        wallet.restore()
     customer = Customer.objects.select_for_update().get(id=customer_id)
     return wallet, customer
 

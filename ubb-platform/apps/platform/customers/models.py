@@ -38,6 +38,7 @@ class Customer(SoftDeleteMixin, BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "external_id"],
+                condition=models.Q(deleted_at__isnull=True),
                 name="uq_customer_tenant_external",
             ),
         ]
