@@ -27,6 +27,7 @@ class EventsConfig(AppConfig):
             "margin.provider_cost_spike",
             "budget.threshold_reached",
             "usage.invoice_pushed",
+            "auto_topup.requires_action",
         ]
         for event_type in event_types:
             handler_registry.register(

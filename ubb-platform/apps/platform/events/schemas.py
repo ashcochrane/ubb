@@ -192,3 +192,13 @@ class UsageInvoicePushed:
     total_billed_micros: int = 0
     line_item_count: int = 0
     stripe_invoice_id: str = ""
+
+
+@dataclass(frozen=True)
+class AutoTopupRequiresAction:
+    EVENT_TYPE = "auto_topup.requires_action"
+    tenant_id: str
+    customer_id: str
+    attempt_id: str
+    amount_micros: int = 0
+    code: str = ""

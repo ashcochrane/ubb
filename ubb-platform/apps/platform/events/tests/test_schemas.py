@@ -176,3 +176,12 @@ def test_usage_invoice_pushed_contract():
                            total_billed_micros=1000, line_item_count=2, stripe_invoice_id="in_1")
     assert e.EVENT_TYPE == "usage.invoice_pushed"
     assert asdict(e)["line_item_count"] == 2
+
+
+def test_auto_topup_requires_action_contract():
+    from dataclasses import asdict
+    from apps.platform.events.schemas import AutoTopupRequiresAction
+    e = AutoTopupRequiresAction(tenant_id="t", customer_id="c", attempt_id="a",
+                                amount_micros=20_000_000, code="authentication_required")
+    assert e.EVENT_TYPE == "auto_topup.requires_action"
+    assert asdict(e)["amount_micros"] == 20_000_000

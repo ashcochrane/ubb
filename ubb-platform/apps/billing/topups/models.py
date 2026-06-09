@@ -15,6 +15,8 @@ TOP_UP_ATTEMPT_STATUSES = [
     ("succeeded", "Succeeded"),
     ("failed", "Failed"),
     ("expired", "Expired"),
+    ("requires_action", "Requires Action"),
+    ("superseded", "Superseded"),
 ]
 
 
