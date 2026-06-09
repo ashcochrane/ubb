@@ -4,6 +4,8 @@ from django.db import transaction
 
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
+from apps.platform.events.outbox import write_event
+from apps.platform.events.schemas import BalanceLow, CustomerSuspended, BalanceOverage
 
 logger = logging.getLogger("ubb.events")
 
@@ -16,10 +18,11 @@ def handle_usage_recorded_billing(event_id, payload):
 
     Responsibilities:
     1. Deduct wallet balance (with proper locking)
-    2. Create a WalletTransaction record
-    3. Check min balance threshold → suspend and emit CustomerSuspended event
-    4. Check auto-topup threshold → emit BalanceLow event
-    5. Accumulate billing period totals
+    2. Create a WalletTransaction record (idempotent via usage_event_id key)
+    3. Emit BalanceOverage when balance crosses zero (winning insert only)
+    4. Check min balance threshold → suspend and emit CustomerSuspended event
+    5. Check auto-topup threshold → emit BalanceLow event
+    6. Accumulate billing period totals
 
     This handler NEVER calls Stripe or dispatches payment tasks.
     Payment connectors subscribe to the emitted events.
@@ -36,54 +39,58 @@ def handle_usage_recorded_billing(event_id, payload):
             from apps.billing.wallets.models import WalletTransaction
             from apps.billing.locking import lock_for_billing
             from apps.billing.topups.models import AutoTopUpConfig
-            from apps.platform.events.outbox import write_event
-            from apps.platform.events.schemas import BalanceLow, CustomerSuspended
-            from apps.billing.accounts import resolve_billing_owner_id
+            from apps.billing.queries import get_customer_min_balance
+            from django.db import IntegrityError
 
-            owner_id = resolve_billing_owner_id(seat)
+            owner_id = payload.get("billing_owner_id") or str(seat.resolve_billing_owner().id)
+            usage_event_id = payload.get("event_id", "")
+            key = f"usage_deduction:{usage_event_id}"
             with transaction.atomic():
                 wallet, owner = lock_for_billing(owner_id)
-                wallet.balance_micros -= billed_cost_micros
-                wallet.save(update_fields=["balance_micros", "updated_at"])
-                WalletTransaction.objects.create(
-                    wallet=wallet,
-                    transaction_type="USAGE_DEDUCTION",
-                    amount_micros=-billed_cost_micros,
-                    balance_after_micros=wallet.balance_micros,
-                    description=f"Usage: {payload.get('event_id', '')}",
-                    reference_id=payload.get("event_id", ""),
-                    idempotency_key=f"usage_deduction:{event_id}",
-                )
-
-                # Check min balance threshold and suspend if needed
-                from apps.billing.queries import get_customer_min_balance
-                threshold = get_customer_min_balance(owner.id, tenant.id)
-                if wallet.balance_micros < -threshold and owner.status == "active":
-                    owner.status = "suspended"
-                    owner.save(update_fields=["status", "updated_at"])
-                    write_event(CustomerSuspended(
-                        tenant_id=str(tenant.id),
-                        customer_id=str(owner.id),
-                        reason="min_balance_exceeded",
-                        balance_micros=wallet.balance_micros,
-                    ))
-
-                # Check auto-topup threshold → emit BalanceLow
-                try:
-                    config = AutoTopUpConfig.objects.get(
-                        customer=owner, is_enabled=True
-                    )
-                except AutoTopUpConfig.DoesNotExist:
-                    config = None
-
-                if config and wallet.balance_micros < config.trigger_threshold_micros:
-                    write_event(BalanceLow(
-                        tenant_id=str(tenant.id),
-                        customer_id=str(owner.id),
-                        balance_micros=wallet.balance_micros,
-                        threshold_micros=config.trigger_threshold_micros,
-                        suggested_topup_micros=config.top_up_amount_micros,
-                    ))
+                existing = WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).first()
+                if existing is not None:
+                    if existing.amount_micros != -billed_cost_micros:
+                        logger.error("ledger.usage_deduction_amount_mismatch", extra={"data": {
+                            "usage_event_id": usage_event_id, "existing": existing.amount_micros,
+                            "expected": -billed_cost_micros}})
+                    # I2: already debited -> no decrement, no events
+                else:
+                    old_balance = wallet.balance_micros
+                    new_balance = old_balance - billed_cost_micros
+                    try:
+                        with transaction.atomic():  # savepoint
+                            WalletTransaction.objects.create(
+                                wallet=wallet, transaction_type="USAGE_DEDUCTION",
+                                amount_micros=-billed_cost_micros, balance_after_micros=new_balance,
+                                description=f"Usage: {usage_event_id}", reference_id=usage_event_id,
+                                idempotency_key=key, usage_event_id=usage_event_id or None)
+                    except IntegrityError:
+                        pass  # I2: raced -> already debited, no decrement, no events
+                    else:
+                        wallet.balance_micros = new_balance
+                        wallet.save(update_fields=["balance_micros", "updated_at"])
+                        limit = get_customer_min_balance(owner.id, tenant.id)
+                        if old_balance >= 0 and new_balance < 0:   # I6
+                            write_event(BalanceOverage(
+                                tenant_id=str(tenant.id), customer_id=str(owner.id),
+                                balance_micros=new_balance, overage_limit_micros=limit,
+                                overage_micros=-new_balance))
+                        if new_balance < -limit and owner.status == "active":
+                            owner.status = "suspended"
+                            owner.save(update_fields=["status", "updated_at"])
+                            write_event(CustomerSuspended(
+                                tenant_id=str(tenant.id), customer_id=str(owner.id),
+                                reason="min_balance_exceeded", balance_micros=new_balance))
+                        try:
+                            config = AutoTopUpConfig.objects.get(customer=owner, is_enabled=True)
+                        except AutoTopUpConfig.DoesNotExist:
+                            config = None
+                        if config and new_balance < config.trigger_threshold_micros:
+                            write_event(BalanceLow(
+                                tenant_id=str(tenant.id), customer_id=str(owner.id),
+                                balance_micros=new_balance,
+                                threshold_micros=config.trigger_threshold_micros,
+                                suggested_topup_micros=config.top_up_amount_micros))
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)

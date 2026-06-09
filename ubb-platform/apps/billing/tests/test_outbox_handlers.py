@@ -125,9 +125,8 @@ class TestBillingOutboxHandler:
         assert txn.idempotency_key.startswith("usage_deduction:")
 
     def test_usage_deduction_replay_no_double_deduct(self):
-        """Replaying the same outbox event must not create a second deduction."""
+        """Replaying the same outbox event must not create a second deduction (silent no-op)."""
         from apps.billing.handlers import handle_usage_recorded_billing
-        from django.db import IntegrityError
 
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
@@ -152,10 +151,11 @@ class TestBillingOutboxHandler:
 
         handle_usage_recorded_billing(str(event.id), event.payload)
 
-        # Simulate replay with same event_id
-        with pytest.raises(IntegrityError):
-            handle_usage_recorded_billing(str(event.id), event.payload)
+        # Simulate replay with same event_id — must be a silent no-op, not raise
+        handle_usage_recorded_billing(str(event.id), event.payload)
 
+        wallet.refresh_from_db()
+        assert wallet.balance_micros == 9_500_000  # debited exactly once
         txn_count = WalletTransaction.objects.filter(wallet=wallet).count()
         assert txn_count == 1
 
@@ -320,6 +320,43 @@ class TestBillingOutboxHandler:
         handle_usage_recorded_billing(str(event.id), event.payload)
         w.refresh_from_db()
         assert w.balance_micros == 10_000_000  # untouched — postpaid is invoiced, not drawn down
+
+    def test_overage_event_fires_once_on_crossing_below_zero(self):
+        import uuid
+        from unittest.mock import patch
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+        tenant = Tenant.objects.create(name="OV", products=["metering", "billing"], billing_mode="prepaid")
+        c = Customer.objects.create(tenant=tenant, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        ev_id = str(uuid.uuid4())
+        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
+                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
+        with patch("apps.billing.handlers.write_event") as mw:
+            handle_usage_recorded_billing(str(e.id), payload)
+            names = [type(call.args[0]).__name__ for call in mw.call_args_list]
+        assert "BalanceOverage" in names
+
+    def test_redelivery_does_not_double_debit_or_refire_overage(self):
+        import uuid
+        from unittest.mock import patch
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        tenant = Tenant.objects.create(name="OV2", products=["metering", "billing"], billing_mode="prepaid")
+        c = Customer.objects.create(tenant=tenant, external_id="c1")
+        w = Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        ev_id = str(uuid.uuid4())
+        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
+                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
+        handle_usage_recorded_billing(str(e.id), payload)
+        with patch("apps.billing.handlers.write_event") as mw:
+            handle_usage_recorded_billing(str(e.id), payload)   # re-deliver
+            assert not mw.called                                 # no overage re-fire
+        w.refresh_from_db()
+        assert w.balance_micros == -500_000                      # debited once
+        assert WalletTransaction.objects.filter(wallet=w, idempotency_key=f"usage_deduction:{ev_id}").count() == 1
 
     def test_pooled_seat_debits_business_wallet_records_spend_on_seat(self):
         import uuid
