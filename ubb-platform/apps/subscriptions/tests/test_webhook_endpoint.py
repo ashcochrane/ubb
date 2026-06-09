@@ -105,3 +105,40 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
             "/api/v1/subscriptions/webhooks/stripe",
         )
         self.assertEqual(response.status_code, 405)
+
+    @patch("apps.subscriptions.api.endpoints.SUBSCRIPTIONS_WEBHOOK_HANDLERS")
+    @patch("apps.subscriptions.api.endpoints.stripe")
+    def test_duplicate_event_processed_at_most_once(self, mock_stripe, mock_handlers):
+        from apps.billing.stripe.models import StripeWebhookEvent
+
+        handler = MagicMock()
+        mock_handlers.get.return_value = handler
+
+        mock_event = MagicMock()
+        mock_event.id = "evt_dup_1"
+        mock_event.type = "customer.subscription.updated"
+        mock_stripe.Webhook.construct_event.return_value = mock_event
+
+        first = self.http_client.post(
+            "/api/v1/subscriptions/webhooks/stripe",
+            data=b"{}",
+            content_type="application/json",
+            HTTP_STRIPE_SIGNATURE="valid",
+        )
+        self.assertEqual(first.status_code, 200)
+
+        second = self.http_client.post(
+            "/api/v1/subscriptions/webhooks/stripe",
+            data=b"{}",
+            content_type="application/json",
+            HTTP_STRIPE_SIGNATURE="valid",
+        )
+        self.assertEqual(second.status_code, 200)
+
+        # Handler ran exactly once despite the duplicate delivery.
+        self.assertEqual(handler.call_count, 1)
+
+        # Exactly one dedup row exists and it recorded the duplicate.
+        evt = StripeWebhookEvent.objects.get(stripe_event_id="evt_dup_1")
+        self.assertEqual(evt.status, "succeeded")
+        self.assertEqual(evt.duplicate_count, 1)

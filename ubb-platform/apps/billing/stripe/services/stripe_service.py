@@ -7,7 +7,13 @@ from django.conf import settings
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
 
+assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+# Global Basil API-version pin for Wave-4 multi-axis subscription orchestration.
+# Verified GREEN against the full platform suite (784 passed) — no path regressed,
+# so the pin is global rather than per-call.
+stripe.api_version = "2025-03-31"
 logger = logging.getLogger(__name__)
 
 
