@@ -79,6 +79,57 @@ class TestStandaloneAlways:
 
 
 @pytest.mark.django_db
+class TestItemsPinnedToDraft:
+    def test_usage_items_pinned_to_the_draft_invoice(self):
+        """B1: every usage InvoiceItem is PINNED to the draft invoice (invoice=<id>),
+        so the items actually sweep onto the finalized invoice instead of floating as
+        unpinned pending items (which default to 'exclude' -> an empty, unbilled invoice).
+        """
+        t = _charge_ready_tenant()
+        c = _postpaid_customer(t)
+
+        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="in_1")
+        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, \
+             patch.object(PostpaidUsageService, "aggregate_lines",
+                          return_value=(500_000, [("", 500_000)])):
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+
+        rec.refresh_from_db()
+        # 1. The draft invoice was created.
+        assert m_inv.call_count == 1
+        # 2. EVERY InvoiceItem.create pinned the item to the draft invoice.
+        assert m_item.call_count >= 1
+        for call in m_item.call_args_list:
+            assert call.kwargs.get("invoice") == "in_1"
+        # 3. finalize targeted that same invoice id.
+        assert m_fin.call_count == 1
+        assert m_fin.call_args_list[0].kwargs["invoice"] == "in_1"
+        # 4. The record reflects the finalized invoice.
+        assert rec.stripe_invoice_id == "in_1"
+        assert rec.status == "pushed"
+
+    def test_subcent_only_creates_no_empty_invoice(self):
+        """B1 guard: a sub-cent-only period bills nothing, so we must NOT create an
+        empty Stripe invoice — carry the residual and record a no-bill push."""
+        t = _charge_ready_tenant()
+        c = _postpaid_customer(t)
+
+        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="in_1")
+        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, \
+             patch.object(PostpaidUsageService, "aggregate_lines",
+                          return_value=(5_000, [("", 5_000)])):
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+
+        rec.refresh_from_db()
+        assert m_inv.call_count == 0   # no empty invoice
+        assert m_item.call_count == 0
+        assert m_fin.call_count == 0
+        assert rec.status == "pushed"
+        assert rec.stripe_invoice_id == ""
+        assert rec.residual_micros == 5_000
+
+
+@pytest.mark.django_db
 class TestSubcentResidual:
     def test_subcent_floors_and_carries_residual(self):
         """C2: a sub-cent line floors to whole cents (no crash) and carries the residual."""

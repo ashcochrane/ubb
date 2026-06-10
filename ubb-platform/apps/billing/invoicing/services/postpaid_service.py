@@ -136,31 +136,43 @@ class PostpaidUsageService:
         # directly still lands on the same wallet as access + seats.
         owner = customer.resolve_billing_owner()
 
-        items = []
-        residual = carry_in
+        # Floor each line to whole cents, carrying the sub-cent residual forward (Wave 4.5).
+        # We compute the billable lines FIRST so an all-sub-cent period creates no invoice.
+        cent_lines, residual = [], carry_in
         for i, (label, amount) in enumerate(lines):
             cent_micros = amount + residual          # fold carry into the first/largest line
             cents = cent_micros // 10_000
             residual = cent_micros - cents * 10_000
             if cents <= 0:
                 continue
-            desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
-            item = stripe_call(
-                stripe.InvoiceItem.create, retryable=True,
-                idempotency_key=f"usage-item-{rec.id}-{i}",
-                customer=owner.stripe_customer_id, amount=cents, currency=currency,
-                description=desc, stripe_account=connected)
-            items.append((label, amount, item.id))
+            cent_lines.append((i, label, cents, amount))
+        if residual >= 10_000:
+            logger.error("postpaid.residual_overflow", extra={"data": {
+                "usage_invoice_id": str(rec.id), "residual_micros": residual}})
 
+        # Sub-cent total: nothing billable this period — carry the residual, create NO
+        # empty invoice (and never strand an unfinalized draft).
+        if not cent_lines:
+            return None, [], residual
+
+        # B1: create the draft FIRST, then PIN each usage line to it via invoice=<id>.
+        # Stripe's default pending_invoice_items_behavior is 'exclude'; un-pinned pending
+        # items would NOT sweep, finalizing an EMPTY invoice and never billing usage.
         # C1: usage is ALWAYS its own finalized standalone invoice (correct-cycle).
         inv = stripe_call(
             stripe.Invoice.create, retryable=True, idempotency_key=f"usage-invoice-{rec.id}",
             customer=owner.stripe_customer_id, auto_advance=False, stripe_account=connected)
+        items = []
+        for i, label, cents, orig_micros in cent_lines:
+            desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
+            item = stripe_call(
+                stripe.InvoiceItem.create, retryable=True,
+                idempotency_key=f"usage-item-{rec.id}-{i}",
+                customer=owner.stripe_customer_id, invoice=inv.id, amount=cents,
+                currency=currency, description=desc, stripe_account=connected)
+            items.append((label, orig_micros, item.id))
         stripe_call(
             stripe.Invoice.finalize_invoice, retryable=True,
             idempotency_key=f"usage-finalize-{rec.id}", invoice=inv.id,
             auto_advance=True, stripe_account=connected)
-        if residual >= 10_000:
-            logger.error("postpaid.residual_overflow", extra={"data": {
-                "usage_invoice_id": str(rec.id), "residual_micros": residual}})
         return inv.id, items, residual
