@@ -54,5 +54,69 @@ def test_live_invoice_payload_shape():
     assert fetched.hosted_invoice_url and fetched.invoice_pdf
     assert hasattr(fetched, "status_transitions")
     assert _invoice_subscription_id(fetched) is None
-    # (a subscription invoice's linkage path is exercised by creating a real sub
-    # in test mode — optional extension.)
+
+
+def test_live_b1_items_land_on_invoice():
+    """HOW TO RUN: set UBB_STRIPE_LIVE_TEST=1, STRIPE_TEST_SECRET_KEY (a Connect
+    platform test key), and STRIPE_TEST_CONNECTED_ACCOUNT (an acct_ in test mode).
+    These tests SHIP SKIPPED — do not run without real Stripe test credentials.
+
+    B1: pinning InvoiceItems to a draft via invoice=<id> + finalize => the finalized
+    invoice actually CONTAINS the lines (proves usage is billed, not stranded as pending).
+    """
+    import stripe
+
+    stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
+    acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
+    cust = stripe.Customer.create(stripe_account=acct, email="live-b1@example.com")
+    inv = stripe.Invoice.create(stripe_account=acct, customer=cust.id, auto_advance=False)
+    stripe.InvoiceItem.create(
+        stripe_account=acct, customer=cust.id, invoice=inv.id,
+        amount=500, currency="usd", description="Usage 2026-06",
+    )
+    final = stripe.Invoice.finalize_invoice(inv.id, stripe_account=acct)
+    lines = (
+        list(final.lines.auto_paging_iter())
+        if hasattr(final.lines, "auto_paging_iter")
+        else final.lines.data
+    )
+    assert any(l.amount == 500 for l in lines), "usage item did NOT land on the invoice"
+
+
+def test_live_b2_basil_subscription_link():
+    """HOW TO RUN: set UBB_STRIPE_LIVE_TEST=1, STRIPE_TEST_SECRET_KEY (a Connect
+    platform test key), and STRIPE_TEST_CONNECTED_ACCOUNT (an acct_ in test mode).
+    These tests SHIP SKIPPED — do not run without real Stripe test credentials.
+
+    B2: a real Basil subscription invoice carries the sub link on
+    parent.subscription_details.subscription, and _invoice_subscription_id resolves it.
+    """
+    import stripe
+
+    stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
+    acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
+    from api.v1.webhooks import _invoice_subscription_id
+
+    cust = stripe.Customer.create(stripe_account=acct, email="live-b2@example.com")
+    price = stripe.Price.create(
+        stripe_account=acct,
+        currency="usd",
+        unit_amount=1000,
+        recurring={"interval": "month"},
+        product_data={"name": "Live B2 Access"},
+    )
+    # attach a test card payment method so the subscription activates
+    pm = stripe.PaymentMethod.attach(
+        "pm_card_visa", customer=cust.id, stripe_account=acct
+    )
+    stripe.Customer.modify(
+        cust.id, stripe_account=acct,
+        invoice_settings={"default_payment_method": pm.id},
+    )
+    sub = stripe.Subscription.create(
+        stripe_account=acct, customer=cust.id, items=[{"price": price.id}]
+    )
+    inv = stripe.Invoice.retrieve(sub.latest_invoice, stripe_account=acct)
+    assert _invoice_subscription_id(inv) == sub.id, (
+        "Basil sub link did not resolve via .parent"
+    )
