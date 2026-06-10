@@ -229,6 +229,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.subscriptions.tasks.reconcile_cost_accumulators",
         "schedule": crontab(minute=50),  # hourly at :50
     },
+    "reconcile-invoice-payment-status": {
+        "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
+        "schedule": crontab(minute=15),
+    },
 }
 
 # UBB Platform Settings
