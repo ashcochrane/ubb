@@ -8,21 +8,14 @@ Covered end-to-end:
   * usage standalone invoice: finalized -> payment_failed -> paid
       (open + url/pdf stored; payment_failed_at stamped + hosted url ROTATED;
        then paid + paid_at; monotonic open->...->paid never regresses)
-  * subscription invoice: finalized -> voided
-      (open SubscriptionInvoice row created w/ url/pdf; then void)
+  * subscription invoice: finalized -> payment_failed -> voided
+      (open SubscriptionInvoice row created w/ url/pdf; payment_failed_at
+       stamped + hosted url ROTATED; then void — full parity with usage path)
   * idempotency / duplicate delivery (no error, no double-apply)
   * out-of-order finalized AFTER paid does NOT regress paid -> open (monotonic)
   * event.account mismatch -> no write
   * /me visibility: billing owner sees the reconciled rows (w/ refreshed url);
     a pooled seat sees nothing (consolidated bill belongs to the business)
-
-NOTE (documented limitation, asserted below in
-TestSubscriptionPaymentFailedLimitation): the connector
-`handle_invoice_payment_failed` writes `payment_failed_at` with
-update_fields, but `SubscriptionInvoice` has no such column — so a
-SUBSCRIPTION invoice.payment_failed currently RAISES. The url-refresh-on-
-payment-failed proof therefore runs on the USAGE invoice, where the full path
-works. See the final test class for the pinned reality.
 """
 from types import SimpleNamespace
 from datetime import date
@@ -317,44 +310,74 @@ class TestWave5aARCapstone(TestCase):
         self.assertEqual(len(biz_sub_resp.json()["data"]), 1)
 
 
-class TestSubscriptionPaymentFailedLimitation(TestCase):
-    """Pin the documented reality: a SUBSCRIPTION invoice.payment_failed cannot
-    stamp payment_failed_at because SubscriptionInvoice has no such column.
+class TestSubscriptionPaymentFailed(TestCase):
+    """A SUBSCRIPTION invoice.payment_failed now stamps payment_failed_at AND
+    refreshes hosted_invoice_url + invoice_pdf on the SubscriptionInvoice row,
+    with full parity to the usage-invoice path.
 
-    The connector handler writes it with update_fields, so the call RAISES
-    ValueError. In production the webhook dispatcher catches this and marks the
-    StripeWebhookEvent failed+retryable (no url refresh). This is a latent gap in
-    the AR loop for subscription invoices — flagged, not papered over. (The usage
-    invoice path, exercised above, works end-to-end.)
+    SubscriptionInvoice.payment_failed_at was added in migration 0008 to close
+    the gap that caused the connector to raise ValueError on every subscription
+    payment-failed event (retrying forever in production).
     """
 
-    ACCT = "acct_pf_limit"
+    ACCT = "acct_pf_sub"
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="PFLimit", products=["metering", "subscriptions"],
+            name="PFSub", products=["metering", "subscriptions"],
             stripe_connected_account_id=self.ACCT,
         )
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         now = timezone.now()
         self.sub = StripeSubscription.objects.create(
             tenant=self.tenant, customer=self.customer,
-            stripe_subscription_id="sub_pf_limit",
+            stripe_subscription_id="sub_pf_sub",
             stripe_product_name="Pro", status="active",
             amount_micros=49_000_000, currency="usd", interval="month",
             current_period_start=now, current_period_end=now, last_synced_at=now,
         )
         self.row = SubscriptionInvoice.objects.create(
             tenant=self.tenant, customer=self.customer, stripe_subscription=self.sub,
-            stripe_invoice_id="in_pf_limit", amount_paid_micros=0,
+            stripe_invoice_id="in_pf_sub", amount_paid_micros=0,
             status="open", hosted_invoice_url="https://orig",
         )
 
-    def test_subscription_payment_failed_raises_due_to_missing_column(self):
-        ev = _event(self.ACCT, obj=_sub_obj("in_pf_limit", "sub_pf_limit",
-                                             hosted_url="https://rotated"))
-        with self.assertRaises(ValueError):
-            handle_invoice_payment_failed(ev)
-        # and the url was NOT refreshed (the write never committed)
+    def test_subscription_payment_failed_stamps_field_and_rotates_url(self):
+        """invoice.payment_failed on a subscription invoice:
+        - stamps payment_failed_at
+        - rotates hosted_invoice_url to the new Stripe token
+        - does NOT raise
+        - does NOT change the status (open is non-terminal)
+        """
+        ev = _event(self.ACCT, obj=_sub_obj("in_pf_sub", "sub_pf_sub",
+                                             hosted_url="https://rotated",
+                                             pdf="https://pdf-rotated"))
+        # must not raise
+        handle_invoice_payment_failed(ev)
+
         self.row.refresh_from_db()
-        self.assertEqual(self.row.hosted_invoice_url, "https://orig")
+        # payment_failed_at is now stamped
+        self.assertIsNotNone(self.row.payment_failed_at)
+        # hosted url was rotated to the new Stripe token
+        self.assertEqual(self.row.hosted_invoice_url, "https://rotated")
+        self.assertEqual(self.row.invoice_pdf, "https://pdf-rotated")
+        # status is unchanged (payment failure is not terminal)
+        self.assertEqual(self.row.status, "open")
+
+    def test_subscription_payment_failed_no_regress_on_terminal_status(self):
+        """payment_failed after a terminal status does not overwrite the status,
+        but still stamps payment_failed_at and refreshes the url (non-status
+        fields are always updated).
+        """
+        self.row.status = "void"
+        self.row.save(update_fields=["status", "updated_at"])
+
+        ev = _event(self.ACCT, obj=_sub_obj("in_pf_sub", "sub_pf_sub",
+                                             hosted_url="https://rotated2"))
+        handle_invoice_payment_failed(ev)
+
+        self.row.refresh_from_db()
+        self.assertIsNotNone(self.row.payment_failed_at)
+        self.assertEqual(self.row.hosted_invoice_url, "https://rotated2")
+        # status stays void — the save only touches payment_failed_at/url/pdf/updated_at
+        self.assertEqual(self.row.status, "void")

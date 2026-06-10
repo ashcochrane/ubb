@@ -65,6 +65,7 @@ class SubscriptionInvoice(BaseModel):
     status = models.CharField(max_length=20, default="open")  # open|paid|void|uncollectible
     hosted_invoice_url = models.CharField(max_length=1000, blank=True, default="")
     invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
+    payment_failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_subscription_invoice"
