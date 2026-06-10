@@ -60,6 +60,9 @@ class SubscriptionInvoice(BaseModel):
     period_start = models.DateTimeField()
     period_end = models.DateTimeField()
     paid_at = models.DateTimeField()
+    status = models.CharField(max_length=20, default="open")  # open|paid|void|uncollectible
+    hosted_invoice_url = models.CharField(max_length=1000, blank=True, default="")
+    invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
 
     class Meta:
         db_table = "ubb_subscription_invoice"
