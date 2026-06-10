@@ -59,6 +59,71 @@ def _sub_inv_obj(stripe_invoice_id, subscription_id, *, amount_paid=4900,
     )
 
 
+def _basil_sub_inv_obj(stripe_invoice_id, subscription_id, *, amount_paid=4900,
+                       hosted_url="", pdf="", period_start=1738368000,
+                       period_end=1740960000, paid_at_ts=1738400000):
+    """Basil (api_version 2025-03-31) shaped invoice: NO top-level .subscription;
+    the subscription id hangs off inv.parent.subscription_details.subscription."""
+    return SimpleNamespace(
+        id=stripe_invoice_id,
+        subscription=None,
+        parent=SimpleNamespace(
+            subscription_details=SimpleNamespace(subscription=subscription_id)),
+        amount_paid=amount_paid,
+        currency="usd",
+        hosted_invoice_url=hosted_url,
+        invoice_pdf=pdf,
+        period_start=period_start,
+        period_end=period_end,
+        status_transitions=SimpleNamespace(paid_at=paid_at_ts),
+    )
+
+
+@pytest.mark.django_db
+class TestBasilSubscriptionRouting:
+    """B2: the Basil .parent.subscription_details.subscription path (the pinned
+    api_version's actual shape) must resolve the subscription id and route to
+    SubscriptionInvoice — NOT to CustomerUsageInvoice."""
+
+    def _fixtures(self, acct="acct_basil_1"):
+        tenant = Tenant.objects.create(
+            name="t", products=["metering", "subscriptions"],
+            stripe_connected_account_id=acct,
+        )
+        customer = Customer.objects.create(tenant=tenant, external_id="c1")
+        now = timezone.now()
+        sub = StripeSubscription.objects.create(
+            tenant=tenant, customer=customer,
+            stripe_subscription_id="sub_x",
+            stripe_product_name="Pro", status="active",
+            amount_micros=49_000_000, currency="usd", interval="month",
+            current_period_start=now, current_period_end=now, last_synced_at=now,
+        )
+        return tenant, customer, sub
+
+    def test_invoice_subscription_id_reads_basil_parent(self):
+        from api.v1.webhooks import _invoice_subscription_id
+        basil_inv = _basil_sub_inv_obj("in_basil_1", "sub_x")
+        assert _invoice_subscription_id(basil_inv) == "sub_x"
+
+    def test_basil_invoice_routes_to_subscription_invoice(self):
+        tenant, customer, sub = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_finalized(_event(
+            acct, obj=_basil_sub_inv_obj("in_basil_2", "sub_x",
+                                         hosted_url="https://pay/b2", pdf="https://pdf/b2")))
+
+        rows = SubscriptionInvoice.objects.filter(stripe_invoice_id="in_basil_2")
+        assert rows.count() == 1
+        row = rows.first()
+        assert row.status == "open"
+        assert row.stripe_subscription_id == sub.id
+        assert row.hosted_invoice_url == "https://pay/b2"
+        # And it must NOT have been treated as a standalone usage invoice.
+        assert not CustomerUsageInvoice.objects.filter(
+            stripe_invoice_id="in_basil_2").exists()
+
+
 @pytest.mark.django_db
 class TestUsageInvoiceReconcile:
     def _fixtures(self, acct="acct_usage_1"):

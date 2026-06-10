@@ -97,6 +97,19 @@ def reconcile_postpaid_usage():
     CustomerUsageInvoice.objects.filter(status="pushing", updated_at__lt=stale).update(status="pending")
     for rec in CustomerUsageInvoice.objects.filter(
             status__in=["pending", "failed"]).select_related("tenant", "customer"):
+        # Bound the retry: a pending row that hasn't progressed in 24h is
+        # persistently broken — mark it terminally failed and alert loudly so it
+        # stops retrying forever unmonitored. (Already-failed rows are terminal;
+        # they are not re-failed/re-alerted on every pass.)
+        if rec.status == "pending":
+            age = timezone.now() - rec.updated_at
+            if age > timedelta(hours=24):
+                rec.status = "failed"
+                rec.save(update_fields=["status", "updated_at"])
+                logger.error("billing.usage_push_stuck", extra={"data": {
+                    "usage_invoice_id": str(rec.id),
+                    "age_hours": round(age.total_seconds() / 3600, 1)}})
+                continue
         try:
             PostpaidUsageService.push_customer_period(
                 rec.tenant, rec.customer, rec.period_start, rec.period_end)

@@ -398,6 +398,9 @@ def handle_payment_intent_succeeded(event):
         attempt = TopUpAttempt.objects.get(id=attempt_id)
     except (TopUpAttempt.DoesNotExist, ValueError):
         return
+    acct = getattr(event, "account", None)
+    if acct and acct != attempt.customer.tenant.stripe_connected_account_id:
+        return  # cross-account guard
     AutoTopUpService.apply_topup_credit(attempt, pi)
 
 
@@ -411,6 +414,9 @@ def handle_payment_intent_payment_failed(event):
         attempt = TopUpAttempt.objects.get(id=attempt_id)
     except (TopUpAttempt.DoesNotExist, ValueError):
         return
+    acct = getattr(event, "account", None)
+    if acct and acct != attempt.customer.tenant.stripe_connected_account_id:
+        return  # cross-account guard
     with transaction.atomic():
         attempt = lock_top_up_attempt(attempt.id)
         if attempt.status in ("succeeded", "failed", "superseded"):
