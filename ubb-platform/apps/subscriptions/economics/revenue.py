@@ -39,6 +39,10 @@ class RevenueService:
 
     @staticmethod
     def stripe_revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
+        """DEAD CODE — cash-basis (sums PAID invoices). NOT used by margin. Margin is
+        ACCRUAL/EARNED basis via accrued_subscription_revenue (= manual +
+        subscription_nominal_for_window). Do NOT wire this into MarginService — it would
+        switch revenue recognition to cash basis and double-count subscriptions."""
         from apps.subscriptions.models import SubscriptionInvoice
         return SubscriptionInvoice.objects.filter(
             tenant_id=tenant_id, customer_id=customer_id,
@@ -47,6 +51,8 @@ class RevenueService:
 
     @staticmethod
     def revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
+        """DEAD CODE — cash-basis composite (manual + stripe paid-invoice). Superseded by
+        accrued_subscription_revenue (accrual basis). No production caller; do not reintroduce."""
         return (RevenueService.manual_revenue_for_window(tenant_id, customer_id, start_date, end_date)
                 + RevenueService.stripe_revenue_for_window(tenant_id, customer_id, start_date, end_date))
 

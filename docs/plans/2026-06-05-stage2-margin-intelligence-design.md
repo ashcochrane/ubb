@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (revenue-source model only): the cash-basis revenue = manual + Σ(Stripe paid invoices) here was REPLACED by an earned/accrual basis (subscription nominal pro-rated, not the blended paid invoice) in `2026-06-08-pricing-stageB-revenue-source-design.md` — which fixed invisible metering COGS + postpaid usage double-counting. The dimensional margin model, `CustomerEconomics` snapshots, and threshold/webhook design remain current; note `RevenueService.revenue_for_window` is now DEAD CODE. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 2 — Margin Intelligence (Detailed Design)
 
 **Date:** 2026-06-05

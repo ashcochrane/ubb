@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (Stripe sync/webhook field-reads only): all `stripe_sub.plan.*` reads and `expand=["data.plan.product"]` here predate the Basil API pin (2025-03-31) and were replaced by `subscription.items.data[]` + `invoice.parent.subscription_details.subscription` — see `2026-06-09-wave4-j2-orchestration-implementation.md` (Steps 3-4). The rest of the subscriptions product (models, gating, margin wiring) remains the baseline. Master truth: `2026-06-10-program-current-state.md`.
+
 # Subscriptions Product Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

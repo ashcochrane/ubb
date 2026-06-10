@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (orchestration model only): the "one coherent bill" / `subscription=`-pinned usage InvoiceItem / Decision-1-LOCKED single-invoice model was REVERSED. Postpaid usage is now billed on its OWN standalone finalized invoice (two-phase create-draft-then-pin) — a postpaid customer gets TWO Stripe invoices. See `2026-06-10-wave45-postpaid-hardening-design.md` (C1) and `2026-06-10-wave55-prelaunch-hardening-design.md` (B1); true single-invoice consolidation is DEFERRED (Wave 5b, not shipped). The `.plan`→`items.data[]` (Basil) sync fix in §4 IS current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Wave 4 — Multi-Axis Subscription Orchestration (J2) — Design
 
 **Date:** 2026-06-09 · **Method:** 5-agent research-grounded analysis (map current code + the margin-corruption bug → research Stripe CURRENT billing API + competitor multi-axis orchestration → synthesize → adversarial critique). **Effort: L/XL.**

@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (Stripe sync field-reads only): the `.plan`-based subscription sync (`expand=["data.plan.product"]`, `stripe_sub.plan.amount/currency/interval`) predates the Basil API pin (`api_version` 2025-03-31). UBB now reads `subscription.items.data[]` + `price` and `invoice.parent.subscription_details.subscription` — see `2026-06-09-wave4-j2-orchestration-design.md` §4 and `2026-06-10-wave55-prelaunch-hardening-design.md` (B2). The unit-economics product framing remains current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Subscriptions Product Design
 
 ## Overview

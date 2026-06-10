@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (pricing-engine removal only): the rate-card pricing engine this plan removed was later REINSTATED (redesigned two-card cost+price engine) — see `2026-06-08-pricing-stageA-rate-card-engine-implementation.md`. The `billing_mode` + boundary-cleanup work remains current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 0 — Reposition & Boundary Cleanup Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

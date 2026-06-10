@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (pricing-engine removal only): the decision to decommission the dimensional rate-card pricing engine was REVERSED. `ProviderRate` was deleted but a redesigned two-card cost+price engine (`RateCard` + `PricingService`) was REINSTATED and is now central — see `2026-06-08-pricing-stageA-rate-card-engine-design.md`. The `Tenant.billing_mode` introduction + boundary-cleanup parts remain current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 0 — Reposition & Boundary Cleanup (Detailed Design)
 
 **Date:** 2026-06-05

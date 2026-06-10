@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (usage push mechanism only): the "pending InvoiceItems roll into the subscription invoice / one clean invoice" model was REVERSED. Usage is now pushed on its OWN standalone finalized invoice, two-phase (`Invoice.create` draft → `InvoiceItem.create(invoice=<draft>)` → finalize) — see `2026-06-10-wave45-postpaid-hardening-design.md` (C1) and `2026-06-10-wave55-prelaunch-hardening-design.md` (B1). The mode-aware drawdown/gate, period-close aggregation, and `CustomerUsageInvoice` model remain current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 4 — Postpaid Usage Billing (Detailed Design)
 
 **Date:** 2026-06-05

@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (usage push mechanism only): the pending-items-roll-into-subscription-invoice behaviour (incl. `test_push_pending_items_when_subscription_active` asserting no standalone) was REVERSED to standalone-always two-phase invoicing — see `2026-06-10-wave45-postpaid-hardening-implementation.md` and `2026-06-10-wave55-prelaunch-hardening-implementation.md`. The mode-aware drawdown/gate + close-task + model work remains current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 4 — Postpaid Usage Billing Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

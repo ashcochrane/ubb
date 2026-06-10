@@ -210,7 +210,7 @@ plan = client.create_plan(
     access_fee_micros=10_000_000,   # $10/month platform fee
     per_seat_micros=5_000_000,      # $5/seat/month
     interval="month",               # "month" | "year"
-    usage_mode="invoice_item",      # append usage to the subscription invoice
+    usage_mode="invoice_item",      # usage is billed on its own standalone invoice, not appended here
 )
 print(plan["key"])   # "pro-monthly"
 ```
@@ -240,9 +240,11 @@ print(result)
 
 ### Step 5 — Usage events are the same as J1
 
-Usage recorded via `client.record_usage(...)` is automatically appended to the next Stripe
-invoice when `usage_mode="invoice_item"` (or metered via Stripe's meter API for
-`usage_mode="stripe_meter"`).
+Usage recorded via `client.record_usage(...)` is billed on its OWN standalone, auto-finalized
+Stripe invoice at period close (a two-phase create-draft-then-pin flow). A postpaid customer
+receives TWO Stripe invoices per period: the subscription renewal (access fee + seats) and a
+separate usage invoice. `usage_mode` does not change this — usage is never appended to the
+subscription invoice. (Consolidating both onto one bill is deferred, not shipped.)
 
 ### Step 6 — End-customer can view their own bills
 

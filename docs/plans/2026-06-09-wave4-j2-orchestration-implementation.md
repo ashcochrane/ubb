@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (usage-invoice routing only): the `subscription=`-pinned usage InvoiceItem + "one coherent bill" this plan shipped was REVERSED to standalone-always two-phase invoicing by `2026-06-10-wave45-postpaid-hardening-implementation.md` and `2026-06-10-wave55-prelaunch-hardening-implementation.md` (B1). The Basil `items.data[]` sync fix + plan/seat orchestration remain current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Wave 4 — J2 Multi-Axis Subscription Orchestration: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

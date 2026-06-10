@@ -1,3 +1,5 @@
+> ⚠️ PARTIALLY SUPERSEDED: the Pricing Program (Stages A–D, `2026-06-08-pricing-stageA-rate-card-engine-design.md`) REINSTATED a full two-card (cost+price) dimensional rate-card engine (`RateCard` + `PricingService`); the slim-markup-only / "do not rebuild rate-cards" stance here is no longer current. Markup is retained as the zero-config default. The rest of the repositioning (boundary, three tenant modes, prepaid-credit reframe) remains the governing architecture. Master truth: `2026-06-10-program-current-state.md`.
+
 # UBB Repositioning — Usage, Spend-Control & Margin Layer in Front of Stripe
 
 **Date:** 2026-06-05
