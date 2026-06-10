@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from ninja import NinjaAPI, Schema, Field
 from pydantic import field_validator
 from typing import Optional
@@ -66,6 +67,41 @@ class InvoiceOut(Schema):
 
 class PaginatedInvoices(Schema):
     data: list[InvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class UsageInvoiceOut(Schema):
+    id: str
+    total_billed_micros: int
+    payment_status: Optional[str] = None
+    hosted_invoice_url: str = ""
+    invoice_pdf: str = ""
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    stripe_invoice_id: str = ""
+    created_at: datetime
+
+
+class PaginatedUsageInvoices(Schema):
+    data: list[UsageInvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class SubscriptionInvoiceOut(Schema):
+    id: str
+    amount_paid_micros: int
+    status: str
+    hosted_invoice_url: str = ""
+    invoice_pdf: str = ""
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    created_at: datetime
+
+
+class PaginatedSubscriptionInvoices(Schema):
+    data: list[SubscriptionInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
@@ -208,6 +244,112 @@ def get_invoices(request, cursor: str = None, limit: int = 50):
                 "status": inv.status,
                 "stripe_invoice_id": inv.stripe_invoice_id,
                 "created_at": inv.created_at.isoformat(),
+            }
+            for inv in invoices
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@me_api.get("/usage-invoices", response=PaginatedUsageInvoices)
+def list_usage_invoices(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
+    customer = request.widget_customer
+    limit = min(max(limit, 1), 100)
+
+    # Billing-owner gate: a pooled seat's bill is the consolidated BUSINESS
+    # invoice (which aggregates every sibling seat). Surfacing it to the seat
+    # would leak sibling spend, so a non-owner sees nothing of its own here.
+    if customer.resolve_billing_owner().id != customer.id:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    qs = CustomerUsageInvoice.objects.filter(
+        customer=customer
+    ).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            from api.v1.pagination import apply_cursor_filter
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    invoices = list(qs[:limit + 1])
+    has_more = len(invoices) > limit
+    invoices = invoices[:limit]
+
+    next_cursor = None
+    if has_more and invoices:
+        from api.v1.pagination import encode_cursor
+        last = invoices[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [
+            {
+                "id": str(inv.id),
+                "total_billed_micros": inv.total_billed_micros,
+                "payment_status": inv.payment_status,
+                "hosted_invoice_url": inv.hosted_invoice_url,
+                "invoice_pdf": inv.invoice_pdf,
+                "period_start": inv.period_start,
+                "period_end": inv.period_end,
+                "stripe_invoice_id": inv.stripe_invoice_id,
+                "created_at": inv.created_at,
+            }
+            for inv in invoices
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@me_api.get("/subscription-invoices", response=PaginatedSubscriptionInvoices)
+def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
+    _check_billing_product(request)
+    customer = request.widget_customer
+    limit = min(max(limit, 1), 100)
+
+    # Same billing-owner gate as usage invoices: a pooled seat does not own the
+    # consolidated subscription bill and must not see it.
+    if customer.resolve_billing_owner().id != customer.id:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    from apps.subscriptions.models import SubscriptionInvoice
+    qs = SubscriptionInvoice.objects.filter(
+        customer=customer
+    ).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            from api.v1.pagination import apply_cursor_filter
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    invoices = list(qs[:limit + 1])
+    has_more = len(invoices) > limit
+    invoices = invoices[:limit]
+
+    next_cursor = None
+    if has_more and invoices:
+        from api.v1.pagination import encode_cursor
+        last = invoices[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {
+        "data": [
+            {
+                "id": str(inv.id),
+                "amount_paid_micros": inv.amount_paid_micros,
+                "status": inv.status,
+                "hosted_invoice_url": inv.hosted_invoice_url,
+                "invoice_pdf": inv.invoice_pdf,
+                "period_start": inv.period_start,
+                "period_end": inv.period_end,
+                "created_at": inv.created_at,
             }
             for inv in invoices
         ],
