@@ -30,21 +30,45 @@ class Command(BaseCommand):
             default="2.50",
             help="Platform fee percentage (default: 2.50)",
         )
+        parser.add_argument(
+            "--billing-mode",
+            default="postpaid",
+            choices=["meter_only", "prepaid", "postpaid"],
+            help=(
+                "Tenant billing mode (default: postpaid). "
+                "Use 'postpaid' or 'prepaid' to enable J2 subscription billing. "
+                "'meter_only' = J1 cost-attribution only."
+            ),
+        )
 
     def handle(self, *args, **options):
+        billing_mode = options["billing_mode"]
+        # Products required for J2 (billing + subscriptions) when not meter_only.
+        if billing_mode in ("prepaid", "postpaid"):
+            products = ["metering", "billing", "subscriptions"]
+        else:
+            products = ["metering"]
+
         # Create or get tenant
         tenant, created = Tenant.objects.get_or_create(
             name=options["tenant_name"],
             defaults={
                 "stripe_connected_account_id": options["stripe_account"],
+                "billing_mode": billing_mode,
+                "products": products,
             },
         )
         if not created:
             tenant.stripe_connected_account_id = options["stripe_account"]
-            tenant.save(update_fields=["stripe_connected_account_id", "updated_at"])
+            tenant.billing_mode = billing_mode
+            tenant.products = products
+            tenant.save(update_fields=[
+                "stripe_connected_account_id", "billing_mode", "products", "updated_at"
+            ])
             self.stdout.write(f"Updated existing tenant: {tenant.name}")
         else:
             self.stdout.write(f"Created tenant: {tenant.name}")
+        self.stdout.write(f"  billing_mode={tenant.billing_mode}  products={tenant.products}")
 
         # Create or update billing config for this tenant
         from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -123,3 +147,53 @@ class Command(BaseCommand):
             f'http://localhost:8001/api/v1/me/balance\n')
         self.stdout.write(
             f'# SDK quickstart — see ubb-sdk/README.md for the full Journey-1 happy path\n')
+
+        # ---- Journey 2 endpoints (only meaningful when billing_mode != meter_only) ----
+        self.stdout.write("=" * 60)
+        if billing_mode == "meter_only":
+            self.stdout.write("Journey 2 (subscriptions + seats) is NOT enabled.")
+            self.stdout.write(
+                "Re-run with --billing-mode postpaid to enable J2 (adds billing+subscriptions).\n")
+        else:
+            self.stdout.write("Journey 2 — subscriptions + seats + usage")
+            self.stdout.write("=" * 60)
+            self.stdout.write(
+                "IMPORTANT: stripe_connected_account_id is a placeholder value.\n"
+                "  For real Stripe billing you must complete Connect OAuth:\n"
+                "    1. Call POST /api/v1/connect/start  (or client.start_connect_onboarding)\n"
+                "    2. Visit the returned authorize_url in a browser\n"
+                "    3. Confirm with GET /api/v1/connect/status (charges_enabled must be true)\n"
+            )
+            self.stdout.write("J2 API endpoints (server: python manage.py runserver 8001):\n")
+            self.stdout.write(
+                f'# Create a billing plan ($10/month + $5/seat)\n'
+                f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -d \'{{"key":"pro-monthly","name":"Pro","access_fee_micros":10000000,'
+                f'"per_seat_micros":5000000,"interval":"month","usage_mode":"invoice_item"}}\' \\\n'
+                f'  http://localhost:8001/api/v1/platform/plans\n'
+            )
+            self.stdout.write(
+                f'# Subscribe the test customer (5 seats)\n'
+                f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -d \'{{"plan_key":"pro-monthly","seats":5}}\' \\\n'
+                f'  http://localhost:8001/api/v1/platform/customers/{customer.id}/subscribe\n'
+            )
+            self.stdout.write(
+                f'# Change seat count\n'
+                f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -d \'{{"seats":8}}\' \\\n'
+                f'  http://localhost:8001/api/v1/platform/customers/{customer.id}/seats\n'
+            )
+            self.stdout.write(
+                f'# End-customer views their invoices (widget JWT)\n'
+                f'curl -H "Authorization: Bearer {widget_token}" \\\n'
+                f'  http://localhost:8001/api/v1/me/usage-invoices\n'
+                f'curl -H "Authorization: Bearer {widget_token}" \\\n'
+                f'  http://localhost:8001/api/v1/me/subscription-invoices\n'
+            )
+            self.stdout.write(
+                f'# SDK Journey 2 quickstart — see ubb-sdk/README.md ## Journey 2 section\n'
+            )
