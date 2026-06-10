@@ -193,6 +193,7 @@ class UsageInvoicePushed:
     total_billed_micros: int = 0
     line_item_count: int = 0
     stripe_invoice_id: str = ""
+    residual_micros: int = 0
 
 
 @dataclass(frozen=True)

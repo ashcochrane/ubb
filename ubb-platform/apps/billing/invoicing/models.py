@@ -60,6 +60,7 @@ class CustomerUsageInvoice(BaseModel):
     status = models.CharField(max_length=10, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="")
     skip_reason = models.CharField(max_length=50, blank=True, default="")
+    residual_micros = models.BigIntegerField(default=0)
     pushed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
