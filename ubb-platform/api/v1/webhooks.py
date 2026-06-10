@@ -143,15 +143,132 @@ def stripe_webhook(request):
     return JsonResponse({"status": "ok"})
 
 
+# --- AR payment-status reconcile (Wave-5a) ---------------------------------
+# ALL invoice.* reconcile lives here; the subscriptions endpoint handles
+# customer.subscription.* only — never register an invoice.* type on both
+# (they share the StripeWebhookEvent dedup table, so a double-registration would
+# let the first endpoint win the dedup row and the second silently skip).
+
+
+def _refresh_urls(local, inv):
+    """Re-store hosted_invoice_url / invoice_pdf when present (Stripe rotates tokens)."""
+    if getattr(inv, "hosted_invoice_url", None):
+        local.hosted_invoice_url = inv.hosted_invoice_url
+    if getattr(inv, "invoice_pdf", None):
+        local.invoice_pdf = inv.invoice_pdf
+
+
+def _invoice_subscription_id(inv):
+    """Extract the subscription id from an invoice (legacy .subscription or Basil .parent)."""
+    sub = getattr(inv, "subscription", None)
+    if sub:
+        return sub if isinstance(sub, str) else getattr(sub, "id", None)
+    parent = getattr(inv, "parent", None)
+    details = getattr(parent, "subscription_details", None) if parent else None
+    s = getattr(details, "subscription", None) if details else None
+    return s if isinstance(s, str) else getattr(s, "id", None)
+
+
+def _unix(ts):
+    from datetime import datetime, timezone as _tz
+    return datetime.fromtimestamp(ts, tz=_tz.utc) if ts else None
+
+
+def _reconcile_customer_invoice(event, *, new_status):
+    """Reconcile a customer invoice's payment status (status only — no money movement).
+
+    Routes by subscription presence: subscription invoices reconcile onto
+    SubscriptionInvoice, standalone usage invoices onto CustomerUsageInvoice.
+    Every match is account-checked (C-2): the matched row's tenant
+    stripe_connected_account_id must equal event.account. Status is monotonic —
+    a terminal status (paid/void/uncollectible) never regresses.
+    """
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.subscriptions.models import SubscriptionInvoice, StripeSubscription
+
+    inv = event.data.object
+    acct = event.account
+    if not acct:
+        return
+    TERMINAL = ("paid", "void", "uncollectible")
+    sub_id = _invoice_subscription_id(inv)
+    if sub_id:
+        sub = StripeSubscription.objects.filter(
+            stripe_subscription_id=sub_id,
+            tenant__stripe_connected_account_id=acct,
+        ).first()
+        if not sub:
+            return
+        with transaction.atomic():
+            row, _created = SubscriptionInvoice.objects.select_for_update().get_or_create(
+                stripe_invoice_id=inv.id,
+                defaults={
+                    "tenant": sub.tenant,
+                    "customer": sub.customer,
+                    "stripe_subscription": sub,
+                    "amount_paid_micros": (getattr(inv, "amount_paid", 0) or 0) * 10_000,
+                    "currency": getattr(inv, "currency", "usd"),
+                    "status": new_status,
+                    "period_start": _unix(getattr(inv, "period_start", None)),
+                    "period_end": _unix(getattr(inv, "period_end", None)),
+                },
+            )
+            if row.status not in TERMINAL:
+                row.status = new_status
+            if new_status == "paid" and not row.paid_at:
+                st = getattr(inv, "status_transitions", None)
+                row.paid_at = _unix(getattr(st, "paid_at", None)) or timezone.now()
+                row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
+            _refresh_urls(row, inv)
+            row.save()
+    else:
+        existing = CustomerUsageInvoice.objects.filter(
+            stripe_invoice_id=inv.id,
+            tenant__stripe_connected_account_id=acct,
+        ).first()
+        if not existing:
+            return
+        with transaction.atomic():
+            row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
+            if row.payment_status not in TERMINAL:
+                row.payment_status = new_status
+            if new_status == "paid" and not row.paid_at:
+                row.paid_at = timezone.now()
+            _refresh_urls(row, inv)
+            row.save()
+
+
+def handle_invoice_finalized(event):
+    """invoice.finalized — mark the customer invoice open + store hosted url/pdf."""
+    _reconcile_customer_invoice(event, new_status="open")
+
+
+def handle_invoice_voided(event):
+    """invoice.voided — mark the customer invoice void."""
+    _reconcile_customer_invoice(event, new_status="void")
+
+
+def handle_invoice_uncollectible(event):
+    """invoice.marked_uncollectible — mark the customer invoice uncollectible."""
+    _reconcile_customer_invoice(event, new_status="uncollectible")
+
+
 def handle_invoice_paid(event):
     """Handle invoice.paid — mark local invoice as paid.
 
-    Handles both:
-    - End-user invoices (on connected account): matched via event.account
+    Handles three things:
+    - Customer-invoice AR reconcile (usage/subscription payment_status -> paid)
+    - End-user top-up receipt invoices (on connected account): matched via event.account
     - Platform fee invoices (on UBB's own account): matched when no connected account
     """
     inv = event.data.object
     connected_account = event.account
+
+    # Customer-invoice AR reconcile runs first and always for connected-account
+    # events; it targets CustomerUsageInvoice / SubscriptionInvoice — a different
+    # table from the top-up Invoice / TenantInvoice reconcile below, so both run.
+    if connected_account:
+        _reconcile_customer_invoice(event, new_status="paid")
 
     if connected_account:
         # End-user invoice on tenant's Connected Account
@@ -229,6 +346,9 @@ WEBHOOK_HANDLERS = {
     "account.updated": handle_account_updated,
     "account.application.deauthorized": handle_account_deauthorized,
     "invoice.paid": handle_invoice_paid,
+    "invoice.finalized": handle_invoice_finalized,
+    "invoice.voided": handle_invoice_voided,
+    "invoice.marked_uncollectible": handle_invoice_uncollectible,
     "invoice.payment_failed": handle_invoice_payment_failed,
     "charge.dispute.created": handle_charge_dispute_created,
     "charge.dispute.closed": handle_charge_dispute_closed,

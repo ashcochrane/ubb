@@ -85,8 +85,11 @@ def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50)
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
     limit = min(max(limit, 1), 100)
 
+    # Only paid invoices surface here (this is the revenue listing). Since the AR
+    # reconcile now also persists open/void/uncollectible rows with a NULL paid_at,
+    # exclude them — they have no paid_at to order/serialize on.
     qs = SubscriptionInvoice.objects.filter(
-        tenant=tenant, customer=customer,
+        tenant=tenant, customer=customer, paid_at__isnull=False,
     ).order_by("-paid_at", "-id")
 
     if cursor:
@@ -132,14 +135,17 @@ from apps.subscriptions.api.webhooks import (
     handle_subscription_created,
     handle_subscription_updated,
     handle_subscription_deleted,
-    handle_invoice_paid,
 )
 
+# This endpoint handles customer.subscription.* ONLY. ALL invoice.* reconcile
+# (including subscription-invoice status) lives on api/v1 — see api/v1/webhooks.py.
+# Never register an invoice.* type here: both endpoints share the
+# StripeWebhookEvent dedup table, so the first to handle an event wins the dedup
+# row and the second silently skips (C-1).
 SUBSCRIPTIONS_WEBHOOK_HANDLERS = {
     "customer.subscription.created": handle_subscription_created,
     "customer.subscription.updated": handle_subscription_updated,
     "customer.subscription.deleted": handle_subscription_deleted,
-    "invoice.paid": handle_invoice_paid,
 }
 
 PROCESSING_TTL_MINUTES = 30

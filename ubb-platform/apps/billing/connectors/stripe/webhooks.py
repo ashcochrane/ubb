@@ -142,10 +142,67 @@ def _dispatch_receipt(customer_id, attempt_id):
         )
 
 
+def _mark_invoice_payment_failed(event):
+    """Stamp payment_failed_at + refresh hosted url on the matched customer invoice.
+
+    Status-only (no money movement); account-checked; idempotent; never changes a
+    terminal status. Routes by subscription presence the same way the api/v1 AR
+    reconcile does. Imported lazily to avoid a circular import with api.v1.webhooks
+    (which imports this module at load time).
+    """
+    from api.v1.webhooks import _invoice_subscription_id, _refresh_urls
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.subscriptions.models import SubscriptionInvoice, StripeSubscription
+
+    inv = event.data.object
+    acct = event.account
+    invoice_id = getattr(inv, "id", None)
+    if not acct or not invoice_id:
+        return
+    sub_id = _invoice_subscription_id(inv)
+    if sub_id:
+        sub = StripeSubscription.objects.filter(
+            stripe_subscription_id=sub_id,
+            tenant__stripe_connected_account_id=acct,
+        ).first()
+        if not sub:
+            return
+        with transaction.atomic():
+            row = SubscriptionInvoice.objects.select_for_update().filter(
+                stripe_invoice_id=invoice_id,
+            ).first()
+            if not row:
+                return
+            row.payment_failed_at = timezone.now()
+            _refresh_urls(row, inv)
+            row.save(update_fields=[
+                "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
+            ])
+    else:
+        existing = CustomerUsageInvoice.objects.filter(
+            stripe_invoice_id=invoice_id,
+            tenant__stripe_connected_account_id=acct,
+        ).first()
+        if not existing:
+            return
+        with transaction.atomic():
+            row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
+            row.payment_failed_at = timezone.now()
+            _refresh_urls(row, inv)
+            row.save(update_fields=[
+                "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
+            ])
+
+
 def handle_invoice_payment_failed(event):
-    """Handle invoice.payment_failed — suspend customer."""
+    """Handle invoice.payment_failed — stamp the invoice + suspend customer."""
     inv = event.data.object
     connected_account = event.account
+
+    # AR: stamp payment_failed_at + refresh hosted url on the customer invoice
+    # (status-only). Runs first and independently of the suspend below.
+    _mark_invoice_payment_failed(event)
+
     customer = Customer.objects.filter(
         stripe_customer_id=inv.customer,
         tenant__stripe_connected_account_id=connected_account,

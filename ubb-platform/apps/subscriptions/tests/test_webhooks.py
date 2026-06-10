@@ -133,63 +133,9 @@ class TestHandleSubscriptionDeleted:
         assert sub.status == "canceled"
 
 
-@pytest.mark.django_db
-class TestHandleInvoicePaid:
-    def test_creates_subscription_invoice(self):
-        from apps.subscriptions.api.webhooks import handle_invoice_paid
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
-
-        tenant = Tenant.objects.create(
-            name="test", products=["metering", "subscriptions"],
-        )
-        customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
-        now = timezone.now()
-
-        sub = StripeSubscription.objects.create(
-            tenant=tenant, customer=customer,
-            stripe_subscription_id="sub_inv",
-            stripe_product_name="Pro", status="active",
-            amount_micros=49_000_000, currency="usd", interval="month",
-            current_period_start=now, current_period_end=now, last_synced_at=now,
-        )
-
-        event = MagicMock()
-        event.data.object.id = "in_paid123"
-        event.data.object.subscription = "sub_inv"
-        event.data.object.amount_paid = 4900  # cents
-        event.data.object.currency = "usd"
-        event.data.object.period_start = 1738368000
-        event.data.object.period_end = 1740960000
-        event.data.object.status_transitions.paid_at = 1738400000
-
-        handle_invoice_paid(event)
-
-        inv = SubscriptionInvoice.objects.get(stripe_invoice_id="in_paid123")
-        assert inv.amount_paid_micros == 49_000_000
-        assert inv.stripe_subscription == sub
-
-    def test_skips_non_subscription_invoice(self):
-        from apps.subscriptions.api.webhooks import handle_invoice_paid
-        from apps.subscriptions.models import SubscriptionInvoice
-
-        event = MagicMock()
-        event.data.object.subscription = None  # Not a subscription invoice
-
-        handle_invoice_paid(event)
-
-        assert SubscriptionInvoice.objects.count() == 0
-
-    def test_invoice_paid_raises_on_missing_subscription(self):
-        from apps.subscriptions.api.webhooks import handle_invoice_paid
-        from apps.subscriptions.models import StripeSubscription
-
-        event = MagicMock()
-        event.account = "acct_unknown"
-        event.data.object.id = "in_missing_sub"
-        event.data.object.subscription = "sub_nonexistent"
-
-        with pytest.raises(StripeSubscription.DoesNotExist):
-            handle_invoice_paid(event)
+# NOTE: invoice.paid handling was retired from the subscriptions endpoint (C-1).
+# ALL invoice.* reconcile — including SubscriptionInvoice creation + payment
+# status — now lives on api/v1; see api/v1/tests/test_ar_reconcile.py.
 
 
 @pytest.mark.django_db

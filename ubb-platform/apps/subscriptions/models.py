@@ -55,11 +55,13 @@ class SubscriptionInvoice(BaseModel):
         StripeSubscription, on_delete=models.CASCADE, related_name="invoices"
     )
     stripe_invoice_id = models.CharField(max_length=255, unique=True, db_index=True)
-    amount_paid_micros = models.BigIntegerField()
+    amount_paid_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    period_start = models.DateTimeField()
-    period_end = models.DateTimeField()
-    paid_at = models.DateTimeField()
+    # NULL until the invoice carries the data: an open (finalized, unpaid) row may
+    # arrive before period/paid_at are known.
+    period_start = models.DateTimeField(null=True, blank=True)
+    period_end = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, default="open")  # open|paid|void|uncollectible
     hosted_invoice_url = models.CharField(max_length=1000, blank=True, default="")
     invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
