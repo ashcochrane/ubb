@@ -1,11 +1,13 @@
-"""Wave 4 capstone integration test: multi-axis orchestration as ONE coherent bill.
+"""Wave 4 capstone integration test: multi-axis orchestration — subscription + standalone usage.
 
 A REAL live-server test driving the ``ubb`` Python SDK over HTTP against a running
 Django server. It proves a tenant can orchestrate a whole multi-axis bill for a
-pooled business account -- access fee + per-seat + metered usage -- as ONE coherent
-Stripe subscription invoice, and that the business margin is computed correctly (the
-regression proof that the subscription-revenue sync fix landed: the business's
-subscription revenue is counted ONCE, not 0 and not 10x).
+pooled business account -- access fee + per-seat + metered usage -- where the
+subscription axes (access + seats) land on the Stripe subscription invoice while
+usage is ALWAYS pushed to its own standalone finalized invoice (Wave 4.5 C1),
+and that the business margin is computed correctly (the regression proof that the
+subscription-revenue sync fix landed: the business's subscription revenue is
+counted ONCE, not 0 and not 10x).
 
 What it exercises end to end:
 
@@ -18,11 +20,12 @@ What it exercises end to end:
     proration and bumps the mirrored seat item to 12.
   - metered usage attributed to the two seats (a business aggregates across its
     seats), pushed via PostpaidUsageService.push_customer_period -- the usage
-    InvoiceItem is PINNED to the subscription (subscription="sub_1") so it lands on
-    the SAME upcoming subscription invoice as the access + per-seat lines (one
-    coherent bill), NOT a standalone invoice.
+    InvoiceItem carries NO subscription= kwarg (not pinned to the subscription cycle),
+    and a standalone stripe.Invoice.create + finalize_invoice is called to collect
+    it on its own correct-cycle invoice (Wave 4.5 C1: standalone usage routing).
   - ``MarginService.compute_business`` -> totals["subscription_revenue_micros"]
-    == 130_000_000 (counted once for the business, not 0, not 10x).
+    == 146_000_000 (50M access + 12 seats*8M after set_seats(12); counted once
+    for the business, not 0, not 10x).
 
 Why live-server (not mocked httpx): mocked unit tests let real wire-level
 mismatches ship undetected (a 404 on a renamed route, a response the SDK can't
@@ -198,6 +201,7 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
         # 4. Record metered usage attributed to the SEATS (a business aggregates
         #    across its seats). effective_at is auto_now_add ("now" == June 2026),
         #    so nudge it into the closed June window via a post-create update.
+        #    This usage will be pushed to a standalone invoice (Wave 4.5 C1).
         from apps.metering.usage.models import UsageEvent
         for seat, key, billed, provider in [
             (seat1, "u-alice", 4_000_000, 1_000_000),
@@ -208,20 +212,18 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
                 provider_cost_micros=provider, billed_cost_micros=billed)
             UsageEvent.objects.filter(id=ev.id).update(effective_at=USAGE_AT)
 
-        # Push the closed June period for the BUSINESS. The usage InvoiceItem must
-        # be PINNED to the open subscription (subscription="sub_1") so it lands on
-        # the same upcoming subscription invoice as access + seats -- one coherent
-        # bill -- NOT a standalone invoice. Driven in-process (the push is a
-        # background/beat task, not an SDK call); the coherence pin + margin are the
-        # goal. The late-push guard (Subscription.retrieve) is mocked to report the
-        # cycle still OPEN so the item is pinned rather than diverted.
+        # Push the closed June period for the BUSINESS. Wave 4.5 C1: usage is ALWAYS
+        # routed to its own standalone finalized invoice -- the InvoiceItem carries NO
+        # subscription= kwarg, and stripe.Invoice.create + finalize_invoice are called
+        # to collect it on a correct-cycle standalone invoice. Driven in-process (the
+        # push is a background/beat task, not an SDK call); standalone routing + margin
+        # are the goal.
         from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
         psvc = "apps.billing.invoicing.services.postpaid_service.stripe"
         with patch(f"{psvc}.InvoiceItem.create", return_value=MagicMock(id="ii_1")) as mock_ii, \
-             patch(f"{psvc}.Subscription.retrieve",
-                   return_value=MagicMock(latest_invoice=MagicMock(status="open"))), \
-             patch(f"{psvc}.Invoice.create", return_value=MagicMock(id="in_standalone")) as mock_inv, \
-             patch(f"{psvc}.Invoice.finalize_invoice", return_value=MagicMock(id="in_standalone")):
+             patch(f"{psvc}.Invoice.create", return_value=MagicMock(id="in_usage")) as mock_inv, \
+             patch(f"{psvc}.Invoice.finalize_invoice",
+                   return_value=MagicMock(id="in_usage")) as mock_finalize:
             rec = PostpaidUsageService.push_customer_period(
                 tenant, business, PERIOD_START, PERIOD_END)
 
@@ -229,26 +231,31 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
         # Business aggregates one line per seat: 4M + 3M = 7M billed.
         assert rec.total_billed_micros == 7_000_000
 
-        # THE COHERENCE PIN: usage InvoiceItem(s) carry subscription="sub_1" and
-        # NO standalone invoice was opened.
+        # STANDALONE ROUTING (Wave 4.5 C1): usage InvoiceItem(s) have NO subscription=
+        # kwarg -- they are NOT pinned to the subscription cycle.
         assert mock_ii.called
         for call in mock_ii.call_args_list:
-            assert call.kwargs.get("subscription") == "sub_1", (
-                "usage InvoiceItem must be pinned to the subscription (one coherent bill)")
+            assert "subscription" not in call.kwargs, (
+                "usage InvoiceItem must NOT carry subscription= (standalone routing, not pinned)")
             assert call.kwargs["customer"] == "cus_biz"  # the business, the billing owner
-        mock_inv.assert_not_called()  # NOT a standalone invoice
+        # A standalone invoice was created and finalized.
+        mock_inv.assert_called_once()
+        mock_finalize.assert_called_once()
 
         # 5. THE REGRESSION PROOF: business subscription revenue is counted ONCE.
+        #    Usage on its own standalone invoice doesn't affect subscription_revenue.
         from apps.subscriptions.economics.services import MarginService
         margin = MarginService.compute_business(
             tenant.id, business, PERIOD_START, PERIOD_END)
         totals = margin["totals"]
-        assert totals["subscription_revenue_micros"] == 130_000_000, (
-            "business subscription revenue must be 130M -- not 0 (sync regression) "
-            "and not 10x=1.3B (per-seat double-count)")
+        # After set_seats(12) the mirror is updated: 50M access + 12*8M seat = 146M.
+        assert totals["subscription_revenue_micros"] == 146_000_000, (
+            "business subscription revenue must be 146M -- not 0 (sync regression) "
+            "and not 10x=1.46B (per-seat double-count). "
+            "50M access + 12 seats * 8M = 146M after set_seats(12).")
         # The seats' usage is the usage axis (default billed mode under postpaid),
-        # so total revenue = 130M subscription + 7M usage = 137M.
+        # so total revenue = 146M subscription + 7M usage = 153M.
         assert totals["usage_revenue_micros"] == 7_000_000
-        assert totals["total_revenue_micros"] == 137_000_000
+        assert totals["total_revenue_micros"] == 153_000_000
     finally:
         c.close()
