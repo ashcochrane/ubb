@@ -62,7 +62,7 @@ class RevenueService:
         from apps.subscriptions.models import StripeSubscription
         subs = StripeSubscription.objects.filter(
             tenant_id=tenant_id, customer_id=customer_id,
-            status__in=["active", "trialing", "past_due"])
+            status__in=["active", "trialing", "past_due", "unpaid"])
         total = 0
         for sub in subs:
             per_interval = sub.amount_micros

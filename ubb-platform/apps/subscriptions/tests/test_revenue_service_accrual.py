@@ -33,6 +33,18 @@ class TestAccrual:
             last_synced_at=now)
         assert RevenueService.subscription_nominal_for_window(t.id, c.id, PS, PE) == 130_000_000
 
+    def test_unpaid_subscription_included(self):
+        # During a failed-payment window Stripe marks the subscription `unpaid`;
+        # the postpaid push still includes it, so accrued nominal must too.
+        t = Tenant.objects.create(name="T")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        now = timezone.now()
+        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_u",
+            stripe_product_name="Pro", status="unpaid", amount_micros=130_000_000, quantity=10,
+            currency="usd", interval="month", current_period_start=now, current_period_end=now,
+            last_synced_at=now)
+        assert RevenueService.subscription_nominal_for_window(t.id, c.id, PS, PE) == 130_000_000
+
     def test_canceled_subscription_excluded(self):
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")

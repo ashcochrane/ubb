@@ -21,7 +21,11 @@ import stripe
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.stripe.services.stripe_service import micros_to_cents, stripe_call
+from apps.billing.stripe.services.stripe_service import (
+    StripeFatalError,
+    micros_to_cents,
+    stripe_call,
+)
 from apps.platform.queries import get_tenant_stripe_account
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
@@ -121,7 +125,7 @@ class SubscriptionOrchestrator:
                 idempotency_key=f"plan-price-{axis}-{plan.id}",
                 product=getattr(plan, product_field),
                 unit_amount=micros_to_cents(amount_micros),
-                currency="usd",
+                currency=(plan.tenant.default_currency or "usd").lower(),
                 recurring={"interval": plan.interval, "usage_type": "licensed"},
                 stripe_account=connected,
             )
@@ -148,6 +152,20 @@ class SubscriptionOrchestrator:
 
         cls._ensure_stripe_customer(owner, connected)
         cls.ensure_plan_provisioned(plan)
+
+        # Plan prices are created in the tenant currency (see ensure_plan_provisioned).
+        # Guard the invariant that the tenant currency is well-defined at subscribe
+        # time; an empty/whitespace currency would silently default prices to usd and
+        # produce a subscription inconsistent with the tenant's usage-item currency.
+        # We do not store the provisioned price currency on the plan, so a full
+        # cross-check of the already-created price currency vs. the current tenant
+        # currency is deferred (would require new storage / a migration).
+        tenant_currency = (tenant.default_currency or "").strip().lower()
+        if not tenant_currency:
+            raise StripeFatalError(
+                f"Tenant {tenant.id} has no default_currency; cannot subscribe "
+                f"with a well-defined plan currency."
+            )
 
         items = []
         if plan.access_fee_micros > 0 and plan.stripe_access_price_id:
@@ -200,6 +218,12 @@ class SubscriptionOrchestrator:
 
         item.quantity = new_seats
         item.save(update_fields=["quantity", "updated_at"])
+
+        mirror = item.stripe_subscription
+        mirror.amount_micros = sum(li.unit_amount_micros * li.quantity for li in mirror.line_items.all())
+        mirror.quantity = new_seats
+        mirror.last_synced_at = timezone.now()
+        mirror.save(update_fields=["amount_micros", "quantity", "last_synced_at", "updated_at"])
         return item
 
     # -- internals -----------------------------------------------------------
