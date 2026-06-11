@@ -10,7 +10,12 @@ def seed_residual_ledgers(apps, schema_editor):
     (max period_start) pushed row — exactly the value the old lock-free chain
     read (latest prior pushed row) would have returned for their next push.
     Customers with no pushed rows have no residual in flight: no ledger row
-    (the first push's get_or_create reservation creates it lazily)."""
+    (the first push's get_or_create reservation creates it lazily).
+
+    DEPLOY NOTE: quiesce billing workers (or apply this migration outside the
+    monthly-close window). An in-flight OLD-code push that already read the
+    prior-row residual chain will double-carry one sub-cent (< 1 cent, once per
+    affected customer) when it deposits into a ledger the backfill also seeded."""
     CustomerUsageInvoice = apps.get_model("invoicing", "CustomerUsageInvoice")
     PostpaidResidualLedger = apps.get_model("invoicing", "PostpaidResidualLedger")
     seeded, seen = 0, set()

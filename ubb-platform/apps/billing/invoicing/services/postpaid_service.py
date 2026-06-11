@@ -237,6 +237,10 @@ class PostpaidUsageService:
             # status != "pushing" guard means a stale-reclaimed loser can
             # never reach here to double-deposit. The ledger exists by
             # construction: the Phase-1 reservation get_or_create'd it.
+            if not (0 <= residual_out < 10_000):
+                logger.error("billing.residual_out_of_range", extra={"data": {
+                    "usage_invoice_id": str(rec.id), "customer_id": str(customer.id),
+                    "residual_out": residual_out}})
             ledger = PostpaidResidualLedger.objects.select_for_update().get(customer=customer)
             ledger.balance_micros += residual_out
             ledger.save(update_fields=["balance_micros", "updated_at"])

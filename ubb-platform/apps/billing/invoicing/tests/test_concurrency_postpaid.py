@@ -401,3 +401,85 @@ class TestMigrationBackfill:
         self._seed()
         assert PostpaidResidualLedger.objects.filter(customer=pushed).count() == 1
         assert PostpaidResidualLedger.objects.get(customer=pushed).balance_micros == 5_555
+
+
+class ConcurrentUnseededLedgerCreation(TransactionTestCase):
+    """Race C: two workers push ADJACENT periods of the SAME customer with NO
+    pre-seeded ledger (first-ever pushes). Both race to Phase-1 get_or_create
+    on the PostpaidResidualLedger. The rendezvous is forced inside Phase 1 by
+    patching aggregate_lines with a Barrier(2) so both threads hold their rec
+    locks before either touches the ledger — Django ≥4's get_or_create
+    IntegrityError fallback re-SELECTs FOR UPDATE on the same queryset, so the
+    loser blocks on the unique-index insert until the winner's short Phase-1
+    commit, then inherits the winner's row. No deadlock: rec locks are distinct
+    rows; ledger lock is only held after both rec locks are taken.
+
+    Conservation: cents*10_000 + final_ledger == 14_000 (P1=12_000 + P2=2_000)."""
+
+    def test_unseeded_concurrent_ledger_creation_conserves(self):
+        tenant = _charge_ready_tenant(name="RACE_PP_UNSEED")
+        customer = _postpaid_customer(tenant, external_id="race_pp_unseed")
+
+        # No pre-seeded ledger: first-ever pushes for this customer.
+        self.assertFalse(PostpaidResidualLedger.objects.filter(customer=customer).exists())
+
+        barrier = threading.Barrier(2)
+
+        def agg_with_barrier(t, c, ps, pe):
+            """Wait for both threads to be inside Phase 1 before returning,
+            forcing the ledger get_or_create race."""
+            barrier.wait()
+            if ps == P_JUN:
+                return 12_000, [("", 12_000)]
+            return 2_000, [("", 2_000)]
+
+        errors = []
+
+        with _stripe() as state:
+            def push_jun():
+                try:
+                    with patch.object(PostpaidUsageService, "aggregate_lines",
+                                      side_effect=agg_with_barrier):
+                        PostpaidUsageService.push_customer_period(
+                            tenant, customer, P_JUN, P_JUL)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(repr(exc))
+                finally:
+                    connection.close()
+
+            def push_jul():
+                try:
+                    with patch.object(PostpaidUsageService, "aggregate_lines",
+                                      side_effect=agg_with_barrier):
+                        PostpaidUsageService.push_customer_period(
+                            tenant, customer, P_JUL, P_AUG)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(repr(exc))
+                finally:
+                    connection.close()
+
+            threads = [threading.Thread(target=push_jun), threading.Thread(target=push_jul)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join()
+
+        self.assertEqual(errors, [], f"workers raised unexpected exceptions: {errors}")
+
+        # Exactly ONE ledger row must exist (no duplicate created by the race).
+        self.assertEqual(
+            PostpaidResidualLedger.objects.filter(customer=customer).count(), 1)
+
+        # Both periods must have been pushed.
+        recs = list(CustomerUsageInvoice.objects.filter(tenant=tenant, customer=customer))
+        self.assertEqual(len(recs), 2)
+        statuses = {r.period_start: r.status for r in recs}
+        self.assertEqual(statuses[P_JUN], "pushed")
+        self.assertEqual(statuses[P_JUL], "pushed")
+
+        # Conservation: cents*10_000 + final_ledger == 14_000 (total input micros,
+        # no seed). Under any commit order the ledger accumulates exactly all
+        # sub-cent residuals that didn't become billed cents.
+        ledger = PostpaidResidualLedger.objects.get(customer=customer)
+        billed_micros = sum(state["amounts"]) * 10_000
+        self.assertEqual(billed_micros + ledger.balance_micros, 14_000)
