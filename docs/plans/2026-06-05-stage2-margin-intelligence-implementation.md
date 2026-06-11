@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (revenue wiring only): the cash-basis `RevenueService.revenue_for_window`/`stripe_revenue_for_window` built in Task 3 and wired into `MarginService.compute_live`/`snapshot_customer` + the margin API below were REPLACED by accrual `accrued_subscription_revenue` (manual + subscription nominal pro-rated) in `2026-06-08-pricing-stageB-revenue-source-implementation.md`, and the cash-basis methods were DELETED. Do NOT re-create them. Cost accumulator, snapshots, thresholds, margin webhooks remain current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Stage 2 — Margin Intelligence Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

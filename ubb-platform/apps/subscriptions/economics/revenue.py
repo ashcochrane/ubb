@@ -1,5 +1,4 @@
 import calendar
-from django.db.models import Sum
 
 
 def _days_in_month(year, month):
@@ -36,25 +35,6 @@ class RevenueService:
             month_days = _days_in_month(m_start.year, m_start.month)
             total += p.recurring_amount_micros * overlap_days // month_days
         return total
-
-    @staticmethod
-    def stripe_revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
-        """DEAD CODE — cash-basis (sums PAID invoices). NOT used by margin. Margin is
-        ACCRUAL/EARNED basis via accrued_subscription_revenue (= manual +
-        subscription_nominal_for_window). Do NOT wire this into MarginService — it would
-        switch revenue recognition to cash basis and double-count subscriptions."""
-        from apps.subscriptions.models import SubscriptionInvoice
-        return SubscriptionInvoice.objects.filter(
-            tenant_id=tenant_id, customer_id=customer_id,
-            paid_at__date__gte=start_date, paid_at__date__lt=end_date,
-        ).aggregate(t=Sum("amount_paid_micros"))["t"] or 0
-
-    @staticmethod
-    def revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
-        """DEAD CODE — cash-basis composite (manual + stripe paid-invoice). Superseded by
-        accrued_subscription_revenue (accrual basis). No production caller; do not reintroduce."""
-        return (RevenueService.manual_revenue_for_window(tenant_id, customer_id, start_date, end_date)
-                + RevenueService.stripe_revenue_for_window(tenant_id, customer_id, start_date, end_date))
 
     @staticmethod
     def resolve_revenue_mode(tenant, customer):

@@ -49,11 +49,11 @@ de-dupe.
   compute_business / snapshot_customer` use `RevenueService.accrued_subscription_revenue` =
   `manual_revenue_for_window + subscription_nominal_for_window` (the subscription's nominal amount
   pro-rated to the window, NOT the blended paid invoice) — `apps/subscriptions/economics/services.py:27,54,74`,
-  `apps/subscriptions/economics/revenue.py:60-82`.
-- **DEAD CODE warning:** `RevenueService.revenue_for_window` / `stripe_revenue_for_window`
-  (`revenue.py:40-51`) are **cash-basis** (sum PAID invoices). They have **zero production callers**.
-  Do NOT wire them into margin — it would silently switch revenue recognition to cash basis and
-  double-count subscriptions against `subscription_nominal_for_window`.
+  `apps/subscriptions/economics/revenue.py:65-68`.
+- **Deleted cash-basis methods:** `RevenueService.revenue_for_window` / `stripe_revenue_for_window`
+  were **cash-basis** (sum PAID invoices) and have been **DELETED** from `revenue.py` in this branch.
+  Do NOT re-create them — wiring cash-basis revenue into margin silently switches revenue recognition
+  and double-counts subscriptions against `subscription_nominal_for_window`.
 
 ---
 
@@ -113,7 +113,7 @@ them cold.
 | B | Pricing engine | "delete ProviderRate / pricing engine; caller provides cost only" (Stage 0) | **Rate-card engine REINSTATED** (two-card cost+price, dimensional, versioned) | The engine is the product's rating core; only the old `ProviderRate` model stayed deleted. `pricing/models.py`, `services/pricing_service.py`. |
 | C | Usage invoice routing | usage = `subscription=`-pinned pending InvoiceItem → "one coherent bill" | **standalone two-phase invoice** (draft → pin items → finalize) | Pinning landed usage on the wrong cycle (Wave 4.5) and un-pinned items don't sweep → empty-invoice bug (Wave 5.5). `postpaid_service.py:158-178`. |
 | D | Stripe field reads | `subscription.plan.*`, top-level `current_period_*`, `expand=["data.plan.product"]` | **Basil** `subscription.items.data[]` + `invoice.parent.subscription_details` | `.plan` collapses multi-item subs; Basil removed the top-level fields. `stripe_service.py:16`, `webhooks.py:161-169`. |
-| E | Revenue basis | cash basis: manual + Σ(Stripe **paid** invoices) | **accrual/earned**: manual + subscription **nominal** pro-rated | Cash basis hid metering COGS + double-counted postpaid usage. `revenue.py:60-82`. `revenue_for_window` is now dead code. |
+| E | Revenue basis | cash basis: manual + Σ(Stripe **paid** invoices) | **accrual/earned**: manual + subscription **nominal** pro-rated | Cash basis hid metering COGS + double-counted postpaid usage. `revenue.py:65-68`. `revenue_for_window` / `stripe_revenue_for_window` were DELETED. |
 
 ---
 
@@ -156,7 +156,7 @@ These are **intentionally unshipped**; do not "fix" them as bugs:
 | Usage record + pricing choke point | `apps/metering/usage/services/usage_service.py:55-76` |
 | Rate-card engine | `apps/metering/pricing/models.py`, `apps/metering/pricing/services/pricing_service.py` |
 | Margin (accrual) | `apps/subscriptions/economics/services.py`, `apps/subscriptions/economics/revenue.py` |
-| Revenue DEAD CODE (do not use) | `apps/subscriptions/economics/revenue.py:40-51` |
+| Revenue dead methods (DELETED) | `RevenueService.revenue_for_window` / `stripe_revenue_for_window` — removed from `revenue.py`; do not re-create |
 | Stripe Connect (Standard OAuth) | `apps/billing/connectors/stripe/connect.py` |
 | Stripe API pin (Basil) | `apps/billing/stripe/services/stripe_service.py:16` |
 | Subscription sync (items.data[]) | `apps/subscriptions/` sync + `api/v1/webhooks.py:161-169` |

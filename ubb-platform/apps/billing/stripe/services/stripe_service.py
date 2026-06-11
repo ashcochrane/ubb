@@ -10,9 +10,9 @@ from core.exceptions import StripeTransientError, StripePaymentError, StripeFata
 assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-# Global Basil API-version pin for Wave-4 multi-axis subscription orchestration.
-# Verified GREEN against the full platform suite (784 passed) — no path regressed,
-# so the pin is global rather than per-call.
+# Global pin: every UBB Stripe call sends this version. The mocked suite cannot
+# validate the header — only the gated live test (test_live_stripe_ar.py) proves
+# it against real Stripe.
 STRIPE_API_VERSION = "2025-03-31.basil"   # canonical form; bare 2025-03-31 is not a valid version
 stripe.api_version = STRIPE_API_VERSION
 logger = logging.getLogger(__name__)
