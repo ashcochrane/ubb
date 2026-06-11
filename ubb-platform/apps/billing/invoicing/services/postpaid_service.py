@@ -61,10 +61,44 @@ class PostpaidUsageService:
         return total, lines
 
     @staticmethod
-    def push_customer_period(tenant, customer, period_start, period_end):
-        from apps.billing.invoicing.models import CustomerUsageInvoice, UsageInvoiceLineItem
+    def _park_failed_permanent(tenant, customer, rec, from_statuses, last_error=None):
+        """Terminal flip: guarded status update + outbox alert + loud log.
+
+        Must be called inside transaction.atomic() so the alert event commits
+        with the flip (outbox contract). Guarded on from_statuses so a lost
+        race writes neither the flip nor a duplicate alert. Returns True if
+        this caller won the flip."""
+        from apps.billing.invoicing.models import CustomerUsageInvoice
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import UsageInvoicePushFailedPermanent
+
+        fields = {"status": "failed_permanent"}
+        if last_error is not None:
+            fields["last_attempt_error"] = last_error
+        updated = CustomerUsageInvoice.objects.filter(
+            id=rec.id, status__in=list(from_statuses)).update(**fields)
+        if not updated:
+            return False
+        rec.status = "failed_permanent"
+        if last_error is not None:
+            rec.last_attempt_error = last_error
+        write_event(UsageInvoicePushFailedPermanent(
+            tenant_id=str(tenant.id), customer_id=str(customer.id),
+            period_start=rec.period_start.isoformat(),
+            push_attempts=rec.push_attempts,
+            last_error=rec.last_attempt_error[:500],
+            stripe_invoice_id=rec.stripe_invoice_id,
+        ))
+        logger.error("billing.usage_push_failed_permanent", extra={"data": {
+            "usage_invoice_id": str(rec.id), "customer_id": str(customer.id),
+            "period_start": rec.period_start.isoformat(),
+            "push_attempts": rec.push_attempts,
+            "stripe_invoice_id": rec.stripe_invoice_id}})
+        return True
+
+    @staticmethod
+    def push_customer_period(tenant, customer, period_start, period_end):
+        from apps.billing.invoicing.models import CustomerUsageInvoice, UsageInvoiceLineItem
 
         # I5: the row, the unique (customer, period_start) constraint and the
         # stripe_customer_id check ALL key on the billing owner (pooled seat ->
@@ -89,27 +123,26 @@ class PostpaidUsageService:
             if rec.status == "failed_permanent":
                 return rec  # idempotent, no re-alert
             if rec.status in ("pending", "failed") and (
-                rec.push_attempts >= settings.POSTPAID_PUSH_MAX_ATTEMPTS
+                rec.push_attempts >= settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS
                 or (rec.first_attempted_at
                     and timezone.now() - rec.first_attempted_at
-                        > timedelta(hours=settings.POSTPAID_PUSH_MAX_AGE_HOURS))
+                        > timedelta(hours=settings.UBB_POSTPAID_PUSH_MAX_AGE_HOURS))
             ):
-                rec.status = "failed_permanent"
-                rec.save(update_fields=["status", "updated_at"])
-                write_event(UsageInvoicePushFailedPermanent(
-                    tenant_id=str(tenant.id), customer_id=str(customer.id),
-                    period_start=period_start.isoformat(),
-                    push_attempts=rec.push_attempts,
-                    last_error=rec.last_attempt_error[:500],
-                    stripe_invoice_id=rec.stripe_invoice_id,
-                ))
-                logger.error("billing.usage_push_failed_permanent", extra={"data": {
-                    "usage_invoice_id": str(rec.id), "customer_id": str(customer.id),
-                    "period_start": period_start.isoformat(),
-                    "push_attempts": rec.push_attempts,
-                    "stripe_invoice_id": rec.stripe_invoice_id}})
+                PostpaidUsageService._park_failed_permanent(
+                    tenant, customer, rec, from_statuses=("pending", "failed"))
                 return rec
-            total, lines = PostpaidUsageService.aggregate_lines(tenant, customer, period_start, period_end)
+            # Freeze-at-first-claim: line_index identity is positional over the
+            # aggregation sort, so re-aggregating on a retry (after the tenant
+            # flips usage_line_item_group_by) would diff the WRONG indices and
+            # overbill a resumed invoice. The first claim pins the lines; every
+            # later attempt consumes the frozen snapshot by construction.
+            if rec.line_snapshot:
+                lines = [(label, amount) for label, amount in rec.line_snapshot]
+                total = sum(amount for _, amount in lines)
+            else:
+                total, lines = PostpaidUsageService.aggregate_lines(
+                    tenant, customer, period_start, period_end)
+                rec.line_snapshot = [[label, amount] for label, amount in lines]
             rec.total_billed_micros = total
             if total <= 0:
                 rec.status, rec.skip_reason = "skipped", "no_usage"
@@ -127,11 +160,14 @@ class PostpaidUsageService:
             rec.status = "pushing"
             rec.push_attempts += 1
             rec.first_attempted_at = rec.first_attempted_at or timezone.now()
-            rec.save(update_fields=["total_billed_micros", "status", "push_attempts",
-                                    "first_attempted_at", "updated_at"])
+            rec.save(update_fields=["total_billed_micros", "line_snapshot", "status",
+                                    "push_attempts", "first_attempted_at", "updated_at"])
 
         # Phase 2 — Stripe (no DB transaction held)
         # Carry the prior period's sub-cent residual forward into this push.
+        # NOTE: unlike the lines (frozen above), this carry-in read is still
+        # attempt-time — a prior period pushed between two attempts could shift
+        # it. Pinned by the F1.1 residual ledger (next task).
         prior = (CustomerUsageInvoice.objects.filter(
             tenant=tenant, customer=customer, status="pushed",
             period_start__lt=period_start).order_by("-period_start").first())
@@ -139,6 +175,17 @@ class PostpaidUsageService:
         try:
             standalone_id, items, residual_out = PostpaidUsageService._push_to_stripe(
                 tenant, customer, rec, lines, period_start, carry_in=carry_in)
+        except StripeFatalError as exc:
+            # Non-retryable by definition (void/deleted/unexpected-status invoice,
+            # auth/config, idempotency mismatch — see stripe_call): park terminal
+            # NOW instead of burning ~8 hourly sticky-failed retries before the
+            # alert. Retryable failures stay in the generic branch below.
+            rec.refresh_from_db()  # pick up the pointer Phase 2a may have persisted
+            with transaction.atomic():
+                PostpaidUsageService._park_failed_permanent(
+                    tenant, customer, rec, from_statuses=("pushing",),
+                    last_error=repr(exc)[:500])
+            return rec
         except Exception as exc:
             # Sticky transient failure: stays 'failed' (retried by reconcile) until
             # the attempts/wall-clock cap above flips it to failed_permanent.
@@ -147,11 +194,15 @@ class PostpaidUsageService:
             raise
 
         # Phase 3 — record
+        from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import UsageInvoicePushed
         with transaction.atomic():
             rec = CustomerUsageInvoice.objects.select_for_update().get(id=rec.id)
             if rec.status != "pushing":
                 return rec
+            # Belt-and-braces: a forced re-record (operator repush of a row that
+            # already recorded once) must replace, never duplicate, line items.
+            rec.line_items.all().delete()
             for label, amount, item_id in items:
                 UsageInvoiceLineItem.objects.create(
                     usage_invoice=rec, dimension=label, amount_micros=amount,
@@ -160,7 +211,9 @@ class PostpaidUsageService:
             rec.stripe_invoice_id = standalone_id or ""
             rec.residual_micros = residual_out
             rec.pushed_at = timezone.now()
-            rec.save(update_fields=["status", "stripe_invoice_id", "residual_micros", "pushed_at", "updated_at"])
+            rec.last_attempt_error = ""
+            rec.save(update_fields=["status", "stripe_invoice_id", "residual_micros",
+                                    "pushed_at", "last_attempt_error", "updated_at"])
             if residual_out or carry_in:
                 logger.info("postpaid.residual_carried", extra={"data": {
                     "customer_id": str(customer.id), "period_start": period_start.isoformat(),
@@ -178,6 +231,14 @@ class PostpaidUsageService:
 
         connected = tenant.stripe_connected_account_id
         currency = (tenant.default_currency or "usd").lower()
+
+        # Critical-1: --rebill-void rotates EVERY idempotency-key family. Within
+        # Stripe's 24h key window the legacy keys would replay the recorded
+        # responses — the now-void invoice, its items, its finalize — and Phase 3
+        # would record 'pushed' against the corpse with the customer never
+        # rebilled. Generation 0 keeps the exact legacy strings so in-flight
+        # rows keep replaying their original keys.
+        gen = f"-g{rec.rebill_generation}" if rec.rebill_generation else ""
 
         # Usage rides the billing OWNER's bill (pooled seat -> business). The caller
         # already re-keys on the owner (I5), so this is a defensive no-op kept so a
@@ -228,7 +289,8 @@ class PostpaidUsageService:
             # items would NOT sweep, finalizing an EMPTY invoice and never billing usage.
             # C1: usage is ALWAYS its own finalized standalone invoice (correct-cycle).
             inv = stripe_call(
-                stripe.Invoice.create, retryable=True, idempotency_key=f"usage-invoice-{rec.id}",
+                stripe.Invoice.create, retryable=True,
+                idempotency_key=f"usage-invoice-{rec.id}{gen}",
                 customer=owner.stripe_customer_id, auto_advance=False, stripe_account=connected,
                 metadata={"usage_invoice_id": str(rec.id), "tenant_id": str(tenant.id),
                           "period_start": period_start.isoformat()})
@@ -271,7 +333,7 @@ class PostpaidUsageService:
             desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
             item = stripe_call(
                 stripe.InvoiceItem.create, retryable=True,
-                idempotency_key=f"usage-item-{rec.id}-{i}",
+                idempotency_key=f"usage-item-{rec.id}{gen}-{i}",
                 customer=owner.stripe_customer_id, invoice=inv.id, amount=cents,
                 currency=currency, description=desc, stripe_account=connected,
                 metadata={"usage_invoice_id": str(rec.id), "line_index": str(i)})
@@ -280,7 +342,7 @@ class PostpaidUsageService:
             push_phase="items_pinned")
         stripe_call(
             stripe.Invoice.finalize_invoice, retryable=True,
-            idempotency_key=f"usage-finalize-{rec.id}", invoice=inv.id,
+            idempotency_key=f"usage-finalize-{rec.id}{gen}", invoice=inv.id,
             auto_advance=True, stripe_account=connected)
         CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
             push_phase="finalized")

@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+import stripe
 from unittest.mock import patch, MagicMock
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
@@ -82,11 +83,14 @@ class TestPostpaidReconcile:
         rec.refresh_from_db()
         assert rec.status == "pushed"
         assert rec.line_items.count() == 1
-        # Reads (Invoice.list lookup) carry no idempotency key; every WRITE reuses rec.id keys.
-        keys = [k for k in (ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list) if k]
-        assert keys
-        assert all(str(rec.id) in k for k in keys)
-        assert any(k == f"usage-invoice-{rec.id}" for k in keys)
+        # Read-deny-list: only these callables may go keyless; ANY other Stripe
+        # call is a WRITE and a missing idempotency_key must fail this test.
+        read_fns = {stripe.Invoice.list, stripe.Invoice.retrieve, stripe.InvoiceItem.list}
+        writes = [ck for ck in mock_sc.call_args_list if ck.args[0] not in read_fns]
+        assert writes
+        assert all(str(rec.id) in ck.kwargs.get("idempotency_key", "") for ck in writes)
+        keys = [ck.kwargs["idempotency_key"] for ck in writes]
+        assert any(k == f"usage-invoice-{rec.id}" for k in keys)  # gen-0 legacy shape
         assert any(k == f"usage-finalize-{rec.id}" for k in keys)
 
     def test_fresh_pushing_row_is_left_alone(self):

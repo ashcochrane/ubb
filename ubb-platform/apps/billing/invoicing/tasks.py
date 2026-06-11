@@ -116,23 +116,25 @@ def reconcile_postpaid_usage():
 def _recover_skipped_usage_invoices(model):
     """Flip recoverable 'skipped' rows back to 'pending' once their precondition
     holds (mirrors the skip checks in push_customer_period). Pooled-seat-keyed
-    rows can never be pushed by the owner-first service — supersede them instead."""
+    rows can never be pushed by the owner-first service — supersede them instead.
+    Guarded conditional updates: a row a concurrent push already transitioned
+    out of 'skipped' is left alone (no read-modify-write clobber)."""
     qs = model.objects.filter(
         status="skipped", skip_reason__in=["not_charge_ready", "no_stripe_customer"],
     ).select_related("tenant", "customer")
     for rec in qs:
         owner = rec.customer.resolve_billing_owner()
         if owner.id != rec.customer_id:
-            rec.status, rec.skip_reason = "skipped", "seat_superseded"
-            rec.save(update_fields=["status", "skip_reason", "updated_at"])
+            model.objects.filter(id=rec.id, status="skipped").update(
+                skip_reason="seat_superseded", updated_at=timezone.now())
             continue
         if rec.skip_reason == "not_charge_ready":
             recovered = bool(rec.tenant.stripe_connected_account_id) and rec.tenant.charges_enabled
         else:  # no_stripe_customer
             recovered = bool(owner.stripe_customer_id)
         if recovered:
-            rec.status, rec.skip_reason = "pending", ""
-            rec.save(update_fields=["status", "skip_reason", "updated_at"])
+            model.objects.filter(id=rec.id, status="skipped").update(
+                status="pending", skip_reason="", updated_at=timezone.now())
 
 
 @shared_task(queue="ubb_billing")

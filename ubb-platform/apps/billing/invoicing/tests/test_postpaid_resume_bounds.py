@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.utils import timezone
@@ -210,7 +211,8 @@ class TestRetryBounds:
     def test_attempts_cap_flips_terminal_with_exactly_one_alert(self):
         t = _charge_ready_tenant()
         c = _customer(t)
-        rec = _row(t, c, status="pending", push_attempts=8,
+        cap = settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS
+        rec = _row(t, c, status="pending", push_attempts=cap,
                    first_attempted_at=timezone.now(), last_attempt_error="boom")
         with _stripe() as m:
             PostpaidUsageService.push_customer_period(t, c, PS, PE)  # pass 1: caps
@@ -221,14 +223,15 @@ class TestRetryBounds:
             mock.assert_not_called()
         events = OutboxEvent.objects.filter(event_type=FAILED_EVENT)
         assert events.count() == 1  # no re-alert on the second pass
-        assert events.first().payload["push_attempts"] == 8
+        assert events.first().payload["push_attempts"] == cap
         assert events.first().payload["last_error"] == "boom"
 
     def test_wall_clock_cap_flips_terminal_before_any_stripe_call(self):
         t = _charge_ready_tenant()
         c = _customer(t)
         rec = _row(t, c, status="pending", push_attempts=1,
-                   first_attempted_at=timezone.now() - datetime.timedelta(hours=21))
+                   first_attempted_at=timezone.now() - datetime.timedelta(
+                       hours=settings.UBB_POSTPAID_PUSH_MAX_AGE_HOURS + 1))
         with _stripe() as m:
             PostpaidUsageService.push_customer_period(t, c, PS, PE)
         rec.refresh_from_db()
@@ -251,6 +254,95 @@ class TestRetryBounds:
         assert rec.stripe_invoice_id == "in_new"
         assert rec.push_phase == "invoice_created"
         assert m.create.call_count == 1
+
+    def test_fatal_void_invoice_parks_failed_permanent_after_one_attempt(self):
+        """A void/deleted invoice raises StripeFatalError — non-retryable by
+        definition, so the row parks failed_permanent on the FIRST attempt with
+        exactly one alert, not after ~8 hourly sticky-failed retries."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="pending", stripe_invoice_id="in_void",
+                   push_phase="invoice_created")
+        with _stripe(retrieve=_stripe_invoice(id="in_void", status="void", rec=rec)) as m, _agg():
+            out = PostpaidUsageService.push_customer_period(t, c, PS, PE)  # parks, no raise
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)  # pass 2: idempotent
+        rec.refresh_from_db()
+        assert out.status == "failed_permanent"
+        assert rec.status == "failed_permanent"
+        assert rec.push_attempts == 1  # ONE attempt, not the full cap
+        assert "void" in rec.last_attempt_error
+        assert m.retrieve.call_count == 1  # pass 2 returned before any Stripe call
+        for mock in (m.create, m.item_create, m.finalize):
+            mock.assert_not_called()
+        events = OutboxEvent.objects.filter(event_type=FAILED_EVENT)
+        assert events.count() == 1  # exactly one alert, none on the idempotent pass
+        assert events.first().payload["stripe_invoice_id"] == "in_void"
+        assert events.first().payload["push_attempts"] == 1
+
+
+@pytest.mark.django_db
+class TestFrozenLineSnapshot:
+    """Important-3: line_index identity is positional over the aggregation sort,
+    so the lines are FROZEN at first claim — a mid-retry group_by flip must not
+    re-aggregate and diff the wrong indices on resume."""
+
+    def _events(self, t, c):
+        from apps.metering.usage.models import UsageEvent
+        for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
+            ev = UsageEvent.objects.create(
+                tenant=t, customer=c, request_id=f"r{i}", idempotency_key=f"i{i}",
+                provider_cost_micros=1, billed_cost_micros=micros, product_id=pid)
+            UsageEvent.objects.filter(id=ev.id).update(
+                effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
+
+    def test_resume_after_group_by_flip_creates_zero_new_items(self):
+        from apps.billing.invoicing.models import PostpaidUsageConfig
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        cfg = PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="")
+        self._events(t, c)
+        # Attempt 1: the single ungrouped line is pinned, then the finalize crashes.
+        with _stripe() as m:
+            m.finalize.side_effect = RuntimeError("boom")
+            with pytest.raises(RuntimeError):
+                PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "failed"
+        assert rec.line_snapshot == [["", 1_000_000]]  # frozen at first claim
+        assert m.item_create.call_count == 1
+        # Tenant flips grouping mid-retry: re-aggregating would now yield TWO
+        # lines and shift every line_index.
+        cfg.usage_line_item_group_by = "product_id"
+        cfg.save()
+        # Resume: frozen lines, the pinned item recovered — ZERO new items.
+        with _stripe(retrieve=_stripe_invoice(id="in_new", status="draft", rec=rec),
+                     items=[_stripe_item(id="ii_pinned", line_index="0")]) as m2:
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed"
+        assert m2.create.call_count == 0
+        assert m2.item_create.call_count == 0  # the frozen line matched the pinned item
+        assert m2.finalize.call_count == 1
+        assert rec.total_billed_micros == 1_000_000
+        assert list(rec.line_items.values_list("dimension", "amount_micros",
+                                               "stripe_invoice_item_id")) \
+            == [("", 1_000_000, "ii_pinned")]
+
+    def test_fresh_row_honors_current_group_by(self):
+        from apps.billing.invoicing.models import PostpaidUsageConfig
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="product_id")
+        self._events(t, c)
+        with _stripe() as m:
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "pushed"
+        assert m.item_create.call_count == 2  # grouped: one item per product
+        assert rec.line_snapshot == [["prod_a", 600_000], ["prod_b", 400_000]]
+        assert list(rec.line_items.order_by("-amount_micros")
+                    .values_list("dimension", "amount_micros")) \
+            == [("prod_a", 600_000), ("prod_b", 400_000)]
 
 
 @pytest.mark.django_db
@@ -423,11 +515,27 @@ class TestRepushCommand:
         rec.refresh_from_db()
         assert rec.status == "failed_permanent"  # untouched
 
+    def test_refuses_rows_not_in_a_repushable_status(self):
+        """Only failed/failed_permanent/skipped rows may be reset: pending/pushing
+        are owned by the hourly reconcile; pushed is already billed."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="pushed", stripe_invoice_id="in_1",
+                   push_phase="finalized", push_attempts=1)
+        for status in ("pushed", "pushing", "pending"):
+            CustomerUsageInvoice.objects.filter(id=rec.id).update(status=status)
+            with pytest.raises(CommandError, match=f"status '{status}'"):
+                call_command("repush_usage_invoice", str(rec.id))
+            rec.refresh_from_db()
+            assert rec.status == status  # untouched
+            assert rec.push_attempts == 1  # counters not reset
+
     def test_rebill_void_clears_pointer_and_list_match_skips_the_void_invoice(self):
         t = _charge_ready_tenant()
         c = _customer(t)
         rec = _row(t, c, status="failed_permanent", stripe_invoice_id="in_void",
-                   push_phase="finalized", push_attempts=8)
+                   push_phase="finalized",
+                   push_attempts=settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS)
         call_command("repush_usage_invoice", str(rec.id), "--rebill-void")
         rec.refresh_from_db()
         assert rec.status == "pending" and rec.push_attempts == 0
@@ -440,6 +548,52 @@ class TestRepushCommand:
         rec.refresh_from_db()
         assert m.create.call_count == 1
         assert rec.status == "pushed" and rec.stripe_invoice_id == "in_new"
+
+    def test_rebill_void_rotates_every_idempotency_key_family(self):
+        """Critical-1: within Stripe's 24h key window the legacy keys would
+        replay the recorded (now-void) invoice/items/finalize and Phase 3 would
+        record 'pushed' against the corpse — the bumped generation must rotate
+        ALL THREE key families so the replay is impossible."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="failed_permanent", stripe_invoice_id="in_void",
+                   push_phase="finalized", push_attempts=3,
+                   line_snapshot=[["", 1_000_000]])
+        original_create_key = f"usage-invoice-{rec.id}"  # the gen-0 legacy key
+        call_command("repush_usage_invoice", str(rec.id), "--rebill-void")
+        rec.refresh_from_db()
+        assert rec.rebill_generation == 1
+        assert rec.line_snapshot == []  # a rebill is a FRESH billing decision
+        void_inv = _stripe_invoice(id="in_void", status="void", rec=rec)
+        with _stripe(listed=[void_inv]) as m, _agg():
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        create_key = m.create.call_args.kwargs["idempotency_key"]
+        assert create_key != original_create_key  # the replay key is retired
+        assert create_key == f"usage-invoice-{rec.id}-g1"
+        assert m.item_create.call_args.kwargs["idempotency_key"] == f"usage-item-{rec.id}-g1-0"
+        assert m.finalize.call_args.kwargs["idempotency_key"] == f"usage-finalize-{rec.id}-g1"
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == "in_new"
+
+    def test_forced_re_record_replaces_line_items_never_duplicates(self):
+        """Important-2 belt-and-braces: Phase 3 deletes the recorded line items
+        inside the atomic re-record so a repush of a row that already recorded
+        once can never leave duplicate UsageInvoiceLineItem rows."""
+        from apps.billing.invoicing.models import UsageInvoiceLineItem
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="failed", stripe_invoice_id="in_1", push_phase="finalized")
+        UsageInvoiceLineItem.objects.create(
+            usage_invoice=rec, dimension="stale", amount_micros=999,
+            stripe_invoice_item_id="ii_stale")
+        with _stripe(retrieve=_stripe_invoice(id="in_1", status="open", rec=rec),
+                     items=[_stripe_item(id="ii_new", line_index="0")]) as m, _agg():
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed"
+        assert m.item_create.call_count == 0  # adopt path: zero Stripe writes
+        assert rec.line_items.count() == 1  # replaced, never appended
+        assert list(rec.line_items.values_list("stripe_invoice_item_id", flat=True)) == ["ii_new"]
 
 
 @pytest.mark.django_db

@@ -26,6 +26,15 @@ class Command(BaseCommand):
         except (CustomerUsageInvoice.DoesNotExist, ValidationError, ValueError):
             raise CommandError(f"No CustomerUsageInvoice found with id={options['row_id']}")
 
+        if rec.status not in ("failed", "failed_permanent", "skipped"):
+            # 'pending'/'pushing' rows are already owned by the hourly reconcile;
+            # resetting a 'pushed' row would re-record an already-billed invoice.
+            raise CommandError(
+                f"Row {rec.id} has status '{rec.status}' — repush only applies to "
+                "'failed', 'failed_permanent' or 'skipped' rows. Pending/pushing rows "
+                "are retried automatically; a pushed row is already billed."
+            )
+
         owner = rec.customer.resolve_billing_owner()
         if owner.id != rec.customer_id:
             # The owner-first service re-keys every push on the billing owner, so a
@@ -37,6 +46,9 @@ class Command(BaseCommand):
             )
 
         was_migrated_legacy = rec.last_attempt_error.startswith("migrated:")
+        # Deploy-window belt: a row attempted without a recorded pointer may still
+        # have an unfindable (pre-metadata) Stripe invoice — same manual check.
+        attempted_without_pointer = rec.push_attempts > 0 and not rec.stripe_invoice_id
 
         rec.push_attempts = 0
         rec.first_attempted_at = None
@@ -46,12 +58,20 @@ class Command(BaseCommand):
         update_fields = ["push_attempts", "first_attempted_at", "last_attempt_error",
                          "status", "skip_reason", "updated_at"]
         if options["rebill_void"]:
+            # A rebill is a FRESH billing decision: drop the frozen line snapshot
+            # so the new push re-aggregates, and bump the generation so every
+            # idempotency-key family rotates — a key replay inside Stripe's 24h
+            # window would otherwise return the recorded (now-void) invoice and
+            # Phase 3 would record 'pushed' against it without rebilling.
             rec.stripe_invoice_id = ""
             rec.push_phase = ""
-            update_fields += ["stripe_invoice_id", "push_phase"]
+            rec.line_snapshot = []
+            rec.rebill_generation += 1
+            update_fields += ["stripe_invoice_id", "push_phase",
+                              "line_snapshot", "rebill_generation"]
         rec.save(update_fields=update_fields)
 
-        if was_migrated_legacy and not rec.stripe_invoice_id:
+        if (was_migrated_legacy or attempted_without_pointer) and not rec.stripe_invoice_id:
             self.stdout.write(self.style.WARNING(
                 "This row predates invoice metadata: duplicate protection only covers "
                 "invoices created post-F0.1. Before repushing you MUST search Stripe by "

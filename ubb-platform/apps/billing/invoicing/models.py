@@ -69,6 +69,15 @@ class CustomerUsageInvoice(BaseModel):
     first_attempted_at = models.DateTimeField(null=True, blank=True)
     last_attempt_error = models.TextField(blank=True, default="")
     push_phase = models.CharField(max_length=20, choices=USAGE_INVOICE_PUSH_PHASE, blank=True, default="")
+    # Incremented by repush_usage_invoice --rebill-void: rotates every Stripe
+    # idempotency-key family so a replay inside Stripe's 24h key window can never
+    # return the recorded (now-void) invoice. Generation 0 keeps the exact legacy
+    # key strings for in-flight rows.
+    rebill_generation = models.PositiveIntegerField(default=0)
+    # Frozen-at-first-claim aggregation: [[label, amount_micros], ...]. Pinned in
+    # Phase 1 of the first push attempt so line_index identity is stable across
+    # retries even if the tenant flips usage_line_item_group_by mid-retry.
+    line_snapshot = models.JSONField(default=list, blank=True)
     residual_micros = models.BigIntegerField(default=0)
     pushed_at = models.DateTimeField(null=True, blank=True)
     payment_status = models.CharField(max_length=20, null=True, blank=True)  # open|paid|void|uncollectible (NULL = not yet collectible)

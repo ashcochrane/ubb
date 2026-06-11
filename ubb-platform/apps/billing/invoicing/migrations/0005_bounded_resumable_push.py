@@ -13,12 +13,13 @@ def supersede_pooled_seat_rows(apps, schema_editor):
     service re-keys every push on resolve_billing_owner(), so a seat-keyed row
     can never transition again — park it as skipped/seat_superseded."""
     CustomerUsageInvoice = apps.get_model("invoicing", "CustomerUsageInvoice")
-    CustomerUsageInvoice.objects.filter(
+    updated = CustomerUsageInvoice.objects.filter(
         status__in=["pending", "failed"],
         customer__account_type="seat",
         customer__parent__isnull=False,
         customer__parent__billing_topology="pooled",
     ).update(status="skipped", skip_reason="seat_superseded")
+    print(f"invoicing.0005: superseded {updated} pooled-seat usage-invoice row(s)")
 
 
 def fail_legacy_rows(apps, schema_editor):
@@ -30,8 +31,9 @@ def fail_legacy_rows(apps, schema_editor):
     to find, and the old reconcile refreshed updated_at hourly so such rows are
     typically already past the 24h idempotency-key window. Safe-by-default."""
     CustomerUsageInvoice = apps.get_model("invoicing", "CustomerUsageInvoice")
-    CustomerUsageInvoice.objects.filter(status__in=["pending", "failed"]).update(
+    updated = CustomerUsageInvoice.objects.filter(status__in=["pending", "failed"]).update(
         status="failed_permanent", last_attempt_error=LEGACY_ERROR)
+    print(f"invoicing.0005: parked {updated} legacy usage-invoice row(s) as failed_permanent")
 
 
 class Migration(migrations.Migration):
@@ -61,6 +63,16 @@ class Migration(migrations.Migration):
             model_name='customerusageinvoice',
             name='push_phase',
             field=models.CharField(blank=True, choices=[('', 'Not started'), ('invoice_created', 'Invoice created'), ('items_pinned', 'Items pinned'), ('finalized', 'Finalized')], default='', max_length=20),
+        ),
+        migrations.AddField(
+            model_name='customerusageinvoice',
+            name='rebill_generation',
+            field=models.PositiveIntegerField(default=0),
+        ),
+        migrations.AddField(
+            model_name='customerusageinvoice',
+            name='line_snapshot',
+            field=models.JSONField(blank=True, default=list),
         ),
         migrations.AlterField(
             model_name='customerusageinvoice',
