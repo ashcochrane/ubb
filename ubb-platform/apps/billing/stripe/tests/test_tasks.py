@@ -148,9 +148,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             reconcile_topups_with_stripe()
         self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_skips_old_attempts(self, mock_sleep, mock_retrieve):
+    def test_skips_old_attempts(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         attempt = self._create_attempt("ch_old")
         # Make attempt older than 48 hours
         TopUpAttempt.objects.filter(pk=attempt.pk).update(
@@ -161,21 +163,25 @@ class ReconcileTopupsWithStripeTest(TestCase):
 
         mock_retrieve.assert_not_called()
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_handles_stripe_error_gracefully(self, mock_sleep, mock_retrieve):
+    def test_handles_stripe_error_gracefully(self, mock_sleep, mock_retrieve, mock_pi_list):
         import stripe as stripe_lib
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_error")
         mock_retrieve.side_effect = stripe_lib.error.StripeError("API down")
 
         # Should not raise
         reconcile_topups_with_stripe()
 
-    def test_skips_attempts_without_charge_id(self):
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
+    def test_skips_attempts_without_charge_id(self, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         TopUpAttempt.objects.create(
             customer=self.customer, amount_micros=5_000_000,
             trigger="manual", status="succeeded",
             stripe_charge_id=None,
         )
-        # No Stripe API call should be attempted — no mock needed
+        # No Stripe Charge.retrieve call should be attempted
         reconcile_topups_with_stripe()

@@ -11,6 +11,7 @@ require cross-process cache semantics.  Only the database index changes.
 import os
 
 import django
+import pytest
 from django.conf import settings
 
 
@@ -39,3 +40,31 @@ def pytest_configure(config):
     # Keep Celery pointing at the same isolated DB so in-process task calls work.
     settings.CELERY_BROKER_URL = test_url
     settings.CELERY_RESULT_BACKEND = test_url
+
+
+@pytest.fixture(autouse=True)
+def _stripe_guard(request, monkeypatch):
+    """Force a sentinel Stripe key + block real Stripe network I/O.
+
+    A missed mock.patch must fail loudly here instead of silently hitting
+    api.stripe.com (a real key exported in the shell would win over the
+    .env placeholder). The UBB_STRIPE_LIVE_TEST-gated module is the one
+    deliberate exception.
+    """
+    if "test_live_stripe_ar" in request.node.nodeid:
+        yield
+        return
+    import stripe
+
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_sentinel")
+    monkeypatch.setattr(stripe, "api_key", "sk_test_sentinel")
+
+    def _blocked(*args, **kwargs):
+        raise AssertionError(
+            f"Un-mocked Stripe network call in {request.node.nodeid}")
+
+    monkeypatch.setattr(
+        "stripe._api_requestor._APIRequestor.request_raw", _blocked)
+    monkeypatch.setattr(
+        "stripe._api_requestor._APIRequestor.request_raw_async", _blocked)
+    yield

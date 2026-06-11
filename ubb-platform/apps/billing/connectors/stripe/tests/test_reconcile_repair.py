@@ -19,7 +19,9 @@ def test_reconcile_repairs_uncredited_succeeded_pi():
                    metadata={"topup_attempt_id": str(a.id)})
     listing = MagicMock()
     listing.auto_paging_iter.return_value = [pi]
-    with patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list", return_value=listing):
+    mock_charge = MagicMock(status="succeeded", amount=2000, refunded=False)
+    with patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list", return_value=listing), \
+         patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve", return_value=mock_charge):
         reconcile_topups_with_stripe()
     assert Wallet.objects.get(customer=c).balance_micros == 20_000_000
     assert WalletTransaction.objects.filter(idempotency_key="auto_topup:pi_1").count() == 1
