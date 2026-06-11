@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.services.stripe_service import stripe_call
+from core.time_windows import utc_day_start
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,8 @@ def close_postpaid_usage_periods():
     start, end = _prior_month()
     for tenant in Tenant.objects.filter(billing_mode="postpaid", is_active=True):
         cust_ids = (UsageEvent.objects.filter(
-            tenant=tenant, effective_at__date__gte=start, effective_at__date__lt=end)
+            tenant=tenant, effective_at__gte=utc_day_start(start),
+            effective_at__lt=utc_day_start(end))
             .values_list("customer_id", flat=True).distinct())
         targets = set()
         for c in Customer.all_objects.filter(id__in=list(cust_ids)):

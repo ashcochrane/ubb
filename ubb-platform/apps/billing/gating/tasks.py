@@ -19,8 +19,10 @@ def reconcile_budget_counters():
     default_tenants = list(BudgetConfig.objects.filter(customer__isnull=True, cap_micros__gt=0)
                            .values_list("tenant_id", flat=True))
     if default_tenants:
+        from core.time_windows import utc_day_start
         ids |= set(UsageEvent.objects.filter(
-            tenant_id__in=default_tenants, effective_at__date__gte=start, effective_at__date__lt=end
+            tenant_id__in=default_tenants,
+            effective_at__gte=utc_day_start(start), effective_at__lt=utc_day_start(end)
         ).values_list("customer_id", flat=True).distinct())
     for customer in Customer.objects.filter(id__in=ids):
         try:

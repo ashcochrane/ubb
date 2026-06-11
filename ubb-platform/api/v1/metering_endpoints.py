@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Query
 
 from core.auth import ApiKeyAuth, ProductAccess
+from core.time_windows import utc_day_start, utc_next_day_start
 from django.utils import timezone
 
 from api.v1.schemas import (
@@ -232,9 +233,10 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     qs = UsageEvent.objects.filter(tenant=tenant)
 
     if start_date:
-        qs = qs.filter(effective_at__date__gte=start_date)
+        qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
-        qs = qs.filter(effective_at__date__lte=end_date)
+        # Inclusive date end == strict bound at the NEXT UTC midnight.
+        qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
 

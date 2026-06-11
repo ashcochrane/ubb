@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import stripe_call
 from core.exceptions import StripeFatalError
+from core.time_windows import utc_day_start
 
 logger = logging.getLogger("ubb.billing")
 
@@ -26,7 +27,8 @@ class PostpaidUsageService:
                 return 0, []
             qs = UsageEvent.objects.filter(
                 tenant=tenant, customer_id__in=list(seats.keys()),
-                effective_at__date__gte=period_start, effective_at__date__lt=period_end)
+                effective_at__gte=utc_day_start(period_start),
+                effective_at__lt=utc_day_start(period_end))
             agg = defaultdict(int)
             for cid, billed in qs.values_list("customer_id", "billed_cost_micros"):
                 agg[seats.get(cid, "(seat)")] += billed or 0
@@ -46,7 +48,8 @@ class PostpaidUsageService:
         from apps.metering.usage.models import UsageEvent
         qs = UsageEvent.objects.filter(
             tenant=tenant, customer=customer,
-            effective_at__date__gte=period_start, effective_at__date__lt=period_end)
+            effective_at__gte=utc_day_start(period_start),
+            effective_at__lt=utc_day_start(period_end))
         agg = defaultdict(int)
         if group_by.startswith("tag:"):
             tag_key = group_by[4:]

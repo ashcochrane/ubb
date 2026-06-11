@@ -18,6 +18,8 @@ from typing import TypedDict
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate
 
+from core.time_windows import utc_day_start, utc_next_day_start
+
 
 class PeriodTotals(TypedDict):
     total_cost_micros: int
@@ -38,8 +40,8 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date) -> P
 
     totals = UsageEvent.objects.filter(
         tenant_id=tenant_id,
-        effective_at__date__gte=period_start,
-        effective_at__date__lt=period_end,
+        effective_at__gte=utc_day_start(period_start),
+        effective_at__lt=utc_day_start(period_end),
     ).aggregate(
         total_cost=Sum("billed_cost_micros"),
         event_count=Count("id"),
@@ -86,9 +88,10 @@ def get_revenue_analytics(
     qs = UsageEvent.objects.filter(tenant_id=tenant_id)
 
     if start_date:
-        qs = qs.filter(effective_at__date__gte=start_date)
+        qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
-        qs = qs.filter(effective_at__date__lte=end_date)
+        # Inclusive date end == strict bound at the NEXT UTC midnight.
+        qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
     totals = qs.aggregate(
         total_provider_cost_micros=Sum("provider_cost_micros"),
@@ -150,7 +153,8 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
     from apps.metering.usage.models import UsageEvent
     agg = UsageEvent.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
-        effective_at__date__gte=start_date, effective_at__date__lt=end_date,
+        effective_at__gte=utc_day_start(start_date),
+        effective_at__lt=utc_day_start(end_date),
     ).aggregate(
         provider=Sum("provider_cost_micros"), billed=Sum("billed_cost_micros"),
         count=Count("id"),
@@ -177,9 +181,9 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
     if start_date:
-        qs = qs.filter(effective_at__date__gte=start_date)
+        qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
-        qs = qs.filter(effective_at__date__lt=end_date)
+        qs = qs.filter(effective_at__lt=utc_day_start(end_date))
 
     valid_group_by = ("provider", "event_type", "product_id", "service_id", "agent_id")
     cols = ["bucket"]
@@ -210,7 +214,8 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
     from apps.metering.usage.models import UsageEvent
     rows = (UsageEvent.objects.filter(
         tenant_id=tenant_id,
-        effective_at__date__gte=start_date, effective_at__date__lt=end_date,
+        effective_at__gte=utc_day_start(start_date),
+        effective_at__lt=utc_day_start(end_date),
     ).values("customer_id").annotate(
         provider_cost_micros=Sum("provider_cost_micros"),
         billed_cost_micros=Sum("billed_cost_micros"),
@@ -229,9 +234,9 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     from apps.metering.usage.models import UsageEvent
     qs = UsageEvent.objects.filter(tenant_id=tenant_id)
     if start_date:
-        qs = qs.filter(effective_at__date__gte=start_date)
+        qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
-        qs = qs.filter(effective_at__date__lt=end_date)
+        qs = qs.filter(effective_at__lt=utc_day_start(end_date))
 
     def _row(dim, provider, billed, count):
         return {"dimension": dim, "provider_cost_micros": provider or 0,
