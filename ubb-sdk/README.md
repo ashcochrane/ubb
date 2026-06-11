@@ -62,6 +62,9 @@ print(res.uncosted_metrics)       # list of metric names with no matching cost c
 > metrics had **no matching cost rate-card and priced to $0** — your COGS is understated for them.
 > Either add a cost card for the metric, or enable `require_cost_card_coverage` on the tenant to
 > **hard-reject (422)** instead of silently pricing $0.
+> In strict mode, events with `units > 0` but **no `usage_metrics`** are also rejected (no metric
+> name means no rate card can be matched); pass `provider_cost_micros` directly if the cost is
+> known, or set `units=0` for zero-cost marker events.
 
 `res.uncosted_metrics` is your signal that a metric was recorded but has no cost card — add a
 card for any metric you want tracked.

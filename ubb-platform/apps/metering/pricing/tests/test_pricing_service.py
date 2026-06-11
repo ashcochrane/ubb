@@ -108,3 +108,77 @@ class TestPricing:
             caller_provider_cost=500, caller_billed=None,
         )
         assert prov == 500 and p["cost_source"] == "caller"
+
+    # ---- F2.4: units-only strict coverage gate ----
+
+    def test_units_no_metrics_strict_raises(self):
+        # Strict ON + units > 0 + no usage_metrics → PricingError.
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c5")
+        with pytest.raises(PricingError, match="strict cost coverage"):
+            PricingService.price(
+                tenant=t, customer=c, event_type="e", provider="o",
+                usage_metrics=None, tags=None, currency="usd",
+                caller_provider_cost=None, caller_billed=None, units=5)
+
+    def test_units_no_metrics_strict_off_returns_zero(self):
+        # Strict OFF + units > 0 + no usage_metrics → accepted, cost = 0.
+        t = self._t()  # require_cost_card_coverage defaults False
+        c = Customer.objects.create(tenant=t, external_id="c6")
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics=None, tags=None, currency="usd",
+            caller_provider_cost=None, caller_billed=None, units=5)
+        assert prov == 0
+
+    def test_units_with_caller_cost_strict_accepted(self):
+        # Strict ON + units > 0 + no usage_metrics BUT caller supplies provider_cost_micros
+        # → cost is known; must be accepted.
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c7")
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics=None, tags=None, currency="usd",
+            caller_provider_cost=123, caller_billed=None, units=5)
+        assert prov == 123 and p["cost_source"] == "caller"
+
+    def test_zero_units_no_metrics_strict_accepted(self):
+        # Strict ON + units = 0 + no usage_metrics → marker event, must be accepted.
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c8")
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics=None, tags=None, currency="usd",
+            caller_provider_cost=None, caller_billed=None, units=0)
+        assert prov == 0
+
+    def test_none_units_no_metrics_strict_accepted(self):
+        # Strict ON + units = None + no usage_metrics → marker event, must be accepted.
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c9")
+        prov, billed, p = PricingService.price(
+            tenant=t, customer=c, event_type="e", provider="o",
+            usage_metrics=None, tags=None, currency="usd",
+            caller_provider_cost=None, caller_billed=None, units=None)
+        assert prov == 0
+
+    def test_strict_uncovered_metric_still_raises_via_existing_gate(self):
+        # Regression: strict + usage_metrics with an uncovered metric → 422 via the
+        # existing uncosted gate (unchanged behavior — the new gate must not interfere).
+        t = self._t()
+        t.require_cost_card_coverage = True
+        t.save(update_fields=["require_cost_card_coverage"])
+        c = Customer.objects.create(tenant=t, external_id="c10")
+        with pytest.raises(PricingError):
+            PricingService.price(
+                tenant=t, customer=c, event_type="e", provider="o",
+                usage_metrics={"unmatched": 5}, tags=None, currency="usd",
+                caller_provider_cost=None, caller_billed=None, units=5)

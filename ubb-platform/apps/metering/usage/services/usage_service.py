@@ -66,7 +66,8 @@ class UsageService:
         provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
             tenant=tenant, customer=customer, event_type=event_type or "", provider=provider or "",
             usage_metrics=usage_metrics, tags=tags, currency=currency,
-            caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros)
+            caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros,
+            units=units)
         _tags = tags or {}
         service_id = _tags.get("service", "")
         agent_id = _tags.get("agent", "")

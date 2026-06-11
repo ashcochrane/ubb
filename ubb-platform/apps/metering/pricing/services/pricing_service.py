@@ -36,7 +36,7 @@ class PricingService:
 
     @staticmethod
     def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
-              caller_provider_cost, caller_billed, as_of=None):
+              caller_provider_cost, caller_billed, units=None, as_of=None):
         as_of = as_of or timezone.now()
         usage_metrics = usage_metrics or {}
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
@@ -59,15 +59,22 @@ class PricingService:
         else:
             provider_cost = 0
             uncosted = []
-            for metric, units in usage_metrics.items():
+            # Strict mode: units > 0 with no usage_metrics means cost is unknowable —
+            # no metric name to resolve a rate card against.  Caller-supplied
+            # provider_cost_micros is still accepted (cost is explicitly known).
+            if (units or 0) > 0 and not usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
+                raise PricingError(
+                    "strict cost coverage: units > 0 with no usage_metrics — no cost rate "
+                    "card can match; pass usage_metrics or provider_cost_micros")
+            for metric, units_val in usage_metrics.items():
                 card = PricingService._resolve_card(tenant, customer, "cost", provider,
                                                     event_type, metric, tags, currency, as_of)
                 if card is None:
                     uncosted.append(metric)
                     continue
-                amt = card.compute(units)
+                amt = card.compute(units_val)
                 provider_cost += amt
-                prov["metrics"].append({"metric": metric, "units": units, "card_type": "cost",
+                prov["metrics"].append({"metric": metric, "units": units_val, "card_type": "cost",
                     "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
             prov["cost_source"] = "rate_card"
             if uncosted:
