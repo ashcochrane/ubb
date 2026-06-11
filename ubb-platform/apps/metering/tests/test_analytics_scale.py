@@ -389,3 +389,258 @@ class TagsGinPlannerProofTest(TestCase):
         plan = self._explain(qs)
         self.assertIn(self.GIN_INDEX, plan,
                       f"GIN index not used for containment (@>).  Plan:\n{plan}")
+
+
+# ---------------------------------------------------------------------------
+# F2.3 — SQL pushdown for tag/dimension aggregation
+# ---------------------------------------------------------------------------
+
+class TagGroupByPushdownTest(TestCase):
+    """Output-contract freeze, query-count pins, GROUP-BY-trap regression, and
+    BEFORE/AFTER equivalence for the two tag-aggregation rewrites.
+
+    Dataset (tag key = "env"):
+      A  env=prod,     billed=3_000_000  provider=1_000_000  effective_at=T1
+      B  env=prod,     billed=2_000_000  provider=500_000    effective_at=T2  <- GROUP-BY trap
+      C  env=staging,  billed=4_000_000  provider=2_000_000
+      D  env=""        billed=1_000_000  provider=400_000    <- empty-string tag value
+
+    All four rows have tags__has_key("env") so all appear in the output.
+
+    Expected get_dimensional_margin (sorted -margin_micros):
+      prod    prov=1_500_000 billed=5_000_000 margin=3_500_000 count=2
+      staging prov=2_000_000 billed=4_000_000 margin=2_000_000 count=1
+      ""      prov=400_000   billed=1_000_000 margin=600_000   count=1
+
+    Expected by_tag (sorted -total_cost_micros):
+      prod    total=5_000_000 prov=1_500_000 count=2
+      staging total=4_000_000 prov=2_000_000 count=1
+      ""      total=1_000_000 prov=400_000   count=1
+    """
+
+    TAG_KEY = "env"
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="F23 Tag Pushdown", products=["metering"])
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c_f23")
+        _, self.raw_key = TenantApiKey.create_key(self.tenant, label="f23")
+
+        def _create(n, tags, billed, provider, ts):
+            ev = UsageEvent.objects.create(
+                tenant=self.tenant, customer=self.customer,
+                request_id=f"req_f23_{n}", idempotency_key=f"idem_f23_{n}",
+                billed_cost_micros=billed, provider_cost_micros=provider,
+                tags=tags)
+            _pin(ev, ts)
+            return ev
+
+        _create("A", {"env": "prod"},    3_000_000, 1_000_000, _utc(2026, 6, 1))
+        _create("B", {"env": "prod"},    2_000_000,   500_000, _utc(2026, 6, 2))  # different ts
+        _create("C", {"env": "staging"}, 4_000_000, 2_000_000, _utc(2026, 6, 1))
+        _create("D", {"env": ""},        1_000_000,   400_000, _utc(2026, 6, 1))
+
+    # ------------------------------------------------------------------
+    # Reference implementations (the OLD Python-loop logic) used in
+    # BEFORE/AFTER equivalence assertions.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _old_get_dimensional_margin_tag(tenant_id, tag_key):
+        """Inline replica of the pre-rewrite tag_key branch."""
+        from collections import defaultdict
+        from apps.metering.usage.models import UsageEvent as UE
+
+        def _row(dim, provider, billed, count):
+            return {"dimension": dim, "provider_cost_micros": provider or 0,
+                    "billed_cost_micros": billed or 0,
+                    "margin_micros": (billed or 0) - (provider or 0),
+                    "event_count": count}
+
+        agg = defaultdict(lambda: {"p": 0, "b": 0, "n": 0})
+        for tags, p, b in UE.objects.filter(
+                tenant_id=tenant_id, tags__has_key=tag_key
+        ).values_list("tags", "provider_cost_micros", "billed_cost_micros"):
+            k = (tags or {}).get(tag_key)
+            agg[k]["p"] += p or 0
+            agg[k]["b"] += b or 0
+            agg[k]["n"] += 1
+        rows = [_row(k, v["p"], v["b"], v["n"]) for k, v in agg.items()]
+        return sorted(rows, key=lambda r: -r["margin_micros"])
+
+    @staticmethod
+    def _old_by_tag(tenant_id, tag_key):
+        """Inline replica of the pre-rewrite by_tag block."""
+        from collections import defaultdict
+        from apps.metering.usage.models import UsageEvent as UE
+
+        agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
+                                   "total_provider_cost_micros": 0})
+        for tags, billed, provider in UE.objects.filter(
+                tenant_id=tenant_id, tags__has_key=tag_key
+        ).values_list("tags", "billed_cost_micros", "provider_cost_micros"):
+            val = (tags or {}).get(tag_key)
+            agg[val]["event_count"] += 1
+            agg[val]["total_cost_micros"] += billed or 0
+            agg[val]["total_provider_cost_micros"] += provider or 0
+        return [
+            {"tag_value": k, "event_count": v["event_count"],
+             "total_cost_micros": v["total_cost_micros"],
+             "total_provider_cost_micros": v["total_provider_cost_micros"]}
+            for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
+        ]
+
+    # ------------------------------------------------------------------
+    # Output-contract freeze for get_dimensional_margin
+    # ------------------------------------------------------------------
+
+    def test_dimensional_margin_output_contract(self):
+        """Hardcoded expected output — pins the new implementation's contract."""
+        rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
+        self.assertEqual(len(rows), 3)
+        # sort: -margin_micros => prod 3_500_000, staging 2_000_000, "" 600_000
+        self.assertEqual(rows[0]["dimension"], "prod")
+        self.assertEqual(rows[0]["provider_cost_micros"], 1_500_000)
+        self.assertEqual(rows[0]["billed_cost_micros"], 5_000_000)
+        self.assertEqual(rows[0]["margin_micros"], 3_500_000)
+        self.assertEqual(rows[0]["event_count"], 2)
+
+        self.assertEqual(rows[1]["dimension"], "staging")
+        self.assertEqual(rows[1]["provider_cost_micros"], 2_000_000)
+        self.assertEqual(rows[1]["billed_cost_micros"], 4_000_000)
+        self.assertEqual(rows[1]["margin_micros"], 2_000_000)
+        self.assertEqual(rows[1]["event_count"], 1)
+
+        self.assertEqual(rows[2]["dimension"], "")
+        self.assertEqual(rows[2]["provider_cost_micros"], 400_000)
+        self.assertEqual(rows[2]["billed_cost_micros"], 1_000_000)
+        self.assertEqual(rows[2]["margin_micros"], 600_000)
+        self.assertEqual(rows[2]["event_count"], 1)
+
+    # ------------------------------------------------------------------
+    # Output-contract freeze for by_tag endpoint
+    # ------------------------------------------------------------------
+
+    def test_by_tag_output_contract(self):
+        """Hardcoded expected output for the by_tag block via HTTP endpoint."""
+        resp = Client().get(
+            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(resp.status_code, 200)
+        by_tag = resp.json()["by_tag"]
+        self.assertEqual(len(by_tag), 3)
+        # sort: -total_cost_micros => prod 5_000_000, staging 4_000_000, "" 1_000_000
+        self.assertEqual(by_tag[0]["tag_value"], "prod")
+        self.assertEqual(by_tag[0]["total_cost_micros"], 5_000_000)
+        self.assertEqual(by_tag[0]["total_provider_cost_micros"], 1_500_000)
+        self.assertEqual(by_tag[0]["event_count"], 2)
+
+        self.assertEqual(by_tag[1]["tag_value"], "staging")
+        self.assertEqual(by_tag[1]["total_cost_micros"], 4_000_000)
+        self.assertEqual(by_tag[1]["total_provider_cost_micros"], 2_000_000)
+        self.assertEqual(by_tag[1]["event_count"], 1)
+
+        self.assertEqual(by_tag[2]["tag_value"], "")
+        self.assertEqual(by_tag[2]["total_cost_micros"], 1_000_000)
+        self.assertEqual(by_tag[2]["total_provider_cost_micros"], 400_000)
+        self.assertEqual(by_tag[2]["event_count"], 1)
+
+    # ------------------------------------------------------------------
+    # GROUP-BY trap regression: rows with same tag value but different
+    # effective_at must collapse into a single output row.
+    # ------------------------------------------------------------------
+
+    def test_dimensional_margin_collapses_same_tag_different_timestamps(self):
+        """Rows A and B both have env=prod but different effective_at.
+        Without .order_by(), Meta.ordering adds effective_at to GROUP BY,
+        shattering them into two rows.  Assert exactly one row for prod."""
+        rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
+        prod_rows = [r for r in rows if r["dimension"] == "prod"]
+        self.assertEqual(len(prod_rows), 1,
+                         "GROUP-BY trap: prod split into multiple rows (missing .order_by())")
+        self.assertEqual(prod_rows[0]["event_count"], 2)
+
+    def test_by_tag_collapses_same_tag_different_timestamps(self):
+        """Same GROUP-BY trap check for the endpoint by_tag block."""
+        resp = Client().get(
+            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        by_tag = resp.json()["by_tag"]
+        prod_rows = [r for r in by_tag if r["tag_value"] == "prod"]
+        self.assertEqual(len(prod_rows), 1,
+                         "GROUP-BY trap: prod split into multiple rows (missing .order_by())")
+        self.assertEqual(prod_rows[0]["event_count"], 2)
+
+    # ------------------------------------------------------------------
+    # Query-count pins
+    # ------------------------------------------------------------------
+
+    def test_dimensional_margin_is_exactly_one_query(self):
+        """get_dimensional_margin(tag_key=...) must issue exactly 1 SQL query."""
+        with CaptureQueriesContext(connection) as ctx:
+            queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
+        self.assertEqual(len(ctx.captured_queries), 1,
+                         f"Expected 1 query, got {len(ctx.captured_queries)}: "
+                         f"{[q['sql'] for q in ctx.captured_queries]}")
+
+    def test_by_tag_endpoint_query_count_does_not_grow_with_rows(self):
+        """Endpoint query count must be the same for 50 rows as for 500 rows.
+
+        Seeds an isolated tenant with 50 and 500 rows (different effective_at
+        to exercise the GROUP-BY fix) and asserts the query count is identical.
+        A Python-loop implementation would issue 1 query for 50 rows and still
+        just 1 query for 500 rows (loop is Python, not SQL), BUT the important
+        property here is that the SQL-pushdown implementation doesn't accidentally
+        regress to N queries.  We also verify the counts are reasonable (<10).
+        """
+        def _count_queries_for_n_rows(n):
+            t = Tenant.objects.create(
+                name=f"F23 Scale {n}", products=["metering"])
+            c = Customer.objects.create(tenant=t, external_id=f"c_f23_scale_{n}")
+            _, key = TenantApiKey.create_key(t, label="f23s")
+            evs = []
+            for i in range(n):
+                evs.append(UsageEvent(
+                    tenant=t, customer=c,
+                    request_id=f"req_f23s_{n}_{i}",
+                    idempotency_key=f"idem_f23s_{n}_{i}",
+                    billed_cost_micros=1_000,
+                    provider_cost_micros=500,
+                    tags={"env": "prod" if i % 2 == 0 else "staging"},
+                ))
+            UsageEvent.objects.bulk_create(evs, batch_size=200)
+            client = Client()
+            with CaptureQueriesContext(connection) as ctx:
+                resp = client.get(
+                    f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
+                    HTTP_AUTHORIZATION=f"Bearer {key}")
+            self.assertEqual(resp.status_code, 200)
+            return len(ctx.captured_queries)
+
+        q50 = _count_queries_for_n_rows(50)
+        q500 = _count_queries_for_n_rows(500)
+        self.assertEqual(q50, q500,
+                         f"Query count changed with row count: {q50} vs {q500}")
+        self.assertLess(q50, 10,
+                        f"Unexpectedly many queries ({q50}) for tag analytics endpoint")
+
+    # ------------------------------------------------------------------
+    # BEFORE/AFTER equivalence — new SQL output == old Python-loop output
+    # ------------------------------------------------------------------
+
+    def test_dimensional_margin_equivalence_with_old_loop(self):
+        """New SQL implementation must return the same result as the old loop."""
+        new_result = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
+        old_result = self._old_get_dimensional_margin_tag(self.tenant.id, self.TAG_KEY)
+        self.assertEqual(new_result, old_result,
+                         "SQL pushdown result differs from old Python-loop reference")
+
+    def test_by_tag_equivalence_with_old_loop(self):
+        """New SQL implementation must match old Python-loop for by_tag."""
+        resp = Client().get(
+            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        new_by_tag = resp.json()["by_tag"]
+        old_by_tag = self._old_by_tag(self.tenant.id, self.TAG_KEY)
+        # Normalise: old loop returns Python dicts; new returns dicts from JSON.
+        self.assertEqual(new_by_tag, old_by_tag,
+                         "SQL pushdown by_tag result differs from old Python-loop reference")

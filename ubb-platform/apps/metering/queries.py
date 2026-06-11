@@ -16,6 +16,7 @@ from datetime import date
 from typing import TypedDict
 
 from django.db.models import Sum, Count
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate
 
 from core.time_windows import utc_day_start, utc_next_day_start
@@ -244,15 +245,18 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
                 "margin_micros": (billed or 0) - (provider or 0), "event_count": count}
 
     if tag_key:
-        from collections import defaultdict
-        agg = defaultdict(lambda: {"p": 0, "b": 0, "n": 0})
-        for tags, p, b in qs.filter(tags__has_key=tag_key).values_list(
-                "tags", "provider_cost_micros", "billed_cost_micros"):
-            k = (tags or {}).get(tag_key)
-            agg[k]["p"] += p or 0
-            agg[k]["b"] += b or 0
-            agg[k]["n"] += 1
-        rows = [_row(k, v["p"], v["b"], v["n"]) for k, v in agg.items()]
+        grouped = (
+            qs.filter(tags__has_key=tag_key)
+            .annotate(dimension=KeyTextTransform(tag_key, "tags"))
+            .values("dimension")
+            .annotate(
+                prov_sum=Sum("provider_cost_micros"),
+                billed_sum=Sum("billed_cost_micros"),
+                cnt=Count("id"),
+            )
+            .order_by()
+        )
+        rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
     if group_by not in ("provider", "event_type", "product_id"):
