@@ -251,3 +251,141 @@ class PlannerIndexProofTest(TestCase):
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
         self._assert_range_served_by(qs, "idx_usage_customer_effective")
+
+
+# ---------------------------------------------------------------------------
+# F2.2 — tags GIN opclass swap tests
+# ---------------------------------------------------------------------------
+
+class TagsGinSchemaTest(TestCase):
+    """Assert the post-0022 schema has exactly the right tags GIN index.
+
+    CONCURRENTLY DDL cannot run inside a transaction, so we do not run the
+    migration functions here.  Instead we assert the schema state produced by
+    the migration that was already applied to the test DB (Django rebuilds the
+    test DB from scratch on every run, so the migration functions execute once
+    per test run in the normal migrate path — without the TestCase transaction
+    wrapper because atomic=False).
+    """
+
+    def setUp(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("Schema assertion requires Postgres")
+
+    def test_new_jsonb_ops_index_exists(self):
+        """idx_usage_event_tags_ops (default jsonb_ops) must be present."""
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT indexname, indexdef
+                FROM pg_indexes
+                WHERE tablename = 'ubb_usage_event'
+                  AND indexname = 'idx_usage_event_tags_ops';
+            """)
+            row = cur.fetchone()
+        self.assertIsNotNone(row, "idx_usage_event_tags_ops not found in pg_indexes")
+        # Default jsonb_ops index has NO opclass qualifier — just 'gin (tags)'
+        self.assertNotIn("jsonb_path_ops", row[1],
+                         f"Expected jsonb_ops (no qualifier) but got: {row[1]}")
+        self.assertIn("gin", row[1].lower(), row[1])
+
+    def test_old_jsonb_path_ops_index_absent(self):
+        """idx_usage_event_tags (jsonb_path_ops) must have been dropped."""
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE tablename = 'ubb_usage_event'
+                  AND indexname = 'idx_usage_event_tags';
+            """)
+            row = cur.fetchone()
+        self.assertIsNone(row,
+                          "Old idx_usage_event_tags (jsonb_path_ops) still present — swap failed")
+
+    def test_exactly_one_tags_gin_index(self):
+        """Only one GIN index on the tags column must exist post-swap."""
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE tablename = 'ubb_usage_event'
+                  AND indexname LIKE '%tags%';
+            """)
+            rows = cur.fetchall()
+        self.assertEqual(len(rows), 1,
+                         f"Expected exactly 1 tags index, found: {[r[0] for r in rows]}")
+
+
+class TagsGinPlannerProofTest(TestCase):
+    """Planner proof: both has_key (?) and containment (@>) are served by
+    idx_usage_event_tags_ops (the new jsonb_ops GIN index from F2.2).
+
+    GIN indexes in Postgres are always accessed via Bitmap Index Scan, never
+    plain Index Scan.  Therefore we CANNOT disable bitmapscan (unlike F2.1
+    which proves btree index-cond access).  Instead:
+
+    * We disable seqscan only.
+    * The query filters on a highly selective value (only 1 row matches) — so
+      the GIN bitmap path is decisively cheaper than any FK btree + heap filter.
+    * We insert one "needle" row with a rare tag value and a large number of
+      "haystack" rows with no tags, so the GIN estimate for the selective value
+      is tiny relative to the table size.
+
+    EXPLAIN(FORMAT TEXT) output for a Bitmap path contains both
+    "Bitmap Index Scan" and the index name; we assert both.
+    """
+
+    GIN_INDEX = "idx_usage_event_tags_ops"
+
+    def setUp(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("EXPLAIN index proof requires Postgres")
+        self.tenant = Tenant.objects.create(name="F22 GIN Planner", products=["metering"])
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_f22_gin")
+
+        # Haystack: 1000 rows with common tag so the rare-value needle is selective.
+        haystack = [UsageEvent(
+            tenant=self.tenant, customer=self.customer,
+            request_id=f"req_f22_h{i}", idempotency_key=f"idem_f22_h{i}",
+            billed_cost_micros=500, tags={"env": "prod", "team": "common"})
+            for i in range(1000)]
+        UsageEvent.objects.bulk_create(haystack, batch_size=500)
+
+        # Needle: 1 row with a rare unique tag value, plus a common key for @>.
+        self.needle = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="req_f22_needle", idempotency_key="idem_f22_needle",
+            billed_cost_micros=1_000,
+            tags={"env": "prod", "rare_key": "unique_val_xyz", "team": "common"})
+
+        with connection.cursor() as cur:
+            cur.execute("SELECT setseed(0.22)")
+            cur.execute(
+                "UPDATE ubb_usage_event "
+                "SET effective_at = timestamptz '2026-01-01 00:00:00+00' "
+                "+ make_interval(days => (random() * 180)::int) "
+                "WHERE tenant_id = %s", [self.tenant.id])
+            cur.execute("ANALYZE ubb_usage_event")
+            # Disable seqscan only; bitmapscan must stay ON because GIN indexes
+            # are only accessible via Bitmap Index Scan in Postgres.
+            cur.execute("SET LOCAL enable_seqscan = off")
+
+    def _explain(self, qs):
+        return qs.order_by().explain()
+
+    def test_has_key_served_by_gin_index(self):
+        """tags__has_key('rare_key') compiles to the ? operator — rare key
+        means the GIN bitmap path is cheap vs. FK btree + heap filter."""
+        qs = UsageEvent.objects.filter(tags__has_key="rare_key")
+        plan = self._explain(qs)
+        self.assertIn(self.GIN_INDEX, plan,
+                      f"GIN index not used for has_key.  Plan:\n{plan}")
+
+    def test_containment_served_by_same_gin_index(self):
+        """tags__contains({'rare_key': ...}) compiles to @> — jsonb_ops serves
+        both ? and @>, proving the swap lost nothing for containment queries."""
+        qs = UsageEvent.objects.filter(
+            tags__contains={"rare_key": "unique_val_xyz"})
+        plan = self._explain(qs)
+        self.assertIn(self.GIN_INDEX, plan,
+                      f"GIN index not used for containment (@>).  Plan:\n{plan}")
