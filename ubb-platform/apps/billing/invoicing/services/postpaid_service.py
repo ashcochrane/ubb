@@ -67,7 +67,12 @@ class PostpaidUsageService:
         Must be called inside transaction.atomic() so the alert event commits
         with the flip (outbox contract). Guarded on from_statuses so a lost
         race writes neither the flip nor a duplicate alert. Returns True if
-        this caller won the flip."""
+        this caller won the flip.
+
+        F1.1: a terminal row keeps its pinned carry_in_micros PARKED — never
+        auto-returned to the residual ledger, because the cent it funded may
+        already sit on a finalized Stripe invoice. An operator repush resumes
+        the row WITH its pin."""
         from apps.billing.invoicing.models import CustomerUsageInvoice
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import UsageInvoicePushFailedPermanent
@@ -98,7 +103,8 @@ class PostpaidUsageService:
 
     @staticmethod
     def push_customer_period(tenant, customer, period_start, period_end):
-        from apps.billing.invoicing.models import CustomerUsageInvoice, UsageInvoiceLineItem
+        from apps.billing.invoicing.models import (
+            CustomerUsageInvoice, PostpaidResidualLedger, UsageInvoiceLineItem)
 
         # I5: the row, the unique (customer, period_start) constraint and the
         # stripe_customer_id check ALL key on the billing owner (pooled seat ->
@@ -157,21 +163,32 @@ class PostpaidUsageService:
                 rec.status, rec.skip_reason = "skipped", "not_charge_ready"
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
+            # F1.1 carry reservation: take-and-zero the owner's residual ledger
+            # and PIN the value on the row, exactly once per row. Sits AFTER
+            # every skip check so a row that never pushes can never strand the
+            # carry (zero usage + nonzero ledger stays banked for a future
+            # month — sub-cent residue alone never mints an invoice). A retry
+            # after a Phase-2 failure reuses the pin: never a second
+            # reservation. Lock order: rec (claimed above) -> ledger,
+            # everywhere this pair is touched.
+            if rec.carry_in_micros is None:
+                ledger, _ = PostpaidResidualLedger.objects.select_for_update().get_or_create(
+                    customer=customer, defaults={"tenant": tenant})
+                rec.carry_in_micros = ledger.balance_micros
+                ledger.balance_micros = 0
+                ledger.save(update_fields=["balance_micros", "updated_at"])
             rec.status = "pushing"
             rec.push_attempts += 1
             rec.first_attempted_at = rec.first_attempted_at or timezone.now()
             rec.save(update_fields=["total_billed_micros", "line_snapshot", "status",
-                                    "push_attempts", "first_attempted_at", "updated_at"])
+                                    "carry_in_micros", "push_attempts",
+                                    "first_attempted_at", "updated_at"])
 
         # Phase 2 — Stripe (no DB transaction held)
-        # Carry the prior period's sub-cent residual forward into this push.
-        # NOTE: unlike the lines (frozen above), this carry-in read is still
-        # attempt-time — a prior period pushed between two attempts could shift
-        # it. Pinned by the F1.1 residual ledger (next task).
-        prior = (CustomerUsageInvoice.objects.filter(
-            tenant=tenant, customer=customer, status="pushed",
-            period_start__lt=period_start).order_by("-period_start").first())
-        carry_in = prior.residual_micros if prior else 0
+        # The carry-in was reserved from the residual ledger at claim time and
+        # pinned on the row, so every attempt replays the same value (non-NULL
+        # by construction once status reached pushing; `or 0` is defensive).
+        carry_in = rec.carry_in_micros or 0
         try:
             standalone_id, items, residual_out = PostpaidUsageService._push_to_stripe(
                 tenant, customer, rec, lines, period_start, carry_in=carry_in)
@@ -214,6 +231,15 @@ class PostpaidUsageService:
             rec.last_attempt_error = ""
             rec.save(update_fields=["status", "stripe_invoice_id", "residual_micros",
                                     "pushed_at", "last_attempt_error", "updated_at"])
+            # F1.1 deposit: bank this push's residual for whichever period
+            # reserves next (rec lock held above -> ledger lock: the same
+            # rec-then-ledger order as the Phase-1 reservation). The
+            # status != "pushing" guard means a stale-reclaimed loser can
+            # never reach here to double-deposit. The ledger exists by
+            # construction: the Phase-1 reservation get_or_create'd it.
+            ledger = PostpaidResidualLedger.objects.select_for_update().get(customer=customer)
+            ledger.balance_micros += residual_out
+            ledger.save(update_fields=["balance_micros", "updated_at"])
             if residual_out or carry_in:
                 logger.info("postpaid.residual_carried", extra={"data": {
                     "customer_id": str(customer.id), "period_start": period_start.isoformat(),

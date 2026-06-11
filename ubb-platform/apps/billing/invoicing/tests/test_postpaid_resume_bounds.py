@@ -575,6 +575,27 @@ class TestRepushCommand:
         rec.refresh_from_db()
         assert rec.status == "pushed" and rec.stripe_invoice_id == "in_new"
 
+    def test_repush_preserves_pinned_carry_in_every_mode(self):
+        """F1.1: carry_in_micros is untouched by BOTH repush modes — a resumed
+        push replays the pinned reservation; a --rebill-void re-bills the same
+        carry (the voided invoice never collected it). It must never be
+        auto-returned to the residual ledger."""
+        from apps.billing.invoicing.models import PostpaidResidualLedger
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="failed_permanent", stripe_invoice_id="in_1",
+                   push_phase="invoice_created", carry_in_micros=4_567)
+        call_command("repush_usage_invoice", str(rec.id))
+        rec.refresh_from_db()
+        assert rec.status == "pending" and rec.carry_in_micros == 4_567
+        CustomerUsageInvoice.objects.filter(id=rec.id).update(status="failed_permanent")
+        call_command("repush_usage_invoice", str(rec.id), "--rebill-void")
+        rec.refresh_from_db()
+        assert rec.status == "pending" and rec.carry_in_micros == 4_567
+        assert rec.stripe_invoice_id == "" and rec.line_snapshot == []
+        # Neither mode deposited the parked pin back into the ledger.
+        assert not PostpaidResidualLedger.objects.filter(customer=c).exists()
+
     def test_forced_re_record_replaces_line_items_never_duplicates(self):
         """Important-2 belt-and-braces: Phase 3 deletes the recorded line items
         inside the atomic re-record so a repush of a row that already recorded

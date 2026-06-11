@@ -79,6 +79,10 @@ class CustomerUsageInvoice(BaseModel):
     # retries even if the tenant flips usage_line_item_group_by mid-retry.
     line_snapshot = models.JSONField(default=list, blank=True)
     residual_micros = models.BigIntegerField(default=0)
+    # F1.1: the carry-in reserved (take-and-zero) from the owner's residual
+    # ledger at first claim and PINNED on the row for its lifetime — retries
+    # replay the pin, never a second reservation. NULL = not yet reserved.
+    carry_in_micros = models.BigIntegerField(null=True, blank=True, default=None)
     pushed_at = models.DateTimeField(null=True, blank=True)
     payment_status = models.CharField(max_length=20, null=True, blank=True)  # open|paid|void|uncollectible (NULL = not yet collectible)
     paid_at = models.DateTimeField(null=True, blank=True)
@@ -103,6 +107,29 @@ class UsageInvoiceLineItem(BaseModel):
 
     class Meta:
         db_table = "ubb_usage_invoice_line_item"
+
+
+class PostpaidResidualLedger(BaseModel):
+    """F1.1: per-billing-owner accumulator for sub-cent usage residue.
+
+    Replaces the order-sensitive 'latest prior pushed row' chain read, which
+    double-counted on out-of-order retries and on concurrent adjacent-period
+    pushes. Semantics: Phase 1 of a push RESERVES (take-and-zero, pinned on
+    CustomerUsageInvoice.carry_in_micros) under select_for_update; Phase 3
+    DEPOSITS the push's residual_micros back. Commutative, so push order and
+    concurrency cannot double-count or strand a residual. Lock order is always
+    usage-invoice row first, then ledger."""
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="residual_ledgers")
+    customer = models.OneToOneField(
+        "customers.Customer", on_delete=models.CASCADE, related_name="residual_ledger")
+    balance_micros = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "ubb_postpaid_residual_ledger"
+
+    def __str__(self):
+        return f"ResidualLedger({self.customer_id}: {self.balance_micros})"
 
 
 class PostpaidUsageConfig(BaseModel):

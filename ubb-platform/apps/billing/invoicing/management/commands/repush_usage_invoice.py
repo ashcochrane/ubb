@@ -50,6 +50,9 @@ class Command(BaseCommand):
         # have an unfindable (pre-metadata) Stripe invoice — same manual check.
         attempted_without_pointer = rec.push_attempts > 0 and not rec.stripe_invoice_id
 
+        # F1.1: carry_in_micros is deliberately untouched in EVERY mode — a
+        # resumed push reuses the pinned reservation, and a --rebill-void
+        # re-bills the same carry (the voided invoice never collected it).
         rec.push_attempts = 0
         rec.first_attempted_at = None
         rec.last_attempt_error = ""
