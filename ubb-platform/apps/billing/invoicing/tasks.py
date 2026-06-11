@@ -159,7 +159,7 @@ def reconcile_invoice_payment_status():
     paid -> open) is loud-logged, never applied.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.subscriptions.models import SubscriptionInvoice
+    from apps.subscriptions.ports import repair_subscription_invoice
     from apps.platform.tenants.models import Tenant
 
     cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
@@ -183,9 +183,8 @@ def reconcile_invoice_payment_status():
                 if not new_status or not stripe_invoice_id:
                     continue
                 if _invoice_subscription_id(inv):
-                    repaired += _repair_subscription_invoice(
-                        SubscriptionInvoice, tenant, stripe_invoice_id, inv,
-                        new_status, _refresh_urls)
+                    repaired += repair_subscription_invoice(
+                        tenant, stripe_invoice_id, inv, new_status)
                 else:
                     repaired += _repair_usage_invoice(
                         CustomerUsageInvoice, tenant, stripe_invoice_id, inv,
@@ -230,32 +229,7 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     return 1
 
 
-def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
-    """Repair a SubscriptionInvoice status along the Stripe-legal transition
-    table (shared with the webhook fast path). Returns 1 if changed."""
-    existing = model.objects.filter(
-        tenant=tenant, stripe_invoice_id=stripe_invoice_id,
-    ).first()
-    if not existing:
-        return 0
-    with transaction.atomic():
-        row = model.objects.select_for_update().get(id=existing.id)
-        old = row.status
-        if not ar_transition_allowed(old, new_status):
-            if new_status != old:
-                logger.error("ar.reconcile_unexpected_regression", extra={"data": {
-                    "subscription_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
-                    "local_status": old, "stripe_status": new_status}})
-            else:
-                # Equal-status no-op still refreshes the hosted URLs (see
-                # _repair_usage_invoice).
-                refresh_urls(row, inv)
-                row.save()
-            return 0
-        row.status = new_status
-        if new_status == "paid" and not row.paid_at:
-            row.paid_at = timezone.now()
-            row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
-        refresh_urls(row, inv)
-        row.save()
-    return 1
+# Subscription-invoice repair lives in apps.subscriptions.ports
+# (repair_subscription_invoice): the SubscriptionInvoice ORM is subscriptions
+# internals billing must not import. It shares the same ar_transition_allowed
+# table as _repair_usage_invoice above, so the two repair paths cannot diverge.

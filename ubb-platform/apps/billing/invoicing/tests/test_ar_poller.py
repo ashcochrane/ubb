@@ -209,15 +209,12 @@ class RepairTransitionParityTest(TestCase):
         )
 
     def test_subscription_uncollectible_to_paid_repairs(self):
-        from apps.billing.invoicing.tasks import _repair_subscription_invoice
-        from apps.subscriptions.models import SubscriptionInvoice
-        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
+        from apps.subscriptions.ports import repair_subscription_invoice
         t, c = self._tenant_customer()
         si = self._subscription_invoice(t, c, "in_s_unc", "uncollectible")
         inv = _stripe_invoice("in_s_unc", "paid", subscription="sub_in_s_unc")
         inv.amount_paid = 4900
-        repaired = _repair_subscription_invoice(
-            SubscriptionInvoice, t, "in_s_unc", inv, "paid", _refresh_urls)
+        repaired = repair_subscription_invoice(t, "in_s_unc", inv, "paid")
         self.assertEqual(repaired, 1)
         si.refresh_from_db()
         self.assertEqual(si.status, "paid")
@@ -225,17 +222,14 @@ class RepairTransitionParityTest(TestCase):
         self.assertEqual(si.amount_paid_micros, 49_000_000)
 
     def test_subscription_paid_to_open_logs_regression(self):
-        from apps.billing.invoicing.tasks import _repair_subscription_invoice
-        from apps.subscriptions.models import SubscriptionInvoice
-        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
+        from apps.subscriptions.ports import repair_subscription_invoice
         t, c = self._tenant_customer()
         si = self._subscription_invoice(t, c, "in_s_pd", "paid")
         si.paid_at = timezone.now()
         si.save(update_fields=["paid_at"])
         inv = _stripe_invoice("in_s_pd", "open", subscription="sub_in_s_pd")
-        with self.assertLogs("apps.billing.invoicing.tasks", level="ERROR") as logs:
-            repaired = _repair_subscription_invoice(
-                SubscriptionInvoice, t, "in_s_pd", inv, "open", _refresh_urls)
+        with self.assertLogs("apps.subscriptions.ports", level="ERROR") as logs:
+            repaired = repair_subscription_invoice(t, "in_s_pd", inv, "open")
         self.assertEqual(repaired, 0)
         self.assertTrue(any("ar.reconcile_unexpected_regression" in m for m in logs.output))
         si.refresh_from_db()

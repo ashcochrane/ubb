@@ -4,6 +4,7 @@ import stripe
 from django.db import transaction
 from django.utils import timezone
 
+from apps.platform.customers.hooks import notify_seat_roster_changed
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
@@ -148,10 +149,11 @@ def _mark_invoice_payment_failed(event):
 
     Status-only (no money movement); account-checked; idempotent; never changes a
     terminal status. Routes by subscription presence the same way the billing AR
-    reconcile does.
+    reconcile does; the subscription side is stamped by the subscriptions port
+    (billing never touches subscriptions internals).
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.subscriptions.models import SubscriptionInvoice, StripeSubscription
+    from apps.subscriptions.ports import mark_invoice_payment_failed_for_subscription
 
     inv = event.data.object
     acct = event.account
@@ -160,23 +162,7 @@ def _mark_invoice_payment_failed(event):
         return
     sub_id = _invoice_subscription_id(inv)
     if sub_id:
-        sub = StripeSubscription.objects.filter(
-            stripe_subscription_id=sub_id,
-            tenant__stripe_connected_account_id=acct,
-        ).first()
-        if not sub:
-            return
-        with transaction.atomic():
-            row = SubscriptionInvoice.objects.select_for_update().filter(
-                stripe_invoice_id=invoice_id,
-            ).first()
-            if not row:
-                return
-            row.payment_failed_at = timezone.now()
-            _refresh_urls(row, inv)
-            row.save(update_fields=[
-                "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
-            ])
+        mark_invoice_payment_failed_for_subscription(acct, sub_id, invoice_id, inv)
     else:
         existing = CustomerUsageInvoice.objects.filter(
             stripe_invoice_id=invoice_id,
@@ -222,8 +208,7 @@ def handle_invoice_payment_failed(event):
         # A suspended seat leaves the active roster: push the decremented seat
         # count to the business's subscription on commit.
         if customer.account_type == "seat" and customer.parent_id:
-            from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
-            sync_seat_quantity_on_commit(customer.parent)
+            notify_seat_roster_changed(customer.parent)
 
 
 def handle_charge_dispute_created(event):
@@ -319,8 +304,7 @@ def handle_charge_dispute_closed(event):
             )
             # A suspended seat leaves the active roster: decrement the business sub.
             if customer.account_type == "seat" and customer.parent_id:
-                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
-                sync_seat_quantity_on_commit(customer.parent)
+                notify_seat_roster_changed(customer.parent)
 
 
 def handle_charge_refunded(event):

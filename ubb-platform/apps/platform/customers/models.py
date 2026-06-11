@@ -1,5 +1,6 @@
 from django.db import models, transaction
 
+from apps.platform.customers.hooks import notify_seat_roster_changed
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 
@@ -66,8 +67,7 @@ class Customer(SoftDeleteMixin, BaseModel):
                 customer_id=str(self.id),
             ))
             if self.account_type == "seat" and self.parent_id:
-                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
-                sync_seat_quantity_on_commit(self.parent)
+                notify_seat_roster_changed(self.parent)
 
     def __str__(self):
         return f"Customer({self.external_id})"
