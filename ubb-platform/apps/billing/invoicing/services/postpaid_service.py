@@ -72,7 +72,7 @@ class PostpaidUsageService:
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import UsageInvoicePushFailedPermanent
 
-        fields = {"status": "failed_permanent"}
+        fields = {"status": "failed_permanent", "updated_at": timezone.now()}
         if last_error is not None:
             fields["last_attempt_error"] = last_error
         updated = CustomerUsageInvoice.objects.filter(
