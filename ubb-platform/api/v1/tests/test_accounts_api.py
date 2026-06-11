@@ -53,6 +53,26 @@ class TestAccountsAPI:
         seat = Customer.objects.get(tenant=self.tenant, external_id="s1")
         assert seat.parent_id == biz.id
 
+    def test_create_seat_triggers_roster_sync(self):
+        # The endpoint, not just the model layer, must push the seat-quantity
+        # sync — the lazy import inside create_customer is the wire-up under test.
+        from unittest.mock import patch
+
+        self._post(
+            {"external_id": "biz", "account_type": "business", "billing_topology": "pooled"}
+        )
+        with patch(
+            "apps.subscriptions.orchestration.seats.sync_seat_quantity_on_commit"
+        ) as spy:
+            resp = self._post(
+                {"external_id": "s2", "account_type": "seat", "parent_external_id": "biz"}
+            )
+        assert resp.status_code == 201
+        spy.assert_called_once()
+        from apps.platform.customers.models import Customer
+        biz = Customer.objects.get(tenant=self.tenant, external_id="biz")
+        assert spy.call_args.args[0].id == biz.id
+
     def test_create_seat_without_parent_returns_422(self):
         resp = self._post({"external_id": "orphan", "account_type": "seat"})
         assert resp.status_code == 422
