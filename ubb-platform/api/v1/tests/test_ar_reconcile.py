@@ -62,7 +62,7 @@ def _sub_inv_obj(stripe_invoice_id, subscription_id, *, amount_paid=4900,
 def _basil_sub_inv_obj(stripe_invoice_id, subscription_id, *, amount_paid=4900,
                        hosted_url="", pdf="", period_start=1738368000,
                        period_end=1740960000, paid_at_ts=1738400000):
-    """Basil (api_version 2025-03-31) shaped invoice: NO top-level .subscription;
+    """Basil (api_version 2025-03-31.basil) shaped invoice: NO top-level .subscription;
     the subscription id hangs off inv.parent.subscription_details.subscription."""
     return SimpleNamespace(
         id=stripe_invoice_id,

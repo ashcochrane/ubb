@@ -3,7 +3,7 @@
 This is the only test in the Wave-5a AR suite that talks to a REAL Stripe.
 It is opt-in: it does nothing unless UBB_STRIPE_LIVE_TEST is set, plus the two
 Stripe test-mode credentials below. Its purpose is to assert that the REAL
-Basil (2025-03-31) invoice payload exposes the exact field paths our reconcile
+Basil (2025-03-31.basil) invoice payload exposes the exact field paths our reconcile
 handlers read — guarding against a Stripe API-version drift our mocked capstone
 (which constructs synthetic objects) could never catch.
 """
@@ -20,10 +20,11 @@ pytestmark = pytest.mark.skipif(
 def test_live_invoice_payload_shape():
     """HOW TO RUN: set UBB_STRIPE_LIVE_TEST=1, STRIPE_TEST_SECRET_KEY (a Stripe
     TEST-mode secret key for a Connect platform), and STRIPE_TEST_CONNECTED_ACCOUNT
-    (an acct_ in test mode). Verifies the REAL Basil (2025-03-31) invoice payload
+    (an acct_ in test mode). Verifies the REAL Basil (2025-03-31.basil) invoice payload
     field paths our handlers read."""
     import stripe
-
+    from apps.billing.stripe.services.stripe_service import STRIPE_API_VERSION  # applies the global pin
+    assert stripe.api_version == STRIPE_API_VERSION
     stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
     acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
     from api.v1.webhooks import _invoice_subscription_id
@@ -65,7 +66,8 @@ def test_live_b1_items_land_on_invoice():
     invoice actually CONTAINS the lines (proves usage is billed, not stranded as pending).
     """
     import stripe
-
+    from apps.billing.stripe.services.stripe_service import STRIPE_API_VERSION  # applies the global pin
+    assert stripe.api_version == STRIPE_API_VERSION
     stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
     acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
     cust = stripe.Customer.create(stripe_account=acct, email="live-b1@example.com")
@@ -92,7 +94,8 @@ def test_live_b2_basil_subscription_link():
     parent.subscription_details.subscription, and _invoice_subscription_id resolves it.
     """
     import stripe
-
+    from apps.billing.stripe.services.stripe_service import STRIPE_API_VERSION  # applies the global pin
+    assert stripe.api_version == STRIPE_API_VERSION
     stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
     acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
     from api.v1.webhooks import _invoice_subscription_id

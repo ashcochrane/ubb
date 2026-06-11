@@ -68,7 +68,7 @@ The tenant connects **their own** Stripe account via Standard OAuth (`scope=read
 
 ### 3b. One Subscription, multiple items, Basil API
 Subscription = **one Stripe Subscription** carrying licensed items: access fee (qty 1) + per-seat
-(qty = seats). The Stripe API is pinned to **Basil, `api_version = "2025-03-31"`** —
+(qty = seats). The Stripe API is pinned to **Basil, `api_version = "2025-03-31.basil"`** —
 `apps/billing/stripe/services/stripe_service.py:16`. Sync/webhook code reads the **Basil** shape:
 - subscription amounts come from iterating `subscription.items.data[]` + `price` (NOT `.plan`);
 - a webhook's invoice→subscription link reads `invoice.parent.subscription_details.subscription`,
@@ -142,7 +142,7 @@ These are **intentionally unshipped**; do not "fix" them as bugs:
   behind `UBB_STRIPE_LIVE_TEST` + Stripe test-mode creds and is **skipped by default**
   (`test_live_stripe_ar.py:14-17`). It is the only check against real Basil payload drift.
 - **Remaining J2 launch gate:** run `test_live_stripe_ar.py` against a real Stripe **test-mode**
-  Connect platform to confirm the live Basil `2025-03-31` invoice payload exposes the exact field
+  Connect platform to confirm the live Basil `2025-03-31.basil` invoice payload exposes the exact field
   paths the reconcile handlers read (`invoice.parent.subscription_details.subscription`,
   `subscription.items.data[]`). Until that passes against live Stripe, J2 is **ledger-proven, not
   Stripe-proven**.

@@ -13,7 +13,8 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 # Global Basil API-version pin for Wave-4 multi-axis subscription orchestration.
 # Verified GREEN against the full platform suite (784 passed) — no path regressed,
 # so the pin is global rather than per-call.
-stripe.api_version = "2025-03-31"
+STRIPE_API_VERSION = "2025-03-31.basil"   # canonical form; bare 2025-03-31 is not a valid version
+stripe.api_version = STRIPE_API_VERSION
 logger = logging.getLogger(__name__)
 
 
