@@ -38,11 +38,12 @@ def is_retryable(error: Exception) -> bool:
 def backoff_delay(attempt: int, retry_after: float | None = None) -> float:
     """Compute delay for the given attempt number.
 
-    If retry_after is provided (from Retry-After header), it takes precedence.
+    If retry_after is provided (from Retry-After header), it takes precedence,
+    capped at 30s so a hostile or buggy server header cannot stall the client.
     Otherwise: 0.5s * 2^attempt with +/-25% jitter, capped at 10s.
     """
     if retry_after is not None:
-        return retry_after
+        return min(float(retry_after), 30.0)
     base = 0.5 * (2 ** attempt)
     jitter = base * 0.25 * (2 * random.random() - 1)
     return min(base + jitter, 10.0)

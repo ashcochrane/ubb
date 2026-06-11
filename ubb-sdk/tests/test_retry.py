@@ -110,6 +110,14 @@ class TestBackoffDelay(unittest.TestCase):
         delay = backoff_delay(0, retry_after=3.0)
         self.assertEqual(delay, 3.0)
 
+    def test_retry_after_capped_at_30(self):
+        delay = backoff_delay(0, retry_after=3600.0)
+        self.assertEqual(delay, 30.0)
+
+    def test_retry_after_below_cap_passes_through(self):
+        delay = backoff_delay(5, retry_after=29.9)
+        self.assertEqual(delay, 29.9)
+
 
 class TestRequestWithRetry(unittest.TestCase):
     def test_success_on_first_attempt(self):
