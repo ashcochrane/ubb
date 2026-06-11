@@ -5,7 +5,8 @@ _reconcile_customer_invoice path via the handlers directly:
   - usage standalone invoice (no subscription)  -> CustomerUsageInvoice.payment_status
   - subscription invoice (subscription present) -> SubscriptionInvoice.status
 Both are account-checked (event.account must equal the matched row's tenant
-stripe_connected_account_id) and monotonic (a terminal status never regresses).
+stripe_connected_account_id) and follow the Stripe-legal transition table
+(AR_ALLOWED): paid/void are final; uncollectible remains payable and voidable.
 """
 from types import SimpleNamespace
 from datetime import date
@@ -204,6 +205,45 @@ class TestUsageInvoiceReconcile:
         assert inv.payment_status == "paid"
         assert inv.paid_at == paid_at
 
+    def test_uncollectible_then_paid_applies(self):
+        """Stripe-legal: an uncollectible invoice remains payable — a late
+        invoice.paid must flip the row to paid AND set paid_at."""
+        tenant, customer, inv = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_uncollectible(_event(acct, obj=_usage_inv_obj("in_usage_1")))
+        inv.refresh_from_db()
+        assert inv.payment_status == "uncollectible"
+
+        handle_invoice_paid(_event(acct, obj=_usage_inv_obj("in_usage_1")))
+        inv.refresh_from_db()
+        assert inv.payment_status == "paid"
+        assert inv.paid_at is not None
+
+    def test_void_then_paid_stays_void_without_paid_at(self):
+        """void is final: a late invoice.paid must be refused AND must not
+        smear paid_at onto the void row (money gates on the APPLIED state)."""
+        tenant, customer, inv = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_voided(_event(acct, obj=_usage_inv_obj("in_usage_1")))
+
+        handle_invoice_paid(_event(acct, obj=_usage_inv_obj("in_usage_1")))
+        inv.refresh_from_db()
+        assert inv.payment_status == "void"
+        assert inv.paid_at is None
+
+    def test_paid_then_finalized_stays_paid_but_urls_refresh(self):
+        """A refused transition still refreshes URLs (Stripe rotates tokens)."""
+        tenant, customer, inv = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_paid(_event(acct, obj=_usage_inv_obj("in_usage_1")))
+
+        handle_invoice_finalized(_event(acct, obj=_usage_inv_obj(
+            "in_usage_1", hosted_url="https://pay/late", pdf="https://pdf/late")))
+        inv.refresh_from_db()
+        assert inv.payment_status == "paid"
+        assert inv.hosted_invoice_url == "https://pay/late"
+        assert inv.invoice_pdf == "https://pdf/late"
+
 
 @pytest.mark.django_db
 class TestSubscriptionInvoiceReconcile:
@@ -249,6 +289,8 @@ class TestSubscriptionInvoiceReconcile:
         assert row.amount_paid_micros == 49_000_000
 
     def test_paid_without_prior_finalized_creates_paid_row(self):
+        # Born-paid via first-contact invoice.paid: the get_or_create defaults
+        # make the row paid; money fields must still land on this path.
         tenant, customer, sub = self._fixtures()
         acct = tenant.stripe_connected_account_id
         handle_invoice_paid(_event(acct, obj=_sub_inv_obj("in_sub_2", "sub_ar_1")))
@@ -256,6 +298,7 @@ class TestSubscriptionInvoiceReconcile:
         row = SubscriptionInvoice.objects.get(stripe_invoice_id="in_sub_2")
         assert row.status == "paid"
         assert row.paid_at is not None
+        assert row.amount_paid_micros == 49_000_000
 
     def test_account_mismatch_no_row(self):
         tenant, customer, sub = self._fixtures()
@@ -286,3 +329,50 @@ class TestSubscriptionInvoiceReconcile:
         row.refresh_from_db()
         assert row.status == "paid"
         assert row.paid_at == paid_at
+
+    def test_uncollectible_then_paid_applies(self):
+        """Stripe-legal: uncollectible -> paid must apply, with money fields."""
+        tenant, customer, sub = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        # born uncollectible with NO money yet (amount_paid=0)
+        handle_invoice_uncollectible(_event(acct, obj=_sub_inv_obj(
+            "in_sub_7", "sub_ar_1", amount_paid=0)))
+        row = SubscriptionInvoice.objects.get(stripe_invoice_id="in_sub_7")
+        assert row.status == "uncollectible"
+        assert row.paid_at is None
+        assert row.amount_paid_micros == 0
+
+        # customer pays late -> invoice.paid arrives
+        handle_invoice_paid(_event(acct, obj=_sub_inv_obj("in_sub_7", "sub_ar_1")))
+        row.refresh_from_db()
+        assert row.status == "paid"
+        assert row.paid_at is not None
+        assert row.amount_paid_micros == 49_000_000
+
+    def test_void_then_paid_stays_void_without_paid_at(self):
+        """void is final: a late invoice.paid is refused and must NOT write
+        paid_at/amount_paid_micros onto the void row."""
+        tenant, customer, sub = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_voided(_event(acct, obj=_sub_inv_obj(
+            "in_sub_8", "sub_ar_1", amount_paid=0)))
+
+        handle_invoice_paid(_event(acct, obj=_sub_inv_obj("in_sub_8", "sub_ar_1")))
+        row = SubscriptionInvoice.objects.get(stripe_invoice_id="in_sub_8")
+        assert row.status == "void"
+        assert row.paid_at is None
+        assert row.amount_paid_micros == 0
+
+    def test_paid_then_finalized_stays_paid_but_urls_refresh(self):
+        tenant, customer, sub = self._fixtures()
+        acct = tenant.stripe_connected_account_id
+        handle_invoice_paid(_event(acct, obj=_sub_inv_obj("in_sub_9", "sub_ar_1")))
+
+        handle_invoice_finalized(_event(acct, obj=_sub_inv_obj(
+            "in_sub_9", "sub_ar_1",
+            hosted_url="https://pay/late9", pdf="https://pdf/late9")))
+        row = SubscriptionInvoice.objects.get(stripe_invoice_id="in_sub_9")
+        assert row.status == "paid"
+        assert row.paid_at is not None
+        assert row.hosted_invoice_url == "https://pay/late9"
+        assert row.invoice_pdf == "https://pdf/late9"

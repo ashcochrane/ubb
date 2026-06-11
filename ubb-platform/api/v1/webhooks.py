@@ -149,6 +149,20 @@ def stripe_webhook(request):
 # (they share the StripeWebhookEvent dedup table, so a double-registration would
 # let the first endpoint win the dedup row and the second silently skip).
 
+# Stripe's documented invoice-status graph: uncollectible invoices remain
+# payable and voidable; paid and void are genuinely final.
+AR_ALLOWED = {
+    "": {"open", "paid", "void", "uncollectible"},   # None/'' = no status yet
+    "open": {"paid", "void", "uncollectible"},
+    "uncollectible": {"paid", "void"},
+    "paid": set(),
+    "void": set(),
+}
+
+
+def ar_transition_allowed(old, new):
+    return new in AR_ALLOWED.get(old or "", set())
+
 
 def _refresh_urls(local, inv):
     """Re-store hosted_invoice_url / invoice_pdf when present (Stripe rotates tokens)."""
@@ -180,8 +194,9 @@ def _reconcile_customer_invoice(event, *, new_status):
     Routes by subscription presence: subscription invoices reconcile onto
     SubscriptionInvoice, standalone usage invoices onto CustomerUsageInvoice.
     Every match is account-checked (C-2): the matched row's tenant
-    stripe_connected_account_id must equal event.account. Status is monotonic —
-    a terminal status (paid/void/uncollectible) never regresses.
+    stripe_connected_account_id must equal event.account. Status follows the
+    Stripe-legal transition table (AR_ALLOWED): paid/void are final, but
+    uncollectible remains payable and voidable — a late invoice.paid applies.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.subscriptions.models import SubscriptionInvoice, StripeSubscription
@@ -190,7 +205,6 @@ def _reconcile_customer_invoice(event, *, new_status):
     acct = event.account
     if not acct:
         return
-    TERMINAL = ("paid", "void", "uncollectible")
     sub_id = _invoice_subscription_id(inv)
     if sub_id:
         sub = StripeSubscription.objects.filter(
@@ -213,9 +227,18 @@ def _reconcile_customer_invoice(event, *, new_status):
                     "period_end": _unix(getattr(inv, "period_end", None)),
                 },
             )
-            if row.status not in TERMINAL:
+            if ar_transition_allowed(row.status, new_status):
                 row.status = new_status
-            if new_status == "paid" and not row.paid_at:
+            elif not _created and new_status != row.status:
+                logger.warning("ar.transition_ignored", extra={"data": {
+                    "subscription_invoice_id": str(row.id),
+                    "stripe_invoice_id": inv.id,
+                    "old_status": row.status, "new_status": new_status}})
+            # Money fields gate on the APPLIED state (not the event), so a
+            # refused transition (e.g. void + late invoice.paid) never leaves
+            # paid_at on a non-paid row; the born-paid get_or_create row
+            # (row.status == "paid", paid_at unset) is still covered.
+            if row.status == "paid" and not row.paid_at:
                 st = getattr(inv, "status_transitions", None)
                 row.paid_at = _unix(getattr(st, "paid_at", None)) or timezone.now()
                 row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
@@ -230,9 +253,15 @@ def _reconcile_customer_invoice(event, *, new_status):
             return
         with transaction.atomic():
             row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
-            if row.payment_status not in TERMINAL:
+            if ar_transition_allowed(row.payment_status, new_status):
                 row.payment_status = new_status
-            if new_status == "paid" and not row.paid_at:
+            elif new_status != row.payment_status:
+                logger.warning("ar.transition_ignored", extra={"data": {
+                    "usage_invoice_id": str(row.id),
+                    "stripe_invoice_id": inv.id,
+                    "old_status": row.payment_status, "new_status": new_status}})
+            # Money fields gate on the APPLIED state (see subscription branch).
+            if row.payment_status == "paid" and not row.paid_at:
                 row.paid_at = timezone.now()
             _refresh_urls(row, inv)
             row.save()

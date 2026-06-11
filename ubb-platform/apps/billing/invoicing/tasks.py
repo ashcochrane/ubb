@@ -20,7 +20,9 @@ _STRIPE_STATUS_MAP = {
     "uncollectible": "uncollectible",
     "open": "open",
 }
-_TERMINAL_PAYMENT_STATUS = ("paid", "void", "uncollectible")
+# Which transitions are legal is NOT encoded here: both the webhook fast path and
+# this backstop share api.v1.webhooks.AR_ALLOWED / ar_transition_allowed, so the
+# two paths can never diverge.
 
 
 @shared_task(queue="ubb_invoicing")
@@ -146,11 +148,13 @@ def reconcile_invoice_payment_status():
     each charge-ready tenant's recent Stripe invoices (4-day lookback > the retry
     horizon) and repairs any local payment-status it missed.
 
-    Reuses the api/v1 webhook helpers (_invoice_subscription_id, _refresh_urls) —
-    the same lazy-import pattern apps/billing/connectors/stripe/webhooks.py uses,
-    so no circular import. Status is repaired MONOTONICALLY under select_for_update:
-    a terminal status (paid/void/uncollectible) never regresses. A regression Stripe
-    reports against a terminal local row is loud-logged, never applied.
+    Reuses the api/v1 webhook helpers (_invoice_subscription_id, _refresh_urls,
+    ar_transition_allowed) — the same lazy-import pattern
+    apps/billing/connectors/stripe/webhooks.py uses, so no circular import.
+    Status is repaired under select_for_update along the SAME Stripe-legal
+    transition table the webhook path uses (paid/void final; uncollectible
+    remains payable/voidable). A genuinely illegal move Stripe reports (e.g.
+    paid -> open) is loud-logged, never applied.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.subscriptions.models import SubscriptionInvoice
@@ -195,7 +199,10 @@ def reconcile_invoice_payment_status():
 
 
 def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
-    """Monotonically repair a CustomerUsageInvoice payment_status. Returns 1 if changed."""
+    """Repair a CustomerUsageInvoice payment_status along the Stripe-legal
+    transition table (shared with the webhook fast path). Returns 1 if changed."""
+    from api.v1.webhooks import ar_transition_allowed
+
     existing = model.objects.filter(
         tenant=tenant, status="pushed", stripe_invoice_id=stripe_invoice_id,
     ).exclude(stripe_invoice_id="").first()
@@ -204,7 +211,7 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     with transaction.atomic():
         row = model.objects.select_for_update().get(id=existing.id)
         old = row.payment_status
-        if old in _TERMINAL_PAYMENT_STATUS:
+        if not ar_transition_allowed(old, new_status):
             if new_status != old:
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "usage_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
@@ -215,11 +222,14 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
             row.paid_at = timezone.now()
         refresh_urls(row, inv)
         row.save()
-    return 1 if new_status != old else 0
+    return 1
 
 
 def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
-    """Monotonically repair a SubscriptionInvoice status. Returns 1 if changed."""
+    """Repair a SubscriptionInvoice status along the Stripe-legal transition
+    table (shared with the webhook fast path). Returns 1 if changed."""
+    from api.v1.webhooks import ar_transition_allowed
+
     existing = model.objects.filter(
         tenant=tenant, stripe_invoice_id=stripe_invoice_id,
     ).first()
@@ -228,7 +238,7 @@ def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_stat
     with transaction.atomic():
         row = model.objects.select_for_update().get(id=existing.id)
         old = row.status
-        if old in _TERMINAL_PAYMENT_STATUS:
+        if not ar_transition_allowed(old, new_status):
             if new_status != old:
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "subscription_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
@@ -240,4 +250,4 @@ def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_stat
             row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
         refresh_urls(row, inv)
         row.save()
-    return 1 if new_status != old else 0
+    return 1

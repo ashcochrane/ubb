@@ -7,6 +7,7 @@ import datetime
 from unittest.mock import patch, MagicMock
 
 import pytest
+from django.test import TestCase
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
@@ -135,3 +136,107 @@ class TestArPoller:
         with patch("apps.billing.invoicing.tasks.stripe.Invoice.list") as mock_list:
             reconcile_invoice_payment_status()
         mock_list.assert_not_called()
+
+
+class RepairTransitionParityTest(TestCase):
+    """The backstop repairs along the SAME Stripe-legal transition table as the
+    webhook fast path: uncollectible -> paid is a legal repair (with money
+    fields); a genuinely illegal move (paid -> open) is loud-logged, never
+    applied. unittest-style assertLogs because the 'apps' logger does not
+    propagate to root (pytest caplog would miss it)."""
+
+    PS = datetime.date(2026, 6, 1)
+    PE = datetime.date(2026, 7, 1)
+
+    def _tenant_customer(self):
+        t = Tenant.objects.create(
+            name="PP", products=["metering", "billing"], billing_mode="postpaid",
+            stripe_connected_account_id="acct_x", charges_enabled=True,
+        )
+        c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
+        return t, c
+
+    def test_usage_uncollectible_to_paid_repairs(self):
+        from apps.billing.invoicing.tasks import _repair_usage_invoice
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from api.v1.webhooks import _refresh_urls
+        t, c = self._tenant_customer()
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_unc",
+            payment_status="uncollectible",
+        )
+        inv = _stripe_invoice("in_unc", "paid", hosted="https://h", pdf="https://p.pdf")
+        repaired = _repair_usage_invoice(
+            CustomerUsageInvoice, t, "in_unc", inv, "paid", _refresh_urls)
+        self.assertEqual(repaired, 1)
+        rec.refresh_from_db()
+        self.assertEqual(rec.payment_status, "paid")
+        self.assertIsNotNone(rec.paid_at)
+        self.assertEqual(rec.hosted_invoice_url, "https://h")
+
+    def test_usage_paid_to_open_logs_regression(self):
+        from apps.billing.invoicing.tasks import _repair_usage_invoice
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from api.v1.webhooks import _refresh_urls
+        t, c = self._tenant_customer()
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_pd",
+            payment_status="paid", paid_at=timezone.now(),
+        )
+        inv = _stripe_invoice("in_pd", "open")
+        with self.assertLogs("apps.billing.invoicing.tasks", level="ERROR") as logs:
+            repaired = _repair_usage_invoice(
+                CustomerUsageInvoice, t, "in_pd", inv, "open", _refresh_urls)
+        self.assertEqual(repaired, 0)
+        self.assertTrue(any("ar.reconcile_unexpected_regression" in m for m in logs.output))
+        rec.refresh_from_db()
+        self.assertEqual(rec.payment_status, "paid")
+
+    def _subscription_invoice(self, t, c, stripe_invoice_id, status):
+        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        now = timezone.now()
+        sub = StripeSubscription.objects.create(
+            tenant=t, customer=c, stripe_subscription_id=f"sub_{stripe_invoice_id}",
+            stripe_product_name="P", status="active", amount_micros=1_000_000,
+            interval="month", quantity=1, current_period_start=now,
+            current_period_end=now, last_synced_at=now,
+        )
+        return SubscriptionInvoice.objects.create(
+            tenant=t, customer=c, stripe_subscription=sub,
+            stripe_invoice_id=stripe_invoice_id, status=status,
+        )
+
+    def test_subscription_uncollectible_to_paid_repairs(self):
+        from apps.billing.invoicing.tasks import _repair_subscription_invoice
+        from apps.subscriptions.models import SubscriptionInvoice
+        from api.v1.webhooks import _refresh_urls
+        t, c = self._tenant_customer()
+        si = self._subscription_invoice(t, c, "in_s_unc", "uncollectible")
+        inv = _stripe_invoice("in_s_unc", "paid", subscription="sub_in_s_unc")
+        inv.amount_paid = 4900
+        repaired = _repair_subscription_invoice(
+            SubscriptionInvoice, t, "in_s_unc", inv, "paid", _refresh_urls)
+        self.assertEqual(repaired, 1)
+        si.refresh_from_db()
+        self.assertEqual(si.status, "paid")
+        self.assertIsNotNone(si.paid_at)
+        self.assertEqual(si.amount_paid_micros, 49_000_000)
+
+    def test_subscription_paid_to_open_logs_regression(self):
+        from apps.billing.invoicing.tasks import _repair_subscription_invoice
+        from apps.subscriptions.models import SubscriptionInvoice
+        from api.v1.webhooks import _refresh_urls
+        t, c = self._tenant_customer()
+        si = self._subscription_invoice(t, c, "in_s_pd", "paid")
+        si.paid_at = timezone.now()
+        si.save(update_fields=["paid_at"])
+        inv = _stripe_invoice("in_s_pd", "open", subscription="sub_in_s_pd")
+        with self.assertLogs("apps.billing.invoicing.tasks", level="ERROR") as logs:
+            repaired = _repair_subscription_invoice(
+                SubscriptionInvoice, t, "in_s_pd", inv, "open", _refresh_urls)
+        self.assertEqual(repaired, 0)
+        self.assertTrue(any("ar.reconcile_unexpected_regression" in m for m in logs.output))
+        si.refresh_from_db()
+        self.assertEqual(si.status, "paid")
