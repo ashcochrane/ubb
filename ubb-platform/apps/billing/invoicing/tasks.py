@@ -216,6 +216,12 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "usage_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
                     "local_status": old, "stripe_status": new_status}})
+            else:
+                # Equal-status no-op still refreshes the hosted URLs: the token
+                # rotates on payment_failed, and if that webhook was missed the
+                # hourly pass is the only repair for a lingering open invoice.
+                refresh_urls(row, inv)
+                row.save()
             return 0
         row.payment_status = new_status
         if new_status == "paid" and not row.paid_at:
@@ -243,6 +249,11 @@ def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_stat
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "subscription_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
                     "local_status": old, "stripe_status": new_status}})
+            else:
+                # Equal-status no-op still refreshes the hosted URLs (see
+                # _repair_usage_invoice).
+                refresh_urls(row, inv)
+                row.save()
             return 0
         row.status = new_status
         if new_status == "paid" and not row.paid_at:
