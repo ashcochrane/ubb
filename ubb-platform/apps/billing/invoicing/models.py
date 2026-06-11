@@ -45,7 +45,12 @@ class Invoice(BaseModel):
 
 USAGE_INVOICE_STATUS = [
     ("pending", "Pending"), ("pushing", "Pushing"), ("pushed", "Pushed"),
-    ("skipped", "Skipped"), ("failed", "Failed"),
+    ("skipped", "Skipped"), ("failed", "Failed"), ("failed_permanent", "Failed permanent"),
+]
+
+USAGE_INVOICE_PUSH_PHASE = [
+    ("", "Not started"), ("invoice_created", "Invoice created"),
+    ("items_pinned", "Items pinned"), ("finalized", "Finalized"),
 ]
 
 
@@ -57,9 +62,13 @@ class CustomerUsageInvoice(BaseModel):
     period_end = models.DateField()
     total_billed_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    status = models.CharField(max_length=10, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
+    status = models.CharField(max_length=20, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     skip_reason = models.CharField(max_length=50, blank=True, default="")
+    push_attempts = models.PositiveIntegerField(default=0)
+    first_attempted_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_error = models.TextField(blank=True, default="")
+    push_phase = models.CharField(max_length=20, choices=USAGE_INVOICE_PUSH_PHASE, blank=True, default="")
     residual_micros = models.BigIntegerField(default=0)
     pushed_at = models.DateTimeField(null=True, blank=True)
     payment_status = models.CharField(max_length=20, null=True, blank=True)  # open|paid|void|uncollectible (NULL = not yet collectible)

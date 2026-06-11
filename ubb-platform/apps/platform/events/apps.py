@@ -27,6 +27,7 @@ class EventsConfig(AppConfig):
             "margin.provider_cost_spike",
             "budget.threshold_reached",
             "usage.invoice_pushed",
+            "usage.invoice_push_failed_permanent",
             "auto_topup.requires_action",
             "billing.balance_overage",
         ]

@@ -82,7 +82,8 @@ class TestPostpaidReconcile:
         rec.refresh_from_db()
         assert rec.status == "pushed"
         assert rec.line_items.count() == 1
-        keys = [ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list]
+        # Reads (Invoice.list lookup) carry no idempotency key; every WRITE reuses rec.id keys.
+        keys = [k for k in (ck.kwargs.get("idempotency_key", "") for ck in mock_sc.call_args_list) if k]
         assert keys
         assert all(str(rec.id) in k for k in keys)
         assert any(k == f"usage-invoice-{rec.id}" for k in keys)
@@ -117,52 +118,13 @@ class TestPostpaidReconcile:
         rec.refresh_from_db()
         assert rec.status == "pushed"
 
-    def test_stuck_pending_row_is_failed_and_alerted(self, caplog):
-        """B3: a pending row that hasn't progressed in 24h is bounded — marked
-        terminally failed and loud-logged, never re-pushed forever."""
-        import logging
-        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
-        from apps.billing.invoicing.models import CustomerUsageInvoice
-        t, c = self._tenant_customer()
-        rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
-            period_end=self.PE, status="pending", total_billed_micros=1_000_000)
-        old = timezone.now() - datetime.timedelta(hours=25)
-        CustomerUsageInvoice.objects.filter(id=rec.id).update(updated_at=old)
-        # The "apps" logger has propagate=False in settings.LOGGING, which stops
-        # records reaching the root LogCaptureHandler that caplog installs. Temporarily
-        # propagate so caplog captures the alert.
-        apps_logger = logging.getLogger("apps")
-        prev_propagate = apps_logger.propagate
-        apps_logger.propagate = True
-        try:
-            with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
-                 caplog.at_level(logging.ERROR):
-                reconcile_postpaid_usage()
-        finally:
-            apps_logger.propagate = prev_propagate
-        rec.refresh_from_db()
-        assert rec.status == "failed"
-        mock_sc.assert_not_called()  # stuck row is NOT re-pushed
-        assert any(r.message == "billing.usage_push_stuck" for r in caplog.records)
-
-    def test_stuck_pushing_row_is_reclaimed_then_failed(self):
-        """B3: a pushing row stuck >24h is reclaimed to pending (preserving its old
-        updated_at) and then bounded to failed in the same pass."""
-        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
-        from apps.billing.invoicing.models import CustomerUsageInvoice
-        t, c = self._tenant_customer()
-        rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
-            period_end=self.PE, status="pushing", total_billed_micros=1_000_000)
-        old = timezone.now() - datetime.timedelta(hours=25)
-        CustomerUsageInvoice.objects.filter(id=rec.id).update(updated_at=old)
-        with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc:
-            reconcile_postpaid_usage()
-        rec.refresh_from_db()
-        assert rec.status == "failed"
-        mock_sc.assert_not_called()
+    # The old 24h updated_at-based "stuck" bound lived here; it compared an
+    # auto_now column every claim refreshed, so it never fired in practice. The
+    # retry bound (attempts + wall-clock from first_attempted_at) now lives in
+    # PostpaidUsageService.push_customer_period — see test_postpaid_resume_bounds.
 
     def test_recent_pending_row_is_still_retried(self):
-        """B3: a pending row updated within 24h is still retried (not failed)."""
+        """A pending row under the attempts/wall-clock cap is retried (not failed)."""
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()

@@ -222,6 +222,7 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
         psvc = "apps.billing.invoicing.services.postpaid_service.stripe"
         with patch(f"{psvc}.InvoiceItem.create", return_value=MagicMock(id="ii_1")) as mock_ii, \
              patch(f"{psvc}.Invoice.create", return_value=MagicMock(id="in_usage")) as mock_inv, \
+             patch(f"{psvc}.Invoice.list", return_value=MagicMock()), \
              patch(f"{psvc}.Invoice.finalize_invoice",
                    return_value=MagicMock(id="in_usage")) as mock_finalize:
             rec = PostpaidUsageService.push_customer_period(

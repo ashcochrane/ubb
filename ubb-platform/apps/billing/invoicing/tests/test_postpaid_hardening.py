@@ -27,7 +27,8 @@ def _stripe_mocks(invoice_id="inv_1"):
     """Patch the raw Stripe SDK calls used inside _push_to_stripe.
 
     InvoiceItem.create returns objects with sequential ids; Invoice.create returns
-    a fixed invoice id; finalize_invoice echoes it back.
+    a fixed invoice id; finalize_invoice echoes it back; Invoice.list (the F0.1
+    pre-create lookup) finds nothing (MagicMock auto_paging_iter is empty).
     """
     item_counter = {"n": 0}
 
@@ -43,6 +44,8 @@ def _stripe_mocks(invoice_id="inv_1"):
         patch("apps.billing.invoicing.services.postpaid_service.stripe.Invoice.finalize_invoice",
               return_value=MagicMock(id=invoice_id)),
         patch("apps.platform.events.tasks.process_single_event"),
+        patch("apps.billing.invoicing.services.postpaid_service.stripe.Invoice.list",
+              return_value=MagicMock()),
     )
 
 
@@ -60,8 +63,8 @@ class TestStandaloneAlways:
             status="active", amount_micros=1, currency="usd", interval="month",
             current_period_start=now, current_period_end=now, last_synced_at=now)
 
-        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="inv_1")
-        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, \
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="inv_1")
+        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, list_p, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(500_000, [("", 500_000)])):
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
@@ -88,8 +91,8 @@ class TestItemsPinnedToDraft:
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
 
-        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="in_1")
-        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, \
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="in_1")
+        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, list_p, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(500_000, [("", 500_000)])):
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
@@ -114,8 +117,8 @@ class TestItemsPinnedToDraft:
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
 
-        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="in_1")
-        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, \
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="in_1")
+        with item_p as m_item, inv_p as m_inv, fin_p as m_fin, ev_p, list_p, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(5_000, [("", 5_000)])):
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
@@ -136,8 +139,8 @@ class TestSubcentResidual:
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
 
-        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="inv_1")
-        with item_p as m_item, inv_p, fin_p, ev_p, \
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="inv_1")
+        with item_p as m_item, inv_p, fin_p, ev_p, list_p, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(1_234_567, [("", 1_234_567)])):
             rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
@@ -154,8 +157,8 @@ class TestSubcentResidual:
         c = _postpaid_customer(t)
 
         # Period 1: leaves residual 4_567.
-        item_p, inv_p, fin_p, ev_p = _stripe_mocks(invoice_id="inv_1")
-        with item_p, inv_p, fin_p, ev_p, \
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="inv_1")
+        with item_p, inv_p, fin_p, ev_p, list_p, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(1_234_567, [("", 1_234_567)])):
             rec1 = PostpaidUsageService.push_customer_period(t, c, PS, PE)
@@ -163,8 +166,8 @@ class TestSubcentResidual:
         assert rec1.residual_micros == 4_567
 
         # Period 2: 8_000 + 4_567 carry = 12_567 -> 1 cent, residual 2_567.
-        item_p2, inv_p2, fin_p2, ev_p2 = _stripe_mocks(invoice_id="inv_2")
-        with item_p2 as m_item2, inv_p2, fin_p2, ev_p2, \
+        item_p2, inv_p2, fin_p2, ev_p2, list_p2 = _stripe_mocks(invoice_id="inv_2")
+        with item_p2 as m_item2, inv_p2, fin_p2, ev_p2, list_p2, \
              patch.object(PostpaidUsageService, "aggregate_lines",
                           return_value=(8_000, [("", 8_000)])):
             rec2 = PostpaidUsageService.push_customer_period(t, c, PS2, PE2)

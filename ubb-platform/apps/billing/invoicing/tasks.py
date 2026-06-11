@@ -89,33 +89,50 @@ def close_postpaid_usage_periods():
 
 @shared_task(queue="ubb_billing")
 def reconcile_postpaid_usage():
-    """Hourly: reclaim stale 'pushing' rows and retry 'pending'/'failed' ones."""
+    """Hourly: reclaim stale 'pushing' rows and retry 'pending'/'failed' ones.
+
+    'failed' is transient-retried; the retry bound (attempts + wall-clock) lives in
+    PostpaidUsageService.push_customer_period and flips a row past the cap to the
+    terminal 'failed_permanent' for ALL callers. Also recovers 'skipped' rows whose
+    precondition now holds (tenant became charge-ready / owner gained a Stripe
+    customer); 'no_usage' and 'seat_superseded' skips stay terminal.
+    """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 
     stale = timezone.now() - timedelta(minutes=30)
     CustomerUsageInvoice.objects.filter(status="pushing", updated_at__lt=stale).update(status="pending")
+    _recover_skipped_usage_invoices(CustomerUsageInvoice)
     for rec in CustomerUsageInvoice.objects.filter(
             status__in=["pending", "failed"]).select_related("tenant", "customer"):
-        # Bound the retry: a pending row that hasn't progressed in 24h is
-        # persistently broken — mark it terminally failed and alert loudly so it
-        # stops retrying forever unmonitored. (Already-failed rows are terminal;
-        # they are not re-failed/re-alerted on every pass.)
-        if rec.status == "pending":
-            age = timezone.now() - rec.updated_at
-            if age > timedelta(hours=24):
-                rec.status = "failed"
-                rec.save(update_fields=["status", "updated_at"])
-                logger.error("billing.usage_push_stuck", extra={"data": {
-                    "usage_invoice_id": str(rec.id),
-                    "age_hours": round(age.total_seconds() / 3600, 1)}})
-                continue
         try:
             PostpaidUsageService.push_customer_period(
                 rec.tenant, rec.customer, rec.period_start, rec.period_end)
         except Exception:
             logger.exception("postpaid.reconcile_failed",
                              extra={"data": {"usage_invoice_id": str(rec.id)}})
+
+
+def _recover_skipped_usage_invoices(model):
+    """Flip recoverable 'skipped' rows back to 'pending' once their precondition
+    holds (mirrors the skip checks in push_customer_period). Pooled-seat-keyed
+    rows can never be pushed by the owner-first service — supersede them instead."""
+    qs = model.objects.filter(
+        status="skipped", skip_reason__in=["not_charge_ready", "no_stripe_customer"],
+    ).select_related("tenant", "customer")
+    for rec in qs:
+        owner = rec.customer.resolve_billing_owner()
+        if owner.id != rec.customer_id:
+            rec.status, rec.skip_reason = "skipped", "seat_superseded"
+            rec.save(update_fields=["status", "skip_reason", "updated_at"])
+            continue
+        if rec.skip_reason == "not_charge_ready":
+            recovered = bool(rec.tenant.stripe_connected_account_id) and rec.tenant.charges_enabled
+        else:  # no_stripe_customer
+            recovered = bool(owner.stripe_customer_id)
+        if recovered:
+            rec.status, rec.skip_reason = "pending", ""
+            rec.save(update_fields=["status", "skip_reason", "updated_at"])
 
 
 @shared_task(queue="ubb_billing")

@@ -243,6 +243,10 @@ UBB_INVOICE_PERIOD_DAYS = int(os.environ.get("UBB_INVOICE_PERIOD_DAYS", "7"))
 UBB_PLATFORM_FEE_PERCENTAGE = float(
     os.environ.get("UBB_PLATFORM_FEE_PERCENTAGE", "1.0")
 )
+# Postpaid push retry bound: both limits sit inside Stripe's 24h idempotency-key
+# window so every automatic retry of usage-invoice-{id} keys stays a safe replay.
+POSTPAID_PUSH_MAX_ATTEMPTS = int(os.environ.get("POSTPAID_PUSH_MAX_ATTEMPTS", "8"))
+POSTPAID_PUSH_MAX_AGE_HOURS = int(os.environ.get("POSTPAID_PUSH_MAX_AGE_HOURS", "20"))
 
 # Logging
 LOGGING = {

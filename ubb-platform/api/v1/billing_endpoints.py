@@ -552,7 +552,9 @@ def list_customer_usage_invoices(request, customer_id: UUID):
     rows = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant, customer=customer).order_by("-period_start")
     return [{"period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat(),
              "total_billed_micros": r.total_billed_micros, "currency": r.currency, "status": r.status,
-             "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason} for r in rows]
+             "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
+             "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
+            for r in rows]
 
 
 @billing_api.get("/tenant/usage-invoices")
@@ -573,7 +575,8 @@ def list_tenant_usage_invoices(request, period: str = None):
         qs = qs.filter(period_start=date(int(y_str), m_int, 1))
     return {"invoices": [{"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
              "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
-             "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason}
+             "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
+             "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
             for r in qs.order_by("-period_start")]}
 
 

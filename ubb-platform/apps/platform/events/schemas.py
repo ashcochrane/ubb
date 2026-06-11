@@ -197,6 +197,17 @@ class UsageInvoicePushed:
 
 
 @dataclass(frozen=True)
+class UsageInvoicePushFailedPermanent:
+    EVENT_TYPE = "usage.invoice_push_failed_permanent"
+    tenant_id: str
+    customer_id: str
+    period_start: str
+    push_attempts: int = 0
+    last_error: str = ""
+    stripe_invoice_id: str = ""
+
+
+@dataclass(frozen=True)
 class AutoTopupRequiresAction:
     EVENT_TYPE = "auto_topup.requires_action"
     tenant_id: str

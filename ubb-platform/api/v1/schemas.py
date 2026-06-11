@@ -218,6 +218,8 @@ class UsageInvoiceOut(Schema):
     status: str
     stripe_invoice_id: str = ""
     skip_reason: str = ""
+    push_attempts: Optional[int] = None
+    last_attempt_error: Optional[str] = None
 
 
 class PostpaidConfigIn(Schema):
