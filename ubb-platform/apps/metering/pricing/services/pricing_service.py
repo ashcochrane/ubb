@@ -88,15 +88,15 @@ class PricingService:
             prov["price_source"] = "caller"
         else:
             price_total, matched = 0, False
-            for metric, units in usage_metrics.items():
+            for metric, units_val in usage_metrics.items():
                 card = PricingService._resolve_card(tenant, customer, "price", provider,
                                                     event_type, metric, tags, currency, as_of)
                 if card is None:
                     continue
                 matched = True
-                amt = card.compute(units)
+                amt = card.compute(units_val)
                 price_total += amt
-                prov["metrics"].append({"metric": metric, "units": units, "card_type": "price",
+                prov["metrics"].append({"metric": metric, "units": units_val, "card_type": "price",
                     "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
             if matched:
                 billed = price_total

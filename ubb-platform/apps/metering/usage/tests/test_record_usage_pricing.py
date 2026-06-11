@@ -142,3 +142,5 @@ class TestStrictCoverageUnitsOnly:
         assert resp2.status_code == 200, (
             f"Corrected retry must succeed (got {resp2.status_code}): {resp2.json()}")
         assert resp2.json()["provider_cost_micros"] == 500
+        assert UsageEvent.objects.filter(
+            tenant=t, customer=c, idempotency_key="ik7").count() == 1
