@@ -132,11 +132,21 @@ rounding in billing math.
 - `pricing_model`: `"per_unit"` (rate × quantity / unit_quantity) or `"flat"` (fixed charge per event).
 - `unit_quantity`: the denominator — `1` means per-token; `1_000_000` means per-million-tokens.
 
+## Retries
+
+All clients automatically retry transient failures: HTTP `429`, `502`, `503`, `504`,
+plus timeouts and connection errors — with jittered exponential backoff (0.5s base,
+doubling, ±25% jitter, capped at 10s). A server-supplied `Retry-After` header is
+honored, capped at 30s. Hard-stop 429s (`UBBHardStopError`), `UBBRunNotActiveError`,
+and all other 4xx errors are **never** retried. Pass `max_retries=0` to any client
+constructor to disable retries.
+
 ## Verified method signatures
 
 ```python
 # MeteringClient.__init__
-MeteringClient(api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0)
+MeteringClient(api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0,
+    max_retries: int = 3)
 
 # create_rate_card  → RateCard
 client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
@@ -261,7 +271,8 @@ GET /api/v1/me/balance                # wallet balance (prepaid customers)
 
 ```python
 # UBBClient.__init__
-UBBClient(api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0)
+UBBClient(api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0,
+    max_retries: int = 3)
 
 # start_connect_onboarding  → dict  (keys: authorize_url)
 client.start_connect_onboarding(return_url: str = "")

@@ -35,6 +35,7 @@ class UBBClient:
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
                  timeout: float = 10.0, widget_secret: str | None = None,
                  tenant_id: str | None = None,
+                 max_retries: int = 3,
                  metering: bool = True, billing: bool = False,
                  subscriptions: bool = False,
                  referrals: bool = False) -> None:
@@ -49,22 +50,22 @@ class UBBClient:
         from ubb.billing import BillingClient
 
         self.metering: MeteringClient | None = (
-            MeteringClient(api_key, base_url, timeout) if metering else None
+            MeteringClient(api_key, base_url, timeout, max_retries=max_retries) if metering else None
         )
         self.billing: BillingClient | None = (
-            BillingClient(api_key, base_url, timeout) if billing else None
+            BillingClient(api_key, base_url, timeout, max_retries=max_retries) if billing else None
         )
 
         from ubb.subscriptions import SubscriptionsClient
 
         self.subscriptions: SubscriptionsClient | None = (
-            SubscriptionsClient(api_key, base_url, timeout) if subscriptions else None
+            SubscriptionsClient(api_key, base_url, timeout, max_retries=max_retries) if subscriptions else None
         )
 
         from ubb.referrals import ReferralsClient
 
         self.referrals: ReferralsClient | None = (
-            ReferralsClient(api_key, base_url, timeout) if referrals else None
+            ReferralsClient(api_key, base_url, timeout, max_retries=max_retries) if referrals else None
         )
 
     def __enter__(self) -> UBBClient:

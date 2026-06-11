@@ -224,5 +224,196 @@ class TestRequestWithRetry(unittest.TestCase):
         self.assertLess(delays[1], delays[2])
 
 
+class TestClientRetryIntegration(unittest.TestCase):
+    """Verify product clients accept max_retries and use retry wrapper."""
+
+    @patch("ubb.retry.time.sleep")
+    def test_metering_client_retries_on_503(self, mock_sleep):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", "http://localhost:8001",
+                                max_retries=2)
+        with patch.object(client._http, "get") as mock_get:
+            resp_fail = MagicMock(status_code=503, text="unavailable")
+            resp_fail.json.return_value = {"error": "unavailable"}
+            resp_fail.headers = {}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {"balance_micros": 100, "currency": "USD"}
+            mock_get.side_effect = [resp_fail, resp_ok]
+            client._request("get", "/test")
+            self.assertEqual(mock_get.call_count, 2)
+        client.close()
+
+    @patch("ubb.retry.time.sleep")
+    def test_billing_client_retries_on_timeout(self, mock_sleep):
+        import httpx
+        from ubb.billing import BillingClient
+        client = BillingClient("ubb_live_test", "http://localhost:8001",
+                               max_retries=1)
+        with patch.object(client._http, "get") as mock_get:
+            mock_get.side_effect = [
+                httpx.TimeoutException("timeout"),
+                MagicMock(status_code=200, json=lambda: {}),
+            ]
+            client._request("get", "/test")
+            self.assertEqual(mock_get.call_count, 2)
+        client.close()
+
+    def test_metering_request_usage_no_retry_on_hard_stop(self):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", max_retries=3)
+        with patch.object(client._http, "post") as mock_post:
+            mock_post.return_value = MagicMock(
+                status_code=429,
+                json=lambda: {"hard_stop": True, "run_id": "r1",
+                              "reason": "cost", "total_cost_micros": 100},
+            )
+            with self.assertRaises(UBBHardStopError):
+                client._request_usage("post", "/api/v1/metering/usage", json={})
+            mock_post.assert_called_once()
+        client.close()
+
+    @patch("ubb.retry.time.sleep")
+    def test_ubb_client_passes_max_retries(self, mock_sleep):
+        from ubb.client import UBBClient
+        client = UBBClient("ubb_live_test", max_retries=5,
+                           metering=True, billing=True)
+        self.assertEqual(client.metering._max_retries, 5)
+        self.assertEqual(client.billing._max_retries, 5)
+        client.close()
+
+    def test_ubb_client_default_max_retries_is_3(self):
+        from ubb.client import UBBClient
+        client = UBBClient("ubb_live_test", metering=True, billing=True)
+        self.assertEqual(client.metering._max_retries, 3)
+        self.assertEqual(client.billing._max_retries, 3)
+        client.close()
+
+    def test_request_once_parses_retry_after_header(self):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", max_retries=0)
+        with patch.object(client._http, "get") as mock_get:
+            resp = MagicMock(status_code=429, text="rate limited")
+            resp.json.return_value = {"error": "rate limited"}
+            resp.headers = {"Retry-After": "2.5"}
+            mock_get.return_value = resp
+            with self.assertRaises(UBBAPIError) as ctx:
+                client._request_once("get", "/test")
+            self.assertEqual(ctx.exception.retry_after, 2.5)
+        client.close()
+
+
+class TestBranchSurfaceRetry(unittest.TestCase):
+    """Retry wiring on this branch's client surface (rate cards, budgets,
+    platform piggyback, plain-429 record_usage)."""
+
+    @patch("ubb.retry.time.sleep")
+    def test_create_rate_card_retries_on_503(self, mock_sleep):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", max_retries=2)
+        with patch.object(client._http, "post") as mock_post:
+            resp_fail = MagicMock(status_code=503, text="unavailable")
+            resp_fail.json.return_value = {"error": "unavailable"}
+            resp_fail.headers = {}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {
+                "id": "rc_1", "lineage_id": "lin_1", "card_type": "cost",
+                "metric_name": "tokens", "pricing_model": "per_unit",
+                "rate_per_unit_micros": 10, "unit_quantity": 1_000_000,
+            }
+            mock_post.side_effect = [resp_fail, resp_ok]
+            card = client.create_rate_card(card_type="cost", metric_name="tokens",
+                                           rate_per_unit_micros=10)
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(card.id, "rc_1")
+            self.assertEqual(card.metric_name, "tokens")
+        client.close()
+
+    @patch("ubb.retry.time.sleep")
+    def test_set_budget_retries_429_honoring_retry_after(self, mock_sleep):
+        from ubb.billing import BillingClient
+        client = BillingClient("ubb_live_test", max_retries=2)
+        with patch.object(client._http, "put") as mock_put:
+            resp_fail = MagicMock(status_code=429, text="rate limited")
+            resp_fail.json.return_value = {"error": "rate limited"}
+            resp_fail.headers = {"Retry-After": "1.5"}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {
+                "cap_micros": 1000, "enforce_mode": "advisory",
+                "hard_stop_pct": 100, "alert_levels": [], "fail_closed": False,
+            }
+            mock_put.side_effect = [resp_fail, resp_ok]
+            cfg = client.set_budget("cust_1", 1000)
+            self.assertEqual(mock_put.call_count, 2)
+            self.assertEqual(cfg.cap_micros, 1000)
+            mock_sleep.assert_called_once_with(1.5)
+        client.close()
+
+    @patch("ubb.retry.time.sleep")
+    def test_ubb_client_create_customer_retries_on_502(self, mock_sleep):
+        """Platform endpoints piggyback on metering._request and inherit retry."""
+        from ubb.client import UBBClient
+        client = UBBClient("ubb_live_test", metering=True)
+        with patch.object(client.metering._http, "post") as mock_post:
+            resp_fail = MagicMock(status_code=502, text="bad gateway")
+            resp_fail.json.return_value = {"error": "bad gateway"}
+            resp_fail.headers = {}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {
+                "id": "cust_1", "external_id": "ext_1", "status": "active",
+            }
+            mock_post.side_effect = [resp_fail, resp_ok]
+            result = client.create_customer("ext_1")
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(result.external_id, "ext_1")
+        client.close()
+
+    @patch("ubb.retry.time.sleep")
+    def test_record_usage_plain_429_retries_then_succeeds(self, mock_sleep):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", max_retries=2)
+        with patch.object(client._http, "post") as mock_post:
+            resp_fail = MagicMock(status_code=429, text="rate limited")
+            resp_fail.json.return_value = {"error": "rate limited"}  # no hard_stop
+            resp_fail.headers = {}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {"event_id": "evt_1",
+                                         "new_balance_micros": 100}
+            mock_post.side_effect = [resp_fail, resp_ok]
+            result = client.record_usage(customer_id="c1", request_id="r1",
+                                         idempotency_key="i1",
+                                         provider_cost_micros=10)
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(result.event_id, "evt_1")
+            mock_sleep.assert_called_once()
+        client.close()
+
+    def test_record_usage_hard_stop_429_raises_after_one_call(self):
+        from ubb.metering import MeteringClient
+        client = MeteringClient("ubb_live_test", max_retries=3)
+        with patch.object(client._http, "post") as mock_post:
+            resp = MagicMock(status_code=429)
+            resp.json.return_value = {"hard_stop": True, "run_id": "run_1",
+                                      "reason": "cost_exceeded",
+                                      "total_cost_micros": 100}
+            mock_post.return_value = resp
+            with self.assertRaises(UBBHardStopError):
+                client.record_usage(customer_id="c1", request_id="r1",
+                                    idempotency_key="i1",
+                                    provider_cost_micros=10, run_id="run_1")
+            mock_post.assert_called_once()
+        client.close()
+
+    def test_ubb_client_max_retries_0_propagates_to_all_clients(self):
+        from ubb.client import UBBClient
+        client = UBBClient("ubb_live_test", max_retries=0,
+                           metering=True, billing=True,
+                           subscriptions=True, referrals=True)
+        self.assertEqual(client.metering._max_retries, 0)
+        self.assertEqual(client.billing._max_retries, 0)
+        self.assertEqual(client.subscriptions._max_retries, 0)
+        self.assertEqual(client.referrals._max_retries, 0)
+        client.close()
+
+
 if __name__ == "__main__":
     unittest.main()
