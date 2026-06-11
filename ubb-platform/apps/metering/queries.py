@@ -1,8 +1,8 @@
 """Metering Query Interface — Cross-Product Read Contract.
 
 This module provides the ONLY approved way for other products
-(billing, referrals) to read metering data. Functions return
-plain dicts, never ORM instances.
+(billing, subscriptions, referrals) to read metering data.
+Functions return plain dicts, never ORM instances.
 
 If metering becomes a separate service, these functions become
 HTTP calls. All callers remain untouched.
@@ -11,9 +11,16 @@ Consumers:
 - apps/billing/tenant_billing/services.py → get_period_totals()
 - api/v1/billing_endpoints.py → get_revenue_analytics()
 - apps/referrals/rewards/reconciliation.py → get_customer_usage_for_period()
+- apps/billing/gating/tasks.py → get_customer_ids_with_usage()
+- apps/billing/invoicing/tasks.py → get_customer_ids_with_usage()
+- apps/billing/invoicing/services/postpaid_service.py → get_customer_cost_totals(),
+  get_billed_totals_by_customer(), get_customer_billed_breakdown()
+- apps/billing/wallets/tasks.py → iter_billable_usage_events()
+- apps/subscriptions/handlers.py → get_usage_event_effective_at()
 """
-from datetime import date
-from typing import TypedDict
+import uuid
+from datetime import date, datetime
+from typing import Iterator, TypedDict
 
 from django.db.models import Sum, Count
 from django.db.models.fields.json import KeyTextTransform
@@ -266,3 +273,114 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         cnt=Count("id")).order_by())
     rows = [_row(g[group_by], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
     return sorted(rows, key=lambda r: -r["margin_micros"])
+
+
+def get_usage_event_effective_at(usage_event_id) -> datetime | None:
+    """Get a usage event's effective_at timestamp. Returns datetime or None.
+
+    Tolerates malformed (non-UUID) ids by returning None — the UUID is
+    validated BEFORE the DB query so a legacy id (e.g. "evt-1" in old
+    fixtures) can never raise DataError inside a caller's atomic block.
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    try:
+        uuid.UUID(str(usage_event_id))
+    except (ValueError, TypeError):
+        return None
+    return UsageEvent.objects.filter(id=usage_event_id).values_list(
+        "effective_at", flat=True
+    ).first()
+
+
+def get_customer_ids_with_usage(tenant_id, period_start: date, period_end: date) -> list:
+    """Distinct customer ids with ANY usage in [period_start, period_end).
+
+    Existence-based: deliberately does NOT filter on billed_cost_micros
+    (zero-billed usage still counts — budget reconcile and postpaid close
+    both want every customer that emitted events). tenant_id may be a single
+    tenant id or a list/tuple/set of tenant ids (one query either way).
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    tenant_ids = tenant_id if isinstance(tenant_id, (list, tuple, set)) else [tenant_id]
+    return list(UsageEvent.objects.filter(
+        tenant_id__in=list(tenant_ids),
+        effective_at__gte=utc_day_start(period_start),
+        effective_at__lt=utc_day_start(period_end),
+    ).values_list("customer_id", flat=True).distinct())
+
+
+def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
+                                  period_end: date) -> dict:
+    """Sum(billed_cost_micros) per customer over [period_start, period_end).
+
+    Returns {customer_id: total_billed_micros}; a customer with no events in
+    the window is absent (a customer whose events all bill 0 IS present with
+    0). SQL GROUP BY pushdown — the trailing .order_by() clears the model's
+    default ordering so it cannot poison the GROUP BY.
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    rows = (UsageEvent.objects.filter(
+        tenant_id=tenant_id, customer_id__in=list(customer_ids),
+        effective_at__gte=utc_day_start(period_start),
+        effective_at__lt=utc_day_start(period_end),
+    ).values("customer_id").annotate(total=Sum("billed_cost_micros")).order_by())
+    return {r["customer_id"]: r["total"] or 0 for r in rows}
+
+
+def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
+                                  period_end: date, group_by: str) -> list[tuple]:
+    """Billed totals for ONE customer grouped by "tag:<key>" or "product_id".
+
+    Returns UNSORTED, aggregated [(label, billed_micros), ...] pairs (the
+    caller owns presentation order). Postpaid invoice-line label semantics:
+    a missing tag key, NULL tags, a JSON-null or EMPTY-STRING tag value, and
+    an empty product_id ALL collapse into "(other)" — unlike the analytics
+    contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
+    distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
+    into "(other)" post-query.
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    qs = UsageEvent.objects.filter(
+        tenant_id=tenant_id, customer_id=customer_id,
+        effective_at__gte=utc_day_start(period_start),
+        effective_at__lt=utc_day_start(period_end),
+    )
+    if group_by.startswith("tag:"):
+        rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "tags"))
+                .values("label").annotate(total=Sum("billed_cost_micros")).order_by())
+        raw_key = "label"
+    else:  # "product_id"
+        rows = (qs.values("product_id")
+                .annotate(total=Sum("billed_cost_micros")).order_by())
+        raw_key = "product_id"
+    merged: dict = {}
+    for r in rows:
+        label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge
+        merged[label] = merged.get(label, 0) + (r["total"] or 0)
+    return list(merged.items())
+
+
+def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
+                               basis: str = "effective") -> Iterator[dict]:
+    """Iterate billable events (billed_cost_micros > 0) in [since, before).
+
+    since/before are aware datetimes (NOT dates — no day-snapping here).
+    basis="effective" windows on effective_at; basis="created" windows on
+    created_at, so a consumer (e.g. drawdown repair) can flip its scan basis
+    with a one-word change. Yields plain dicts:
+    {"id", "billed_cost_micros", "customer_id", "billing_owner_id"}.
+    Server-side cursor via .iterator() — safe for large windows.
+    """
+    from apps.metering.usage.models import UsageEvent
+
+    if basis not in ("effective", "created"):
+        raise ValueError("basis must be 'effective' or 'created'")
+    field = "created_at" if basis == "created" else "effective_at"
+    return UsageEvent.objects.filter(
+        tenant_id=tenant_id, billed_cost_micros__gt=0,
+        **{f"{field}__gte": since, f"{field}__lt": before},
+    ).values("id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()

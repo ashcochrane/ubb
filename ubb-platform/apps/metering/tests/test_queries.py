@@ -231,3 +231,113 @@ class GetCostTotalsTest(TestCase):
                                       start_date=self.start, end_date=self.end)
         assert rows[0]["dimension"] == "gpt-4"
         assert rows[0]["margin_micros"] == 300_000
+
+
+class CrossProductReadContractTest(TestCase):
+    """F3.2 contract functions: the only approved cross-product UsageEvent reads."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="T")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        self.start = timezone.now().date().replace(day=1)
+        self.end = (self.start.replace(month=self.start.month + 1, day=1)
+                    if self.start.month < 12
+                    else self.start.replace(year=self.start.year + 1, month=1, day=1))
+
+    def test_effective_at_returned(self):
+        from apps.metering.queries import get_usage_event_effective_at
+        ev = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=1)
+        self.assertEqual(get_usage_event_effective_at(ev.id), ev.effective_at)
+
+    def test_effective_at_none_for_malformed_and_missing_ids(self):
+        import uuid
+        from apps.metering.queries import get_usage_event_effective_at
+        self.assertIsNone(get_usage_event_effective_at("evt-1"))   # legacy non-UUID id
+        self.assertIsNone(get_usage_event_effective_at(uuid.uuid4()))
+
+    def test_customer_ids_with_usage_single_and_list_tenant(self):
+        from apps.metering.queries import get_customer_ids_with_usage
+        other = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        # zero-billed usage still counts (existence-based, no billed filter)
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r1", idempotency_key="i1", billed_cost_micros=0)
+        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+                                  request_id="r2", idempotency_key="i2", billed_cost_micros=5)
+        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+                                  request_id="r3", idempotency_key="i3", billed_cost_micros=5)
+        single = get_customer_ids_with_usage(self.tenant.id, self.start, self.end)
+        listed = get_customer_ids_with_usage([self.tenant.id], self.start, self.end)
+        self.assertEqual(sorted(map(str, single)), sorted(map(str, listed)))
+        self.assertEqual(set(single), {self.customer.id, other.id})  # distinct
+
+    def test_billed_totals_by_customer_groups_in_sql(self):
+        from apps.metering.queries import get_billed_totals_by_customer
+        other = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        excluded = Customer.objects.create(tenant=self.tenant, external_id="c3")
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r1", idempotency_key="i1", billed_cost_micros=100)
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r2", idempotency_key="i2", billed_cost_micros=200)
+        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+                                  request_id="r3", idempotency_key="i3", billed_cost_micros=0)
+        UsageEvent.objects.create(tenant=self.tenant, customer=excluded,
+                                  request_id="r4", idempotency_key="i4", billed_cost_micros=7)
+        totals = get_billed_totals_by_customer(
+            self.tenant.id, [self.customer.id, other.id], self.start, self.end)
+        self.assertEqual(totals, {self.customer.id: 300, other.id: 0})
+
+    def test_billed_breakdown_tag_empty_string_and_missing_merge_to_other(self):
+        from apps.metering.queries import get_customer_billed_breakdown
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r1", idempotency_key="i1",
+                                  billed_cost_micros=100, tags={"seat": "alice"})
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r2", idempotency_key="i2",
+                                  billed_cost_micros=20, tags={"seat": ""})
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r3", idempotency_key="i3",
+                                  billed_cost_micros=3, tags=None)
+        pairs = get_customer_billed_breakdown(
+            self.tenant.id, self.customer.id, self.start, self.end, "tag:seat")
+        self.assertEqual(dict(pairs), {"alice": 100, "(other)": 23})
+
+    def test_billed_breakdown_product_empty_to_other(self):
+        from apps.metering.queries import get_customer_billed_breakdown
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r1", idempotency_key="i1",
+                                  billed_cost_micros=100, product_id="chat")
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r2", idempotency_key="i2",
+                                  billed_cost_micros=20, product_id="")
+        pairs = get_customer_billed_breakdown(
+            self.tenant.id, self.customer.id, self.start, self.end, "product_id")
+        self.assertEqual(dict(pairs), {"chat": 100, "(other)": 20})
+
+    def test_iter_billable_usage_events_shape_and_basis(self):
+        from datetime import timedelta
+        from apps.metering.queries import iter_billable_usage_events
+        now = timezone.now()
+        ev = UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                       request_id="r1", idempotency_key="i1",
+                                       billed_cost_micros=500)
+        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+                                  request_id="r2", idempotency_key="i2",
+                                  billed_cost_micros=0)  # not billable -> excluded
+        rows = list(iter_billable_usage_events(
+            self.tenant.id, now - timedelta(hours=1), now + timedelta(hours=1)))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0], {"id": ev.id, "billed_cost_micros": 500,
+                                   "customer_id": self.customer.id,
+                                   "billing_owner_id": ev.billing_owner_id})
+        # basis="created": move effective_at out of the window; created_at still matches.
+        UsageEvent.objects.filter(id=ev.id).update(effective_at=now - timedelta(days=30))
+        window = (now - timedelta(hours=1), now + timedelta(hours=1))
+        self.assertEqual(list(iter_billable_usage_events(
+            self.tenant.id, *window, basis="effective")), [])
+        created_rows = list(iter_billable_usage_events(
+            self.tenant.id, *window, basis="created"))
+        self.assertEqual([r["id"] for r in created_rows], [ev.id])
+        with self.assertRaises(ValueError):
+            list(iter_billable_usage_events(self.tenant.id, *window, basis="bogus"))

@@ -11,7 +11,7 @@ def reconcile_budget_counters():
     from apps.platform.customers.models import Customer
     from apps.billing.gating.models import BudgetConfig
     from apps.billing.gating.services.budget_service import BudgetService, _period
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.queries import get_customer_ids_with_usage
 
     _label, start, end = _period()
     ids = set(BudgetConfig.objects.filter(customer__isnull=False, cap_micros__gt=0)
@@ -19,11 +19,7 @@ def reconcile_budget_counters():
     default_tenants = list(BudgetConfig.objects.filter(customer__isnull=True, cap_micros__gt=0)
                            .values_list("tenant_id", flat=True))
     if default_tenants:
-        from core.time_windows import utc_day_start
-        ids |= set(UsageEvent.objects.filter(
-            tenant_id__in=default_tenants,
-            effective_at__gte=utc_day_start(start), effective_at__lt=utc_day_start(end)
-        ).values_list("customer_id", flat=True).distinct())
+        ids |= set(get_customer_ids_with_usage(default_tenants, start, end))
     for customer in Customer.objects.filter(id__in=ids):
         try:
             BudgetService.reconcile_customer(customer)

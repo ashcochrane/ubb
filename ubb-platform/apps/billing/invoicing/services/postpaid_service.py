@@ -9,7 +9,6 @@ from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import stripe_call
 from core.exceptions import StripeFatalError
-from core.time_windows import utc_day_start
 
 logger = logging.getLogger("ubb.billing")
 
@@ -18,19 +17,19 @@ class PostpaidUsageService:
     @staticmethod
     def aggregate_lines(tenant, customer, period_start, period_end):
         """(total_micros, [(label, amount_micros), ...]); lines ALWAYS sum to total.
-        A BUSINESS aggregates across its seats with one line per seat (external_id)."""
-        from apps.metering.usage.models import UsageEvent
+        A BUSINESS aggregates across its seats with one line per seat (external_id).
+        All metering reads go through the apps.metering.queries contract; the
+        seat-label mapping, "(other)"/"(seat)" merge and presentation sort stay here."""
         if customer.account_type == "business":
             from apps.platform.customers.models import Customer
+            from apps.metering.queries import get_billed_totals_by_customer
             seats = {s.id: s.external_id for s in Customer.all_objects.filter(parent=customer)}
             if not seats:
                 return 0, []
-            qs = UsageEvent.objects.filter(
-                tenant=tenant, customer_id__in=list(seats.keys()),
-                effective_at__gte=utc_day_start(period_start),
-                effective_at__lt=utc_day_start(period_end))
+            totals = get_billed_totals_by_customer(
+                tenant.id, list(seats.keys()), period_start, period_end)
             agg = defaultdict(int)
-            for cid, billed in qs.values_list("customer_id", "billed_cost_micros"):
+            for cid, billed in totals.items():
                 agg[seats.get(cid, "(seat)")] += billed or 0
             lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
             total = sum(a for _, a in lines)
@@ -45,20 +44,11 @@ class PostpaidUsageService:
             total = get_customer_cost_totals(tenant.id, customer.id, period_start, period_end)["billed_cost_micros"]
             return total, ([("", total)] if total > 0 else [])
 
-        from apps.metering.usage.models import UsageEvent
-        qs = UsageEvent.objects.filter(
-            tenant=tenant, customer=customer,
-            effective_at__gte=utc_day_start(period_start),
-            effective_at__lt=utc_day_start(period_end))
+        from apps.metering.queries import get_customer_billed_breakdown
         agg = defaultdict(int)
-        if group_by.startswith("tag:"):
-            tag_key = group_by[4:]
-            for tags, billed in qs.values_list("tags", "billed_cost_micros"):
-                label = (tags or {}).get(tag_key) or "(other)"
-                agg[label] += billed or 0
-        else:  # "product_id"
-            for pid, billed in qs.values_list("product_id", "billed_cost_micros"):
-                agg[pid or "(other)"] += billed or 0
+        for label, billed in get_customer_billed_breakdown(
+                tenant.id, customer.id, period_start, period_end, group_by):
+            agg[label] += billed
         lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
         total = sum(a for _, a in lines)  # total IS the sum of lines, by construction
         return total, lines
