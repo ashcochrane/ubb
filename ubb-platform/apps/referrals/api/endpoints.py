@@ -8,7 +8,7 @@ from django.utils import timezone
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 
-from api.v1.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import apply_cursor_filter, encode_cursor
 from apps.platform.customers.models import Customer
 from apps.referrals.api.schemas import (
     ProgramCreateRequest,

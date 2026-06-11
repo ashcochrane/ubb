@@ -55,15 +55,15 @@ class TestSeatCountHelper(TestCase):
 
 class TestSeatCreateHook(TestCase):
     def test_create_seat_pushes_incremented_count(self):
-        from api.v1.platform_endpoints import create_customer, CreateCustomerRequest
+        from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+        from django.db import transaction
         t, biz, _plan, _seats = _business_with_sub(seats=2)
-        req = type("R", (), {"auth": type("A", (), {"tenant": t})()})()
-        payload = CreateCustomerRequest(external_id="newseat", account_type="seat",
-                                        parent_external_id="biz")
         with patch("apps.subscriptions.orchestration.service.SubscriptionOrchestrator.set_seats") as spy, \
              self.captureOnCommitCallbacks(execute=True):
-            status, _body = create_customer(req, payload)
-        assert status == 201
+            with transaction.atomic():
+                Customer.objects.create(tenant=t, external_id="newseat",
+                                        account_type="seat", parent=biz)
+                sync_seat_quantity_on_commit(biz)
         spy.assert_called_once()
         # new active count = 2 existing + 1 new = 3
         assert spy.call_args.args[2] == 3 or spy.call_args.kwargs.get("new_seats") == 3
@@ -102,15 +102,15 @@ class TestSeatRemoveHook(TestCase):
 
 class TestNoSubscriptionNoop(TestCase):
     def test_create_seat_without_subscription_is_noop(self):
-        from api.v1.platform_endpoints import create_customer, CreateCustomerRequest
+        from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
+        from django.db import transaction
         t = Tenant.objects.create(name="T2", products=["metering", "billing"])
         biz = Customer.objects.create(tenant=t, external_id="biz2", account_type="business",
                                       billing_topology="pooled")
-        req = type("R", (), {"auth": type("A", (), {"tenant": t})()})()
-        payload = CreateCustomerRequest(external_id="seatx", account_type="seat",
-                                        parent_external_id="biz2")
         with patch("apps.subscriptions.orchestration.service.SubscriptionOrchestrator.set_seats") as spy, \
              self.captureOnCommitCallbacks(execute=True):
-            status, _body = create_customer(req, payload)
-        assert status == 201
+            with transaction.atomic():
+                Customer.objects.create(tenant=t, external_id="seatx",
+                                        account_type="seat", parent=biz)
+                sync_seat_quantity_on_commit(biz)
         spy.assert_not_called()

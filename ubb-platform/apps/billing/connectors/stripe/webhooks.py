@@ -8,6 +8,7 @@ from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
+from apps.billing.connectors.stripe.invoice_routing import _invoice_subscription_id, _refresh_urls
 from core.locking import lock_customer
 
 logger = logging.getLogger(__name__)
@@ -146,11 +147,9 @@ def _mark_invoice_payment_failed(event):
     """Stamp payment_failed_at + refresh hosted url on the matched customer invoice.
 
     Status-only (no money movement); account-checked; idempotent; never changes a
-    terminal status. Routes by subscription presence the same way the api/v1 AR
-    reconcile does. Imported lazily to avoid a circular import with api.v1.webhooks
-    (which imports this module at load time).
+    terminal status. Routes by subscription presence the same way the billing AR
+    reconcile does.
     """
-    from api.v1.webhooks import _invoice_subscription_id, _refresh_urls
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.subscriptions.models import SubscriptionInvoice, StripeSubscription
 

@@ -25,6 +25,12 @@ from apps.billing.connectors.stripe.webhooks import (
     handle_payment_intent_succeeded,
     handle_payment_intent_payment_failed,
 )
+from apps.billing.connectors.stripe.invoice_routing import (  # noqa: F401
+    _invoice_subscription_id,
+    _refresh_urls,
+    AR_ALLOWED,
+    ar_transition_allowed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -148,39 +154,11 @@ def stripe_webhook(request):
 # customer.subscription.* only — never register an invoice.* type on both
 # (they share the StripeWebhookEvent dedup table, so a double-registration would
 # let the first endpoint win the dedup row and the second silently skip).
-
-# Stripe's documented invoice-status graph: uncollectible invoices remain
-# payable and voidable; paid and void are genuinely final.
-AR_ALLOWED = {
-    "": {"open", "paid", "void", "uncollectible"},   # None/'' = no status yet
-    "open": {"paid", "void", "uncollectible"},
-    "uncollectible": {"paid", "void"},
-    "paid": set(),
-    "void": set(),
-}
-
-
-def ar_transition_allowed(old, new):
-    return new in AR_ALLOWED.get(old or "", set())
-
-
-def _refresh_urls(local, inv):
-    """Re-store hosted_invoice_url / invoice_pdf when present (Stripe rotates tokens)."""
-    if getattr(inv, "hosted_invoice_url", None):
-        local.hosted_invoice_url = inv.hosted_invoice_url
-    if getattr(inv, "invoice_pdf", None):
-        local.invoice_pdf = inv.invoice_pdf
-
-
-def _invoice_subscription_id(inv):
-    """Extract the subscription id from an invoice (legacy .subscription or Basil .parent)."""
-    sub = getattr(inv, "subscription", None)
-    if sub:
-        return sub if isinstance(sub, str) else getattr(sub, "id", None)
-    parent = getattr(inv, "parent", None)
-    details = getattr(parent, "subscription_details", None) if parent else None
-    s = getattr(details, "subscription", None) if details else None
-    return s if isinstance(s, str) else getattr(s, "id", None)
+#
+# AR_ALLOWED, ar_transition_allowed, _refresh_urls, and _invoice_subscription_id
+# are billing-domain logic; they live in
+# apps/billing/connectors/stripe/invoice_routing.py and are re-exported above
+# so existing call-sites (tests, etc.) can still reach them via this module.
 
 
 def _unix(ts):

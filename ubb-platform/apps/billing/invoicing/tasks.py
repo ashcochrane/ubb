@@ -10,6 +10,11 @@ from django.utils import timezone
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.services.stripe_service import stripe_call
+from apps.billing.connectors.stripe.invoice_routing import (
+    _invoice_subscription_id,
+    _refresh_urls,
+    ar_transition_allowed,
+)
 from core.time_windows import utc_day_start
 
 logger = logging.getLogger(__name__)
@@ -22,8 +27,8 @@ _STRIPE_STATUS_MAP = {
     "open": "open",
 }
 # Which transitions are legal is NOT encoded here: both the webhook fast path and
-# this backstop share api.v1.webhooks.AR_ALLOWED / ar_transition_allowed, so the
-# two paths can never diverge.
+# this backstop share apps.billing.connectors.stripe.invoice_routing.AR_ALLOWED /
+# ar_transition_allowed, so the two paths can never diverge.
 
 
 @shared_task(queue="ubb_invoicing")
@@ -150,9 +155,8 @@ def reconcile_invoice_payment_status():
     each charge-ready tenant's recent Stripe invoices (4-day lookback > the retry
     horizon) and repairs any local payment-status it missed.
 
-    Reuses the api/v1 webhook helpers (_invoice_subscription_id, _refresh_urls,
-    ar_transition_allowed) — the same lazy-import pattern
-    apps/billing/connectors/stripe/webhooks.py uses, so no circular import.
+    Reuses the billing routing helpers (_invoice_subscription_id, _refresh_urls,
+    ar_transition_allowed) from apps.billing.connectors.stripe.invoice_routing.
     Status is repaired under select_for_update along the SAME Stripe-legal
     transition table the webhook path uses (paid/void final; uncollectible
     remains payable/voidable). A genuinely illegal move Stripe reports (e.g.
@@ -161,7 +165,6 @@ def reconcile_invoice_payment_status():
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.subscriptions.models import SubscriptionInvoice
     from apps.platform.tenants.models import Tenant
-    from api.v1.webhooks import _invoice_subscription_id, _refresh_urls
 
     cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
     tenants = (Tenant.objects
@@ -203,8 +206,6 @@ def reconcile_invoice_payment_status():
 def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
     """Repair a CustomerUsageInvoice payment_status along the Stripe-legal
     transition table (shared with the webhook fast path). Returns 1 if changed."""
-    from api.v1.webhooks import ar_transition_allowed
-
     existing = model.objects.filter(
         tenant=tenant, status="pushed", stripe_invoice_id=stripe_invoice_id,
     ).exclude(stripe_invoice_id="").first()
@@ -236,8 +237,6 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
 def _repair_subscription_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
     """Repair a SubscriptionInvoice status along the Stripe-legal transition
     table (shared with the webhook fast path). Returns 1 if changed."""
-    from api.v1.webhooks import ar_transition_allowed
-
     existing = model.objects.filter(
         tenant=tenant, stripe_invoice_id=stripe_invoice_id,
     ).first()

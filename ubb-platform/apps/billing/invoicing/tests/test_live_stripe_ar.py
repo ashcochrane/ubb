@@ -27,7 +27,7 @@ def test_live_invoice_payload_shape():
     assert stripe.api_version == STRIPE_API_VERSION
     stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
     acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
-    from api.v1.webhooks import _invoice_subscription_id
+    from apps.billing.connectors.stripe.invoice_routing import _invoice_subscription_id
 
     # Create a customer + a one-off invoice item + invoice on the connected
     # account, finalize it, then RETRIEVE it and assert the field paths our
@@ -98,7 +98,7 @@ def test_live_b2_basil_subscription_link():
     assert stripe.api_version == STRIPE_API_VERSION
     stripe.api_key = os.environ["STRIPE_TEST_SECRET_KEY"]
     acct = os.environ["STRIPE_TEST_CONNECTED_ACCOUNT"]
-    from api.v1.webhooks import _invoice_subscription_id
+    from apps.billing.connectors.stripe.invoice_routing import _invoice_subscription_id
 
     cust = stripe.Customer.create(stripe_account=acct, email="live-b2@example.com")
     price = stripe.Price.create(

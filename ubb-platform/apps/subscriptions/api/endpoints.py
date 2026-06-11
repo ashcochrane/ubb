@@ -18,7 +18,7 @@ from ninja import NinjaAPI
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
 
-from api.v1.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import apply_cursor_filter, encode_cursor
 from apps.platform.customers.models import Customer
 from apps.subscriptions.api.schemas import (
     SyncResponse,

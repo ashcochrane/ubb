@@ -159,7 +159,7 @@ class RepairTransitionParityTest(TestCase):
     def test_usage_uncollectible_to_paid_repairs(self):
         from apps.billing.invoicing.tasks import _repair_usage_invoice
         from apps.billing.invoicing.models import CustomerUsageInvoice
-        from api.v1.webhooks import _refresh_urls
+        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
         t, c = self._tenant_customer()
         rec = CustomerUsageInvoice.objects.create(
             tenant=t, customer=c, period_start=self.PS, period_end=self.PE,
@@ -178,7 +178,7 @@ class RepairTransitionParityTest(TestCase):
     def test_usage_paid_to_open_logs_regression(self):
         from apps.billing.invoicing.tasks import _repair_usage_invoice
         from apps.billing.invoicing.models import CustomerUsageInvoice
-        from api.v1.webhooks import _refresh_urls
+        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
         t, c = self._tenant_customer()
         rec = CustomerUsageInvoice.objects.create(
             tenant=t, customer=c, period_start=self.PS, period_end=self.PE,
@@ -211,7 +211,7 @@ class RepairTransitionParityTest(TestCase):
     def test_subscription_uncollectible_to_paid_repairs(self):
         from apps.billing.invoicing.tasks import _repair_subscription_invoice
         from apps.subscriptions.models import SubscriptionInvoice
-        from api.v1.webhooks import _refresh_urls
+        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
         t, c = self._tenant_customer()
         si = self._subscription_invoice(t, c, "in_s_unc", "uncollectible")
         inv = _stripe_invoice("in_s_unc", "paid", subscription="sub_in_s_unc")
@@ -227,7 +227,7 @@ class RepairTransitionParityTest(TestCase):
     def test_subscription_paid_to_open_logs_regression(self):
         from apps.billing.invoicing.tasks import _repair_subscription_invoice
         from apps.subscriptions.models import SubscriptionInvoice
-        from api.v1.webhooks import _refresh_urls
+        from apps.billing.connectors.stripe.invoice_routing import _refresh_urls
         t, c = self._tenant_customer()
         si = self._subscription_invoice(t, c, "in_s_pd", "paid")
         si.paid_at = timezone.now()
