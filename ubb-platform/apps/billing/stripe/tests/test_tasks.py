@@ -172,16 +172,25 @@ class ReconcileTopupsWithStripeTest(TestCase):
         self._create_attempt("ch_error")
         mock_retrieve.side_effect = stripe_lib.error.StripeError("API down")
 
-        # Should not raise
-        reconcile_topups_with_stripe()
+        # Should not raise — the audit sweep logs and moves on
+        with self.assertLogs("apps.billing.connectors.stripe.tasks", level="WARNING") as cm:
+            reconcile_topups_with_stripe()
+
+        mock_retrieve.assert_called_once()
+        self.assertTrue(any("charge fetch failed" in msg for msg in cm.output))
 
     @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
-    def test_skips_attempts_without_charge_id(self, mock_pi_list):
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    def test_skips_attempts_without_charge_id(self, mock_retrieve, mock_pi_list):
         mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         TopUpAttempt.objects.create(
             customer=self.customer, amount_micros=5_000_000,
             trigger="manual", status="succeeded",
             stripe_charge_id=None,
         )
-        # No Stripe Charge.retrieve call should be attempted
         reconcile_topups_with_stripe()
+
+        # The audit sweep must enter (PI list called) but never fetch a
+        # charge for an attempt with no charge id.
+        mock_pi_list.assert_called_once()
+        mock_retrieve.assert_not_called()
