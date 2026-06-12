@@ -37,25 +37,45 @@ class PostpaidClientTest(unittest.TestCase):
 
     @patch("ubb.billing.httpx.Client.get")
     def test_get_postpaid_config(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"usage_line_item_group_by": "product_id"})
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "usage_line_item_group_by": "product_id",
+            "consolidate_with_subscription": False})
         out = self.client.get_postpaid_config()
-        self.assertEqual(out, "product_id")
+        self.assertEqual(out["usage_line_item_group_by"], "product_id")
+        self.assertEqual(out["consolidate_with_subscription"], False)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/billing/postpaid-config")
 
     @patch("ubb.billing.httpx.Client.put")
     def test_set_postpaid_config(self, mock_put):
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: {"usage_line_item_group_by": "product_id"})
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "usage_line_item_group_by": "product_id",
+            "consolidate_with_subscription": False})
         out = self.client.set_postpaid_config("product_id")
-        self.assertEqual(out, "product_id")
+        self.assertEqual(out["usage_line_item_group_by"], "product_id")
         self.assertEqual(mock_put.call_args.args[0], "/api/v1/billing/postpaid-config")
+        # None = leave the consolidation opt-in unchanged: the flag must be
+        # OMITTED from the body, never sent as false.
+        self.assertNotIn("consolidate_with_subscription", mock_put.call_args.kwargs["json"])
 
     @patch("ubb.billing.httpx.Client.put")
     def test_set_postpaid_config_empty(self, mock_put):
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: {"usage_line_item_group_by": ""})
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "usage_line_item_group_by": "",
+            "consolidate_with_subscription": False})
         out = self.client.set_postpaid_config()
-        self.assertEqual(out, "")
+        self.assertEqual(out["usage_line_item_group_by"], "")
         body = mock_put.call_args.kwargs["json"]
         self.assertEqual(body["usage_line_item_group_by"], "")
+
+    @patch("ubb.billing.httpx.Client.put")
+    def test_set_postpaid_config_consolidation_flag(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "usage_line_item_group_by": "",
+            "consolidate_with_subscription": True})
+        out = self.client.set_postpaid_config(consolidate_with_subscription=True)
+        self.assertEqual(out["consolidate_with_subscription"], True)
+        body = mock_put.call_args.kwargs["json"]
+        self.assertEqual(body["consolidate_with_subscription"], True)
 
 
 if __name__ == "__main__":

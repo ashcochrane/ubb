@@ -20,6 +20,35 @@ from apps.billing.connectors.stripe.invoice_routing import _refresh_urls, ar_tra
 logger = logging.getLogger(__name__)
 
 
+def get_active_subscription_for_consolidation(tenant, customer):
+    """F5.5 consolidation eligibility: the customer's ACTIVE UBB-managed
+    Stripe subscription, as plain data (ADR-001: billing may import only this
+    module, never the subscriptions ORM).
+
+    Eligible: mirror status "active" or "past_due" (a past_due renewal still
+    drafts the next invoice), not paused (a paused subscription's draft may
+    never auto-finalize — items pinned to it would never bill), and carrying
+    at least one CustomerSubscriptionItem with a UBB plan attached (the
+    UBB-managed marker; a foreign Stripe subscription is not ours to ride).
+
+    Returns ``{"stripe_subscription_id": ...}`` or ``None``.
+    """
+    from apps.subscriptions.models import StripeSubscription
+
+    sub = (
+        StripeSubscription.objects.filter(
+            tenant=tenant, customer=customer,
+            status__in=["active", "past_due"], paused=False,
+            line_items__plan__isnull=False,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not sub:
+        return None
+    return {"stripe_subscription_id": sub.stripe_subscription_id}
+
+
 def mark_invoice_payment_failed_for_subscription(account, subscription_id, stripe_invoice_id, inv,
                                                  *, livemode=True):
     """Stamp payment_failed_at + refresh hosted url on the SubscriptionInvoice

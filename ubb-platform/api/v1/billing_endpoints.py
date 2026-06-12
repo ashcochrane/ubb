@@ -800,14 +800,18 @@ def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     cfg = PostpaidUsageConfig.objects.filter(tenant=request.auth.tenant).first()
-    return {"usage_line_item_group_by": cfg.usage_line_item_group_by if cfg else ""}
+    return {"usage_line_item_group_by": cfg.usage_line_item_group_by if cfg else "",
+            "consolidate_with_subscription": cfg.consolidate_with_subscription if cfg else False}
 
 
 @billing_api.put("/postpaid-config", response=PostpaidConfigOut)
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
+    defaults = {"usage_line_item_group_by": payload.usage_line_item_group_by}
+    if payload.consolidate_with_subscription is not None:
+        defaults["consolidate_with_subscription"] = payload.consolidate_with_subscription
     cfg, _ = PostpaidUsageConfig.objects.update_or_create(
-        tenant=request.auth.tenant,
-        defaults={"usage_line_item_group_by": payload.usage_line_item_group_by})
-    return {"usage_line_item_group_by": cfg.usage_line_item_group_by}
+        tenant=request.auth.tenant, defaults=defaults)
+    return {"usage_line_item_group_by": cfg.usage_line_item_group_by,
+            "consolidate_with_subscription": cfg.consolidate_with_subscription}

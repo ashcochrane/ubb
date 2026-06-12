@@ -303,10 +303,14 @@ class UsageInvoiceOut(Schema):
 
 class PostpaidConfigIn(Schema):
     usage_line_item_group_by: str = ""
+    # F5.5 opt-in; None = leave unchanged (a group_by-only PUT must never
+    # silently switch a tenant's consolidation mode off).
+    consolidate_with_subscription: Optional[bool] = None
 
 
 class PostpaidConfigOut(Schema):
     usage_line_item_group_by: str
+    consolidate_with_subscription: bool = False
 
 
 class RateCardIn(Schema):

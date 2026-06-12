@@ -36,9 +36,31 @@ class PostpaidEndpointsTest(TestCase):
     def test_postpaid_config_get_put(self):
         r = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
         assert r.status_code == 200 and r.json()["usage_line_item_group_by"] == ""
+        assert r.json()["consolidate_with_subscription"] is False
         r = self.http.put("/api/v1/billing/postpaid-config",
                           data=json.dumps({"usage_line_item_group_by": "product_id"}),
                           content_type="application/json", **self._auth())
         assert r.status_code == 200
         r = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
         assert r.json()["usage_line_item_group_by"] == "product_id"
+
+    def test_postpaid_config_consolidation_flag_roundtrip(self):
+        r = self.http.put("/api/v1/billing/postpaid-config",
+                          data=json.dumps({"usage_line_item_group_by": "product_id",
+                                           "consolidate_with_subscription": True}),
+                          content_type="application/json", **self._auth())
+        assert r.status_code == 200 and r.json()["consolidate_with_subscription"] is True
+        # F5.5: a group_by-only PUT (flag omitted) must NOT flip the opt-in off.
+        r = self.http.put("/api/v1/billing/postpaid-config",
+                          data=json.dumps({"usage_line_item_group_by": "model"}),
+                          content_type="application/json", **self._auth())
+        assert r.status_code == 200
+        body = r.json()
+        assert body["usage_line_item_group_by"] == "model"
+        assert body["consolidate_with_subscription"] is True
+        # An explicit false switches it off.
+        r = self.http.put("/api/v1/billing/postpaid-config",
+                          data=json.dumps({"usage_line_item_group_by": "model",
+                                           "consolidate_with_subscription": False}),
+                          content_type="application/json", **self._auth())
+        assert r.json()["consolidate_with_subscription"] is False

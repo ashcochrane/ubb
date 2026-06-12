@@ -189,6 +189,11 @@ def reconcile_invoice_payment_status():
                 if _invoice_subscription_id(inv):
                     repaired += repair_subscription_invoice(
                         tenant, stripe_invoice_id, inv, new_status)
+                    # F5.5: a CONSOLIDATED usage rec rides this subscription
+                    # invoice — repair it along the same transition table.
+                    repaired += _repair_usage_invoice(
+                        CustomerUsageInvoice, tenant, stripe_invoice_id, inv,
+                        new_status, _refresh_urls, invoice_kind="consolidated")
                 else:
                     repaired += _repair_usage_invoice(
                         CustomerUsageInvoice, tenant, stripe_invoice_id, inv,
@@ -202,12 +207,18 @@ def reconcile_invoice_payment_status():
         logger.info("ar.reconcile_repaired", extra={"data": {"repaired": repaired}})
 
 
-def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls):
+def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls,
+                          invoice_kind=None):
     """Repair a CustomerUsageInvoice payment_status along the Stripe-legal
-    transition table (shared with the webhook fast path). Returns 1 if changed."""
-    existing = model.objects.filter(
+    transition table (shared with the webhook fast path). Returns 1 if changed.
+    F5.5: invoice_kind="consolidated" narrows the match for the subscription
+    branch — a consolidated rec's pointer IS a subscription invoice id."""
+    qs = model.objects.filter(
         tenant=tenant, status="pushed", stripe_invoice_id=stripe_invoice_id,
-    ).exclude(stripe_invoice_id="").first()
+    ).exclude(stripe_invoice_id="")
+    if invoice_kind is not None:
+        qs = qs.filter(invoice_kind=invoice_kind)
+    existing = qs.first()
     if not existing:
         return 0
     with transaction.atomic():

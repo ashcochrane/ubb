@@ -12,6 +12,10 @@ from core.exceptions import StripeFatalError
 
 logger = logging.getLogger("ubb.billing")
 
+# F5.5: a renewal draft older than this is too close to Stripe's ~1h
+# auto-finalize to safely pin items into — fall back to standalone.
+CONSOLIDATION_MAX_DRAFT_AGE_SECONDS = 45 * 60
+
 
 class PostpaidUsageService:
     @staticmethod
@@ -199,7 +203,7 @@ class PostpaidUsageService:
         # by construction once status reached pushing; `or 0` is defensive).
         carry_in = rec.carry_in_micros or 0
         try:
-            standalone_id, items, residual_out = PostpaidUsageService._push_to_stripe(
+            invoice_id, items, residual_out = PostpaidUsageService._push_to_stripe(
                 tenant, customer, rec, lines, period_start, carry_in=carry_in)
         except StripeFatalError as exc:
             # Non-retryable by definition (void/deleted/unexpected-status invoice,
@@ -234,7 +238,7 @@ class PostpaidUsageService:
                     usage_invoice=rec, dimension=label, amount_micros=amount,
                     stripe_invoice_item_id=item_id)
             rec.status = "pushed"
-            rec.stripe_invoice_id = standalone_id or ""
+            rec.stripe_invoice_id = invoice_id or ""
             rec.residual_micros = residual_out
             rec.pushed_at = timezone.now()
             rec.last_attempt_error = ""
@@ -266,7 +270,7 @@ class PostpaidUsageService:
 
     @staticmethod
     def _push_to_stripe(tenant, customer, rec, lines, period_start, carry_in=0):
-        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.billing.invoicing.models import CustomerUsageInvoice, PostpaidUsageConfig
 
         connected = tenant.stripe_connected_account_id
         api_key = api_key_for_tenant(tenant)
@@ -308,6 +312,7 @@ class PostpaidUsageService:
         # the I4 metadata lookup (covers a crash between Invoice.create and the
         # pointer persist); only CREATE when neither finds an invoice.
         created = False
+        consolidated = False
         if rec.stripe_invoice_id:
             inv = stripe_call(
                 stripe.Invoice.retrieve, api_key=api_key,
@@ -322,8 +327,27 @@ class PostpaidUsageService:
                 raise StripeFatalError(
                     f"Stripe invoice {rec.stripe_invoice_id} for usage invoice {rec.id} "
                     "is void/deleted; use repush_usage_invoice --rebill-void to replace it")
+            # F5.5: a pointer on a "consolidated" rec is the subscription
+            # renewal — a FOREIGN invoice (Stripe minted it; it carries none of
+            # our invoice metadata) that finalizes on Stripe's clock. The
+            # metadata check is defensive: an invoice WE minted (standalone or
+            # split remainder) must always resume through the self-controlled
+            # standalone path below, whatever the audit column says, because
+            # our drafts are auto_advance=False and only finalize when we say.
+            meta = getattr(inv, "metadata", None) or {}
+            consolidated = (rec.invoice_kind == "consolidated"
+                            and meta.get("usage_invoice_id") != str(rec.id))
         else:
             inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected, api_key)
+            if inv is None:
+                # F5.5 opt-in consolidation: resolve a renewal-draft target only
+                # when no invoice of OURS exists yet (a metadata match means a
+                # prior attempt already went standalone — never fork it).
+                cfg = PostpaidUsageConfig.objects.filter(tenant=tenant).first()
+                if cfg is not None and cfg.consolidate_with_subscription:
+                    inv = PostpaidUsageService._resolve_consolidation_target(
+                        tenant, owner, rec, connected, api_key)
+                    consolidated = inv is not None
         if inv is None:
             # F5.3: opt-in Stripe Tax passthrough — one of EXACTLY two
             # automatic_tax call sites (the other: Subscription.create). A
@@ -336,7 +360,9 @@ class PostpaidUsageService:
             # B1: create the draft FIRST, then PIN each usage line to it via invoice=<id>.
             # Stripe's default pending_invoice_items_behavior is 'exclude'; un-pinned pending
             # items would NOT sweep, finalizing an EMPTY invoice and never billing usage.
-            # C1: usage is ALWAYS its own finalized standalone invoice (correct-cycle).
+            # C1: standalone usage is its own finalized invoice (correct-cycle);
+            # F5.5 consolidation rides the renewal draft only via the explicit
+            # opt-in target resolution above, never via subscription= pending items.
             inv = stripe_call(
                 stripe.Invoice.create, api_key=api_key, retryable=True,
                 idempotency_key=f"usage-invoice-{rec.id}{gen}",
@@ -346,10 +372,17 @@ class PostpaidUsageService:
                 **extra)
             created = True
 
-        # Phase 2a — persist the pointer the moment the invoice exists, so every
-        # later retry is retrieve-first even across idempotency-key expiry.
+        # Phase 2a — persist the pointer (and which KIND of invoice it is) the
+        # moment the target is known, BEFORE any item create, so every later
+        # retry is retrieve-first even across idempotency-key expiry.
         CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
-            stripe_invoice_id=inv.id, push_phase="invoice_created")
+            stripe_invoice_id=inv.id, push_phase="invoice_created",
+            invoice_kind="consolidated" if consolidated else "standalone")
+
+        if consolidated:
+            return PostpaidUsageService._push_consolidated(
+                tenant, owner, rec, inv, cent_lines, residual, gen,
+                connected, api_key, currency, period_start)
 
         # A just-created invoice is a draft; only a retrieved/found one needs its
         # Stripe status consulted (and its already-pinned items recovered).
@@ -360,6 +393,16 @@ class PostpaidUsageService:
             existing = PostpaidUsageService._list_invoice_items(inv.id, connected, api_key)
             items = [(label, orig_micros, existing[str(i)].id if str(i) in existing else "")
                      for i, label, cents, orig_micros in cent_lines]
+            absent = [str(i) for i, label, cents, orig_micros in cent_lines
+                      if str(i) not in existing]
+            if absent:
+                # Alert-only tripwire: an adopted (already-finalized) invoice is
+                # missing frozen lines — pre-metadata legacy items, or a voided
+                # consolidated target whose lines died with it. The operator
+                # owns the resolution; the record below is what billed.
+                logger.error("postpaid.adopt_missing_lines", extra={"data": {
+                    "usage_invoice_id": str(rec.id), "stripe_invoice_id": inv.id,
+                    "missing_line_indexes": absent}})
             CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
                 push_phase="finalized")
             return inv.id, items, residual
@@ -399,6 +442,223 @@ class PostpaidUsageService:
         return inv.id, items, residual
 
     @staticmethod
+    def _resolve_consolidation_target(tenant, owner, rec, connected, api_key):
+        """F5.5 target resolution: the owner's subscription-renewal DRAFT, if
+        usage can still safely ride it. Returns the Stripe invoice or None
+        (standalone fallback).
+
+        Stripe auto-finalizes a renewal draft ~1h after the cycle anchor.
+        Pinning items into a draft that finalizes mid-push forks into the
+        safety addendum's split path, so a draft already past
+        CONSOLIDATION_MAX_DRAFT_AGE_SECONDS (or one we cannot age, or one that
+        will never auto-advance) is treated as a missed window and the push
+        falls back to the standalone invoice it fully controls.
+        """
+        from apps.subscriptions.ports import get_active_subscription_for_consolidation
+
+        sub = get_active_subscription_for_consolidation(tenant, owner)
+        if not sub:
+            logger.info("postpaid.consolidation_no_active_subscription", extra={"data": {
+                "usage_invoice_id": str(rec.id), "customer_id": str(owner.id)}})
+            return None
+        result = stripe_call(
+            stripe.Invoice.list, api_key=api_key,
+            subscription=sub["stripe_subscription_id"], status="draft",
+            stripe_account=connected, limit=10)
+        draft = next(iter(result.auto_paging_iter()), None)
+        draft_created = getattr(draft, "created", None) if draft is not None else None
+        age = (timezone.now().timestamp() - draft_created) if draft_created else None
+        if (draft is None or age is None
+                or age > CONSOLIDATION_MAX_DRAFT_AGE_SECONDS
+                or not getattr(draft, "auto_advance", False)):
+            logger.warning("postpaid.consolidation_window_missed", extra={"data": {
+                "usage_invoice_id": str(rec.id), "customer_id": str(owner.id),
+                "stripe_subscription_id": sub["stripe_subscription_id"],
+                "draft_invoice_id": getattr(draft, "id", None),
+                "draft_age_seconds": int(age) if age is not None else None}})
+            return None
+        return draft
+
+    @staticmethod
+    def _push_consolidated(tenant, owner, rec, target, cent_lines, residual, gen,
+                           connected, api_key, currency, period_start):
+        """F5.5 SAFETY ADDENDUM: the target is the subscription renewal draft —
+        Stripe finalizes it on ITS clock, regardless of our progress, so the
+        F0.1 blind-adopt assumption (self-controlled finalization) NEVER
+        applies here.
+
+        - Target still draft: ensure OUR items (diffed by line_index, filtered
+          to this rec's metadata — a renewal sweeps foreign pending items too)
+          and stop. NO finalize call, ever: Stripe auto-finalizes the renewal.
+        - Target finalized (open/paid/uncollectible): diff the frozen lines
+          against what actually landed. All present -> adopt (record the
+          renewal id). Some/none -> bill ONLY the missing lines on a fresh
+          standalone remainder invoice we control, finalize it, and record
+          THAT id (postpaid.consolidation_partial_split): every line lands on
+          exactly one finalized invoice — no double-bill, no silent loss.
+        """
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+
+        target_status = getattr(target, "status", "")
+        if target_status == "draft":
+            existing = PostpaidUsageService._list_invoice_items(
+                target.id, connected, api_key, usage_invoice_id=str(rec.id))
+            items, finalized_under_us = [], False
+            for i, label, cents, orig_micros in cent_lines:
+                prior_item = existing.get(str(i))
+                if prior_item is not None:
+                    if getattr(prior_item, "amount", None) != cents:
+                        # Alert-only: a recovered item whose cents diverge from
+                        # the frozen line (e.g. a --rebill-void re-aggregation
+                        # against a still-live draft target). The live item is
+                        # what will bill; never double-pin next to it.
+                        logger.error("postpaid.consolidated_item_amount_mismatch",
+                                     extra={"data": {
+                                         "usage_invoice_id": str(rec.id),
+                                         "stripe_invoice_id": target.id,
+                                         "line_index": str(i),
+                                         "expected_cents": cents,
+                                         "item_amount": getattr(prior_item, "amount", None)}})
+                    items.append((label, orig_micros, prior_item.id))
+                    continue
+                desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
+                try:
+                    item = stripe_call(
+                        stripe.InvoiceItem.create, api_key=api_key, retryable=True,
+                        idempotency_key=f"usage-item-{rec.id}{gen}-c{target.id}-{i}",
+                        customer=owner.stripe_customer_id, invoice=target.id,
+                        amount=cents, currency=currency, description=desc,
+                        stripe_account=connected,
+                        metadata={"usage_invoice_id": str(rec.id),
+                                  "line_index": str(i), "consolidated": "true"})
+                except StripeFatalError:
+                    # The ~45-min pre-check narrows but cannot close the race:
+                    # the draft may have auto-finalized under us, turning
+                    # item-create into an invalid request. Re-read the target;
+                    # a genuine finalize falls through to the split handling
+                    # below, anything else re-raises (parks failed_permanent).
+                    target = stripe_call(
+                        stripe.Invoice.retrieve, api_key=api_key,
+                        id=target.id, stripe_account=connected)
+                    if getattr(target, "status", "") not in ("open", "paid", "uncollectible"):
+                        raise
+                    finalized_under_us = True
+                    break
+                items.append((label, orig_micros, item.id))
+            if not finalized_under_us:
+                CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+                    push_phase="items_pinned")
+                # NO finalize: Stripe auto-finalizes the renewal (~1h after anchor).
+                return target.id, items, residual
+            target_status = getattr(target, "status", "")
+
+        if target_status not in ("open", "paid", "uncollectible"):
+            logger.error("postpaid.stripe_invoice_unusable", extra={"data": {
+                "usage_invoice_id": str(rec.id), "stripe_invoice_id": target.id,
+                "stripe_status": target_status}})
+            raise StripeFatalError(
+                f"Consolidated Stripe invoice {target.id} for usage invoice {rec.id} "
+                f"has unexpected status {target_status!r}")
+
+        # FINALIZED target: diff the frozen cent_lines against what landed.
+        present = PostpaidUsageService._list_invoice_items(
+            target.id, connected, api_key, usage_invoice_id=str(rec.id))
+        missing = [(i, label, cents, orig_micros)
+                   for i, label, cents, orig_micros in cent_lines
+                   if str(i) not in present]
+        if not missing:
+            # Full adopt: every line landed before the auto-finalize.
+            items = [(label, orig_micros, present[str(i)].id)
+                     for i, label, cents, orig_micros in cent_lines]
+            CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+                push_phase="finalized")
+            return target.id, items, residual
+
+        remainder_id, remainder_items = PostpaidUsageService._bill_remainder(
+            tenant, owner, rec, target.id, missing, gen,
+            connected, api_key, currency, period_start)
+        items = []
+        for i, label, cents, orig_micros in cent_lines:
+            if str(i) in present:
+                items.append((label, orig_micros, present[str(i)].id))
+            else:
+                items.append((label, orig_micros, remainder_items.get(str(i), "")))
+        # Record the REMAINDER id: it is the invoice WE control and finalized.
+        # The renewal's payment is tracked by its SubscriptionInvoice row; the
+        # consolidated lines stay traceable via their per-item metadata and the
+        # UsageInvoiceLineItem ids recorded from BOTH invoices.
+        logger.error("postpaid.consolidation_partial_split", extra={"data": {
+            "usage_invoice_id": str(rec.id), "customer_id": str(owner.id),
+            "consolidated_invoice_id": target.id,
+            "remainder_invoice_id": remainder_id,
+            "consolidated_line_indexes": sorted(present.keys()),
+            "remainder_line_indexes": [str(i) for i, label, cents, orig_micros in missing]}})
+        CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+            push_phase="finalized")
+        return remainder_id, items, residual
+
+    @staticmethod
+    def _bill_remainder(tenant, owner, rec, target_id, missing, gen,
+                        connected, api_key, currency, period_start):
+        """The split's standalone remainder: create-or-resume OUR invoice, pin
+        ONLY the lines the auto-finalized consolidated target missed, and
+        finalize it (we control this one). Every idempotency key is namespaced
+        by the target id (-r{target}) and carries the generation, so neither a
+        later generation nor a fresh target can ever replay these keys.
+        Returns ``(invoice_id, {line_index: item_id})``.
+        """
+        inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected, api_key)
+        created = False
+        if inv is None:
+            extra = {}
+            if tenant.automatic_tax_enabled:
+                extra["automatic_tax"] = {"enabled": True}
+            inv = stripe_call(
+                stripe.Invoice.create, api_key=api_key, retryable=True,
+                idempotency_key=f"usage-invoice-{rec.id}{gen}-r{target_id}",
+                customer=owner.stripe_customer_id, auto_advance=False,
+                stripe_account=connected,
+                metadata={"usage_invoice_id": str(rec.id), "tenant_id": str(tenant.id),
+                          "period_start": period_start.isoformat(),
+                          "consolidated_remainder_of": target_id},
+                **extra)
+            created = True
+        inv_status = "draft" if created else getattr(inv, "status", "")
+        if inv_status in ("open", "paid", "uncollectible"):
+            # A prior split attempt already finalized the remainder — adopt it.
+            existing = PostpaidUsageService._list_invoice_items(inv.id, connected, api_key)
+            return inv.id, {str(i): (existing[str(i)].id if str(i) in existing else "")
+                            for i, label, cents, orig_micros in missing}
+        if inv_status != "draft":
+            logger.error("postpaid.stripe_invoice_unusable", extra={"data": {
+                "usage_invoice_id": str(rec.id), "stripe_invoice_id": inv.id,
+                "stripe_status": inv_status}})
+            raise StripeFatalError(
+                f"Remainder Stripe invoice {inv.id} for usage invoice {rec.id} has "
+                f"unexpected status {inv_status!r}")
+        existing = {} if created else PostpaidUsageService._list_invoice_items(
+            inv.id, connected, api_key)
+        out = {}
+        for i, label, cents, orig_micros in missing:
+            prior_item = existing.get(str(i))
+            if prior_item is not None:
+                out[str(i)] = prior_item.id
+                continue
+            desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
+            item = stripe_call(
+                stripe.InvoiceItem.create, api_key=api_key, retryable=True,
+                idempotency_key=f"usage-item-{rec.id}{gen}-r{target_id}-{i}",
+                customer=owner.stripe_customer_id, invoice=inv.id, amount=cents,
+                currency=currency, description=desc, stripe_account=connected,
+                metadata={"usage_invoice_id": str(rec.id), "line_index": str(i)})
+            out[str(i)] = item.id
+        stripe_call(
+            stripe.Invoice.finalize_invoice, api_key=api_key, retryable=True,
+            idempotency_key=f"usage-finalize-{rec.id}{gen}-r{target_id}", invoice=inv.id,
+            auto_advance=True, stripe_account=connected)
+        return inv.id, out
+
+    @staticmethod
     def _find_existing_invoice(rec, owner, connected, api_key):
         """I4 belt-and-braces: before any create, deterministically look for an
         invoice already minted for this row. Invoice.list + client-side metadata
@@ -417,15 +677,20 @@ class PostpaidUsageService:
         return None
 
     @staticmethod
-    def _list_invoice_items(invoice_id, connected, api_key):
+    def _list_invoice_items(invoice_id, connected, api_key, usage_invoice_id=None):
         """Items already pinned to the invoice, indexed by their line_index metadata.
-        Legacy items without metadata are unindexable (blank item-id fallback)."""
+        Legacy items without metadata are unindexable (blank item-id fallback).
+        F5.5: pass usage_invoice_id on a CONSOLIDATED target — the renewal
+        carries foreign items too, so only items stamped with this rec's
+        metadata may be indexed (a foreign line_index must never shadow ours)."""
         result = stripe_call(
             stripe.InvoiceItem.list, api_key=api_key,
             invoice=invoice_id, stripe_account=connected, limit=100)
         indexed = {}
         for item in result.auto_paging_iter():
             meta = getattr(item, "metadata", None) or {}
+            if usage_invoice_id is not None and meta.get("usage_invoice_id") != usage_invoice_id:
+                continue
             line_index = meta.get("line_index")
             if line_index is not None:
                 indexed[line_index] = item

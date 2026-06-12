@@ -53,6 +53,10 @@ USAGE_INVOICE_PUSH_PHASE = [
     ("items_pinned", "Items pinned"), ("finalized", "Finalized"),
 ]
 
+USAGE_INVOICE_KIND = [
+    ("standalone", "Standalone"), ("consolidated", "Consolidated"),
+]
+
 
 class CustomerUsageInvoice(BaseModel):
     """A postpaid customer's usage for one calendar month, pushed to Stripe as line items."""
@@ -69,6 +73,13 @@ class CustomerUsageInvoice(BaseModel):
     first_attempted_at = models.DateTimeField(null=True, blank=True)
     last_attempt_error = models.TextField(blank=True, default="")
     push_phase = models.CharField(max_length=20, choices=USAGE_INVOICE_PUSH_PHASE, blank=True, default="")
+    # F5.5: which Stripe invoice carries the usage. "consolidated" = the
+    # subscription renewal draft (stripe_invoice_id is then a SUBSCRIPTION
+    # invoice, so AR repair must also follow the subscription routing). A
+    # partial-split rec keeps "consolidated" for audit even though it records
+    # the standalone remainder invoice it finalized itself.
+    invoice_kind = models.CharField(
+        max_length=12, choices=USAGE_INVOICE_KIND, default="standalone")
     # Incremented by repush_usage_invoice --rebill-void: rotates every Stripe
     # idempotency-key family so a replay inside Stripe's 24h key window can never
     # return the recorded (now-void) invoice. Generation 0 keeps the exact legacy
@@ -135,6 +146,11 @@ class PostpaidResidualLedger(BaseModel):
 class PostpaidUsageConfig(BaseModel):
     tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="postpaid_config")
     usage_line_item_group_by = models.CharField(max_length=64, blank=True, default="")
+    # F5.5 opt-in: at period close, pin the usage lines onto the billing
+    # owner's subscription-renewal DRAFT invoice (one Stripe invoice per
+    # period) instead of minting a standalone usage invoice. Standalone stays
+    # the automatic fallback whenever the renewal-draft window is missed.
+    consolidate_with_subscription = models.BooleanField(default=False)
 
     class Meta:
         db_table = "ubb_postpaid_usage_config"

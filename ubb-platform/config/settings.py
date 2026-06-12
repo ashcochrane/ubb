@@ -219,7 +219,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "close-postpaid-usage-periods": {
         "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",
-        "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 1st 02:00 UTC
+        # 1st 00:05 UTC — INSIDE the renewal-draft window (F5.5 consolidation):
+        # Stripe mints the subscription renewal draft at the 00:00 anchor and
+        # auto-finalizes it ~1h later; a consolidated close must land between.
+        "schedule": crontab(minute=5, hour=0, day_of_month=1),
     },
     "reconcile-postpaid-usage": {
         "task": "apps.billing.invoicing.tasks.reconcile_postpaid_usage",
@@ -245,7 +248,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "verify-tier-rerate": {
         "task": "apps.metering.pricing.tasks.verify_tier_rerate",
-        # 1st 03:15 UTC — after the 1st 02:00 postpaid close of the same morning
+        # 1st 03:15 UTC — after the 1st 00:05 postpaid close of the same morning
         "schedule": crontab(minute=15, hour=3, day_of_month=1),
     },
 }

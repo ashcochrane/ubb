@@ -252,6 +252,18 @@ def _reconcile_customer_invoice(event, *, new_status):
                 row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
             _refresh_urls(row, inv)
             row.save()
+        # F5.5: a CONSOLIDATED usage rec rides this subscription invoice — its
+        # payment status follows the same event along the same table. Only a
+        # recorded ('pushed') row is repaired: a mid-split push may still
+        # repoint its stripe_invoice_id to the remainder invoice it actually
+        # bills on, so an unrecorded pointer is not yet authoritative.
+        consolidated_row = CustomerUsageInvoice.objects.filter(
+            stripe_invoice_id=inv.id, invoice_kind="consolidated", status="pushed",
+            tenant__stripe_connected_account_id=acct,
+            **livemode_filter(event),
+        ).first()
+        if consolidated_row:
+            _apply_usage_invoice_status(consolidated_row.id, inv, new_status)
     else:
         existing = CustomerUsageInvoice.objects.filter(
             stripe_invoice_id=inv.id,
@@ -260,20 +272,29 @@ def _reconcile_customer_invoice(event, *, new_status):
         ).first()
         if not existing:
             return
-        with transaction.atomic():
-            row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
-            if ar_transition_allowed(row.payment_status, new_status):
-                row.payment_status = new_status
-            elif new_status != row.payment_status:
-                logger.warning("ar.transition_ignored", extra={"data": {
-                    "usage_invoice_id": str(row.id),
-                    "stripe_invoice_id": inv.id,
-                    "old_status": row.payment_status, "new_status": new_status}})
-            # Money fields gate on the APPLIED state (see subscription branch).
-            if row.payment_status == "paid" and not row.paid_at:
-                row.paid_at = timezone.now()
-            _refresh_urls(row, inv)
-            row.save()
+        _apply_usage_invoice_status(existing.id, inv, new_status)
+
+
+def _apply_usage_invoice_status(row_id, inv, new_status):
+    """Apply a Stripe-reported payment status to one CustomerUsageInvoice along
+    the Stripe-legal transition table. Shared by the standalone usage branch and
+    the F5.5 consolidated extension so the two can never diverge."""
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+
+    with transaction.atomic():
+        row = CustomerUsageInvoice.objects.select_for_update().get(id=row_id)
+        if ar_transition_allowed(row.payment_status, new_status):
+            row.payment_status = new_status
+        elif new_status != row.payment_status:
+            logger.warning("ar.transition_ignored", extra={"data": {
+                "usage_invoice_id": str(row.id),
+                "stripe_invoice_id": inv.id,
+                "old_status": row.payment_status, "new_status": new_status}})
+        # Money fields gate on the APPLIED state (see subscription branch).
+        if row.payment_status == "paid" and not row.paid_at:
+            row.paid_at = timezone.now()
+        _refresh_urls(row, inv)
+        row.save()
 
 
 def handle_invoice_finalized(event):

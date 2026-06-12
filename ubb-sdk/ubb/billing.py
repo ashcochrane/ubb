@@ -218,13 +218,22 @@ class BillingClient:
         return CreditGrant(**r.json())
 
     def get_postpaid_config(self):
+        """The tenant's postpaid config:
+        ``{"usage_line_item_group_by": str, "consolidate_with_subscription": bool}``."""
         r = self._request("get", "/api/v1/billing/postpaid-config")
-        return r.json()["usage_line_item_group_by"]
+        return r.json()
 
-    def set_postpaid_config(self, usage_line_item_group_by=""):
-        r = self._request("put", "/api/v1/billing/postpaid-config",
-                          json={"usage_line_item_group_by": usage_line_item_group_by})
-        return r.json()["usage_line_item_group_by"]
+    def set_postpaid_config(self, usage_line_item_group_by="",
+                            consolidate_with_subscription=None):
+        """Update the postpaid config. ``consolidate_with_subscription=None``
+        leaves the consolidation opt-in unchanged; True pins each period's
+        usage onto the customer's subscription-renewal invoice (one Stripe
+        invoice per period) with a standalone fallback."""
+        body = {"usage_line_item_group_by": usage_line_item_group_by}
+        if consolidate_with_subscription is not None:
+            body["consolidate_with_subscription"] = consolidate_with_subscription
+        r = self._request("put", "/api/v1/billing/postpaid-config", json=body)
+        return r.json()
 
     def close(self) -> None:
         self._http.close()
