@@ -33,6 +33,9 @@ class EventsConfig(AppConfig):
             "billing.credit_grant_expiring",
             "billing.credit_grant_expired",
             "sandbox.reset_completed",
+            "tenant.api_key_created",
+            "tenant.api_key_rotated",
+            "tenant.api_key_revoked",
         ]
         for event_type in event_types:
             handler_registry.register(

@@ -1,5 +1,7 @@
 from typing import Optional
+from uuid import UUID
 
+from django.db import transaction
 from ninja import NinjaAPI, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
@@ -119,6 +121,165 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+
+# ---- Self-serve API key lifecycle (F5.2) ----
+#
+# Scoping decision: every operation here is STRICTLY scoped to
+# request.auth.tenant — never its sandbox sibling. A sandbox key is managed
+# with a sandbox key (the sandbox IS a tenant; everything tenant-scoped
+# applies to it for free). The one crossing point is mint-time routing:
+# POST with is_test=True on a live key mints the key ON the sandbox sibling
+# (TenantApiKey.create_key, F4.4) — that key then shows up in the SANDBOX
+# tenant's list, not this one's.
+#
+# Revocation/rotation is instant: ApiKeyAuth resolves every request with a
+# per-request DB lookup on is_active=True (no caching — do NOT add any), so
+# a deactivated key 401s on its very next request.
+
+
+class ApiKeyOut(Schema):
+    id: str
+    key_prefix: str
+    label: str
+    is_active: bool
+    last_used_at: Optional[str] = None
+    created_at: str
+
+
+class ApiKeyListResponse(Schema):
+    data: list[ApiKeyOut]
+
+
+class ApiKeyCreateIn(Schema):
+    label: str = ""
+    is_test: bool = False
+
+
+def _api_key_out(k):
+    # NEVER the hash, NEVER the raw key — prefix + metadata only.
+    return {
+        "id": str(k.id),
+        "key_prefix": k.key_prefix,
+        "label": k.label,
+        "is_active": k.is_active,
+        "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+        "created_at": k.created_at.isoformat(),
+    }
+
+
+@tenant_api.get("/api-keys", response=ApiKeyListResponse)
+def list_api_keys(request):
+    """All of THIS tenant's API keys (active and revoked), newest first.
+
+    last_used_at is buffered in Redis and flushed to the DB periodically, so
+    it may lag a recently-used key by up to the flush interval.
+    """
+    keys = TenantApiKey.objects.filter(
+        tenant=request.auth.tenant).order_by("-created_at")
+    return {"data": [_api_key_out(k) for k in keys]}
+
+
+@tenant_api.post("/api-keys", response={201: dict, 422: dict})
+def create_api_key(request, payload: ApiKeyCreateIn):
+    """Mint a new API key. The RAW key is returned exactly once, here.
+
+    is_test=True on a live key routes the mint to the tenant's sandbox
+    sibling (TenantApiKey.create_key lazily provisions it, F4.4) — the new
+    ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
+    key list and is managed with a sandbox key; response tenant_id tells you
+    where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    """
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import TenantApiKeyCreated
+
+    try:
+        with transaction.atomic():
+            key_obj, raw_key = TenantApiKey.create_key(
+                request.auth.tenant, label=payload.label, is_test=payload.is_test)
+            write_event(TenantApiKeyCreated(
+                tenant_id=str(key_obj.tenant_id), api_key_id=str(key_obj.id),
+                key_prefix=key_obj.key_prefix, label=key_obj.label))
+    except ValueError as e:
+        return 422, {"error": str(e)}
+    return 201, {
+        "id": str(key_obj.id),
+        "key_prefix": key_obj.key_prefix,
+        "label": key_obj.label,
+        "tenant_id": str(key_obj.tenant_id),
+        "api_key": raw_key,  # shown ONCE — never retrievable again
+    }
+
+
+@tenant_api.post("/api-keys/{key_id}/rotate", response={200: dict, 404: dict})
+def rotate_api_key(request, key_id: UUID):
+    """Replace a key in one transaction: mint successor, deactivate old.
+
+    The successor keeps the old label (+ " (rotated)") and the tenant's own
+    mode (a sandbox tenant rotates to a ubb_test_ key, a live tenant to a
+    ubb_live_ key — never re-routed). The old key 401s on its next request;
+    the new RAW key is returned exactly once.
+    """
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import TenantApiKeyRotated
+
+    tenant = request.auth.tenant
+    with transaction.atomic():
+        old = TenantApiKey.objects.select_for_update().filter(
+            tenant=tenant, id=key_id).first()
+        if old is None:
+            return 404, {"error": "API key not found"}
+        new_obj, raw_key = TenantApiKey.create_key(
+            tenant, label=(old.label + " (rotated)").strip(),
+            is_test=tenant.is_sandbox)
+        old.is_active = False
+        old.save(update_fields=["is_active", "updated_at"])
+        write_event(TenantApiKeyRotated(
+            tenant_id=str(tenant.id), old_api_key_id=str(old.id),
+            new_api_key_id=str(new_obj.id), key_prefix=new_obj.key_prefix,
+            label=new_obj.label))
+    return 200, {
+        "id": str(new_obj.id),
+        "key_prefix": new_obj.key_prefix,
+        "label": new_obj.label,
+        "revoked_key_id": str(old.id),
+        "api_key": raw_key,  # shown ONCE
+    }
+
+
+@tenant_api.delete("/api-keys/{key_id}", response={200: dict, 404: dict, 409: dict})
+def revoke_api_key(request, key_id: UUID):
+    """Soft-revoke a key (is_active=False). Idempotent on an inactive key.
+
+    Lockout guard: revoking THIS tenant's last active key is refused with 409
+    — with zero active keys the tenant could never call this API again to
+    mint a replacement (rotate instead). All the tenant's key rows are locked
+    in one deterministic-order query so two concurrent revokes cannot race
+    past the guard together.
+    """
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import TenantApiKeyRevoked
+
+    tenant = request.auth.tenant
+    with transaction.atomic():
+        keys = list(TenantApiKey.objects.select_for_update().filter(
+            tenant=tenant).order_by("created_at", "id"))
+        key = next((k for k in keys if k.id == key_id), None)
+        if key is None:
+            return 404, {"error": "API key not found"}
+        if key.is_active:
+            if sum(1 for k in keys if k.is_active) <= 1:
+                return 409, {
+                    "error": "cannot revoke the tenant's last active API key "
+                             "(mint or rotate a replacement first)",
+                    "code": "last_active_key",
+                }
+            key.is_active = False
+            key.save(update_fields=["is_active", "updated_at"])
+            write_event(TenantApiKeyRevoked(
+                tenant_id=str(tenant.id), api_key_id=str(key.id),
+                key_prefix=key.key_prefix, label=key.label))
+    return 200, {"id": str(key.id), "is_active": False}
 
 
 # ---- Sandbox self-serve (F4.4) ----

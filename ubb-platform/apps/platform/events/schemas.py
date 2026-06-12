@@ -250,6 +250,34 @@ class SandboxResetCompleted:
 
 
 @dataclass(frozen=True)
+class TenantApiKeyCreated:
+    EVENT_TYPE = "tenant.api_key_created"
+    tenant_id: str
+    api_key_id: str
+    key_prefix: str = ""
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class TenantApiKeyRotated:
+    EVENT_TYPE = "tenant.api_key_rotated"
+    tenant_id: str
+    old_api_key_id: str
+    new_api_key_id: str
+    key_prefix: str = ""  # the NEW key's prefix
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class TenantApiKeyRevoked:
+    EVENT_TYPE = "tenant.api_key_revoked"
+    tenant_id: str
+    api_key_id: str
+    key_prefix: str = ""
+    label: str = ""
+
+
+@dataclass(frozen=True)
 class CreditGrantExpired:
     EVENT_TYPE = "billing.credit_grant_expired"
     tenant_id: str

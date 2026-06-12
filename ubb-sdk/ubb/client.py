@@ -323,6 +323,52 @@ class UBBClient:
         r = metering._request("get", "/api/v1/tenant/sandbox")
         return r.json()
 
+    # ---- API key lifecycle (F5.2) ----
+
+    def list_api_keys(self) -> dict:
+        """List the calling tenant's API keys (prefix + metadata only —
+        never the raw key or its hash).
+
+        Calls GET /api/v1/tenant/api-keys and returns the response dict.
+        """
+        metering = self._require_metering()
+        r = metering._request("get", "/api/v1/tenant/api-keys")
+        return r.json()
+
+    def create_api_key(self, label: str = "", is_test: bool = False) -> dict:
+        """Mint a new API key. The raw key is in this response EXACTLY once.
+
+        Calls POST /api/v1/tenant/api-keys. ``is_test=True`` routes the mint
+        to the tenant's sandbox sibling (the key lands ON the sandbox tenant
+        — see the response's ``tenant_id``).
+        """
+        metering = self._require_metering()
+        r = metering._request("post", "/api/v1/tenant/api-keys",
+                              json={"label": label, "is_test": is_test})
+        return r.json()
+
+    def rotate_api_key(self, key_id: str) -> dict:
+        """Rotate an API key: mint a successor and deactivate the old key in
+        one transaction. The new raw key is in this response exactly once;
+        the old key stops authenticating immediately.
+
+        Calls POST /api/v1/tenant/api-keys/{key_id}/rotate.
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/tenant/api-keys/{key_id}/rotate", json={})
+        return r.json()
+
+    def revoke_api_key(self, key_id: str) -> dict:
+        """Soft-revoke an API key (instant). Revoking the tenant's last
+        active key is refused server-side (409 -> UBBConflictError).
+
+        Calls DELETE /api/v1/tenant/api-keys/{key_id}.
+        """
+        metering = self._require_metering()
+        r = metering._request("delete", f"/api/v1/tenant/api-keys/{key_id}")
+        return r.json()
+
     # ---- Stripe Connect onboarding ----
 
     def start_connect_onboarding(self, return_url: str = "") -> dict:
