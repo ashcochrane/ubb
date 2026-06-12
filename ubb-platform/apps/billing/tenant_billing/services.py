@@ -77,8 +77,15 @@ class TenantBillingService:
         """Calculate fees per product using ProductFeeConfig.
 
         Falls back to legacy percentage if no ProductFeeConfig rows exist.
+
+        Sandbox tenants (F4.4) NEVER accrue platform fees: their periods close
+        at 0 and generate_tenant_platform_invoices marks them invoiced with no
+        Stripe call (the <=0 branch).
         """
         from apps.billing.tenant_billing.models import ProductFeeConfig
+
+        if tenant.is_sandbox:
+            return 0, []
 
         total_fee = 0
         line_items = []

@@ -243,6 +243,13 @@ class CreditGrantExpiring:
 
 
 @dataclass(frozen=True)
+class SandboxResetCompleted:
+    EVENT_TYPE = "sandbox.reset_completed"
+    tenant_id: str
+    keep_config: bool = True
+
+
+@dataclass(frozen=True)
 class CreditGrantExpired:
     EVENT_TYPE = "billing.credit_grant_expired"
     tenant_id: str

@@ -4,9 +4,11 @@ from datetime import datetime, timezone as dt_timezone
 import stripe
 from django.utils import timezone
 
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
 from apps.platform.queries import get_tenant_stripe_account, get_customers_by_stripe_id
+from core.exceptions import StripeFatalError
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,14 @@ def sync_subscriptions(tenant):
             status="all",
             stripe_account=connected_account,
             expand=["data.items.data.price.product"],
+            api_key=api_key_for_tenant(tenant),
         )
+    except StripeFatalError:
+        # F4.4: sandbox tenant without STRIPE_TEST_SECRET_KEY configured.
+        logger.warning("Stripe key unavailable for tenant mode — sync skipped", extra={
+            "data": {"tenant_id": str(tenant.id)},
+        })
+        return {"synced": 0, "skipped": 0, "errors": 1}
     except stripe.error.StripeError:
         logger.exception("Stripe API error during subscription sync", extra={
             "data": {"tenant_id": str(tenant.id)},

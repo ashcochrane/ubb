@@ -12,6 +12,9 @@ class ApiKeyAuth(HttpBearer):
         if key_obj is None:
             return None
         request.tenant = key_obj.tenant
+        # F4.4: ubb_test_ keys live on sandbox tenants, so the tenant row IS
+        # the mode. Exposed for handlers that want a cheap mode check.
+        request.sandbox = key_obj.tenant.is_sandbox
         # Buffer last_used_at in Redis — flushed to DB by periodic task
         cache.set(f"apikey_used:{key_obj.pk}", timezone.now().isoformat(), timeout=3600)
         return key_obj

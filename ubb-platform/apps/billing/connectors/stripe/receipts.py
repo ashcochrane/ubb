@@ -6,7 +6,11 @@ tenant's Stripe Connected Account.
 import logging
 from django.utils import timezone
 from apps.billing.invoicing.models import Invoice
-from apps.billing.stripe.services.stripe_service import stripe_call, micros_to_cents
+from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant,
+    stripe_call,
+    micros_to_cents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +34,12 @@ class ReceiptService:
         connected_account = get_tenant_stripe_account(customer.tenant_id)
         customer_stripe_id = get_customer_stripe_id(customer.id)
         amount_cents = micros_to_cents(top_up_attempt.amount_micros)
+        api_key = api_key_for_tenant(customer.tenant)
 
         try:
             stripe_invoice = stripe_call(
                 stripe.Invoice.create,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-{top_up_attempt.id}",
                 customer=customer_stripe_id,
@@ -45,6 +51,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.InvoiceItem.create,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-item-{top_up_attempt.id}",
                 customer=customer_stripe_id,
@@ -57,6 +64,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.Invoice.finalize_invoice,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-finalize-{top_up_attempt.id}",
                 invoice=stripe_invoice.id,
@@ -65,6 +73,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.Invoice.pay,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-pay-{top_up_attempt.id}",
                 invoice=stripe_invoice.id,

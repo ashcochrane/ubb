@@ -20,19 +20,23 @@ from apps.billing.connectors.stripe.invoice_routing import _refresh_urls, ar_tra
 logger = logging.getLogger(__name__)
 
 
-def mark_invoice_payment_failed_for_subscription(account, subscription_id, stripe_invoice_id, inv):
+def mark_invoice_payment_failed_for_subscription(account, subscription_id, stripe_invoice_id, inv,
+                                                 *, livemode=True):
     """Stamp payment_failed_at + refresh hosted url on the SubscriptionInvoice
     matched by a subscription-linked invoice.payment_failed event.
 
     Status-only (no money movement); account-checked via the owning
     StripeSubscription's tenant; idempotent; never touches the status column.
-    Returns True if a row was stamped.
+    ``livemode`` binds the event's mode to the tenant's mode (F4.4): a Connect
+    acct_ id is identical in test and live, so a livemode=False event may only
+    ever stamp a sandbox tenant's rows. Returns True if a row was stamped.
     """
     from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 
     sub = StripeSubscription.objects.filter(
         stripe_subscription_id=subscription_id,
         tenant__stripe_connected_account_id=account,
+        tenant__is_sandbox=not livemode,
     ).first()
     if not sub:
         return False

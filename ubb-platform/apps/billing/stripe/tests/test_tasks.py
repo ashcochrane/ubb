@@ -112,8 +112,10 @@ class ReconcileTopupsWithStripeTest(TestCase):
 
         reconcile_topups_with_stripe()
 
+        from django.conf import settings
         mock_retrieve.assert_called_once_with(
             "ch_ok", stripe_account="acct_test",
+            api_key=settings.STRIPE_SECRET_KEY,  # F4.4: live tenant -> platform key
         )
 
     @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")

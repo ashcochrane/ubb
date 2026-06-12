@@ -23,10 +23,12 @@ def connect_start(request, payload: ConnectStartIn):
 @connect_api.get("/status", response=dict)
 def connect_status(request):
     import stripe
+    from apps.billing.stripe.services.stripe_service import api_key_for_tenant
     t = request.auth.tenant
     if t.stripe_connected_account_id and not t.charges_enabled:
         try:
-            acct = stripe.Account.retrieve(t.stripe_connected_account_id)
+            acct = stripe.Account.retrieve(
+                t.stripe_connected_account_id, api_key=api_key_for_tenant(t))
             new_val = bool(getattr(acct, "charges_enabled", False))
             if new_val != t.charges_enabled:
                 t.charges_enabled = new_val

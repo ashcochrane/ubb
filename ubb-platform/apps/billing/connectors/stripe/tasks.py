@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import AutoTopupRequiresAction
@@ -125,12 +126,25 @@ def reconcile_topups_with_stripe():
 
     cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
     repaired = 0
-    accounts = (Tenant.objects.exclude(stripe_connected_account_id="")
-                .exclude(stripe_connected_account_id__isnull=True)
-                .values_list("stripe_connected_account_id", flat=True).distinct())
-    for account in accounts:
+    seen = set()  # (account, is_sandbox) — same account+mode never swept twice
+    tenants = (Tenant.objects.exclude(stripe_connected_account_id="")
+               .exclude(stripe_connected_account_id__isnull=True))
+    for tenant in tenants:
+        # F4.4: list with the TENANT's mode key — a Connect acct_ id is the
+        # same in test and live mode, so a live tenant and its sandbox sibling
+        # sharing one account get separate (live/test) sweeps.
+        account = tenant.stripe_connected_account_id
+        if (account, tenant.is_sandbox) in seen:
+            continue
+        seen.add((account, tenant.is_sandbox))
         try:
-            pis = stripe.PaymentIntent.list(created={"gte": cutoff}, limit=100, stripe_account=account)
+            api_key = api_key_for_tenant(tenant)
+        except StripeFatalError:
+            # Sandbox tenant without STRIPE_TEST_SECRET_KEY — nothing to sweep.
+            continue
+        try:
+            pis = stripe.PaymentIntent.list(created={"gte": cutoff}, limit=100,
+                                            stripe_account=account, api_key=api_key)
         except stripe.error.StripeError:
             logger.warning("Reconcile: PI list failed", extra={"data": {"account": account}})
             continue
@@ -143,6 +157,13 @@ def reconcile_topups_with_stripe():
             try:
                 attempt = TopUpAttempt.objects.get(id=attempt_id)
             except (TopUpAttempt.DoesNotExist, ValueError):
+                continue
+            # Mode guard: a PI seen with this mode's key may only ever credit
+            # an attempt of the SAME mode (test PI -> sandbox attempt).
+            if attempt.customer.tenant.is_sandbox != tenant.is_sandbox:
+                logger.error("Reconcile: PI/attempt mode mismatch — skipped", extra={"data": {
+                    "attempt_id": str(attempt.id), "pi": pi.id,
+                    "swept_is_sandbox": tenant.is_sandbox}})
                 continue
             if AutoTopUpService.apply_topup_credit(attempt, pi):
                 repaired += 1
@@ -164,7 +185,11 @@ def reconcile_topups_with_stripe():
             charge = stripe.Charge.retrieve(
                 attempt.stripe_charge_id,
                 stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
+                api_key=api_key_for_tenant(attempt.customer.tenant),
             )
+        except StripeFatalError:
+            # Sandbox attempt without STRIPE_TEST_SECRET_KEY — cannot audit.
+            continue
         except stripe.error.StripeError:
             logger.warning("Stripe charge fetch failed", extra={"data": {
                 "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id}})

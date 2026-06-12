@@ -3,6 +3,7 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+from apps.billing.connectors.stripe.invoice_routing import livemode_filter
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
 from apps.platform.customers.models import Customer
@@ -19,6 +20,7 @@ def handle_subscription_created(event):
         customer = Customer.objects.get(
             stripe_customer_id=stripe_sub.customer,
             tenant__stripe_connected_account_id=connected_account,
+            **livemode_filter(event),
         )
     except Customer.DoesNotExist:
         logger.warning(
@@ -54,7 +56,8 @@ def handle_subscription_updated(event):
     stripe_sub = event.data.object
     with transaction.atomic():
         sub = StripeSubscription.objects.select_for_update().get(
-            stripe_subscription_id=stripe_sub.id
+            stripe_subscription_id=stripe_sub.id,
+            **livemode_filter(event),
         )
         amount_micros, seat_qty, interval = _sum_items(stripe_sub)
         sub.status = stripe_sub.status
@@ -77,7 +80,8 @@ def handle_subscription_deleted(event):
     stripe_sub = event.data.object
     with transaction.atomic():
         sub = StripeSubscription.objects.select_for_update().get(
-            stripe_subscription_id=stripe_sub.id
+            stripe_subscription_id=stripe_sub.id,
+            **livemode_filter(event),
         )
         sub.status = "canceled"
         sub.last_synced_at = timezone.now()

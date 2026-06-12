@@ -296,6 +296,13 @@ LOGGING = {
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_CONNECT_CLIENT_ID = os.environ.get("STRIPE_CONNECT_CLIENT_ID", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+# Stripe TEST mode (sandbox tenants, F4.4). When STRIPE_TEST_WEBHOOK_SECRET is
+# configured, the LIVE webhook endpoints reject livemode=False events (test
+# traffic must use /webhooks/stripe/test); when unset, all-test dev setups
+# (STRIPE_SECRET_KEY=sk_test_...) keep working unchanged.
+STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY", "")
+STRIPE_TEST_WEBHOOK_SECRET = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "")
+STRIPE_CONNECT_TEST_CLIENT_ID = os.environ.get("STRIPE_CONNECT_TEST_CLIENT_ID", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

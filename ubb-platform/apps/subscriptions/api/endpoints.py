@@ -161,19 +161,43 @@ def subscriptions_stripe_webhook(request):
     api/v1 webhook: StripeWebhookEvent get_or_create + IntegrityError fallback +
     CAS-guarded retry of retryable failures / stale processing.
     """
+    secret = (
+        settings.STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
+        if hasattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET")
+        else settings.STRIPE_WEBHOOK_SECRET
+    )
+    return _subscriptions_stripe_webhook(request, secret=secret, is_test_endpoint=False)
+
+
+@csrf_exempt
+@require_POST
+def subscriptions_stripe_webhook_test(request):
+    """Stripe TEST-mode subscriptions webhook (F4.4) — sandbox tenants' events.
+
+    Verified with STRIPE_TEST_WEBHOOK_SECRET; 400 when that secret is unset or
+    the event is livemode=True. Same handlers — the livemode filters inside
+    them bind every lookup to sandbox tenants.
+    """
+    if not settings.STRIPE_TEST_WEBHOOK_SECRET:
+        return HttpResponse(status=400)
+    return _subscriptions_stripe_webhook(
+        request, secret=settings.STRIPE_TEST_WEBHOOK_SECRET, is_test_endpoint=True)
+
+
+def _subscriptions_stripe_webhook(request, *, secret, is_test_endpoint):
+    from apps.billing.connectors.stripe.invoice_routing import reject_for_mode
+
     # 1. Verify signature
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload,
-            sig_header,
-            settings.STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
-            if hasattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET")
-            else settings.STRIPE_WEBHOOK_SECRET,
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, secret)
     except (ValueError, StripeSignatureError):
+        return HttpResponse(status=400)
+
+    # 1b. Mode gate (F4.4) — same policy as the api/v1 endpoint.
+    if reject_for_mode(event, is_test_endpoint=is_test_endpoint):
         return HttpResponse(status=400)
 
     # 2. Event-level dedup with IntegrityError handling

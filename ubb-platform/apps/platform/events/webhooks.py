@@ -87,22 +87,34 @@ def deliver_webhook(event):
         tenant_id=event.tenant_id,
         is_active=True,
     )
+    if not configs:
+        return
+
+    # F4.4: every outbound payload carries the tenant's mode so receivers can
+    # tell sandbox traffic from live (OutboxEvent.tenant_id is a bare UUID).
+    from apps.platform.tenants.models import Tenant
+    is_sandbox = (
+        Tenant.objects.filter(id=event.tenant_id)
+        .values_list("is_sandbox", flat=True).first()
+    )
+    livemode = not bool(is_sandbox)
 
     for config in configs:
         # Check event type filter
         if config.event_types and event.event_type not in config.event_types:
             continue
 
-        _deliver_to_config(config, event)
+        _deliver_to_config(config, event, livemode=livemode)
 
 
-def _deliver_to_config(config, event):
+def _deliver_to_config(config, event, *, livemode=True):
     """POST event payload to a single webhook config URL."""
     payload = {
         "event_type": event.event_type,
         "event_id": str(event.id),
         "tenant_id": str(event.tenant_id),
         "timestamp": int(time.time()),
+        "livemode": livemode,
         "data": event.payload,
     }
     payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")

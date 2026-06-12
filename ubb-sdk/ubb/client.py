@@ -299,6 +299,30 @@ class UBBClient:
         r = metering._request("patch", "/api/v1/tenant/config", json=body)
         return r.json()
 
+    # ---- sandbox (F4.4) ----
+
+    def create_sandbox(self) -> dict:
+        """Provision (or fetch) the tenant's sandbox sibling and mint a test key.
+
+        Calls POST /api/v1/tenant/sandbox (requires the LIVE ubb_live_ key) and
+        returns the response dict: ``sandbox_tenant_id`` plus ``api_key`` — the
+        raw ubb_test_ key, returned only in this response. Each call mints a
+        fresh test key (that is also the rotation path).
+        """
+        metering = self._require_metering()
+        r = metering._request("post", "/api/v1/tenant/sandbox", json={})
+        return r.json()
+
+    def get_sandbox(self) -> dict:
+        """Get the tenant's sandbox status.
+
+        Calls GET /api/v1/tenant/sandbox (live key) and returns the response
+        dict: ``exists``, ``sandbox_tenant_id``, ``key_prefixes``.
+        """
+        metering = self._require_metering()
+        r = metering._request("get", "/api/v1/tenant/sandbox")
+        return r.json()
+
     # ---- Stripe Connect onboarding ----
 
     def start_connect_onboarding(self, return_url: str = "") -> dict:

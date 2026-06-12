@@ -7,6 +7,7 @@ import stripe
 from django.conf import settings
 
 from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant,
     stripe_call,
     validate_amount_micros,
     micros_to_cents,
@@ -40,6 +41,7 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
 
     session = stripe_call(
         stripe.checkout.Session.create,
+        api_key=api_key_for_tenant(customer.tenant),
         retryable=True,
         idempotency_key=f"checkout-{top_up_attempt.id}",
         customer=customer_stripe_id,
@@ -74,8 +76,11 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     if not connected_account or not _charges_ready(customer.tenant_id):
         return None  # Connected account not charge-ready -- skip (mirror no-PM skip)
 
+    api_key = api_key_for_tenant(customer.tenant)
+
     payment_methods = stripe_call(
         stripe.PaymentMethod.list,
+        api_key=api_key,
         retryable=True,
         idempotency_key=None,  # list is naturally idempotent
         customer=customer_stripe_id,
@@ -87,7 +92,8 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
 
     default_pm = None
     try:
-        cust = stripe_call(stripe.Customer.retrieve, retryable=True, idempotency_key=None,
+        cust = stripe_call(stripe.Customer.retrieve, api_key=api_key,
+                           retryable=True, idempotency_key=None,
                            id=customer_stripe_id, stripe_account=connected_account)
         default_pm = (cust.get("invoice_settings") or {}).get("default_payment_method")
     except Exception:
@@ -96,6 +102,7 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
 
     intent = stripe_call(
         stripe.PaymentIntent.create,
+        api_key=api_key,
         retryable=True,
         idempotency_key=f"charge-{top_up_attempt.id}",
         customer=customer_stripe_id,

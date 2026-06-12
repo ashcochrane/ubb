@@ -32,6 +32,7 @@ class EventsConfig(AppConfig):
             "billing.balance_overage",
             "billing.credit_grant_expiring",
             "billing.credit_grant_expired",
+            "sandbox.reset_completed",
         ]
         for event_type in event_types:
             handler_registry.register(

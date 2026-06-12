@@ -9,7 +9,13 @@ from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
-from apps.billing.connectors.stripe.invoice_routing import _invoice_subscription_id, _refresh_urls
+from apps.billing.connectors.stripe.invoice_routing import (
+    _invoice_subscription_id,
+    _refresh_urls,
+    event_livemode,
+    livemode_filter,
+)
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from core.locking import lock_customer
 
 logger = logging.getLogger(__name__)
@@ -22,9 +28,10 @@ def handle_checkout_completed(event):
         return
 
     connected_account = event.account
-    customer = Customer.objects.filter(
+    customer = Customer.objects.select_related("tenant").filter(
         stripe_customer_id=session.customer,
         tenant__stripe_connected_account_id=connected_account,
+        **livemode_filter(event),
     ).first()
     if not customer:
         return
@@ -63,6 +70,7 @@ def handle_checkout_completed(event):
                 pi_id,
                 stripe_account=connected_account,
                 expand=["latest_charge"],
+                api_key=api_key_for_tenant(customer.tenant),
             )
             if pi.latest_charge:
                 cid = (
@@ -171,11 +179,13 @@ def _mark_invoice_payment_failed(event):
         return
     sub_id = _invoice_subscription_id(inv)
     if sub_id:
-        mark_invoice_payment_failed_for_subscription(acct, sub_id, invoice_id, inv)
+        mark_invoice_payment_failed_for_subscription(
+            acct, sub_id, invoice_id, inv, livemode=event_livemode(event))
     else:
         existing = CustomerUsageInvoice.objects.filter(
             stripe_invoice_id=invoice_id,
             tenant__stripe_connected_account_id=acct,
+            **livemode_filter(event),
         ).first()
         if not existing:
             return
@@ -200,6 +210,7 @@ def handle_invoice_payment_failed(event):
     customer = Customer.objects.filter(
         stripe_customer_id=inv.customer,
         tenant__stripe_connected_account_id=connected_account,
+        **livemode_filter(event),
     ).first()
     if not customer:
         return
@@ -229,6 +240,7 @@ def handle_charge_dispute_created(event):
     attempt = TopUpAttempt.objects.filter(
         stripe_charge_id=charge_id,
         customer__tenant__stripe_connected_account_id=connected_account,
+        **livemode_filter(event, tenant_path="customer__tenant"),
     ).first()
     if not attempt:
         logger.warning(
@@ -261,6 +273,7 @@ def handle_charge_dispute_closed(event):
     attempt = TopUpAttempt.objects.filter(
         stripe_charge_id=charge_id,
         customer__tenant__stripe_connected_account_id=connected_account,
+        **livemode_filter(event, tenant_path="customer__tenant"),
     ).first()
     if not attempt:
         return
@@ -343,6 +356,7 @@ def handle_charge_refunded(event):
     attempt = TopUpAttempt.objects.filter(
         stripe_charge_id=charge_id,
         customer__tenant__stripe_connected_account_id=connected_account,
+        **livemode_filter(event, tenant_path="customer__tenant"),
     ).first()
     if not attempt:
         return
@@ -415,6 +429,8 @@ def handle_payment_intent_succeeded(event):
     acct = getattr(event, "account", None)
     if acct and acct != attempt.customer.tenant.stripe_connected_account_id:
         return  # cross-account guard
+    if attempt.customer.tenant.is_sandbox == event_livemode(event):
+        return  # cross-MODE guard (F4.4): acct_ ids are identical in test+live
     AutoTopUpService.apply_topup_credit(attempt, pi)
 
 
@@ -431,6 +447,8 @@ def handle_payment_intent_payment_failed(event):
     acct = getattr(event, "account", None)
     if acct and acct != attempt.customer.tenant.stripe_connected_account_id:
         return  # cross-account guard
+    if attempt.customer.tenant.is_sandbox == event_livemode(event):
+        return  # cross-MODE guard (F4.4): acct_ ids are identical in test+live
     with transaction.atomic():
         attempt = lock_top_up_attempt(attempt.id)
         if attempt.status in ("succeeded", "failed", "superseded"):

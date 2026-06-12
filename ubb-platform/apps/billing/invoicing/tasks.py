@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
-from apps.billing.stripe.services.stripe_service import stripe_call
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from apps.billing.connectors.stripe.invoice_routing import (
     _invoice_subscription_id,
     _refresh_urls,
@@ -173,6 +173,7 @@ def reconcile_invoice_payment_status():
         try:
             invoices = stripe_call(
                 stripe.Invoice.list,
+                api_key=api_key_for_tenant(tenant),
                 stripe_account=account,
                 created={"gte": cutoff},
                 limit=100,

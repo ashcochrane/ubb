@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.stripe.services.stripe_service import stripe_call
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from core.exceptions import StripeFatalError
 
 logger = logging.getLogger("ubb.billing")
@@ -269,6 +269,7 @@ class PostpaidUsageService:
         from apps.billing.invoicing.models import CustomerUsageInvoice
 
         connected = tenant.stripe_connected_account_id
+        api_key = api_key_for_tenant(tenant)
         currency = (tenant.default_currency or "usd").lower()
 
         # Critical-1: --rebill-void rotates EVERY idempotency-key family. Within
@@ -309,7 +310,8 @@ class PostpaidUsageService:
         created = False
         if rec.stripe_invoice_id:
             inv = stripe_call(
-                stripe.Invoice.retrieve, id=rec.stripe_invoice_id, stripe_account=connected)
+                stripe.Invoice.retrieve, api_key=api_key,
+                id=rec.stripe_invoice_id, stripe_account=connected)
             if getattr(inv, "deleted", False) is True or getattr(inv, "status", "") == "void":
                 # I1: never mint a sibling next to a known invoice. A deliberate
                 # void-rebill goes through repush_usage_invoice --rebill-void.
@@ -321,14 +323,14 @@ class PostpaidUsageService:
                     f"Stripe invoice {rec.stripe_invoice_id} for usage invoice {rec.id} "
                     "is void/deleted; use repush_usage_invoice --rebill-void to replace it")
         else:
-            inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected)
+            inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected, api_key)
         if inv is None:
             # B1: create the draft FIRST, then PIN each usage line to it via invoice=<id>.
             # Stripe's default pending_invoice_items_behavior is 'exclude'; un-pinned pending
             # items would NOT sweep, finalizing an EMPTY invoice and never billing usage.
             # C1: usage is ALWAYS its own finalized standalone invoice (correct-cycle).
             inv = stripe_call(
-                stripe.Invoice.create, retryable=True,
+                stripe.Invoice.create, api_key=api_key, retryable=True,
                 idempotency_key=f"usage-invoice-{rec.id}{gen}",
                 customer=owner.stripe_customer_id, auto_advance=False, stripe_account=connected,
                 metadata={"usage_invoice_id": str(rec.id), "tenant_id": str(tenant.id),
@@ -346,7 +348,7 @@ class PostpaidUsageService:
 
         if inv_status in ("open", "paid", "uncollectible"):
             # Adopt: a prior attempt finalized this invoice — zero Stripe writes.
-            existing = PostpaidUsageService._list_invoice_items(inv.id, connected)
+            existing = PostpaidUsageService._list_invoice_items(inv.id, connected, api_key)
             items = [(label, orig_micros, existing[str(i)].id if str(i) in existing else "")
                      for i, label, cents, orig_micros in cent_lines]
             CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
@@ -362,7 +364,7 @@ class PostpaidUsageService:
                 f"status {inv_status!r}")
 
         # Draft: pin only the MISSING lines (a resumed push may already have some).
-        existing = {} if created else PostpaidUsageService._list_invoice_items(inv.id, connected)
+        existing = {} if created else PostpaidUsageService._list_invoice_items(inv.id, connected, api_key)
         items = []
         for i, label, cents, orig_micros in cent_lines:
             prior_item = existing.get(str(i))
@@ -371,7 +373,7 @@ class PostpaidUsageService:
                 continue
             desc = f"Usage {period_start:%Y-%m}" + (f" — {label}" if label else "")
             item = stripe_call(
-                stripe.InvoiceItem.create, retryable=True,
+                stripe.InvoiceItem.create, api_key=api_key, retryable=True,
                 idempotency_key=f"usage-item-{rec.id}{gen}-{i}",
                 customer=owner.stripe_customer_id, invoice=inv.id, amount=cents,
                 currency=currency, description=desc, stripe_account=connected,
@@ -380,7 +382,7 @@ class PostpaidUsageService:
         CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
             push_phase="items_pinned")
         stripe_call(
-            stripe.Invoice.finalize_invoice, retryable=True,
+            stripe.Invoice.finalize_invoice, api_key=api_key, retryable=True,
             idempotency_key=f"usage-finalize-{rec.id}{gen}", invoice=inv.id,
             auto_advance=True, stripe_account=connected)
         CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
@@ -388,14 +390,14 @@ class PostpaidUsageService:
         return inv.id, items, residual
 
     @staticmethod
-    def _find_existing_invoice(rec, owner, connected):
+    def _find_existing_invoice(rec, owner, connected, api_key):
         """I4 belt-and-braces: before any create, deterministically look for an
         invoice already minted for this row. Invoice.list + client-side metadata
         match (Invoice.search has freshness lag). Skips void invoices so a
         deliberately-voided invoice can be replaced (--rebill-void)."""
         created_gte = int((rec.created_at - timedelta(days=1)).timestamp())
         result = stripe_call(
-            stripe.Invoice.list, customer=owner.stripe_customer_id,
+            stripe.Invoice.list, api_key=api_key, customer=owner.stripe_customer_id,
             stripe_account=connected, created={"gte": created_gte}, limit=100)
         for inv in result.auto_paging_iter():
             if getattr(inv, "status", "") == "void":
@@ -406,11 +408,12 @@ class PostpaidUsageService:
         return None
 
     @staticmethod
-    def _list_invoice_items(invoice_id, connected):
+    def _list_invoice_items(invoice_id, connected, api_key):
         """Items already pinned to the invoice, indexed by their line_index metadata.
         Legacy items without metadata are unindexable (blank item-id fallback)."""
         result = stripe_call(
-            stripe.InvoiceItem.list, invoice=invoice_id, stripe_account=connected, limit=100)
+            stripe.InvoiceItem.list, api_key=api_key,
+            invoice=invoice_id, stripe_account=connected, limit=100)
         indexed = {}
         for item in result.auto_paging_iter():
             meta = getattr(item, "metadata", None) or {}

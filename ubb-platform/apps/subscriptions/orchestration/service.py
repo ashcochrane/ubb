@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import (
     StripeFatalError,
+    api_key_for_tenant,
     micros_to_cents,
     stripe_call,
 )
@@ -96,6 +97,7 @@ class SubscriptionOrchestrator:
             return plan
 
         connected = get_tenant_stripe_account(tenant.id)
+        api_key = api_key_for_tenant(tenant)
 
         axes = [
             ("access", plan.access_fee_micros, "stripe_access_product_id", "stripe_access_price_id"),
@@ -111,6 +113,7 @@ class SubscriptionOrchestrator:
             if not getattr(plan, product_field):
                 product = stripe_call(
                     stripe.Product.create,
+                    api_key=api_key,
                     retryable=True,
                     idempotency_key=f"plan-prod-{axis}-{plan.id}",
                     name=f"{plan.name} ({axis.capitalize()})",
@@ -121,6 +124,7 @@ class SubscriptionOrchestrator:
 
             price = stripe_call(
                 stripe.Price.create,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"plan-price-{axis}-{plan.id}",
                 product=getattr(plan, product_field),
@@ -149,8 +153,9 @@ class SubscriptionOrchestrator:
 
         owner = customer.resolve_billing_owner()
         connected = get_tenant_stripe_account(tenant.id)
+        api_key = api_key_for_tenant(tenant)
 
-        cls._ensure_stripe_customer(owner, connected)
+        cls._ensure_stripe_customer(owner, connected, api_key)
         cls.ensure_plan_provisioned(plan)
 
         # Plan prices are created in the tenant currency (see ensure_plan_provisioned).
@@ -175,6 +180,7 @@ class SubscriptionOrchestrator:
 
         sub = stripe_call(
             stripe.Subscription.create,
+            api_key=api_key,
             retryable=True,
             idempotency_key=f"sub-create-{owner.id}-{plan.id}",
             customer=owner.stripe_customer_id,
@@ -208,6 +214,7 @@ class SubscriptionOrchestrator:
 
         stripe_call(
             stripe.SubscriptionItem.modify,
+            api_key=api_key_for_tenant(tenant),
             retryable=True,
             idempotency_key=f"seat-qty-{item.stripe_subscription_item_id}-{change_event_id}",
             id=item.stripe_subscription_item_id,
@@ -229,7 +236,7 @@ class SubscriptionOrchestrator:
     # -- internals -----------------------------------------------------------
 
     @classmethod
-    def _ensure_stripe_customer(cls, owner, connected):
+    def _ensure_stripe_customer(cls, owner, connected, api_key):
         """Ensure the billing owner has a Stripe Customer on the connected account.
 
         Customer.stripe_customer_id is blank by default, so a business may not yet
@@ -241,6 +248,7 @@ class SubscriptionOrchestrator:
 
         cust = stripe_call(
             stripe.Customer.create,
+            api_key=api_key,
             retryable=True,
             idempotency_key=f"cust-create-{owner.id}",
             metadata={"ubb_customer_id": str(owner.id), "external_id": owner.external_id},

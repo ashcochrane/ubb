@@ -44,9 +44,33 @@ class Tenant(BaseModel):
     # backfill window never spans more than 3 calendar months (the reconcile
     # horizon of reconcile_cost_accumulators).
     backfill_window_days = models.PositiveIntegerField(default=34)
+    # Sandbox mode (F4.4): a sandbox is a SIBLING Tenant row owned by its
+    # parent_tenant. Because every domain model is tenant-scoped, isolation,
+    # idempotency, rate limits and beat jobs all apply to the sandbox for free.
+    # ubb_test_ keys are minted ON the sandbox tenant (routing at mint time).
+    is_sandbox = models.BooleanField(default=False, db_index=True)
+    # PROTECT: deleting a live tenant must never cascade-nuke its sandbox silently.
+    parent_tenant = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="sandboxes",
+    )
 
     class Meta:
         db_table = "ubb_tenant"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parent_tenant"],
+                condition=models.Q(is_sandbox=True),
+                name="uq_one_sandbox_per_parent",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_sandbox=True, parent_tenant__isnull=False)
+                    | models.Q(is_sandbox=False, parent_tenant__isnull=True)
+                ),
+                name="ck_sandbox_iff_parent",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -106,7 +130,21 @@ class TenantApiKey(BaseModel):
 
     @classmethod
     def create_key(cls, tenant, label="", is_test=False):
-        """Create a new API key for a tenant. Returns (key_obj, raw_key)."""
+        """Create a new API key for a tenant. Returns (key_obj, raw_key).
+
+        Sandbox routing happens HERE, at mint time (F4.4): a test key requested
+        on a live tenant is minted on that tenant's sandbox sibling (lazily
+        provisioned). After routing, the key mode must match the tenant mode —
+        a live key can never exist on a sandbox tenant and vice versa.
+        """
+        if is_test and not tenant.is_sandbox:
+            from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
+            tenant = get_or_create_sandbox(tenant)
+        if is_test != tenant.is_sandbox:
+            raise ValueError(
+                "API key mode must match tenant mode: "
+                f"is_test={is_test} but tenant.is_sandbox={tenant.is_sandbox}"
+            )
         prefix = "ubb_test_" if is_test else "ubb_live_"
         raw_key = prefix + secrets.token_urlsafe(32)
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -126,9 +164,16 @@ class TenantApiKey(BaseModel):
             key_obj = cls.objects.select_related("tenant").get(
                 key_hash=key_hash, is_active=True, tenant__is_active=True
             )
-            return key_obj
         except cls.DoesNotExist:
             return None
+        # Defense-in-depth (F4.4): create_key guarantees mode-matched keys, but
+        # an ORM-crafted row must still never let a test key resolve to a live
+        # tenant (or the reverse). key_prefix stores raw_key[:16], which always
+        # contains the full ubb_test_/ubb_live_ prefix. tenant is already
+        # select_related — zero extra queries.
+        if key_obj.key_prefix.startswith("ubb_test_") != key_obj.tenant.is_sandbox:
+            return None
+        return key_obj
 
 
 class ConnectOAuthState(BaseModel):

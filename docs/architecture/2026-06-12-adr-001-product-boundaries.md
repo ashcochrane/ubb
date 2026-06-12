@@ -81,7 +81,18 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
 6. **Dev-only management commands are exempt** via the test's explicit file allowlist. Currently
    only `apps/platform/tenants/management/commands/seed_dev_data.py` (it seeds billing config
    for local dev; it never runs in production code paths).
-7. **`apps/platform/tests/test_product_boundaries.py` IS the enforcement.** It walks the AST of
+7. **Generic model access via Django's app registry is the sanctioned pattern for
+   platform-kernel maintenance sweeps** (F4.4 sandbox reset,
+   `apps/platform/tenants/tasks.py`). The kernel must never import product modules
+   (rule 2), and a reset that had to *name* every product model would silently leak
+   rows whenever a new model shipped. The sandbox wipe therefore discovers
+   tenant-scoped models generically (`django.apps.apps.get_models()`, any concrete
+   model with a FK/O2O to `Tenant`) and addresses the keep-config exceptions by
+   `app_label.ModelName` string labels — zero import edges, automatic coverage of
+   new product models, and the AST walker stays authoritative for import discipline.
+   This is data-plane janitorial work (delete rows by tenant), never business logic:
+   a kernel sweep must not call product services or enforce product invariants.
+8. **`apps/platform/tests/test_product_boundaries.py` IS the enforcement.** It walks the AST of
    every non-test, non-migration module under `apps/` and `core/` — all nodes, so lazy
    function-body imports are caught — resolves relative imports, and fails with `file:lineno`
    pointing back at this document. It supersedes the grep rules in the 2026-02-09 design doc.

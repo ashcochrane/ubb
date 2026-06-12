@@ -30,6 +30,9 @@ from apps.billing.connectors.stripe.invoice_routing import (  # noqa: F401
     _refresh_urls,
     AR_ALLOWED,
     ar_transition_allowed,
+    event_livemode,
+    livemode_filter,
+    reject_for_mode,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,12 +43,38 @@ PROCESSING_TTL_MINUTES = 30
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
+    return _stripe_webhook(
+        request, secret=settings.STRIPE_WEBHOOK_SECRET, is_test_endpoint=False)
+
+
+@csrf_exempt
+@require_POST
+def stripe_webhook_test(request):
+    """Stripe TEST-mode webhook endpoint (F4.4) — sandbox tenants' events.
+
+    Verified with STRIPE_TEST_WEBHOOK_SECRET; 400 when that secret is unset
+    (an empty secret must never verify) or when the event is livemode=True.
+    Handlers are shared: the livemode filters inside them bind every lookup
+    to sandbox tenants.
+    """
+    if not settings.STRIPE_TEST_WEBHOOK_SECRET:
+        return HttpResponse(status=400)
+    return _stripe_webhook(
+        request, secret=settings.STRIPE_TEST_WEBHOOK_SECRET, is_test_endpoint=True)
+
+
+def _stripe_webhook(request, *, secret, is_test_endpoint):
     # 1. Verify signature
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, settings.STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig_header, secret)
     except (ValueError, stripe.error.SignatureVerificationError):
+        return HttpResponse(status=400)
+
+    # 1b. Mode gate (F4.4): test endpoint = test events only; live endpoint
+    # rejects test events once the test secret (= sandbox infra) exists.
+    if reject_for_mode(event, is_test_endpoint=is_test_endpoint):
         return HttpResponse(status=400)
 
     # 2. Event-level dedup with IntegrityError handling
@@ -188,6 +217,7 @@ def _reconcile_customer_invoice(event, *, new_status):
         sub = StripeSubscription.objects.filter(
             stripe_subscription_id=sub_id,
             tenant__stripe_connected_account_id=acct,
+            **livemode_filter(event),
         ).first()
         if not sub:
             return
@@ -226,6 +256,7 @@ def _reconcile_customer_invoice(event, *, new_status):
         existing = CustomerUsageInvoice.objects.filter(
             stripe_invoice_id=inv.id,
             tenant__stripe_connected_account_id=acct,
+            **livemode_filter(event),
         ).first()
         if not existing:
             return
@@ -282,6 +313,7 @@ def handle_invoice_paid(event):
         invoice = Invoice.objects.filter(
             stripe_invoice_id=inv.id,
             tenant__stripe_connected_account_id=connected_account,
+            **livemode_filter(event),
         ).first()
         if not invoice:
             return
@@ -297,10 +329,13 @@ def handle_invoice_paid(event):
             invoice.paid_at = timezone.now()
             invoice.save(update_fields=["status", "paid_at", "updated_at"])
     else:
-        # Platform fee invoice on UBB's own Stripe account
+        # Platform fee invoice on UBB's own Stripe account. Sandbox tenants are
+        # never platform-invoiced, but the livemode bind costs nothing and keeps
+        # a test-mode invoice id from ever matching a live TenantInvoice.
         from apps.billing.tenant_billing.models import TenantInvoice
         tenant_invoice = TenantInvoice.objects.filter(
             stripe_invoice_id=inv.id,
+            **livemode_filter(event),
         ).first()
         if not tenant_invoice:
             # TenantInvoice may not be persisted yet — raise to trigger Stripe retry
@@ -329,7 +364,12 @@ def handle_account_updated(event):
     """
     from apps.platform.tenants.models import Tenant
     acct = event.data.object
-    t = Tenant.objects.filter(stripe_connected_account_id=acct.id).first()
+    # F4.4: the SAME acct_ id exists in test and live mode — livemode picks
+    # which sibling (live tenant vs sandbox) this event may touch.
+    t = Tenant.objects.filter(
+        stripe_connected_account_id=acct.id,
+        **livemode_filter(event, tenant_path=""),
+    ).first()
     if t:
         t.charges_enabled = bool(getattr(acct, "charges_enabled", False))
         t.save(update_fields=["charges_enabled", "updated_at"])
@@ -341,7 +381,10 @@ def handle_account_deauthorized(event):
     The deauthorized connected account is carried in event.account.
     """
     from apps.platform.tenants.models import Tenant
-    t = Tenant.objects.filter(stripe_connected_account_id=event.account).first()
+    t = Tenant.objects.filter(
+        stripe_connected_account_id=event.account,
+        **livemode_filter(event, tenant_path=""),
+    ).first()
     if t:
         t.stripe_connected_account_id = ""
         t.charges_enabled = False

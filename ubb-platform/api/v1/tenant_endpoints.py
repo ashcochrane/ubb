@@ -6,6 +6,7 @@ from api.v1.pagination import apply_cursor_filter, encode_cursor
 from api.v1.schemas import TenantConfigOut, TenantConfigIn
 from core.auth import ApiKeyAuth
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.platform.tenants.models import Tenant, TenantApiKey
 
 tenant_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_tenant_v1")
 
@@ -117,6 +118,47 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         ],
         "next_cursor": next_cursor,
         "has_more": has_more,
+    }
+
+
+# ---- Sandbox self-serve (F4.4) ----
+
+
+@tenant_api.post("/sandbox", response={200: dict, 403: dict})
+def create_sandbox(request):
+    """Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.
+
+    The RAW key is returned exactly once per call (each POST mints a fresh
+    key — that is also the rotation path). 403 from a sandbox key: sandboxes
+    cannot nest.
+    """
+    tenant = request.auth.tenant
+    if tenant.is_sandbox:
+        return 403, {"error": "sandbox tenants cannot create sandboxes (use the live key)"}
+    from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
+    sandbox = get_or_create_sandbox(tenant)
+    _key_obj, raw_key = TenantApiKey.create_key(sandbox, label="sandbox", is_test=True)
+    return 200, {
+        "sandbox_tenant_id": str(sandbox.id),
+        "api_key": raw_key,
+    }
+
+
+@tenant_api.get("/sandbox", response={200: dict, 403: dict})
+def get_sandbox(request):
+    """Sandbox status for the calling live tenant (exists, id, key prefixes)."""
+    tenant = request.auth.tenant
+    if tenant.is_sandbox:
+        return 403, {"error": "sandbox status is read with the live key"}
+    sandbox = Tenant.objects.filter(parent_tenant=tenant, is_sandbox=True).first()
+    if sandbox is None:
+        return 200, {"exists": False, "sandbox_tenant_id": None, "key_prefixes": []}
+    return 200, {
+        "exists": True,
+        "sandbox_tenant_id": str(sandbox.id),
+        "key_prefixes": list(
+            sandbox.api_keys.filter(is_active=True).values_list("key_prefix", flat=True)
+        ),
     }
 
 

@@ -40,6 +40,11 @@ class Command(BaseCommand):
                 "'meter_only' = J1 cost-attribution only."
             ),
         )
+        parser.add_argument(
+            "--with-sandbox",
+            action="store_true",
+            help="Also provision the tenant's sandbox sibling and mint a ubb_test_ key.",
+        )
 
     def handle(self, *args, **options):
         billing_mode = options["billing_mode"]
@@ -86,6 +91,14 @@ class Command(BaseCommand):
         # Create API key
         key_obj, raw_key = TenantApiKey.create_key(tenant, label="dev-seed")
         self.stdout.write(f"Created API key: {raw_key}")
+
+        # Optional sandbox sibling + test key (routed at mint time)
+        if options["with_sandbox"]:
+            test_key_obj, raw_test_key = TenantApiKey.create_key(
+                tenant, label="dev-seed-sandbox", is_test=True,
+            )
+            self.stdout.write(f"Sandbox tenant ID: {test_key_obj.tenant_id}")
+            self.stdout.write(f"Sandbox test key:  {raw_test_key}")
 
         # Create test customer with wallet
         defaults = {}
