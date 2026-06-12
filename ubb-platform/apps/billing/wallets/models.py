@@ -12,6 +12,10 @@ WALLET_TXN_TYPES = [
     ("ADJUSTMENT", "Adjustment"),
     ("DISPUTE_DEDUCTION", "Dispute Deduction"),
     ("STRIPE_REFUND", "Stripe Refund"),
+    ("DEBIT", "Debit"),  # written by /debit (billing_endpoints) — was missing from choices
+    ("GRANT", "Credit Grant"),
+    ("GRANT_EXPIRY", "Credit Grant Expiry"),
+    ("GRANT_VOID", "Credit Grant Void"),
 ]
 
 
@@ -68,9 +72,114 @@ class CustomerBillingProfile(BaseModel):
         related_name="billing_profile"
     )
     min_balance_micros = models.BigIntegerField(null=True, blank=True)
+    # F4.3: when set, paid top-up credits (auto-topup + checkout) become a PAID
+    # grant expiring this many days after the credit lands. NULL = top-ups
+    # never expire (legacy behavior, the default).
+    topup_grant_expiry_days = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_customer_billing_profile"
 
     def __str__(self):
         return f"CustomerBillingProfile({self.customer.external_id})"
+
+
+GRANT_KINDS = [("paid", "Paid"), ("promo", "Promo")]
+GRANT_STATUSES = [
+    ("active", "Active"),
+    ("depleted", "Depleted"),
+    ("expired", "Expired"),
+    ("voided", "Voided"),
+]
+GRANT_SOURCES = [
+    ("checkout", "Checkout"),
+    ("auto_topup", "Auto Top-Up"),
+    ("api", "API"),
+    ("other", "Other"),
+]
+
+
+class CreditGrant(BaseModel):
+    """A LOT of expiring (or promo) credit layered on the prepaid wallet (F4.3).
+
+    Wallet.balance_micros stays the single spendable cache; base money is
+    DERIVED (balance - sum(remaining of active grants)), never stored, so it
+    cannot drift. Every grant mutation happens inside the caller's existing
+    wallet lock + transaction, riding the caller's idempotency keys.
+
+    Conservation per grant:
+        granted == remaining + sum(allocations) + expired_micros + voided_micros
+    Per wallet (G1): sum(remaining of active grants) <= max(balance, 0).
+    """
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="credit_grants"
+    )
+    wallet = models.ForeignKey(
+        Wallet, on_delete=models.CASCADE, related_name="credit_grants"
+    )
+    kind = models.CharField(max_length=10, choices=GRANT_KINDS)
+    granted_micros = models.BigIntegerField()
+    remaining_micros = models.BigIntegerField()
+    expired_micros = models.BigIntegerField(default=0)
+    voided_micros = models.BigIntegerField(default=0)
+    currency = models.CharField(max_length=3, default="USD")
+    expires_at = models.DateTimeField(null=True, blank=True)
+    warning_sent_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=GRANT_STATUSES, default="active")
+    source = models.CharField(max_length=20, choices=GRANT_SOURCES, default="other")
+    source_reference = models.CharField(max_length=255, blank=True, default="")
+    source_transaction = models.OneToOneField(
+        WalletTransaction, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="credit_grant",
+    )
+
+    class Meta:
+        db_table = "ubb_credit_grant"
+        indexes = [
+            models.Index(fields=["wallet", "status", "expires_at"],
+                         name="idx_grant_wallet_status_exp"),
+            models.Index(fields=["status", "expires_at", "warning_sent_at"],
+                         name="idx_grant_status_exp_warn"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(remaining_micros__gte=0)
+                & models.Q(remaining_micros__lte=models.F("granted_micros")),
+                name="ck_grant_remaining_bounds",
+            ),
+        ]
+
+    def __str__(self):
+        return f"CreditGrant({self.kind}: {self.remaining_micros}/{self.granted_micros} [{self.status}])"
+
+
+GRANT_ALLOCATION_TYPES = [
+    ("usage", "Usage"),
+    ("withdrawal", "Withdrawal"),
+    ("clawback", "Clawback"),
+    ("overage_recoup", "Overage Recoup"),
+]
+
+
+class GrantAllocation(BaseModel):
+    """Audit row: how much of a debit (or recoup) was funded by which grant lot."""
+    grant = models.ForeignKey(
+        CreditGrant, on_delete=models.CASCADE, related_name="allocations"
+    )
+    wallet_transaction = models.ForeignKey(
+        WalletTransaction, on_delete=models.CASCADE, related_name="grant_allocations"
+    )
+    amount_micros = models.BigIntegerField()
+    allocation_type = models.CharField(max_length=20, choices=GRANT_ALLOCATION_TYPES)
+
+    class Meta:
+        db_table = "ubb_grant_allocation"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount_micros__gt=0),
+                name="ck_grant_allocation_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"GrantAllocation({self.allocation_type}: {self.amount_micros})"

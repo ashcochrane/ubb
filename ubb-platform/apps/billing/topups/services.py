@@ -61,8 +61,15 @@ class AutoTopUpService:
     def apply_topup_credit(attempt, payment_intent) -> bool:
         """Idempotently credit the wallet for a succeeded auto-topup PaymentIntent.
         Convergent: called by the charge task, the payment_intent.succeeded webhook, and reconcile.
-        Exactly-once via WalletTransaction idempotency_key=auto_topup:{pi_id}. Returns True if it credited."""
+        Exactly-once via WalletTransaction idempotency_key=auto_topup:{pi_id}. Returns True if it credited.
+
+        F4.3: the credit also creates a PAID CreditGrant lot inside the same
+        savepoint as the TOP_UP transaction — the loser branch creates nothing,
+        so the grant inherits exactly-once from auto_topup:{pi_id} for all
+        three callers with zero changes to them. Expiry comes from the owner's
+        CustomerBillingProfile.topup_grant_expiry_days (NULL = never expires)."""
         from apps.billing.locking import lock_for_billing, lock_top_up_attempt
+        from apps.billing.wallets.grants import GrantLedger
         from apps.billing.wallets.models import WalletTransaction
 
         pi_id = payment_intent.id if hasattr(payment_intent, "id") else payment_intent["id"]
@@ -79,10 +86,15 @@ class AutoTopUpService:
             new_balance = wallet.balance_micros + amount_micros
             try:
                 with transaction.atomic():  # savepoint: race backstop on the unique constraint
-                    WalletTransaction.objects.create(
+                    txn = WalletTransaction.objects.create(
                         wallet=wallet, transaction_type="TOP_UP", amount_micros=amount_micros,
                         balance_after_micros=new_balance, description="Auto top-up",
                         reference_id=str(attempt.id), idempotency_key=key)
+                    GrantLedger.create_grant(
+                        wallet, customer.tenant_id, kind="paid",
+                        amount_micros=amount_micros,
+                        expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
+                        source="auto_topup", source_reference=str(attempt.id), txn=txn)
             except IntegrityError:
                 return False
             wallet.balance_micros = new_balance

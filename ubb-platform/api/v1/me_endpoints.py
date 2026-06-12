@@ -23,6 +23,21 @@ def _check_billing_product(request):
 class BalanceResponse(Schema):
     balance_micros: int
     currency: str
+    # F4.3 (additive): grant visibility.
+    promo_micros: Optional[int] = None
+    expiring_micros: Optional[int] = None
+    next_expiry_at: Optional[str] = None
+
+
+class GrantSummaryOut(Schema):
+    id: str
+    kind: str
+    remaining_micros: int
+    expires_at: Optional[str] = None
+
+
+class GrantListResponse(Schema):
+    data: list[GrantSummaryOut]
 
 
 class TopUpRequest(Schema):
@@ -111,11 +126,34 @@ def get_balance(request):
     _check_billing_product(request)
     customer = request.widget_customer
     from apps.billing.wallets.models import Wallet
+    from apps.billing.wallets.grants import GrantLedger
     try:
         wallet = Wallet.objects.get(customer=customer)
-        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
+                **GrantLedger.balance_summary(wallet)}
     except Wallet.DoesNotExist:
-        return {"balance_micros": 0, "currency": "USD"}
+        return {"balance_micros": 0, "currency": "USD",
+                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
+
+
+@me_api.get("/grants", response=GrantListResponse)
+def list_grants(request):
+    """Active credit grant lots on the customer's own wallet (kind,
+    remaining, expiry), soonest-expiring first."""
+    _check_billing_product(request)
+    customer = request.widget_customer
+    from django.db.models import F
+    from apps.billing.wallets.models import CreditGrant, Wallet
+    wallet = Wallet.objects.filter(customer=customer).first()
+    if wallet is None:
+        return {"data": []}
+    grants = CreditGrant.objects.filter(wallet=wallet, status="active").order_by(
+        F("expires_at").asc(nulls_last=True), "created_at")
+    return {"data": [
+        {"id": str(g.id), "kind": g.kind, "remaining_micros": g.remaining_micros,
+         "expires_at": g.expires_at.isoformat() if g.expires_at else None}
+        for g in grants
+    ]}
 
 
 @me_api.get("/transactions", response=PaginatedTransactions)

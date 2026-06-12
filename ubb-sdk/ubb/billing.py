@@ -8,7 +8,7 @@ from ubb.exceptions import (
 from ubb.retry import request_with_retry
 from ubb.types import (
     BalanceResult, TopUpResult, WalletTransaction, PaginatedResponse,
-    BudgetConfig, BudgetStatus, UsageInvoice,
+    BudgetConfig, BudgetStatus, UsageInvoice, CreditGrant,
 )
 
 
@@ -168,6 +168,54 @@ class BillingClient:
     def get_usage_invoices(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
         return [UsageInvoice(**row) for row in r.json()]
+
+    def create_grant(self, customer_id: str, kind: str, amount_micros: int,
+                     idempotency_key: str, expires_at: str | None = None,
+                     expires_in_days: int | None = None,
+                     description: str = "") -> CreditGrant:
+        """Create a credit grant lot via POST /api/v1/billing/customers/{customer_id}/grants.
+
+        kind is "paid" or "promo". Pass expires_at (ISO-8601, tz-aware) OR
+        expires_in_days; omit both for a non-expiring lot. idempotency_key is
+        required — retries with the same key return the original grant.
+        """
+        body: dict = {
+            "kind": kind,
+            "amount_micros": amount_micros,
+            "idempotency_key": idempotency_key,
+        }
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        if expires_in_days is not None:
+            body["expires_in_days"] = expires_in_days
+        if description:
+            body["description"] = description
+        r = self._request("post", f"/api/v1/billing/customers/{customer_id}/grants", json=body)
+        return CreditGrant(**r.json())
+
+    def list_grants(self, customer_id: str, status: str | None = None,
+                    cursor: str | None = None, limit: int = 50) -> PaginatedResponse[CreditGrant]:
+        """List grant lots via GET /api/v1/billing/customers/{customer_id}/grants."""
+        params: dict = {"limit": limit}
+        if status is not None:
+            params["status"] = status
+        if cursor is not None:
+            params["cursor"] = cursor
+        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/grants", params=params)
+        body = r.json()
+        grants = [CreditGrant(**item) for item in body["data"]]
+        return PaginatedResponse(data=grants, next_cursor=body.get("next_cursor"),
+                                 has_more=body["has_more"])
+
+    def void_grant(self, customer_id: str, grant_id: str) -> CreditGrant:
+        """Void a grant via POST /api/v1/billing/customers/{customer_id}/grants/{grant_id}/void.
+
+        Debits the lot's remaining (never below a zero balance) and retires it.
+        Idempotent — voiding twice returns the already-voided lot.
+        """
+        r = self._request(
+            "post", f"/api/v1/billing/customers/{customer_id}/grants/{grant_id}/void")
+        return CreditGrant(**r.json())
 
     def get_postpaid_config(self):
         r = self._request("get", "/api/v1/billing/postpaid-config")

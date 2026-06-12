@@ -114,7 +114,7 @@ def handle_checkout_completed(event):
         wallet.balance_micros += amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
-        WalletTransaction.objects.create(
+        txn = WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="TOP_UP",
             amount_micros=amount_micros,
@@ -123,6 +123,15 @@ def handle_checkout_completed(event):
             reference_id=str(attempt.id) if attempt else "",
             idempotency_key=f"topup:{session.id}",
         )
+        # F4.3: paid lot for the top-up — guarded by the topup:{session} check
+        # above (same transaction, same wallet lock).
+        from apps.billing.wallets.grants import GrantLedger
+        GrantLedger.create_grant(
+            wallet, customer.tenant_id, kind="paid", amount_micros=amount_micros,
+            expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
+            source="checkout",
+            source_reference=str(attempt.id) if attempt else session.id,
+            txn=txn)
 
     # Generate receipt invoice (after commit)
     if attempt:
@@ -268,7 +277,9 @@ def handle_charge_dispute_closed(event):
         wallet, customer = lock_for_billing(attempt.customer_id)
 
         # Idempotency: key on dispute id (not charge id) so each distinct dispute is tracked
-        from apps.billing.wallets.models import WalletTransaction
+        from apps.billing.wallets.models import CreditGrant, WalletTransaction
+        from apps.billing.wallets.grants import GrantLedger
+        GrantLedger.expire_due(wallet)  # F4.3: due lots expire before the clawback reads them
         existing = WalletTransaction.objects.filter(
             wallet=wallet, idempotency_key=f"dispute:{dispute_id}",
         ).first()
@@ -278,7 +289,7 @@ def handle_charge_dispute_closed(event):
         wallet.balance_micros -= amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
-        WalletTransaction.objects.create(
+        txn = WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="DISPUTE_DEDUCTION",
             amount_micros=-amount_micros,
@@ -287,6 +298,12 @@ def handle_charge_dispute_closed(event):
             reference_id=str(attempt.id),
             idempotency_key=f"dispute:{dispute_id}",
         )
+        # F4.3 clawback cascade: void the disputed top-up's lot first, then
+        # consume other lots until G1 holds again.
+        source_grant = CreditGrant.objects.filter(
+            wallet=wallet, source_reference=str(attempt.id),
+        ).first()
+        GrantLedger.clawback(wallet, txn, amount_micros, source_grant=source_grant)
 
         # Suspend customer if balance dropped below min_balance threshold
         from apps.billing.queries import get_customer_min_balance
@@ -338,11 +355,13 @@ def handle_charge_refunded(event):
         # Fallback: synthesise a single entry from the top-level amount_refunded
         refund_list = [type("R", (), {"id": charge_id, "amount": charge.amount_refunded})()]
 
-    from apps.billing.wallets.models import WalletTransaction
+    from apps.billing.wallets.models import CreditGrant, WalletTransaction
+    from apps.billing.wallets.grants import GrantLedger
     from django.db import IntegrityError
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(attempt.customer_id)
+        GrantLedger.expire_due(wallet)  # F4.3: due lots expire before the clawback reads them
 
         for refund in refund_list:
             refund_id = getattr(refund, "id", None)
@@ -355,7 +374,7 @@ def handle_charge_refunded(event):
             refunded_micros = refund_amount * 10_000
             try:
                 with transaction.atomic():  # savepoint for race-safe exactly-once (I2 pattern)
-                    WalletTransaction.objects.create(
+                    txn = WalletTransaction.objects.create(
                         wallet=wallet,
                         transaction_type="STRIPE_REFUND",
                         amount_micros=-refunded_micros,
@@ -368,6 +387,12 @@ def handle_charge_refunded(event):
                 continue  # raced redelivery — already applied
             wallet.balance_micros -= refunded_micros
             wallet.save(update_fields=["balance_micros", "updated_at"])
+            # F4.3 clawback cascade (winning branch only): shrink the refunded
+            # top-up's lot first, then restore G1 from other lots.
+            source_grant = CreditGrant.objects.filter(
+                wallet=wallet, source_reference=str(attempt.id),
+            ).first()
+            GrantLedger.clawback(wallet, txn, refunded_micros, source_grant=source_grant)
 
 
 def handle_payment_intent_succeeded(event):

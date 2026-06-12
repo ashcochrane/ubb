@@ -30,6 +30,8 @@ class EventsConfig(AppConfig):
             "usage.invoice_push_failed_permanent",
             "auto_topup.requires_action",
             "billing.balance_overage",
+            "billing.credit_grant_expiring",
+            "billing.credit_grant_expired",
         ]
         for event_type in event_types:
             handler_registry.register(

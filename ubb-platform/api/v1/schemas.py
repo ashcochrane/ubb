@@ -86,6 +86,11 @@ class RecordUsageResponse(Schema):
 class BalanceResponse(Schema):
     balance_micros: int
     currency: str
+    # F4.3 (additive): grant visibility. None when the wallet has no grants
+    # context (kept optional for response back-compat).
+    promo_micros: Optional[int] = None
+    expiring_micros: Optional[int] = None
+    next_expiry_at: Optional[str] = None
 
 
 class UsageEventOut(Schema):
@@ -169,6 +174,52 @@ class CreditRequest(Schema):
 class DebitCreditResponse(Schema):
     new_balance_micros: int
     transaction_id: str
+
+
+class CreateGrantRequest(Schema):
+    kind: str  # "paid" | "promo"
+    amount_micros: int = Field(gt=0, le=999_999_999_999)
+    expires_at: Optional[datetime] = None
+    expires_in_days: Optional[int] = Field(default=None, gt=0, le=3650)
+    idempotency_key: str = Field(min_length=1, max_length=400)
+    description: str = Field(default="", max_length=500)
+
+    @field_validator("kind")
+    @classmethod
+    def kind_valid(cls, v):
+        if v not in ("paid", "promo"):
+            raise ValueError("kind must be 'paid' or 'promo'")
+        return v
+
+    @field_validator("amount_micros")
+    @classmethod
+    def amount_micros_divisible(cls, v):
+        if v % 10_000 != 0:
+            raise ValueError("must be divisible by 10_000 (whole cents)")
+        return v
+
+
+class GrantOut(Schema):
+    id: str
+    kind: str
+    granted_micros: int
+    remaining_micros: int
+    expired_micros: int
+    voided_micros: int
+    currency: str
+    status: str
+    source: str
+    expires_at: Optional[str] = None
+    warning_sent_at: Optional[str] = None
+    created_at: str
+    balance_micros: Optional[int] = None
+    transaction_id: Optional[str] = None
+
+
+class PaginatedGrants(Schema):
+    data: list[GrantOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class TenantMarkupIn(Schema):

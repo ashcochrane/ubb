@@ -66,6 +66,29 @@ class CustomerResult:
 class BalanceResult:
     balance_micros: int
     currency: str
+    # F4.3 (additive): promo credit (not withdrawable), total credit that can
+    # expire, and the soonest expiry — None on servers without grant support.
+    promo_micros: int | None = None
+    expiring_micros: int | None = None
+    next_expiry_at: str | None = None
+
+
+@dataclass(frozen=True)
+class CreditGrant:
+    id: str
+    kind: str
+    granted_micros: int | None = None
+    remaining_micros: int | None = None
+    expired_micros: int | None = None
+    voided_micros: int | None = None
+    currency: str | None = None
+    status: str | None = None
+    source: str | None = None
+    expires_at: str | None = None
+    warning_sent_at: str | None = None
+    created_at: str | None = None
+    balance_micros: int | None = None
+    transaction_id: str | None = None
 
 @dataclass(frozen=True)
 class UsageEvent:

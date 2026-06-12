@@ -13,6 +13,7 @@ from api.v1.schemas import (
     WithdrawRequest,
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
+    CreateGrantRequest, GrantOut, PaginatedGrants,
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     UsageInvoiceOut, PostpaidConfigIn, PostpaidConfigOut,
@@ -38,11 +39,14 @@ def get_balance(request, customer_id: str):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from apps.billing.wallets.models import Wallet
+    from apps.billing.wallets.grants import GrantLedger
     try:
         wallet = Wallet.objects.get(customer=customer)
-        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency}
+        return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
+                **GrantLedger.balance_summary(wallet)}
     except Wallet.DoesNotExist:
-        return {"balance_micros": 0, "currency": "USD"}
+        return {"balance_micros": 0, "currency": "USD",
+                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
 
 
 @billing_api.post("/debit", response=DebitCreditResponse)
@@ -50,6 +54,7 @@ def debit(request, payload: DebitRequest):
     _product_check(request)
     from django.db import transaction
     from apps.billing.locking import lock_for_billing
+    from apps.billing.wallets.grants import GrantLedger
     from apps.billing.wallets.models import WalletTransaction
 
     customer = get_object_or_404(
@@ -58,6 +63,7 @@ def debit(request, payload: DebitRequest):
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
+        GrantLedger.expire_due(wallet)  # F4.3 lazy expiry: never consume a due lot
 
         if payload.idempotency_key:
             existing = WalletTransaction.objects.filter(
@@ -78,12 +84,19 @@ def debit(request, payload: DebitRequest):
             reference_id=payload.reference,
             idempotency_key=payload.idempotency_key or None,
         )
+        GrantLedger.allocate(wallet, txn, payload.amount_micros)  # F4.3: usage order
 
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
 @billing_api.post("/credit", response=DebitCreditResponse)
 def credit(request, payload: CreditRequest):
+    """Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).
+
+    Deliberately untouched by F4.3: base is derived (balance minus active
+    grant remainders), so an ADJUSTMENT credit simply grows base. Tenants who
+    want expiring or promo credit use POST /customers/{id}/grants instead.
+    """
     _product_check(request)
     from django.db import transaction
     from apps.billing.locking import lock_for_billing
@@ -185,16 +198,20 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
 
 @billing_api.post("/customers/{customer_id}/withdraw")
 def withdraw(request, customer_id: str, payload: WithdrawRequest):
+    """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
+    availability is balance minus active promo remainders."""
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import IntegrityError, transaction
     from apps.billing.locking import lock_for_billing
+    from apps.billing.wallets.grants import GrantLedger
     from apps.billing.wallets.models import WalletTransaction
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import WithdrawalRequested
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
+        GrantLedger.expire_due(wallet)  # F4.3 lazy expiry
 
         # Check idempotency
         existing = WalletTransaction.objects.filter(
@@ -203,7 +220,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
         if existing:
             return {"transaction_id": str(existing.id), "balance_micros": wallet.balance_micros}
 
-        if wallet.balance_micros < payload.amount_micros:
+        if wallet.balance_micros - GrantLedger.promo_remaining(wallet) < payload.amount_micros:
             return billing_api.create_response(
                 request, {"error": "Insufficient balance"}, status=400
             )
@@ -219,6 +236,8 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
             description=payload.description or "Withdrawal",
             idempotency_key=payload.idempotency_key,
         )
+        GrantLedger.allocate(wallet, txn, payload.amount_micros,
+                             exclude_promo=True, allocation_type="withdrawal")
 
         write_event(WithdrawalRequested(
             tenant_id=str(request.auth.tenant.id),
@@ -341,6 +360,182 @@ def get_transactions(request, customer_id: str, cursor: str = None, limit: int =
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+
+# ---------- Credit grants (F4.3) ----------
+
+
+def _grant_out(grant, *, balance_micros=None, transaction_id=None):
+    return {
+        "id": str(grant.id),
+        "kind": grant.kind,
+        "granted_micros": grant.granted_micros,
+        "remaining_micros": grant.remaining_micros,
+        "expired_micros": grant.expired_micros,
+        "voided_micros": grant.voided_micros,
+        "currency": grant.currency,
+        "status": grant.status,
+        "source": grant.source,
+        "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
+        "warning_sent_at": grant.warning_sent_at.isoformat() if grant.warning_sent_at else None,
+        "created_at": grant.created_at.isoformat(),
+        "balance_micros": balance_micros,
+        "transaction_id": transaction_id,
+    }
+
+
+@billing_api.post("/customers/{customer_id}/grants", response=GrantOut)
+def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
+    """Create an expiring (or non-expiring) credit grant lot on the billing
+    owner's wallet. Exactly-once via grant:{idempotency_key} — the GRANT
+    WalletTransaction and the CreditGrant share one savepoint."""
+    _product_check(request)
+    from datetime import timedelta
+    from django.db import IntegrityError, transaction
+    from django.utils import timezone
+    from apps.billing.locking import lock_for_billing
+    from apps.billing.wallets.grants import GrantLedger
+    from apps.billing.wallets.models import CreditGrant, WalletTransaction
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    if payload.expires_at is not None and payload.expires_in_days is not None:
+        return billing_api.create_response(
+            request, {"error": "Pass expires_at OR expires_in_days, not both"}, status=400)
+    if payload.expires_at is not None:
+        if payload.expires_at.tzinfo is None:
+            return billing_api.create_response(
+                request, {"error": "expires_at must be timezone-aware"}, status=400)
+        if payload.expires_at <= timezone.now():
+            return billing_api.create_response(
+                request, {"error": "expires_at must be in the future"}, status=400)
+        expires_at = payload.expires_at
+    elif payload.expires_in_days is not None:
+        expires_at = timezone.now() + timedelta(days=payload.expires_in_days)
+    else:
+        expires_at = None  # non-expiring lot
+
+    owner = customer.resolve_billing_owner()
+    key = f"grant:{payload.idempotency_key}"
+    with transaction.atomic():
+        wallet, owner = lock_for_billing(owner.id)
+        existing = WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).first()
+        if existing is None:
+            new_balance = wallet.balance_micros + payload.amount_micros
+            try:
+                with transaction.atomic():  # savepoint: txn + grant land together
+                    txn = WalletTransaction.objects.create(
+                        wallet=wallet,
+                        transaction_type="GRANT",
+                        amount_micros=payload.amount_micros,
+                        balance_after_micros=new_balance,
+                        description=payload.description or f"Credit grant ({payload.kind})",
+                        reference_id=payload.idempotency_key,
+                        idempotency_key=key,
+                    )
+                    grant = GrantLedger.create_grant(
+                        wallet, request.auth.tenant.id, kind=payload.kind,
+                        amount_micros=payload.amount_micros, expires_at=expires_at,
+                        source="api", source_reference=payload.idempotency_key, txn=txn)
+            except IntegrityError:
+                existing = WalletTransaction.objects.get(wallet=wallet, idempotency_key=key)
+            else:
+                wallet.balance_micros = new_balance
+                wallet.save(update_fields=["balance_micros", "updated_at"])
+                return _grant_out(grant, balance_micros=wallet.balance_micros,
+                                  transaction_id=str(txn.id))
+        # Idempotent replay: return the grant created with the original txn.
+        grant = CreditGrant.objects.filter(source_transaction=existing).first()
+        if grant is None:
+            return billing_api.create_response(
+                request, {"error": "idempotency_key already used by a non-grant transaction"},
+                status=409)
+        return _grant_out(grant, balance_micros=wallet.balance_micros,
+                          transaction_id=str(existing.id))
+
+
+@billing_api.get("/customers/{customer_id}/grants", response=PaginatedGrants)
+def list_grants(request, customer_id: UUID, status: str = None,
+                cursor: str = None, limit: int = 50):
+    """List the billing owner's grant lots (newest first), optional status filter."""
+    _product_check(request)
+    from apps.billing.wallets.models import CreditGrant, Wallet
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    limit = min(max(limit, 1), 100)
+    owner = customer.resolve_billing_owner()
+    wallet = Wallet.objects.filter(customer=owner).first()
+    if wallet is None:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    qs = CreditGrant.objects.filter(wallet=wallet).order_by("-created_at", "-id")
+    if status:
+        qs = qs.filter(status=status)
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError:
+            return billing_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+
+    grants = list(qs[:limit + 1])
+    has_more = len(grants) > limit
+    grants = grants[:limit]
+
+    next_cursor = None
+    if has_more and grants:
+        last = grants[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return {"data": [_grant_out(g) for g in grants],
+            "next_cursor": next_cursor, "has_more": has_more}
+
+
+@billing_api.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
+def void_grant(request, customer_id: UUID, grant_id: UUID):
+    """Void a grant: debit its remaining (clamped so the balance never goes
+    negative, like expiry) and retire the lot. Exactly-once via
+    grant_void:{grant_id}; replays return the voided lot unchanged."""
+    _product_check(request)
+    from django.db import IntegrityError, transaction
+    from apps.billing.locking import lock_for_billing
+    from apps.billing.wallets.grants import GrantLedger
+    from apps.billing.wallets.models import CreditGrant, WalletTransaction
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    owner = customer.resolve_billing_owner()
+    with transaction.atomic():
+        wallet, owner = lock_for_billing(owner.id)
+        grant = get_object_or_404(
+            CreditGrant, id=grant_id, wallet=wallet, tenant=request.auth.tenant)
+        GrantLedger.expire_due(wallet)  # a due lot expires; void then no-ops
+        grant.refresh_from_db()
+        if grant.status != "active":
+            return _grant_out(grant, balance_micros=wallet.balance_micros)
+        # Clamp like expiry (G3): voiding never drives the balance negative.
+        debit = min(grant.remaining_micros, max(wallet.balance_micros, 0))
+        new_balance = wallet.balance_micros - debit
+        try:
+            with transaction.atomic():  # savepoint
+                txn = WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type="GRANT_VOID",
+                    amount_micros=-debit,
+                    balance_after_micros=new_balance,
+                    description=f"Credit grant voided ({grant.kind})",
+                    reference_id=str(grant.id),
+                    idempotency_key=f"grant_void:{grant.id}",
+                )
+        except IntegrityError:
+            grant.refresh_from_db()
+            return _grant_out(grant, balance_micros=wallet.balance_micros)
+        wallet.balance_micros = new_balance
+        wallet.save(update_fields=["balance_micros", "updated_at"])
+        grant.voided_micros = grant.remaining_micros
+        grant.remaining_micros = 0
+        grant.status = "voided"
+        grant.save(update_fields=["voided_micros", "remaining_micros", "status", "updated_at"])
+        return _grant_out(grant, balance_micros=wallet.balance_micros,
+                          transaction_id=str(txn.id))
 
 
 # ---------- Tenant billing endpoints ----------

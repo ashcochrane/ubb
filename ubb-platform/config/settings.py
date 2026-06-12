@@ -153,6 +153,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.wallets.tasks.reconcile_wallet_balances",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
     },
+    "expire-credit-grants": {
+        "task": "apps.billing.wallets.tasks.expire_credit_grants",
+        "schedule": crontab(minute=10),  # hourly at :10
+    },
     "cleanup-webhook-events": {
         "task": "apps.billing.stripe.tasks.cleanup_webhook_events",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC

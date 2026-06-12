@@ -200,6 +200,49 @@ enters that band). The last tier must have `up_to=None` (unbounded).
 `rate_per_unit_micros` = price per block, `unit_quantity` = block size,
 `fixed_micros` = one-time period fee.
 
+## Expiring credit grants (paid vs promo)
+
+Prepaid wallets support **credit grant lots** on top of the plain balance:
+`kind="paid"` (real money — withdrawable) or `kind="promo"` (bonus credit —
+spendable on usage but **never withdrawable**). Lots can expire; expired
+remainder is debited from the balance automatically (lazily at spend time and
+by an hourly sweeper). Usage consumes the soonest-expiring lot first (promo
+before paid on ties), then non-expiring lots, then the base balance.
+
+```python
+from ubb.billing import BillingClient
+
+billing = BillingClient(api_key="ubb_live_...")
+
+# Give a customer $10 of promo credit that expires in 30 days.
+grant = billing.create_grant(
+    customer_id=customer.id,            # platform customer UUID
+    kind="promo",
+    amount_micros=10_000_000,           # $10.00
+    expires_in_days=30,                 # or expires_at="2026-07-01T00:00:00Z"
+    idempotency_key="welcome-bonus-cust-42",   # REQUIRED — retries are safe
+    description="Welcome bonus",
+)
+# grant.remaining_micros == 10_000_000, grant.status == "active"
+
+# Inspect lots and the balance breakdown.
+page = billing.list_grants(customer_id=customer.id, status="active")
+bal = billing.get_balance(customer_id=customer.id)
+# bal.promo_micros        — active promo remaining (not withdrawable)
+# bal.expiring_micros     — total remaining that has an expiry date
+# bal.next_expiry_at      — soonest expiry (ISO-8601) or None
+
+# Revoke an unused grant (debits its remaining; never below zero).
+billing.void_grant(customer_id=customer.id, grant_id=grant.id)
+```
+
+Paid top-ups (checkout + auto-top-up) create `paid` lots automatically; they
+never expire unless the customer's billing profile sets
+`topup_grant_expiry_days`. The legacy `credit()` call is untouched — it adds
+plain non-expiring base money. Webhook events `billing.credit_grant_expiring`
+(7 days out, one-shot) and `billing.credit_grant_expired` let you notify
+customers.
+
 ## Money representation
 
 All amounts are integer **micros**: `1_000_000 micros = $1.00`. This avoids floating-point

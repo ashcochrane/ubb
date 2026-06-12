@@ -37,6 +37,7 @@ def handle_usage_recorded_billing(event_id, payload):
             pass  # no prepaid balance to draw down
         else:
             from apps.billing.wallets.models import WalletTransaction
+            from apps.billing.wallets.grants import GrantLedger
             from apps.billing.locking import lock_for_billing
             from apps.billing.topups.models import AutoTopUpConfig
             from apps.billing.queries import get_customer_min_balance
@@ -47,6 +48,9 @@ def handle_usage_recorded_billing(event_id, payload):
             key = f"usage_deduction:{usage_event_id}"
             with transaction.atomic():
                 wallet, owner = lock_for_billing(owner_id)
+                # F4.3 lazy expiry: due lots expire BEFORE the old_balance read
+                # so an expired lot is never consumed by this drawdown.
+                GrantLedger.expire_due(wallet)
                 existing = WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).first()
                 if existing is not None:
                     if existing.amount_micros != -billed_cost_micros:
@@ -59,7 +63,7 @@ def handle_usage_recorded_billing(event_id, payload):
                     new_balance = old_balance - billed_cost_micros
                     try:
                         with transaction.atomic():  # savepoint
-                            WalletTransaction.objects.create(
+                            txn = WalletTransaction.objects.create(
                                 wallet=wallet, transaction_type="USAGE_DEDUCTION",
                                 amount_micros=-billed_cost_micros, balance_after_micros=new_balance,
                                 description=f"Usage: {usage_event_id}", reference_id=usage_event_id,
@@ -69,6 +73,9 @@ def handle_usage_recorded_billing(event_id, payload):
                     else:
                         wallet.balance_micros = new_balance
                         wallet.save(update_fields=["balance_micros", "updated_at"])
+                        # F4.3: winning branch only — lot consumption rides the
+                        # usage_deduction:{event_id} exactly-once key.
+                        GrantLedger.allocate(wallet, txn, billed_cost_micros)
                         limit = get_customer_min_balance(owner.id, tenant.id)
                         if old_balance >= 0 and new_balance < 0:   # I6
                             write_event(BalanceOverage(

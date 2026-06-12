@@ -229,3 +229,25 @@ class BalanceOverage:
     balance_micros: int = 0
     overage_limit_micros: int = 0
     overage_micros: int = 0
+
+
+@dataclass(frozen=True)
+class CreditGrantExpiring:
+    EVENT_TYPE = "billing.credit_grant_expiring"
+    tenant_id: str
+    customer_id: str
+    grant_id: str
+    kind: str = ""
+    remaining_micros: int = 0
+    expires_at: str = ""
+
+
+@dataclass(frozen=True)
+class CreditGrantExpired:
+    EVENT_TYPE = "billing.credit_grant_expired"
+    tenant_id: str
+    customer_id: str
+    grant_id: str
+    kind: str = ""
+    expired_micros: int = 0
+    balance_micros: int = 0
