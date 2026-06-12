@@ -33,6 +33,23 @@ class RecordUsageResult:
     agent_id: str = ""
 
 @dataclass(frozen=True)
+class BatchItemResult:
+    """One item's outcome from record_batch. ``data`` is the full raw per-item
+    body (success: the same fields as RecordUsageResult; error: the same error
+    body the single-call endpoint would have returned)."""
+    ok: bool
+    error: str | None = None
+    detail: str | None = None
+    event_id: str | None = None
+    data: dict | None = None
+
+@dataclass(frozen=True)
+class BatchResult:
+    results: list[BatchItemResult]
+    succeeded: int
+    failed: int
+
+@dataclass(frozen=True)
 class CloseRunResult:
     run_id: str
     status: str

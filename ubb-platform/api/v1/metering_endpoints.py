@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
+    UsageBatchRequest, UsageBatchResponse,
     PaginatedUsageResponse,
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
@@ -41,6 +42,7 @@ def record_usage(request, payload: RecordUsageRequest):
 
     from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
     from apps.metering.pricing.services.pricing_service import PricingError
+    from apps.metering.usage.services.usage_service import EffectiveAtError
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     if payload.run_id is not None:
@@ -62,6 +64,7 @@ def record_usage(request, payload: RecordUsageRequest):
             tags=payload.tags,
             run_id=payload.run_id,
             usage_metrics=payload.usage_metrics,
+            effective_at=payload.effective_at,
         )
     except HardStopExceeded as e:
         from django.db import transaction
@@ -84,12 +87,111 @@ def record_usage(request, payload: RecordUsageRequest):
     except PricingError as e:
         return metering_api.create_response(
             request, {"error": "pricing_error", "detail": str(e)}, status=422)
+    except EffectiveAtError as e:
+        # MUST precede the ValueError branch below (EffectiveAtError IS a
+        # ValueError) so the typed code survives to the response body.
+        return metering_api.create_response(
+            request, {"error": e.code, "detail": str(e)}, status=422)
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return result
+
+
+def _record_batch_item(request, tenant, item, customers, run_exists):
+    """One batch item == one independent POST /usage, error mapping included.
+
+    Mirrors the single endpoint's except branches byte-for-byte as per-item
+    result dicts ({"ok": false, "error": <same code>, ...same fields...}); a
+    success mirrors the single-call success body plus {"ok": true}. 404s
+    become per-item {"error": "not_found"}; the generic ValueError branch
+    becomes {"error": "validation_error"}.
+    """
+    from django.db import transaction
+    from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
+    from apps.metering.pricing.services.pricing_service import PricingError
+    from apps.metering.usage.services.usage_service import EffectiveAtError
+
+    cid = str(item.customer_id)
+    if cid not in customers:
+        customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
+    customer = customers[cid]
+    if customer is None:
+        return {"ok": False, "error": "not_found", "detail": "Customer not found"}
+    if item.run_id is not None:
+        run_key = (cid, str(item.run_id))
+        if run_key not in run_exists:
+            run_exists[run_key] = Run.objects.filter(
+                id=item.run_id, tenant=tenant, customer=customer).exists()
+        if not run_exists[run_key]:
+            return {"ok": False, "error": "not_found", "detail": "Run not found"}
+    try:
+        result = UsageService.record_usage(
+            tenant=tenant,
+            customer=customer,
+            request_id=item.request_id,
+            idempotency_key=item.idempotency_key,
+            provider_cost_micros=item.provider_cost_micros,
+            billed_cost_micros=item.billed_cost_micros,
+            units=item.units,
+            currency=item.currency,
+            product_id=item.product_id,
+            metadata=item.metadata,
+            event_type=item.event_type,
+            provider=item.provider,
+            tags=item.tags,
+            run_id=item.run_id,
+            usage_metrics=item.usage_metrics,
+            effective_at=item.effective_at,
+        )
+    except HardStopExceeded as e:
+        # Same side effect as the single endpoint: kill the run, then the
+        # batch CONTINUES — later items on this run get run_not_active,
+        # identical to firing the same items as sequential singles.
+        with transaction.atomic():
+            RunService.kill_run(item.run_id, reason=e.reason,
+                                tenant_id=tenant.id, customer_id=customer.id)
+        return {"ok": False, "error": "hard_stop_exceeded", "reason": e.reason,
+                "run_id": e.run_id, "total_cost_micros": e.total_cost_micros,
+                "hard_stop": True}
+    except RunNotActive as e:
+        return {"ok": False, "error": "run_not_active",
+                "run_id": e.run_id, "status": e.status}
+    except PricingError as e:
+        return {"ok": False, "error": "pricing_error", "detail": str(e)}
+    except EffectiveAtError as e:
+        return {"ok": False, "error": e.code, "detail": str(e)}
+    except ValueError as e:
+        return {"ok": False, "error": "validation_error", "detail": str(e)}
+    provenance = result.get("pricing_provenance") or {}
+    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
+    return {"ok": True, **result}
+
+
+@metering_api.post("/usage/batch", response={200: UsageBatchResponse})
+def record_usage_batch(request, payload: UsageBatchRequest):
+    """Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 → 422).
+
+    Each item runs the same per-item record_usage in its own atomic commit —
+    deliberately NOT one mega-transaction, which would hold Run/counter locks
+    for the whole batch, delay outbox dispatch, and diverge from the semantics
+    of N sequential singles. Always HTTP 200 with positionally-aligned
+    results[] + succeeded/failed counts; per-item idempotency makes a
+    whole-batch replay return the original event ids with zero new rows, and
+    a duplicate idempotency_key WITHIN one batch resolves to the first item's
+    event id (the first item commits before the second runs).
+    """
+    _product_check(request)
+    tenant = request.auth.tenant
+    customers: dict = {}
+    run_exists: dict = {}
+    results = [_record_batch_item(request, tenant, item, customers, run_exists)
+               for item in payload.events]
+    succeeded = sum(1 for r in results if r.get("ok"))
+    return {"results": results, "succeeded": succeeded,
+            "failed": len(results) - succeeded}
 
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)

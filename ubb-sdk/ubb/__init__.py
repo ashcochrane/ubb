@@ -7,6 +7,7 @@ from ubb.types import (
     PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
     UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult,
     WalletTransaction, PaginatedResponse, TenantMarkup,
+    BatchItemResult, BatchResult,
 )
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
@@ -18,6 +19,7 @@ __all__ = [
     "PreCheckResult", "RecordUsageResult", "CustomerResult", "BalanceResult",
     "UsageEvent", "TopUpResult", "AutoTopUpResult", "WithdrawResult", "RefundResult",
     "WalletTransaction", "PaginatedResponse", "TenantMarkup",
+    "BatchItemResult", "BatchResult",
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
 ]

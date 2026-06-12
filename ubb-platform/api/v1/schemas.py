@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 from typing import Optional
 
@@ -47,6 +48,22 @@ class RecordUsageRequest(Schema):
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
     product_id: Optional[str] = Field(default=None, max_length=100)
+    # When the usage economically happened. Must be timezone-aware; bounded by
+    # the tenant's backfill window. Omitted = now (server clock).
+    effective_at: Optional[datetime] = None
+
+
+class UsageBatchRequest(Schema):
+    events: list[RecordUsageRequest] = Field(min_length=1, max_length=100)
+
+
+class UsageBatchResponse(Schema):
+    # Per-item results, positionally aligned with the request's events[].
+    # Success items mirror the single-call success body plus {"ok": true};
+    # error items mirror the single-call error bodies plus {"ok": false}.
+    results: list[dict]
+    succeeded: int
+    failed: int
 
 
 class RecordUsageResponse(Schema):

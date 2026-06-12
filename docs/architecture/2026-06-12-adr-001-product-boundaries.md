@@ -51,7 +51,13 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
      The default. Anything that can tolerate seconds of latency belongs here.
    - **Per-product `queries.py` read contracts** — module-level functions returning plain data
      (dicts/ints/lists, never ORM querysets or model instances). Today:
-     `apps/metering/queries.py`, importable by any product.
+     `apps/metering/queries.py` and `apps/billing/queries.py`, importable by any product.
+     (`apps/billing/queries.py` was promoted to the shared list for the F4.2 backfill
+     closed-period guard: metering's `record_usage` consults
+     `is_usage_period_closed()` before accepting a backdated `effective_at`.
+     `apps/metering/queries.py` additionally carries one deliberate *consume*
+     function — `clear_backfill_dirty_period()` — the ack half of the
+     `BackfillDirtyPeriod` marker contract consumed by subscriptions.)
    - **Platform lifecycle hooks** — the `customers/hooks.py` registry above, for synchronous
      reactions to platform-owned lifecycle changes.
    - **Per-pair `ports.py` modules** — an explicit, documented call surface one product exposes

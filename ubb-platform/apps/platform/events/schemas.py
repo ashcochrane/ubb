@@ -26,6 +26,10 @@ class UsageRecorded:
     auto_topup_attempt_id: str | None = None
     run_id: str | None = None
     billing_owner_id: str = ""
+    # ISO-8601 timestamp of when the usage economically happened (caller
+    # timestamps / backfill). Default "" keeps legacy queued payloads valid;
+    # consumers fall back to the metering read contract when absent.
+    effective_at: str = ""
 
 
 @dataclass(frozen=True)

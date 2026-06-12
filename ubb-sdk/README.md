@@ -69,6 +69,56 @@ print(res.uncosted_metrics)       # list of metric names with no matching cost c
 `res.uncosted_metrics` is your signal that a metric was recorded but has no cost card — add a
 card for any metric you want tracked.
 
+### 2b. Caller timestamps (backfill) and batch ingestion
+
+Pass `recorded_at` (timezone-aware `datetime` or ISO-8601 string with offset) to timestamp the
+event when it actually happened — e.g. replaying a day of events after an integration outage.
+Omitted = server receive time. A **naive** datetime raises `ValueError` client-side before any
+HTTP request.
+
+```python
+from datetime import datetime, timezone
+
+client.record_usage(
+    customer_id="cust-uuid-here",
+    request_id="req-late-1",
+    idempotency_key="idem-late-1",
+    usage_metrics={"input_tokens": 1000},
+    recorded_at=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
+)
+```
+
+Backfill is bounded by the tenant's **backfill window** (default **34 days**, configurable
+0–60; 0 disables backfill entirely). Rejections are typed 422 errors:
+
+| 422 code | Meaning |
+|---|---|
+| `effective_at_naive` | timestamp has no timezone offset |
+| `effective_at_in_future` | more than 5 minutes ahead of server time |
+| `effective_at_too_old` | older than the tenant's backfill window |
+| `billing_period_closed` | that month's usage invoice already touched Stripe |
+
+`record_batch` posts up to 100 events in one request. Items are **independent** — each commits
+(or fails) on its own, and the call always returns HTTP 200 with per-item results aligned to
+your input order:
+
+```python
+batch = client.record_batch([
+    {"customer_id": "cust-1", "request_id": "r1", "idempotency_key": "k1",
+     "usage_metrics": {"input_tokens": 500}},
+    {"customer_id": "cust-1", "request_id": "r2", "idempotency_key": "k2",
+     "usage_metrics": {"input_tokens": 800},
+     "recorded_at": "2026-06-01T12:00:00+00:00"},
+])
+print(batch.succeeded, batch.failed)
+for item in batch.results:
+    print(item.ok, item.event_id or item.error)
+```
+
+> **Retry guidance:** on a network failure, retry the **whole batch**. Per-item idempotency
+> keys guarantee a full replay returns the original event ids with zero new rows (a duplicate
+> key *within* one batch resolves to the first item's event id).
+
 ### 3. Read per-customer cost analytics
 
 ```python
@@ -195,7 +245,11 @@ client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider_cost_micros=None, billed_cost_micros=None, units=None,
     provider="", event_type="", currency=None, tags=None,
-    product_id="", metadata=None, run_id=None, usage_metrics=None)
+    product_id="", metadata=None, run_id=None, usage_metrics=None,
+    recorded_at=None)
+
+# record_batch  → BatchResult  (results: list[BatchItemResult], succeeded, failed)
+client.record_batch(events: list[dict])
 
 # usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
 client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None,

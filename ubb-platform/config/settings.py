@@ -229,6 +229,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.subscriptions.tasks.reconcile_cost_accumulators",
         "schedule": crontab(minute=50),  # hourly at :50
     },
+    "resnapshot-dirty-periods": {
+        "task": "apps.subscriptions.tasks.resnapshot_dirty_periods",
+        # hourly at :55 — AFTER reconcile-cost-accumulators (:50) so the
+        # accumulators the snapshots read are already ledger-corrected.
+        "schedule": crontab(minute=55),
+    },
     "reconcile-invoice-payment-status": {
         "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
         "schedule": crontab(minute=15),

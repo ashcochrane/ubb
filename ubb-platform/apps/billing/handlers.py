@@ -94,8 +94,32 @@ def handle_usage_recorded_billing(event_id, payload):
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
-        from apps.billing.gating.services.budget_service import BudgetService
-        BudgetService.record_usage_spend(seat, billed_cost_micros)
+        # Budget policy: budgets are EFFECTIVE-month basis; the live Redis
+        # counter tracks the CURRENT wall-clock month only. A backdated event
+        # whose effective month is a PRIOR month must NOT inflate this month's
+        # counter (the hourly reconcile_budget_counters rebuild — already
+        # effective_at-filtered via get_customer_cost_totals — is the source
+        # of truth). Absent/unparseable effective_at = legacy payload =
+        # current behavior (increment).
+        # Documented enforcement bypass: an enforcing-capped seat can backdate
+        # usage into the prior month to evade the live cap. The exposure is
+        # bounded by Tenant.backfill_window_days (0..60); tenants needing
+        # airtight caps set it low — 0 disables backfill entirely.
+        import datetime as _dt
+        from django.utils import timezone as _tz
+        from django.utils.dateparse import parse_datetime
+        count_in_live = True
+        raw_eff = payload.get("effective_at")
+        if raw_eff:
+            eff = parse_datetime(raw_eff)
+            if eff is not None:
+                if eff.tzinfo is not None:
+                    eff = eff.astimezone(_dt.timezone.utc)
+                now = _tz.now()
+                count_in_live = (eff.year, eff.month) == (now.year, now.month)
+        if count_in_live:
+            from apps.billing.gating.services.budget_service import BudgetService
+            BudgetService.record_usage_spend(seat, billed_cost_micros)
 
 
 def handle_customer_deleted_billing(event_id, payload):

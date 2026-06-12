@@ -49,7 +49,14 @@ REPAIR_SPIKE_THRESHOLD = 25
 @shared_task(queue="ubb_invoicing")
 def reconcile_usage_drawdowns():
     """Source-of-truth repair: apply missing usage debits exactly-once.
-    Anti-joins on WalletTransaction.usage_event_id (cutover-safe). Owner pinned on the event."""
+    Anti-joins on WalletTransaction.usage_event_id (cutover-safe). Owner pinned on the event.
+
+    Scans on ARRIVAL basis (created_at, F4.2): the DLQ horizon is an
+    arrival-time concept — a backfilled event with effective_at 30 days ago is
+    INSERTED now, so it must be repair-eligible now, not invisible because its
+    effective age predates the lookback. basis="created" keeps the window
+    unchanged (GRACE..LOOKBACK after insertion) for every event regardless of
+    its effective timestamp; the (tenant, created_at) index supports the scan."""
     from django.db import transaction, IntegrityError
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
@@ -62,7 +69,7 @@ def reconcile_usage_drawdowns():
     since = now - LOOKBACK
     repaired = 0
     for tenant in Tenant.objects.filter(billing_mode="prepaid", is_active=True):
-        for ev in iter_billable_usage_events(tenant.id, since, settled_before, basis="effective"):
+        for ev in iter_billable_usage_events(tenant.id, since, settled_before, basis="created"):
             owner_id = ev["billing_owner_id"]
             if owner_id is None:  # defensive: pre-backfill row -> re-resolve via the shared resolver (parity with the live path)
                 cust = Customer.objects.filter(id=ev["customer_id"]).first()

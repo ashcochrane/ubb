@@ -39,6 +39,11 @@ class Tenant(BaseModel):
     default_currency = models.CharField(max_length=3, default="usd")
     require_cost_card_coverage = models.BooleanField(default=False)
     charges_enabled = models.BooleanField(default=False)
+    # How far back a caller-supplied effective_at may reach (days). 0 = no
+    # backfill at all (any past-dated effective_at is rejected); max 60 so a
+    # backfill window never spans more than 3 calendar months (the reconcile
+    # horizon of reconcile_cost_accumulators).
+    backfill_window_days = models.PositiveIntegerField(default=34)
 
     class Meta:
         db_table = "ubb_tenant"
@@ -59,6 +64,10 @@ class Tenant(BaseModel):
         if self.billing_mode in ("prepaid", "postpaid") and "billing" not in (self.products or []):
             raise ValidationError(
                 {"billing_mode": f"billing_mode '{self.billing_mode}' requires 'billing' in products."}
+            )
+        if self.backfill_window_days is not None and not (0 <= self.backfill_window_days <= 60):
+            raise ValidationError(
+                {"backfill_window_days": "backfill_window_days must be between 0 and 60."}
             )
 
     def save(self, *args, **kwargs):

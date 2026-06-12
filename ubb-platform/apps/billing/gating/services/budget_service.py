@@ -131,6 +131,14 @@ class BudgetService:
         drawdown handler (that would dead-letter an already-charged event). Every
         step — config lookup, counter increment, alert emission — is best-effort;
         the hourly reconciliation repairs any missed counter/alert from the ledger.
+
+        Budget basis (F4.2): budgets are EFFECTIVE-month; this live counter is
+        current-wall-clock-month only, so the caller (billing handler) skips it
+        for events backdated into a prior month. The hourly rebuild
+        (reconcile_customer → get_customer_cost_totals, effective_at-filtered)
+        is the source of truth. Documented bypass: an enforcing-capped seat can
+        backdate into the PRIOR month to evade the live cap — bounded by
+        Tenant.backfill_window_days (0 = no backfill = airtight).
         """
         if amount_micros <= 0:
             return

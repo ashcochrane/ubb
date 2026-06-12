@@ -1,9 +1,12 @@
 import logging
 import re
+from datetime import timedelta, timezone as dt_timezone
 
 from django.db import transaction, IntegrityError
+from django.utils import timezone
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.pricing.services.tier_counter_service import month_bounds
+from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 
@@ -11,6 +14,60 @@ logger = logging.getLogger(__name__)
 
 # Min 2 chars, max 64 chars, starts with letter, lowercase alphanumeric + underscores
 TAG_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
+
+# Tolerated clock skew for caller-supplied effective_at in the future.
+_FUTURE_SKEW = timedelta(minutes=5)
+
+
+class EffectiveAtError(ValueError):
+    """A caller-supplied effective_at was rejected. ``code`` is the typed
+    machine-readable reason surfaced as the API error code (422)."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def validate_effective_at(tenant, owner_id, effective_at, now):
+    """Validate a caller-supplied effective_at at the record_usage choke point.
+
+    Raises EffectiveAtError with code:
+    - effective_at_naive      — no timezone info;
+    - effective_at_in_future  — more than _FUTURE_SKEW ahead of now;
+    - effective_at_too_old    — older than tenant.backfill_window_days
+                                (0 = no backfill: any past timestamp rejected);
+    - billing_period_closed   — the billing OWNER's postpaid usage invoice for
+                                the EFFECTIVE month has touched Stripe (status
+                                pushing/pushed/skipped/failed_permanent, a
+                                non-empty push_phase, or a stripe_invoice_id
+                                pointer). A truly-untouched ``pending`` row is
+                                safely re-aggregable and does NOT block.
+    """
+    if effective_at.tzinfo is None or effective_at.utcoffset() is None:
+        raise EffectiveAtError(
+            "effective_at_naive",
+            "effective_at must be timezone-aware (e.g. 2026-06-01T12:00:00Z)")
+    if effective_at > now + _FUTURE_SKEW:
+        raise EffectiveAtError(
+            "effective_at_in_future",
+            f"effective_at is more than {int(_FUTURE_SKEW.total_seconds() // 60)} "
+            "minutes in the future")
+    window_days = tenant.backfill_window_days
+    if effective_at < now - timedelta(days=window_days):
+        raise EffectiveAtError(
+            "effective_at_too_old",
+            f"effective_at is older than this tenant's backfill window "
+            f"({window_days} days)")
+    # Closed-period guard: keyed on the billing OWNER (a pooled seat's backfill
+    # must respect the business's invoice). Cross-product read goes through the
+    # billing read contract (apps.billing.queries) — sanctioned channel.
+    from apps.billing.queries import is_usage_period_closed
+    period_start, _ = month_bounds(effective_at)
+    if is_usage_period_closed(owner_id, period_start):
+        raise EffectiveAtError(
+            "billing_period_closed",
+            f"the billing period starting {period_start.isoformat()} has already "
+            "been invoiced; backfills into it are rejected")
 
 
 def validate_tags(tags):
@@ -55,12 +112,22 @@ class UsageService:
     def record_usage(tenant, customer, request_id, idempotency_key, *,
                      provider_cost_micros=None, billed_cost_micros=None, units=None,
                      provider="", event_type="", currency=None, tags=None,
-                     product_id="", metadata=None, run_id=None, usage_metrics=None):
+                     product_id="", metadata=None, run_id=None, usage_metrics=None,
+                     effective_at=None):
         validate_tags(tags)
         existing = UsageEvent.objects.filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
+            # Replay wins BEFORE effective_at validation: a whole-batch retry
+            # must return the original event even if the window has since aged
+            # past the timestamp or the period closed.
             return _result(existing, run_total=None)
+        now = timezone.now()
+        # Billing owner hoisted above pricing: the closed-period guard and the
+        # pinned billing_owner_id both key on the same resolver result.
+        owner_id = customer.resolve_billing_owner().id
+        if effective_at is not None:
+            validate_effective_at(tenant, owner_id, effective_at, now)
         currency = currency or tenant.default_currency
         from apps.metering.pricing.services.pricing_service import PricingService
         _tags = tags or {}
@@ -69,22 +136,27 @@ class UsageService:
         if not product_id:
             product_id = _tags.get("product", "") or ""
         run = None
-        owner_id = customer.resolve_billing_owner().id
         try:
             with transaction.atomic():
                 # Pricing runs INSIDE the savepoint: tiered price cards advance
                 # the period ladder (PricingPeriodCounter) under a row lock, so
                 # a raced duplicate insert below must roll the advance back too.
+                # as_of=effective_at prices on the card versions valid at the
+                # EFFECTIVE time and advances the EFFECTIVE month's tier ladder.
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer, event_type=event_type or "",
                     provider=provider or "", usage_metrics=usage_metrics, tags=tags,
                     currency=currency, caller_provider_cost=provider_cost_micros,
-                    caller_billed=billed_cost_micros, units=units)
+                    caller_billed=billed_cost_micros, units=units,
+                    as_of=effective_at)
                 if run_id is not None:
                     from apps.platform.runs.services import RunService
                     run = RunService.accumulate_cost(
                         run_id, billed_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
+                create_kwargs = {}
+                if effective_at is not None:
+                    create_kwargs["effective_at"] = effective_at
                 event = UsageEvent.objects.create(
                     tenant=tenant, customer=customer, request_id=request_id,
                     idempotency_key=idempotency_key, metadata=metadata or {},
@@ -95,7 +167,7 @@ class UsageService:
                     pricing_provenance=provenance,
                     product_id=product_id or "", tags=tags, run_id=run_id,
                     billing_owner_id=owner_id,
-                    service_id=service_id, agent_id=agent_id)
+                    service_id=service_id, agent_id=agent_id, **create_kwargs)
         except IntegrityError as exc:
             try:
                 existing = UsageEvent.objects.get(
@@ -107,10 +179,27 @@ class UsageService:
                 # (or as an unexplained DoesNotExist).
                 raise exc
             return _result(existing, run_total=None)
+        if effective_at is not None:
+            eff_month_start = month_bounds(effective_at)[0]
+            if eff_month_start < month_bounds(now)[0]:
+                # Backfill into a PRIOR month: mark the period dirty so the
+                # hourly resnapshot task refreshes its margin snapshot. Same
+                # transaction as the event; savepoint-IntegrityError-swallow
+                # (billing/handlers.py pattern) absorbs the unique-marker race.
+                try:
+                    with transaction.atomic():
+                        BackfillDirtyPeriod.objects.create(
+                            tenant=tenant, customer=customer,
+                            period_start=eff_month_start)
+                except IntegrityError:
+                    pass  # marker already pending for this (tenant, customer, period)
         write_event(UsageRecorded(
             tenant_id=str(tenant.id), customer_id=str(customer.id), event_id=str(event.id),
             cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
             billed_cost_micros=billed_cost_micros, event_type=event_type or "",
             provider=provider or "", run_id=str(run_id) if run_id else None,
-            billing_owner_id=str(owner_id)))
+            billing_owner_id=str(owner_id),
+            # Normalized to UTC: the instance attribute keeps the caller's
+            # original offset, but consumers bucket by UTC calendar month.
+            effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
         return _result(event, run_total=run.total_cost_micros if run else None)

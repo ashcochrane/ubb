@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import httpx
 
 from ubb.exceptions import (
@@ -9,9 +11,25 @@ from ubb.exceptions import (
 from ubb.retry import request_with_retry
 from ubb.types import (
     RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse,
+    BatchItemResult, BatchResult,
     CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
     RateCard, TenantMarkup,
 )
+
+
+def _serialize_recorded_at(value):
+    """ISO string for the wire. A datetime MUST be timezone-aware — naive
+    datetimes are rejected client-side, before any HTTP request, because the
+    server cannot guess the intended offset. Strings pass through untouched
+    (a naive ISO string is rejected server-side with a 422
+    ``effective_at_naive``)."""
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(
+                "recorded_at must be a timezone-aware datetime (e.g. "
+                "datetime.now(timezone.utc)) or an ISO-8601 string with offset")
+        return value.isoformat()
+    return str(value)
 
 
 class MeteringClient:
@@ -85,14 +103,25 @@ class MeteringClient:
                      currency: str | None = None, tags: dict | None = None,
                      product_id: str = "", metadata: dict | None = None,
                      run_id: str | None = None,
-                     usage_metrics: dict | None = None) -> RecordUsageResult:
-        """Record a usage event via POST /api/v1/metering/usage."""
+                     usage_metrics: dict | None = None,
+                     recorded_at: datetime | str | None = None) -> RecordUsageResult:
+        """Record a usage event via POST /api/v1/metering/usage.
+
+        ``recorded_at``: when the usage actually happened — a timezone-aware
+        datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
+        raise ValueError client-side. Bounded server-side by the tenant's
+        backfill window (default 34 days; typed 422 codes: effective_at_naive,
+        effective_at_in_future, effective_at_too_old, billing_period_closed).
+        Omitted = server receive time.
+        """
         body: dict = {
             "customer_id": customer_id,
             "request_id": request_id,
             "idempotency_key": idempotency_key,
             "metadata": metadata or {},
         }
+        if recorded_at is not None:
+            body["effective_at"] = _serialize_recorded_at(recorded_at)
         if provider_cost_micros is not None:
             body["provider_cost_micros"] = provider_cost_micros
         if usage_metrics is not None:
@@ -117,6 +146,42 @@ class MeteringClient:
         data = r.json()
         return RecordUsageResult(**{k: v for k, v in data.items()
                                     if k in RecordUsageResult.__dataclass_fields__})
+
+    def record_batch(self, events: list[dict]) -> BatchResult:
+        """Record up to 100 INDEPENDENT usage events via POST
+        /api/v1/metering/usage/batch.
+
+        Each event dict takes the same keys as record_usage kwargs (plus
+        ``customer_id``); a per-event ``recorded_at`` is serialized to
+        ``effective_at`` (naive datetimes raise ValueError before any HTTP).
+
+        Items succeed or fail INDEPENDENTLY — the response is always HTTP 200
+        with per-item results aligned positionally to ``events``. On a network
+        failure, retry the WHOLE batch: per-item idempotency keys make a full
+        replay return the original event ids with zero new rows.
+        """
+        wire_events = []
+        for ev in events:
+            ev = dict(ev)
+            recorded_at = ev.pop("recorded_at", None)
+            if recorded_at is not None:
+                ev["effective_at"] = _serialize_recorded_at(recorded_at)
+            wire_events.append(ev)
+        r = self._request("post", "/api/v1/metering/usage/batch",
+                          json={"events": wire_events})
+        body = r.json()
+        results = [
+            BatchItemResult(
+                ok=item.get("ok", False),
+                error=item.get("error"),
+                detail=item.get("detail"),
+                event_id=item.get("event_id"),
+                data=item,
+            )
+            for item in body.get("results", [])
+        ]
+        return BatchResult(results=results, succeeded=body.get("succeeded", 0),
+                           failed=body.get("failed", 0))
 
     def _request_usage_once(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Like _request_once but handles run-specific error codes."""

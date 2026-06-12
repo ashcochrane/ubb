@@ -13,6 +13,7 @@ Consumers:
 - apps/billing/handlers.py → get_customer_min_balance()
 - apps/billing/stripe/services/stripe_service.py → get_billing_config()
 - apps/billing/tenant_billing/services.py → get_billing_config()
+- apps/metering/usage/services/usage_service.py → is_usage_period_closed()
 """
 
 
@@ -48,3 +49,26 @@ def get_customer_balance(customer_id):
         return wallet.balance_micros
     except Wallet.DoesNotExist:
         return 0
+
+
+def is_usage_period_closed(owner_id, period_start) -> bool:
+    """True when the billing owner's postpaid usage invoice for the calendar
+    month starting at ``period_start`` (date) has touched Stripe.
+
+    "Touched Stripe" = status in (pushing, pushed, skipped, failed_permanent)
+    OR push_phase != "" OR stripe_invoice_id != "". Under the F0.1 resume
+    semantics such a row has items pinned at the frozen line_snapshot — a
+    backfill into the period would diverge recorded usage totals from the
+    finalized/claimed invoice. A never-touched ``pending`` row (push_phase
+    empty, no Stripe pointer) re-aggregates safely and does NOT close the
+    period. No row at all = open.
+    """
+    from django.db.models import Q
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+
+    return CustomerUsageInvoice.objects.filter(
+        customer_id=owner_id, period_start=period_start,
+    ).filter(
+        Q(status__in=("pushing", "pushed", "skipped", "failed_permanent"))
+        | ~Q(push_phase="") | ~Q(stripe_invoice_id="")
+    ).exists()

@@ -34,7 +34,7 @@ PLATFORM_KERNEL = "apps.platform"
 PRODUCTS = ("apps.billing", "apps.metering", "apps.subscriptions", "apps.referrals")
 
 # Channel: per-product read contracts (plain-data queries). Importable by ANY product.
-SHARED_READ_CONTRACTS = ("apps.metering.queries",)
+SHARED_READ_CONTRACTS = ("apps.metering.queries", "apps.billing.queries")
 
 # Channels sanctioned per importing product (ADR-001 decision 3 + 5).
 PAIR_CHANNELS = {

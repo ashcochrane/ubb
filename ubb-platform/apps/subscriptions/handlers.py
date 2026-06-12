@@ -25,23 +25,35 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     """Accumulate provider + billed usage cost for margin. Atomic F() increment.
 
     Buckets by the UsageEvent's effective_at so backdated / late-retry events
-    land in the correct month.  Falls back to now() when event_id is absent or
-    not a valid UUID row (keeps legacy test fixtures with "evt-1" style ids green).
+    land in the correct month. Fast path: the payload carries effective_at
+    (F4.2); legacy queued payloads without it fall back to the metering read
+    contract, then to now() when event_id is absent or not a valid UUID row
+    (keeps legacy test fixtures with "evt-1" style ids green).
     """
     provider = payload.get("provider_cost_micros", 0) or 0
     billed = payload.get("billed_cost_micros", payload.get("cost_micros", 0)) or 0
     if billed <= 0 and provider <= 0:
         return
 
-    # Resolve the event's effective_at to bucket into the correct calendar month.
-    # The metering read contract returns None for a malformed id (e.g. "evt-1"
-    # in tests) — it validates the UUID BEFORE the DB query, so it can never
-    # raise DataError inside the atomic block. Falls back to now() below.
-    from apps.metering.queries import get_usage_event_effective_at
+    # Fast path: parse the payload's effective_at (present on all F4.2+
+    # payloads) — no DB read needed.
+    import datetime as _dt
+    from django.utils.dateparse import parse_datetime
     eff = None
-    ev_id = payload.get("event_id")
-    if ev_id:
-        eff = get_usage_event_effective_at(ev_id)
+    raw_eff = payload.get("effective_at")
+    if raw_eff:
+        eff = parse_datetime(raw_eff)
+        if eff is not None and eff.tzinfo is not None:
+            eff = eff.astimezone(_dt.timezone.utc)  # bucket by UTC month
+    if eff is None:
+        # Fallback: resolve via the metering read contract. It returns None
+        # for a malformed id (e.g. "evt-1" in tests) — it validates the UUID
+        # BEFORE the DB query, so it can never raise DataError inside the
+        # atomic block. Falls back to now() below.
+        from apps.metering.queries import get_usage_event_effective_at
+        ev_id = payload.get("event_id")
+        if ev_id:
+            eff = get_usage_event_effective_at(ev_id)
     basis = eff.date() if eff else timezone.now().date()
     period_start, period_end = _period_bounds_for(basis)
 

@@ -60,6 +60,27 @@ class GetPeriodTotalsTest(TestCase):
         self.assertEqual(totals["total_cost_micros"], 0)
         self.assertEqual(totals["event_count"], 0)
 
+    def test_arrival_basis_windows_on_created_at(self):
+        """basis="arrival" counts a backdated event by WHEN IT ARRIVED;
+        basis="effective" (default) excludes it from the current period."""
+        import datetime
+        e = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
+        )
+        # Backdate the effective time out of the window; created_at stays now.
+        UsageEvent.objects.filter(id=e.id).update(
+            effective_at=timezone.now() - datetime.timedelta(days=90))
+        effective = get_period_totals(self.tenant.id, self.start, self.end)
+        self.assertEqual(effective["event_count"], 0)
+        arrival = get_period_totals(self.tenant.id, self.start, self.end, basis="arrival")
+        self.assertEqual(arrival["event_count"], 1)
+        self.assertEqual(arrival["total_cost_micros"], 1_000_000)
+
+    def test_invalid_basis_raises(self):
+        with self.assertRaises(ValueError):
+            get_period_totals(self.tenant.id, self.start, self.end, basis="bogus")
+
 
 class GetCustomerUsageForPeriodTest(TestCase):
     def setUp(self):

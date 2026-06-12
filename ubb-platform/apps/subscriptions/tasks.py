@@ -50,8 +50,10 @@ def reconcile_cost_accumulators():
     """Source-of-truth repair: recompute each open-period CustomerCostAccumulator
     from SUM(UsageEvent) by effective_at (mirrors reconcile_usage_drawdowns).
 
-    Covers current + previous calendar month so cross-month-boundary late events
-    and end-of-month retries are corrected within 24 hours.
+    Covers current + TWO previous calendar months: the backfill window
+    (Tenant.backfill_window_days, max 60 days) can span 3 calendar months, so a
+    maximally backdated event still lands inside the reconcile horizon and is
+    corrected within the hour.
 
     # TODO: extend to aggregate business-level rollup once Stage-E2 "seats never
     # invoiced directly" semantics are confirmed stable (avoid double-counting).
@@ -63,9 +65,11 @@ def reconcile_cost_accumulators():
     today = timezone.now().date()
     cur_start, cur_end = _period_bounds_for(today)
     prev_start, prev_end = _period_bounds_for(cur_start - datetime.timedelta(days=1))
+    prev2_start, prev2_end = _period_bounds_for(prev_start - datetime.timedelta(days=1))
 
     drift = 0
-    for period_start, period_end in ((prev_start, prev_end), (cur_start, cur_end)):
+    for period_start, period_end in ((prev2_start, prev2_end),
+                                     (prev_start, prev_end), (cur_start, cur_end)):
         for tenant in Tenant.objects.filter(products__contains=["metering"], is_active=True):
             ledger = {r["customer_id"]: r
                       for r in get_per_customer_cost_totals(tenant.id, period_start, period_end)}
@@ -96,6 +100,51 @@ def reconcile_cost_accumulators():
                 drift += 1
 
     logger.info("cost_accumulator_reconcile", extra={"data": {"drift_count": drift}})
+
+
+@shared_task(queue="ubb_economics")
+def resnapshot_dirty_periods():
+    """Refresh margin snapshots for periods dirtied by backfilled usage.
+
+    Consumes BackfillDirtyPeriod markers via the metering read contract.
+    For a marker on a PRIOR month: re-run snapshot_customer (update_or_create,
+    idempotent) + evaluate_and_emit (transition-guarded + OutboxEvent-deduped,
+    idempotent), then ack the marker — a crash before the ack leaves the
+    marker for the next hourly run. A CURRENT-month marker is just acked: the
+    nightly calculate_all_economics_task owns the current month's snapshot.
+
+    Beat: hourly at :55, AFTER reconcile_cost_accumulators (:50) so the
+    accumulator this snapshot reads has already been repaired to the ledger.
+    """
+    from apps.metering.queries import (
+        clear_backfill_dirty_period, list_backfill_dirty_periods,
+    )
+    from apps.subscriptions.handlers import _period_bounds_for
+
+    cur_start, _ = _period_bounds_for(timezone.now().date())
+    resnapshots = 0
+    for marker in list_backfill_dirty_periods():
+        period_start = marker["period_start"]
+        try:
+            if period_start < cur_start:
+                _, period_end = _period_bounds_for(period_start)
+                econ = MarginService.snapshot_customer(
+                    marker["tenant_id"], marker["customer_id"],
+                    period_start, period_end)
+                MarginService.evaluate_and_emit(econ)
+                resnapshots += 1
+            # Ack AFTER the snapshot work succeeded (or for a current-month
+            # marker, immediately — nothing to do here).
+            clear_backfill_dirty_period(marker["id"])
+        except Exception:
+            # Keep the marker: retried next hour. Other markers still run.
+            logger.exception("resnapshot_dirty_period_failed", extra={"data": {
+                "tenant_id": str(marker["tenant_id"]),
+                "customer_id": str(marker["customer_id"]),
+                "period_start": str(period_start)}})
+    if resnapshots:
+        logger.info("resnapshot_dirty_periods", extra={"data": {
+            "resnapshots": resnapshots}})
 
 
 @shared_task(queue="ubb_subscriptions")

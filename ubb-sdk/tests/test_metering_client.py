@@ -1,11 +1,15 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 import httpx
 from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import RecordUsageResult, UsageEvent, PaginatedResponse, TenantMarkup
+from ubb.types import (
+    RecordUsageResult, UsageEvent, PaginatedResponse, TenantMarkup,
+    BatchItemResult, BatchResult,
+)
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -67,6 +71,110 @@ class MeteringClientTest(unittest.TestCase):
         )
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["tags"], {"project": "proj_1"})
+
+    # ---- recorded_at (F4.2) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_recorded_at_datetime_serialized(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_4", "suspended": False,
+        })
+        ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r4", idempotency_key="i4",
+            provider_cost_micros=1, recorded_at=ts,
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["effective_at"], "2026-06-01T12:00:00+00:00")
+        self.assertNotIn("recorded_at", body)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_recorded_at_iso_string_passthrough(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_5", "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r5", idempotency_key="i5",
+            provider_cost_micros=1, recorded_at="2026-06-01T12:00:00+02:00",
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["effective_at"], "2026-06-01T12:00:00+02:00")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_naive_recorded_at_rejected_before_http(self, mock_post):
+        with self.assertRaises(ValueError):
+            self.client.record_usage(
+                customer_id="cust_1", request_id="r6", idempotency_key="i6",
+                provider_cost_micros=1, recorded_at=datetime(2026, 6, 1, 12, 0),
+            )
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_omitted_recorded_at_not_in_body(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_7", "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r7", idempotency_key="i7",
+            provider_cost_micros=1,
+        )
+        self.assertNotIn("effective_at", mock_post.call_args.kwargs["json"])
+
+    # ---- record_batch (F4.2) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_maps_recorded_at_and_parses_results(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [
+                {"ok": True, "event_id": "evt_1", "billed_cost_micros": 5},
+                {"ok": False, "error": "effective_at_too_old", "detail": "too old"},
+            ],
+            "succeeded": 1, "failed": 1,
+        })
+        result = self.client.record_batch([
+            {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+             "recorded_at": datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)},
+            {"customer_id": "cust_1", "request_id": "r2", "idempotency_key": "k2",
+             "recorded_at": "2026-01-01T00:00:00+00:00"},
+        ])
+        # Endpoint + body mapping
+        self.assertEqual(mock_post.call_args.args[0], "/api/v1/metering/usage/batch")
+        wire = mock_post.call_args.kwargs["json"]["events"]
+        self.assertEqual(wire[0]["effective_at"], "2026-06-01T12:00:00+00:00")
+        self.assertEqual(wire[1]["effective_at"], "2026-01-01T00:00:00+00:00")
+        self.assertNotIn("recorded_at", wire[0])
+        self.assertNotIn("recorded_at", wire[1])
+        # Result parsing
+        self.assertIsInstance(result, BatchResult)
+        self.assertEqual(result.succeeded, 1)
+        self.assertEqual(result.failed, 1)
+        self.assertIsInstance(result.results[0], BatchItemResult)
+        self.assertTrue(result.results[0].ok)
+        self.assertEqual(result.results[0].event_id, "evt_1")
+        self.assertEqual(result.results[0].data["billed_cost_micros"], 5)
+        self.assertFalse(result.results[1].ok)
+        self.assertEqual(result.results[1].error, "effective_at_too_old")
+        self.assertEqual(result.results[1].detail, "too old")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_naive_recorded_at_rejected_before_http(self, mock_post):
+        with self.assertRaises(ValueError):
+            self.client.record_batch([
+                {"customer_id": "cust_1", "request_id": "r1",
+                 "idempotency_key": "k1", "recorded_at": datetime(2026, 6, 1)},
+            ])
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_does_not_mutate_caller_events(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [{"ok": True, "event_id": "e1"}], "succeeded": 1, "failed": 0,
+        })
+        ev = {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+              "recorded_at": "2026-06-01T12:00:00+00:00"}
+        self.client.record_batch([ev])
+        self.assertIn("recorded_at", ev)  # caller's dict untouched
+        self.assertNotIn("effective_at", ev)
 
     # ---- get_usage ----
 

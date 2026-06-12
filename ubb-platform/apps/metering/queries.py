@@ -17,6 +17,8 @@ Consumers:
   get_billed_totals_by_customer(), get_customer_billed_breakdown()
 - apps/billing/wallets/tasks.py → iter_billable_usage_events()
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
+- apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
+  clear_backfill_dirty_period() (the ack half of the marker contract)
 """
 import uuid
 from datetime import date, datetime
@@ -39,17 +41,25 @@ class UsageEventCost(TypedDict):
     provider_cost_micros: int
 
 
-def get_period_totals(tenant_id: str, period_start: date, period_end: date) -> PeriodTotals:
+def get_period_totals(tenant_id: str, period_start: date, period_end: date,
+                      basis: str = "effective") -> PeriodTotals:
     """Get aggregate usage totals for a tenant's billing period.
 
     Returns dict with 'total_cost_micros' and 'event_count'.
+    basis="effective" windows on effective_at (when the usage happened);
+    basis="arrival" windows on created_at (when it was recorded) — used by
+    tenant platform-fee reconciliation, which accrues fees in the ARRIVAL
+    period to match the wall-clock live accumulator.
     """
     from apps.metering.usage.models import UsageEvent
 
+    if basis not in ("effective", "arrival"):
+        raise ValueError("basis must be 'effective' or 'arrival'")
+    field = "created_at" if basis == "arrival" else "effective_at"
     totals = UsageEvent.objects.filter(
         tenant_id=tenant_id,
-        effective_at__gte=utc_day_start(period_start),
-        effective_at__lt=utc_day_start(period_end),
+        **{f"{field}__gte": utc_day_start(period_start),
+           f"{field}__lt": utc_day_start(period_end)},
     ).aggregate(
         total_cost=Sum("billed_cost_micros"),
         event_count=Count("id"),
@@ -362,6 +372,35 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
         label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge
         merged[label] = merged.get(label, 0) + (r["total"] or 0)
     return list(merged.items())
+
+
+def list_backfill_dirty_periods() -> list[dict]:
+    """All pending backfill markers (plain dicts, oldest first).
+
+    Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written by
+    record_usage when an event backfills into a PRIOR calendar month; consumed
+    by subscriptions' resnapshot_dirty_periods, which acks each marker via
+    clear_backfill_dirty_period() AFTER its snapshot work succeeds.
+    """
+    from apps.metering.usage.models import BackfillDirtyPeriod
+
+    return [
+        {"id": r["id"], "tenant_id": r["tenant_id"],
+         "customer_id": r["customer_id"], "period_start": r["period_start"]}
+        for r in BackfillDirtyPeriod.objects.order_by("created_at").values(
+            "id", "tenant_id", "customer_id", "period_start")
+    ]
+
+
+def clear_backfill_dirty_period(marker_id) -> None:
+    """Ack (delete) one backfill marker by id. Idempotent.
+
+    The deliberate WRITE half of the marker contract: the consumer deletes the
+    marker only after its re-snapshot succeeded, so a crash retries it.
+    """
+    from apps.metering.usage.models import BackfillDirtyPeriod
+
+    BackfillDirtyPeriod.objects.filter(id=marker_id).delete()
 
 
 def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
