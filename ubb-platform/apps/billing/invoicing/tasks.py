@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import stripe
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -170,6 +171,8 @@ def reconcile_invoice_payment_status():
     repaired = 0
     for tenant in tenants:
         account = tenant.stripe_connected_account_id
+        if tenant.is_sandbox and not settings.STRIPE_TEST_SECRET_KEY:
+            continue  # quiet skip, matching reconcile_topups/sync — not an hourly error
         try:
             invoices = stripe_call(
                 stripe.Invoice.list,

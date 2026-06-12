@@ -43,6 +43,7 @@ def mark_invoice_payment_failed_for_subscription(account, subscription_id, strip
     with transaction.atomic():
         row = SubscriptionInvoice.objects.select_for_update().filter(
             stripe_invoice_id=stripe_invoice_id,
+            tenant=sub.tenant,  # pin to the mode-matched tenant, never a sibling's row
         ).first()
         if not row:
             return False
