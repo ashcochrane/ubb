@@ -577,6 +577,65 @@ class TestConsolidatedAr:
         assert rec.hosted_invoice_url == "https://pay/r"
 
 
+@pytest.mark.django_db
+class TestGen1ConsolidatedComposedKey:
+    def test_gen1_consolidated_push_key_namespace(self):
+        """A standalone rec that was --rebill-void'd (rebill_generation=1, pointer
+        cleared, invoice_kind still 'standalone') whose tenant THEN enables
+        consolidation: the next push resolves a consolidated target and each item's
+        idempotency key must compose BOTH the generation namespace AND the
+        consolidated namespace — usage-item-{rec.id}-g1-c{target_id}-{i}.
+
+        Asserts:
+        - Invoice.create is NOT called (target resolved, no standalone create).
+        - Each item's idempotency_key exactly matches the composed form.
+        - Invoice.finalize_invoice is NOT called (consolidated, Stripe auto-finalizes).
+        - rec.invoice_kind flips to 'consolidated'.
+        """
+        t = _tenant()
+        c = _customer(t)
+        _sub(t, c)
+        # Simulate the post-rebill-void state: generation bumped, pointer cleared,
+        # snapshot cleared, invoice_kind still "standalone" (as repush_usage_invoice
+        # leaves it — the flip to "consolidated" happens in Phase 2a on the NEXT push).
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c,
+            period_start=PS, period_end=PE,
+            status="pending",
+            stripe_invoice_id="",        # pointer cleared by --rebill-void
+            invoice_kind="standalone",   # not yet flipped — that happens in Phase 2a
+            rebill_generation=1,         # bumped by repush_usage_invoice --rebill-void
+            line_snapshot=[],            # cleared; will be re-frozen on this push
+            carry_in_micros=None,
+            total_billed_micros=0,
+        )
+        PostpaidResidualLedger.objects.get_or_create(customer=c, defaults={"tenant": t})
+
+        target_id = "in_renewal"
+        with _stripe(sub_drafts=[_renewal(id=target_id)]) as m, _agg():
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+
+        rec.refresh_from_db()
+
+        # No standalone invoice was created; target was resolved from the sub draft.
+        assert m.create.call_count == 0, "Invoice.create must not be called when a target is resolved"
+        # Consolidated: Stripe auto-finalizes — we must NEVER call finalize.
+        assert m.finalize.call_count == 0, "finalize_invoice must not be called for a consolidated rec"
+        # The rec must have flipped kind and be pushed.
+        assert rec.invoice_kind == "consolidated"
+        assert rec.status == "pushed"
+        assert rec.stripe_invoice_id == target_id
+
+        # Core assertion: both namespaces composed in every item idempotency key.
+        assert m.item_create.call_count == 2
+        for i, call in enumerate(m.item_create.call_args_list):
+            expected_key = f"usage-item-{rec.id}-g1-c{target_id}-{i}"
+            actual_key = call.kwargs["idempotency_key"]
+            assert actual_key == expected_key, (
+                f"line {i}: expected idempotency_key={expected_key!r}, got {actual_key!r}")
+            assert call.kwargs["invoice"] == target_id
+
+
 def test_close_beat_lands_inside_the_renewal_draft_window():
     """Stripe drafts the renewal at the 1st 00:00 anchor and auto-finalizes it
     ~1h later — the postpaid close must run between the two."""
