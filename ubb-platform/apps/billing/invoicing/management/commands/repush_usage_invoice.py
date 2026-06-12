@@ -45,6 +45,24 @@ class Command(BaseCommand):
                 "transition it — repush the owner-keyed row for this period instead."
             )
 
+        if options["rebill_void"] and rec.invoice_kind == "consolidated":
+            # F5.5 Fix 3: a consolidated target is the customer's subscription
+            # renewal — a Stripe-owned draft that auto-finalizes on Stripe's
+            # clock.  Voiding it in Stripe and re-routing usage to a new
+            # renewal is not the same operation as voiding a standalone invoice,
+            # and the --rebill-void machinery (clear pointer + bump generation)
+            # would only re-resolve a NEW renewal draft on the next push — it
+            # does NOT void the old one.  Refuse with a clear message so the
+            # operator understands what to do instead.
+            raise CommandError(
+                f"Row {rec.id} has invoice_kind='consolidated' — a consolidated "
+                "target is the customer's subscription renewal invoice and cannot "
+                "be replaced via --rebill-void (that flag is for standalone usage "
+                "invoices you have already voided in Stripe). Use a plain repush "
+                "to resume the existing renewal, or handle the renewal directly "
+                "in Stripe and then plain-repush to record the outcome."
+            )
+
         was_migrated_legacy = rec.last_attempt_error.startswith("migrated:")
         # Deploy-window belt: a row attempted without a recorded pointer may still
         # have an unfindable (pre-metadata) Stripe invoice — same manual check.

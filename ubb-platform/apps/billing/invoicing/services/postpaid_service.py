@@ -375,9 +375,20 @@ class PostpaidUsageService:
         # Phase 2a — persist the pointer (and which KIND of invoice it is) the
         # moment the target is known, BEFORE any item create, so every later
         # retry is retrieve-first even across idempotency-key expiry.
-        CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+        # F5.5 Fix 1: capture the update count. If 0, this worker's claim was
+        # stolen (another retry reclaimed a stale-pushing row and is already
+        # in flight). Raise immediately — the exception handler's guarded
+        # filter(status="pushing") will no-op for us (we no longer own the
+        # row), so there is zero state damage.  The new owner will resume from
+        # its own fresh Phase-2a; double-billing is impossible.
+        from apps.billing.invoicing.models import CustomerUsageInvoice as _CUI
+        _updated = _CUI.objects.filter(id=rec.id, status="pushing").update(
             stripe_invoice_id=inv.id, push_phase="invoice_created",
             invoice_kind="consolidated" if consolidated else "standalone")
+        if _updated == 0:
+            raise RuntimeError(
+                f"postpaid.claim_lost: stale worker, aborting before item create "
+                f"(usage_invoice_id={rec.id})")
 
         if consolidated:
             return PostpaidUsageService._push_consolidated(

@@ -302,7 +302,11 @@ class UsageInvoiceOut(Schema):
 
 
 class PostpaidConfigIn(Schema):
-    usage_line_item_group_by: str = ""
+    # None sentinel on BOTH fields: omit means "leave unchanged".  An explicit
+    # "" clears group_by; an explicit False turns consolidation off.
+    # F5.5 Fix 2: group_by used to default to "" which silently overwrote the
+    # current value on every partial PUT that omitted it.
+    usage_line_item_group_by: Optional[str] = None
     # F5.5 opt-in; None = leave unchanged (a group_by-only PUT must never
     # silently switch a tenant's consolidation mode off).
     consolidate_with_subscription: Optional[bool] = None

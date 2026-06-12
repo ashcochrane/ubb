@@ -453,29 +453,42 @@ class TestSafetyAddendumResume:
 
 @pytest.mark.django_db
 class TestRebillVoidInterplay:
-    def test_generation_and_consolidation_namespaces_compose(self):
+    def test_rebill_void_refused_for_consolidated_rec(self):
+        """F5.5 Fix 3: --rebill-void must be refused for a consolidated rec.
+        A consolidated target is the customer's subscription renewal — voiding
+        it via this flag is not applicable; the operator must use a plain repush
+        to resume or interact with the renewal directly in Stripe."""
+        from django.core.management.base import CommandError
         t = _tenant()
         c = _customer(t)
         _sub(t, c)
         rec = _consolidated_rec(
             t, c, status="failed_permanent", stripe_invoice_id="in_renewal_old",
             push_phase="items_pinned", push_attempts=3)
-        call_command("repush_usage_invoice", str(rec.id), "--rebill-void")
+        with pytest.raises(CommandError) as exc_info:
+            call_command("repush_usage_invoice", str(rec.id), "--rebill-void")
+        assert "consolidated" in str(exc_info.value).lower()
+        # Row must be completely untouched — no generation bump, pointer intact.
         rec.refresh_from_db()
-        assert rec.rebill_generation == 1
-        assert rec.stripe_invoice_id == "" and rec.push_phase == ""
-        # The next push re-resolves a FRESH target (the old pointer is gone and
-        # a foreign renewal can never be metadata-matched).
-        with _stripe(sub_drafts=[_renewal(id="in_renewal2")]) as m, _agg():
-            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        assert rec.status == "failed_permanent"
+        assert rec.stripe_invoice_id == "in_renewal_old"
+        assert rec.rebill_generation == 0  # never bumped
+
+    def test_plain_repush_consolidated_resumes_from_pointer(self):
+        """Plain repush (no --rebill-void) is still allowed and resumes from the
+        existing pointer, re-resolving nothing (retrieve-first path)."""
+        t = _tenant()
+        c = _customer(t)
+        _sub(t, c)
+        rec = _consolidated_rec(
+            t, c, status="failed_permanent", stripe_invoice_id="in_renewal_old",
+            push_phase="items_pinned", push_attempts=3)
+        call_command("repush_usage_invoice", str(rec.id))
         rec.refresh_from_db()
-        assert rec.status == "pushed"
-        assert rec.stripe_invoice_id == "in_renewal2"
-        assert rec.invoice_kind == "consolidated"
-        keys = [call.kwargs["idempotency_key"] for call in m.item_create.call_args_list]
-        assert keys == [f"usage-item-{rec.id}-g1-cin_renewal2-0",
-                        f"usage-item-{rec.id}-g1-cin_renewal2-1"]
-        assert m.finalize.call_count == 0
+        assert rec.status == "pending"
+        assert rec.stripe_invoice_id == "in_renewal_old"  # pointer preserved
+        assert rec.push_attempts == 0
+        assert rec.rebill_generation == 0  # unchanged
 
 
 @pytest.mark.django_db

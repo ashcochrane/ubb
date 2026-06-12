@@ -808,7 +808,11 @@ def get_postpaid_config(request):
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
-    defaults = {"usage_line_item_group_by": payload.usage_line_item_group_by}
+    # F5.5 Fix 2: both fields use None sentinel — only write the fields that
+    # were explicitly provided in the PUT body.
+    defaults = {}
+    if payload.usage_line_item_group_by is not None:
+        defaults["usage_line_item_group_by"] = payload.usage_line_item_group_by
     if payload.consolidate_with_subscription is not None:
         defaults["consolidate_with_subscription"] = payload.consolidate_with_subscription
     cfg, _ = PostpaidUsageConfig.objects.update_or_create(
