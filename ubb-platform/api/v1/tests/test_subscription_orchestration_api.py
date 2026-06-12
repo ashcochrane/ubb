@@ -165,3 +165,104 @@ class TestSubscriptionOrchestrationAPI:
         self._make_customer("biz")
         resp = self._post("/api/v1/platform/customers/biz/seats", {"seats": 5})
         assert resp.status_code == 404
+
+    # ---- PATCH /plans/{key} (F5.4) ----
+
+    def _patch(self, path, data):
+        return self.client.patch(
+            path,
+            data=data,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_update_plan_unprovisioned_fee_edit(self):
+        self._make_plan()
+        resp = self._patch("/api/v1/platform/plans/pro", {"access_fee_micros": 60_000_000})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["access_fee_micros"] == 60_000_000
+        assert data["per_seat_micros"] == 8_000_000  # untouched
+        assert data["pricing_version"] == 1          # no Stripe price existed -> no bump
+
+    def test_update_plan_provisioned_creates_versioned_price(self):
+        self._make_plan()
+        self._make_customer("biz")
+        with self._mock_stripe_subscribe():
+            self._post("/api/v1/platform/customers/biz/subscribe",
+                       {"plan_key": "pro", "seats": 10})
+        svc = "apps.subscriptions.orchestration.service.stripe"
+        with patch(f"{svc}.Price.create", return_value=MagicMock(id="price_s_v2")) as pc:
+            resp = self._patch("/api/v1/platform/plans/pro", {"per_seat_micros": 6_000_000})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["per_seat_micros"] == 6_000_000
+        assert data["pricing_version"] == 2
+        assert pc.call_args.kwargs["idempotency_key"].endswith("-v2")
+
+    def test_update_plan_unknown_key_returns_404(self):
+        resp = self._patch("/api/v1/platform/plans/ghost", {"access_fee_micros": 1_000_000})
+        assert resp.status_code == 404
+
+    # ---- subscription lifecycle endpoints (F5.4) ----
+
+    def _subscribed_customer(self, external_id="biz"):
+        self._make_plan()
+        self._make_customer(external_id)
+        with self._mock_stripe_subscribe():
+            self._post(f"/api/v1/platform/customers/{external_id}/subscribe",
+                       {"plan_key": "pro", "seats": 10})
+
+    def test_cancel_subscription_default_at_period_end(self):
+        self._subscribed_customer()
+        svc = "apps.subscriptions.orchestration.service.stripe"
+        with patch(f"{svc}.Subscription.modify") as mod:
+            resp = self._post("/api/v1/platform/customers/biz/subscription/cancel", {})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cancel_at_period_end"] is True
+        assert data["status"] == "active"
+        assert mod.call_args.kwargs["cancel_at_period_end"] is True
+
+    def test_cancel_subscription_immediate(self):
+        self._subscribed_customer()
+        svc = "apps.subscriptions.orchestration.service.stripe"
+        with patch(f"{svc}.Subscription.cancel") as can:
+            resp = self._post("/api/v1/platform/customers/biz/subscription/cancel",
+                              {"at_period_end": False})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "canceled"
+        can.assert_called_once()
+        mirror = StripeSubscription.objects.get(stripe_subscription_id="sub_1")
+        assert mirror.status == "canceled"
+        assert mirror.canceled_at is not None
+
+    def test_pause_and_resume_subscription(self):
+        self._subscribed_customer()
+        svc = "apps.subscriptions.orchestration.service.stripe"
+        with patch(f"{svc}.Subscription.modify") as mod:
+            resp = self._post("/api/v1/platform/customers/biz/subscription/pause", {})
+        assert resp.status_code == 200
+        assert resp.json()["paused"] is True
+        assert mod.call_args.kwargs["pause_collection"] == {"behavior": "void"}
+
+        with patch(f"{svc}.Subscription.modify") as mod:
+            resp = self._post("/api/v1/platform/customers/biz/subscription/resume", {})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["paused"] is False
+        assert data["cancel_at_period_end"] is False
+        assert mod.call_args.kwargs["pause_collection"] == ""
+        assert mod.call_args.kwargs["cancel_at_period_end"] is False
+
+    def test_lifecycle_verbs_404_when_no_active_subscription(self):
+        self._make_plan()
+        self._make_customer("biz")  # never subscribed
+        for path in ("cancel", "pause", "resume"):
+            resp = self._post(f"/api/v1/platform/customers/biz/subscription/{path}", {})
+            assert resp.status_code == 404, path
+
+    def test_lifecycle_verbs_404_unknown_customer(self):
+        for path in ("cancel", "pause", "resume"):
+            resp = self._post(f"/api/v1/platform/customers/ghost/subscription/{path}", {})
+            assert resp.status_code == 404, path

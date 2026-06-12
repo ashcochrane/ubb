@@ -104,6 +104,47 @@ class TestHandleSubscriptionUpdated:
         assert sub.quantity == 4
 
 
+    def test_copies_lifecycle_flags_into_mirror(self):
+        """F5.4: cancel_at_period_end + pause_collection presence -> mirror flags."""
+        from apps.subscriptions.api.webhooks import handle_subscription_updated
+        from apps.subscriptions.models import StripeSubscription
+
+        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
+        now = timezone.now()
+        sub = StripeSubscription.objects.create(
+            tenant=tenant, customer=customer,
+            stripe_subscription_id="sub_flags",
+            stripe_product_name="Pro", status="active",
+            amount_micros=49_000_000, currency="usd", interval="month",
+            current_period_start=now, current_period_end=now, last_synced_at=now,
+        )
+
+        event = MagicMock()
+        event.account = None
+        event.data.object = FakeStripeSub(
+            id="sub_flags", customer="", status="active", currency="usd",
+            cancel_at_period_end=True,
+            pause_collection={"behavior": "void"},
+            items={"data": [_licensed_item(4900, qty=1)]})
+        handle_subscription_updated(event)
+
+        sub.refresh_from_db()
+        assert sub.status == "active"  # Stripe keeps active under pause/pending-cancel
+        assert sub.cancel_at_period_end is True
+        assert sub.paused is True
+
+        # Flags clear when Stripe reports them gone (e.g. after resume).
+        event.data.object = FakeStripeSub(
+            id="sub_flags", customer="", status="active", currency="usd",
+            cancel_at_period_end=False, pause_collection=None,
+            items={"data": [_licensed_item(4900, qty=1)]})
+        handle_subscription_updated(event)
+        sub.refresh_from_db()
+        assert sub.cancel_at_period_end is False
+        assert sub.paused is False
+
+
 @pytest.mark.django_db
 class TestHandleSubscriptionDeleted:
     def test_marks_as_canceled(self):

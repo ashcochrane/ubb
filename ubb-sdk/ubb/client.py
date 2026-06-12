@@ -271,6 +271,66 @@ class UBBClient:
         )
         return r.json()
 
+    def update_plan(self, key: str, *, access_fee_micros: int | None = None,
+                    per_seat_micros: int | None = None,
+                    migrate_existing: bool = False) -> dict:
+        """Edit a plan's fees (F5.4). Only non-None axes are changed.
+
+        A provisioned axis gets a NEW versioned Stripe Price on the same
+        Product; existing subscriptions keep their old price (grandfathered)
+        unless migrate_existing=True (repointed without proration). Calls
+        PATCH /api/v1/platform/plans/{key} and returns the updated plan dict
+        (includes pricing_version).
+        """
+        metering = self._require_metering()
+        body: dict = {"migrate_existing": migrate_existing}
+        if access_fee_micros is not None:
+            body["access_fee_micros"] = access_fee_micros
+        if per_seat_micros is not None:
+            body["per_seat_micros"] = per_seat_micros
+        r = metering._request("patch", f"/api/v1/platform/plans/{key}", json=body)
+        return r.json()
+
+    def cancel_subscription(self, external_id: str, at_period_end: bool = True) -> dict:
+        """Cancel a customer's subscription (default: at period end).
+
+        Calls POST /api/v1/platform/customers/{external_id}/subscription/cancel
+        and returns the response dict (subscription_id, status,
+        cancel_at_period_end, paused).
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/platform/customers/{external_id}/subscription/cancel",
+            json={"at_period_end": at_period_end},
+        )
+        return r.json()
+
+    def pause_subscription(self, external_id: str) -> dict:
+        """Pause a customer's subscription (collection voided; sub stays active).
+
+        Calls POST /api/v1/platform/customers/{external_id}/subscription/pause
+        and returns the response dict.
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/platform/customers/{external_id}/subscription/pause",
+            json={},
+        )
+        return r.json()
+
+    def resume_subscription(self, external_id: str) -> dict:
+        """Resume a customer's subscription: clears pause AND any pending cancel.
+
+        Calls POST /api/v1/platform/customers/{external_id}/subscription/resume
+        and returns the response dict.
+        """
+        metering = self._require_metering()
+        r = metering._request(
+            "post", f"/api/v1/platform/customers/{external_id}/subscription/resume",
+            json={},
+        )
+        return r.json()
+
     def get_tenant_config(self) -> dict:
         """Get the tenant's own configuration.
 

@@ -32,6 +32,13 @@ class StripeSubscription(BaseModel):
     current_period_start = models.DateTimeField()
     current_period_end = models.DateTimeField()
     last_synced_at = models.DateTimeField()
+    # F5.4 lifecycle mirror flags ONLY — Stripe stays the source of truth.
+    # cancel_at_period_end: Stripe keeps status "active" until the period ends.
+    # paused: Stripe keeps status "active" under pause_collection, so the
+    # explicit flag is the only local signal that collection is voided.
+    cancel_at_period_end = models.BooleanField(default=False)
+    paused = models.BooleanField(default=False)
+    canceled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_stripe_subscription"
@@ -87,6 +94,10 @@ class TenantBillingPlan(BaseModel):
     stripe_seat_product_id = models.CharField(max_length=255, blank=True, default="")
     stripe_seat_price_id = models.CharField(max_length=255, blank=True, default="")
     provisioned_at = models.DateTimeField(null=True, blank=True)
+    # F5.4: bumped once per update_plan_prices call that re-prices a provisioned
+    # axis. New Stripe Prices are keyed plan-price-{axis}-{plan.id}-v{version};
+    # existing subscriptions keep their old price (grandfathered) unless migrated.
+    pricing_version = models.PositiveIntegerField(default=1)
 
     class Meta:
         db_table = "ubb_billing_plan"

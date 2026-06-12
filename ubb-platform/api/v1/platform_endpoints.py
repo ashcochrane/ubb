@@ -5,7 +5,14 @@ from ninja import NinjaAPI, Schema
 
 from core.auth import ApiKeyAuth
 from apps.platform.customers.models import Customer
-from api.v1.schemas import PlanIn, PlanOut, SubscribeIn, SeatsIn
+from api.v1.schemas import (
+    PlanIn,
+    PlanOut,
+    PlanUpdateIn,
+    SeatsIn,
+    SubscribeIn,
+    SubscriptionCancelIn,
+)
 
 
 class CreateCustomerRequest(Schema):
@@ -129,6 +136,112 @@ def create_plan(request, payload: PlanIn):
     except IntegrityError:
         return 422, {"error": f"plan with key '{payload.key}' already exists"}
     return 201, _plan_out(plan)
+
+
+@platform_api.patch("/plans/{key}", response={200: dict, 404: dict, 422: dict})
+def update_plan(request, key: str, payload: PlanUpdateIn):
+    """Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;
+    existing subscriptions are grandfathered on their old price unless
+    migrate_existing=true (repointed with proration_behavior="none").
+
+    Trials and coupons are deliberate non-goals: Stripe owns those levers.
+    """
+    from apps.subscriptions.models import TenantBillingPlan
+    from apps.subscriptions.orchestration.service import (
+        SubscriptionOrchestrator,
+        OrchestrationError,
+    )
+    from core.exceptions import StripeFatalError
+
+    tenant = request.auth.tenant
+    if not TenantBillingPlan.objects.filter(tenant=tenant, key=key).exists():
+        return 404, {"error": f"plan with key '{key}' not found"}
+
+    try:
+        plan = SubscriptionOrchestrator.update_plan_prices(
+            tenant, key,
+            access_fee_micros=payload.access_fee_micros,
+            per_seat_micros=payload.per_seat_micros,
+            migrate_existing=payload.migrate_existing,
+        )
+    except OrchestrationError as e:
+        return 422, {"error": str(e)}
+    except StripeFatalError as e:
+        return 422, {"error": str(e)}
+
+    return 200, {**_plan_out(plan), "pricing_version": plan.pricing_version}
+
+
+def _lifecycle_call(request, external_id, verb_kwargs):
+    """Shared 404/422 mapping for the subscription lifecycle verbs (F5.4)."""
+    from apps.subscriptions.orchestration.service import (
+        SubscriptionOrchestrator,
+        OrchestrationError,
+        NoActiveSubscription,
+    )
+    from core.exceptions import StripeFatalError
+
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        return 404, {"error": "customer not found"}
+
+    verb = verb_kwargs.pop("verb")
+    try:
+        mirror = getattr(SubscriptionOrchestrator, verb)(
+            tenant, customer, change_event_id=str(uuid.uuid4()), **verb_kwargs
+        )
+    except NoActiveSubscription as e:
+        return 404, {"error": str(e)}
+    except OrchestrationError as e:
+        return 422, {"error": str(e)}
+    except StripeFatalError as e:
+        return 422, {"error": str(e)}
+
+    return 200, {
+        "subscription_id": mirror.stripe_subscription_id,
+        "status": mirror.status,
+        "cancel_at_period_end": mirror.cancel_at_period_end,
+        "paused": mirror.paused,
+    }
+
+
+@platform_api.post(
+    "/customers/{external_id}/subscription/cancel",
+    response={200: dict, 404: dict, 422: dict},
+)
+def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
+    """Cancel the customer's subscription (default: at period end).
+
+    Trials and coupons are deliberate non-goals: Stripe owns those levers.
+    """
+    at_period_end = payload.at_period_end if payload is not None else True
+    return _lifecycle_call(request, external_id,
+                           {"verb": "cancel", "at_period_end": at_period_end})
+
+
+@platform_api.post(
+    "/customers/{external_id}/subscription/pause",
+    response={200: dict, 404: dict, 422: dict},
+)
+def pause_subscription(request, external_id: str):
+    """Pause collection (void) — the subscription stays active but stops billing.
+
+    Trials and coupons are deliberate non-goals: Stripe owns those levers.
+    """
+    return _lifecycle_call(request, external_id, {"verb": "pause"})
+
+
+@platform_api.post(
+    "/customers/{external_id}/subscription/resume",
+    response={200: dict, 404: dict, 422: dict},
+)
+def resume_subscription(request, external_id: str):
+    """Resume billing: clears a pause AND any pending at-period-end cancel.
+
+    Trials and coupons are deliberate non-goals: Stripe owns those levers.
+    """
+    return _lifecycle_call(request, external_id, {"verb": "resume"})
 
 
 @platform_api.post("/customers/{external_id}/subscribe", response={200: dict, 404: dict, 422: dict})

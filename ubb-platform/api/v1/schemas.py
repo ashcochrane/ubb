@@ -402,6 +402,17 @@ class PlanOut(Schema):
     usage_mode: str
 
 
+class PlanUpdateIn(Schema):
+    # None = leave the axis alone (0 is a meaningful value, not an omission).
+    access_fee_micros: Optional[int] = Field(default=None, ge=0)
+    per_seat_micros: Optional[int] = Field(default=None, ge=0)
+    migrate_existing: bool = False
+
+
+class SubscriptionCancelIn(Schema):
+    at_period_end: bool = True
+
+
 class SubscribeIn(Schema):
     plan_key: str = Field(min_length=1, max_length=64)
     seats: int = Field(default=0, ge=0)

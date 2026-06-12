@@ -45,6 +45,10 @@ class OrchestrationError(Exception):
     """Raised when an orchestration precondition fails (e.g. not charge-ready)."""
 
 
+class NoActiveSubscription(OrchestrationError):
+    """A lifecycle verb found no non-canceled subscription for the owner (-> 404)."""
+
+
 _INTERVAL_MONTHS = {"month": 1, "year": 12}
 
 
@@ -241,7 +245,245 @@ class SubscriptionOrchestrator:
         mirror.save(update_fields=["amount_micros", "quantity", "last_synced_at", "updated_at"])
         return item
 
+    # -- lifecycle verbs (F5.4) -----------------------------------------------
+    #
+    # Trials and coupons are deliberate NON-goals: Stripe owns those levers
+    # (trial_period_days / Coupons on the connected account) — UBB does not
+    # wrap them.
+
+    @classmethod
+    def cancel(cls, tenant, customer, *, at_period_end=True, change_event_id):
+        """Cancel the customer's subscription (default: at period end).
+
+        at_period_end=True  -> Subscription.modify(cancel_at_period_end=True);
+        Stripe keeps status "active" until the period ends, so the mirror gets
+        the explicit cancel_at_period_end flag. at_period_end=False -> immediate
+        stripe.Subscription.cancel; the mirror is marked canceled SYNCHRONOUSLY.
+        The customer.subscription.updated/deleted webhook stays the confirm path
+        (idempotent against the pre-updated mirror).
+        """
+        _require_charge_ready(tenant)
+        owner = customer.resolve_billing_owner()
+        mirror = cls._find_active_mirror(owner)
+        connected = get_tenant_stripe_account(tenant.id)
+        api_key = api_key_for_tenant(tenant)
+
+        if at_period_end:
+            stripe_call(
+                stripe.Subscription.modify,
+                api_key=api_key,
+                retryable=True,
+                idempotency_key=f"sub-cancel-{mirror.stripe_subscription_id}-{change_event_id}",
+                id=mirror.stripe_subscription_id,
+                cancel_at_period_end=True,
+                stripe_account=connected,
+            )
+            mirror.cancel_at_period_end = True
+            mirror.last_synced_at = timezone.now()
+            mirror.save(update_fields=["cancel_at_period_end", "last_synced_at", "updated_at"])
+        else:
+            stripe_call(
+                stripe.Subscription.cancel,
+                api_key=api_key,
+                retryable=True,
+                idempotency_key=f"sub-cancel-now-{mirror.stripe_subscription_id}-{change_event_id}",
+                subscription_exposed_id=mirror.stripe_subscription_id,
+                stripe_account=connected,
+            )
+            mirror.status = "canceled"
+            mirror.canceled_at = timezone.now()
+            mirror.last_synced_at = timezone.now()
+            mirror.save(update_fields=["status", "canceled_at", "last_synced_at", "updated_at"])
+        return mirror
+
+    @classmethod
+    def pause(cls, tenant, customer, *, change_event_id):
+        """Pause collection (behavior=void): invoices stop, the sub stays alive.
+
+        NOTE Stripe keeps status "active" under pause_collection — the explicit
+        ``paused`` mirror flag is the local signal.
+        """
+        _require_charge_ready(tenant)
+        owner = customer.resolve_billing_owner()
+        mirror = cls._find_active_mirror(owner)
+        connected = get_tenant_stripe_account(tenant.id)
+
+        stripe_call(
+            stripe.Subscription.modify,
+            api_key=api_key_for_tenant(tenant),
+            retryable=True,
+            idempotency_key=f"sub-pause-{mirror.stripe_subscription_id}-{change_event_id}",
+            id=mirror.stripe_subscription_id,
+            pause_collection={"behavior": "void"},
+            stripe_account=connected,
+        )
+        mirror.paused = True
+        mirror.last_synced_at = timezone.now()
+        mirror.save(update_fields=["paused", "last_synced_at", "updated_at"])
+        return mirror
+
+    @classmethod
+    def resume(cls, tenant, customer, *, change_event_id):
+        """One "make it run again" verb: clears pause AND any pending cancel.
+
+        A single Subscription.modify sets pause_collection="" (un-pause) and
+        cancel_at_period_end=False (un-schedule the cancel) so the subscription
+        bills normally again whichever state it was in.
+        """
+        _require_charge_ready(tenant)
+        owner = customer.resolve_billing_owner()
+        mirror = cls._find_active_mirror(owner)
+        connected = get_tenant_stripe_account(tenant.id)
+
+        stripe_call(
+            stripe.Subscription.modify,
+            api_key=api_key_for_tenant(tenant),
+            retryable=True,
+            idempotency_key=f"sub-resume-{mirror.stripe_subscription_id}-{change_event_id}",
+            id=mirror.stripe_subscription_id,
+            pause_collection="",
+            cancel_at_period_end=False,
+            stripe_account=connected,
+        )
+        mirror.paused = False
+        mirror.cancel_at_period_end = False
+        mirror.last_synced_at = timezone.now()
+        mirror.save(update_fields=["paused", "cancel_at_period_end", "last_synced_at", "updated_at"])
+        return mirror
+
+    # -- plan-price versioning (F5.4) ------------------------------------------
+
+    @classmethod
+    def update_plan_prices(cls, tenant, plan_key, *, access_fee_micros=None,
+                           per_seat_micros=None, migrate_existing=False):
+        """Edit plan fees. Provisioned axes get a NEW versioned Stripe Price.
+
+        Stripe Prices are immutable, so a fee edit on a provisioned axis bumps
+        ``pricing_version`` (once per call) and creates a new Price on the SAME
+        existing Product, keyed ``plan-price-{axis}-{plan.id}-v{version}``. The
+        plan is repointed at the new Price so NEW subscribes pick it up; existing
+        subscriptions keep their old price (CustomerSubscriptionItem.stripe_price_id
+        is the history) unless ``migrate_existing=True``, which repoints each
+        ACTIVE item via SubscriptionItem.modify with proration_behavior="none".
+
+        Unprovisioned axes (price id empty) just get the fee field updated —
+        lazy provisioning (ensure_plan_provisioned) reads the current fee.
+        Replaying with the same fees is a no-op (no Price, no version bump).
+        """
+        plan = TenantBillingPlan.objects.filter(tenant=tenant, key=plan_key).first()
+        if plan is None:
+            raise OrchestrationError(f"plan with key '{plan_key}' not found")
+
+        axes = [
+            ("access", access_fee_micros, "access_fee_micros",
+             "stripe_access_product_id", "stripe_access_price_id"),
+            ("seat", per_seat_micros, "per_seat_micros",
+             "stripe_seat_product_id", "stripe_seat_price_id"),
+        ]
+
+        changed_provisioned = []  # axes that need a new versioned Price
+        update_fields = []
+        for axis, new_fee, fee_field, product_field, price_field in axes:
+            if new_fee is None or new_fee == getattr(plan, fee_field):
+                continue
+            if getattr(plan, price_field) and new_fee > 0:
+                changed_provisioned.append((axis, new_fee, fee_field, product_field, price_field))
+            else:
+                # Unprovisioned axis (fee is the only state) OR a fee dropped to
+                # 0 (subscribe skips zero-fee axes — no $0 Price needed). No
+                # version bump either way.
+                setattr(plan, fee_field, new_fee)
+                update_fields.append(fee_field)
+
+        if update_fields:
+            plan.save(update_fields=update_fields + ["updated_at"])
+
+        if not changed_provisioned:
+            return plan
+
+        _require_charge_ready(tenant)
+        connected = get_tenant_stripe_account(tenant.id)
+        api_key = api_key_for_tenant(tenant)
+
+        # Bump ONCE per call (before the creates, so a crash mid-call can only
+        # skip a version number, never alias two different fees to one key).
+        plan.pricing_version += 1
+        plan.save(update_fields=["pricing_version", "updated_at"])
+        version = plan.pricing_version
+
+        for axis, new_fee, fee_field, product_field, price_field in changed_provisioned:
+            price = stripe_call(
+                stripe.Price.create,
+                api_key=api_key,
+                retryable=True,
+                idempotency_key=f"plan-price-{axis}-{plan.id}-v{version}",
+                product=getattr(plan, product_field),
+                unit_amount=micros_to_cents(new_fee),
+                currency=(tenant.default_currency or "usd").lower(),
+                recurring={"interval": plan.interval, "usage_type": "licensed"},
+                stripe_account=connected,
+            )
+            old_price_id = getattr(plan, price_field)
+            setattr(plan, price_field, price.id)
+            setattr(plan, fee_field, new_fee)
+            plan.save(update_fields=[price_field, fee_field, "updated_at"])
+
+            if migrate_existing:
+                cls._migrate_axis_items(
+                    tenant, plan, axis, old_price_id, price.id, new_fee, version,
+                    api_key=api_key, connected=connected,
+                )
+
+        return plan
+
+    @classmethod
+    def _migrate_axis_items(cls, tenant, plan, axis, old_price_id, new_price_id,
+                            new_fee, version, *, api_key, connected):
+        """Repoint every ACTIVE item on plan+axis to the new Price (no proration)."""
+        items = (
+            CustomerSubscriptionItem.objects.filter(plan=plan, axis=axis)
+            .exclude(stripe_subscription__status="canceled")
+            .exclude(stripe_price_id=new_price_id)
+            .select_related("stripe_subscription")
+        )
+        touched_mirrors = {}
+        for item in items:
+            stripe_call(
+                stripe.SubscriptionItem.modify,
+                api_key=api_key,
+                retryable=True,
+                idempotency_key=f"item-migrate-{item.stripe_subscription_item_id}-v{version}",
+                id=item.stripe_subscription_item_id,
+                price=new_price_id,
+                proration_behavior="none",
+                stripe_account=connected,
+            )
+            item.stripe_price_id = new_price_id
+            item.unit_amount_micros = new_fee
+            item.save(update_fields=["stripe_price_id", "unit_amount_micros", "updated_at"])
+            touched_mirrors[item.stripe_subscription_id] = item.stripe_subscription
+
+        for mirror in touched_mirrors.values():
+            mirror.amount_micros = sum(
+                li.unit_amount_micros * li.quantity for li in mirror.line_items.all()
+            )
+            mirror.last_synced_at = timezone.now()
+            mirror.save(update_fields=["amount_micros", "last_synced_at", "updated_at"])
+
     # -- internals -----------------------------------------------------------
+
+    @classmethod
+    def _find_active_mirror(cls, owner) -> StripeSubscription:
+        """The latest non-canceled mirror for the billing owner, or raise."""
+        mirror = (
+            StripeSubscription.objects.filter(customer=owner)
+            .exclude(status="canceled")
+            .order_by("-created_at")
+            .first()
+        )
+        if mirror is None:
+            raise NoActiveSubscription(f"No active subscription for customer {owner.id}")
+        return mirror
 
     @classmethod
     def _ensure_stripe_customer(cls, owner, connected, api_key):
@@ -292,6 +534,18 @@ class SubscriptionOrchestrator:
 
         access_price = plan.stripe_access_price_id
         seat_price = plan.stripe_seat_price_id
+        # F5.4: after a pricing_version bump the plan's CURRENT ids no longer
+        # match items that still hold an old (grandfathered) price. The local
+        # item rows ARE the price-id history — classify old prices by the axis
+        # they were recorded under, before falling back to the qty heuristic.
+        sub_price_ids = [
+            (it["price"] or {}).get("id", "") for it in sub["items"]["data"]
+        ]
+        axis_history = dict(
+            CustomerSubscriptionItem.objects.filter(
+                tenant=tenant, stripe_price_id__in=[p for p in sub_price_ids if p]
+            ).values_list("stripe_price_id", "axis")
+        )
         for it in sub["items"]["data"]:
             price = it["price"] or {}
             price_id = price.get("id", "")
@@ -299,6 +553,8 @@ class SubscriptionOrchestrator:
                 axis = "seat"
             elif price_id == access_price and access_price:
                 axis = "access"
+            elif price_id in axis_history:
+                axis = axis_history[price_id]
             else:
                 axis = "seat" if (it.get("quantity") or 1) > 1 else "access"
             CustomerSubscriptionItem.objects.update_or_create(

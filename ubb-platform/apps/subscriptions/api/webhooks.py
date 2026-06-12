@@ -68,15 +68,26 @@ def handle_subscription_updated(event):
         sub.current_period_end = _period_end(stripe_sub)
         sub.last_synced_at = timezone.now()
         sub.quantity = seat_qty
+        # F5.4 lifecycle flags: Stripe keeps status "active" both under a
+        # pending cancel_at_period_end and under pause_collection, so the
+        # mirror carries them explicitly (pause_collection presence => paused).
+        sub.cancel_at_period_end = bool(stripe_sub.get("cancel_at_period_end") or False)
+        sub.paused = bool(stripe_sub.get("pause_collection") or False)
         sub.save(update_fields=[
             "status", "stripe_product_name", "amount_micros", "interval",
             "current_period_start", "current_period_end",
             "last_synced_at", "updated_at", "quantity",
+            "cancel_at_period_end", "paused",
         ])
 
 
 def handle_subscription_deleted(event):
-    """Subscription canceled -- mark as canceled."""
+    """Subscription canceled -- mark as canceled.
+
+    Idempotent against a mirror already pre-updated by the orchestrator's
+    immediate cancel (F5.4): re-asserting status="canceled" is harmless and an
+    existing canceled_at is preserved (the orchestrator's timestamp wins).
+    """
     stripe_sub = event.data.object
     with transaction.atomic():
         sub = StripeSubscription.objects.select_for_update().get(
@@ -84,8 +95,10 @@ def handle_subscription_deleted(event):
             **livemode_filter(event),
         )
         sub.status = "canceled"
+        if sub.canceled_at is None:
+            sub.canceled_at = timezone.now()
         sub.last_synced_at = timezone.now()
-        sub.save(update_fields=["status", "last_synced_at", "updated_at"])
+        sub.save(update_fields=["status", "canceled_at", "last_synced_at", "updated_at"])
 
 
 # NOTE: invoice.paid is intentionally NOT handled here. ALL invoice.* reconcile

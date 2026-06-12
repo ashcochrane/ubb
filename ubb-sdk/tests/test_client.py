@@ -382,5 +382,83 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
         self.assertEqual(result["seats"], 12)
 
 
+class SubscriptionLifecycleClientTest(unittest.TestCase):
+    """F5.4: update_plan / cancel_subscription / pause_subscription / resume_subscription."""
+
+    LIFECYCLE_FIXTURE = {
+        "subscription_id": "sub_1", "status": "active",
+        "cancel_at_period_end": False, "paused": False,
+    }
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_update_plan_sends_only_non_none_axes(self):
+        plan = {"key": "pro", "per_seat_micros": 6_000_000, "pricing_version": 2}
+        mock_resp = MagicMock(status_code=200, json=lambda: plan)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.update_plan("pro", per_seat_micros=6_000_000)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/platform/plans/pro",
+            json={"migrate_existing": False, "per_seat_micros": 6_000_000},
+        )
+        self.assertEqual(result["pricing_version"], 2)
+
+    def test_update_plan_migrate_existing(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"key": "pro", "pricing_version": 2})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_plan("pro", access_fee_micros=60_000_000, migrate_existing=True)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/platform/plans/pro",
+            json={"migrate_existing": True, "access_fee_micros": 60_000_000},
+        )
+
+    def test_cancel_subscription_default_at_period_end(self):
+        body = {**self.LIFECYCLE_FIXTURE, "cancel_at_period_end": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.cancel_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            json={"at_period_end": True},
+        )
+        self.assertTrue(result["cancel_at_period_end"])
+
+    def test_cancel_subscription_immediate(self):
+        body = {**self.LIFECYCLE_FIXTURE, "status": "canceled"}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.cancel_subscription("biz", at_period_end=False)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            json={"at_period_end": False},
+        )
+        self.assertEqual(result["status"], "canceled")
+
+    def test_pause_subscription(self):
+        body = {**self.LIFECYCLE_FIXTURE, "paused": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.pause_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/pause", json={},
+        )
+        self.assertTrue(result["paused"])
+
+    def test_resume_subscription(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: self.LIFECYCLE_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.resume_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/resume", json={},
+        )
+        self.assertFalse(result["paused"])
+        self.assertFalse(result["cancel_at_period_end"])
+
+
 if __name__ == "__main__":
     unittest.main()

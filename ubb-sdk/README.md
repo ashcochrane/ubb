@@ -388,6 +388,36 @@ result = client.set_seats("org-42", seats=8)
 print(result)
 ```
 
+### Step 4b — Change plan pricing (versioned)
+
+Stripe Prices are immutable, so a fee edit on an already-provisioned plan creates a NEW
+versioned Price on the same Product and repoints the plan at it. New subscribers get the
+new price automatically; **existing subscriptions are grandfathered on their old price**
+unless you pass `migrate_existing=True` (each active subscription item is repointed
+without proration).
+
+```python
+plan = client.update_plan("pro-monthly", per_seat_micros=6_000_000)
+# {"key": "pro-monthly", ..., "per_seat_micros": 6000000, "pricing_version": 2}
+
+# Move existing subscribers onto the new price too (no proration):
+plan = client.update_plan("pro-monthly", per_seat_micros=6_000_000, migrate_existing=True)
+```
+
+### Step 4c — Cancel / pause / resume
+
+```python
+client.cancel_subscription("org-42")                        # at period end (default)
+client.cancel_subscription("org-42", at_period_end=False)   # immediately
+
+client.pause_subscription("org-42")    # collection voided; Stripe keeps status "active"
+client.resume_subscription("org-42")   # clears a pause AND any pending at-period-end cancel
+# each returns {"subscription_id", "status", "cancel_at_period_end", "paused"}
+```
+
+> **Non-goals:** trials and coupons are deliberately not wrapped — Stripe owns those
+> levers (use `trial_period_days` / Coupons directly on your connected account).
+
 ### Step 5 — Usage events are the same as J1
 
 Usage recorded via `client.record_usage(...)` is billed on its OWN standalone, auto-finalized
@@ -430,6 +460,16 @@ client.subscribe_customer(external_id: str, plan_key: str, seats: int = 0)
 
 # set_seats  → dict  (keys: seats)
 client.set_seats(external_id: str, seats: int)
+
+# update_plan  → dict  (plan fields + pricing_version)
+client.update_plan(key: str, *, access_fee_micros: int | None = None,
+    per_seat_micros: int | None = None, migrate_existing: bool = False)
+
+# cancel_subscription / pause_subscription / resume_subscription  → dict
+#   (keys: subscription_id, status, cancel_at_period_end, paused)
+client.cancel_subscription(external_id: str, at_period_end: bool = True)
+client.pause_subscription(external_id: str)
+client.resume_subscription(external_id: str)
 
 # create_customer  → CustomerResult
 client.create_customer(external_id: str, stripe_customer_id: str = "",
