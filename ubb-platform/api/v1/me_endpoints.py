@@ -1,7 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from ninja import NinjaAPI, Schema, Field
 from pydantic import field_validator
 from typing import Optional
+
+from django.utils import timezone
 
 from core.auth import ProductAccess
 from core.widget_auth import WidgetJWTAuth
@@ -12,12 +14,19 @@ from apps.billing.invoicing.models import Invoice
 me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
 
 _billing_check = ProductAccess("billing")
+_metering_check = ProductAccess("metering")
 
 
 def _check_billing_product(request):
     """Bridge widget auth (widget_tenant) to ProductAccess (tenant)."""
     request.tenant = request.widget_tenant
     _billing_check(request)
+
+
+def _check_metering_product(request):
+    """Same bridge for metering-scoped widget endpoints (usage summary)."""
+    request.tenant = request.widget_tenant
+    _metering_check(request)
 
 
 class BalanceResponse(Schema):
@@ -119,6 +128,22 @@ class PaginatedSubscriptionInvoices(Schema):
     data: list[SubscriptionInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
+
+
+class UsageMetricOut(Schema):
+    event_type: str
+    units: int
+    billed_cost_micros: int
+    event_count: int
+
+
+class UsageSummaryResponse(Schema):
+    period_start: str
+    period_end: str
+    total_units: int
+    total_billed_micros: int
+    currency: str
+    metrics: list[UsageMetricOut]
 
 
 @me_api.get("/balance", response=BalanceResponse)
@@ -349,6 +374,40 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
         ],
         "next_cursor": next_cursor,
         "has_more": has_more,
+    }
+
+
+@me_api.get("/usage-summary", response=UsageSummaryResponse)
+def get_usage_summary(request):
+    """Month-to-date usage rollup for the calling end customer.
+
+    Window: current UTC calendar month-to-date (house convention — first of
+    month through today inclusive; period_end is the exclusive day bound).
+
+    Deliberately NO billing-owner gate (unlike /me/usage-invoices): usage
+    attribution is per-seat by design, so a pooled seat sees only its OWN
+    consumption here and leaks nothing about its siblings — there is no
+    consolidated money amount to protect. A BUSINESS token aggregates across
+    its seats (the same seat basis its consolidated invoice bills on).
+    Metering-scoped, not billing-scoped: a meter-only tenant's customers can
+    still see what they consumed.
+    """
+    _check_metering_product(request)
+    customer = request.widget_customer
+    from apps.metering.queries import get_customer_usage_summary
+
+    today = timezone.now().date()
+    period_start = today.replace(day=1)
+    period_end = today + timedelta(days=1)  # month-to-date, inclusive of today
+    summary = get_customer_usage_summary(
+        request.widget_tenant.id, customer.id, period_start, period_end)
+    return {
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "total_units": summary["total_units"],
+        "total_billed_micros": summary["total_billed_micros"],
+        "currency": request.widget_tenant.default_currency or "usd",
+        "metrics": summary["metrics"],
     }
 
 

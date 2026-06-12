@@ -19,6 +19,7 @@ Consumers:
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
   clear_backfill_dirty_period() (the ack half of the marker contract)
+- api/v1/me_endpoints.py → get_customer_usage_summary()
 """
 import uuid
 from datetime import date, datetime
@@ -164,6 +165,60 @@ def get_customer_usage_for_period(
     ).values("billed_cost_micros", "provider_cost_micros")
 
     return list(events)
+
+
+class CustomerUsageSummary(TypedDict):
+    total_units: int
+    total_billed_micros: int
+    event_count: int
+    metrics: list[dict]
+
+
+def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
+                               period_end: date) -> CustomerUsageSummary:
+    """Per-event_type usage rollup for ONE customer over [period_start, period_end).
+
+    Each metric row: {event_type, units, billed_cost_micros, event_count};
+    the grand totals equal the sum of the rows by construction. A BUSINESS
+    customer aggregates across its seats — the same seat basis as the postpaid
+    business branch (aggregate_lines): ALL seats incl. soft-deleted via
+    all_objects, ONE grouped query via customer_id__in; a business emits no
+    usage of its own. Rows sort largest-billed first (ties by event_type);
+    NULL units sum as 0. Sargable half-open day window via core.time_windows.
+    """
+    from apps.metering.usage.models import UsageEvent
+    from apps.platform.customers.models import Customer
+
+    customer_ids = [customer_id]
+    account_type = Customer.all_objects.filter(id=customer_id).values_list(
+        "account_type", flat=True).first()
+    if account_type == "business":
+        customer_ids = list(Customer.all_objects.filter(
+            parent_id=customer_id).values_list("id", flat=True))
+        if not customer_ids:
+            return {"total_units": 0, "total_billed_micros": 0,
+                    "event_count": 0, "metrics": []}
+
+    rows = (UsageEvent.objects.filter(
+        tenant_id=tenant_id, customer_id__in=customer_ids,
+        effective_at__gte=utc_day_start(period_start),
+        effective_at__lt=utc_day_start(period_end),
+    ).values("event_type").annotate(
+        units_sum=Sum("units"), billed_sum=Sum("billed_cost_micros"),
+        cnt=Count("id"),
+    ).order_by())
+
+    metrics = sorted(
+        ({"event_type": r["event_type"], "units": r["units_sum"] or 0,
+          "billed_cost_micros": r["billed_sum"] or 0, "event_count": r["cnt"]}
+         for r in rows),
+        key=lambda m: (-m["billed_cost_micros"], m["event_type"]))
+    return {
+        "total_units": sum(m["units"] for m in metrics),
+        "total_billed_micros": sum(m["billed_cost_micros"] for m in metrics),
+        "event_count": sum(m["event_count"] for m in metrics),
+        "metrics": metrics,
+    }
 
 
 def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> dict:
