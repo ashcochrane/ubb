@@ -8,8 +8,11 @@ the business has an active subscription with a seat-axis item. Otherwise no-op.
 The push is dispatched ``on_commit`` so it rides the SAME transaction as the
 roster change: a rolled-back roster change never moves the Stripe quantity, and
 a committed one always does. Failures here must never break the roster write, so
-the callback swallows + logs orchestration errors (the hourly subscription sync /
-reconciler is the backstop).
+the callback swallows + logs orchestration errors (``seat.qty_push_failed``).
+The push is full-state (the live seat count, not a delta), so a missed push
+self-corrects on the next roster change; there is currently NO periodic
+seat-quantity reconciler — recorded follow-up in
+docs/architecture/2026-06-12-adr-001-product-boundaries.md.
 """
 import logging
 import uuid
