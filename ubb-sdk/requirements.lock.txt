@@ -1,0 +1,12 @@
+# ubb-sdk — locked runtime dependencies (Python 3.13.14): the direct deps from
+# pyproject.toml (httpx, PyJWT) plus httpx's transitive chain, pinned to the
+# verified working set. Regenerate after a dependency change: `pip freeze` in a
+# clean venv containing only `pip install ./ubb-sdk`, then keep this chain.
+# CI installs the SDK itself with `pip install -e ./ubb-sdk` on top of these pins.
+anyio==4.13.0
+certifi==2026.5.20
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.18
+PyJWT==2.13.0

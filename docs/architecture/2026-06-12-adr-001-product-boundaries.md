@@ -124,3 +124,21 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
   on the next roster change — but a roster that goes quiet after a failed push stays wrong until
   then. Adding a real seat reconcile task (or completing the outbox migration above, whose
   sweeper retries provide the same guarantee) is the recorded next step.
+
+## Branch decision record (2026-06-12): `feat/ubb-ui-dashboard` status
+
+Not a code boundary, but the same class of decision — recorded here so it is discoverable next
+to the matrix it would otherwise violate.
+
+- **What the branch is.** `feat/ubb-ui-dashboard` is a **fork**, not a feature branch: it carries
+  the UI scaffold + Clerk auth **and a rival Card/Rate/Group pricing schema** whose migration
+  numbers **collide** with the shipped RateCard engine's migrations
+  (`apps/metering/pricing/` on this branch).
+- **Owner's direction (2026-06-12).** UI work is **OUT of scope** for now.
+- **Status: READ-ONLY SOURCE.** The branch's SDK retry commits were already cherry-picked in
+  F0.5 (`65b18e6`…`8c98873` on `tl-changes-05-06-26`); anything else of value gets extracted the
+  same way — commit by commit, reviewed against the shipped schema.
+- **It must NEVER be merged wholesale.** A merge would import the rival pricing schema and the
+  colliding migration numbers on top of the live RateCard engine.
+- **When UI work resumes:** extract the UI / Clerk auth / dashboard endpoints onto a **fresh
+  branch off current `main`** and **discard the fork's pricing commits** entirely.
