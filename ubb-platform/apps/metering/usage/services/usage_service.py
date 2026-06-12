@@ -132,7 +132,19 @@ class UsageService:
         owner_id = customer.resolve_billing_owner().id
         if effective_at is not None:
             validate_effective_at(tenant, owner_id, effective_at, now)
-        currency = currency or tenant.default_currency
+        # CUR-1 choke point: every event is denominated in the tenant's single
+        # currency. A caller-supplied currency must MATCH it (case-insensitive)
+        # or the event is rejected — no FX, no mixed-currency data. Stored
+        # normalized lowercase.
+        tenant_currency = (tenant.default_currency or "usd").lower()
+        if currency:
+            currency = str(currency).strip().lower()
+            if currency != tenant_currency:
+                raise ValueError(
+                    f"currency mismatch: event currency {currency!r} does not "
+                    f"match tenant currency {tenant_currency!r} (per-tenant "
+                    "single currency; multi-currency/FX is not supported)")
+        currency = tenant_currency
         from apps.metering.pricing.services.pricing_service import PricingService
         _tags = tags or {}
         service_id = _tags.get("service", "")

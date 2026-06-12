@@ -188,3 +188,67 @@ class RateCardPriceGatingTest(TestCase):
         )
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn("id", resp.json())
+
+
+class RateCardCurrencyPinTest(TestCase):
+    """CUR-1: rate cards are pinned to the tenant's currency (422 on mismatch)."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Currency Pin", products=["metering", "billing"],
+            default_currency="usd",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cur")
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    def _post(self, body, path="/api/v1/metering/pricing/rate-cards"):
+        return self.http_client.post(
+            path, data=json.dumps(body), content_type="application/json",
+            **self._auth())
+
+    def test_create_with_mismatched_currency_returns_422(self):
+        resp = self._post({**COST_CARD_BODY, "currency": "eur"})
+        self.assertEqual(resp.status_code, 422, resp.content)
+        self.assertIn("does not match tenant currency", resp.json()["error"])
+
+    def test_create_with_matching_currency_case_insensitive(self):
+        resp = self._post({**COST_CARD_BODY, "currency": "USD"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["currency"], "usd")  # stored lowercase
+
+    def test_create_omitted_currency_defaults_to_tenant_currency(self):
+        eur_tenant = Tenant.objects.create(
+            name="Eur Pin", products=["metering", "billing"], default_currency="eur")
+        _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
+        resp = self.http_client.post(
+            "/api/v1/metering/pricing/rate-cards",
+            data=json.dumps(COST_CARD_BODY), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {eur_key}")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["currency"], "eur")
+
+    def test_bulk_create_with_mismatched_currency_returns_422(self):
+        resp = self._post(
+            {"cards": [COST_CARD_BODY, {**PRICE_CARD_BODY, "currency": "eur"}]},
+            path="/api/v1/metering/pricing/rate-cards/batch")
+        self.assertEqual(resp.status_code, 422, resp.content)
+        self.assertIn("cards[1]", resp.json()["error"])
+        self.assertEqual(RateCard.objects.count(), 0)  # all-or-nothing
+
+    def test_update_with_mismatched_currency_returns_422(self):
+        created = self._post(COST_CARD_BODY)
+        self.assertEqual(created.status_code, 200, created.content)
+        card_id = created.json()["id"]
+        resp = self.http_client.put(
+            f"/api/v1/metering/pricing/rate-cards/{card_id}",
+            data=json.dumps({"currency": "eur"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(resp.status_code, 422, resp.content)
+        self.assertIn("does not match tenant currency", resp.json()["error"])
+        # The active version is untouched
+        active = RateCard.objects.get(id=card_id)
+        self.assertIsNone(active.valid_to)
+        self.assertEqual(active.currency, "usd")

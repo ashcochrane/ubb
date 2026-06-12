@@ -45,7 +45,9 @@ def get_balance(request, customer_id: str):
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
                 **GrantLedger.balance_summary(wallet)}
     except Wallet.DoesNotExist:
-        return {"balance_micros": 0, "currency": "USD",
+        # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
+        return {"balance_micros": 0,
+                "currency": (request.auth.tenant.default_currency or "usd").lower(),
                 "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
 
 

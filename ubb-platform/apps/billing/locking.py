@@ -25,7 +25,15 @@ def lock_for_billing(customer_id):
 
     wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
     if wallet is None:
-        wallet = Wallet.objects.create(customer_id=customer_id, balance_micros=0, currency="USD")
+        # CUR-1: a new wallet is born in the customer's tenant currency
+        # (normalized lowercase), never a hardcoded USD.
+        tenant_currency = (
+            Customer.objects.filter(id=customer_id)
+            .values_list("tenant__default_currency", flat=True).first()
+            or "usd"
+        ).lower()
+        wallet = Wallet.objects.create(
+            customer_id=customer_id, balance_micros=0, currency=tenant_currency)
     elif wallet.deleted_at is not None:
         wallet.restore()
     customer = Customer.objects.select_for_update().get(id=customer_id)

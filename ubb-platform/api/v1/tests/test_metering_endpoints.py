@@ -617,3 +617,89 @@ class DimensionBreakdownReconciliationTest(TestCase):
             breakdown_sum, grand_total,
             f"breakdown sum {breakdown_sum} != grand total {grand_total}; rows: {breakdown}",
         )
+
+
+class RecordUsageCurrencyTest(TestCase):
+    """CUR-1 choke point: record_usage rejects any currency that is not the
+    tenant's default_currency (case-insensitive); stored normalized lowercase."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="CurTenant", products=["metering"], default_currency="usd")
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cur")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="cur_c1")
+
+    def _post(self, body):
+        return self.http_client.post(
+            "/api/v1/metering/usage",
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def _body(self, idem, **extra):
+        return {
+            "customer_id": str(self.customer.id),
+            "request_id": f"req_{idem}",
+            "idempotency_key": idem,
+            "provider_cost_micros": 1_000_000,
+            **extra,
+        }
+
+    def test_mismatched_currency_returns_422(self):
+        resp = self._post(self._body("cur_mismatch", currency="eur"))
+        self.assertEqual(resp.status_code, 422, resp.content)
+        self.assertIn("currency mismatch", resp.json()["detail"])
+        from apps.metering.usage.models import UsageEvent
+        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 0)
+
+    def test_matching_currency_accepted(self):
+        resp = self._post(self._body("cur_match", currency="usd"))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_currency_compare_is_case_insensitive_and_stored_lowercase(self):
+        resp = self._post(self._body("cur_case", currency="USD"))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        from apps.metering.usage.models import UsageEvent
+        event = UsageEvent.objects.get(id=resp.json()["event_id"])
+        self.assertEqual(event.currency, "usd")
+
+    def test_omitted_currency_defaults_to_tenant_currency(self):
+        eur_tenant = Tenant.objects.create(
+            name="EurTenant", products=["metering"], default_currency="eur")
+        _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
+        eur_customer = Customer.objects.create(tenant=eur_tenant, external_id="cur_eur1")
+        resp = self.http_client.post(
+            "/api/v1/metering/usage",
+            data=json.dumps({
+                "customer_id": str(eur_customer.id),
+                "request_id": "req_eur",
+                "idempotency_key": "idem_eur",
+                "provider_cost_micros": 1_000_000,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {eur_key}",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        from apps.metering.usage.models import UsageEvent
+        event = UsageEvent.objects.get(id=resp.json()["event_id"])
+        self.assertEqual(event.currency, "eur")
+
+    def test_batch_item_currency_mismatch_is_per_item_validation_error(self):
+        resp = self.http_client.post(
+            "/api/v1/metering/usage/batch",
+            data=json.dumps({"events": [
+                self._body("cur_batch_ok"),
+                self._body("cur_batch_bad", currency="eur"),
+            ]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body["succeeded"], 1)
+        self.assertEqual(body["failed"], 1)
+        self.assertTrue(body["results"][0]["ok"])
+        self.assertEqual(body["results"][1]["error"], "validation_error")
+        self.assertIn("currency mismatch", body["results"][1]["detail"])

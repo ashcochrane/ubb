@@ -336,16 +336,69 @@ def _config_out(t):
     }
 
 
+def _currency_locked_reason(t):
+    """Why default_currency may no longer change, or None if it still may.
+
+    CUR-1: once ANY money object exists for the tenant the currency is pinned
+    forever. The currency of a provisioned Stripe Price is NOT stored locally
+    (only the price id is), so a later cross-check against a changed tenant
+    currency is impossible — the only safe rule is "no change once money
+    exists". The four conditions cover every way money enters the system:
+    wallet ledger rows, provisioned subscription-plan Prices, usage invoices
+    pushed to Stripe, and mirrored Stripe subscriptions.
+    """
+    from django.db.models import Q
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.billing.wallets.models import WalletTransaction
+    from apps.subscriptions.models import StripeSubscription, TenantBillingPlan
+
+    if WalletTransaction.objects.filter(wallet__customer__tenant=t).exists():
+        return "wallet transactions exist"
+    if TenantBillingPlan.objects.filter(tenant=t).exclude(
+            stripe_access_price_id="", stripe_seat_price_id="").exists():
+        return "a billing plan has provisioned Stripe Prices"
+    if CustomerUsageInvoice.objects.filter(tenant=t).filter(
+            Q(status__in=["pushing", "pushed"]) | ~Q(stripe_invoice_id="")).exists():
+        return "a usage invoice has been pushed to Stripe"
+    if StripeSubscription.objects.filter(tenant=t).exists():
+        return "Stripe subscriptions exist"
+    return None
+
+
 @tenant_api.get("/config", response=TenantConfigOut)
 def get_tenant_config(request):
     return _config_out(request.auth.tenant)
 
 
-@tenant_api.patch("/config", response={200: TenantConfigOut, 422: dict})
+@tenant_api.patch("/config", response={200: TenantConfigOut, 409: dict, 422: dict})
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.metering.pricing.models import RateCard
+    from apps.platform.tenants.models import SUPPORTED_CURRENCIES
     t = request.auth.tenant
+    new_currency = None
+    if payload.default_currency is not None:
+        new_currency = payload.default_currency.strip().lower()
+        if new_currency not in SUPPORTED_CURRENCIES:
+            return 422, {
+                "error": f"unsupported currency {new_currency!r}: only "
+                         "2-decimal currencies are supported (zero-decimal "
+                         "currencies like jpy/krw are rejected until the "
+                         "minor-unit helper lands); allowed: "
+                         f"{', '.join(sorted(SUPPORTED_CURRENCIES))}",
+                "code": "unsupported_currency",
+            }
+        if new_currency != (t.default_currency or "usd").lower():
+            reason = _currency_locked_reason(t)
+            if reason is not None:
+                return 409, {
+                    "error": "default_currency cannot change once money "
+                             f"exists for this tenant ({reason}); existing "
+                             "wallets, Stripe Prices and invoices are "
+                             "denominated in the current currency and there "
+                             "is no FX/multi-currency support",
+                    "code": "currency_locked",
+                }
     if payload.require_cost_card_coverage is True and not t.require_cost_card_coverage:
         if not RateCard.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
             return 422, {
@@ -382,6 +435,8 @@ def update_tenant_config(request, payload: TenantConfigIn):
                              "setup in the Stripe dashboard first",
                     "code": "stripe_tax_not_active",
                 }
+    if new_currency is not None:
+        t.default_currency = new_currency
     if payload.automatic_tax_enabled is not None:
         t.automatic_tax_enabled = payload.automatic_tax_enabled
     if payload.billing_mode is not None:

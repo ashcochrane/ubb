@@ -138,3 +138,131 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(response.status_code, 422)
         body = response.json()
         self.assertEqual(body.get("code"), "invalid_config")
+
+
+class TenantConfigCurrencyTest(TestCase):
+    """CUR-1: writable default_currency — 2-decimal allowlist, 409 once money exists."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="CurrencyTest", products=["metering", "billing"],
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cur")
+
+    def _patch(self, body):
+        return self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    # --- happy path ---
+
+    def test_patch_default_currency_on_fresh_tenant(self):
+        resp = self._patch({"default_currency": "eur"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["default_currency"], "eur")
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_currency, "eur")
+
+    def test_patch_default_currency_is_lowercased(self):
+        resp = self._patch({"default_currency": "GBP"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_currency, "gbp")
+
+    # --- zero-decimal rejection ---
+
+    def test_patch_jpy_rejected_with_clear_message(self):
+        resp = self._patch({"default_currency": "jpy"})
+        self.assertEqual(resp.status_code, 422)
+        body = resp.json()
+        self.assertEqual(body.get("code"), "unsupported_currency")
+        self.assertIn("2-decimal", body["error"])
+        self.assertIn("jpy", body["error"])
+
+    # --- 409 once money exists (each condition) ---
+
+    def _make_customer(self, ext="c1"):
+        from apps.platform.customers.models import Customer
+        return Customer.objects.create(tenant=self.tenant, external_id=ext)
+
+    def _assert_locked(self):
+        resp = self._patch({"default_currency": "eur"})
+        self.assertEqual(resp.status_code, 409, resp.content)
+        body = resp.json()
+        self.assertEqual(body.get("code"), "currency_locked")
+        self.assertIn("money", body["error"])
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_currency, "usd")  # unchanged
+
+    def test_409_after_wallet_transaction(self):
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        wallet = Wallet.objects.create(customer=self._make_customer())
+        WalletTransaction.objects.create(
+            wallet=wallet, transaction_type="TOP_UP",
+            amount_micros=1_000_000, balance_after_micros=1_000_000)
+        self._assert_locked()
+
+    def test_409_after_provisioned_plan_price(self):
+        from apps.subscriptions.models import TenantBillingPlan
+        TenantBillingPlan.objects.create(
+            tenant=self.tenant, key="pro", name="Pro",
+            access_fee_micros=10_000_000,
+            stripe_access_price_id="price_123")
+        self._assert_locked()
+
+    def test_409_after_pushed_usage_invoice(self):
+        from datetime import date
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        CustomerUsageInvoice.objects.create(
+            tenant=self.tenant, customer=self._make_customer(),
+            period_start=date(2026, 5, 1), period_end=date(2026, 6, 1),
+            status="pushed", stripe_invoice_id="in_123")
+        self._assert_locked()
+
+    def test_409_after_stripe_subscription(self):
+        from django.utils import timezone
+        from apps.subscriptions.models import StripeSubscription
+        now = timezone.now()
+        StripeSubscription.objects.create(
+            tenant=self.tenant, customer=self._make_customer(),
+            stripe_subscription_id="sub_123", stripe_product_name="Pro",
+            status="active", amount_micros=10_000_000, interval="month",
+            current_period_start=now, current_period_end=now,
+            last_synced_at=now)
+        self._assert_locked()
+
+    def test_unprovisioned_plan_does_not_lock(self):
+        """A plan with NO provisioned Stripe prices is not money yet."""
+        from apps.subscriptions.models import TenantBillingPlan
+        TenantBillingPlan.objects.create(
+            tenant=self.tenant, key="draft", name="Draft",
+            access_fee_micros=10_000_000)
+        resp = self._patch({"default_currency": "eur"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_pending_unpushed_invoice_does_not_lock(self):
+        """A fresh pending usage invoice (no Stripe pointer) is re-aggregable."""
+        from datetime import date
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        CustomerUsageInvoice.objects.create(
+            tenant=self.tenant, customer=self._make_customer(),
+            period_start=date(2026, 5, 1), period_end=date(2026, 6, 1),
+            status="pending")
+        resp = self._patch({"default_currency": "eur"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_same_currency_patch_is_noop_even_with_money(self):
+        """Re-asserting the CURRENT currency is not a change — no 409."""
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        wallet = Wallet.objects.create(customer=self._make_customer())
+        WalletTransaction.objects.create(
+            wallet=wallet, transaction_type="TOP_UP",
+            amount_micros=1_000_000, balance_after_micros=1_000_000)
+        resp = self._patch({"default_currency": "USD"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_currency, "usd")

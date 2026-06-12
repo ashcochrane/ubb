@@ -24,7 +24,9 @@ class Wallet(SoftDeleteMixin, BaseModel):
         "customers.Customer", on_delete=models.CASCADE, related_name="wallet"
     )
     balance_micros = models.BigIntegerField(default=0)
-    currency = models.CharField(max_length=3, default="USD")
+    # CUR-1: lowercase everywhere; lock_for_billing sets the tenant currency
+    # on lazy creation, this default only covers direct test/ORM creation.
+    currency = models.CharField(max_length=3, default="usd")
 
     class Meta:
         db_table = "ubb_wallet"
@@ -123,7 +125,7 @@ class CreditGrant(BaseModel):
     remaining_micros = models.BigIntegerField()
     expired_micros = models.BigIntegerField(default=0)
     voided_micros = models.BigIntegerField(default=0)
-    currency = models.CharField(max_length=3, default="USD")
+    currency = models.CharField(max_length=3, default="usd")  # CUR-1: lowercase
     expires_at = models.DateTimeField(null=True, blank=True)
     warning_sent_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=GRANT_STATUSES, default="active")

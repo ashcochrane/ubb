@@ -530,6 +530,25 @@ def _gate_card_type(request, card_type):
         _billing_check(request)
 
 
+def _resolve_card_currency(tenant, raw_currency):
+    """CUR-1 rate-card currency pin: cards live in the tenant's currency.
+
+    Omitted/empty currency defaults to the tenant's default_currency; an
+    explicit value must match it case-insensitively. Returns the normalized
+    lowercase currency, or raises ValueError (mapped to 422 by callers).
+    """
+    tenant_currency = (tenant.default_currency or "usd").lower()
+    if not raw_currency:
+        return tenant_currency
+    card_currency = str(raw_currency).strip().lower()
+    if card_currency != tenant_currency:
+        raise ValueError(
+            f"rate-card currency {card_currency!r} does not match tenant "
+            f"currency {tenant_currency!r} (per-tenant single currency; "
+            "multi-currency/FX is not supported)")
+    return card_currency
+
+
 @metering_api.get("/pricing/rate-cards", response=list[RateCardOut])
 def list_rate_cards(request, card_type: str = None, include_history: bool = False,
                     as_of: datetime = None):
@@ -559,6 +578,10 @@ def create_rate_card(request, payload: RateCardIn):
         validate_tiers(payload.card_type, payload.pricing_model, payload.tiers)
     except ValueError as e:
         return 422, {"error": str(e)}
+    try:
+        currency = _resolve_card_currency(request.auth.tenant, payload.currency)
+    except ValueError as e:
+        return 422, {"error": str(e)}
     customer = None
     if payload.customer_id:
         customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -575,7 +598,7 @@ def create_rate_card(request, payload: RateCardIn):
         unit_quantity=payload.unit_quantity,
         fixed_micros=payload.fixed_micros,
         tiers=payload.tiers,
-        currency=payload.currency,
+        currency=currency,
         product_id=payload.product_id,
     )
     return 200, _rate_card_to_out(card)
@@ -589,6 +612,7 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
     valid_types = {c[0] for c in CARD_TYPE_CHOICES}
     valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
     # Pre-validate EVERY card before creating any (all-or-nothing)
+    currencies = []
     for i, c in enumerate(cards):
         if c.card_type not in valid_types:
             return 422, {"error": f"cards[{i}].card_type invalid"}
@@ -598,12 +622,16 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
             validate_tiers(c.card_type, c.pricing_model, c.tiers)
         except ValueError as e:
             return 422, {"error": f"cards[{i}]: {e}"}
+        try:
+            currencies.append(_resolve_card_currency(request.auth.tenant, c.currency))
+        except ValueError as e:
+            return 422, {"error": f"cards[{i}]: {e}"}
         # Replicate product-gating from single-create: price cards need billing product
         if c.card_type == "price":
             _billing_check(request)
     created = []
     with transaction.atomic():
-        for c in cards:
+        for c, currency in zip(cards, currencies):
             customer = None
             if c.customer_id:
                 customer = get_object_or_404(Customer, id=c.customer_id, tenant=request.auth.tenant)
@@ -620,7 +648,7 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
                 unit_quantity=c.unit_quantity,
                 fixed_micros=c.fixed_micros,
                 tiers=c.tiers,
-                currency=c.currency,
+                currency=currency,
                 product_id=c.product_id,
             )
             created.append(str(obj.id))
@@ -680,6 +708,15 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
         try:
             validate_tiers(new_values["card_type"], new_values["pricing_model"],
                            new_values["tiers"])
+        except ValueError as e:
+            return 422, {"error": str(e)}
+
+        # CUR-1: the new version must stay in the tenant's currency — whether
+        # the currency came from the request or was copied from the old card
+        # (a pre-currency-change card cannot be silently carried forward).
+        try:
+            new_values["currency"] = _resolve_card_currency(
+                request.auth.tenant, new_values["currency"])
         except ValueError as e:
             return 422, {"error": str(e)}
 

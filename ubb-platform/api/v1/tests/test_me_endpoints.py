@@ -35,7 +35,7 @@ class WidgetBalanceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["balance_micros"], 50_000_000)
-        self.assertEqual(body["currency"], "USD")
+        self.assertEqual(body["currency"], "usd")  # CUR-1: lowercase everywhere
 
     def test_no_token_returns_401(self):
         response = self.http_client.get("/api/v1/me/balance")

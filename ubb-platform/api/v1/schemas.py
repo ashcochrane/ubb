@@ -328,7 +328,9 @@ class RateCardIn(Schema):
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
     tiers: list = Field(default_factory=list)
-    currency: str = Field(default="usd", max_length=3)
+    # CUR-1: omitted/None defaults to the tenant's default_currency; an
+    # explicit value must MATCH the tenant currency (422 otherwise).
+    currency: Optional[str] = Field(default=None, max_length=3)
     product_id: str = Field(default="", max_length=100)
     customer_id: Optional[UUID] = None
 
@@ -389,6 +391,9 @@ class TenantConfigIn(Schema):
     products: Optional[list[str]] = None
     require_cost_card_coverage: Optional[bool] = None
     automatic_tax_enabled: Optional[bool] = None
+    # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
+    # (2-decimal only); 409 once any money exists for the tenant.
+    default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
 
 
 class PlanIn(Schema):
