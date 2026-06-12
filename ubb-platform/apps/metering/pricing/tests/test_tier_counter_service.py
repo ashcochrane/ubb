@@ -32,6 +32,15 @@ class TestMonthBounds:
         as_of = datetime(2026, 12, 31, 23, 59, tzinfo=dt_timezone.utc)
         assert month_bounds(as_of) == (date(2026, 12, 1), date(2027, 1, 1))
 
+    def test_plus14_offset_that_is_prior_month_in_utc(self):
+        """A datetime that is 2026-06-01 00:30 +14:00 is 2026-05-31 10:30 UTC.
+        month_bounds must return the UTC May bounds, not June."""
+        import datetime as _dt
+        tz_plus14 = _dt.timezone(_dt.timedelta(hours=14))
+        as_of = _dt.datetime(2026, 6, 1, 0, 30, tzinfo=tz_plus14)
+        # UTC equivalent: 2026-05-31 10:30 UTC → May bounds
+        assert month_bounds(as_of) == (date(2026, 5, 1), date(2026, 6, 1))
+
 
 @pytest.mark.django_db
 class TestLockAndAdvance:

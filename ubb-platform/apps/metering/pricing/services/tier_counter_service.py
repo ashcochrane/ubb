@@ -6,13 +6,22 @@ record_usage calls rate their marginals against a consistent prior. Callers
 MUST hold an open transaction — the lock (and the advance) must live exactly
 as long as the caller's UsageEvent insert, committing or rolling back with it.
 """
+import datetime as dt
+
 from django.db import IntegrityError, connection, transaction
 
 from apps.metering.pricing.models import PricingPeriodCounter
 
 
 def month_bounds(as_of):
-    """Calendar-month UTC bounds (DateField pair, half-open) containing as_of."""
+    """Calendar-month UTC bounds (DateField pair, half-open) containing as_of.
+
+    Always normalizes to UTC before extracting the date, so callers passing a
+    timezone-aware datetime with a non-UTC offset get the correct UTC month.
+    """
+    # Normalize aware datetimes to UTC; naive datetimes are treated as UTC.
+    if hasattr(as_of, "tzinfo") and as_of.tzinfo is not None:
+        as_of = as_of.astimezone(dt.timezone.utc)
     day = as_of.date()
     start = day.replace(day=1)
     if day.month == 12:
@@ -31,6 +40,9 @@ class TierCounterService:
         open transaction so the row lock + advance roll back if the caller's
         event insert fails (e.g. a raced idempotency duplicate).
         """
+        if units is not None and units < 0:
+            raise ValueError(
+                f"lock_and_advance: units must be >= 0, got {units}")
         if not connection.in_atomic_block:
             raise AssertionError(
                 "lock_and_advance must be called inside transaction.atomic()")

@@ -30,6 +30,17 @@ class RecordUsageRequest(Schema):
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     usage_metrics: Optional[dict[str, int]] = None
     units: Optional[int] = Field(default=None, ge=0)
+
+    @field_validator("usage_metrics")
+    @classmethod
+    def usage_metrics_values_nonnegative(cls, v):
+        if v is None:
+            return v
+        negative = [k for k, val in v.items() if val < 0]
+        if negative:
+            raise ValueError(
+                f"usage_metrics values must be >= 0; negative metrics: {negative}")
+        return v
     currency: Optional[str] = Field(default=None, max_length=3)
     tags: Optional[dict[str, str]] = None
     run_id: Optional[UUID] = None

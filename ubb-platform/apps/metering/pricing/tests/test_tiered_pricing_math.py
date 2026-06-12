@@ -8,6 +8,7 @@ import random
 import pytest
 
 from apps.metering.pricing.models import RateCard, validate_tiers
+from apps.metering.pricing.services.pricing_service import _event_bands
 
 
 def _graduated_card(tiers):
@@ -63,7 +64,13 @@ class TestTelescopingProperty:
                 marginal = card.compute_marginal(prior, part)
                 assert marginal >= 0
                 marginal_sum += marginal
-                prior += part
+                after = prior + part
+                # Per-step band invariant: sum of band micros == the marginal
+                band_sum = sum(b["micros"] for b in _event_bands(card, prior, after))
+                assert band_sum == marginal, (
+                    f"band_sum {band_sum} != marginal {marginal} "
+                    f"for prior={prior} part={part}")
+                prior = after
             assert prior == total
             assert marginal_sum == card.compute_cumulative(total)
 

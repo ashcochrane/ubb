@@ -74,6 +74,11 @@ def verify_tier_rerate(period_start_iso=None):
                         "units_total_after": breakdown.get("units_total_after"),
                     })
 
+        # Sort by prior_units (clock-skew-immune) so chain-continuity check is
+        # independent of wall-clock ordering.  Two events with equal prior_units
+        # indicate a real ladder collision and will trigger the chain-break alert.
+        entries.sort(key=lambda e: (e["prior_units"] is None, e["prior_units"]))
+
         problems = []
         total_units = sum(e["units"] for e in entries)
         if total_units != counter.units_total:  # (a)
