@@ -53,15 +53,20 @@ def get_customer_balance(customer_id):
 
 def is_usage_period_closed(owner_id, period_start) -> bool:
     """True when the billing owner's postpaid usage invoice for the calendar
-    month starting at ``period_start`` (date) has touched Stripe.
+    month starting at ``period_start`` (date) is FROZEN — i.e. matches the
+    same predicate that destroys billability at push time.
 
-    "Touched Stripe" = status in (pushing, pushed, skipped, failed_permanent)
-    OR push_phase != "" OR stripe_invoice_id != "". Under the F0.1 resume
-    semantics such a row has items pinned at the frozen line_snapshot — a
-    backfill into the period would diverge recorded usage totals from the
-    finalized/claimed invoice. A never-touched ``pending`` row (push_phase
-    empty, no Stripe pointer) re-aggregates safely and does NOT close the
-    period. No row at all = open.
+    Frozen = status in (pushing, pushed, skipped, failed_permanent)
+    OR push_phase != "" OR stripe_invoice_id != "" OR line_snapshot != [].
+    The line_snapshot check is the load-bearing one: under the F0.1 resume
+    semantics the lines are frozen at FIRST CLAIM (Phase 1), so a
+    ``status="failed"`` row whose Phase 2 died before Invoice.create — and a
+    reclaimed ``pending`` row — both carry a frozen snapshot while reading as
+    "untouched" on status/phase/pointer alone. Accepting a backfill into such
+    a period would commit an event the frozen lines permanently exclude:
+    recorded but never billed. A genuinely-fresh ``pending`` row (empty
+    snapshot, no phase, no pointer) re-aggregates safely and does NOT close
+    the period. No row at all = open.
     """
     from django.db.models import Q
     from apps.billing.invoicing.models import CustomerUsageInvoice
@@ -70,5 +75,5 @@ def is_usage_period_closed(owner_id, period_start) -> bool:
         customer_id=owner_id, period_start=period_start,
     ).filter(
         Q(status__in=("pushing", "pushed", "skipped", "failed_permanent"))
-        | ~Q(push_phase="") | ~Q(stripe_invoice_id="")
+        | ~Q(push_phase="") | ~Q(stripe_invoice_id="") | ~Q(line_snapshot=[])
     ).exists()

@@ -187,6 +187,32 @@ class TestBatchHardStopEquivalence:
         assert run.total_cost_micros == 600  # only item 1 accumulated
         assert resp["succeeded"] == 1 and resp["failed"] == 2
 
+    def test_kill_run_failure_does_not_500_batch(self):
+        """F4.2 review Fix 5: a kill_run crash is contained — the item still
+        reports hard_stop_exceeded and LATER items are processed. NOTE: the
+        failed kill leaves the run ACTIVE, so the later item SUCCEEDS instead
+        of run_not_active — the run.kill_failed log is the operator signal."""
+        from unittest import mock
+        t, c, http, auth = _setup()
+        run = self._run(t, c)
+        with mock.patch("apps.platform.runs.services.RunService.kill_run",
+                        side_effect=RuntimeError("kill boom")) as kill:
+            resp = _post(http, auth, BATCH_URL, {"events": self._items(c, run)})
+        assert resp.status_code == 200  # never a 500
+        body = resp.json()
+        r1, r2, r3 = body["results"]
+        assert r1["ok"] is True
+        assert r2 == {"ok": False, "error": "hard_stop_exceeded",
+                      "reason": "cost_limit_exceeded", "run_id": str(run.id),
+                      "total_cost_micros": 1_200, "hard_stop": True}
+        kill.assert_called_once()
+        # The run was never killed -> item 3 (100 micros, 600+100 <= 1000)
+        # is PROCESSED and succeeds.
+        assert r3["ok"] is True
+        run.refresh_from_db()
+        assert run.status == "active"
+        assert body["succeeded"] == 2 and body["failed"] == 1
+
     def test_byte_equivalent_to_sequential_singles(self):
         """The batch per-item bodies equal the single endpoint's bodies for the
         identical scenario (modulo the 'ok' marker and the run/customer ids)."""

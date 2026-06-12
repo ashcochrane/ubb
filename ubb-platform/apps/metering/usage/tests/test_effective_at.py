@@ -219,27 +219,48 @@ class TestHistoricalPricing:
 
 @pytest.mark.django_db
 class TestClosedPeriodGuard:
-    @pytest.mark.parametrize("status,push_phase,stripe_invoice_id", [
-        ("pushed", "", ""),
-        ("pushing", "", ""),
-        ("skipped", "", ""),
-        ("failed_permanent", "", ""),
-        ("pending", "invoice_created", ""),   # pointer phase, status not yet flipped
-        ("pending", "", "in_123"),            # Stripe pointer persisted
+    @pytest.mark.parametrize("status,push_phase,stripe_invoice_id,line_snapshot", [
+        ("pushed", "", "", []),
+        ("pushing", "", "", []),
+        ("skipped", "", "", []),
+        ("failed_permanent", "", "", []),
+        ("pending", "invoice_created", "", []),  # pointer phase, status not yet flipped
+        ("pending", "", "in_123", []),           # Stripe pointer persisted
+        # Snapshot-frozen rows whose status/phase/pointer all read "untouched"
+        # — the F4.2-review hole. Lines freeze at FIRST CLAIM (Phase 1), so:
+        # a Phase-2 failure BEFORE Invoice.create leaves status="failed",
+        # push_phase="", stripe_invoice_id="" with the lines already frozen;
+        ("failed", "", "", [["", 5_000_000]]),
+        # and a reclaimed pending row (mid-claim window) reads the same way.
+        ("pending", "", "", [["", 5_000_000]]),
     ])
     def test_touched_owner_period_rejects_backfill(self, status, push_phase,
-                                                   stripe_invoice_id):
+                                                   stripe_invoice_id, line_snapshot):
         t, c = _setup(billing_mode="postpaid")
         eff = _prior_month_eff()
         period_start, period_end = month_bounds(eff)
         CustomerUsageInvoice.objects.create(
             tenant=t, customer=c, period_start=period_start, period_end=period_end,
-            status=status, push_phase=push_phase, stripe_invoice_id=stripe_invoice_id)
+            status=status, push_phase=push_phase, stripe_invoice_id=stripe_invoice_id,
+            line_snapshot=line_snapshot)
         with pytest.raises(EffectiveAtError) as exc:
             UsageService.record_usage(t, c, "r1", "k1",
                                       provider_cost_micros=10, effective_at=eff)
         assert exc.value.code == "billing_period_closed"
         assert UsageEvent.objects.count() == 0
+
+    def test_genuinely_fresh_pending_empty_snapshot_accepts(self):
+        """A pending row with NO frozen snapshot (and no phase/pointer) is the
+        only invoice state that leaves the period open."""
+        t, c = _setup(billing_mode="postpaid")
+        eff = _prior_month_eff()
+        period_start, period_end = month_bounds(eff)
+        CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c, period_start=period_start, period_end=period_end,
+            status="pending")  # line_snapshot defaults to []
+        r = UsageService.record_usage(t, c, "r1", "k1",
+                                      provider_cost_micros=10, effective_at=eff)
+        assert UsageEvent.objects.filter(id=r["event_id"]).exists()
 
     def test_untouched_pending_row_accepts_and_push_reaggregates(self):
         """A pending row that never touched Stripe does NOT close the period,

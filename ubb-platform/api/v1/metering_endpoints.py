@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import date, datetime
 from uuid import UUID
@@ -30,6 +31,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
+
+logger = logging.getLogger(__name__)
 
 metering_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_metering_v1")
 
@@ -150,9 +153,17 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
         # Same side effect as the single endpoint: kill the run, then the
         # batch CONTINUES — later items on this run get run_not_active,
         # identical to firing the same items as sequential singles.
-        with transaction.atomic():
-            RunService.kill_run(item.run_id, reason=e.reason,
-                                tenant_id=tenant.id, customer_id=customer.id)
+        try:
+            with transaction.atomic():
+                RunService.kill_run(item.run_id, reason=e.reason,
+                                    tenant_id=tenant.id, customer_id=customer.id)
+        except Exception:
+            # A kill failure must never 500 the whole batch. NOTE: the run is
+            # left ACTIVE, so later items on it may SUCCEED instead of getting
+            # run_not_active — the loud log is the operator signal.
+            logger.exception("run.kill_failed", extra={"data": {
+                "run_id": str(item.run_id), "tenant_id": str(tenant.id),
+                "customer_id": str(customer.id), "reason": e.reason}})
         return {"ok": False, "error": "hard_stop_exceeded", "reason": e.reason,
                 "run_id": e.run_id, "total_cost_micros": e.total_cost_micros,
                 "hard_stop": True}

@@ -214,6 +214,10 @@ class PlannerIndexProofTest(TestCase):
                 "UPDATE ubb_usage_event SET effective_at = "
                 "timestamptz '2026-01-01 00:00:00+00' "
                 "+ make_interval(days => (random() * 180)::int)")
+            # F4.2: give created_at the same scatter so the arrival-basis
+            # (tenant, created_at) range proof below sees a realistic
+            # distribution too (bulk_create stamped every row "now").
+            cur.execute("UPDATE ubb_usage_event SET created_at = effective_at")
             cur.execute("ANALYZE ubb_usage_event")
             # LOCAL: scoped to the test transaction, reverted on rollback.
             # Bitmap scans are also disabled so the choice between the
@@ -223,15 +227,15 @@ class PlannerIndexProofTest(TestCase):
             cur.execute("SET LOCAL enable_seqscan = off")
             cur.execute("SET LOCAL enable_bitmapscan = off")
 
-    def _assert_range_served_by(self, qs, index_name):
+    def _assert_range_served_by(self, qs, index_name, field="effective_at"):
         # Production sites are aggregates (ordering cleared) — mirror that.
         plan = qs.order_by().explain()
         self.assertIn(index_name, plan)
-        # The actual sargability property: the effective_at bounds must be an
+        # The actual sargability property: the range bounds must be an
         # Index Cond, not a post-scan Filter (a casted predicate could only
         # ever be a Filter, even with the index name in the plan).
         index_conds = [line for line in plan.splitlines() if "Index Cond:" in line]
-        self.assertTrue(any("effective_at" in line for line in index_conds), plan)
+        self.assertTrue(any(field in line for line in index_conds), plan)
 
     # A few-day window (typical analytics drill-down) keeps the range
     # estimate selective enough that the composite path costs a decisive
@@ -251,6 +255,18 @@ class PlannerIndexProofTest(TestCase):
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
         self._assert_range_served_by(qs, "idx_usage_customer_effective")
+
+    def test_billable_created_window_served_by_tenant_created_index(self):
+        """F4.2: the created-basis iter_billable_usage_events query shape
+        (drawdown repair scans by ARRIVAL time) must be served by the
+        (tenant, created_at) composite — the index added alongside the
+        caller-timestamp work — with the created_at bounds as an Index Cond."""
+        qs = UsageEvent.objects.filter(
+            tenant_id=self.tenant.id, billed_cost_micros__gt=0,
+            created_at__gte=utc_day_start(date(2026, 6, 1)),
+            created_at__lt=utc_day_start(date(2026, 6, 4)))
+        self._assert_range_served_by(qs, "idx_usage_tenant_created",
+                                     field="created_at")
 
 
 # ---------------------------------------------------------------------------

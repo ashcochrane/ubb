@@ -374,21 +374,29 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     return list(merged.items())
 
 
-def list_backfill_dirty_periods() -> list[dict]:
-    """All pending backfill markers (plain dicts, oldest first).
+def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
+    """Pending backfill markers (plain dicts, oldest first).
 
     Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written by
     record_usage when an event backfills into a PRIOR calendar month; consumed
     by subscriptions' resnapshot_dirty_periods, which acks each marker via
     clear_backfill_dirty_period() AFTER its snapshot work succeeds.
+
+    created_before: only markers created strictly before this aware datetime.
+    The consumer passes now − its settle horizon so a marker is never acked
+    while the backfill's accumulator write (outbox-dispatched, hours of retry
+    backoff) may still be in flight — acking against a stale accumulator would
+    freeze the prior-month snapshot wrong forever.
     """
     from apps.metering.usage.models import BackfillDirtyPeriod
 
+    qs = BackfillDirtyPeriod.objects.order_by("created_at")
+    if created_before is not None:
+        qs = qs.filter(created_at__lt=created_before)
     return [
         {"id": r["id"], "tenant_id": r["tenant_id"],
          "customer_id": r["customer_id"], "period_start": r["period_start"]}
-        for r in BackfillDirtyPeriod.objects.order_by("created_at").values(
-            "id", "tenant_id", "customer_id", "period_start")
+        for r in qs.values("id", "tenant_id", "customer_id", "period_start")
     ]
 
 

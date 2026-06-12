@@ -138,6 +138,22 @@ class PostpaidUsageService:
             if rec.line_snapshot:
                 lines = [(label, amount) for label, amount in rec.line_snapshot]
                 total = sum(amount for _, amount in lines)
+                # F4.2 tripwire: the snapshot was frozen in a PRIOR claim
+                # (this branch only runs when it existed before this claim),
+                # so any event that slipped into the period since — the
+                # ms-wide guard-read→commit race, or a closed-period-predicate
+                # hole — is permanently excluded from these lines. Recompute
+                # the live aggregate and page on mismatch. Alert-only, never
+                # mutate (the verify_tier_rerate precedent): the frozen lines
+                # are what bills; the log is the operator's signal.
+                live_total, _ = PostpaidUsageService.aggregate_lines(
+                    tenant, customer, period_start, period_end)
+                if live_total != total:
+                    logger.error("postpaid.snapshot_divergence", extra={"data": {
+                        "usage_invoice_id": str(rec.id),
+                        "customer_id": str(customer.id),
+                        "period_start": period_start.isoformat(),
+                        "frozen_total": total, "live_total": live_total}})
             else:
                 total, lines = PostpaidUsageService.aggregate_lines(
                     tenant, customer, period_start, period_end)

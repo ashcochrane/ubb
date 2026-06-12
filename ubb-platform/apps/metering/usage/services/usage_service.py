@@ -37,11 +37,15 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
     - effective_at_too_old    — older than tenant.backfill_window_days
                                 (0 = no backfill: any past timestamp rejected);
     - billing_period_closed   — the billing OWNER's postpaid usage invoice for
-                                the EFFECTIVE month has touched Stripe (status
+                                the EFFECTIVE month is FROZEN (status
                                 pushing/pushed/skipped/failed_permanent, a
-                                non-empty push_phase, or a stripe_invoice_id
-                                pointer). A truly-untouched ``pending`` row is
-                                safely re-aggregable and does NOT block.
+                                non-empty push_phase, a stripe_invoice_id
+                                pointer, OR a frozen line_snapshot — the
+                                snapshot check is load-bearing: lines freeze
+                                at first claim, before any Stripe call). A
+                                genuinely-fresh ``pending`` row (empty
+                                snapshot) is safely re-aggregable and does
+                                NOT block.
     """
     if effective_at.tzinfo is None or effective_at.utcoffset() is None:
         raise EffectiveAtError(

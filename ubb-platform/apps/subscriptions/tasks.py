@@ -102,16 +102,30 @@ def reconcile_cost_accumulators():
     logger.info("cost_accumulator_reconcile", extra={"data": {"drift_count": drift}})
 
 
+# Markers younger than this are NOT consumed. The snapshot reads the cost
+# accumulator, which the OUTBOX populates — a dispatch can legitimately land
+# up to ~2h43m after the backfill committed (retry backoff 30s, 2m, 10m, 30m,
+# 2h before dead-letter). Acking a younger marker could freeze the prior-month
+# snapshot against an accumulator that has not seen the backfill yet — wrong
+# forever. 3h covers the dead-letter horizon plus one full :50 accumulator
+# reconcile pass (which repairs even a dead-lettered dispatch from the ledger).
+RESNAPSHOT_MARKER_MIN_AGE = datetime.timedelta(hours=3)
+
+
 @shared_task(queue="ubb_economics")
 def resnapshot_dirty_periods():
     """Refresh margin snapshots for periods dirtied by backfilled usage.
 
-    Consumes BackfillDirtyPeriod markers via the metering read contract.
+    Consumes BackfillDirtyPeriod markers via the metering read contract —
+    only markers older than RESNAPSHOT_MARKER_MIN_AGE, so the accumulator the
+    snapshot reads has provably settled (outbox horizon + one reconcile pass).
     For a marker on a PRIOR month: re-run snapshot_customer (update_or_create,
     idempotent) + evaluate_and_emit (transition-guarded + OutboxEvent-deduped,
     idempotent), then ack the marker — a crash before the ack leaves the
-    marker for the next hourly run. A CURRENT-month marker is just acked: the
-    nightly calculate_all_economics_task owns the current month's snapshot.
+    marker for the next hourly run. A NON-prior (current/future-month) marker
+    is skipped WITHOUT ack: markers are only ever written for prior months,
+    so one is reachable here only via clock skew, and acking it would discard
+    work — it is consumed once the month genuinely rolls past it.
 
     Beat: hourly at :55, AFTER reconcile_cost_accumulators (:50) so the
     accumulator this snapshot reads has already been repaired to the ledger.
@@ -123,18 +137,21 @@ def resnapshot_dirty_periods():
 
     cur_start, _ = _period_bounds_for(timezone.now().date())
     resnapshots = 0
-    for marker in list_backfill_dirty_periods():
+    cutoff = timezone.now() - RESNAPSHOT_MARKER_MIN_AGE
+    for marker in list_backfill_dirty_periods(created_before=cutoff):
         period_start = marker["period_start"]
         try:
-            if period_start < cur_start:
-                _, period_end = _period_bounds_for(period_start)
-                econ = MarginService.snapshot_customer(
-                    marker["tenant_id"], marker["customer_id"],
-                    period_start, period_end)
-                MarginService.evaluate_and_emit(econ)
-                resnapshots += 1
-            # Ack AFTER the snapshot work succeeded (or for a current-month
-            # marker, immediately — nothing to do here).
+            if period_start >= cur_start:
+                # Clock-skew guard: leave the marker in place (no ack).
+                continue
+            _, period_end = _period_bounds_for(period_start)
+            econ = MarginService.snapshot_customer(
+                marker["tenant_id"], marker["customer_id"],
+                period_start, period_end)
+            MarginService.evaluate_and_emit(econ)
+            resnapshots += 1
+            # Ack AFTER the snapshot work succeeded — a crash before this
+            # leaves the marker for the next hourly run.
             clear_backfill_dirty_period(marker["id"])
         except Exception:
             # Keep the marker: retried next hour. Other markers still run.

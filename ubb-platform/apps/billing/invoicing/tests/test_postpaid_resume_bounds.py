@@ -11,6 +11,7 @@ I5: owner-first keying (pooled seat -> business).
 import contextlib
 import datetime
 import importlib
+import logging
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
@@ -343,6 +344,67 @@ class TestFrozenLineSnapshot:
         assert list(rec.line_items.order_by("-amount_micros")
                     .values_list("dimension", "amount_micros")) \
             == [("prod_a", 600_000), ("prod_b", 400_000)]
+
+
+@pytest.mark.django_db
+class TestSnapshotDivergenceTripwire:
+    """F4.2 review Fix 1b: every claim of an ALREADY-frozen snapshot (frozen in
+    a PRIOR invocation) recomputes the live aggregate; a mismatch — an event
+    that slipped past the closed-period guard after the freeze — fires
+    postpaid.snapshot_divergence. Alert-only: the frozen lines still bill."""
+
+    def _event(self, t, c, n, micros):
+        from apps.metering.usage.models import UsageEvent
+        ev = UsageEvent.objects.create(
+            tenant=t, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+            provider_cost_micros=1, billed_cost_micros=micros)
+        UsageEvent.objects.filter(id=ev.id).update(
+            effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
+
+    def test_post_freeze_event_fires_divergence_and_keeps_frozen_lines(self, caplog):
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        self._event(t, c, 1, 1_000_000)
+        # Attempt 1 freezes the snapshot in Phase 1, then Phase 2 dies BEFORE
+        # Invoice.create — the exact "reads as untouched" failure mode that
+        # Fix 1's snapshot predicate now closes at the guard.
+        with _stripe() as m:
+            m.create.side_effect = RuntimeError("boom")
+            with pytest.raises(RuntimeError):
+                PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "failed"
+        assert rec.push_phase == "" and rec.stripe_invoice_id == ""
+        assert rec.line_snapshot == [["", 1_000_000]]
+        # Guard bypass: insert straight through the ORM into the frozen period
+        # (what a guard-read→commit race or a predicate hole would produce).
+        self._event(t, c, 2, 500_000)
+        # Retry: the divergence is logged; the FROZEN total still bills.
+        with _stripe(), caplog.at_level(logging.ERROR, logger="ubb.billing"):
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        div = [r for r in caplog.records
+               if r.getMessage() == "postpaid.snapshot_divergence"]
+        assert len(div) == 1
+        assert div[0].data["frozen_total"] == 1_000_000
+        assert div[0].data["live_total"] == 1_500_000
+        assert div[0].data["usage_invoice_id"] == str(rec.id)
+        rec.refresh_from_db()
+        assert rec.status == "pushed"
+        assert rec.total_billed_micros == 1_000_000  # frozen, NOT 1_500_000
+        assert rec.line_snapshot == [["", 1_000_000]]
+
+    def test_first_claim_freeze_does_not_fire_tripwire(self, caplog):
+        """The freeze claim itself (snapshot set in THIS invocation) must not
+        re-aggregate or log — the tripwire is gated to prior-claim snapshots."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        self._event(t, c, 1, 1_000_000)
+        with _stripe(), caplog.at_level(logging.ERROR, logger="ubb.billing"):
+            PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        assert not [r for r in caplog.records
+                    if r.getMessage() == "postpaid.snapshot_divergence"]
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "pushed"
 
 
 @pytest.mark.django_db

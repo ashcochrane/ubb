@@ -1,5 +1,7 @@
-"""F4.2 resnapshot_dirty_periods: prior-month markers refresh the margin
-snapshot then ack; crash keeps the marker; current-month markers just ack."""
+"""F4.2 resnapshot_dirty_periods: prior-month markers older than the settle
+floor refresh the margin snapshot then ack; crash keeps the marker; a fresh
+marker (accumulator may not have settled — outbox horizon) is not consumed;
+a non-prior (clock-skew) marker is skipped WITHOUT ack."""
 import datetime
 from unittest import mock
 
@@ -12,7 +14,9 @@ from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.models import (
     CustomerCostAccumulator, CustomerEconomics,
 )
-from apps.subscriptions.tasks import resnapshot_dirty_periods
+from apps.subscriptions.tasks import (
+    RESNAPSHOT_MARKER_MIN_AGE, resnapshot_dirty_periods,
+)
 
 
 def _setup():
@@ -23,6 +27,18 @@ def _setup():
     return t, c, cur_start, prior_start
 
 
+def _aged_marker(t, c, period_start, age=None):
+    """Markers younger than RESNAPSHOT_MARKER_MIN_AGE are deliberately NOT
+    consumed (the accumulator is outbox-populated; ~2h43m retry horizon).
+    created_at is auto_now_add — the queryset update bypasses it."""
+    marker = BackfillDirtyPeriod.objects.create(
+        tenant=t, customer=c, period_start=period_start)
+    age = age if age is not None else RESNAPSHOT_MARKER_MIN_AGE + datetime.timedelta(hours=1)
+    BackfillDirtyPeriod.objects.filter(id=marker.id).update(
+        created_at=timezone.now() - age)
+    return marker
+
+
 @pytest.mark.django_db
 class TestResnapshotDirtyPeriods:
     def test_prior_month_marker_resnapshots_then_acks(self):
@@ -31,8 +47,7 @@ class TestResnapshotDirtyPeriods:
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=300, total_billed_cost_micros=900,
             event_count=2)
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c,
-                                           period_start=prior_start)
+        _aged_marker(t, c, prior_start)
 
         resnapshot_dirty_periods()
 
@@ -54,8 +69,7 @@ class TestResnapshotDirtyPeriods:
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=500, total_billed_cost_micros=700,
             event_count=1)
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c,
-                                           period_start=prior_start)
+        _aged_marker(t, c, prior_start)
 
         resnapshot_dirty_periods()
 
@@ -66,8 +80,7 @@ class TestResnapshotDirtyPeriods:
 
     def test_crash_keeps_marker_for_retry(self):
         t, c, cur_start, prior_start = _setup()
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c,
-                                           period_start=prior_start)
+        _aged_marker(t, c, prior_start)
         with mock.patch(
                 "apps.subscriptions.economics.services.MarginService.snapshot_customer",
                 side_effect=RuntimeError("boom")):
@@ -78,24 +91,39 @@ class TestResnapshotDirtyPeriods:
         resnapshot_dirty_periods()
         assert BackfillDirtyPeriod.objects.count() == 0
 
-    def test_current_month_marker_acked_without_snapshot(self):
+    def test_fresh_marker_not_consumed(self):
+        """A marker younger than RESNAPSHOT_MARKER_MIN_AGE is NOT consumed: the
+        accumulator the snapshot would read is outbox-populated, and a dispatch
+        can still be in flight for ~2h43m — acking now could freeze a stale
+        prior-month snapshot forever."""
         t, c, cur_start, prior_start = _setup()
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c,
-                                           period_start=cur_start)
+        BackfillDirtyPeriod.objects.create(
+            tenant=t, customer=c, period_start=prior_start)  # created NOW
         with mock.patch(
                 "apps.subscriptions.economics.services.MarginService.snapshot_customer"
         ) as snap:
             resnapshot_dirty_periods()
-        snap.assert_not_called()  # the nightly snapshot owns the current month
-        assert BackfillDirtyPeriod.objects.count() == 0
+        snap.assert_not_called()
+        assert BackfillDirtyPeriod.objects.count() == 1  # left for a later run
+
+    def test_current_month_marker_skipped_without_ack(self):
+        """Markers are only ever written for PRIOR months, so a current-month
+        marker is reachable only via clock skew — acking it would discard work.
+        It must be left IN PLACE (consumed once the month genuinely rolls)."""
+        t, c, cur_start, prior_start = _setup()
+        _aged_marker(t, c, cur_start)
+        with mock.patch(
+                "apps.subscriptions.economics.services.MarginService.snapshot_customer"
+        ) as snap:
+            resnapshot_dirty_periods()
+        snap.assert_not_called()
+        assert BackfillDirtyPeriod.objects.count() == 1  # NOT acked
 
     def test_one_failing_marker_does_not_block_others(self):
         t, c, cur_start, prior_start = _setup()
         c2 = Customer.objects.create(tenant=t, external_id="c2")
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c,
-                                           period_start=prior_start)
-        BackfillDirtyPeriod.objects.create(tenant=t, customer=c2,
-                                           period_start=prior_start)
+        _aged_marker(t, c, prior_start)
+        _aged_marker(t, c2, prior_start)
         from apps.subscriptions.economics.services import MarginService
         real = MarginService.snapshot_customer
 
