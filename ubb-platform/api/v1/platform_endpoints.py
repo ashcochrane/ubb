@@ -148,9 +148,15 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     if plan is None:
         return 404, {"error": f"plan with key '{payload.plan_key}' not found"}
 
+    from core.exceptions import StripeFatalError
     try:
         mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
     except OrchestrationError as e:
+        return 422, {"error": str(e)}
+    except StripeFatalError as e:
+        # F5.3: a non-retryable Stripe rejection (e.g. automatic_tax enabled
+        # but Stripe Tax not configured on the connected account) is a tenant
+        # config problem — surface Stripe's message as 422, not a 500.
         return 422, {"error": str(e)}
 
     return 200, {

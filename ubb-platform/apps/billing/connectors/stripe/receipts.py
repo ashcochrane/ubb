@@ -23,6 +23,10 @@ class ReceiptService:
         Only creates local Invoice record if ALL Stripe calls succeed.
         On Stripe failure, no local record is created — the next webhook
         retry or manual trigger can retry from scratch.
+
+        F5.3 guard: NEVER pass automatic_tax on a receipt — it documents an
+        amount that was ALREADY charged (paid_out_of_band); adding tax would
+        make the receipt disagree with the money that actually moved.
         """
         # Idempotency: skip if invoice already exists
         if Invoice.objects.filter(top_up_attempt=top_up_attempt).exists():

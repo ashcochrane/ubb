@@ -332,6 +332,7 @@ def _config_out(t):
         "default_currency": t.default_currency,
         "stripe_connected_account_id": t.stripe_connected_account_id,
         "is_active": t.is_active,
+        "automatic_tax_enabled": t.automatic_tax_enabled,
     }
 
 
@@ -351,6 +352,38 @@ def update_tenant_config(request, payload: TenantConfigIn):
                 "error": "require_cost_card_coverage cannot be enabled with zero active cost rate cards",
                 "code": "no_cost_cards",
             }
+    if payload.automatic_tax_enabled is True and not t.automatic_tax_enabled:
+        # F5.3 preflight: only when the tenant is charge-ready can we ask
+        # Stripe whether Tax is actually configured on the connected account.
+        # Not charge-ready -> allow the flag without preflight (it only takes
+        # effect at charge time, and every charge site is itself gated on
+        # charge-ready — by the time a charge can happen, Stripe rejects a
+        # tax-less invoice loudly and the F0.1 machinery surfaces it).
+        if t.stripe_connected_account_id and t.charges_enabled:
+            import stripe
+            from apps.billing.stripe.services.stripe_service import (
+                api_key_for_tenant, stripe_call)
+            from core.exceptions import StripeFatalError
+            try:
+                tax_settings = stripe_call(
+                    stripe.tax.Settings.retrieve,
+                    api_key=api_key_for_tenant(t),
+                    stripe_account=t.stripe_connected_account_id,
+                )
+            except StripeFatalError as e:
+                return 422, {"error": f"Stripe Tax is not available on the "
+                                      f"connected account: {e}",
+                             "code": "stripe_tax_not_active"}
+            status = getattr(tax_settings, "status", "")
+            if status != "active":
+                return 422, {
+                    "error": "Stripe Tax is not active on the connected "
+                             f"account (status={status!r}); finish Stripe Tax "
+                             "setup in the Stripe dashboard first",
+                    "code": "stripe_tax_not_active",
+                }
+    if payload.automatic_tax_enabled is not None:
+        t.automatic_tax_enabled = payload.automatic_tax_enabled
     if payload.billing_mode is not None:
         t.billing_mode = payload.billing_mode
     if payload.products is not None:

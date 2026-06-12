@@ -373,12 +373,14 @@ class TenantConfigOut(Schema):
     default_currency: str
     stripe_connected_account_id: str
     is_active: bool
+    automatic_tax_enabled: bool
 
 
 class TenantConfigIn(Schema):
     billing_mode: Optional[str] = None
     products: Optional[list[str]] = None
     require_cost_card_coverage: Optional[bool] = None
+    automatic_tax_enabled: Optional[bool] = None
 
 
 class PlanIn(Schema):

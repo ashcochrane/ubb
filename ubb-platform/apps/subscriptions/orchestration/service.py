@@ -178,6 +178,13 @@ class SubscriptionOrchestrator:
         if plan.per_seat_micros > 0 and plan.stripe_seat_price_id:
             items.append({"price": plan.stripe_seat_price_id, "quantity": seats})
 
+        # F5.3: opt-in Stripe Tax passthrough — one of EXACTLY two automatic_tax
+        # call sites (the other: the postpaid usage Invoice.create). Stripe
+        # computes and collects the tax on the tenant's connected account.
+        extra = {}
+        if tenant.automatic_tax_enabled:
+            extra["automatic_tax"] = {"enabled": True}
+
         sub = stripe_call(
             stripe.Subscription.create,
             api_key=api_key,
@@ -189,6 +196,7 @@ class SubscriptionOrchestrator:
             billing_cycle_anchor=_next_month_anchor(),
             proration_behavior="create_prorations",
             stripe_account=connected,
+            **extra,
         )
 
         return cls._persist_mirror(tenant, owner, plan, sub)

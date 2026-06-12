@@ -39,6 +39,14 @@ class Tenant(BaseModel):
     default_currency = models.CharField(max_length=3, default="usd")
     require_cost_card_coverage = models.BooleanField(default=False)
     charges_enabled = models.BooleanField(default=False)
+    # F5.3: opt-in Stripe Tax passthrough. When True, automatic_tax={"enabled":
+    # True} is sent at EXACTLY two charge sites — Subscription.create and the
+    # postpaid usage Invoice.create. Tax computation/registration stays
+    # entirely Stripe's job (the tenant configures Stripe Tax on their
+    # connected account); UBB never computes tax. Top-up checkout /
+    # PaymentIntents / receipts NEVER carry it: wallet credit must equal the
+    # charged amount exactly.
+    automatic_tax_enabled = models.BooleanField(default=False)
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile

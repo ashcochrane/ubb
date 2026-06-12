@@ -325,6 +325,14 @@ class PostpaidUsageService:
         else:
             inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected, api_key)
         if inv is None:
+            # F5.3: opt-in Stripe Tax passthrough — one of EXACTLY two
+            # automatic_tax call sites (the other: Subscription.create). A
+            # tax-config error from Stripe here is an InvalidRequestError ->
+            # StripeFatalError -> parked failed_permanent with the outbox
+            # alert after ONE attempt (the F0.1 machinery).
+            extra = {}
+            if tenant.automatic_tax_enabled:
+                extra["automatic_tax"] = {"enabled": True}
             # B1: create the draft FIRST, then PIN each usage line to it via invoice=<id>.
             # Stripe's default pending_invoice_items_behavior is 'exclude'; un-pinned pending
             # items would NOT sweep, finalizing an EMPTY invoice and never billing usage.
@@ -334,7 +342,8 @@ class PostpaidUsageService:
                 idempotency_key=f"usage-invoice-{rec.id}{gen}",
                 customer=owner.stripe_customer_id, auto_advance=False, stripe_account=connected,
                 metadata={"usage_invoice_id": str(rec.id), "tenant_id": str(tenant.id),
-                          "period_start": period_start.isoformat()})
+                          "period_start": period_start.isoformat()},
+                **extra)
             created = True
 
         # Phase 2a — persist the pointer the moment the invoice exists, so every

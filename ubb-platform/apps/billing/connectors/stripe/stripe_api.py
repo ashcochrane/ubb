@@ -31,7 +31,14 @@ def _charges_ready(tenant_id) -> bool:
 
 
 def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_url, cancel_url):
-    """Create Stripe Checkout session for top-up."""
+    """Create Stripe Checkout session for top-up.
+
+    F5.3 guard: NEVER pass automatic_tax here (even when the tenant has
+    automatic_tax_enabled). A top-up funds a wallet — the credited micros
+    must equal the charged amount exactly; tax on top would either skew the
+    wallet ledger or charge the customer more than gets credited. Tax applies
+    only where Stripe bills for consumption (subscriptions, usage invoices).
+    """
     validate_amount_micros(amount_micros)
     amount_cents = micros_to_cents(amount_micros)
     customer_stripe_id = get_customer_stripe_id(customer.id)
@@ -68,6 +75,9 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     """Charge saved payment method for top-up.
 
     Idempotency key derived from top_up_attempt.id — deterministic across retries.
+
+    F5.3 guard: NEVER pass automatic_tax on this PaymentIntent — wallet
+    credit must equal the charged amount exactly (see create_checkout_session).
     """
     validate_amount_micros(amount_micros)
     amount_cents = micros_to_cents(amount_micros)

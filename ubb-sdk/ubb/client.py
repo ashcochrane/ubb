@@ -282,11 +282,15 @@ class UBBClient:
 
     def update_tenant_config(self, *, billing_mode: str | None = None,
                               products: list[str] | None = None,
-                              require_cost_card_coverage: bool | None = None) -> dict:
+                              require_cost_card_coverage: bool | None = None,
+                              automatic_tax_enabled: bool | None = None) -> dict:
         """Update the tenant's own configuration.
 
         Calls PATCH /api/v1/tenant/config with only the provided (non-None) fields.
-        Returns the updated config as a dict.
+        Returns the updated config as a dict. ``automatic_tax_enabled=True``
+        turns on Stripe Tax passthrough (subscriptions + usage invoices); the
+        server preflights the connected account's Stripe Tax status when the
+        tenant is charge-ready and rejects with 422 if Tax is not active.
         """
         metering = self._require_metering()
         body = {}
@@ -296,6 +300,8 @@ class UBBClient:
             body["products"] = products
         if require_cost_card_coverage is not None:
             body["require_cost_card_coverage"] = require_cost_card_coverage
+        if automatic_tax_enabled is not None:
+            body["automatic_tax_enabled"] = automatic_tax_enabled
         r = metering._request("patch", "/api/v1/tenant/config", json=body)
         return r.json()
 
