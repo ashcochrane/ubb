@@ -233,6 +233,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
         "schedule": crontab(minute=15),
     },
+    "verify-tier-rerate": {
+        "task": "apps.metering.pricing.tasks.verify_tier_rerate",
+        # 1st 03:15 UTC — after the 1st 02:00 postpaid close of the same morning
+        "schedule": crontab(minute=15, hour=3, day_of_month=1),
+    },
 }
 
 # UBB Platform Settings

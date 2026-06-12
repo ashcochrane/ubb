@@ -121,6 +121,32 @@ class RateCardClientTest(unittest.TestCase):
 
 
     @patch("ubb.metering.httpx.Client.post")
+    def test_create_graduated_rate_card_sends_tiers(self, mock_post):
+        tiers = [
+            {"up_to": 10_000, "rate_per_unit_micros": 10_000, "unit_quantity": 1},
+            {"up_to": None, "rate_per_unit_micros": 5_000, "unit_quantity": 1},
+        ]
+        fixture = {**RATE_CARD_FIXTURE, "card_type": "price",
+                   "pricing_model": "graduated", "tiers": tiers}
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: fixture)
+        card = self.client.create_rate_card(
+            card_type="price", metric_name="input_tokens",
+            pricing_model="graduated", tiers=tiers,
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["pricing_model"], "graduated")
+        self.assertEqual(body["tiers"], tiers)
+        self.assertEqual(card.tiers, tiers)
+        self.assertEqual(card.pricing_model, "graduated")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_create_rate_card_default_tiers_empty_list(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: RATE_CARD_FIXTURE)
+        self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["tiers"], [])
+
+    @patch("ubb.metering.httpx.Client.post")
     def test_bulk_create_rate_cards(self, mock_post):
         batch_response = {"created": ["rc-a", "rc-b"], "count": 2}
         mock_post.return_value = MagicMock(status_code=200, json=lambda: batch_response)

@@ -21,7 +21,9 @@ from api.v1.schemas import (
     UsageTimeseriesResponse,
     RateCardIn, RateCardOut, RateCardUpdateIn, RateCardBatchIn,
 )
-from apps.metering.pricing.models import RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES
+from apps.metering.pricing.models import (
+    RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
+)
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
@@ -400,6 +402,7 @@ def _rate_card_to_out(c):
         "rate_per_unit_micros": c.rate_per_unit_micros,
         "unit_quantity": c.unit_quantity,
         "fixed_micros": c.fixed_micros,
+        "tiers": c.tiers,
         "currency": c.currency,
         "product_id": c.product_id,
         "customer_id": str(c.customer_id) if c.customer_id else None,
@@ -439,6 +442,10 @@ def create_rate_card(request, payload: RateCardIn):
         return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
     if payload.pricing_model not in valid_models:
         return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
+    try:
+        validate_tiers(payload.card_type, payload.pricing_model, payload.tiers)
+    except ValueError as e:
+        return 422, {"error": str(e)}
     customer = None
     if payload.customer_id:
         customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -454,6 +461,7 @@ def create_rate_card(request, payload: RateCardIn):
         rate_per_unit_micros=payload.rate_per_unit_micros,
         unit_quantity=payload.unit_quantity,
         fixed_micros=payload.fixed_micros,
+        tiers=payload.tiers,
         currency=payload.currency,
         product_id=payload.product_id,
     )
@@ -473,6 +481,10 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
             return 422, {"error": f"cards[{i}].card_type invalid"}
         if c.pricing_model not in valid_models:
             return 422, {"error": f"cards[{i}].pricing_model invalid"}
+        try:
+            validate_tiers(c.card_type, c.pricing_model, c.tiers)
+        except ValueError as e:
+            return 422, {"error": f"cards[{i}]: {e}"}
         # Replicate product-gating from single-create: price cards need billing product
         if c.card_type == "price":
             _billing_check(request)
@@ -494,6 +506,7 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
                 rate_per_unit_micros=c.rate_per_unit_micros,
                 unit_quantity=c.unit_quantity,
                 fixed_micros=c.fixed_micros,
+                tiers=c.tiers,
                 currency=c.currency,
                 product_id=c.product_id,
             )
@@ -504,7 +517,7 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
 _RATE_CARD_COPY_FIELDS = (
     "card_type", "metric_name", "provider", "event_type", "dimensions",
     "pricing_model", "rate_per_unit_micros", "unit_quantity", "fixed_micros",
-    "currency", "product_id",
+    "tiers", "currency", "product_id",
 )
 
 
@@ -513,6 +526,8 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
     # Resolve the target: by id (any version), falling back to the active card
     # sharing that lineage. Only active (valid_to IS NULL) versions are editable.
     changes = payload.dict(exclude_unset=True)
+    if "tiers" in changes and changes["tiers"] is None:
+        del changes["tiers"]  # explicit null = keep the current tiers
 
     with transaction.atomic():
         old = RateCard.objects.filter(
@@ -549,6 +564,11 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
             return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
         if new_values["pricing_model"] not in valid_models:
             return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
+        try:
+            validate_tiers(new_values["card_type"], new_values["pricing_model"],
+                           new_values["tiers"])
+        except ValueError as e:
+            return 422, {"error": str(e)}
 
         _gate_card_type(request, new_values["card_type"])
 

@@ -63,11 +63,6 @@ class UsageService:
             return _result(existing, run_total=None)
         currency = currency or tenant.default_currency
         from apps.metering.pricing.services.pricing_service import PricingService
-        provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
-            tenant=tenant, customer=customer, event_type=event_type or "", provider=provider or "",
-            usage_metrics=usage_metrics, tags=tags, currency=currency,
-            caller_provider_cost=provider_cost_micros, caller_billed=billed_cost_micros,
-            units=units)
         _tags = tags or {}
         service_id = _tags.get("service", "")
         agent_id = _tags.get("agent", "")
@@ -77,6 +72,14 @@ class UsageService:
         owner_id = customer.resolve_billing_owner().id
         try:
             with transaction.atomic():
+                # Pricing runs INSIDE the savepoint: tiered price cards advance
+                # the period ladder (PricingPeriodCounter) under a row lock, so
+                # a raced duplicate insert below must roll the advance back too.
+                provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
+                    tenant=tenant, customer=customer, event_type=event_type or "",
+                    provider=provider or "", usage_metrics=usage_metrics, tags=tags,
+                    currency=currency, caller_provider_cost=provider_cost_micros,
+                    caller_billed=billed_cost_micros, units=units)
                 if run_id is not None:
                     from apps.platform.runs.services import RunService
                     run = RunService.accumulate_cost(
@@ -93,9 +96,16 @@ class UsageService:
                     product_id=product_id or "", tags=tags, run_id=run_id,
                     billing_owner_id=owner_id,
                     service_id=service_id, agent_id=agent_id)
-        except IntegrityError:
-            existing = UsageEvent.objects.get(
-                tenant=tenant, customer=customer, idempotency_key=idempotency_key)
+        except IntegrityError as exc:
+            try:
+                existing = UsageEvent.objects.get(
+                    tenant=tenant, customer=customer, idempotency_key=idempotency_key)
+            except UsageEvent.DoesNotExist:
+                # Not the idempotency duplicate — some other insert inside the
+                # savepoint failed (counter/run machinery). Surface the original
+                # IntegrityError attributably instead of masking it as a replay
+                # (or as an unexplained DoesNotExist).
+                raise exc
             return _result(existing, run_total=None)
         write_event(UsageRecorded(
             tenant_id=str(tenant.id), customer_id=str(customer.id), event_id=str(event.id),

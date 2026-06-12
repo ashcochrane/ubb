@@ -240,6 +240,7 @@ class RateCardIn(Schema):
     rate_per_unit_micros: int = Field(default=0, ge=0)
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
+    tiers: list = Field(default_factory=list)
     currency: str = Field(default="usd", max_length=3)
     product_id: str = Field(default="", max_length=100)
     customer_id: Optional[UUID] = None
@@ -255,6 +256,7 @@ class RateCardUpdateIn(Schema):
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
+    tiers: Optional[list] = None  # None (or omitted) = keep current tiers
     currency: Optional[str] = Field(default=None, max_length=3)
     product_id: Optional[str] = Field(default=None, max_length=100)
     customer_id: Optional[UUID] = None
@@ -272,6 +274,7 @@ class RateCardOut(Schema):
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
+    tiers: list
     currency: str
     product_id: str
     customer_id: Optional[str] = None
