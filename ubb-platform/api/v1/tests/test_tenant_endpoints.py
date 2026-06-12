@@ -235,6 +235,26 @@ class TenantConfigCurrencyTest(TestCase):
             last_synced_at=now)
         self._assert_locked()
 
+    def test_409_after_active_rate_card(self):
+        """Cards are currency-pinned: a currency change would silently stop
+        every card from matching and collapse COGS to the markup fallback."""
+        from apps.metering.pricing.models import RateCard
+        RateCard.objects.create(
+            tenant=self.tenant, card_type="cost", metric_name="tokens",
+            pricing_model="per_unit", rate_per_unit_micros=10,
+            currency=self.tenant.default_currency)
+        self._assert_locked()
+
+    def test_retired_rate_card_does_not_lock(self):
+        from django.utils import timezone
+        from apps.metering.pricing.models import RateCard
+        RateCard.objects.create(
+            tenant=self.tenant, card_type="cost", metric_name="tokens",
+            pricing_model="per_unit", rate_per_unit_micros=10,
+            currency=self.tenant.default_currency, valid_to=timezone.now())
+        resp = self._patch({"default_currency": "eur"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_unprovisioned_plan_does_not_lock(self):
         """A plan with NO provisioned Stripe prices is not money yet."""
         from apps.subscriptions.models import TenantBillingPlan

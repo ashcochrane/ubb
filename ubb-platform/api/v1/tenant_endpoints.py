@@ -343,13 +343,17 @@ def _currency_locked_reason(t):
     forever. The currency of a provisioned Stripe Price is NOT stored locally
     (only the price id is), so a later cross-check against a changed tenant
     currency is impossible — the only safe rule is "no change once money
-    exists". The four conditions cover every way money enters the system:
+    exists". The five conditions cover every way money enters the system:
     wallet ledger rows, provisioned subscription-plan Prices, usage invoices
-    pushed to Stripe, and mirrored Stripe subscriptions.
+    pushed to Stripe, mirrored Stripe subscriptions, and ACTIVE rate cards —
+    cards are currency-pinned, so a currency change would silently stop every
+    card from matching and collapse COGS to the markup fallback (the exact
+    meter-only failure rate cards exist to prevent).
     """
     from django.db.models import Q
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.wallets.models import WalletTransaction
+    from apps.metering.pricing.models import RateCard
     from apps.subscriptions.models import StripeSubscription, TenantBillingPlan
 
     if WalletTransaction.objects.filter(wallet__customer__tenant=t).exists():
@@ -362,6 +366,8 @@ def _currency_locked_reason(t):
         return "a usage invoice has been pushed to Stripe"
     if StripeSubscription.objects.filter(tenant=t).exists():
         return "Stripe subscriptions exist"
+    if RateCard.objects.filter(tenant=t, valid_to__isnull=True).exists():
+        return "active rate cards exist (cards are currency-pinned)"
     return None
 
 
