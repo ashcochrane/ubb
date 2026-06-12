@@ -12,7 +12,9 @@ from ubb.types import (
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
     UBBValidationError, UBBConnectionError, UBBConflictError,
+    UBBWebhookVerificationError,
 )
+from ubb.webhooks import verify_webhook, verify_webhook_legacy
 
 __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
@@ -22,4 +24,6 @@ __all__ = [
     "BatchItemResult", "BatchResult",
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
+    "UBBWebhookVerificationError",
+    "verify_webhook", "verify_webhook_legacy",
 ]

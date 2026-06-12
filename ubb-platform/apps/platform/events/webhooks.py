@@ -69,10 +69,35 @@ class _PinnedIPTransport(httpx.HTTPTransport):
 
 
 def compute_signature(payload_bytes: bytes, secret: str) -> str:
-    """Compute HMAC-SHA256 signature for webhook payload."""
+    """Compute HMAC-SHA256 signature for webhook payload.
+
+    LEGACY (v1) scheme: body-only — no timestamp binding, so a captured
+    delivery verifies forever. Kept (and still sent as ``X-UBB-Signature``)
+    during the v2 deprecation window; new receivers should verify
+    ``X-UBB-Signature-V2`` instead (see compute_signature_v2 / the SDK's
+    ``ubb.webhooks.verify_webhook``).
+    """
     return hmac.new(
         secret.encode("utf-8"),
         payload_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def compute_signature_v2(payload_bytes: bytes, secret: str, timestamp: int) -> str:
+    """Compute the v2 (replay-bounded) webhook signature.
+
+    HMAC-SHA256 over ``f"{timestamp}.{body}"`` — the signed string is the
+    decimal unix-seconds timestamp, a literal ``.``, then the raw request
+    body bytes. Sent as ``X-UBB-Signature-V2: t=<ts>,v1=<hexdigest>``.
+    Binding the timestamp lets receivers reject deliveries older than their
+    tolerance window (SDK default 300s), closing the indefinite-replay hole
+    of the legacy body-only scheme.
+    """
+    signed_payload = str(timestamp).encode("utf-8") + b"." + payload_bytes
+    return hmac.new(
+        secret.encode("utf-8"),
+        signed_payload,
         hashlib.sha256,
     ).hexdigest()
 
@@ -109,20 +134,29 @@ def deliver_webhook(event):
 
 def _deliver_to_config(config, event, *, livemode=True):
     """POST event payload to a single webhook config URL."""
+    ts = int(time.time())
     payload = {
         "event_type": event.event_type,
         "event_id": str(event.id),
         "tenant_id": str(event.tenant_id),
-        "timestamp": int(time.time()),
+        "timestamp": ts,
         "livemode": livemode,
         "data": event.payload,
     }
     payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
     signature = compute_signature(payload_bytes, config.secret)
+    # Same ts as payload["timestamp"]: signed at send time, parseable from the
+    # header alone (the receiver never needs to parse the body to verify).
+    signature_v2 = compute_signature_v2(payload_bytes, config.secret, ts)
 
     headers = {
         "Content-Type": "application/json",
+        # Legacy body-only signature — kept during the v2 deprecation window
+        # so existing receivers keep verifying unchanged. Prefer the v2
+        # header: the legacy scheme has no timestamp binding and a captured
+        # delivery replays forever.
         "X-UBB-Signature": signature,
+        "X-UBB-Signature-V2": f"t={ts},v1={signature_v2}",
         "X-UBB-Event-Type": event.event_type,
     }
 

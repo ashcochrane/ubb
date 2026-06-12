@@ -277,6 +277,69 @@ honored, capped at 30s. Hard-stop 429s (`UBBHardStopError`), `UBBRunNotActiveErr
 and all other 4xx errors are **never** retried. Pass `max_retries=0` to any client
 constructor to disable retries.
 
+## Verifying webhooks
+
+UBB signs every outgoing webhook delivery. Verify with the v2 (timestamped)
+header — it bounds replay: a captured delivery stops verifying once its signed
+timestamp falls outside your tolerance window (default 300s).
+
+- `X-UBB-Signature-V2: t=<unix-seconds>,v1=<hexdigest>` where
+  `hexdigest = HMAC-SHA256(secret, f"{t}.{raw_body}")` — **verify this one.**
+- `X-UBB-Signature: <hexdigest>` over the raw body only — the legacy scheme,
+  still sent during the deprecation window. It has **no timestamp binding**, so
+  a captured delivery replays forever; only verify it via
+  `verify_webhook_legacy` while migrating, then switch to v2.
+
+Always pass the **raw request body bytes** — verify before parsing JSON.
+
+```python
+# Flask
+from flask import Flask, request, abort
+from ubb import verify_webhook, UBBWebhookVerificationError
+
+app = Flask(__name__)
+WEBHOOK_SECRET = "..."  # the secret you registered on the webhook config
+
+@app.post("/ubb/webhook")
+def ubb_webhook():
+    try:
+        event = verify_webhook(
+            request.get_data(),                          # RAW bytes
+            request.headers.get("X-UBB-Signature-V2", ""),
+            WEBHOOK_SECRET,
+            tolerance=300,                               # seconds (default)
+        )
+    except UBBWebhookVerificationError:
+        abort(400)
+    if event["event_type"] == "usage.recorded":
+        ...  # handle event["data"]
+    return "", 200
+```
+
+```python
+# FastAPI
+from fastapi import FastAPI, Header, HTTPException, Request
+from ubb import verify_webhook, UBBWebhookVerificationError
+
+app = FastAPI()
+
+@app.post("/ubb/webhook")
+async def ubb_webhook(request: Request,
+                      x_ubb_signature_v2: str = Header(default="")):
+    try:
+        event = verify_webhook(await request.body(), x_ubb_signature_v2,
+                               WEBHOOK_SECRET)
+    except UBBWebhookVerificationError:
+        raise HTTPException(status_code=400, detail="bad signature")
+    ...
+    return {"ok": True}
+```
+
+`verify_webhook` raises `UBBWebhookVerificationError` on a bad signature, a
+stale/future timestamp, or a malformed header, and returns the parsed payload
+dict on success. Deliveries also carry `livemode` (false for sandbox tenants)
+inside the payload.
+
 ## Verified method signatures
 
 ```python

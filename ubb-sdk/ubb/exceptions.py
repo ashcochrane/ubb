@@ -43,3 +43,12 @@ class UBBRunNotActiveError(UBBAPIError):
         self.run_id = run_id
         self.run_status = status
         super().__init__(409, detail or f"Run {run_id} is {status}")
+
+class UBBWebhookVerificationError(UBBError):
+    """Webhook signature verification failed.
+
+    Raised by ubb.webhooks.verify_webhook / verify_webhook_legacy for a bad
+    signature, a timestamp outside the tolerance window, or a malformed
+    signature header. Treat the delivery as untrusted and respond non-2xx.
+    """
+    pass

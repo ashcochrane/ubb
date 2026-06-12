@@ -495,3 +495,77 @@ class TestPinnedIPTransport:
         # The ip was forwarded to the parent, not the original hostname
         if connect_calls:
             assert connect_calls[0] == "1.2.3.4"
+
+
+@pytest.mark.django_db
+class TestSignatureV2:
+    """F5.7: timestamped v2 signatures ride alongside the unchanged legacy header."""
+
+    SECRET = "v2-secret"
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="v2", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(self.tenant.id),
+        )
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret=self.SECRET,
+            event_types=[],
+        )
+
+    def _deliver_and_capture(self):
+        """Deliver the event; return (body_bytes, headers) of the POST."""
+        mock_response = MagicMock(status_code=200, text="OK")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        with patch("apps.platform.events.webhooks.validate_webhook_url"), \
+             patch("apps.platform.events.webhooks.httpx.Client",
+                   return_value=mock_client_instance):
+            deliver_webhook(self.event)
+        call = mock_client_instance.post.call_args
+        return call.kwargs["content"], call.kwargs["headers"]
+
+    def test_both_signature_headers_present(self):
+        _, headers = self._deliver_and_capture()
+        assert "X-UBB-Signature" in headers       # legacy, deprecation window
+        assert "X-UBB-Signature-V2" in headers    # replay-bounded
+        assert headers["X-UBB-Signature-V2"].startswith("t=")
+
+    def test_v2_verifies_against_documented_recipe(self):
+        """v2 = HMAC-SHA256(secret, f"{t}.{body}"), header t=<ts>,v1=<hex>."""
+        import hashlib
+        import hmac as hmac_mod
+
+        body, headers = self._deliver_and_capture()
+        t_part, v1_part = headers["X-UBB-Signature-V2"].split(",")
+        ts = int(t_part[len("t="):])
+        v1 = v1_part[len("v1="):]
+
+        expected = hmac_mod.new(
+            self.SECRET.encode("utf-8"),
+            str(ts).encode("utf-8") + b"." + body,
+            hashlib.sha256,
+        ).hexdigest()
+        assert v1 == expected
+        # The signed ts is the payload's own timestamp (signed at send time).
+        assert ts == json.loads(body)["timestamp"]
+
+    def test_legacy_signature_unchanged_byte_for_byte(self):
+        """The legacy header is still the body-only HMAC — existing receivers
+        keep verifying without any change."""
+        body, headers = self._deliver_and_capture()
+        assert headers["X-UBB-Signature"] == compute_signature(body, self.SECRET)
+
+    def test_v2_round_trips_through_compute_signature_v2(self):
+        from apps.platform.events.webhooks import compute_signature_v2
+
+        body, headers = self._deliver_and_capture()
+        t_part, v1_part = headers["X-UBB-Signature-V2"].split(",")
+        ts = int(t_part[len("t="):])
+        assert v1_part[len("v1="):] == compute_signature_v2(body, self.SECRET, ts)
