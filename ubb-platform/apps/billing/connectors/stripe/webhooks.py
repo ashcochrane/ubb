@@ -299,10 +299,14 @@ def handle_charge_dispute_closed(event):
             idempotency_key=f"dispute:{dispute_id}",
         )
         # F4.3 clawback cascade: void the disputed top-up's lot first, then
-        # consume other lots until G1 holds again.
+        # consume other lots until G1 holds again. Only top-up-born lots
+        # qualify as the source (an API/other lot that happens to share the
+        # reference must never be voided for a Stripe charge reversal);
+        # created_at order makes the pick deterministic.
         source_grant = CreditGrant.objects.filter(
             wallet=wallet, source_reference=str(attempt.id),
-        ).first()
+            source__in=("checkout", "auto_topup"),
+        ).order_by("created_at").first()
         GrantLedger.clawback(wallet, txn, amount_micros, source_grant=source_grant)
 
         # Suspend customer if balance dropped below min_balance threshold
@@ -388,10 +392,12 @@ def handle_charge_refunded(event):
             wallet.balance_micros -= refunded_micros
             wallet.save(update_fields=["balance_micros", "updated_at"])
             # F4.3 clawback cascade (winning branch only): shrink the refunded
-            # top-up's lot first, then restore G1 from other lots.
+            # top-up's lot first, then restore G1 from other lots. Top-up-born
+            # lots only + deterministic created_at order (see dispute handler).
             source_grant = CreditGrant.objects.filter(
                 wallet=wallet, source_reference=str(attempt.id),
-            ).first()
+                source__in=("checkout", "auto_topup"),
+            ).order_by("created_at").first()
             GrantLedger.clawback(wallet, txn, refunded_micros, source_grant=source_grant)
 
 

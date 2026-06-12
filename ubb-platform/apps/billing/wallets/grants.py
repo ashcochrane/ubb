@@ -15,7 +15,11 @@ Design:
 Invariants:
   G1: sum(remaining of active grants) <= max(balance, 0) at all times.
   G2 (conservation, per grant):
-      granted == remaining + sum(allocations) + expired_micros + voided_micros
+      granted == remaining + sum(allocations.amount - allocations.refunded)
+                 + expired_micros + voided_micros
+      (refunded is the slice of a usage allocation re-funded back to the lot
+      by GrantLedger.refund; a clawed-back source lot's remaining moves to
+      voided_micros, NOT into an allocation row — one representation each.)
   G3: a grant expiry can NEVER drive the balance negative — the expiry debit
       is clamped to min(remaining, max(balance, 0)) (defense-in-depth even if
       G1 was previously dented).
@@ -53,10 +57,14 @@ class GrantLedger:
         savepoint pattern). The expiry debit is clamped (G3) so it can never
         drive the balance negative. remaining == 0 grants flip status only
         (no transaction). Caller holds the wallet lock.
+
+        Returns the number of grants expired by THIS call (status flips +
+        winning debits), so the beat can report wallets actually expired-upon.
         """
+        from apps.billing.topups.models import AutoTopUpConfig
         from apps.billing.wallets.models import CreditGrant, WalletTransaction
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import CreditGrantExpired
+        from apps.platform.events.schemas import BalanceLow, CreditGrantExpired
 
         assert connection.in_atomic_block
         now = now or timezone.now()
@@ -64,10 +72,12 @@ class GrantLedger:
             wallet=wallet, status="active",
             expires_at__isnull=False, expires_at__lte=now,
         ).order_by("expires_at", "id"))
+        expired_count = 0
         for grant in due:
             if grant.remaining_micros <= 0:
                 grant.status = "expired"
                 grant.save(update_fields=["status", "updated_at"])
+                expired_count += 1
                 continue
             # G3 clamp: never debit below zero even if G1 was previously dented.
             debit = min(grant.remaining_micros, max(wallet.balance_micros, 0))
@@ -84,14 +94,20 @@ class GrantLedger:
                         idempotency_key=f"expiry:{grant.id}",
                     )
             except IntegrityError:
-                continue  # raced: another path already expired this grant
+                # raced: another path already expired this grant
+                logger.warning("grants.expiry_skip_dup", extra={"data": {
+                    "grant_id": str(grant.id), "wallet_id": str(wallet.id)}})
+                continue
             wallet.balance_micros = new_balance
             wallet.save(update_fields=["balance_micros", "updated_at"])
-            grant.expired_micros = grant.remaining_micros
+            # += (not =): a partially clawed-back lot may already carry
+            # voided_micros; expiry must never clobber sibling buckets.
+            grant.expired_micros += grant.remaining_micros
             grant.remaining_micros = 0
             grant.status = "expired"
             grant.save(update_fields=[
                 "expired_micros", "remaining_micros", "status", "updated_at"])
+            expired_count += 1
             write_event(CreditGrantExpired(
                 tenant_id=str(grant.tenant_id),
                 customer_id=str(wallet.customer_id),
@@ -100,6 +116,25 @@ class GrantLedger:
                 expired_micros=grant.expired_micros,
                 balance_micros=new_balance,
             ))
+            # An expiry debit can drop the balance below the auto-top-up
+            # trigger exactly like a usage drawdown. Mirror the drawdown
+            # winning-branch semantics (apps/billing/handlers.py): emit only
+            # in the winning (exactly-once) debit branch, condition is simply
+            # new_balance < threshold — the debit's idempotency key is the
+            # dedup, same as the drawdown path. debit > 0 guard: a clamped
+            # no-op debit changed nothing, so it must not re-alert.
+            if debit > 0:
+                config = AutoTopUpConfig.objects.filter(
+                    customer_id=wallet.customer_id, is_enabled=True).first()
+                if config and new_balance < config.trigger_threshold_micros:
+                    write_event(BalanceLow(
+                        tenant_id=str(grant.tenant_id),
+                        customer_id=str(wallet.customer_id),
+                        balance_micros=new_balance,
+                        threshold_micros=config.trigger_threshold_micros,
+                        suggested_topup_micros=config.top_up_amount_micros,
+                    ))
+        return expired_count
 
     @staticmethod
     def allocate(wallet, txn, amount, *, exclude_promo=False, prefer_grant=None,
@@ -192,14 +227,18 @@ class GrantLedger:
         Naive source-lot-only voiding breaks G1 when the source lot was
         partially consumed, so this CASCADES:
           1. Void the source lot's remaining FIRST, up to the clawed-back
-             amount (the reversed money was that lot's money) — recorded as a
-             "clawback" allocation against the source grant; the lot's status
-             becomes "voided" when zeroed.
+             amount (the reversed money was that lot's money) — recorded in
+             the lot's voided_micros (the SAME bucket the void endpoint uses,
+             so voided reporting sums match; deliberately NOT also written as
+             a clawback allocation — one representation per micro keeps the
+             conservation equation exact). The lot's status becomes "voided"
+             when zeroed.
           2. Consume remaining from OTHER active lots in normal consumption
-             order until sum(remaining(active)) <= max(balance, 0) holds again.
+             order until sum(remaining(active)) <= max(balance, 0) holds again
+             — these ARE "clawback" allocations (consumption, not voiding).
         All in the caller's transaction, under the wallet lock.
         """
-        from apps.billing.wallets.models import CreditGrant, GrantAllocation
+        from apps.billing.wallets.models import CreditGrant
 
         assert connection.in_atomic_block
         # 1. Source lot first.
@@ -208,14 +247,12 @@ class GrantLedger:
             take = min(source_grant.remaining_micros, amount)
             if take > 0:
                 source_grant.remaining_micros -= take
-                fields = ["remaining_micros", "updated_at"]
+                source_grant.voided_micros += take
+                fields = ["remaining_micros", "voided_micros", "updated_at"]
                 if source_grant.remaining_micros == 0:
                     source_grant.status = "voided"
                     fields.append("status")
                 source_grant.save(update_fields=fields)
-                GrantAllocation.objects.create(
-                    grant=source_grant, wallet_transaction=txn,
-                    amount_micros=take, allocation_type="clawback")
         # 2. Cascade until G1 holds again.
         active_sum = CreditGrant.objects.filter(
             wallet=wallet, status="active",
@@ -223,6 +260,74 @@ class GrantLedger:
         excess = active_sum - max(wallet.balance_micros, 0)
         if excess > 0:
             GrantLedger.allocate(wallet, txn, excess, allocation_type="clawback")
+
+    @staticmethod
+    def refund(wallet, original_txn):
+        """Lot-aware usage refund: re-fund the grant lots that funded
+        ``original_txn`` (a USAGE_DEDUCTION). The caller has ALREADY credited
+        the full refund to wallet.balance_micros; this method re-attributes as
+        much of that credit as possible back to the funding lots so a
+        promo-funded charge refunds as promo (never withdrawable), not cash.
+
+        Per usage allocation of the original debit, the re-fundable slice is
+            min(amount - refunded,            # never re-fund the same micro twice
+                granted - remaining,          # CheckConstraint: remaining <= granted
+                G1 budget)                    # see below
+        applied as remaining += take, allocation.refunded += take — which
+        keeps G2 (granted == remaining + sum(amount - refunded) + expired +
+        voided) exact. A depleted lot that regains remaining flips back to
+        active.
+
+        EXPIRED / VOIDED lots are NOT re-funded: their unspent remainder was
+        already destroyed (expiry debit) or clawed back (dispute/refund/void),
+        so re-inflating them would double-create money. That share of the
+        refund stays as base credit.
+
+        G1 budget (overage-recoup parity with create_grant): if the wallet was
+        overdrawn, the refund credit first pays the debt — only the part that
+        lifts the balance above the active-lot total may go back into lots,
+        so sum(remaining(active)) <= max(balance, 0) keeps holding.
+
+        Returns the total re-funded into lots (the remainder stays base).
+        Caller holds the wallet lock.
+        """
+        from apps.billing.wallets.models import CreditGrant
+
+        assert connection.in_atomic_block
+        if original_txn is None:
+            return 0
+        allocations = list(
+            original_txn.grant_allocations.filter(allocation_type="usage")
+            .select_related("grant").order_by("created_at", "id"))
+        if not allocations:
+            return 0
+        active_sum = CreditGrant.objects.filter(
+            wallet=wallet, status="active",
+        ).aggregate(total=Sum("remaining_micros"))["total"] or 0
+        budget = max(wallet.balance_micros, 0) - active_sum
+        total = 0
+        for alloc in allocations:
+            if budget <= 0:
+                break
+            grant = alloc.grant
+            if grant.status not in ("active", "depleted"):
+                continue  # expired/voided share lands as base (see docstring)
+            take = min(alloc.amount_micros - alloc.refunded_micros,
+                       grant.granted_micros - grant.remaining_micros,
+                       budget)
+            if take <= 0:
+                continue
+            grant.remaining_micros += take
+            fields = ["remaining_micros", "updated_at"]
+            if grant.status == "depleted":
+                grant.status = "active"
+                fields.append("status")
+            grant.save(update_fields=fields)
+            alloc.refunded_micros += take
+            alloc.save(update_fields=["refunded_micros", "updated_at"])
+            budget -= take
+            total += take
+        return total
 
     @staticmethod
     def promo_remaining(wallet):

@@ -139,7 +139,15 @@ def get_balance(request):
 @me_api.get("/grants", response=GrantListResponse)
 def list_grants(request):
     """Active credit grant lots on the customer's own wallet (kind,
-    remaining, expiry), soonest-expiring first."""
+    remaining, expiry), soonest-expiring first. Hard-capped at the first 100
+    by expiry — active lots beyond that are pathological; full pagination
+    lives on the tenant API (GET /billing/customers/{id}/grants).
+
+    Seat-scoping decision: own-wallet basis, matching the /me/balance
+    precedent — a pooled seat (whose money lives on the business owner's
+    wallet) sees an empty list here rather than the shared business lots,
+    exactly as /me/balance shows the seat's own (empty) wallet.
+    """
     _check_billing_product(request)
     customer = request.widget_customer
     from django.db.models import F
@@ -148,7 +156,7 @@ def list_grants(request):
     if wallet is None:
         return {"data": []}
     grants = CreditGrant.objects.filter(wallet=wallet, status="active").order_by(
-        F("expires_at").asc(nulls_last=True), "created_at")
+        F("expires_at").asc(nulls_last=True), "created_at")[:100]
     return {"data": [
         {"id": str(g.id), "kind": g.kind, "remaining_micros": g.remaining_micros,
          "expires_at": g.expires_at.isoformat() if g.expires_at else None}

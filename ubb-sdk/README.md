@@ -209,6 +209,12 @@ remainder is debited from the balance automatically (lazily at spend time and
 by an hourly sweeper). Usage consumes the soonest-expiring lot first (promo
 before paid on ties), then non-expiring lots, then the base balance.
 
+Usage **refunds are lot-aware**: refunding a usage charge restores the lots
+that funded it — promo money goes back into the promo lot, so it stays
+non-withdrawable; it never converts to cash via a refund. Only the
+base-funded share of the charge (plus shares from lots that have since
+expired or been voided) comes back as plain base credit.
+
 ```python
 from ubb.billing import BillingClient
 

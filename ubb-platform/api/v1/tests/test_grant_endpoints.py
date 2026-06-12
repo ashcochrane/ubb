@@ -1,14 +1,17 @@
 """F4.3 — credit grant API: create/list/void, withdrawal promo exclusion,
-/me grants + balance grant fields."""
+/me grants + balance grant fields, lot-aware usage refunds."""
 import json
+import uuid
 from datetime import timedelta
 
 from django.test import Client, TestCase
 from django.utils import timezone
 
+from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import (
     CreditGrant, GrantAllocation, Wallet, WalletTransaction,
 )
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.widget_auth import create_widget_token
@@ -209,6 +212,182 @@ class WithdrawExcludesPromoTest(TestCase):
             wallet_transaction=txn).count(), 0)
         promo = CreditGrant.objects.get(wallet=self.wallet)
         self.assertEqual(promo.remaining_micros, 60_000_000)  # untouched
+
+
+class RefundLotAwareTest(TestCase):
+    """Fix 2 — /refund re-funds the grant lots that funded the usage, closing
+    the promo cash-out hole (promo -> spend -> refund -> withdraw)."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="RF", products=["metering", "billing"], billing_mode="prepaid")
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_rf_1")
+        self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=0)
+
+    def _post(self, path, body):
+        return self.http_client.post(
+            path, data=json.dumps(body), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def _grant(self, kind, amount, key, **extra):
+        body = {"kind": kind, "amount_micros": amount, "idempotency_key": key}
+        body.update(extra)
+        resp = self._post(
+            f"/api/v1/billing/customers/{self.customer.id}/grants", body)
+        assert resp.status_code == 200, resp.content
+        return resp.json()["id"]
+
+    def _spend(self, cost):
+        """Record a real UsageEvent + drive the live drawdown handler."""
+        ev = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id=f"req-{uuid.uuid4()}",
+            idempotency_key=f"uek-{uuid.uuid4()}",
+            billed_cost_micros=cost)
+        handle_usage_recorded_billing(str(uuid.uuid4()), {
+            "tenant_id": str(self.tenant.id),
+            "customer_id": str(self.customer.id),
+            "event_id": str(ev.id),
+            "billing_owner_id": str(self.customer.id),
+            "cost_micros": cost})
+        return ev
+
+    def _refund(self, ev, key):
+        return self._post(
+            f"/api/v1/billing/customers/{self.customer.id}/refund",
+            {"usage_event_id": str(ev.id), "idempotency_key": key})
+
+    def _withdraw(self, amount, key):
+        return self._post(
+            f"/api/v1/billing/customers/{self.customer.id}/withdraw",
+            {"amount_micros": amount, "idempotency_key": key})
+
+    def test_promo_funded_refund_restores_lot_not_cash(self):
+        """promo 100 -> spend 100 -> refund: the promo lot comes back and the
+        money is still NOT withdrawable (the old behavior turned it into
+        withdrawable base cash)."""
+        grant_id = self._grant("promo", 100_000_000, "rf_promo")
+        ev = self._spend(100_000_000)
+        grant = CreditGrant.objects.get(pk=grant_id)
+        self.assertEqual(grant.status, "depleted")
+
+        resp = self._refund(ev, "rf1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["balance_micros"], 100_000_000)
+
+        grant.refresh_from_db()
+        self.assertEqual(grant.status, "active")  # depleted -> active again
+        self.assertEqual(grant.remaining_micros, 100_000_000)
+        alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")
+        self.assertEqual(alloc.refunded_micros, 100_000_000)
+        # The cash-out hole is closed: nothing withdrawable.
+        resp = self._withdraw(100_000_000, "wd_rf1")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Insufficient", resp.json()["error"])
+
+    def test_expired_lot_share_lands_as_base(self):
+        """The lot expired between spend and refund: its remainder was already
+        destroyed by the expiry debit, so the refund share lands as base."""
+        grant_id = self._grant("promo", 100_000_000, "rf_exp",
+                               expires_in_days=10)
+        ev = self._spend(60_000_000)  # remaining 40, balance 40
+        CreditGrant.objects.filter(pk=grant_id).update(
+            expires_at=timezone.now() - timedelta(seconds=1))
+
+        resp = self._refund(ev, "rf2")  # endpoint's lazy expire_due fires first
+        self.assertEqual(resp.status_code, 200)
+
+        grant = CreditGrant.objects.get(pk=grant_id)
+        self.assertEqual(grant.status, "expired")
+        self.assertEqual(grant.remaining_micros, 0)  # NOT re-funded
+        self.assertEqual(grant.expired_micros, 40_000_000)
+        alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")
+        self.assertEqual(alloc.refunded_micros, 0)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 60_000_000)  # all base
+        self.assertEqual(self._withdraw(60_000_000, "wd_rf2").status_code, 200)
+
+    def test_mixed_lot_and_base_refund_splits(self):
+        """base 50 + promo 30, spend 70 (promo 30 + base 40): the refund puts
+        30 back into the promo lot and 40 back as base."""
+        Wallet.objects.filter(pk=self.wallet.pk).update(
+            balance_micros=50_000_000)  # base 50
+        grant_id = self._grant("promo", 30_000_000, "rf_mix")
+        ev = self._spend(70_000_000)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 10_000_000)
+
+        resp = self._refund(ev, "rf3")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["balance_micros"], 80_000_000)
+
+        grant = CreditGrant.objects.get(pk=grant_id)
+        self.assertEqual(grant.remaining_micros, 30_000_000)
+        self.assertEqual(grant.status, "active")
+        alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")
+        self.assertEqual(alloc.refunded_micros, 30_000_000)
+        # Withdrawable = base 50 only.
+        self.assertEqual(self._withdraw(60_000_000, "wd_rf3a").status_code, 400)
+        self.assertEqual(self._withdraw(50_000_000, "wd_rf3b").status_code, 200)
+
+    def test_double_refund_replay_and_new_key_capped(self):
+        """Replay (same idempotency key) is a pure no-op; a SECOND refund of
+        the same event under a new key credits cash again but the lot re-fund
+        is capped by refunded_micros — the lot is never double-restored."""
+        grant_id = self._grant("promo", 50_000_000, "rf_dbl")
+        ev = self._spend(50_000_000)
+
+        r1 = self._refund(ev, "rf4")
+        self.assertEqual(r1.status_code, 200)
+        r2 = self._refund(ev, "rf4")  # replay
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.json()["balance_micros"], 50_000_000)
+        self.assertEqual(WalletTransaction.objects.filter(
+            wallet=self.wallet, transaction_type="REFUND").count(), 1)
+        grant = CreditGrant.objects.get(pk=grant_id)
+        self.assertEqual(grant.remaining_micros, 50_000_000)
+        alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")
+        self.assertEqual(alloc.refunded_micros, 50_000_000)
+
+        # Different key: the cash credit happens (caller's policy call), but
+        # the lot stays capped at granted and refunded_micros at amount.
+        r3 = self._refund(ev, "rf5")
+        self.assertEqual(r3.status_code, 200)
+        self.assertEqual(r3.json()["balance_micros"], 100_000_000)
+        grant.refresh_from_db()
+        alloc.refresh_from_db()
+        self.assertEqual(grant.remaining_micros, 50_000_000)  # NOT 100
+        self.assertEqual(alloc.refunded_micros, 50_000_000)   # capped
+        # G2 stays exact: 50 == 50 + (50 - 50) + 0 + 0.
+        self.assertEqual(grant.granted_micros, 50_000_000)
+
+    def test_reconcile_silent_after_refund(self):
+        """The conservation equation holds after a lot-aware refund."""
+        import logging as _logging
+        from apps.billing.wallets.tasks import reconcile_wallet_balances
+        self._grant("promo", 40_000_000, "rf_rec")
+        ev = self._spend(25_000_000)
+        self.assertEqual(self._refund(ev, "rf6").status_code, 200)
+
+        records = []
+
+        class Capture(_logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        logger = _logging.getLogger("apps.billing.wallets.tasks")
+        handler = Capture()
+        logger.addHandler(handler)
+        try:
+            reconcile_wallet_balances()
+        finally:
+            logger.removeHandler(handler)
+        errors = [r.getMessage() for r in records
+                  if r.levelno >= _logging.ERROR]
+        self.assertEqual(errors, [])
 
 
 class MeGrantsTest(TestCase):

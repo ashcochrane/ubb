@@ -13,12 +13,14 @@ def reconcile_wallet_balances():
 
     F4.3 extensions (grant txns are ordinary WalletTransactions, so the
     ledger-sum check still holds unchanged):
-    - per-grant conservation: granted == remaining + sum(allocations)
+    - per-grant conservation: granted == remaining
+      + sum(allocations.amount - allocations.refunded)
       + expired_micros + voided_micros
     - per-wallet G1: sum(remaining of active grants) <= max(balance, 0)
     """
     from apps.billing.wallets.models import CreditGrant, Wallet, WalletTransaction
     from django.db.models import Sum
+    from django.db.models.functions import Coalesce
 
     wallets = Wallet.objects.all()
     drift_count = 0
@@ -60,8 +62,14 @@ def reconcile_wallet_balances():
 
     grant_drift_count = 0
     grants_checked = 0
-    for grant in CreditGrant.objects.all().iterator():
-        allocated = grant.allocations.aggregate(total=Sum("amount_micros"))["total"] or 0
+    # Single annotated pass (no per-grant aggregate queries): both Sums ride
+    # one LEFT JOIN onto allocations.
+    annotated = CreditGrant.objects.annotate(
+        alloc_total=Coalesce(Sum("allocations__amount_micros"), 0),
+        refund_total=Coalesce(Sum("allocations__refunded_micros"), 0),
+    )
+    for grant in annotated.iterator():
+        allocated = grant.alloc_total - grant.refund_total
         grants_checked += 1
         expected = grant.remaining_micros + allocated + grant.expired_micros + grant.voided_micros
         if grant.granted_micros != expected:
@@ -170,10 +178,12 @@ GRANT_WARNING_WINDOW = timedelta(days=7)
 def expire_credit_grants():
     """Beat (hourly :10): expire due credit grants + warn on soon-to-expire.
 
-    Pass 1 — for each wallet holding active grants with expires_at <= now:
-    lock_for_billing + GrantLedger.expire_due. Exactly-once per grant via the
-    expiry:{grant_id} WalletTransaction key; lazy expiry in the drawdown paths
-    makes this beat a sweeper, not a correctness requirement.
+    Pass 1 — for each LIVE wallet/customer holding active grants with
+    expires_at <= now: lock_for_billing + GrantLedger.expire_due, with
+    per-customer fault isolation (one failure logs grants.expiry_sweep_failed
+    and the sweep continues). Exactly-once per grant via the expiry:{grant_id}
+    WalletTransaction key; lazy expiry in the drawdown paths makes this beat a
+    sweeper, not a correctness requirement.
 
     Pass 2 — warning: active grants expiring within GRANT_WARNING_WINDOW that
     were never warned. Winning-update one-shot: filter(...).update(
@@ -189,22 +199,40 @@ def expire_credit_grants():
 
     now = timezone.now()
 
+    # POLICY: grants on soft-deleted customers'/wallets' rows are left alone
+    # by this sweeper. lock_for_billing resurrects a soft-deleted wallet and
+    # raises Customer.DoesNotExist for a soft-deleted customer (its default
+    # manager hides deleted rows) — pre-existing behavior we must not trigger
+    # from a background sweep. If the customer is restored, the lazy expiry on
+    # the next money path (or this beat's next run) handles the lot.
+    _live = {"wallet__deleted_at__isnull": True,
+             "wallet__customer__deleted_at__isnull": True}
+
     # Pass 1 — expiry.
     customer_ids = list(CreditGrant.objects.filter(
-        status="active", expires_at__isnull=False, expires_at__lte=now,
+        status="active", expires_at__isnull=False, expires_at__lte=now, **_live,
     ).values_list("wallet__customer_id", flat=True).distinct())
     expired_wallets = 0
     for customer_id in customer_ids:
-        with transaction.atomic():
-            wallet, _customer = lock_for_billing(customer_id)
-            GrantLedger.expire_due(wallet, now=now)
-        expired_wallets += 1
+        try:
+            with transaction.atomic():
+                wallet, _customer = lock_for_billing(customer_id)
+                expired = GrantLedger.expire_due(wallet, now=now)
+            if expired:
+                expired_wallets += 1
+        except Exception:
+            # Fault isolation: a single poisoned wallet/customer must never
+            # stall the whole sweep — its grant stays due, so without this it
+            # would re-kill EVERY subsequent hourly run.
+            logger.exception("grants.expiry_sweep_failed", extra={"data": {
+                "customer_id": str(customer_id)}})
 
-    # Pass 2 — expiring-soon warnings.
+    # Pass 2 — expiring-soon warnings (same liveness policy as pass 1).
     warned = 0
     pending = CreditGrant.objects.filter(
         status="active", warning_sent_at__isnull=True,
         expires_at__isnull=False, expires_at__lte=now + GRANT_WARNING_WINDOW,
+        **_live,
     ).select_related("wallet")
     for grant in pending.iterator():
         with transaction.atomic():
@@ -222,5 +250,7 @@ def expire_credit_grants():
                 ))
                 warned += 1
     if expired_wallets or warned:
+        # wallets_expired counts wallets where expire_due actually expired a
+        # grant this run — not merely every wallet locked by the sweep.
         logger.info("credit_grants.beat_complete", extra={"data": {
-            "wallets_swept": expired_wallets, "warnings_sent": warned}})
+            "wallets_expired": expired_wallets, "warnings_sent": warned}})

@@ -265,10 +265,16 @@ def pre_check(request, payload: PreCheckRequest):
 
 @billing_api.post("/customers/{customer_id}/refund")
 def refund_usage(request, customer_id: str, payload: RefundRequest):
+    """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
+    USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
+    back into those lots (promo refunds restore the promo lot — they never
+    become withdrawable cash); only the base-funded remainder, plus shares
+    from since-expired/voided lots, lands as base credit."""
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from django.db import transaction
     from apps.billing.locking import lock_for_billing
+    from apps.billing.wallets.grants import GrantLedger
     from apps.billing.wallets.models import WalletTransaction
     from apps.metering.queries import get_usage_event_cost
     from apps.platform.events.outbox import write_event
@@ -276,6 +282,8 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
+        GrantLedger.expire_due(wallet)  # F4.3 lazy expiry: a due lot expires
+        # first, so its share of the refund correctly lands as base below.
 
         # Idempotency on WalletTransaction
         existing_txn = WalletTransaction.objects.filter(
@@ -301,6 +309,16 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
             reference_id=str(payload.usage_event_id),
             idempotency_key=payload.idempotency_key,
         )
+
+        # F4.3 lot-aware re-fund: find the original deduction via its pinned
+        # usage_event_id column and restore its GrantAllocation slices into
+        # the still-live lots (refunded_micros caps make a second refund of
+        # the same event — under a different idempotency key — land as base).
+        original = WalletTransaction.objects.filter(
+            wallet=wallet, transaction_type="USAGE_DEDUCTION",
+            usage_event_id=payload.usage_event_id,
+        ).first()
+        GrantLedger.refund(wallet, original)
 
         # Emit outbox event for metering to create Refund record
         write_event(RefundRequested(
@@ -530,7 +548,9 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
             return _grant_out(grant, balance_micros=wallet.balance_micros)
         wallet.balance_micros = new_balance
         wallet.save(update_fields=["balance_micros", "updated_at"])
-        grant.voided_micros = grant.remaining_micros
+        # += (not =): a partial clawback may already have moved some of this
+        # lot into voided_micros — voiding must accumulate, never clobber.
+        grant.voided_micros += grant.remaining_micros
         grant.remaining_micros = 0
         grant.status = "voided"
         grant.save(update_fields=["voided_micros", "remaining_micros", "status", "updated_at"])

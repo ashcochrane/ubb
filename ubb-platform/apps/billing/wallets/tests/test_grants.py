@@ -366,6 +366,10 @@ class TestClawbackCascade:
         grant_a.refresh_from_db(); grant_b.refresh_from_db()
         assert w.balance_micros == -5_000_000
         assert grant_b.status == "voided" and grant_b.remaining_micros == 0
+        # Fix 6: the source lot's clawed remaining is recorded in
+        # voided_micros (same bucket as the void endpoint), NOT as a clawback
+        # allocation — one representation per micro.
+        assert grant_b.voided_micros == 5_000_000
         assert grant_a.remaining_micros == 0  # cascaded
         assert _active_sum(w) == 0  # G1 restored
         dispute_txn = WalletTransaction.objects.get(
@@ -373,7 +377,14 @@ class TestClawbackCascade:
         clawbacks = GrantAllocation.objects.filter(
             wallet_transaction=dispute_txn, allocation_type="clawback")
         assert {(cb.grant_id, cb.amount_micros) for cb in clawbacks} == {
-            (grant_b.id, 5_000_000), (grant_a.id, 10_000_000)}
+            (grant_a.id, 10_000_000)}
+        # Conservation (G2) for both lots under the new representation.
+        assert grant_b.granted_micros == 20_000_000 \
+            == grant_b.remaining_micros + 15_000_000 + grant_b.expired_micros \
+            + grant_b.voided_micros  # 0 + 15 usage alloc + 0 + 5 voided
+        assert grant_a.granted_micros == 10_000_000 \
+            == grant_a.remaining_micros + 10_000_000 + grant_a.expired_micros \
+            + grant_a.voided_micros  # 0 + 10 clawback alloc + 0 + 0
 
         # A's later expiry debits 0 (it is no longer active).
         CreditGrant.objects.filter(pk=grant_a.pk).update(
@@ -413,8 +424,11 @@ class TestClawbackCascade:
         assert w.balance_micros == 60_000_000  # 70 - 10
         assert g.remaining_micros == 10_000_000  # only the refunded slice
         assert g.status == "active"
+        # Fix 6: the clawed slice lives in voided_micros, not an allocation.
+        assert g.voided_micros == 10_000_000
         assert GrantAllocation.objects.filter(
-            grant=g, allocation_type="clawback").count() == 1
+            grant=g, allocation_type="clawback").count() == 0
+        assert g.granted_micros == g.remaining_micros + g.voided_micros  # G2
         _assert_g1(w)
 
 
@@ -449,14 +463,36 @@ class TestReconcileGrants:
         assert any("drift" in m.lower() for m in errors)
 
     def test_healthy_grants_silent(self):
+        """Healthy path stays silent INCLUDING after a lot-aware refund: the
+        re-fund moves remaining += take while sum(alloc - refunded) -= take,
+        so granted == remaining + sum(alloc - refunded) + expired + voided
+        keeps holding."""
         from apps.billing.wallets.tasks import reconcile_wallet_balances
         t = Tenant.objects.create(name="T", products=["metering", "billing"],
                                   billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        _make_grant(w, t, kind="promo", amount=10_000_000,
-                    expires_at=timezone.now() + timedelta(days=3))
-        _drawdown(t, c, 4_000_000)
+        g = _make_grant(w, t, kind="promo", amount=10_000_000,
+                        expires_at=timezone.now() + timedelta(days=3))
+        ev = _drawdown(t, c, 4_000_000)
+        # Lot-aware refund of the drawdown (endpoint-equivalent inline).
+        with transaction.atomic():
+            wallet, _c = lock_for_billing(w.customer_id)
+            GrantLedger.expire_due(wallet)
+            original = WalletTransaction.objects.get(
+                wallet=wallet, idempotency_key=f"usage_deduction:{ev}")
+            wallet.balance_micros += 4_000_000
+            wallet.save(update_fields=["balance_micros", "updated_at"])
+            WalletTransaction.objects.create(
+                wallet=wallet, transaction_type="REFUND",
+                amount_micros=4_000_000,
+                balance_after_micros=wallet.balance_micros,
+                idempotency_key=f"refund:{ev}")
+            assert GrantLedger.refund(wallet, original) == 4_000_000
+        g.refresh_from_db()
+        assert g.remaining_micros == 10_000_000  # lot fully restored
+        alloc = GrantAllocation.objects.get(grant=g)
+        assert alloc.refunded_micros == 4_000_000
         import logging
         records = []
 

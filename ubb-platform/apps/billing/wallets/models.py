@@ -108,7 +108,8 @@ class CreditGrant(BaseModel):
     wallet lock + transaction, riding the caller's idempotency keys.
 
     Conservation per grant:
-        granted == remaining + sum(allocations) + expired_micros + voided_micros
+        granted == remaining + sum(allocations.amount - allocations.refunded)
+                   + expired_micros + voided_micros
     Per wallet (G1): sum(remaining of active grants) <= max(balance, 0).
     """
     tenant = models.ForeignKey(
@@ -162,7 +163,17 @@ GRANT_ALLOCATION_TYPES = [
 
 
 class GrantAllocation(BaseModel):
-    """Audit row: how much of a debit (or recoup) was funded by which grant lot."""
+    """Audit row: how much of a debit (or recoup) was funded by which grant lot.
+
+    ``refunded_micros`` is the cumulative slice of this allocation that has been
+    RE-FUNDED back to the lot by a usage refund (GrantLedger.refund). Rows stay
+    append-only for the consumed amount; a refund never deletes or shrinks
+    ``amount_micros`` — it increments ``refunded_micros`` (capped at
+    ``amount_micros``) and the grant's ``remaining_micros`` by the same value,
+    keeping the conservation equation
+        granted == remaining + sum(amount - refunded) + expired + voided
+    exact at every step.
+    """
     grant = models.ForeignKey(
         CreditGrant, on_delete=models.CASCADE, related_name="allocations"
     )
@@ -170,6 +181,7 @@ class GrantAllocation(BaseModel):
         WalletTransaction, on_delete=models.CASCADE, related_name="grant_allocations"
     )
     amount_micros = models.BigIntegerField()
+    refunded_micros = models.BigIntegerField(default=0)
     allocation_type = models.CharField(max_length=20, choices=GRANT_ALLOCATION_TYPES)
 
     class Meta:
@@ -178,6 +190,11 @@ class GrantAllocation(BaseModel):
             models.CheckConstraint(
                 condition=models.Q(amount_micros__gt=0),
                 name="ck_grant_allocation_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refunded_micros__gte=0)
+                & models.Q(refunded_micros__lte=models.F("amount_micros")),
+                name="ck_grant_alloc_refund_bounds",
             ),
         ]
 
