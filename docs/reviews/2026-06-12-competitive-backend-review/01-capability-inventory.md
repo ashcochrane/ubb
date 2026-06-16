@@ -27,6 +27,11 @@
 
 UBB is a multi-tenant usage-based-billing backend (Django + Celery + Postgres + Redis, Python SDK) aimed at AI products. A tenant meters its end-customers' usage as immutable events with integer-micros money and a single per-tenant currency (ubb-platform/apps/metering/usage/services/usage_service.py:139-147), prices each event at the ingest choke point through a versioned two-card rate-card engine (cost cards = COGS, price cards = what you charge, plus markup fallback; ubb-platform/apps/metering/pricing/services/pricing_service.py:83-183), and gets margin analytics per customer/dimension/business (ubb-platform/apps/subscriptions/api/margin_endpoints.py:21-237). Money sits in prepaid wallets with credit-grant lots, Stripe Checkout/auto top-ups, budgets, a pre-check spend gate, per-run hard stops, and hourly self-healing reconciliation (ubb-platform/apps/billing/handlers.py:13-100; ubb-platform/config/settings.py:147-254). Postpaid tenants instead get month-end usage invoices and seat-based subscriptions pushed to the tenant's own Stripe Connect account with AR tracking (ubb-platform/apps/billing/invoicing/services/postpaid_service.py:101-453; ubb-platform/apps/subscriptions/orchestration/service.py:147-206). End customers see balances, usage, and invoices through a JWT-authenticated widget API (ubb-platform/api/v1/me_endpoints.py:14-465). UBB itself bills tenants a platform fee on UBB's own Stripe account (ubb-platform/apps/billing/tenant_billing/services.py:13-199). Customers can be individuals, businesses, or seats; pooled businesses pay for their seats while control and attribution stay per-seat (ubb-platform/apps/platform/customers/models.py:46-52).
 
+
+> **In plain terms.** This is the whole product in one breath. UBB is the billing "engine room" that sits behind an AI company's product and turns raw usage into money. The AI company is the tenant; the people it sells to are end-customers. The flow runs in four stages. (1) Meter: every time an end-customer does something billable (an API call, tokens consumed, a job run), the product records one permanent, tamper-proof event. (2) Price: at the exact moment that event lands, UBB looks up two "rate cards" — a cost card (what it costs the tenant to deliver, their COGS) and a price card (what they charge the customer) — and stamps both onto the event. (3) Margin: it can then report profit per customer, per usage type, or per business account. (4) Money: it actually collects, in one of three modes the tenant picks per their business model.
+>
+> The three modes are the spine of the product. meter_only = just measure, no charging (good for free tiers or companies billing elsewhere). prepaid = customers load a wallet upfront and usage draws it down, with auto-top-up and spend gates (low collection risk). postpaid = bill in arrears with a monthly invoice (the classic SaaS "pay at month end"). End-customers can see their own balances and invoices through a widget. UBB also bills its own tenants a platform fee. The directional bet is sound: meter the truth once, price at the source, keep money and reporting separate. Worth questioning: the whole model assumes the tenant can reliably emit a clean usage event for everything billable — if their instrumentation is wrong upstream, UBB faithfully bills the wrong thing.
+
 ---
 
 ## 2. The tenant decision tree
@@ -45,6 +50,11 @@ Every configuration choice a customer (tenant) makes, its options, defaults, and
 | `backfill_window_days` | 0–60, **34**; 0 = no backfill (also makes enforcing budget caps airtight against backdating) | **ORM-only** — no public API writer | ubb-platform/apps/platform/tenants/models.py:60-64,110-113 |
 | Platform-fee schedule | per-product `ProductFeeConfig` flat `{amount_micros}` \| percentage `{percentage}`; fallback `BillingTenantConfig.platform_fee_percentage` (**1.00%**; seed sets 2.50). Sandbox always 0 | **Operator-only** (seed/admin/ORM); tenant can read periods/invoices but not the schedule | ubb-platform/apps/billing/tenant_billing/services.py:87-128; ubb-platform/apps/billing/tenant_billing/models.py:127-129 |
 
+
+> **In plain terms.** These are the master switches a tenant sets once for their whole account. The big one is billing_mode (meter_only / prepaid / postpaid) — it decides whether and how customers get charged, and everything downstream keys off it. The default is meter_only, i.e. measure-but-don't-bill; a CEO should note that a brand-new tenant collects no money until they deliberately turn billing on. products is which UBB modules are active; metering is always on, and you must enable "billing" before prepaid/postpaid will work. default_currency is one currency for the whole tenant (18 supported, USD default) and — importantly — it locks the moment any real money exists, so it cannot be changed after the fact; that is a safety feature, not a bug.
+>
+> require_cost_card_coverage decides what happens when an event arrives for which the tenant never set a cost: default false means it is simply treated as zero-cost (and flagged as "uncosted"), so margin can look artificially high; true forces every metric to have a cost defined or the event is rejected. automatic_tax (default off) hooks in Stripe Tax for subscriptions and postpaid invoices only — never on wallet top-ups. backfill_window_days (default 34) caps how far back a tenant can date events, which protects budget caps from being gamed by backdating. The platform-fee schedule is what UBB charges the tenant, and it is operator-set, not tenant-set. Worth questioning: require_cost_card_coverage defaulting to false means a careless tenant can run with invisible costs and believe their margins are better than reality.
+
 ### 2.2 Pricing choices
 
 | Decision | Options (default in bold) | Where set | Anchors |
@@ -59,6 +69,11 @@ Every configuration choice a customer (tenant) makes, its options, defaults, and
 | Rate-card listing mode | **active-only** \| `include_history=true` \| `as_of=<datetime>` point-in-time | GET `/pricing/rate-cards` | ubb-platform/api/v1/metering_endpoints.py:552-565 |
 | Analytics shape | fixed breakdowns always; opt-in `dimensions` (≤6, columns or `tag:<key>`); timeseries granularity **day** \| hour with `group_by`; analytics windows default all-time, margin windows default month-to-date | query params | ubb-platform/api/v1/metering_endpoints.py:338-497; ubb-platform/apps/subscriptions/api/margin_endpoints.py:21-34 |
 | Batch vs single ingestion | identical per-item semantics; batch = fewer round trips, per-item independent commits | POST `/usage` vs `/usage/batch` | ubb-platform/api/v1/metering_endpoints.py:184-196 |
+
+
+> **In plain terms.** This is how a tenant decides what each unit of usage costs them and what they charge for it. For every event, cost can come from the caller passing an explicit number, or be computed from the tenant's rate cards; price can be a caller-supplied number, a matched price card, or — if neither exists — a markup applied on top of cost. The default markup behavior is the one to notice: with no markup configured, the price falls back to equalling the cost, i.e. zero margin. So a tenant who sets up metering but forgets to set prices or markup will bill customers exactly what it cost them and make nothing. That is a deliberate "never accidentally overcharge" stance, but it also means revenue is silently zero-margin until someone configures pricing.
+>
+> Rate cards support four pricing shapes: per_unit (flat per-unit, the default), flat (a fixed fee), and graduated/package (volume tiers, e.g. first 1,000 calls at one rate, the next 10,000 cheaper) — the tiered ones are allowed only on price cards, not cost cards. Cards can be tenant-wide or overridden for a specific customer, and the most specific match wins (customer beats tenant, more dimensions beat fewer), which lets a tenant cut a special deal for one account without touching everyone else. effective_at lets pricing be dated for backfills. Analytics give fixed breakdowns plus optional custom dimensions, and batch ingestion is just many single events bundled to save round-trips. Worth questioning: the zero-margin markup fallback is correct but quiet — there is no hard nudge telling a tenant "you have priced nothing, you are making 0%."
 
 ### 2.3 Per-customer money & control
 
@@ -75,6 +90,11 @@ Every configuration choice a customer (tenant) makes, its options, defaults, and
 | Grant creation | kind paid \| promo; expiry exactly one of `expires_at` (tz-aware future) / `expires_in_days` (1..3650) / **neither (non-expiring)**; `idempotency_key` mandatory | POST `/api/v1/billing/customers/{id}/grants` | ubb-platform/api/v1/billing_endpoints.py:421-435; ubb-platform/api/v1/schemas.py:179-199 |
 | Run limits | `BillingTenantConfig.run_cost_limit_micros` / `hard_stop_balance_micros`, both nullable (**null = no limit**); snapshots at run creation | **ORM-only** — no public API writer | ubb-platform/apps/billing/tenant_billing/models.py:122-132 |
 
+
+> **In plain terms.** These are the per-customer money and safety controls — the dials a tenant turns for an individual end-customer rather than the whole account. revenue_mode only affects how profit is reported, not who pays what. account_type lets a customer be an individual, a business, or a seat under a business; this is fixed at creation (no later converting or re-parenting). For businesses, billing_topology is the crucial choice with no default — pooled means all seats spend from the parent business's single wallet (think a company buying credits its team shares), while allocated means each seat funds itself. Budget caps let a tenant set a monthly spend ceiling per customer; the default enforce_mode is advisory (it alerts but does not block), so by default a customer can blow past their cap — turning on "enforcing" is what actually stops spend.
+>
+> The safety posture matters: if the system cannot read a budget, it fails open (lets the request through) unless explicitly told to fail closed, and the rate-limiter always fails open. That is an availability-over-strictness choice — UBB would rather let usage through than wrongly block a paying customer during a glitch. min_balance is an allowed-overdraft cushion, and several of these knobs (min_balance, run limits, top-up grant expiry, the risk config) are ORM-only — meaning there is no public API to set them; an operator must do it in the database/admin. Auto-top-up defaults to triggering at $10 remaining and adding $20, but only fires if the tenant is Stripe-charge-ready with a saved card. Worth questioning: budget caps defaulting to advisory (not enforcing) plus fail-open-on-error means the "spend control" feature does not actually halt overspend out of the box — a tenant must opt into real enforcement.
+
 ### 2.4 Subscriptions & postpaid choices
 
 | Decision | Options (default in bold) | Where set | Anchors |
@@ -86,6 +106,11 @@ Every configuration choice a customer (tenant) makes, its options, defaults, and
 | `consolidate_with_subscription` | **false** (standalone monthly usage invoice) \| true (usage rides subscription renewal draft; 45-min window, standalone fallback, remainder split) | PUT `/api/v1/billing/postpaid-config` | ubb-platform/apps/billing/invoicing/models.py:146-156; ubb-platform/apps/billing/invoicing/services/postpaid_service.py:455-609 |
 | Repush mode | plain (resume SAME Stripe invoice, counters reset) \| `--rebill-void` (operator voided invoice; pointer/snapshot cleared, `rebill_generation` rotates idempotency keys; refused for consolidated rows) | `manage.py repush_usage_invoice` (operator) | ubb-platform/apps/billing/invoicing/management/commands/repush_usage_invoice.py:14-93 |
 | Stripe webhook wiring | two endpoints: `/api/v1/webhooks/stripe` (invoice.*, account.*, checkout/charge/payment_intent.*) AND `/api/v1/subscriptions/webhooks/stripe` (customer.subscription.* ONLY — invoice.* must never be added there; shared dedup would drop events); `/test` twins for sandbox | Stripe dashboard config | ubb-platform/api/v1/webhooks.py:415-429; ubb-platform/apps/subscriptions/api/endpoints.py:140-149 |
+
+
+> **In plain terms.** This covers recurring fees and arrears (postpaid) billing. A subscription plan can charge a flat access fee, a per-seat fee, or both — so a tenant can model "$99/month plus $10 per user." When a tenant changes a plan's price, migrate_existing decides who is affected: the default false grandfathers current subscribers on the old price (safe, no surprise charges), while true repoints everyone to the new price with no proration. Cancellation defaults to at_period_end = true, meaning the customer keeps service until the period they have paid for ends, rather than being cut off immediately — the customer-friendly default. Immediate cancel is irreversible, so the safer default is the right one.
+>
+> For postpaid month-end invoices, line grouping defaults to a single total line (cleanest invoice), with options to break out by tag or product; notably, business accounts always get one line per seat regardless. consolidate_with_subscription (default false) lets month-end usage charges ride on the same invoice as the subscription renewal instead of arriving as a separate bill — tidier for the customer, but it relies on a timing window with a fallback if the windows miss. Repush is an operator recovery tool for re-sending a failed invoice. The webhook wiring uses two separate Stripe endpoints with a strict rule that subscription and invoice events must not be mixed, or shared deduplication would silently drop events. Worth questioning: the plan interval field is documented as unvalidated at the API (only "month" really works at HEAD) and the per-seat usage_mode is stored but inert — so the subscription engine is narrower than the field set suggests.
 
 ### 2.5 Platform & SDK choices
 
@@ -100,6 +125,11 @@ Every configuration choice a customer (tenant) makes, its options, defaults, and
 | SDK retry/transport | `max_retries` **3** (only 429/502/503/504/connection errors; Retry-After honored; hard-stop/run-not-active never retried), `timeout` **10s**, `base_url` | SDK constructor | ubb-sdk/ubb/retry.py:23-35 |
 | seed bootstrap | `seed_dev_data --billing-mode` **postpaid** \| prepaid \| meter_only; `--with-sandbox` opt-in; `--platform-fee` (seed default 2.50) | operator CLI | ubb-platform/apps/platform/tenants/management/commands/seed_dev_data.py:29-55,96-101 |
 | Top-up channel | Stripe-connected tenant → hosted Checkout; no connector → 202 + `billing.topup_requested` outbox event for tenant's own payment flow | automatic per tenant state | ubb-platform/api/v1/billing_endpoints.py:160-198 |
+
+
+> **In plain terms.** These are the platform plumbing and developer-experience choices. Every tenant gets two worlds: live keys that move real money and test keys routed to an automatically-created sandbox copy — so a tenant's engineers can build and break things safely without touching production billing. The sandbox can be reset on demand, by default keeping the config but wiping the data, which is exactly what you want for repeatable testing. Webhooks (the way UBB notifies a tenant's systems of events like "invoice paid" or "balance low") default to sending all 25 event types unless the tenant narrows the list, and they are cryptographically signed (v2 signature, 5-minute tolerance) so the tenant can trust the message really came from UBB. The widget token that lets an end-customer see their own usage defaults to a 15-minute life — short-lived for security, and the tenant chooses the duration.
+>
+> The SDK (the code library a tenant installs) defaults to metering-only, with billing/subscriptions/referrals opt-in, and it retries failed network calls up to 3 times — but only on transient errors, and crucially it never retries a hard-stop or "run not active" rejection, so a deliberately blocked charge is not accidentally forced through. Seed bootstrap and the platform-fee setting are operator tools for standing up demo/dev tenants. The top-up channel adapts to the tenant: if they are connected to Stripe they get a hosted checkout page; if not, UBB simply emits a "top-up requested" event for the tenant to handle payment their own way. Worth questioning: defaulting webhooks to "send all 25 event types" is convenient but means a tenant receives (and must process) far more traffic than they likely need unless they actively prune the list.
 
 ---
 
@@ -116,12 +146,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** `customer_id` (UUID, 404 if not tenant's); `request_id` 1–500 chars in the schema BUT the DB column is varchar(255) (ubb-platform/api/v1/schemas.py:27 vs ubb-platform/apps/metering/usage/models.py:17); `idempotency_key` 1–500; `provider_cost_micros`/`billed_cost_micros` each Optional int 0..999_999_999_999 (ubb-platform/api/v1/schemas.py:30-31); `units` Optional int ≥ 0; `usage_metrics` Optional dict[str,int], values ≥ 0 (ubb-platform/api/v1/schemas.py:32-44); `currency` Optional 3-char, must equal tenant `default_currency` case-insensitively else 422 (ubb-platform/apps/metering/usage/services/usage_service.py:139-147); `tags` dict[str,str]; `event_type`/`provider`/`product_id` max 100 chars; `metadata` free dict; `run_id` UUID; `effective_at` ISO datetime. Errors: 429 + `hard_stop: true` (run killed in a separate transaction), 409 `run_not_active`, 422 `pricing_error` / `effective_at_*` / `billing_period_closed` / validation (ubb-platform/api/v1/metering_endpoints.py:72-100). Response: `event_id, provider_cost_micros, billed_cost_micros, units, run_id, run_total_cost_micros, hard_stop, usage_metrics, pricing_provenance, uncosted_metrics, service_id, agent_id` (ubb-platform/api/v1/schemas.py:69-83; ubb-platform/apps/metering/usage/services/usage_service.py:97-110).
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:42-103; ubb-platform/apps/metering/usage/services/usage_service.py:113-221; ubb-platform/api/v1/schemas.py:25-53; ubb-sdk/ubb/metering.py:100-148
 
+
+> **In plain terms.** This is the single most important thing UBB does: a tenant (your customer — say, an AI startup) tells UBB "customer X just used Y" one event at a time. Each event is permanent and can carry both what it COST you (the AI provider's bill) and what you'll CHARGE the customer for it — or you can leave either blank and let UBB work it out. Every event is stamped with a unique key, so if the network hiccups and the same event is sent twice, UBB returns the original and never double-counts. That replay safety holds even if the event arrives late, after the relevant time window has closed.
+>
+> Tiny example: "Customer Acme ran 1,200 tokens through GPT-4; it cost us 30 cents; charge them 45 cents." UBB stores it, knows your margin is 15 cents, and resists duplication.
+>
+> Worth questioning: the simplified SDK helper (`UBBClient.record_usage`) forces you to supply the cost and cannot send the richer named-metrics or backdating — the full power lives only in the lower-level client, which non-engineers' integrations might miss.
+
 #### 3.1.2 Batch usage ingestion
 
 - **What:** Ingest 1..100 INDEPENDENT events in one HTTP call. Each item runs as its own atomic commit (deliberately not one mega-transaction); always HTTP 200 with positionally aligned `results[]` plus `succeeded`/`failed` counts. A whole-batch network retry is safe (per-item idempotency returns original event ids); a duplicate idempotency_key WITHIN one batch resolves to the first item's event id. A hard-stop on one item kills the run and the batch continues (later items on that run get `run_not_active`); if the kill itself fails the run stays ACTIVE and a loud log is the only signal (ubb-platform/api/v1/metering_endpoints.py:160-166).
 - **How:** POST `/api/v1/metering/usage/batch` (ubb-platform/api/v1/metering_endpoints.py:184-205; per-item mapping at 106-181). SDK: `MeteringClient.record_batch(events) -> BatchResult(results: list[BatchItemResult(ok, error, detail, event_id, data)], succeeded, failed)` (ubb-sdk/ubb/metering.py:150-184; ubb-sdk/ubb/types.py:35-50). Per-event dict takes the same keys as `record_usage` plus `customer_id`; per-event `recorded_at` supported.
 - **Options:** `events` list min 1 max 100 (ubb-platform/api/v1/schemas.py:56-57; 0 or >100 → 422). Per-item error codes mirror the single endpoint byte-for-byte plus `ok: false`; 404s become `{error: 'not_found'}`, generic ValueError becomes `{error: 'validation_error'}` (ubb-platform/api/v1/metering_endpoints.py:106-181).
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:106-205; ubb-platform/api/v1/schemas.py:56-66; ubb-sdk/ubb/metering.py:150-184
+
+
+> **In plain terms.** Instead of one network call per usage event, a tenant can send up to 100 events in a single call — important for AI products that rack up thousands of small events and need to report them efficiently and cheaply. Crucially, each event in the batch is treated independently: if event #7 is malformed, events #1–6 and #8–100 still succeed. You get back a precise scorecard — how many succeeded, how many failed, and exactly why each failure happened — lined up position-by-position with what you sent. Re-sending the whole batch after a failure is safe because of the same duplicate-protection as single events.
+>
+> Tiny example: ship a minute's worth of 100 API calls in one request; 98 land, 2 are rejected for a bad customer id, and you see precisely which two.
+>
+> Worth questioning: 100 is the hard ceiling per call, and there's an edge case the doc flags — if UBB tries to halt an over-budget run mid-batch and that halt itself fails, the only warning is a log line, not an alert. Ask whether that needs louder monitoring.
 
 #### 3.1.3 Caller timestamps & bounded backfill (`effective_at`)
 
@@ -130,12 +174,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Omitted = server now. The tenant knob `backfill_window_days` lives on the Tenant model (ubb-platform/apps/platform/tenants/models.py:60-64) but is NOT settable via any public API endpoint (auditor grep of `api/` found no writer — DB/ops only).
 - **Anchors:** ubb-platform/apps/metering/usage/services/usage_service.py:19,31-74,129-134,198-211; ubb-platform/apps/platform/tenants/models.py:60-64,110-113; ubb-sdk/ubb/metering.py:20-32,108-124
 
+
+> **In plain terms.** Usage doesn't always reach UBB the instant it happens — systems lag, retries pile up, exports run nightly. This feature lets a tenant say "this usage actually occurred last Tuesday," and UBB prices it using the rates that were in effect last Tuesday, and books it into last Tuesday's month — not today's. That keeps your numbers honest when data arrives late. There are guardrails: timestamps can't be in the future, can't lack a timezone, and can't be older than a configurable window (default ~34 days). Backdating into a month whose invoice is already finalized is refused, so you can't silently rewrite a closed bill. When late data lands in a prior month, UBB automatically recomputes that month's profit figures.
+>
+> Tiny example: a nightly batch lands at 2am but is dated to the actual call times the previous afternoon, so yesterday's margin report stays correct.
+>
+> Worth questioning: the backfill window length can only be changed in the database/by operations — there is no API or self-serve control, so tenants can't tune it themselves.
+
 #### 3.1.4 Tags, reserved attribution keys, units vs usage_metrics
 
 - **What:** Free-form cost-attribution tags on every event: ≤50 keys, key regex `^[a-z][a-z0-9_]{1,63}$` (2–64 chars, starts with a letter), string values ≤256 chars (ubb-platform/apps/metering/usage/services/usage_service.py:16,77-94). Three RESERVED tag keys are promoted to indexed columns: `tags['service']` → `service_id`, `tags['agent']` → `agent_id`, `tags['product']` → `product_id` when the `product_id` param is empty (ubb-platform/apps/metering/usage/services/usage_service.py:149-153; ubb-platform/apps/metering/usage/models.py:6). `units` is a single scalar quantity; `usage_metrics` is a named multi-metric map (`{metric_name: int_units}`) and is the ONLY thing rate cards can price against — cost/price cards resolve per `usage_metrics` key, never against bare `units` (ubb-platform/apps/metering/pricing/services/pricing_service.py:114-129,144-172).
 - **How:** `tags` / `units` / `usage_metrics` fields of `record_usage` (single + batch).
 - **Options:** Tags also drive dimensional rate-card matching, analytics `tag:<key>` breakdowns, GET usage `tag_key`+`tag_value` filtering, and postpaid invoice line grouping.
 - **Anchors:** ubb-platform/apps/metering/usage/services/usage_service.py:16,77-94,149-153; ubb-platform/apps/metering/usage/models.py:6,23-34
+
+
+> **In plain terms.** Every usage event can be labeled with free-form tags — like "team=marketing", "feature=summarizer", "region=eu" — so a tenant can later slice spend and profit by whatever dimensions matter to their business. Three tag names are special and get fast-lookup treatment: "service", "agent", and "product". There's also an important distinction in how quantity is recorded: a plain `units` number is just a scalar count, whereas `usage_metrics` is a named breakdown like {input_tokens: 1000, output_tokens: 500}. This matters because the pricing engine can ONLY attach rate cards to named metrics — bare `units` cannot be automatically priced by a card.
+>
+> Tiny example: tag an event with team and feature, then later ask "what did the marketing team's summarizer feature cost us in May?"
+>
+> Worth questioning: if a tenant records usage as a plain `units` number expecting automatic pricing, nothing matches — they must use named `usage_metrics`. That's a subtle trap worth making obvious in onboarding.
 
 #### 3.1.5 Caller-supplied costs (BYO-cost / BYO-price)
 
@@ -144,12 +202,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Both 0..999_999_999_999 (~$1M/event cap; ubb-platform/api/v1/schemas.py:30-31).
 - **Anchors:** ubb-platform/apps/metering/pricing/services/pricing_service.py:83-183
 
+
+> **In plain terms.** UBB lets a tenant bring their own numbers. The cost side (what the AI provider charged you) and the price side (what you bill your customer) are independent: you can supply both, supply one and let UBB compute the other, or supply neither and let UBB price everything from its rate cards. This flexibility means UBB fits whether you already know your exact provider costs (common — you get the OpenAI/Anthropic bill) but want UBB to handle customer pricing, or vice versa.
+>
+> Tiny example: "I know this call cost me exactly 30 cents (from my provider invoice) — you figure out what to charge the customer using my price book." UBB skips its cost calculation and just runs the pricing.
+>
+> Worth questioning: there's a hard ceiling of roughly $1M per single event on both cost and price figures. For almost all AI usage that's irrelevant, but it's a fixed cap worth knowing exists.
+
 #### 3.1.6 Rate cards: two-card model, CRUD, bulk, versioning
 
 - **What:** Versioned price book with two card types: `cost` (your COGS) and `price` (what you charge). Create, list (active / point-in-time `as_of` / full history), soft-version update (PUT closes the old version, opens a new row with the same `lineage_id` — old versions stay for as-of pricing), per-lineage history, soft delete (sets `valid_to`). Bulk create 1..100 cards all-or-nothing in one transaction with full pre-validation. Active-card uniqueness enforced by partial unique constraints on (tenant[, customer], card_type, provider, event_type, metric_name, dimensions_hash, currency) (ubb-platform/apps/metering/pricing/models.py:152-163).
 - **How:** GET/POST `/api/v1/metering/pricing/rate-cards` (ubb-platform/api/v1/metering_endpoints.py:552-604), POST `.../rate-cards/batch` (607-655), PUT `.../rate-cards/{card_id}` (665-737: targets the card id or falls back to the active card of its lineage; only active versions editable; `old.valid_to = now` then new row, same lineage_id), GET `.../rate-cards/{lineage_id}/history` (740-745), DELETE `.../rate-cards/{card_id}` (748-754). SDK: `create_rate_card`, `update_rate_card(card_id, **fields)`, `get_rate_card_history(lineage_id)`, `list_rate_cards(card_type, include_history, as_of)`, `bulk_create_rate_cards(cards)`, `delete_rate_card` (ubb-sdk/ubb/metering.py:325-373).
 - **Options:** `card_type` in {cost, price} (price cards additionally require the `billing` product: `_gate_card_type`, ubb-platform/api/v1/metering_endpoints.py:527-530, replicated per-card in batch at 629-631); `metric_name` 1–100 (required); `provider`/`event_type` default '' (EXACT match keys); `dimensions` dict; `pricing_model` in {per_unit (default), flat, graduated, package}; `rate_per_unit_micros` ≥ 0; `unit_quantity` > 0 (default 1_000_000); `fixed_micros` ≥ 0; `tiers` list; `currency` omitted → tenant currency, explicit must match (ubb-platform/api/v1/metering_endpoints.py:533-549); `product_id` (stored, NOT used in matching); `customer_id` for per-customer override. List filters: `card_type`, `include_history` bool, `as_of` datetime (`valid_from <= as_of < valid_to`) (552-565). PUT semantics: `tiers=null` keeps current tiers (669-671); currency re-pinned on every new version (714-721).
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:500-754; ubb-platform/apps/metering/pricing/models.py:125-163; ubb-sdk/ubb/metering.py:325-373
+
+
+> **In plain terms.** This is the tenant's price book, and it's genuinely two books in one: "cost" cards record what your inputs cost YOU, and "price" cards record what you charge your CUSTOMER. Tenants can create, list, update, and retire cards, and even load up to 100 at once (all-or-nothing, so a bad card cancels the whole upload rather than half-importing). The clever part is versioning: when you change a price, UBB doesn't overwrite the old rate — it closes the old version and opens a new one, keeping history. That's why backdated usage (3.1.3) can still be priced at the rate that was live at the time.
+>
+> Tiny example: raise your per-token price on June 1; usage dated May still prices at the old May rate, and your audit trail shows both.
+>
+> Worth questioning: "price" cards require a separate billing product entitlement, and a stored `product_id` on a card is NOT used when matching — only documentation/labeling. A CEO should confirm that two-product split matches how UBB packages and sells these features.
 
 #### 3.1.7 Pricing math — exactly four models
 
@@ -158,12 +230,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Free-tier emulation: graduated tier 1 with rate 0. Per-block pricing: per_unit with `unit_quantity` = block size (half-up) or package (ceil).
 - **Anchors:** ubb-platform/apps/metering/pricing/models.py:39-227,230-258; ubb-platform/apps/metering/pricing/services/pricing_service.py:9,16-55,120-172; ubb-platform/apps/metering/pricing/services/tier_counter_service.py:16-66
 
+
+> **In plain terms.** UBB supports exactly four ways to price usage, deliberately kept small and predictable: (1) per-unit — a rate times quantity (e.g. $0.002 per 1,000 tokens); (2) flat — a fixed fee per event; (3) graduated — tiered pricing where the first N units cost one rate, the next M cost another, like progressive tax brackets; (4) package — buy in blocks, rounding up (e.g. "credits sold in packs of 100"). The tiered models track running totals per customer per calendar month so the brackets advance correctly as usage accumulates, and the math is engineered so the per-event charges always add up exactly to the monthly total — no rounding drift between what you invoice and what your wallet shows.
+>
+> Tiny example: free first 10,000 calls, then $0.001 each — model that as a graduated card with a zero-rate first tier.
+>
+> Worth questioning: graduated and package pricing apply to "price" (customer-charge) cards only, not to cost cards, and tiers are capped at 20. Confirm that covers your most complex intended pricing schemes — very elaborate tier structures would hit that ceiling.
+
 #### 3.1.8 Card resolution: exact keys, dimensional matching, customer override
 
 - **What:** For each `usage_metrics` key, `_resolve_card` filters active-at-`as_of` cards by EXACT equality on (tenant, card_type, provider, event_type, metric_name, currency) — empty provider on a card matches only events with empty provider; there is NO wildcard. Then dimensions: `card.dimensions` must subset-match event tags with string equality (`str(tags.get(k)) == str(v)`). Owner precedence: customer-specific cards first, then tenant-wide; within an owner, most dimensions wins, ties broken by newest `valid_from` (ubb-platform/apps/metering/pricing/services/pricing_service.py:60-80). Cost leg: unmatched metric → contributes 0 and is reported in `uncosted_metrics` (or 422 in strict mode). Price leg: if AT LEAST ONE metric matched a price card, billed = sum of matched metrics only (unmatched price metrics silently contribute 0); if NO metric matched any price card, the whole event falls back to markup pricing (pricing_service.py:141-179).
 - **How:** Internal to `PricingService.price` — runs at the `record_usage` choke point inside the event's savepoint so tier-ladder advances roll back with a raced duplicate insert (ubb-platform/apps/metering/usage/services/usage_service.py:156-167).
 - **Options:** Dimensional variants = same metric with different `dimensions` dicts (separate `dimensions_hash` → separate active cards and separate tier ladders).
 - **Anchors:** ubb-platform/apps/metering/pricing/services/pricing_service.py:60-80,89-179
+
+
+> **In plain terms.** When an event arrives, UBB has to decide which price-book card applies. It matches on EXACT labels — provider, event type, metric name, currency must all line up precisely; there are no wildcards, so a blank provider on a card matches only events that also have a blank provider. Tags then refine the match (a card tagged "region=eu" only applies to eu events). Customer-specific cards always beat tenant-wide defaults, and among candidates the most specific (most tag conditions) wins. This is what lets a tenant give one big customer a custom rate while everyone else gets the standard one.
+>
+> Tiny example: Acme has a negotiated discount card; everyone else falls to the default card; an EU-tagged event picks the EU-specific rate over the generic one.
+>
+> Worth questioning: the strict, no-wildcard exact matching is safe but unforgiving — a typo in a provider or metric name means the card silently doesn't match and that metric prices at zero (unless strict mode, 3.1.10, is on). Worth a setup-validation step so tenants catch mismatches early.
 
 #### 3.1.9 Markup fallback (cost-plus pricing)
 
@@ -172,12 +258,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** `markup_percentage_micros` ≥ 0, `fixed_uplift_micros` ≥ 0 (ubb-platform/api/v1/schemas.py:225-227). PUT is upsert (`update_or_create`). No delete endpoint — clear by setting both to 0.
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:279-332; ubb-platform/apps/metering/pricing/models.py:10-36; ubb-platform/apps/metering/pricing/services/markup_service.py:6-20
 
+
+> **In plain terms.** This is the safety net for customer pricing: when no price card matches and the caller didn't supply a charge, UBB falls back to "cost-plus" — take what it cost you and add a markup. The markup is a percentage plus an optional fixed add-on, and it can be set as a tenant-wide default or overridden per customer. This means a tenant can get up and running with sensible billing immediately ("charge everything at cost + 40%") without building a detailed price book first, then add precise cards later.
+>
+> Tiny example: a call costs you 30 cents, your markup is 40%, so the customer is billed 42 cents — automatically, with no card needed.
+>
+> Worth questioning: there's no delete for a markup — you "remove" it by setting both values to zero, at which point the customer is billed exactly your cost (zero margin). A tenant who forgets a customer-specific markup exists could unknowingly bill at break-even. Worth surfacing markup settings prominently.
+
 #### 3.1.10 Strict cost coverage flag
 
 - **What:** Tenant opt-in invariant "every metric must have a cost card". When `tenant.require_cost_card_coverage` is True: any `usage_metrics` key without a matching cost card → `PricingError` → 422 (even when the caller supplied an aggregate `provider_cost_micros` — the caller-cost path is explicitly checked, ubb-platform/apps/metering/pricing/services/pricing_service.py:94-103); `units > 0` with NO `usage_metrics` and no caller cost → 422 "cost is unknowable" (110-113). When False: uncosted metrics contribute 0 cost and are surfaced as `uncosted_metrics[]` on the response (ubb-platform/api/v1/metering_endpoints.py:101-102,179-180).
 - **How:** PATCH `/api/v1/tenant/config {require_cost_card_coverage: true}` — enabling is REFUSED (422 `no_cost_cards`) while the tenant has zero active cost cards (ubb-platform/api/v1/tenant_endpoints.py:408-413). Read via GET `/api/v1/tenant/config` (374-376). SDK: `UBBClient.update_tenant_config` (ubb-sdk/ubb/client.py:343).
 - **Options:** Default False (ubb-platform/apps/platform/tenants/models.py:50).
 - **Anchors:** ubb-platform/apps/metering/pricing/services/pricing_service.py:94-113,131-134; ubb-platform/api/v1/tenant_endpoints.py:408-413; ubb-platform/apps/platform/tenants/models.py:50
+
+
+> **In plain terms.** This is an optional discipline switch a tenant can flip on: "I refuse to record any usage whose cost I can't fully account for." With it on, any usage metric that lacks a matching cost card is rejected outright rather than silently treated as costing zero — even if the caller passed an aggregate cost number. With it off (the default), uncosted metrics are allowed through at zero cost but flagged on the response so you can spot the gap. This is a guardrail against the classic margin-reporting lie where unmetered costs make a product look more profitable than it is.
+>
+> Tiny example: a new AI feature ships without a cost card; strict mode blocks its usage until you add the card, so it can never quietly distort your margins.
+>
+> Worth questioning: it's off by default, and you literally cannot turn it on until you have at least one cost card. That's sensible, but it means the safer behavior is opt-in — a CEO might ask whether strict coverage should be the recommended default for any tenant who cares about accurate margins.
 
 #### 3.1.11 Usage history listing
 
@@ -186,12 +286,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** `limit` clamped 1..100, server default 50 (SDK default 20); opaque cursor encodes (effective_at, id); invalid cursor → 400.
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:208-254; ubb-sdk/ubb/metering.py:245-258
 
+
+> **In plain terms.** A tenant can pull back the list of a customer's recorded usage events, newest first, paged so large histories load in chunks, with an optional filter by a single tag. This is the basic "show me what this customer did" audit/transparency feature.
+>
+> Tiny example: "show Acme's last 50 events tagged team=sales."
+>
+> Worth questioning: the list deliberately leaves out some detail — it does NOT return the tags, the named metric breakdown, or the pricing explanation (provenance). Combined with the fact noted in 3.1.15 that there's no way to fetch a single event by id, this means the full priced-breakdown of a past event is only ever visible at the moment it was first recorded. For a billing system, the inability to re-fetch a complete event record later is a real gap worth raising — customers and support teams routinely need to re-examine a specific past charge.
+
 #### 3.1.12 Usage analytics (totals + multi-dimensional breakdowns)
 
 - **What:** One-call tenant-wide rollup: `total_events`, `total_billed/provider_cost_micros`, `usage_markup_margin_micros` (= billed − provider), fixed breakdowns `by_provider/by_event_type/by_customer/by_product` (+ `by_tag` when `tag_key` given), PLUS up to 6 requested `dimensions` breakdowns. Each dimension is a column in {provider, event_type, product_id, customer, service_id, agent_id} or `tag:<key>` (key regex `[a-z][a-z0-9_]{1,63}`). Tag breakdowns add an `(unattributed)` bucket for events missing the key; column breakdowns map ''/None to `(unattributed)` (except customer) — every event is counted, rows reconcile to totals (ubb-platform/api/v1/metering_endpoints.py:409-466).
 - **How:** GET `/api/v1/metering/analytics/usage?start_date&end_date&customer_id&tag_key&dimensions=...&dimensions=...` (ubb-platform/api/v1/metering_endpoints.py:341-479). SDK: `usage_analytics(start_date, end_date, customer_id, tag_key, dimensions=list)` (ubb-sdk/ubb/metering.py:393-408).
 - **Options:** `start_date`/`end_date` are dates; start inclusive from UTC midnight, end INCLUSIVE (strict bound at next UTC midnight, 351-354); windows on `effective_at`; >6 dimensions → 422; unknown dimension/bad tag key → 422.
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:338-479; ubb-sdk/ubb/metering.py:393-408
+
+
+> **In plain terms.** This is the at-a-glance business dashboard query: in one call a tenant gets totals across a date range — total events, total cost, total billed, and the markup margin between them — plus breakdowns by provider, event type, customer, and product, and up to six more custom slices including by any tag. It's designed so every event is counted somewhere (events missing a label land in an "(unattributed)" bucket), so the breakdown rows always reconcile to the totals — no money or usage quietly disappears.
+>
+> Tiny example: "for May, show me cost and revenue broken down by AI provider and by the customer's region tag" — in a single request.
+>
+> Worth questioning: the "margin" shown here is only the simple usage markup (billed minus cost); it does NOT include subscription revenue — that fuller profitability picture lives in the separate margin surfaces (3.1.14). A CEO should be clear these two views answer different questions and not conflate them.
 
 #### 3.1.13 Usage timeseries (COGS over time)
 
@@ -200,6 +314,13 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** `granularity` in {hour, day} else 422; `group_by` in {provider, event_type, product_id, service_id, agent_id} else 422; hourly window capped at 92 days — but ONLY enforced when BOTH `start_date` and `end_date` are supplied (ubb-platform/api/v1/metering_endpoints.py:491-493). NOTE: `end_date` here is EXCLUSIVE (`effective_at < utc_day_start(end_date)`, ubb-platform/apps/metering/queries.py:258-259) — different from `/analytics/usage` where `end_date` is inclusive.
 - **Anchors:** ubb-platform/api/v1/metering_endpoints.py:482-497; ubb-platform/apps/metering/queries.py:242-282
 
+
+> **In plain terms.** This shows spend over time as a chart-ready series — daily or hourly buckets of cost, billed amount, markup, and event count, optionally split by a dimension like provider. It's what powers a "spend trending up/down" graph for a tenant or their finance team.
+>
+> Tiny example: a daily line chart of AI cost for the last quarter, split by provider, to spot which model is driving cost growth.
+>
+> Worth questioning: there's an inconsistency the doc flags — in this timeseries the end date is EXCLUSIVE (the last day is not included), whereas the analytics rollup (3.1.12) treats the end date as INCLUSIVE. Same-looking date inputs behave differently across two endpoints, which is exactly the kind of off-by-one that produces "the numbers don't match" support tickets. Worth aligning or at least documenting loudly for integrators.
+
 #### 3.1.14 Margin surfaces (`/api/v1/margin/`)
 
 - **What:** Per-customer and tenant-level profitability. Revenue = accrued subscription revenue + usage revenue (usage billed counts as revenue ONLY when the customer's resolved `revenue_mode == 'billed'`); margin = revenue − provider cost. Endpoints: GET `/margin/{customer_id}` live margin for a window (`compute_live`: revenue_mode, subscription_revenue, usage_billed, usage_revenue, provider_cost, total_revenue, gross_margin, margin_percentage, event_count — ubb-platform/apps/subscriptions/economics/services.py:18-42); GET `/margin` (per-customer list, ubb-platform/apps/subscriptions/api/margin_endpoints.py:211-237); GET `/margin/summary` (tenant totals, 37-66); GET `/margin/by-dimension` (provider default | product=1 | tag_key=..., usage-only margin rows sorted by margin desc, 69-81 → ubb-platform/apps/metering/queries.py get_dimensional_margin 300-340); GET `/margin/unprofitable?period_start` (persisted `CustomerEconomics` snapshots where `is_unprofitable`, 84-95); GET `/margin/{customer_id}/trend?periods=6` (snapshot history, clamp 1..36, 184-197); GET `/margin/business/{external_id}` (business rollup across seats: per-seat `compute_live` + business-level subscription revenue, ubb-platform/apps/subscriptions/economics/services.py:45-60); GET/PUT `/margin/threshold` (`min_margin_pct`, `consecutive_periods`, `provider_cost_spike_pct` — defaults 0.0/1/25.0, 98-117); GET/PUT `/margin/customers/{id}/revenue` (manual recurring revenue profile: `recurring_amount_micros`, `interval`, `currency`, `effective_from/to`, 120-146); GET/PUT `/margin/customers/{id}/revenue-mode` (mode in {'', 'billed', 'metered_only'}; GET also returns the resolved mode, 149-172).
@@ -207,12 +328,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** All read endpoints take `start_date`/`end_date`; default window = current UTC month-to-date inclusive of today (ubb-platform/apps/subscriptions/api/margin_endpoints.py:21-34). by-dimension precedence: tag_key > product > provider.
 - **Anchors:** ubb-platform/apps/subscriptions/api/margin_endpoints.py:21-237; ubb-platform/apps/subscriptions/economics/services.py:18-60; ubb-platform/apps/metering/queries.py:285-340; ubb-sdk/ubb/metering.py:260-318
 
+
+> **In plain terms.** This is the true profitability view, and it's UBB's headline differentiator: not just "what did usage cost," but "are we actually making money on this customer." Revenue is counted properly — subscription/recurring revenue PLUS usage revenue, but usage only counts as revenue when that customer is configured to actually be billed for usage (so a customer you meter for insight but don't charge doesn't inflate revenue). Margin is revenue minus your provider cost. There are rich surfaces: per-customer margin, tenant-wide summary, margin by provider/product/tag, a list of unprofitable customers, trends over time, business-level rollups across multiple seats, and configurable alert thresholds for thin margins or cost spikes.
+>
+> Tiny example: "Acme pays us $500/month and we spent $620 of AI cost serving them — flag them as unprofitable." UBB surfaces exactly that.
+>
+> Worth questioning: several of these endpoints have no SDK wrapper (the tenant summary, the customer list, and the margin alert thresholds), so a code-first tenant can't easily reach them without hand-rolling HTTP calls. For the feature that's meant to be the differentiator, that's a polish gap worth closing.
+
 #### 3.1.15 Pricing provenance on every event
 
 - **What:** Every engine-priced event stores an auditable `pricing_provenance` JSON: `engine_version` ('2.1.0'), `cost_source`/`price_source` in {caller, rate_card} (+ 'markup' for price), per-metric entries `{metric, units, card_type, rate_card_id, pricing_model, micros}`, `uncosted_metrics[]`, and for tiered metrics a `tier_breakdown` `{prior_units, units_total_after, cumulative_before/after_micros, period_start, lineage_id, bands[]}` (per-band `up_to, units_in_band, rate, unit_quantity, flat_micros, micros` — band micros sum EXACTLY to the marginal amount). Returned in the record_usage/batch response (with `uncosted_metrics` hoisted to a top-level field); persisted on `UsageEvent.pricing_provenance`.
 - **How:** Built in `PricingService.price` (ubb-platform/apps/metering/pricing/services/pricing_service.py:86-183) and `_event_bands` (16-55); stored at ubb-platform/apps/metering/usage/services/usage_service.py:184; surfaced at ubb-platform/api/v1/metering_endpoints.py:101-102.
 - **Options:** Read-back is ONLY on the ingest response — the usage list endpoint does not return provenance, and there is no GET `/usage/{event_id}`.
 - **Anchors:** ubb-platform/apps/metering/pricing/services/pricing_service.py:16-55,86-183; ubb-platform/apps/metering/usage/services/usage_service.py:97-110,184
+
+
+> **In plain terms.** Every event UBB prices comes with a full receipt explaining HOW the number was reached: which engine version, whether the cost/price came from the caller or a rate card or markup, which specific card was used for each metric, and for tiered pricing a band-by-band breakdown that adds up exactly to the charge. This is the trust backbone — when a customer disputes a charge, or an auditor asks "why is this billed at this amount," the answer is recorded, not reconstructed from guesswork.
+>
+> Tiny example: "this 45-cent charge = 30,000 input tokens at tier-1 rate + 5,000 at tier-2 rate, priced off price-card #abc, engine v2.1.0" — itemized automatically.
+>
+> Worth questioning: this receipt is returned ONLY in the response at the moment the event is recorded — it is NOT readable afterward (the usage list omits it, and there's no fetch-one-event endpoint). So unless the tenant captures and stores the receipt themselves at ingest time, the very audit trail meant to settle disputes is unretrievable later. For a billing product, that's a significant gap a CEO should press on.
 
 ### 3.2 Prepaid money & spend control
 
@@ -223,12 +358,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Transaction types (model choices): TOP_UP, USAGE_DEDUCTION, WITHDRAWAL, REFUND, ADJUSTMENT, DISPUTE_DEDUCTION, STRIPE_REFUND, DEBIT, GRANT, GRANT_EXPIRY, GRANT_VOID. The balance response also returns `promo_micros`, `expiring_micros`, `next_expiry_at`.
 - **Anchors:** ubb-platform/apps/billing/wallets/models.py:7-19,59-65; ubb-platform/apps/billing/locking.py:15-40; ubb-platform/api/v1/billing_endpoints.py:37-51,338-382
 
+
+> **In plain terms.** This is the digital "stored-value account" at the heart of UBB's prepaid model. Every one of your customers gets a single wallet that holds a running balance, and every change to that balance — a top-up, a usage charge, a refund — is written as one line in a permanent, append-only ledger that records the balance after that line. Nothing is ever quietly overwritten, so you can always reconstruct exactly how a balance got to where it is. That auditability is the commercial point: when a customer disputes a charge, or your finance team reconciles the books, the answer is right there in the transaction history.
+>
+> Two engineering choices protect the money. The wallet is locked while it's being changed (so two simultaneous charges can't both "win" and corrupt the total), and an optional idempotency key means if the same request arrives twice — a network retry, say — it only applies once. Customers can read their balance and page through history via the API; the balance even breaks out how much is promotional credit versus expiring credit.
+>
+> Worth questioning: the ledger has eleven distinct transaction types, which is powerful but a lot of surface area to keep consistent — the self-healing jobs in 3.2.14 exist precisely because that consistency has to be policed.
+
 #### 3.2.2 Manual top-up via Stripe hosted checkout
 
 - **What:** A customer funds the wallet through a Stripe Checkout session; on payment the webhook credits the wallet exactly-once and creates a PAID credit-grant lot; if the tenant has no Stripe connector the request becomes a `billing.topup_requested` outbox event (202) for the tenant to settle itself.
 - **How:** POST `/api/v1/billing/customers/{customer_id}/top-up {amount_micros, success_url, cancel_url}` → creates `TopUpAttempt(trigger=manual, status=pending)` + checkout session (idempotency_key `checkout-{attempt.id}`, `client_reference_id=attempt.id`) → returns `checkout_url`. Webhook `checkout.session.completed` credits the wallet under key `topup:{session.id}`, flips the attempt to succeeded (recovers attempts already expired by the sweeper), then dispatches a receipt on commit. End-customer widget twin: POST `/api/v1/me/top-up` (trigger=widget, JWT widget auth).
 - **Options:** `amount_micros` must be > 0 and divisible by 10_000 (whole cents); requires `customer.stripe_customer_id` and a charge-ready connected account (`charges_enabled`), else 400 / StripeFatalError; the no-connector path emits TopUpRequested instead.
 - **Anchors:** ubb-platform/api/v1/billing_endpoints.py:152-198; ubb-platform/apps/billing/connectors/stripe/stripe_api.py:33-71; ubb-platform/apps/billing/connectors/stripe/webhooks.py:24-146; ubb-platform/api/v1/me_endpoints.py:242-284; ubb-platform/api/v1/schemas.py:121-131
+
+
+> **In plain terms.** This is the "add money" button. A customer clicks it, gets sent to a Stripe-hosted payment page (so UBB never touches raw card numbers), pays, and their wallet is topped up. The credit is applied exactly once even if Stripe sends the confirmation twice, and the top-up is recorded as a "paid" credit lot — meaning it's real money the customer could later withdraw, as opposed to promotional credit. There's a parallel version for end-customers using the embedded widget, so your customers' customers can fund themselves without you building a payment page.
+>
+> Commercially this is the lifeblood of a prepaid product: it's how cash actually enters the system, and routing through Stripe Checkout means you inherit Stripe's fraud handling and compliance rather than owning that risk yourself. There's also a graceful fallback: if a tenant hasn't connected Stripe at all, the request doesn't fail — it emits an event telling the tenant "this customer wants to top up, you settle it" so you can use your own payment rails.
+>
+> Worth questioning: top-up amounts must be whole cents (divisible by 10,000 micros), and the path requires a fully charge-ready connected Stripe account — so onboarding friction on the Stripe side directly blocks revenue collection.
 
 #### 3.2.3 Auto top-up (saved card) including SCA
 
@@ -237,12 +386,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Attempt statuses: pending, succeeded, failed, expired, requires_action, superseded; triggers manual/auto_topup/widget. SCA: `authentication_required` → status requires_action + `AutoTopupRequiresAction` tenant event (`auto_topup.requires_action`); later PI success is caught by the `payment_intent.succeeded` backstop (cross-account + cross-mode/sandbox guards). The PI-failure webhook marks the attempt failed. Stale pending attempts expired by beat: auto after 30 min, manual after 24h (manual is webhook-recoverable).
 - **Anchors:** ubb-platform/apps/billing/topups/models.py:23-64; ubb-platform/apps/billing/handlers.py:91-100; ubb-platform/apps/billing/connectors/stripe/handlers.py:19-38; ubb-platform/apps/billing/connectors/stripe/tasks.py:27-114; ubb-platform/apps/billing/topups/services.py:61-109; ubb-platform/apps/billing/connectors/stripe/webhooks.py:418-460; ubb-platform/apps/billing/topups/tasks.py:11-41; ubb-platform/apps/billing/wallets/grants.py:126-136 (BalanceLow on expiry debit)
 
+
+> **In plain terms.** This is "never let the customer run dry." Once a customer saves a card, you can set a rule: when their balance drops below, say, $10, automatically charge their card $20 to refill — no human, no interruption. This is what keeps an always-on AI agent from stalling mid-task because the wallet hit zero. The default is a $10 trigger / $20 refill. The charge happens "off-session" (the customer isn't present), which is exactly the scenario UBB is built for.
+>
+> The reliability engineering here is serious. A successful charge can be confirmed via three independent routes (the charge task, Stripe's webhook, or an hourly sweep), and the money lands exactly once no matter which arrives first. Guards prevent double-charging if the balance was already refilled another way, and only one auto-top-up can be pending per customer at a time. When a bank demands extra verification (SCA / "is this really you?"), the system can't silently complete it off-session, so it raises a `requires_action` event so you can prompt the customer.
+>
+> Worth questioning: an SCA challenge means the auto-refill quietly fails until the customer acts — for a fully unattended agent, that's the moment funding can stall, so your "requires_action" handling matters commercially.
+
 #### 3.2.4 Top-up receipts
 
 - **What:** Every succeeded top-up gets a paid (out-of-band) Stripe receipt invoice on the tenant's connected account plus a local Invoice row; missing receipts self-heal hourly. End customers can list them in the widget.
 - **How:** Webhook dispatches `ReceiptService.create_topup_receipt` on commit (`Invoice.create` → `InvoiceItem.create` → finalize → pay `paid_out_of_band`, all with `receipt-*-{attempt.id}` idempotency keys); the local Invoice is only written if ALL Stripe calls succeed. Beat `reconcile_missing_receipts` (hourly :30) retries succeeded attempts with no Invoice. Widget list: GET `/api/v1/me/invoices`.
 - **Options:** Deliberately never carries `automatic_tax` (the receipt must equal money moved). Currency hardcoded 'usd' on the receipt line item.
 - **Anchors:** ubb-platform/apps/billing/connectors/stripe/receipts.py:18-103; ubb-platform/apps/billing/invoicing/tasks.py:35-61; ubb-platform/config/settings.py:176-179; ubb-platform/api/v1/me_endpoints.py:287
+
+
+> **In plain terms.** Every successful top-up produces a real, paid receipt — a Stripe invoice on your connected account plus a local copy — so the customer has proof of payment and you have a clean record for accounting and tax. End-customers can pull up their receipt list right in the widget. If a receipt ever fails to generate (Stripe hiccup mid-process), an hourly background job notices the gap and retries, so receipts heal themselves rather than silently going missing.
+>
+> The commercial value is trust and bookkeeping: customers expect a receipt when they pay money, and finance teams need the paper trail. One deliberate design rule stands out — the receipt never applies automatic tax, because the receipt must equal exactly the money that moved into the wallet. Adding tax on top would make the receipt disagree with the actual dollars credited, which would be a reconciliation nightmare. The local invoice row is only written once every Stripe step succeeds, so you never end up with a local record claiming a receipt exists when Stripe has none.
+>
+> Worth questioning: the receipt line item hardcodes US dollars as the currency, which is a gap if you intend to serve tenants billing in other currencies — the wallet itself is multi-currency but the receipt isn't.
 
 #### 3.2.5 Credit grants (expiring/promo lots)
 
@@ -251,12 +414,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** kinds: paid, promo; statuses: active, depleted, expired, voided; sources: checkout, auto_topup, api, other. Allocation types: usage, withdrawal, clawback, overage_recoup. Beat `expire_credit_grants` (hourly :10): pass 1 expires due lots exactly-once via `expiry:{grant_id}` keys (clamped, never negative), pass 2 one-shot `CreditGrantExpiring` warnings 7 days ahead (winning-update on `warning_sent_at`). Events: `billing.credit_grant_expiring`, `billing.credit_grant_expired`.
 - **Anchors:** ubb-platform/apps/billing/wallets/models.py:89-204; ubb-platform/apps/billing/wallets/grants.py:27-371; ubb-platform/api/v1/billing_endpoints.py:407-560; ubb-platform/apps/billing/wallets/tasks.py:174-256; ubb-platform/api/v1/schemas.py:179-199
 
+
+> **In plain terms.** This is your promotions and free-credit engine. You can drop credit "lots" onto a customer's wallet — either paid-equivalent credit or promotional credit — and each lot can expire on a date or after N days (or never). The system always spends the soonest-to-expire lot first, and promotional credit before paid credit, so customers naturally burn the perishable stuff first. Crucially, promo credit can never be withdrawn as cash — it can only be used — which protects you from someone cashing out a "$50 free" offer.
+>
+> This is how you run "$25 free to try us," seasonal promos, or make-good credits after an outage, with the accounting handled correctly. The cleverness is in the edge cases: expired credit is swept exactly once before any balance is read (so a customer never spends credit that should be gone), refunds put money back into the exact lots it came from (promo stays promo), and if you refund a card or lose a dispute, the system claws back the originating lot first and cascades through the rest to keep the books consistent. Grants can also be voided (revoked), clamped so they never push the balance negative.
+>
+> Worth questioning: paid top-ups only get an expiry if a per-customer profile field is set — by default top-up money never expires, so a "credits expire after 12 months" policy requires deliberate configuration per customer.
+
 #### 3.2.6 Direct debit / credit endpoints
 
 - **What:** The tenant moves arbitrary money: POST `/debit` subtracts (consumes grant lots in usage order, can drive the balance negative — no floor check, no overage/suspend events), POST `/credit` adds non-expiring base money (ADJUSTMENT, deliberately no grant lot).
 - **How:** POST `/api/v1/billing/debit` and `/credit` with `{customer_id (EXTERNAL id), amount_micros, reference/source, optional idempotency_key}`; both lock the wallet, replay-safe when a key is supplied; debit writes type DEBIT and calls `GrantLedger.allocate`; credit writes ADJUSTMENT.
 - **Options:** `amount_micros` gt 0 le 999_999_999_999 (no cent-alignment requirement, unlike top-ups/withdrawals/grants); `idempotency_key` optional (None = not replay-safe).
 - **Anchors:** ubb-platform/api/v1/billing_endpoints.py:54-134; ubb-platform/api/v1/schemas.py:159-171
+
+
+> **In plain terms.** These are the raw "move money in / move money out" levers for the tenant, bypassing Stripe entirely. Credit adds money to a wallet as a plain adjustment; debit removes it. They're the escape hatch for situations the structured flows don't cover — a manual correction, a goodwill credit, settling something that happened outside UBB. Both can be made replay-safe with an idempotency key so an accidental double-call doesn't double-apply.
+>
+> The commercial usefulness is flexibility: your operations team isn't boxed in by the happy-path flows. But these endpoints are deliberately blunt and that's the risk worth flagging loudly. A direct debit has NO floor check — it will happily drive a wallet negative with no overage warning and no suspension triggered, unlike the normal usage-drawdown path which protects the customer with those guardrails. Credit adds plain non-expiring money with no grant lot, so it sits outside the promo/expiry machinery.
+>
+> Worth questioning: because debit skips every protective check, it's easy to silently overdraw a customer or create money that behaves differently from every other dollar in the wallet — these should be treated as privileged operations, and note the SDK's `withdraw`/`refund` actually route here (see 3.2.16), which is where they become genuinely dangerous.
 
 #### 3.2.7 Withdrawals
 
@@ -265,12 +442,26 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Idempotent replay returns the original transaction; no Stripe payout integration on this path.
 - **Anchors:** ubb-platform/api/v1/billing_endpoints.py:201-252; ubb-platform/apps/billing/wallets/grants.py:332-339 (promo_remaining)
 
+
+> **In plain terms.** This lets a tenant pull real money back out of a customer's wallet — for example, refunding a customer who's leaving and has unused paid balance. It correctly excludes promotional credit from what's withdrawable (you can't cash out free credit) and only lets you take out base and paid money. An idempotency key is required here, so a retried withdrawal can't accidentally pay out twice; a replayed call just returns the original transaction.
+>
+> The honest limitation, and the commercially important one: UBB does NOT actually send the money anywhere. This endpoint only writes the "withdrawal" ledger line and fires a `withdrawal_requested` event. Moving the actual cash — a Stripe payout, a bank transfer, whatever — is left entirely to the tenant to wire up off the back of that event. So out of the box this is an accounting record of intent, not a completed disbursement.
+>
+> Worth questioning: there's no Stripe payout integration on this path at all, so a tenant who assumes "withdraw" means "the customer gets their money" would be wrong — the payout plumbing is theirs to build, and the SDK's withdraw helper doesn't even hit this safe endpoint (see 3.2.16).
+
 #### 3.2.8 Usage refund (lot-aware)
 
 - **What:** The tenant refunds a specific usage event's billed cost back to the wallet; the slices originally funded by still-live grant lots are restored into those lots (promo refunds stay promo, never withdrawable); expired/voided-lot shares and base shares land as base credit; a `refund.requested` event lets metering record the Refund.
 - **How:** POST `/api/v1/billing/customers/{customer_id}/refund {usage_event_id, reason, idempotency_key}`; looks up cost via `get_usage_event_cost` (tenant-scoped, 404 if unknown); credits the full cost as a REFUND txn; finds the original USAGE_DEDUCTION by the pinned `WalletTransaction.usage_event_id` and calls `GrantLedger.refund` (`refunded_micros` caps prevent re-funding the same micro twice — a second refund of the same event under a new key lands entirely as base); emits RefundRequested.
 - **Options:** Replay via `idempotency_key` returns the existing refund. Refund is whole-event-cost only (no partial amount parameter).
 - **Anchors:** ubb-platform/api/v1/billing_endpoints.py:268-335; ubb-platform/apps/billing/wallets/grants.py:264-330
+
+
+> **In plain terms.** When you need to refund a specific usage charge — say an AI call failed and you don't want to bill the customer for it — this puts that money back intelligently. It doesn't just dump cash into the wallet; it restores each slice of the charge back into the exact credit lot that originally paid for it. If promo credit funded part of the call, that part goes back as promo (still non-withdrawable); if the original lot has since expired, that share comes back as ordinary base credit. It also tells your metering system to record the refund.
+>
+> Commercially this keeps your promotions honest through the full refund cycle — a customer can't launder free credit into cash by triggering and refunding usage. Built-in caps mean you can't refund the same charge twice: a second refund of the same event lands entirely as base credit rather than re-inflating the original lots.
+>
+> Worth questioning: refunds are all-or-nothing on a usage event — there's no partial-amount parameter — so if you only want to refund half of a charge, this endpoint can't express it. Also note the SDK's `refund_usage` does NOT call this endpoint and actually refunds zero dollars (see 3.2.16), so this powerful logic is only reachable via the raw API.
 
 #### 3.2.9 Spend gate: POST /pre-check
 
@@ -279,6 +470,15 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** Reasons returned: insufficient_funds, account_closed, rate_limit_exceeded, budget_exceeded, budget_unavailable. Budget fail mode on Redis/Postgres-read failure: allow (default) unless `BudgetConfig.fail_closed` or `RiskConfig.gate_fail_closed`. NOTE: `gate_fail_closed` only affects the budget branch; rate limiting and the balance read have no fail-closed option.
 - **Anchors:** ubb-platform/api/v1/billing_endpoints.py:255-265; ubb-platform/apps/billing/gating/services/risk_service.py:8-75; ubb-platform/apps/billing/gating/services/budget_service.py:67-88; ubb-platform/apps/billing/gating/models.py:5-15
 
+
+> **In plain terms.** This is the "should we even start?" checkpoint you call before doing expensive work for a customer. In one request it answers: is this account (or its parent business) suspended or closed? Are they hammering us past their rate limit? Can their wallet actually afford this? Are they over their budget cap? If any answer is no, you get a clear reason code back and you don't burn money serving them. Optionally, the same call starts a "Run" that locks in cost-ceiling limits for the work about to happen (see 3.2.12).
+>
+> Commercially this is your first line of defense against runaway spend and abuse — it's cheap to call and saves you from doing work you'll never be paid for. The reasons it returns (insufficient funds, account closed, rate limited, budget exceeded) map directly to product messaging you can show users.
+>
+> Two honesty points the CEO should note. First, the affordability check is skipped entirely for postpaid tenants (who pay in arrears, so a pre-spend balance check doesn't apply). Second, the failure behavior is mixed: if Redis is down, rate limiting silently fails OPEN (everyone passes) with no way to override, and only the budget branch can be configured to fail CLOSED.
+>
+> Worth questioning: a Redis outage quietly disables both rate limiting and (unless explicitly configured) budget enforcement — under infrastructure stress, your spend guardrails are at their weakest exactly when abuse is most likely.
+
 #### 3.2.10 Budgets (per-customer / tenant-default monthly caps)
 
 - **What:** Calendar-month spend caps with threshold alert webhooks and optional hard enforcement at the gate. Customer-level config overrides a tenant-wide default. The live spend counter lives in Redis (rebuilt from the Postgres ledger hourly and on miss).
@@ -286,12 +486,30 @@ Tenant API mounted at `/api/v1/metering/` (NinjaAPI, Bearer API key + `ProductAc
 - **Options:** `enforce_mode`: advisory (default, alerts only) | enforcing; default `alert_levels` [50, 80, 100, 110]; `fail_closed` default False; period is fixed 'month' (the model field exists but no other value is wired). Budget basis is EFFECTIVE-month; documented bypass: an enforcing cap is evadable by backdating into the prior month, bounded by `Tenant.backfill_window_days` (0–60, default 34; 0 = airtight).
 - **Anchors:** ubb-platform/apps/billing/gating/models.py:18-46; ubb-platform/api/v1/billing_endpoints.py:691-758; ubb-platform/apps/billing/gating/services/budget_service.py:13-153; ubb-platform/apps/billing/handlers.py:104-129; ubb-platform/apps/platform/tenants/models.py:64
 
+
+> **In plain terms.** This is the monthly spending cap, like a credit-card limit per customer. You set a dollar cap for a calendar month; you can also set a tenant-wide default that individual customers override. As spend climbs, the system fires alert webhooks at configurable thresholds (by default at 50%, 80%, 100%, and 110% of the cap) so you — or the customer — get warned. In "advisory" mode it only alerts; in "enforcing" mode the pre-check gate actually blocks further spend once the cap is hit.
+>
+> The commercial value is bill-shock prevention, which is a top buyer concern for any usage-based product — finance teams won't adopt something that can run up an unbounded invoice. A running spend counter lives in fast in-memory storage (Redis) for instant checks, and is rebuilt from the permanent ledger hourly so it self-corrects if it drifts.
+>
+> Two honesty points: the default mode is advisory (alerts only — caps don't actually stop spend unless you opt into enforcing), and there's a documented loophole — an enforcing cap can be evaded by backdating usage into the prior month, bounded by a configurable backfill window (default 34 days; set it to 0 to close the hole entirely).
+>
+> Worth questioning: a default-advisory, backdate-evadable cap is a softer guarantee than buyers may assume from the word "cap" — the airtight version requires both enforcing mode and a zero backfill window.
+
 #### 3.2.11 Drawdown, overage event, balance-floor suspension
 
 - **What:** Usage recording NEVER blocks on funds; the wallet debit happens asynchronously in the outbox handler. Crossing zero emits a one-shot `billing.balance_overage` early warning; falling below the min-balance floor flips the billing owner to suspended and emits `billing.customer_suspended` (which the gate then enforces).
 - **How:** Outbox handler `handle_usage_recorded_billing`: prepaid/meter_only tenants only, debit keyed `usage_deduction:{usage_event_id}` on the PINNED billing owner's wallet under lock, lazy grant expiry first; winning branch only: `GrantLedger.allocate`, BalanceOverage when old ≥ 0 and new < 0, suspend when `new_balance < -min_balance` and owner active, BalanceLow when below the auto-top-up trigger. `min_balance` resolution: `CustomerBillingProfile.min_balance_micros` (per-customer, ORM-only) → `BillingTenantConfig.min_balance_micros` (default 0). A dispute-loss deduction can also suspend (ubb-platform/apps/billing/connectors/stripe/webhooks.py:325-341), as can `invoice.payment_failed` (status-only).
 - **Options:** `min_balance` semantics: allowed overdraft depth below zero (threshold negated at both gate and suspension). Suspension reasons: min_balance_exceeded (drawdown), dispute deduction, Stripe invoice payment failure. NO unsuspend path exists anywhere in non-test code — recovery is a manual DB/admin status edit.
 - **Anchors:** ubb-platform/apps/billing/handlers.py:13-100; ubb-platform/apps/billing/queries.py:28-40; ubb-platform/apps/billing/connectors/stripe/webhooks.py:201-231,325-341; ubb-platform/apps/platform/events/schemas.py:118-152,225-233
+
+
+> **In plain terms.** This is how usage actually gets paid for, and what happens when a customer overspends. Recording usage NEVER waits on the wallet — the charge is deducted afterward, asynchronously, so metering stays fast and never blocks your product. When a customer's balance crosses zero, the system fires an early "you've gone negative" warning. If they fall past an allowed overdraft depth (the min-balance floor — by default zero, but configurable per customer), the account is automatically suspended and a suspension event fires, which the pre-check gate then enforces to stop further work.
+>
+> Commercially this is the safety net that caps your losses: a customer can dip slightly negative if you allow it, but can't run up an unlimited tab. The min-balance floor is your knob for how much trust (overdraft) to extend. Suspension can also be triggered by a lost Stripe dispute or a failed invoice payment.
+>
+> The big honesty point: there is NO automated un-suspend path anywhere in production code. Once a customer is suspended, getting them running again requires a manual database or admin edit. For a self-serve product where customers top up and expect to resume instantly, that's a real operational gap.
+>
+> Worth questioning: a customer who tops up after suspension does NOT automatically reactivate — without a self-serve recovery flow, every suspension becomes a manual support ticket, which doesn't scale.
 
 #### 3.2.12 Runs with hard-stop (AI-session cost ceiling)
 
@@ -302,12 +520,26 @@ Two auditors described this capability independently (metering view and billing 
 - **Options:** Run statuses: active/completed/failed/killed (ubb-platform/apps/platform/runs/models.py:6-11). Both limits nullable — no config means no ceiling/floor; limits are snapshots, so changing tenant config never affects in-flight runs. `external_run_id` free-text correlation; `metadata` dict; `kill_reason` recorded in `run.metadata`. Run accumulation counts BILLED cost, not provider cost (ubb-platform/apps/platform/runs/services.py:81). The balance floor uses the run-start snapshot minus run-local cost (an ESTIMATE; concurrent spend elsewhere is invisible to it, ubb-platform/apps/platform/runs/models.py:37-41).
 - **Anchors:** ubb-platform/apps/billing/gating/services/risk_service.py:8-75; ubb-platform/apps/platform/runs/models.py:14-58; ubb-platform/apps/platform/runs/services.py:33-141; ubb-platform/api/v1/metering_endpoints.py:51-52,72-89,152-172,260-273; ubb-platform/apps/billing/tenant_billing/models.py:122-132; ubb-platform/config/settings.py:204-207; ubb-sdk/ubb/retry.py:23-35
 
+
+> **In plain terms.** This is UBB's headline safety feature for the AI era: the ability to kill an agent's session the instant it would blow through a cost ceiling. A "Run" wraps all the usage from one logical job — an agent workflow, a batch, a session — and at the moment it's created it snapshots two limits: a maximum total cost, and a wallet-balance floor. Then, before every single usage event is even written, the system checks: would this push the run over its cost ceiling, or drop the estimated balance below the floor? If yes, it refuses to record the event, kills the run, and returns a hard-stop error (HTTP 429) with the reason. Any further events on that dead run are rejected.
+>
+> This is the answer to every CEO's nightmare about autonomous agents: "what stops it from spending $50,000 overnight?" The cap is enforced before the cost is incurred, not after, and the limits are frozen at run start so a config change can't loosen an in-flight run. Abandoned runs auto-close after 15 minutes. The SDK surfaces this as a distinct hard-stop exception that is deliberately NEVER retried — a kill means stop, not try-again.
+>
+> Worth questioning: the balance floor uses the run-start snapshot minus this run's own spend — concurrent spending elsewhere on the same wallet is invisible to it, so it's an estimate, not a true real-time balance. With many parallel runs on one wallet, the combined floor protection is looser than it appears.
+
 #### 3.2.13 Dispute + Stripe-refund clawback
 
 - **What:** A lost card dispute or a Stripe-side refund of a top-up automatically claws the money back out of the wallet (exactly-once per dispute/refund id), voids the originating top-up's grant lot first, cascades consumption across other lots to keep grant accounting consistent, and may suspend the customer.
 - **How:** `charge.dispute.created` → error-log flag only (manual review). `charge.dispute.closed` status=lost → DISPUTE_DEDUCTION keyed `dispute:{dispute_id}` + `GrantLedger.clawback` (source = the checkout/auto_topup-born lot referencing the attempt) + suspend if below floor. `charge.refunded` → one STRIPE_REFUND txn PER refund object keyed `stripe_refund:{refund_id}` (partial-refund safe) + the same clawback cascade; no suspension check on this path. All matched to `TopUpAttempt` by `stripe_charge_id` with connected-account + livemode guards.
 - **Options:** Dispute won/withdrawn = no action. Clawback can drive the balance negative (it mirrors money Stripe already took).
 - **Anchors:** ubb-platform/apps/billing/connectors/stripe/webhooks.py:234-415; ubb-platform/apps/billing/wallets/grants.py:222-262
+
+
+> **In plain terms.** This handles the ugly scenario where money you already credited gets pulled back by Stripe — a customer wins a card dispute (chargeback) or you refund a top-up. When that happens, UBB automatically removes the corresponding amount from the wallet so the customer can't keep credit they no longer paid for. It's done exactly once per dispute or refund ID (Stripe can resend these), and it intelligently voids the specific credit lot that the original top-up created first, then cascades through other lots to keep the grant accounting consistent. A lost dispute can also suspend the customer.
+>
+> Commercially this protects you from a classic fraud and leakage pattern: top up, spend or claim credit, then charge back the card and walk away. Without automatic clawback, that's free money out the door. Partial refunds are handled correctly (one ledger entry per refund object). A merely-opened dispute just flags for manual review; only a lost one claws back. Disputes you win or that are withdrawn do nothing.
+>
+> Worth questioning: clawback can legitimately drive a wallet negative (it mirrors money Stripe already took), and the card-refund path does NOT run a suspension check — so a customer refunded into a negative balance isn't automatically stopped from continuing to spend, unlike the lost-dispute path.
 
 #### 3.2.14 Money self-healing beat jobs
 
@@ -316,6 +548,13 @@ Two auditors described this capability independently (metering view and billing 
 - **Options:** Cadences fixed in settings; GRACE/LOOKBACK/REPAIR_SPIKE_THRESHOLD are module constants (6h/7d/25).
 - **Anchors:** ubb-platform/config/settings.py:147-254; ubb-platform/apps/billing/wallets/tasks.py:10-171; ubb-platform/apps/billing/connectors/stripe/tasks.py:117-208; ubb-platform/apps/billing/gating/tasks.py:8-27
 
+
+> **In plain terms.** Money systems drift — a webhook gets lost, a process crashes mid-charge, a counter falls out of sync. Rather than rely on humans noticing, UBB runs a fleet of scheduled background jobs that continuously reconcile the prepaid ledger. Some are purely diagnostic (the hourly balance check just logs any wallet-vs-ledger discrepancy and fixes nothing); others actively repair. The repairing jobs are the important ones: one credits any successful Stripe payment that somehow never landed in a wallet (4-day lookback), and another finds usage that was metered but never charged and applies the missing debit exactly once.
+>
+> Commercially this is what lets you trust the balances without a finance team manually auditing them — it's the difference between a billing system that's "mostly right" and one you'd stake real revenue on. The repair jobs are carefully bounded: a grace period longer than the normal retry window so they don't double-charge work that's merely in-flight, loud alerts on amount mismatches, and a spike alarm if they suddenly start repairing a lot (a sign something upstream broke).
+>
+> Worth questioning: the main wallet-vs-ledger reconciliation is DETECT-ONLY — it logs drift but repairs nothing. So the very check most likely to catch a serious accounting bug relies on someone reading the logs and acting; there's no automatic correction for a wallet whose balance disagrees with its own ledger.
+
 #### 3.2.15 Pooled accounts: who pays
 
 - **What:** For a `seat` customer under a `pooled` business, money operations route to the business wallet (the billing owner); control (budget caps, rate limit, spend counters) stays on the seat. Core principle: pooled money, per-seat control.
@@ -323,12 +562,26 @@ Two auditors described this capability independently (metering view and billing 
 - **Options:** `account_type` individual|business|seat; `billing_topology` pooled|allocated (business only). GET `/api/v1/platform/accounts/business/{external_id}` returns `pooled_balance_micros` + the seat roster.
 - **Anchors:** ubb-platform/apps/platform/customers/models.py:14-52; ubb-platform/apps/billing/gating/services/risk_service.py:9-43; ubb-platform/api/v1/billing_endpoints.py:437,485,525; ubb-platform/api/v1/platform_endpoints.py:84-107
 
+
+> **In plain terms.** This is how UBB handles teams and organizations: "pooled money, per-seat control." Under a business account you can have many "seat" customers. The money — the wallet, top-ups, drawdowns, suspension — lives at the business level, so the whole team draws from one shared pot and you bill the company once. But control and attribution stay per-seat: each seat has its own budget cap, its own rate limit, and its own usage tracking. So you can see and cap what each team member spends while still pooling the actual funds.
+>
+> Commercially this is essential for selling to companies rather than individuals: a buyer wants one invoice and one balance for their org, but the ability to say "this department gets $500/month." The routing is governed by a single shared resolver, so the live path and the repair jobs always agree on whose wallet to hit.
+>
+> Worth questioning: the doc is explicit that several money endpoints do NOT use the pooled-owner routing — top-up, debit/credit, withdraw, refund, auto-top-up config, and even the balance read act on the addressed seat's own wallet, not the business's. That split (most paths route to the business, but these don't) is subtle and could surprise an integrator who tops up a seat expecting it to fund the shared pool, or reads a seat's balance expecting the pooled total.
+
 #### 3.2.16 Python SDK coverage of the billing surface
 
 - **What:** `BillingClient` (ubb-sdk/ubb/billing.py) wraps most tenant billing endpoints; `UBBClient` re-exposes them plus `pre_check`/`start_run`/`record_usage`/`close_run`.
 - **How:** `BillingClient`: debit, credit, get_balance → `BalanceResult` (+promo/expiring fields), pre_check, create_top_up → `TopUpResult`, configure_auto_topup, get_transactions, set_budget/get_budget/get_budget_status, get_usage_invoices, create_grant/list_grants/void_grant → `CreditGrant`, get/set_postpaid_config. `UBBClient`: pre_check (start_run), start_run, record_usage(run_id=...), close_run, create_top_up, configure_auto_top_up, get_balance, get_transactions, budget methods, withdraw, refund_usage, update_tenant_config(billing_mode=...).
 - **Options / caution:** Retry with Retry-After support; 401 → `UBBAuthError`, 409 → `UBBConflictError`. CAUTION: `UBBClient.withdraw` and `UBBClient.refund_usage` do NOT call the real `/withdraw` and `/refund` endpoints — withdraw delegates to `billing.debit` (bypasses promo-exclusion, the insufficient-balance check, and the `withdrawal_requested` event; can overdraw) and refund_usage delegates to `billing.credit` (bypasses lot-aware re-funding and `refund.requested`). SDK debit/credit never send an `idempotency_key`. `BillingClient` has no withdraw/refund methods of its own.
 - **Anchors:** ubb-sdk/ubb/billing.py:80-236; ubb-sdk/ubb/client.py:111-156,474-559,501-528 (withdraw/refund delegation); ubb-sdk/ubb/types.py:66-122
+
+
+> **In plain terms.** This is the Python SDK — the library your tenants import to use UBB without hand-writing HTTP calls. It wraps most of the billing surface in clean methods: check balance, top up, configure auto-top-up, set budgets, manage credit grants, run the pre-check and start a cost-capped Run, record usage, and so on. Sensible reliability is built in (automatic retries that respect Stripe's "wait this long" hints, typed errors for auth and conflict cases). For most flows, the SDK is a faithful, convenient front door to the platform.
+>
+> But there are two genuinely dangerous discrepancies the CEO must know about, because they affect money. The SDK's `withdraw` does NOT call the safe withdrawal endpoint — it secretly routes to the raw `debit`, which skips the promo-exclusion rule, skips the insufficient-balance check, and skips the withdrawal event. So a withdrawal via the SDK can overdraw a wallet and cash out promo credit that should never be withdrawable. Worse, the SDK's `refund_usage` routes to raw `credit` with an amount of ZERO — meaning it records a refund that returns no money at all, while bypassing all the lot-aware refund logic. The SDK's debit/credit also never send an idempotency key, so they aren't replay-safe.
+>
+> Worth questioning: these aren't edge cases — they're two core money operations that, through the SDK, silently do the wrong thing (overdraw, or refund nothing). Anyone integrating via the SDK rather than the raw API is exposed, and this should be treated as a correctness bug, not a documentation footnote.
 
 ### 3.3 Subscriptions & postpaid billing
 
@@ -343,11 +596,29 @@ Two auditors described this independently; merged with all anchors.
 - **Options:** `return_url` optional (else JSON `{connected: bool}`). Sandbox tenants get a distinct TEST-mode client id (`STRIPE_CONNECT_TEST_CLIENT_ID`; ubb-platform/apps/billing/connectors/stripe/connect.py:20-35) and never copy Stripe linkage, so they can only complete TEST-mode connections (ubb-platform/apps/platform/tenants/services/sandbox_service.py:8-11,46-47). State nonce is single-use with a 15-min TTL (connect.py:13 STATE_TTL; select_for_update single-use check connect.py:61-64). Deauthorization: `account.application.deauthorized` webhook clears the account id + charges_enabled (ubb-platform/api/v1/webhooks.py:399-412).
 - **Anchors:** ubb-platform/apps/billing/connectors/stripe/connect.py:13-83; ubb-platform/api/v1/connect_endpoints.py:1-69; ubb-platform/config/urls.py:38-39; ubb-sdk/ubb/client.py:448-470
 
+
+> **In plain terms.** This is how a tenant plugs its OWN Stripe account into UBB. The tenant clicks "connect," gets bounced to Stripe to log in and approve, and Stripe hands UBB the keys to act on that account — to create subscriptions, charge cards, and issue invoices on the tenant's behalf. UBB never holds the tenant's money or sees their card processing; it just operates the tenant's existing Stripe.
+>
+> Why it matters: UBB doesn't want to BE a payment processor (a heavily regulated, slow-to-set-up business). By riding the tenant's Stripe, the tenant keeps their own payout schedule, their own bank account, their own merchant relationship — and UBB just adds metering and rating on top. The link can be revoked anytime (a "deauthorize" signal cleanly disconnects), and sandbox/test tenants are walled off to Stripe's test mode so nobody accidentally charges a real card while experimenting.
+>
+> Analogy: UBB is a bookkeeper you give limited power-of-attorney to write checks from YOUR bank account — not a bank that holds your cash.
+>
+> Worth questioning: the connection rests entirely on Stripe's OAuth and one stored account id; there is no described re-consent/expiry handling beyond the deauthorize webhook, so a silently revoked grant might only surface as failed operations.
+
 #### 3.3.2 charges_enabled gating (charge-readiness)
 
 - **What:** No money-touching subscription/invoice operation runs until the connected account has `charges_enabled=True`. `ensure_plan_provisioned`, `subscribe`, `set_seats`, `cancel`, `pause`, `resume` all raise OrchestrationError (HTTP 422) when not charge-ready; the postpaid push skips the row with `skip_reason='not_charge_ready'` instead of pushing.
 - **How:** `_require_charge_ready(tenant)` checks `tenant.stripe_connected_account_id` AND `tenant.charges_enabled` (ubb-platform/apps/subscriptions/orchestration/service.py:55-62). `charges_enabled` is kept fresh three ways: (1) set at OAuth completion (connect.py:76-79), (2) `account.updated` webhook handler (ubb-platform/api/v1/webhooks.py:381-396), (3) lazy re-poll inside GET `/api/v1/connect/status` when the account exists but `charges_enabled` is False (ubb-platform/api/v1/connect_endpoints.py:28-37).
 - **Anchors:** ubb-platform/apps/subscriptions/orchestration/service.py:55-62 (call sites 95,156,212,265,306,333,404); ubb-platform/apps/billing/invoicing/services/postpaid_service.py:174-178; ubb-platform/api/v1/webhooks.py:381-396
+
+
+> **In plain terms.** Stripe won't let you charge a card until it has verified the connected account (business details, bank, identity). UBB respects that: it refuses to subscribe a customer, change seats, cancel, pause, resume, or push a usage invoice until Stripe reports the account is "charge-ready." Until then, money operations either return a clear error or quietly skip with a reason like "not charge ready," rather than failing in a confusing way later.
+>
+> Why it matters: this prevents the worst-case embarrassment — a tenant onboards customers, thinks they're billing, but Stripe was silently refusing every charge. UBB checks readiness up front and keeps that status fresh three ways (set when they first connect, updated when Stripe pings UBB about account changes, and re-checked on demand when someone looks at their status). So a tenant who finishes Stripe verification gets unblocked automatically.
+>
+> Analogy: a new sales rep can take orders but can't actually run cards until HR finishes their background check; the till stays locked until then.
+>
+> Worth questioning: skipped usage invoices wait for the tenant to become charge-ready — fine — but a tenant stuck mid-verification for a long time could silently accumulate un-pushed revenue with no proactive nudge described here.
 
 #### 3.3.3 Plan creation (two fee axes)
 
@@ -356,12 +627,30 @@ Two auditors described this independently; merged with all anchors.
 - **Options:** `interval`: default 'month'; the model comment says month|year (models.py:90) but `PlanIn` has NO validator (ubb-platform/api/v1/schemas.py:399-405) and the DB column is max_length=5. `usage_mode`: default 'invoice_item' (comment says invoice_item|none, models.py:91) — stored and echoed but NEVER read by billing logic (only refs: ubb-platform/api/v1/platform_endpoints.py:118,134; postpaid invoicing is driven by `tenant.billing_mode`, not this field). No list/GET plan endpoint exists — only POST and PATCH.
 - **Anchors:** ubb-platform/api/v1/platform_endpoints.py:122-138; ubb-platform/apps/subscriptions/models.py:84-104; ubb-platform/api/v1/schemas.py:399-415
 
+
+> **In plain terms.** A tenant defines a subscription plan with two and only two recurring charges: a flat "access fee" (a fixed amount per billing period, regardless of size) and a "per-seat fee" (multiplied by how many seats the customer has). Either can be zero. So a plan can be "$99/month flat," or "$10 per user/month," or both, or neither (a free plan that just gates features). Notably, nothing is created in Stripe yet — UBB waits until the first customer actually subscribes before setting up the Stripe products. That keeps unused plans from cluttering Stripe.
+>
+> Why it matters: this two-axis model covers the overwhelmingly common SaaS pricing shape (a base fee plus per-seat) without drowning the tenant in configuration. The recurring subscription fee is separate from metered USAGE, which gets billed differently (see 3.3.9) — a deliberate split.
+>
+> Analogy: a gym membership = a flat monthly fee plus a per-family-member add-on; extra classes (usage) are billed on top later.
+>
+> Worth questioning: the model genuinely supports only these two axes — no tiered/volume seat pricing, no multiple add-on line items. Also, two fields exist (billing interval and "usage_mode") that are loosely validated or never actually read by billing logic, which is sloppy and could mislead an integrator.
+
 #### 3.3.4 Plan fee editing + price versioning (PATCH)
 
 - **What:** A tenant edits access/seat fees on an existing plan. Stripe Prices are immutable, so a fee change on a PROVISIONED axis bumps `plan.pricing_version` once per call and mints a NEW Stripe Price on the same Product; the plan repoints so NEW subscribes get the new fee. Existing subscribers are GRANDFATHERED on their old price by default; `migrate_existing=true` repoints every active subscription item to the new price via `SubscriptionItem.modify` with `proration_behavior='none'` (no mid-cycle proration credit/charge). Unprovisioned axes just update the fee field (lazy provision reads it later); a fee dropped to 0 also just updates the field (subscribe skips zero axes). Same-fee replay is a no-op.
 - **How:** PATCH `/api/v1/platform/plans/{key} {access_fee_micros?, per_seat_micros?, migrate_existing=false}` → `SubscriptionOrchestrator.update_plan_prices` (ubb-platform/apps/subscriptions/orchestration/service.py:356-437; migration helper `_migrate_axis_items` 439-471). New-price idempotency key `plan-price-{axis}-{plan.id}-v{version}` (service.py:419). SDK: `UBBClient.update_plan(key, access_fee_micros=None, per_seat_micros=None, migrate_existing=False)` (ubb-sdk/ubb/client.py:274-292). Returns plan + `pricing_version`.
 - **Options:** `migrate_existing`: False (default, grandfather) | True (repoint all active items, no proration). None = leave the axis untouched (0 is meaningful; `PlanUpdateIn`, ubb-platform/api/v1/schemas.py:418-422). Cannot edit interval, name, key, or usage_mode via PATCH.
 - **Anchors:** ubb-platform/api/v1/platform_endpoints.py:141-172; ubb-platform/apps/subscriptions/orchestration/service.py:356-471; ubb-platform/apps/subscriptions/models.py:97-100
+
+
+> **In plain terms.** A tenant can change a plan's access or seat fee later. Because Stripe price tags are permanent once created, UBB mints a NEW price behind the scenes and points the plan at it, bumping an internal "pricing version." By default, customers already subscribed keep their OLD price — they're grandfathered — and only brand-new subscribers pay the new rate. If the tenant explicitly opts in ("migrate everyone"), UBB moves all active subscribers onto the new price, with no mid-cycle credit or surprise charge — the new rate just applies from the next cycle.
+>
+> Why it matters: this is the safe default behavior for raising prices. Existing customers don't get an unexpected bill, which protects against churn and disputes, while the tenant still controls whether to push everyone up. Repeating the same change does nothing (no accidental double-bumps).
+>
+> Analogy: a landlord raising rents — new tenants pay the new rate immediately; existing leases stay put until the landlord decides to renew them at the higher rate.
+>
+> Worth questioning: you can only edit the two fee amounts via this path — not the plan name, billing interval, or key. Migrating existing customers with "no proration" means a mid-month rate change simply takes effect next cycle, which is clean but gives the tenant no way to charge a partial-period adjustment.
 
 #### 3.3.5 Subscribe (one call provisions everything)
 
@@ -370,11 +659,29 @@ Two auditors described this independently; merged with all anchors.
 - **Options:** `seats >= 0` (`SubscribeIn`, ubb-platform/api/v1/schemas.py:429-431); the seats item is only created when `per_seat_micros > 0`. `automatic_tax` rider when `tenant.automatic_tax_enabled` (service.py:188-190). No choice of anchor, collection method, trial, or coupon.
 - **Anchors:** ubb-platform/apps/subscriptions/orchestration/service.py:147-206,488-509,511-574; ubb-platform/api/v1/platform_endpoints.py:247-279
 
+
+> **In plain terms.** Subscribing a customer is a single API call that does everything behind the scenes: figures out who actually pays (a pooled "seat" routes to its parent business), creates a Stripe customer if needed, sets up the plan's Stripe products on first use, creates the actual subscription with the right access and per-seat quantities, and records a local mirror copy. Billing is anchored to the 1st of next month, and the partial current month is prorated — so a customer who joins mid-month pays only for the days they used.
+>
+> Why it matters: this collapses what would otherwise be a half-dozen fragile Stripe calls into one reliable operation. Crucially, it's built to resume safely if it fails partway through (ids are saved as it goes), so a network blip doesn't leave a half-created subscription. Aligning everyone's billing to the 1st of the month makes the tenant's revenue and the month-end usage push line up neatly.
+>
+> Analogy: one "hire this employee" button that creates the payroll record, the badge, and the email account in the right order.
+>
+> Worth questioning: the tenant gets no control over the billing anchor date, no trials, and no coupons through this call (Stripe owns those levers separately) — so flexible go-to-market offers like "first month free" require working in Stripe directly, outside UBB.
+
 #### 3.3.6 Seat management: explicit set_seats + roster auto-sync
 
 - **What:** Two paths keep the Stripe per-seat quantity correct. (A) Explicit: POST `.../seats` pushes a new quantity to the seat subscription item with `proration_behavior=create_prorations` and updates the local mirror (amount recomputed from line items). (B) Automatic roster sync: any roster change to a business's seats — seat customer created (ubb-platform/api/v1/platform_endpoints.py:71-73), seat soft-deleted (ubb-platform/apps/platform/customers/models.py:69-70), seat suspended by `invoice.payment_failed` (ubb-platform/apps/billing/connectors/stripe/webhooks.py:230-231) or by a lost-dispute balance suspension (webhooks.py:340-341) — fires `notify_seat_roster_changed` → `sync_seat_quantity_on_commit`, which AFTER the same transaction commits pushes the live active-seat count (Customer filter parent=business, account_type='seat', status='active') via set_seats. No-op unless the business has an active sub (statuses active/trialing/past_due/unpaid) with a seat-axis item. Push failures are swallowed + logged (`seat.qty_push_failed`) so a roster write never breaks; the full-state push self-corrects on the next change. There is NO periodic seat-quantity reconciler (explicitly noted, ubb-platform/apps/subscriptions/orchestration/seats.py:12-15).
 - **How:** POST `/api/v1/platform/customers/{external_id}/seats {seats>=0}` → resolves the billing owner first, finds the latest seat `CustomerSubscriptionItem`, `SubscriptionOrchestrator.set_seats` (ubb-platform/apps/subscriptions/orchestration/service.py:208-246, idempotency key `seat-qty-{item_id}-{change_event_id}`). SDK: `UBBClient.set_seats(external_id, seats)` (ubb-sdk/ubb/client.py:261-272). Listener registered in the subscriptions `AppConfig.ready` (ubb-platform/apps/subscriptions/apps.py:25).
 - **Anchors:** ubb-platform/apps/subscriptions/orchestration/service.py:208-246; ubb-platform/apps/subscriptions/orchestration/seats.py:28-101; ubb-platform/api/v1/platform_endpoints.py:282-312; ubb-platform/apps/platform/customers/hooks.py:15-25
+
+
+> **In plain terms.** UBB keeps the billed seat count correct two ways. The tenant can explicitly set seats ("this account now has 12 users"), or UBB can do it automatically: whenever the roster changes — a seat is added, removed, suspended for non-payment, or lost to a dispute — UBB recounts the active seats and pushes the new number to Stripe, prorating the difference. Either way the customer's bill tracks reality.
+>
+> Why it matters: seat-based revenue leaks when the billed quantity drifts from the actual headcount. Auto-sync means tenants don't have to remember to update seat counts; it always pushes the full current count (so it self-corrects even if a previous push was missed). And it's defensive — if pushing the new count to Stripe fails, the roster change still succeeds and the error is just logged, so billing plumbing never blocks normal customer-management operations.
+>
+> Analogy: a parking garage that automatically re-bills the monthly contract as cars are added or removed from the approved list, rather than waiting for a manual audit.
+>
+> Worth questioning: there is deliberately NO periodic reconciler that re-checks seat counts on a schedule. The system relies on each roster change firing a push; if one push silently fails AND no further change ever occurs, the billed count can stay wrong until the next roster event nudges it.
 
 #### 3.3.7 Lifecycle verbs — exhaustive public verb list
 
@@ -382,11 +689,29 @@ Two auditors described this independently; merged with all anchors.
 - **How:** POST `/api/v1/platform/customers/{external_id}/subscription/cancel {at_period_end?=true}` | `/pause` | `/resume` (ubb-platform/api/v1/platform_endpoints.py:209-244, shared `_lifecycle_call` 175-206; a fresh uuid4 `change_event_id` per call feeds the Stripe idempotency keys). Responses: `{subscription_id, status, cancel_at_period_end, paused}`. SDK: `cancel_subscription(external_id, at_period_end=True)`, `pause_subscription`, `resume_subscription` (ubb-sdk/ubb/client.py:294-332).
 - **Anchors:** ubb-platform/apps/subscriptions/orchestration/service.py:86-145 (ensure_plan_provisioned), 254-352 (cancel/pause/resume), 475-486; ubb-platform/api/v1/platform_endpoints.py:175-244
 
+
+> **In plain terms.** Beyond subscribing, UBB exposes a deliberately short list of subscription actions: cancel, pause, and resume (plus the internal plumbing for provisioning and seat changes). Cancel defaults to "at period end" — the customer keeps access through what they've paid for, then it lapses — or can be immediate. Pause stops billing while keeping the subscription alive (good for a customer taking a break). Resume un-pauses AND un-cancels in one move. There is intentionally no "upgrade/downgrade plan," no trials, and no coupons here.
+>
+> Why it matters: this is a tight, predictable control surface — fewer verbs means fewer ways to get a customer's billing into a weird state. Cancel-at-period-end as the default is the customer-friendly, dispute-avoiding choice. The actions always target the customer's single active subscription, so the tenant never has to track subscription ids.
+>
+> Analogy: a thermostat with three clearly labeled buttons (off, hold, back-on) instead of a panel of forty switches.
+>
+> Worth questioning: the missing "change plan" verb is a real gap — moving a customer from a cheaper to a pricier plan isn't a first-class operation, so a tenant would have to cancel-and-resubscribe (losing the clean proration story) or drop into Stripe directly. For a SaaS billing layer, plan upgrades are table stakes.
+
 #### 3.3.8 Subscription read API + manual sync (`subscriptions` product)
 
 - **What:** Read-only views gated on the `subscriptions` product (`tenant.products` list, ubb-platform/core/auth.py:23-34): GET the customer's latest subscription mirror; GET the customer's PAID subscription invoices (cursor-paginated on `paid_at`, limit 1–100; open/void/uncollectible rows deliberately excluded — ubb-platform/apps/subscriptions/api/endpoints.py:89-93); POST `/sync` triggers a full pull of all subscriptions (status='all') from the connected account into the mirror (skips Stripe customers with no local match; counts synced/skipped/errors).
 - **How:** GET `/api/v1/subscriptions/customers/{customer_id}/subscription`; GET `.../invoices?cursor&limit`; POST `/api/v1/subscriptions/sync` → `sync_subscriptions` (ubb-platform/apps/subscriptions/stripe/sync.py:23-80). SDK: `SubscriptionsClient.sync()`, `get_subscription(customer_id)`, `get_invoices(customer_id, cursor, limit=20)` (ubb-sdk/ubb/subscriptions.py:76-93) — enabled via `UBBClient(subscriptions=True)` (ubb-sdk/ubb/client.py:59-63).
 - **Anchors:** ubb-platform/apps/subscriptions/api/endpoints.py:40-127; ubb-platform/apps/subscriptions/stripe/sync.py:23-80; ubb-sdk/ubb/subscriptions.py:11-96
+
+
+> **In plain terms.** This is the read side of subscriptions, available to tenants who've turned on the "subscriptions" capability. A tenant can look up a customer's current subscription, list that customer's PAID subscription invoices, or trigger a full "sync" that pulls every subscription's latest state from Stripe back into UBB's local copy. The sync is the safety net for when UBB's mirror and Stripe drift apart (e.g., something was changed directly in Stripe).
+>
+> Why it matters: tenants need to answer "what is this customer subscribed to and have they paid?" without logging into Stripe. The manual sync gives a tenant a one-button way to reconcile after any out-of-band change, which builds trust that UBB's view is accurate. Deliberately showing only PAID invoices in the listing keeps the customer-facing payment history clean.
+>
+> Analogy: a "refresh from the bank" button next to your accounting software's view of an account.
+>
+> Worth questioning: the paid-only invoice list hides open, void, and uncollectible invoices — convenient for a clean history, but a tenant looking here alone won't see an unpaid or failed invoice, so they must rely on the separate AR tracking (3.3.12) to spot collection problems. Sync is also manual/on-demand, not continuous.
 
 #### 3.3.9 Postpaid month-end usage invoicing (period close + two-phase push)
 
@@ -395,11 +720,29 @@ Two auditors described this independently; merged with all anchors.
 - **Options:** Line grouping (`PostpaidUsageConfig.usage_line_item_group_by`): '' = single total line; `tag:<key>` = group by a usage-event tag (NULL/''/missing collapse to '(other)'); `product_id` = group by product (ubb-platform/apps/metering/queries.py:398-429). BUSINESS owners IGNORE group_by: always one line per seat external_id (postpaid_service.py:27-40). Config: GET/PUT `/api/v1/billing/postpaid-config` (ubb-platform/api/v1/billing_endpoints.py:800-823; None-sentinel partial PUT). SDK: `get_postpaid_config` / `set_postpaid_config` (ubb-sdk/ubb/billing.py:220-236; ubb-sdk/ubb/client.py:551-557).
 - **Anchors:** ubb-platform/apps/billing/invoicing/services/postpaid_service.py:20-453; ubb-platform/apps/billing/invoicing/tasks.py:64-93; ubb-platform/apps/billing/invoicing/models.py:61-156; ubb-platform/config/settings.py:220-229
 
+
+> **In plain terms.** This is the heart of usage billing. For tenants on "postpaid" mode, on the 1st of each month UBB closes out the prior month for every customer that used anything, totals up their metered usage, and pushes it onto a Stripe invoice. It does this in careful phases: first it locks in (freezes) the exact line-item amounts so retries can't change the bill, then it builds the invoice in Stripe — resuming an existing draft rather than creating duplicates — and finalizes it. Sub-penny remainders are carried forward month to month (Stripe bills whole cents), so nothing is lost or over-charged.
+>
+> Why it matters: this is the division of labor that makes UBB sensible — UBB owns the hard part (accurately metering and pricing usage) while STRIPE owns the invoice, tax, and collection. Freezing the snapshot at first attempt is what guarantees a customer can't be billed twice or billed a shifting amount if the push retries. Periods with only sub-cent usage create no invoice at all (no junk $0.00 invoices).
+>
+> Analogy: a utility company reading your meter at month's end, then handing the reading to a billing house that mails and collects the bill.
+>
+> Worth questioning: this is genuinely intricate machinery (frozen snapshots, residual ledgers, multi-phase pushes). That complexity is the cost of correctness, but it's also a large surface area to maintain and reason about — and if the monthly beat job fails to run, an entire month's usage billing could be delayed for all customers at once.
+
 #### 3.3.10 Consolidated invoicing (opt-in: usage rides the subscription renewal)
 
 - **What:** Tenant-level opt-in (`PostpaidUsageConfig.consolidate_with_subscription`, default False): at close, usage lines are pinned onto the billing owner's subscription-RENEWAL DRAFT invoice so the customer gets ONE Stripe invoice for subscription + usage. Eligibility: an active/past_due, NOT-paused, UBB-managed subscription (has a `CustomerSubscriptionItem` with a plan — ubb-platform/apps/subscriptions/ports.py:23-49); the renewal draft must be younger than 45 min (`CONSOLIDATION_MAX_DRAFT_AGE_SECONDS`, vs Stripe's ~1h auto-finalize) and `auto_advance=True`, else automatic standalone fallback (`postpaid.consolidation_window_missed`). The close cadence (00:05 on the 1st) is deliberately inside the renewal-draft window (ubb-platform/config/settings.py:222-224). UBB NEVER finalizes the renewal (Stripe's clock). If the draft auto-finalizes mid-push, the missing lines are billed on a fresh standalone REMAINDER invoice UBB controls (keys namespaced `-r{target_id}`); the remainder id is recorded; loud `postpaid.consolidation_partial_split` log. AR for a consolidated rec follows the SUBSCRIPTION invoice events/poller (`invoice_kind='consolidated'` narrows the match).
 - **How:** PUT `/api/v1/billing/postpaid-config {consolidate_with_subscription: true}`. Resolution: `_resolve_consolidation_target` (ubb-platform/apps/billing/invoicing/services/postpaid_service.py:455-491); push: `_push_consolidated` (493-609); remainder: `_bill_remainder` (611-670). `repush --rebill-void` is REFUSED for consolidated rows (ubb-platform/apps/billing/invoicing/management/commands/repush_usage_invoice.py:48-64).
 - **Anchors:** ubb-platform/apps/billing/invoicing/services/postpaid_service.py:17,346-350,455-670; ubb-platform/apps/billing/invoicing/models.py:146-156; ubb-platform/apps/subscriptions/ports.py:23-49; ubb-platform/api/v1/webhooks.py:255-266; ubb-platform/apps/billing/invoicing/tasks.py:192-196
+
+
+> **In plain terms.** Optionally, a tenant can have month-end usage charges ride ON TOP of the subscription's renewal invoice, so the customer gets ONE combined Stripe invoice (subscription fee + usage) instead of two. UBB times its monthly close to land inside the short window when Stripe has created the renewal as a draft but hasn't finalized it yet, and slides the usage lines onto that draft. If it misses the window (Stripe finalizes on its own clock, roughly an hour after renewal), UBB safely falls back to a separate standalone usage invoice — and if it gets caught mid-push, any lines that didn't make it are billed on a clean "remainder" invoice so nothing is lost or double-billed.
+>
+> Why it matters: one invoice is a much nicer customer experience and looks more professional than two separate charges hitting the card. The fallbacks mean opting in never risks losing revenue or double-charging — worst case you get two invoices instead of one.
+>
+> Analogy: adding this month's pay-per-view charges onto your existing cable bill instead of mailing a second statement — but if the bill already printed, the extras come on a short follow-up notice.
+>
+> Worth questioning: this leans on a tight ~45-minute timing window versus Stripe's ~1-hour auto-finalize. It's well-guarded, but it's inherently a race; tenants should understand that "consolidated" sometimes silently degrades to two invoices, and the operator "rebill a voided invoice" tool is refused for consolidated rows.
 
 #### 3.3.11 Postpaid retry, terminal states, and operator repush tooling
 
@@ -407,11 +750,29 @@ Two auditors described this independently; merged with all anchors.
 - **How:** celery beat `reconcile_postpaid_usage` crontab(minute=45) (ubb-platform/config/settings.py:227-229); `python manage.py repush_usage_invoice <row_id> [--rebill-void]`.
 - **Anchors:** ubb-platform/apps/billing/invoicing/tasks.py:96-143; ubb-platform/apps/billing/invoicing/services/postpaid_service.py:60-99,126-136,205-224; ubb-platform/apps/billing/invoicing/management/commands/repush_usage_invoice.py:1-107; ubb-platform/api/v1/billing_endpoints.py:764-797
 
+
+> **In plain terms.** Pushing usage to Stripe can fail (network issues, a misconfiguration), so UBB tracks every usage invoice through clear states — pending, pushing, pushed, skipped (with a reason), failed, or permanently failed — and an hourly job automatically retries the recoverable ones and un-sticks rows that were waiting on a precondition (e.g., the tenant just became charge-ready). Retries are bounded: after 8 attempts or 20 hours UBB gives up, marks the row permanently failed, and raises an alert rather than retrying forever. Operators get a command-line tool to manually re-push a stuck row, including a stronger "this invoice was voided in Stripe, rebill it fresh" mode.
+>
+> Why it matters: usage billing is the tenant's revenue — silent failures here are lost money. Bounded retries plus loud alerts mean a problem surfaces to a human instead of either spinning invisibly or, worse, accidentally double-billing. Tenants can also see the status and last error per invoice, so they aren't in the dark.
+>
+> Analogy: a delivery service that auto-retries a failed drop-off a few times, then escalates to a dispatcher with a clear "undeliverable, here's why" note rather than retrying endlessly.
+>
+> Worth questioning: a "permanently failed" invoice ultimately needs a human (operator command) to fix; there's no self-service tenant button to retry it, so resolution depends on someone watching the alerts.
+
 #### 3.3.12 AR tracking (webhook fast path + hourly poller backstop + hosted URLs)
 
 - **What:** Payment-status lifecycle for both invoice families, on one shared Stripe-legal transition table `AR_ALLOWED` ('' → {open, paid, void, uncollectible}; open → {paid, void, uncollectible}; uncollectible → {paid, void}; paid/void final — ubb-platform/apps/billing/connectors/stripe/invoice_routing.py:59-69). Webhook fast path (POST `/api/v1/webhooks/stripe`, registered handlers ubb-platform/api/v1/webhooks.py:415-429): `invoice.finalized` → open; `invoice.paid` → paid (+`paid_at` from status_transitions, `amount_paid_micros`); `invoice.voided` → void; `invoice.marked_uncollectible` → uncollectible. Routing by subscription presence (`_invoice_subscription_id` handles legacy `.subscription` AND Basil `.parent.subscription_details` — invoice_routing.py:80-88): subscription invoices upsert/update `SubscriptionInvoice` (get_or_create so an open row can be born before payment — webhooks.py:224-254); standalone usage invoices update `CustomerUsageInvoice.payment_status`; a consolidated usage rec is ALSO repaired off the same subscription invoice id (webhooks.py:255-266). Every match is account-checked (`tenant.stripe_connected_account_id == event.account`) and livemode-bound to sandbox/live siblings. `invoice.payment_failed`: stamps `payment_failed_at` + refreshes hosted URLs (status untouched) on the matching row, then SUSPENDS the customer (status='suspended', seat roster decrement on commit) (ubb-platform/apps/billing/connectors/stripe/webhooks.py:164-231). Poller backstop: `reconcile_invoice_payment_status` hourly at :15, lists each charge-ready tenant's Stripe invoices with a 4-day lookback (> Stripe's ~3-day webhook retry horizon) and repairs both families under select_for_update along the same table; illegal regressions are loud-logged, never applied; an equal-status pass still refreshes `hosted_invoice_url`/`invoice_pdf` (Stripe rotates the URL token on payment failure) (ubb-platform/apps/billing/invoicing/tasks.py:146-244; ubb-platform/apps/subscriptions/ports.py:87-118). Hosted URLs are stored on both row types and surfaced to tenants and end customers.
 - **How:** `WEBHOOK_HANDLERS` ubb-platform/api/v1/webhooks.py:415-429 (event-level dedup via `StripeWebhookEvent` get_or_create + CAS retry of retryable/stale rows); test-mode twin endpoint `/api/v1/webhooks/stripe/test` (52-63). Poller: ubb-platform/config/settings.py:245-247. `customer.subscription.created/updated/deleted` are handled on a SEPARATE endpoint `/api/v1/subscriptions/webhooks/stripe` (ubb-platform/apps/subscriptions/api/endpoints.py:145-169) — invoice.* must never be registered there (shared dedup table, C-1 comment, endpoints.py:140-144).
 - **Anchors:** ubb-platform/api/v1/webhooks.py:196-429; ubb-platform/apps/billing/connectors/stripe/invoice_routing.py:59-88; ubb-platform/apps/billing/invoicing/tasks.py:146-244; ubb-platform/apps/subscriptions/ports.py:52-118; ubb-platform/apps/billing/connectors/stripe/webhooks.py:164-231
+
+
+> **In plain terms.** This is accounts-receivable tracking — knowing whether invoices actually got PAID. UBB learns payment status two ways: a fast path where Stripe instantly notifies UBB of each event (invoice finalized, paid, voided, written off), and an hourly backstop poller that re-checks recent invoices in case a notification was missed. Both follow the same legal set of status transitions, so a stale or out-of-order signal can't, say, flip a paid invoice back to unpaid. When a payment fails, UBB records it, refreshes the customer-facing payment link, and suspends the customer (which also trims their billed seats).
+>
+> Why it matters: the webhook-plus-poller belt-and-suspenders design means a single dropped notification doesn't leave the tenant with a wrong picture of who's paid — important because AR status drives suspensions and revenue recognition. It covers both subscription invoices and usage invoices, including the combined "consolidated" ones, and keeps the hosted payment/PDF links fresh for customers to pay.
+>
+> Analogy: a bookkeeper who both gets instant bank alerts AND reconciles the statement every hour, so a missed alert never means a missed payment record.
+>
+> Worth questioning: a failed payment auto-suspends the customer (and drops their seats) — correct for enforcement, but aggressive: there's no described soft grace period or dunning sequence inside UBB before suspension, so that nuance lives in Stripe's retry settings, outside UBB's view.
 
 #### 3.3.13 Stripe Tax passthrough flag (`automatic_tax_enabled`)
 
@@ -419,11 +780,29 @@ Two auditors described this independently; merged with all anchors.
 - **How:** PATCH `/api/v1/tenant/config {automatic_tax_enabled: true}`; SDK `UBBClient.update_tenant_config(automatic_tax_enabled=True)` (ubb-sdk/ubb/client.py:343-376).
 - **Anchors:** ubb-platform/api/v1/tenant_endpoints.py:374-461; ubb-platform/apps/subscriptions/orchestration/service.py:185-203; ubb-platform/apps/billing/invoicing/services/postpaid_service.py:352-372
 
+
+> **In plain terms.** A simple on/off switch: if the tenant turns on automatic tax, UBB tells Stripe to calculate and collect sales tax/VAT on subscription invoices and on standalone usage invoices. Stripe does all the actual tax work on the tenant's own account. Before letting a tenant flip the switch on (while charge-ready), UBB checks that Stripe Tax is actually set up and active, and rejects the change with a clear error if it isn't — so the tenant doesn't think tax is being collected when it isn't.
+>
+> Why it matters: tax is legally fraught and constantly changing across jurisdictions. UBB wisely does NOT try to compute tax itself — it delegates entirely to Stripe Tax, which is purpose-built for it. The pre-flight check is the valuable safety bit: it stops a tenant from silently under-collecting tax due to a misconfiguration, which is exactly the kind of error that becomes an expensive liability later.
+>
+> Analogy: flipping your point-of-sale system to "charge sales tax," where the POS vendor maintains all the rate tables — you just confirm it's switched on and configured.
+>
+> Worth questioning: it's a single global flag — all-or-nothing across the tenant's invoices. There's no per-customer or per-region control here, so tenants with mixed taxable/exempt customers must handle exemptions inside Stripe itself.
+
 #### 3.3.14 Hierarchy-aware money routing on this surface
 
 - **What:** POST `/api/v1/platform/customers` creates individual | business (requires `billing_topology` pooled|allocated) | seat (requires `parent_external_id` of an existing business); creating a seat immediately fires the roster seat-count push. GET `/api/v1/platform/accounts/business/{external_id}` returns topology, pooled wallet balance (pooled only) and the seat roster. `resolve_billing_owner` (pooled seat → business, else self — ubb-platform/apps/platform/customers/models.py:46-52) is applied at subscribe (service.py:158), set_seats (ubb-platform/api/v1/platform_endpoints.py:295), lifecycle verbs (service.py:266,307,334), postpaid push keying (postpaid_service.py:109-110), and the `/me` invoice owner gates (ubb-platform/api/v1/me_endpoints.py:337,424). Postpaid close maps usage-bearing seats to their parent so ONE consolidated business invoice is keyed on the business (ubb-platform/apps/billing/invoicing/tasks.py:85-88); a stray seat-keyed row is superseded (`seat_superseded`, postpaid_service.py:117-123).
 - **How:** SDK: `create_customer(external_id, account_type, parent_external_id, billing_topology)` (ubb-sdk/ubb/client.py:196-215), `get_business(external_id)` (ubb-sdk/ubb/client.py:217-225).
 - **Anchors:** ubb-platform/api/v1/platform_endpoints.py:37-107; ubb-platform/apps/platform/customers/models.py:46-70; ubb-platform/apps/billing/invoicing/services/postpaid_service.py:27-40,109-123
+
+
+> **In plain terms.** UBB supports a customer hierarchy: individuals, businesses, and "seats" that belong to a business. The key rule is "pooled money, per-seat control" — a seat's charges (subscription, usage) route to and land on the PARENT business's account, so the company pays one consolidated bill, while each seat is still tracked individually for usage and limits. This routing ("resolve the billing owner") is applied consistently everywhere money moves: subscribing, changing seats, canceling, and the month-end usage push, which rolls every seat's usage up into ONE invoice for the business.
+>
+> Why it matters: this is what makes UBB viable for B2B SaaS, where a company buys for its whole team. The buyer wants a single invoice and a single payment method, not a separate bill per employee — but the vendor still needs per-employee usage and controls. Applying one shared "who pays" rule everywhere prevents the classic bug where some charges hit the seat and some hit the company.
+>
+> Analogy: a corporate credit card program — each employee has a card with their own limits and statement detail, but every charge settles to the company's master account.
+>
+> Worth questioning: the design routes ALL of a pooled seat's money to the business with no described per-seat billing split option; a business wanting to charge usage back to individual departments/seats separately isn't served by this model as written.
 
 ### 3.4 End-customer visibility (widget)
 
@@ -432,6 +811,13 @@ Two auditors described this independently; merged with all anchors.
 - **What:** The tenant's end customer authenticates to `/api/v1/me/*` with a short-lived widget JWT: HS256, claims `{sub: customer_id, tid: tenant_id, iss: 'ubb', exp}`, default 900s. Verification is two-step (unverified decode → UUID-validate `tid` → load tenant → verify with `tenant.widget_secret`) and binds the customer to the tenant (ubb-platform/core/widget_auth.py:10-81). There is NO HTTP endpoint that mints tokens — the tenant's backend mints them locally via the SDK.
 - **How:** Mount: `path('api/v1/me/', me_api.urls)` BEFORE the generic api/v1 (ubb-platform/config/urls.py:24). SDK minting: `UBBClient(widget_secret=..., tenant_id=...).create_widget_token(customer_id, expires_in=900)` — local `jwt.encode`, no HTTP (ubb-sdk/ubb/client.py:91-107).
 - **Anchors:** ubb-platform/core/widget_auth.py:10-81; ubb-sdk/ubb/client.py:91-107; ubb-platform/config/urls.py:24
+
+
+> **In plain terms.** This is how the billing widget knows *which* of your customer's customers it's looking at, without that customer being able to lie about it. When your customer (the tenant) wants to show one of their end users a "your balance / top up here" panel, their own backend stamps a short-lived signed pass — valid for 15 minutes — that says "this is end-user X, belonging to tenant Y." The widget presents that pass on every request and UBB trusts it. The clever part: there is no public "give me a token" URL anywhere, so an attacker can never request one. The pass is minted privately on the tenant's own servers using a secret only they and UBB share. UBB also verifies it carefully — it first reads who the tenant is, confirms that's a real, active account, then checks the signature against *that* tenant's secret, so one tenant can never forge another's passes.
+>
+> Why it matters: it lets you embed a live billing screen safely in someone else's app. The 15-minute expiry limits damage if a pass leaks.
+>
+> Worth questioning: the secret is symmetric (the tenant can both mint and verify), so there's no public-key option; and there's no built-in token-revocation list — a leaked pass is valid until it expires.
 
 #### 3.4.2 /me endpoints — complete list
 
@@ -448,6 +834,13 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 
 **Anchors:** ubb-platform/api/v1/me_endpoints.py:14-465; ubb-platform/apps/metering/queries.py:177-221
 
+
+> **In plain terms.** This is the complete menu of what an end customer can see and do inside the embedded billing widget — and, just as importantly, what they *cannot*. They can check their balance and credit grants, scroll their transaction history, see their top-up receipts, see their usage-based bills and subscription bills, and view a month-to-date summary of what they've consumed by category. They can also start a top-up, which hands them a Stripe checkout page to add funds. That's it. Notably absent: they can't issue refunds, withdraw money, change their subscription, or edit a payment method — the widget is "look and add money," never "spend or change." That's a deliberate safety boundary: an end user can fund their account but can't damage it.
+>
+> Two subtle privacy rules: if a customer is a "seat" pooling money under a parent business, they see an empty list for grants and bills rather than the parent's data, so colleagues can't see each other's or the company's total spend. But the usage summary deliberately *does* show per-seat consumption, and a business-level login aggregates across all seats.
+>
+> Worth questioning: the usage summary has no date controls — it's current calendar month only — and the grants list silently caps at 100 lots, which could mislead a heavy user.
+
 ### 3.5 Platform & operability
 
 #### 3.5.1 Tenant config read/update
@@ -457,12 +850,28 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options:** See the decision tree (section 2.1) for the full option/default/validation matrix, including the currency lock (`_currency_locked_reason`, ubb-platform/api/v1/tenant_endpoints.py:339-371).
 - **Anchors:** ubb-platform/api/v1/tenant_endpoints.py:326-461; ubb-platform/apps/platform/tenants/models.py:10-26,96-113; ubb-platform/api/v1/schemas.py:378-396; ubb-sdk/ubb/client.py:334-376
 
+
+> **In plain terms.** This lets a tenant change its own billing setup through the API without emailing support or waiting on UBB staff. They can read their current configuration and patch individual settings: which billing model they run (pay-as-you-go vs. prepaid vs. metering-only), which product modules are switched on, their default currency, whether sales tax is auto-calculated, and whether every metered event must have a cost defined before it's accepted. A few fields are read-only on the way out — their account name, their Stripe connection, and whether the account is active — so they can see but not self-edit those. Every change is validated before saving; an invalid combination is rejected with a clear error rather than silently accepted.
+>
+> Why it matters: self-serve configuration is table stakes for a developer-facing platform — it means a tenant can be up and running, or pivot their pricing model, without a human in the loop.
+>
+> Worth questioning: currency can become locked once money has moved (to avoid mixed-currency ledgers), and the change isn't versioned or staged — a PATCH takes effect immediately, with no preview, scheduled-change, or rollback mechanism. For a setting as load-bearing as billing mode, an "are you sure / effective date" step might be safer.
+
 #### 3.5.2 API key lifecycle (self-serve)
 
 - **What:** A tenant lists, mints, rotates, and revokes its own API keys using an existing key. The raw key is shown exactly once at mint/rotate; revocation is instant (per-request DB lookup, no caching).
 - **How:** GET `/api/v1/tenant/api-keys` (list: prefix + metadata only, never hash/raw — ubb-platform/api/v1/tenant_endpoints.py:159-180); POST `/api/v1/tenant/api-keys {label, is_test}` → 201 with raw `api_key` once (183-211); POST `/api/v1/tenant/api-keys/{key_id}/rotate` → mint successor + deactivate old in one transaction, label gets ' (rotated)' suffix (214-247); DELETE `/api/v1/tenant/api-keys/{key_id}` → soft revoke, idempotent (250-282). SDK: `list_api_keys`/`create_api_key`/`rotate_api_key`/`revoke_api_key` (ubb-sdk/ubb/client.py:404-446). Each mutation writes an outbox event (`tenant.api_key_created/rotated/revoked`).
 - **Options:** Key formats: `ubb_live_` + token_urlsafe(32) on live tenants, `ubb_test_` + token on sandbox tenants; stored as SHA-256 hash, `key_prefix = raw[:16]` (ubb-platform/apps/platform/tenants/models.py:166-175). `is_test=true` on a live key routes the mint onto the sandbox sibling (lazily provisioned) — the key appears in the SANDBOX tenant's list (models.py:158-165); `is_test=false` on a sandbox key → 422 mode mismatch. Rotate keeps the tenant's own mode, never re-routes (tenant_endpoints.py:232-234). Lockout guard: revoking the tenant's last active key → 409 `last_active_key`, with all key rows locked in deterministic order against concurrent races (tenant_endpoints.py:264-276). Defense in depth on auth: a key whose prefix mode mismatches its tenant's `is_sandbox` resolves to None (models.py:192-194). `last_used_at` is buffered in Redis (ubb-platform/core/auth.py:19) and flushed every 5 min by `core.tasks.flush_api_key_last_used` (ubb-platform/config/settings.py:208-211).
 - **Anchors:** ubb-platform/api/v1/tenant_endpoints.py:126-282; ubb-platform/apps/platform/tenants/models.py:133-194; ubb-platform/core/auth.py:9-20; ubb-platform/config/settings.py:208-211
+
+
+> **In plain terms.** This is self-service password management for machines. A tenant can list its API keys, create new ones, rotate (replace) them, and revoke them — all through the API, using a key they already hold. The raw key is shown exactly once, at the moment it's created; after that UBB only ever stores a scrambled fingerprint, never the key itself, so even UBB staff or a database leak can't recover it. Revocation is instant because every request checks the live database rather than a cached copy.
+>
+> Why it matters: this is how a tenant practices good security hygiene — rotating keys on a schedule, killing a leaked key immediately, and labelling keys per environment. Rotation is atomic: the new key is minted and the old one retired in a single step, so there's no window where both or neither work.
+>
+> Two nice safety touches: you can't accidentally delete your *last* working key (the system blocks it rather than locking you out), and "test" keys are automatically routed to your sandbox so you can't mix live and test traffic.
+>
+> Worth questioning: there's no key expiry or scoping — keys are all-or-nothing and live forever until revoked. A read-only or scoped key option, plus optional auto-expiry, would be a meaningful security upgrade.
 
 #### 3.5.3 Sandbox mode
 
@@ -471,12 +880,30 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options:** Isolation comes free via tenant-scoping: every domain model hangs off the tenant, so idempotency, rate limits, and beat jobs all apply (sandbox_service.py:4-7). Reset `keep_config=true` (default) preserves a fixed label set of config models (RateCard, TenantMarkup, TenantBillingPlan, MarginThresholdConfig, BudgetConfig, RiskConfig, PostpaidUsageConfig, BillingTenantConfig, ProductFeeConfig, TenantWebhookConfig, ReferralProgram — ubb-platform/apps/platform/tenants/tasks.py:35-47); the Tenant row + API keys always survive; customers (seats before parents) + outbox + a generic app-registry sweep of every tenant-FK model are wiped (tasks.py:96-124); the tenant is deactivated (401s) during the wipe and left INACTIVE on partial failure (tasks.py:74-76,126-131); completion emits `sandbox.reset_completed`. Stripe test-mode story: sandbox Stripe calls require `STRIPE_TEST_SECRET_KEY` starting 'sk_test_' (refuse-live, ubb-platform/apps/billing/stripe/services/stripe_service.py:40-55); incoming test webhooks land on `/api/v1/webhooks/stripe/test` verified with `STRIPE_TEST_WEBHOOK_SECRET`, livemode events rejected (ubb-platform/api/v1/webhooks.py:50-78); outgoing tenant webhooks carry `livemode: false` (ubb-platform/apps/platform/events/webhooks.py:119-125); sandboxes never accrue platform fees (`_calculate_fees` returns 0 — ubb-platform/apps/billing/tenant_billing/services.py:87-88) and a direct platform-invoice call raises (stripe_service.py:157-160).
 - **Anchors:** ubb-platform/api/v1/tenant_endpoints.py:285-323; ubb-platform/api/v1/sandbox_endpoints.py:1-33; ubb-platform/apps/platform/tenants/services/sandbox_service.py:22-59; ubb-platform/apps/platform/tenants/tasks.py:26-150; ubb-platform/apps/billing/stripe/services/stripe_service.py:40-55
 
+
+> **In plain terms.** This gives every tenant a free, isolated "practice" copy of their account. With one call they spin up a sandbox twin that mirrors their real configuration (products, billing mode, currency) but has completely separate data, runs against Stripe's test mode, and is never charged platform fees. Developers can throw the entire API at it — record fake usage, simulate top-ups, test webhooks — without touching production or spending real money. When they want a clean slate, a reset wipes the sandbox's customers and transactions while preserving the config they set up, so they don't have to rebuild scaffolding each time.
+>
+> Why it matters: a credible sandbox is what lets a prospective tenant integrate confidently before going live, and lets an existing tenant test changes safely. The isolation is structural — everything in UBB is already scoped per tenant, so the sandbox inherits isolation "for free" rather than relying on a separate code path that could drift.
+>
+> Strong safety detail: sandbox Stripe calls refuse to run against a live Stripe key, and live webhook events are rejected on the test endpoint — so test and real money genuinely can't cross.
+>
+> Worth questioning: the reset is destructive and, if it fails partway, leaves the sandbox deactivated; there's only one sandbox per tenant and no SDK method to trigger a reset (API-only).
+
 #### 3.5.4 Outgoing webhooks: endpoint config
 
 - **What:** A tenant registers HTTPS endpoints to receive signed event deliveries, filtered by event type; lists and deletes them. No update/patch, no test-ping, no per-config delivery-log API.
 - **How:** POST `/api/v1/webhooks/config/configs {url<=500ch, secret 32-255ch, event_types[], is_active}` → 201 (ubb-platform/apps/platform/events/api/webhook_endpoints.py:27-47); GET `/configs` (list, newest first, 50-66); DELETE `/configs/{config_id}` (69-79). The URL is validated at create time AND re-validated at every delivery (ubb-platform/apps/platform/events/webhooks.py:171-179). No SDK wrapper for config CRUD (auditor grep of `ubb-sdk` found no matches).
 - **Options:** `event_types`: empty list = ALL events (ubb-platform/apps/platform/events/webhook_models.py:14-17; filter check webhooks.py:129-130). `is_active` toggle only settable at create (default true). Secret: caller-supplied string, min 32 chars, stored plaintext in the DB (webhook_models.py:13). SSRF defenses: https-only, hostname required, localhost/0.0.0.0/::1 rejected, every resolved address checked against private/loopback/link-local/reserved ranges (ubb-platform/core/url_validation.py:24-46); delivery-time re-validation plus the TCP connection PINNED to the validated IP via a custom httpx transport, so DNS rebinding between check and connect is closed while TLS SNI/cert verification still uses the original hostname (webhooks.py:19-68,169-184).
 - **Anchors:** ubb-platform/apps/platform/events/api/webhook_endpoints.py:1-79; ubb-platform/core/url_validation.py:6-53; ubb-platform/apps/platform/events/webhooks.py:19-68,169-184; ubb-platform/apps/platform/events/webhook_models.py:6-26
+
+
+> **In plain terms.** This is how a tenant tells UBB "ping my system when things happen." They register one or more web addresses (endpoints) to receive event notifications, choose which event types they care about (or all of them), and can list and delete those registrations. Think of it as subscribing to a notification feed — when a customer tops up, a bill is pushed, or a balance goes negative, UBB will POST that news to the tenant's URL.
+>
+> Why it matters: webhooks are how a tenant keeps their own systems in sync with UBB in real time instead of constantly polling. Without them, integration is clunky.
+>
+> The standout here is the security hardening against a class of attack called SSRF, where a malicious or compromised URL tricks a server into calling internal addresses. UBB only accepts HTTPS, blocks localhost and private network ranges, re-checks the address at the moment of delivery (not just registration), and pins the network connection to the exact verified IP so an attacker can't swap the address between the check and the call. That's genuinely careful engineering.
+>
+> Worth questioning: the endpoint secret is supplied by the tenant and stored in plaintext in UBB's database; there's no way to *edit* an endpoint (only create/delete), no test-ping button, no per-endpoint delivery log API, and no SDK helper for managing these.
 
 #### 3.5.5 Outgoing webhooks: delivery, signing, retries, event catalog
 
@@ -485,12 +912,30 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options — the deliverable event catalog (exactly 25; ubb-platform/apps/platform/events/apps.py:13-39; payloads ubb-platform/apps/platform/events/schemas.py):** `usage.recorded`, `usage.refunded`, `refund.requested`, `referral.created`, `referral.reward_earned`, `referral.expired`, `referral.payout_due`, `billing.withdrawal_requested`, `billing.balance_low`, `billing.balance_critical`, `billing.topup_requested`, `billing.customer_suspended`, `margin.customer_unprofitable`, `margin.provider_cost_spike`, `budget.threshold_reached`, `usage.invoice_pushed`, `usage.invoice_push_failed_permanent`, `auto_topup.requires_action`, `billing.balance_overage`, `billing.credit_grant_expiring`, `billing.credit_grant_expired`, `sandbox.reset_completed`, `tenant.api_key_created`, `tenant.api_key_rotated`, `tenant.api_key_revoked`. `customer.deleted` exists as an internal schema (schemas.py:89-93) but is NOT in the deliverable list.
 - **Anchors:** ubb-platform/apps/platform/events/apps.py:13-46; ubb-platform/apps/platform/events/webhooks.py:71-223; ubb-platform/apps/platform/events/tasks.py:20-132; ubb-platform/apps/platform/events/outbox.py:15-37; ubb-platform/apps/platform/events/schemas.py:14-288; ubb-platform/apps/platform/events/tasks_webhook_cleanup.py:12-35
 
+
+> **In plain terms.** This is the actual delivery machine behind the webhook subscriptions: how events reliably reach the tenant, how the tenant verifies they're genuinely from UBB, and what happens when delivery fails. Each event is a JSON message, signed with a secret using two signature schemes (a newer timestamped one that blocks replay attacks, plus a legacy one for backward compatibility). If the tenant's server is down or errors, UBB retries with growing delays — 30 seconds, 2 minutes, 10 minutes, 30 minutes, 2 hours — up to five times, then "dead-letters" the event (marks it failed, logs a critical alert, and keeps it rather than deleting it) so it can be investigated.
+>
+> The reliability backbone is the "outbox pattern": events are written into the same database transaction as the business action that caused them, so an event can never be lost just because a process crashed mid-send. A sweeper runs every minute to catch any stragglers.
+>
+> The event catalog is explicit — exactly 25 event types, covering usage, refunds, referrals, balance warnings, suspensions, margin alerts, budget thresholds, invoice pushes, and key lifecycle. That's a healthy, business-meaningful set.
+>
+> Worth questioning: five retries over roughly three hours is a fairly short window — a tenant down for a half-day would need to recover dead-lettered events manually, and there's no self-serve replay API for that.
+
 #### 3.5.6 SDK webhook verification helper
 
 - **What:** Receivers verify UBB webhook signatures in one call: v2 (timestamp-bound, replay-rejecting, returns the parsed payload) or explicit legacy body-only verification for migration.
 - **How:** `ubb.webhooks.verify_webhook(payload_bytes, signature_header, secret, tolerance=300)` parses `t=,v1=` (multiple `v1=` values accepted for secret rotation), rejects `|now − t| > tolerance`, constant-time compare, returns the parsed dict; raises `UBBWebhookVerificationError` (ubb-sdk/ubb/webhooks.py:39-94). `verify_webhook_legacy(payload, signature, secret)` for the `X-UBB-Signature` header — deliberately separate, no tolerance param (97-117).
 - **Options:** `tolerance` configurable (default 300s, `DEFAULT_TOLERANCE`, ubb-sdk/ubb/webhooks.py:30); accepts bytes or str payload; docs explicitly warn to verify RAW body bytes before JSON parsing (18-19).
 - **Anchors:** ubb-sdk/ubb/webhooks.py:1-117
+
+
+> **In plain terms.** This is the matching key UBB ships inside its SDK so a tenant can confirm a webhook really came from UBB and wasn't forged or tampered with — in a single function call. The tenant passes in the raw message, the signature header, and their shared secret; the helper checks the signature, rejects anything older than five minutes (which stops an attacker from re-sending a captured message later), and hands back the parsed event. It supports secret rotation gracefully (it'll accept more than one valid signature during a changeover) and uses a constant-time comparison so attackers can't probe the secret by measuring response timing.
+>
+> Why it matters: without this, every tenant would have to hand-roll signature verification — fiddly, security-sensitive code that's easy to get subtly wrong. Bundling a correct implementation removes a whole category of integration bugs and security holes, and signals that UBB takes the developer experience seriously.
+>
+> Nice detail: the docs explicitly warn developers to verify the raw bytes *before* parsing the JSON, which is the single most common mistake people make with webhook verification.
+>
+> Worth questioning: nothing major — this is a small, well-scoped helper. The main caveat is that it's only as safe as the tenant remembering to actually call it.
 
 #### 3.5.7 Customer / account management
 
@@ -499,12 +944,28 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options:** `account_type`: individual (default) | business | seat (platform_endpoints.py:41-42; ubb-platform/apps/platform/customers/models.py:32). business REQUIRES `billing_topology` 'pooled'|'allocated' (platform_endpoints.py:53-56); seat REQUIRES an existing parent business in the same tenant (45-52). Money resolution: `resolve_billing_owner` returns the parent business for a POOLED seat, else self — wallet/cards/auto-top-up pooled; control/attribution stays per-seat (customers/models.py:46-52). Note: the platform_api endpoints carry no product gate (ApiKeyAuth only, platform_endpoints.py:34), while the subscriptions read API requires the `subscriptions` product (ubb-platform/apps/subscriptions/api/endpoints.py:34).
 - **Anchors:** ubb-platform/api/v1/platform_endpoints.py:18-313; ubb-platform/apps/platform/customers/models.py:30-52; ubb-sdk/ubb/client.py:196-333
 
+
+> **In plain terms.** This is how a tenant manages *its* customers inside UBB. They can create three kinds: an individual, a business, or a "seat" that belongs to a business. Businesses come in two flavours — "pooled," where all seats draw from one shared wallet, and "allocated," where billing is handled differently per seat. A tenant can view a business's roster of seats and its shared balance, and run all the subscription verbs (subscribe, set seat count, pause, resume, cancel). When a seat is added, UBB automatically syncs the seat count over to Stripe so the subscription quantity stays correct.
+>
+> Why it matters: this is what makes UBB usable for B2B SaaS, where the buyer is a company with many users rather than a single person. The "pooled money, per-seat control" model is a sensible design — the whole company shares one balance and one payment method, but each seat can still be tracked, capped, and attributed individually.
+>
+> Worth questioning: the doc flags an inconsistency worth a CEO's attention — these customer-management endpoints have *no product gate* (any valid key works), while the related subscription read API *does* require the subscriptions product to be enabled. That asymmetry means a tenant who hasn't enabled subscriptions can still create seats and set quantities, which is at least confusing and possibly a billing-entitlement gap.
+
 #### 3.5.8 OpenAPI / docs exposure
 
 - **What:** Every API mount auto-exposes interactive Swagger docs and an OpenAPI JSON spec, publicly (no auth on the docs UI), plus Django admin.
 - **How:** 12 NinjaAPI instances are mounted in ubb-platform/config/urls.py:21-41 (me, tenant, sandbox, metering, billing, subscriptions, margin, referrals, webhooks/config, platform, connect, root api/v1). None overrides `docs_url`/`openapi_url` (auditor grep: only `auth` + `urls_namespace` passed), so django-ninja defaults apply: docs at `<mount>/docs`, spec at `<mount>/openapi.json`, no `docs_decorator` (ubb-platform/.venv/Lib/site-packages/ninja/main.py:58-61). E.g. `/api/v1/tenant/docs`, `/api/v1/metering/openapi.json`. Django admin at `/admin/` (config/urls.py:22). ninja's `export_openapi_schema` management command is also available.
 - **Options:** No redoc/custom doc UI configured; endpoint auth (Bearer key) still applies when "Try it out" is used — only the doc pages themselves are unauthenticated.
 - **Anchors:** ubb-platform/config/urls.py:21-41; ubb-platform/.venv/Lib/site-packages/ninja/main.py:58-61
+
+
+> **In plain terms.** Every part of UBB's API automatically publishes interactive, browsable documentation — a live "try it out" console (Swagger) plus a machine-readable spec (OpenAPI JSON) that tools can import to auto-generate client code. There are twelve separate API areas, and each one exposes its own docs page and spec at a predictable address. Django's admin panel is also available for internal use.
+>
+> Why it matters: auto-generated, always-in-sync docs are a major developer-experience win — the documentation can't drift out of date relative to the code because it's derived from the code. A prospective tenant can explore the entire API in a browser before writing a line of integration, and can auto-generate an SDK for almost any language from the spec.
+>
+> One thing to understand clearly: the documentation *pages* themselves are public (no login to view them), but that only exposes the *shape* of the API, not any data — actually calling an endpoint, even via the "try it out" button, still requires a valid API key. So this is normal and not a data-exposure risk.
+>
+> Worth questioning: publicly visible docs hand a potential attacker a complete map of your API surface, which some companies prefer to gate behind a login; and there's no custom or branded doc portal, just the default developer console.
 
 #### 3.5.9 Seeding / dev experience + ops commands
 
@@ -513,6 +974,15 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options:** seed `--billing-mode prepaid|postpaid` auto-sets `products=[metering,billing,subscriptions]`; `meter_only` sets `[metering]` (seed_dev_data.py:50-55). `--with-sandbox` provisions the sibling + prints the `ubb_test_` key (96-101). Idempotent re-run updates the existing tenant.
 - **Anchors:** ubb-platform/apps/platform/tenants/management/commands/seed_dev_data.py:12-212; ubb-platform/apps/billing/invoicing/management/commands/repush_usage_invoice.py:14-46; ubb-platform/apps/billing/stripe/management/commands/reprocess_webhook.py:9-33
 
+
+> **In plain terms.** This is the "get a developer productive in one command" experience, plus two emergency repair tools for operators. The seed command bootstraps an entire working dev tenant in a single step — it creates the account, sets up billing config, mints a live API key, optionally spins up a sandbox with a test key, creates a test customer, generates a widget pass, and even prints ready-to-paste example commands for the main workflows (recording usage, subscriptions, analytics). Re-running it just updates the existing setup rather than duplicating.
+>
+> Why it matters: first-run friction is where developer platforms win or lose adoption. Going from nothing to a fully wired, testable account with copy-paste examples in one command is a strong onboarding story.
+>
+> The two operator commands are safety valves for when something gets stuck: one re-pushes a usage invoice that failed to reach Stripe, and one re-queues a failed inbound Stripe webhook for redelivery. Both have guardrails — e.g. the invoice tool refuses to touch already-paid rows.
+>
+> Worth questioning: these are command-line tools an engineer must run by hand on the server; there's no self-serve "retry" button for tenants, so recovery from stuck billing/webhook states still depends on UBB staff intervention.
+
 #### 3.5.10 Health / readiness endpoints
 
 - **What:** Unauthenticated liveness and readiness probes for load balancers/orchestrators.
@@ -520,12 +990,28 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 - **Options:** Checks fixed: database + redis only (no Celery/Stripe checks).
 - **Anchors:** ubb-platform/api/v1/endpoints.py:8-38
 
+
+> **In plain terms.** These are the two standard "is the service alive and ready?" checks that hosting infrastructure relies on. The first, "health," is a trivial heartbeat that just confirms the application process is running. The second, "ready," is smarter — it actually checks that UBB can reach its database and its Redis cache, and returns a failure with a per-component breakdown if either is down. Both are unauthenticated so that load balancers and orchestration systems (the machinery that decides whether to send traffic to a server or restart it) can poll them freely.
+>
+> Why it matters: this is the difference between an outage that self-heals and one that takes the whole system down. If a server's database connection dies, the readiness check fails, the load balancer stops routing traffic to it, and the orchestrator can restart it — automatically, without a human. It's unglamorous but essential plumbing for running reliably in production.
+>
+> Worth questioning: the readiness check only verifies the database and Redis. It does *not* check whether the background job system (Celery) is processing, or whether Stripe is reachable. Since much of UBB's money-movement and webhook delivery runs through background jobs, a silently stalled worker queue wouldn't show up as "not ready" — that's a real observability gap worth probing.
+
 #### 3.5.11 Platform-fee billing of tenants (UBB bills the tenant)
 
 - **What:** UBB meters each tenant's usage volume into monthly billing periods, computes a platform fee (per-product flat/percentage or legacy single percentage), and invoices the tenant on UBB's OWN Stripe account; tenants list their periods and invoices via API.
 - **How:** Hot path: `accumulate_usage` atomically increments the open month's `TenantBillingPeriod` totals per usage event (ubb-platform/apps/billing/tenant_billing/services.py:46-73); an hourly reconcile recomputes from UsageEvents on an arrival basis (156-199; beat ubb-platform/config/settings.py:172-175). Monthly close 1st 00:00 UTC computes fees (`close_tenant_billing_periods`, ubb-platform/apps/billing/tenant_billing/tasks.py:20-43; settings.py:164-167); invoice generation 1st 01:00 UTC via two-phase claim (closed→invoicing→invoiced) with stale-claim reclaim after 30 min (tasks.py:80-191; settings.py:168-171). Stripe: invoice on UBB's account against `BillingTenantConfig.stripe_customer_id`, idempotency-keyed on the period id, currency hardcoded 'usd', `auto_advance=False` then explicit finalize (ubb-platform/apps/billing/stripe/services/stripe_service.py:145-200). Tenant visibility: GET `/api/v1/tenant/billing-periods` and GET `/api/v1/tenant/invoices`, cursor-paginated, limit 1–100 (ubb-platform/api/v1/tenant_endpoints.py:47-123).
 - **Options:** Fee config: `ProductFeeConfig` rows per (tenant, product) with fee_type 'flat' `{amount_micros}` or 'percentage' `{percentage}` of `total_usage_cost_micros`, floored to whole cents (services.py:93-111); fallback = `BillingTenantConfig.platform_fee_percentage` (default 1.00%, ubb-platform/apps/billing/tenant_billing/models.py:127-129; services.py:113-128; seed sets 2.50). Fee config has NO tenant-facing API — set via the seed command, Django admin, or ORM. Sandbox tenants: fee always 0 (services.py:87-88), direct invoicing raises (stripe_service.py:157-160). Zero/negative fee → period marked invoiced with no Stripe call (tasks.py:106-108).
 - **Anchors:** ubb-platform/apps/billing/tenant_billing/services.py:13-199; ubb-platform/apps/billing/tenant_billing/tasks.py:20-191; ubb-platform/apps/billing/stripe/services/stripe_service.py:145-200; ubb-platform/api/v1/tenant_endpoints.py:47-123; ubb-platform/config/settings.py:164-175
+
+
+> **In plain terms.** This is how UBB makes its *own* money — by billing the tenants who use it. As a tenant records usage through UBB, the system continuously tallies that volume into monthly billing periods. At the start of each month it closes the prior period, computes UBB's platform fee, and issues the tenant an invoice on UBB's own Stripe account (not the tenant's). Tenants can see their own billing periods and invoices through the API.
+>
+> The fee model is flexible: it can be a flat amount or a percentage, configurable per product, with a fallback of a default percentage (1%) if nothing specific is set. Sandboxes are always free. The plumbing is carefully built for correctness at scale — a fast running tally on the hot path, an hourly reconciliation that recomputes from source records to catch drift, and a two-phase invoice-claim process that prevents the same period being billed twice even if jobs overlap.
+>
+> Why it matters: this is the company's revenue engine, so its correctness directly equals UBB's cash flow. The double-entry-style reconciliation and idempotent invoicing reflect appropriate seriousness.
+>
+> Worth questioning: two notable limits. The currency is hardcoded to USD, so non-US tenants are billed in dollars regardless. And the fee configuration has *no tenant-facing API* — it can only be set via the seed command, Django admin, or direct database edits, meaning pricing changes require staff intervention and can't be self-served or easily audited by the tenant.
 
 ---
 
@@ -543,6 +1029,13 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 
 **Margin review loop.** (1) Monthly snapshots populate `CustomerEconomics`; set the alerting bar via PUT `/margin/threshold {min_margin_pct, consecutive_periods, provider_cost_spike_pct}`. (2) Record manual recurring revenue for non-Stripe customers via `set_customer_revenue` and pick usage-revenue recognition via `set_revenue_mode` ('billed' vs 'metered_only'). (3) Weekly: `get_unprofitable_customers()`, drill in with `get_customer_margin` + `get_margin_trend(periods=12)`, find which dimension is bleeding via `get_margin_by_dimension(tag_key='agent')`. (4) For pooled accounts, read the consolidated business via `get_business_margin(external_id)` with per-seat breakdown.
 
+
+> **In plain terms.** This is the story of a brand-new business customer (a "tenant" — think a SaaS company that resells AI to its own customers) getting from a cold start to seeing, the same day, exactly what each of their customers costs them and how much margin they're making. They turn on the product, start sending us usage data (e.g. "this customer burned 50,000 GPT-4 tokens on their support agent"), and even before they've told us their costs, the system flags back which numbers it can't yet put a dollar figure on. They then load in their supplier costs, add a markup, and within hours can pull up a per-customer profit view. Next they build a real price book — volume discounts, customer-specific deals, different prices for different AI models — with a clean audit trail and mid-month price changes that don't retroactively re-bill. Finally, if their data pipeline went down yesterday, they can replay the missing usage and the margin numbers self-heal.
+>
+> This is genuinely compelling: same-day cost-and-margin truth is the core promise, and the outage-recovery story shows operational maturity most competitors lack.
+>
+> Worth questioning: there is no self-serve sign-up — a new tenant can only be created by our own staff via an internal script or admin console. A real prospect can't try the product without us manually onboarding them, which is a serious top-of-funnel bottleneck for a "fast and easy" pitch.
+
 ### 4.2 Prepaid wallet + bounded AI-agent spend
 
 **Wallet from zero.** (1) PATCH `/api/v1/tenant/config billing_mode=prepaid` + products incl. `billing` (ubb-platform/apps/platform/tenants/models.py:106 requires the billing product). (2) Connect Stripe (SDK `start_connect_onboarding`, ubb-sdk/ubb/client.py:450) until `charges_enabled`. (3) POST `/api/v1/platform/customers` with a `stripe_customer_id` (ubb-platform/api/v1/platform_endpoints.py:37). (4) POST `/api/v1/billing/customers/{id}/top-up` → `checkout_url` → end customer pays → `checkout.session.completed` credits the wallet exactly-once (TOP_UP keyed `topup:{session.id}`) + PAID grant lot + receipt invoice (ubb-platform/apps/billing/connectors/stripe/webhooks.py:24-146; ubb-platform/apps/billing/connectors/stripe/receipts.py:20). (5) Optionally PUT `.../auto-top-up {is_enabled, trigger, amount}` so future drawdowns below the trigger auto-charge the saved card (ubb-platform/api/v1/billing_endpoints.py:137). (6) Record usage (POST `/api/v1/metering/usage`) — the outbox handler debits the wallet asynchronously, consuming grant lots expiry-first (ubb-platform/apps/billing/handlers.py:49-78). (7) Watch GET `.../balance` (incl. promo/expiring) and GET `.../transactions`; tenant webhooks receive `billing.balance_low` / `billing.balance_overage` / `billing.customer_suspended` as the balance falls.
@@ -551,11 +1044,25 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 
 **Dispute / refund recovery.** (a) Tenant-initiated usage refund — POST `/api/v1/billing/customers/{id}/refund {usage_event_id, idempotency_key}` credits the full billed cost; lot slices that funded the original debit are restored into still-live lots (promo stays promo, never withdrawable), the rest lands as base; `refund.requested` event recorded (ubb-platform/api/v1/billing_endpoints.py:268-335). (b) Stripe-side refund of a top-up — `charge.refunded` writes one STRIPE_REFUND per refund object keyed `stripe_refund:{refund_id}` and claws back grant lots (source top-up lot voided first, cascade until the grant-sum invariant holds) (ubb-platform/apps/billing/connectors/stripe/webhooks.py:344-415). (c) Card dispute — `charge.dispute.created` only flags for manual review (234-260); if the dispute closes LOST, DISPUTE_DEDUCTION keyed `dispute:{dispute_id}` debits the wallet, claws back lots, and suspends the customer if the balance falls below −min_balance (263-341); recovery from suspension requires a manual status edit (no unsuspend endpoint); the hourly Stripe sweep also audits succeeded top-up charges for amount/refund drift (ubb-platform/apps/billing/connectors/stripe/tasks.py:176-208).
 
+
+> **In plain terms.** Here a tenant pre-funds spending wallets for their customers and then lets AI agents run against those wallets with a hard spending ceiling that literally cannot be breached. The customer tops up by paying through a Stripe checkout link; the money lands in their wallet exactly once (no double-credits even if the payment notification arrives twice). They can switch on auto-top-up so the wallet refills itself before it runs dry. The headline feature is the safety rail: when an AI agent starts a job, the system snapshots a budget, and the very first action that would push past the cost limit or drain the wallet below its floor is rejected outright and the job is killed — the overspend never happens, rather than being caught after the fact. There's also a full money-back story: tenants can refund individual usage charges, Stripe refunds claw money back out of the wallet correctly, and lost card disputes are handled.
+>
+> The "physically can't overspend" guarantee is a strong, differentiated promise for the AI-agent era, where runaway costs are a real fear.
+>
+> Worth questioning: the actual spending ceilings (run cost limit, wallet hard-stop floor) can only be set by our staff through internal tools — there's no customer-facing API or dashboard to configure them. And recovering a suspended customer requires a manual database edit, with no "reactivate" button. Both undercut the self-serve, hands-off positioning.
+
 ### 4.3 Subscriptions + month-end postpaid close (operator view)
 
 **Connect and first subscription.** (1) `UBBClient.start_connect_onboarding(return_url)` → POST `/api/v1/connect/start` → redirect the merchant to `authorize_url` (ubb-platform/api/v1/connect_endpoints.py:14-20). (2) Stripe redirects to GET `/api/v1/connect/callback?code&state`; `complete_oauth` stores the acct id + `charges_enabled` (ubb-platform/apps/billing/connectors/stripe/connect.py:58-83); the browser lands on `return_url?connected=true`. (3) Poll `get_connect_status()` until `onboarded=true` (lazy `charges_enabled` refresh, connect_endpoints.py:23-42; the `account.updated` webhook keeps it current thereafter). (4) `create_plan('pro', 'Pro', access_fee_micros=..., per_seat_micros=..., interval='month')` → POST `/platform/plans` (no Stripe objects yet). (5) `create_customer` for the business (`billing_topology='pooled'`) and its seats. (6) `subscribe_customer('acme', 'pro', seats=5)` → POST `/platform/customers/acme/subscribe`: one call ensures the Stripe Customer (`cust-create-{owner.id}`), lazily provisions Product+Price per non-zero axis, creates the subscription anchored to 00:00 UTC on the 1st of next month with create_prorations (partial month prorated), and mirrors locally (ubb-platform/apps/subscriptions/orchestration/service.py:147-206). (7) Ongoing: `customer.subscription.*` webhooks on `/api/v1/subscriptions/webhooks/stripe` keep the mirror fresh; `invoice.finalized/paid` on `/api/v1/webhooks/stripe` create/settle `SubscriptionInvoice` rows with hosted URLs; adding/removing/suspending seats auto-pushes the live seat quantity on commit (ubb-platform/apps/subscriptions/orchestration/seats.py:61-101); `set_seats` is the explicit override; cancel/pause/resume manage the lifecycle.
 
 **Month-end close.** (0) Prereqs: tenant `billing_mode='postpaid'` (PATCH `/tenant/config`), charge-ready, customers have a `stripe_customer_id` (or the subscribe path created one for the owner); optionally PUT `/billing/postpaid-config {usage_line_item_group_by: 'tag:model', consolidate_with_subscription: true}`. (1) 1st of month 00:05 UTC: `close_postpaid_usage_periods` walks postpaid tenants, collects customers with prior-month usage, re-keys seats to their business, calls `push_customer_period` per owner (ubb-platform/apps/billing/invoicing/tasks.py:74-93). (2) Per owner: claim the row (unique customer+period_start), freeze the line snapshot, reserve the residual carry, two-phase push — draft `Invoice.create` (or resolve the <45-min-old subscription renewal draft when consolidation is on), pin items with `line_index` metadata, finalize (standalone only; the renewal auto-finalizes on Stripe's clock) — then record line items, deposit the new sub-cent residual, emit `UsageInvoicePushed` (ubb-platform/apps/billing/invoicing/services/postpaid_service.py:101-269). Sub-cent-only periods bill nothing and bank the residue. (3) Self-healing: hourly :45 `reconcile_postpaid_usage` reclaims stale 'pushing' rows, retries pending/failed (bounded 8 attempts/20h → failed_permanent + outbox alert), and revives recoverable skips (tasks.py:96-143). (4) Operator monitoring: GET `/billing/tenant/usage-invoices?period=2026-05` shows status/skip_reason/push_attempts/last_attempt_error per customer; a failed_permanent row is fixed at the root cause, then `manage.py repush_usage_invoice <row_id>` (resume the same invoice) or `--rebill-void` after voiding the Stripe invoice (fresh re-aggregation, rotated idempotency keys; refused for consolidated rows). (5) Collection: `invoice.finalized` → open, `invoice.paid` → paid (+paid_at), `invoice.payment_failed` stamps the timestamp, refreshes the rotated hosted URL and suspends the customer (the seat roster shrinks); the hourly :15 poller with a 4-day lookback repairs anything webhooks missed along the same transition table.
+
+
+> **In plain terms.** This is the recurring-revenue story for a tenant who sells seat-based subscriptions (e.g. "$X base plus $Y per seat per month") and also bills usage in arrears. They connect their Stripe account once via a guided redirect, define a plan, and subscribe a business customer for, say, 5 seats — a single call sets up everything on the Stripe side and starts billing cleanly on the 1st of next month, prorating the partial first month. From then on, adding, removing, or suspending seats automatically updates what Stripe charges. The second half is the automated month-end "close": in the early hours of the 1st, the system sweeps every customer's prior-month usage, rolls a business's seats up into one consolidated bill, and pushes it onto a Stripe invoice for collection — with self-healing retries if a push fails, and an operator dashboard showing the status of every customer's invoice. When payment fails, the customer is suspended automatically.
+>
+> The consolidation (many seats, one clean invoice) plus the self-healing retry machinery is the kind of unglamorous reliability that finance teams actually pay for.
+>
+> Worth questioning: the doc itself labels this "operator view" — the heavy lifting (postpaid config, fixing a permanently-failed invoice via a command-line tool, re-pushing) is staff-operated, not something the tenant self-serves. A tenant largely watches rather than drives the close.
 
 ### 4.4 Evaluate safely, rotate keys, give end customers a window, watch your own bill
 
@@ -566,6 +1073,13 @@ All `WidgetJWTAuth` (Bearer JWT), product-gated `billing` or `metering` (ubb-pla
 **End-customer billing widget.** (1) The tenant backend holds `widget_secret` + `tenant_id` and mints a short-lived token: `UBBClient(widget_secret=..., tenant_id=...).create_widget_token('cust-uuid', expires_in=900)` — pure local JWT, no HTTP (ubb-sdk/ubb/client.py:91-107); ship it to the browser. (2) The widget calls `/api/v1/me/*` with `Authorization: Bearer <jwt>`; `WidgetJWTAuth` resolves the customer + tenant (ubb-platform/core/widget_auth.py:63-81). (3) What the customer sees: current wallet balance + promo/expiring grant summary (`/me/balance`); individual grant lots with expiries (`/me/grants`, first 100); wallet transaction history (`/me/transactions`, paginated); month-to-date usage broken down per event_type with billed cost (`/me/usage-summary` — always the SEAT's own usage; a business token sees the seat-aggregated rollup); their postpaid usage invoices (`/me/usage-invoices`) and subscription invoices (`/me/subscription-invoices`) with payment_status/status, period, and Stripe `hosted_invoice_url` + `invoice_pdf` links to pay or download — BUT only if they ARE the billing owner: a pooled seat gets empty invoice lists by design (sibling-spend privacy, ubb-platform/api/v1/me_endpoints.py:334-338,422-425); top-up receipts (`/me/invoices`). (4) Self-serve funding: POST `/me/top-up` (cent-aligned amount + redirect URLs) returns a Stripe Checkout URL on a connected tenant, or 202 `topup_requested` (outbox event to the tenant) when Stripe is not connected. Not available in the widget: cancel/pause subscription, payment-method management, plan changes — those are tenant-API-only.
 
 **Monthly platform-fee observation.** (1) During the month each recorded usage event increments the tenant's open `TenantBillingPeriod` (ubb-platform/apps/billing/tenant_billing/services.py:46-73); the hourly reconcile corrects drift. (2) 1st 00:00 UTC the period closes and the fee is computed (`ProductFeeConfig` flat/percentage else legacy percentage, floored to cents; sandbox = 0). (3) 1st 01:00 UTC a Stripe invoice is created on UBB's own account against the tenant's `stripe_customer_id` (charge_automatically, usd). (4) The tenant watches it all via GET `/api/v1/tenant/billing-periods` (status open→closed→invoicing→invoiced, totals, fee) and GET `/api/v1/tenant/invoices` (stripe_invoice_id, amount, status) (ubb-platform/api/v1/tenant_endpoints.py:47-123).
+
+
+> **In plain terms.** This is the day-two operability story — four things a serious customer needs once they're live. First, a true sandbox: with one call a tenant spins up an isolated test copy of their setup with a separate test key, so they can rehearse against fake money and Stripe test mode, reset it when it's messy, and never risk real customers; promoting to production means replaying the same setup against their live key. Second, incident response: API keys can be rotated in one atomic step (new key minted, old one killed) or, if compromised, replaced-then-deleted, with the safety net that you can't delete your last working key, plus an audit trail of every key change. Third, an embeddable billing widget so a tenant's own end customers can log in to a browser view, see their balance, usage, and invoices, and top up themselves. Fourth, transparency on what UBB itself charges: the tenant can watch their own platform-fee bill accrue through the month and see the Stripe invoice we raise against them.
+>
+> The sandbox and key-rotation discipline signal enterprise-readiness and reduce the "what if it breaks" objection that stalls deals.
+>
+> Worth questioning: promotion from sandbox to live is manual replay with no copy/promote button, so good test work doesn't carry over automatically. And the end-customer widget is deliberately read-mostly — customers can view and top up but cannot change or cancel a subscription or manage their payment method, which power users may expect to self-serve.
 
 ---
 
