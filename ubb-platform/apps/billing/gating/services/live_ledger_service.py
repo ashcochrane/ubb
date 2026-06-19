@@ -139,6 +139,12 @@ def _livespend_key(owner_id, label) -> str:
     return f"ubb:livespend:{owner_id}:{label}"
 
 
+def _stop_key(owner_id) -> str:
+    # Customer-wide cooperative stop flag. Owner-keyed (NOT month-scoped), so a
+    # pooled business stops all its seats and an allocated seat stops itself.
+    return f"ubb:stop:{owner_id}"
+
+
 def _month_label_bounds(now):
     """(label 'YYYY-MM', start date, end date exclusive) for now's month."""
     d = now.date()
@@ -169,12 +175,18 @@ class LiveLedgerService:
     # ---- synchronous usage hook (called from record_usage) ----
     @staticmethod
     def record_usage_debit(owner_id, tenant, billed_cost_micros, *, effective_at=None, now=None):
-        """Apply this event to the owner's live counter, synchronously.
+        """Apply this event to the owner's live counter, synchronously, and
+        return the customer-wide stop verdict.
 
-        Returns a dict {mode, balance|spend, key} for P3 to derive the verdict,
-        or None when disabled / zero-cost / (postpaid) backdated to a prior
-        month. NEVER raises — a Redis failure logs and returns None (fail-open;
-        the durable start-gate + async suspend remain the backstop)."""
+        P3: if this event drives the counter across the threshold (prepaid
+        wallet floor / postpaid budget cap) the owner-keyed stop flag is SET
+        (cooperative — never rolls back this event; I3). The returned dict
+        carries {mode, balance_micros|spend_micros, key, stop, stop_reason,
+        stop_scope} (the stop fields reflect the flag AFTER this event, so a
+        flag a sibling run set is surfaced too). Returns None when disabled /
+        zero-cost / (postpaid) backdated to a prior month. NEVER raises — a
+        Redis failure logs and returns None (fail-open; the durable start-gate
+        remains the backstop)."""
         if not enforcement_on(tenant) or billed_cost_micros <= 0:
             return None
         try:
@@ -187,18 +199,69 @@ class LiveLedgerService:
                     return None
                 label, _, _ = _month_label_bounds(now)
                 key = _livespend_key(owner_id, label)
-                v = _client().eval(_SPEND_INCR, 1, key, int(billed_cost_micros), LEDGER_TTL_SECONDS)
-                return {"mode": "postpaid", "spend_micros": int(v), "key": key}
-            # prepaid / meter_only: mirror the async wallet drawdown branch.
-            from apps.billing.queries import get_customer_balance
-            key = _livebal_key(owner_id)
-            seed = int(get_customer_balance(owner_id))
-            v = _client().eval(_SEED_AND_DECR, 1, key, seed, int(billed_cost_micros), LEDGER_TTL_SECONDS)
-            return {"mode": "prepaid", "balance_micros": int(v), "key": key}
+                v = int(_client().eval(_SPEND_INCR, 1, key, int(billed_cost_micros), LEDGER_TTL_SECONDS))
+                base = {"mode": "postpaid", "spend_micros": v, "key": key}
+                mode = "postpaid"
+            else:
+                # prepaid / meter_only: mirror the async wallet drawdown branch.
+                from apps.billing.queries import get_customer_balance
+                key = _livebal_key(owner_id)
+                seed = int(get_customer_balance(owner_id))
+                v = int(_client().eval(_SEED_AND_DECR, 1, key, seed, int(billed_cost_micros), LEDGER_TTL_SECONDS))
+                base = {"mode": "prepaid", "balance_micros": v, "key": key}
+                mode = "prepaid"
+            # Set (never clear) the cooperative stop flag on a crossing; a
+            # non-crossing event must not clear a flag a sibling run set — the
+            # flag lifts only on recovery (credit / reconcile).
+            if LiveLedgerService._crossed(mode, v, owner_id, tenant):
+                from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
+                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP)
+            base.update(LiveLedgerService.read_stop(owner_id, tenant))
+            return base
         except Exception:
             logger.warning("live_ledger.debit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
             return None
+
+    # ---- customer-wide stop flag (P3) ----
+    @staticmethod
+    def _crossed(mode, value, owner_id, tenant) -> bool:
+        """True if the live counter has crossed the owner's threshold:
+        prepaid balance below the wallet floor (-min_balance), or postpaid
+        month-to-date spend at/over the budget cap (cap * hard_stop_pct)."""
+        if mode == "postpaid":
+            from apps.billing.gating.models import BudgetConfig
+            cfg = (BudgetConfig.objects.filter(tenant_id=tenant.id, customer_id=owner_id).first()
+                   or BudgetConfig.objects.filter(tenant_id=tenant.id, customer__isnull=True).first())
+            if not cfg or cfg.cap_micros <= 0:
+                return False
+            return value >= cfg.cap_micros * cfg.hard_stop_pct // 100
+        from apps.billing.queries import get_customer_min_balance
+        return value < -get_customer_min_balance(owner_id, tenant.id)
+
+    @staticmethod
+    def _set_stop(owner_id, reason):
+        _client().set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS)
+
+    @staticmethod
+    def _clear_stop(owner_id):
+        _client().delete(_stop_key(owner_id))
+
+    @staticmethod
+    def read_stop(owner_id, tenant) -> dict:
+        """Current customer-wide stop verdict. Short-circuits to not-stopped
+        when enforcement is off — BEFORE touching Redis (D17)."""
+        off = {"stop": False, "stop_reason": None, "stop_scope": None}
+        if not enforcement_on(tenant):
+            return off
+        try:
+            v = _client().get(_stop_key(owner_id))
+        except Exception:
+            return off
+        if v is None:
+            return off
+        reason = v.decode() if isinstance(v, bytes) else str(v)
+        return {"stop": True, "stop_reason": reason, "stop_scope": "customer"}
 
     # ---- prepaid credit hook (top-up / refund-reversal / manual credit) ----
     @staticmethod
@@ -210,8 +273,15 @@ class LiveLedgerService:
         if not enforcement_on(tenant) or tenant.billing_mode == "postpaid" or amount_micros == 0:
             return
         try:
-            _client().eval(_CREDIT_IF_PRESENT, 1, _livebal_key(owner_id),
-                           int(amount_micros), LEDGER_TTL_SECONDS)
+            v = _client().eval(_CREDIT_IF_PRESENT, 1, _livebal_key(owner_id),
+                               int(amount_micros), LEDGER_TTL_SECONDS)
+            # Recovery (P3): a positive credit that lifts the balance back to/
+            # above the floor clears the cooperative stop flag so the customer's
+            # runs may resume. (A negative credit / grant-expiry never clears.)
+            if v is not None and amount_micros > 0:
+                from apps.billing.queries import get_customer_min_balance
+                if int(v) >= -get_customer_min_balance(owner_id, tenant.id):
+                    LiveLedgerService._clear_stop(owner_id)
         except Exception:
             logger.warning("live_ledger.credit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -232,8 +302,13 @@ class LiveLedgerService:
             with transaction.atomic():
                 lock_for_billing(owner_id)  # serialize vs credit/drawdown
                 durable = int(get_customer_balance(owner_id))
-                _client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
-                               durable, LEDGER_TTL_SECONDS)
+                v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
+                                       durable, LEDGER_TTL_SECONDS))
+            # Recovery backstop: clear the stop flag if drift-correction shows
+            # the balance is back above the floor (e.g. a credit() clear that
+            # never fired due to a transient Redis error).
+            if not LiveLedgerService._crossed("prepaid", v, owner_id, tenant):
+                LiveLedgerService._clear_stop(owner_id)
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -250,8 +325,14 @@ class LiveLedgerService:
         label, start, end = _month_label_bounds(now)
         try:
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
-            _client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
-                           durable, LEDGER_TTL_SECONDS)
+            v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
+                                   durable, LEDGER_TTL_SECONDS))
+            # Recovery backstop incl. MONTH ROLLOVER: the new month's livespend
+            # is low, so once spend is back under the cap the stale stop flag
+            # (which is NOT month-scoped) is cleared. Bounds the cross-month
+            # stale-flag window to one reconcile cycle.
+            if not LiveLedgerService._crossed("postpaid", v, owner_id, tenant):
+                LiveLedgerService._clear_stop(owner_id)
         except Exception:
             logger.warning("live_ledger.reconcile_postpaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})

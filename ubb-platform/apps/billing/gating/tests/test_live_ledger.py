@@ -7,16 +7,19 @@ MIN/MAX reconcile directions, and pooled-owner postpaid aggregation.
 """
 import datetime
 import json
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
 from django.test import Client
 from django.utils import timezone
 
+from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.live_ledger_service import LiveLedgerService
 from apps.billing.wallets.models import Wallet
 from apps.metering.queries import get_billing_owner_billed_total
 from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
@@ -141,6 +144,95 @@ class TestLiveLedgerPostpaid:
         LiveLedgerService.record_usage_debit(biz.id, t, 5_000_000, now=now)  # live = 5M
         LiveLedgerService.reconcile_postpaid(biz.id, t, now=now)
         assert LiveLedgerService.read_postpaid(biz.id, now=now) == 10_000_000
+
+
+@pytest.mark.django_db
+class TestStopFlag:
+    """P3: the synchronous customer-wide cooperative stop flag."""
+
+    def setup_method(self):
+        cache.clear()
+
+    def test_crossing_sets_flag_and_returns_verdict(self):
+        t = _tenant()  # prepaid, enforcing; default min_balance floor = 0
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
+        assert out["balance_micros"] == -1_000_000  # below floor (0)
+        assert out["stop"] is True
+        assert out["stop_reason"] == "customer_wide_stop"
+        assert out["stop_scope"] == "customer"
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+
+    def test_non_crossing_sets_no_flag(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=100_000_000)
+        out = LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())
+        assert out["stop"] is False
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+
+    def test_flag_clears_on_credit_recovery(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        LiveLedgerService.credit(c.id, t, 10_000_000)  # live -1M -> 9M >= floor -> clear
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+
+    def test_advisory_mode_still_sets_flag(self):
+        t = _tenant(enf="advisory")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
+        assert out["stop"] is True  # advisory computes+emits; UBB itself never blocks
+
+    def test_off_sets_no_flag_and_reads_clear(self):
+        t = _tenant(enf="off")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        assert LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now()) is None
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+
+    def test_postpaid_crossing_at_budget_cap(self):
+        t = _tenant(mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000, hard_stop_pct=100)
+        out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        assert out["spend_micros"] == 12_000_000
+        assert out["stop"] is True
+
+    def test_postpaid_reconcile_clears_stale_flag_next_month(self):
+        t = _tenant(mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
+        now = timezone.now()
+        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=now)  # flag set
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        # Next month: fresh livespend key, durable spend 0 -> under cap -> the
+        # monthless stop flag is cleared by the reconcile backstop.
+        next_month = (now.replace(day=1) + datetime.timedelta(days=40)).replace(day=1)
+        LiveLedgerService.reconcile_postpaid(c.id, t, now=next_month)
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_record_usage_crossing_returns_stop_event_persists_and_replays(self, _m):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        res = UsageService.record_usage(
+            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            billed_cost_micros=6_000_000)
+        # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
+        assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
+        assert UsageEvent.objects.filter(id=res["event_id"]).exists()
+        # I4: the idempotent replay return ALSO carries the stop verdict
+        replay = UsageService.record_usage(
+            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            billed_cost_micros=6_000_000)
+        assert replay["event_id"] == res["event_id"]
+        assert replay["stop"] is True
 
 
 @pytest.mark.django_db

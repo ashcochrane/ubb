@@ -120,6 +120,17 @@ def _result(event, run_total, *, stop=False, stop_reason=None, stop_scope=None,
     }
 
 
+def _replay_stop(customer, tenant):
+    """Customer-wide stop verdict for the idempotent-replay return paths.
+    Skips the owner resolve + Redis read entirely when enforcement is off, so
+    the common replay path stays fast for un-enrolled tenants."""
+    from apps.platform.tenants.flags import enforcement_on
+    if not enforcement_on(tenant):
+        return {}
+    from apps.billing.queries import read_live_stop
+    return read_live_stop(customer.resolve_billing_owner().id, tenant)
+
+
 class UsageService:
     @staticmethod
     @transaction.atomic
@@ -135,7 +146,7 @@ class UsageService:
             # Replay wins BEFORE effective_at validation: a whole-batch retry
             # must return the original event even if the window has since aged
             # past the timestamp or the period closed.
-            return _result(existing, run_total=None)
+            return _result(existing, run_total=None, **_replay_stop(customer, tenant))
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result.
@@ -204,7 +215,7 @@ class UsageService:
                 # IntegrityError attributably instead of masking it as a replay
                 # (or as an unexplained DoesNotExist).
                 raise exc
-            return _result(existing, run_total=None)
+            return _result(existing, run_total=None, **_replay_stop(customer, tenant))
         # Tier-2 (P2/WS1): maintain the synchronous live counter on the SAME
         # billing owner the async drawdown will debit. Reached only once the
         # event has committed to the savepoint (the IntegrityError replay race
@@ -214,8 +225,8 @@ class UsageService:
         # billing read/port contract (apps.billing.queries) — metering must not
         # import a billing internal directly (product-boundary ADR-001).
         from apps.billing.queries import record_live_usage_debit
-        record_live_usage_debit(
-            owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
+        live = record_live_usage_debit(
+            owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now) or {}
         if effective_at is not None:
             eff_month_start = month_bounds(effective_at)[0]
             if eff_month_start < month_bounds(now)[0]:
@@ -239,4 +250,6 @@ class UsageService:
             # Normalized to UTC: the instance attribute keeps the caller's
             # original offset, but consumers bucket by UTC calendar month.
             effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
-        return _result(event, run_total=run.total_cost_micros if run else None)
+        return _result(event, run_total=run.total_cost_micros if run else None,
+                       stop=live.get("stop", False), stop_reason=live.get("stop_reason"),
+                       stop_scope=live.get("stop_scope"))

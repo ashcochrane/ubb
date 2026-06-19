@@ -68,6 +68,15 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
         owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
 
 
+def read_live_stop(owner_id, tenant) -> dict:
+    """Read the customer-wide stop verdict for a billing owner — the
+    cross-product port for the metering replay paths. Returns
+    {stop, stop_reason, stop_scope}; {stop: False, ...} when enforcement is off
+    (short-circuits before touching Redis)."""
+    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    return LiveLedgerService.read_stop(owner_id, tenant)
+
+
 def is_usage_period_closed(owner_id, period_start) -> bool:
     """True when the billing owner's postpaid usage invoice for the calendar
     month starting at ``period_start`` (date) is FROZEN — i.e. matches the
