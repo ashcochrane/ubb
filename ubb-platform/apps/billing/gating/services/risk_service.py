@@ -67,6 +67,8 @@ class RiskService:
                 hard_stop_balance_micros=billing_config.hard_stop_balance_micros,
                 metadata=run_metadata or {},
                 external_run_id=external_run_id,
+                # Tier-2 (D4/I6): pin the resolved billing owner on the run.
+                billing_owner_id=owner.id,
             )
             result["run_id"] = str(run.id)
             result["cost_limit_micros"] = run.cost_limit_micros

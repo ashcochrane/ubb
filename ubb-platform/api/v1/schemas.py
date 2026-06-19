@@ -76,6 +76,13 @@ class RecordUsageResponse(Schema):
     run_id: Optional[str] = None
     run_total_cost_micros: Optional[int] = None
     hard_stop: bool = False
+    # Tier-2 (D14): customer-wide cooperative spend stop on a 200 body. `stop`
+    # means "halt this customer's runs at the next safe boundary" (the event
+    # was still recorded + charged). Distinct from `hard_stop` (per-run/task
+    # 429, run already killed) and `suspended` (durable owner status).
+    stop: bool = False
+    stop_reason: Optional[str] = None
+    stop_scope: Optional[str] = None
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
@@ -384,6 +391,8 @@ class TenantConfigOut(Schema):
     stripe_connected_account_id: str
     is_active: bool
     automatic_tax_enabled: bool
+    # Tier-2 spend-control mode (read-only here; off|advisory|enforcing).
+    enforcement_mode: str = "off"
 
 
 class TenantConfigIn(Schema):

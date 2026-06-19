@@ -6,7 +6,59 @@ from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService, HardStopExceeded, RunNotActive
 from apps.metering.usage.models import UsageEvent
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.services.usage_service import UsageService, _result
+
+
+# Tier-2 (D5/I4): the customer-wide stop verdict must travel on EVERY
+# record_usage return path. P0 only adds the fields (defaulting to the old
+# behavior); this guards against the verdict being half-wired in P3 (the
+# classic bug is updating the happy path but missing the replay returns).
+_STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
+
+
+class ResultSignatureTest(TestCase):
+    """P0 acceptance gate (D5/I4): stop fields present on all three paths."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="T")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        Wallet.objects.create(customer=self.customer)
+
+    def test_result_builder_includes_stop_fields_with_safe_defaults(self):
+        # Both idempotent-replay returns (usage_service.py:128 and :197) go
+        # through this single builder, so asserting it here covers the replay
+        # paths that are awkward to trigger deterministically.
+        event = MagicMock(
+            id="e1", provider_cost_micros=1, billed_cost_micros=1, units=None,
+            run_id=None, usage_metrics={}, pricing_provenance={},
+            service_id="", agent_id="",
+        )
+        out = _result(event, run_total=None)
+        self.assertTrue(_STOP_KEYS <= set(out))
+        self.assertFalse(out["stop"])
+        self.assertIsNone(out["stop_reason"])
+        self.assertIsNone(out["stop_scope"])
+        self.assertFalse(out["suspended"])
+        self.assertIsNone(out["new_balance_micros"])
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_stop_fields_on_happy_path_and_replay(self, _mock):
+        first = UsageService.record_usage(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+        )
+        self.assertTrue(_STOP_KEYS <= set(first), "stop fields missing on happy path")
+        self.assertFalse(first["stop"])
+
+        # Same idempotency_key -> the replay return (the path that returns the
+        # original event) must ALSO carry the stop fields.
+        replay = UsageService.record_usage(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+        )
+        self.assertEqual(first["event_id"], replay["event_id"])
+        self.assertTrue(_STOP_KEYS <= set(replay), "stop fields missing on replay path")
+        self.assertFalse(replay["stop"])
 
 
 class UsageServiceCoreTest(TestCase):

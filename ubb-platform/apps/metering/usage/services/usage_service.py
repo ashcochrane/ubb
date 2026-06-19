@@ -94,15 +94,25 @@ def validate_tags(tags):
             raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
-def _result(event, run_total):
+def _result(event, run_total, *, stop=False, stop_reason=None, stop_scope=None,
+            suspended=False, new_balance_micros=None):
+    """Build the record_usage response.
+
+    Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
+    return path of record_usage — the happy path AND both idempotent-replay
+    returns — so a replayed event for an already-stopped owner never reports
+    "all clear". The defaults reproduce pre-Tier-2 behavior exactly; P3 wires
+    the real verdict in from the synchronous stop-flag read.
+    """
     return {
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
         "billed_cost_micros": event.billed_cost_micros,
         "units": event.units,
-        "new_balance_micros": None, "suspended": False,
+        "new_balance_micros": new_balance_micros, "suspended": suspended,
         "run_id": str(event.run_id) if event.run_id else None,
         "run_total_cost_micros": run_total, "hard_stop": False,
+        "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
         "usage_metrics": event.usage_metrics,
         "pricing_provenance": event.pricing_provenance,
         "service_id": event.service_id,

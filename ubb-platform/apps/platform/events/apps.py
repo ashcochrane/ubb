@@ -32,6 +32,7 @@ class EventsConfig(AppConfig):
             "billing.balance_overage",
             "billing.credit_grant_expiring",
             "billing.credit_grant_expired",
+            "run.limit_exceeded",
             "sandbox.reset_completed",
             "tenant.api_key_created",
             "tenant.api_key_rotated",

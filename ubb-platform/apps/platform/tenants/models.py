@@ -25,6 +25,21 @@ BILLING_MODE_CHOICES = [
     ("postpaid", "Postpaid"),
 ]
 
+# Tier-2 real-time spend control (D1): the SINGLE program kill switch.
+#   off       — byte-for-byte unchanged; the live ledger / stop flag / per-task
+#               cap / concurrency cap are never touched.
+#   advisory  — counters are maintained and stop/limit events are emitted, but
+#               UBB never itself blocks/kills/suspends (canary mode).
+#   enforcing — block/kill/suspend paths are live.
+# Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcement_on/
+# enforcing); no other flag exists. See
+# docs/plans/2026-06-19-tier2-realtime-spend-control-design.md.
+ENFORCEMENT_MODE_CHOICES = [
+    ("off", "Off"),
+    ("advisory", "Advisory"),
+    ("enforcing", "Enforcing"),
+]
+
 
 class Tenant(BaseModel):
     name = models.CharField(max_length=255)
@@ -57,6 +72,10 @@ class Tenant(BaseModel):
     # PaymentIntents / receipts NEVER carry it: wallet credit must equal the
     # charged amount exactly.
     automatic_tax_enabled = models.BooleanField(default=False)
+    # Tier-2 spend-control kill switch (D1). Default "off" = unchanged behavior.
+    enforcement_mode = models.CharField(
+        max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
+    )
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile

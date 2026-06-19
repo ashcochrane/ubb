@@ -333,6 +333,7 @@ def _config_out(t):
         "stripe_connected_account_id": t.stripe_connected_account_id,
         "is_active": t.is_active,
         "automatic_tax_enabled": t.automatic_tax_enabled,
+        "enforcement_mode": t.enforcement_mode,
     }
 
 

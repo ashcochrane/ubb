@@ -35,10 +35,12 @@ class RunService:
     @staticmethod
     def create_run(tenant, customer, balance_snapshot_micros,
                    cost_limit_micros=None, hard_stop_balance_micros=None,
-                   metadata=None, external_run_id=""):
+                   metadata=None, external_run_id="", billing_owner_id=None):
         """Create a Run, snapshotting hard stop config and wallet balance.
 
         Limits are passed explicitly by the caller (billing pre-check).
+        Tier-2 (D4): billing_owner_id is PINNED here (resolve_billing_owner)
+        so the concurrency slot + reapers never re-resolve a re-parented owner.
         Must be called inside @transaction.atomic.
         """
         return Run.objects.create(
@@ -49,6 +51,7 @@ class RunService:
             hard_stop_balance_micros=hard_stop_balance_micros,
             metadata=metadata or {},
             external_run_id=external_run_id,
+            billing_owner_id=billing_owner_id,
         )
 
     @staticmethod
@@ -99,10 +102,14 @@ class RunService:
                 estimated_balance=estimated_balance,
             )
 
-        # Under both limits — accumulate
+        # Under both limits — accumulate. Tier-2 (D10): stamp the heartbeat in
+        # the SAME write so the stale-run reaper can tell a live run from a
+        # crashed one. This is the single heartbeat-stamp site.
         run.total_cost_micros = new_total
         run.event_count += 1
-        run.save(update_fields=["total_cost_micros", "event_count", "updated_at"])
+        run.last_event_at = timezone.now()
+        run.save(update_fields=["total_cost_micros", "event_count",
+                                "last_event_at", "updated_at"])
         return run
 
     @staticmethod

@@ -286,3 +286,29 @@ class CreditGrantExpired:
     kind: str = ""
     expired_micros: int = 0
     balance_micros: int = 0
+
+
+@dataclass(frozen=True)
+class RunLimitExceeded:
+    """Tier-2 spend-control fan-out event (D6). The SINGLE canonical class —
+    no other module may redefine it.
+
+    customer_id      = the SEAT that owns the run.
+    billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
+    scope            = "run"  -> a single run hit its per-run/per-task cap or
+                                  was reaped (run_id is set);
+                       "customer" -> a customer-wide spend stop; consumers fan
+                                  the kill to every run they hold for the owner.
+    reason           = one of apps.platform.runs.reasons (closed set).
+    """
+    EVENT_TYPE = "run.limit_exceeded"
+    tenant_id: str
+    customer_id: str = ""
+    billing_owner_id: str = ""
+    run_id: str = ""
+    external_run_id: str = ""
+    task_id: str = ""
+    reason: str = ""
+    scope: str = "run"
+    total_cost_micros: int = 0
+    limit_micros: int = 0
