@@ -122,6 +122,14 @@ def handle_checkout_completed(event):
         wallet.balance_micros += amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
+        # Tier-2 (P2/D20): mirror the durable credit onto the live balance once
+        # it commits. Mandatory — a missed credit cannot be re-raised by the
+        # MIN-merge reconcile. No-op when enforcement is off / postpaid.
+        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+        transaction.on_commit(
+            lambda oid=wallet.customer_id, t=customer.tenant, amt=amount_micros:
+            LiveLedgerService.credit(oid, t, amt))
+
         txn = WalletTransaction.objects.create(
             wallet=wallet,
             transaction_type="TOP_UP",

@@ -205,6 +205,17 @@ class UsageService:
                 # (or as an unexplained DoesNotExist).
                 raise exc
             return _result(existing, run_total=None)
+        # Tier-2 (P2/WS1): maintain the synchronous live counter on the SAME
+        # billing owner the async drawdown will debit. Reached only once the
+        # event has committed to the savepoint (the IntegrityError replay race
+        # returns above, so a duplicate never double-decrements). Write-only in
+        # P2 — the returned verdict is ignored here; P3 threads it into _result.
+        # No-op when enforcement_mode is off. Routed through the sanctioned
+        # billing read/port contract (apps.billing.queries) — metering must not
+        # import a billing internal directly (product-boundary ADR-001).
+        from apps.billing.queries import record_live_usage_debit
+        record_live_usage_debit(
+            owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
         if effective_at is not None:
             eff_month_start = month_bounds(effective_at)[0]
             if eff_month_start < month_bounds(now)[0]:

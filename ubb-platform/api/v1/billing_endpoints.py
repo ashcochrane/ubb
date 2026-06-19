@@ -130,6 +130,13 @@ def credit(request, payload: CreditRequest):
             reference_id=payload.reference,
             idempotency_key=payload.idempotency_key or None,
         )
+        # Tier-2 (P2/D20): mirror the manual credit onto the live balance after
+        # commit (mandatory — MIN-merge cannot re-raise a missed credit). No-op
+        # when enforcement is off / postpaid.
+        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+        transaction.on_commit(
+            lambda oid=wallet.customer_id, t=request.auth.tenant, amt=payload.amount_micros:
+            LiveLedgerService.credit(oid, t, amt))
 
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
@@ -301,6 +308,12 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
 
         wallet.balance_micros += cost
         wallet.save(update_fields=["balance_micros", "updated_at"])
+        # Tier-2 (P2/D20): mirror the usage-refund credit onto the live balance
+        # (mandatory — MIN-merge cannot re-raise a missed credit).
+        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+        transaction.on_commit(
+            lambda oid=wallet.customer_id, t=request.auth.tenant, amt=cost:
+            LiveLedgerService.credit(oid, t, amt))
 
         txn = WalletTransaction.objects.create(
             wallet=wallet,
@@ -461,6 +474,13 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
             else:
                 wallet.balance_micros = new_balance
                 wallet.save(update_fields=["balance_micros", "updated_at"])
+                # Tier-2 (P2/D20): mirror the grant credit onto the live balance
+                # (grants raise spendable prepaid balance; MIN-merge cannot
+                # re-raise a missed credit).
+                from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+                transaction.on_commit(
+                    lambda oid=wallet.customer_id, t=request.auth.tenant, amt=payload.amount_micros:
+                    LiveLedgerService.credit(oid, t, amt))
                 return _grant_out(grant, balance_micros=wallet.balance_micros,
                                   transaction_id=str(txn.id))
         # Idempotent replay: return the grant created with the original txn.

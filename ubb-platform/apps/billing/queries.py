@@ -51,6 +51,23 @@ def get_customer_balance(customer_id):
         return 0
 
 
+def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
+                            effective_at=None, now=None):
+    """Tier-2 synchronous live-ledger hook — the cross-product PORT for the
+    metering choke point.
+
+    Maintains the billing owner's live spend/balance counter synchronously at
+    record_usage time so the response can carry a real stop verdict (P3 reads
+    it). Exposed here (the sanctioned billing read/port contract) so metering
+    need not import a billing internal — mirrors is_usage_period_closed().
+    No-op unless the tenant has enforcement enabled. Returns the live verdict
+    dict ({mode, balance_micros|spend_micros, key}) or None.
+    """
+    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    return LiveLedgerService.record_usage_debit(
+        owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
+
+
 def is_usage_period_closed(owner_id, period_start) -> bool:
     """True when the billing owner's postpaid usage invoice for the calendar
     month starting at ``period_start`` (date) is FROZEN — i.e. matches the

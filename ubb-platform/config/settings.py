@@ -217,6 +217,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.gating.tasks.reconcile_budget_counters",
         "schedule": crontab(minute=15),  # hourly at :15
     },
+    "reconcile-live-ledgers": {
+        "task": "apps.billing.gating.tasks.reconcile_live_ledgers",
+        "schedule": crontab(minute=25),  # hourly at :25 (free slot; D16)
+    },
     "close-postpaid-usage-periods": {
         "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",
         # 1st 00:05 UTC — INSIDE the renewal-draft window (F5.5 consolidation):

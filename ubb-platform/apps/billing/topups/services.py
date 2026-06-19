@@ -106,4 +106,11 @@ class AutoTopUpService:
                 attempt.stripe_charge_id = charge_id
                 fields.append("stripe_charge_id")
             attempt.save(update_fields=fields)
+            # Tier-2 (P2/D20): mirror the winning credit onto the live balance
+            # after commit (mandatory — MIN-merge cannot re-raise a missed
+            # credit). No-op when enforcement is off / postpaid.
+            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+            transaction.on_commit(
+                lambda oid=wallet.customer_id, t=customer.tenant, amt=amount_micros:
+                LiveLedgerService.credit(oid, t, amt))
             return True

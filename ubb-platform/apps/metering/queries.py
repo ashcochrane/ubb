@@ -239,6 +239,23 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
     }
 
 
+def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_date) -> int:
+    """Σ billed_cost_micros over [start, end) for every event whose pinned
+    billing owner is ``billing_owner_id`` (Stage D ``UsageEvent.billing_owner_id``).
+
+    This OWNER-aggregates a pooled business across all its seats (each seat's
+    events pin the business as billing owner) and reduces to a single seat for
+    an allocated/individual owner (whose events pin themselves). It is the
+    durable source of truth the Tier-2 postpaid live-spend counter MAX-merges
+    toward (apps.billing.gating.services.live_ledger_service)."""
+    from apps.metering.usage.models import UsageEvent
+    return UsageEvent.objects.filter(
+        tenant_id=tenant_id, billing_owner_id=billing_owner_id,
+        effective_at__gte=utc_day_start(start_date),
+        effective_at__lt=utc_day_start(end_date),
+    ).aggregate(billed=Sum("billed_cost_micros"))["billed"] or 0
+
+
 def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
                          group_by=None, start_date=None, end_date=None) -> list[dict]:
     """Time-series spend rollup: daily or hourly COGS per tenant, optionally per customer/dimension.
