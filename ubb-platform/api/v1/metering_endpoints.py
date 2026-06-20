@@ -71,9 +71,11 @@ def record_usage(request, payload: RecordUsageRequest):
         )
     except HardStopExceeded as e:
         from django.db import transaction
-        with transaction.atomic():
-            RunService.kill_run(payload.run_id, reason=e.reason,
-                                tenant_id=request.auth.tenant.id, customer_id=customer.id)
+        # A per-task cost-cap breach (P4) can fire with no run — guard kill_run.
+        if payload.run_id is not None:
+            with transaction.atomic():
+                RunService.kill_run(payload.run_id, reason=e.reason,
+                                    tenant_id=request.auth.tenant.id, customer_id=customer.id)
         return metering_api.create_response(request, {
             "error": "hard_stop_exceeded",
             "reason": e.reason,
@@ -152,11 +154,13 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
     except HardStopExceeded as e:
         # Same side effect as the single endpoint: kill the run, then the
         # batch CONTINUES — later items on this run get run_not_active,
-        # identical to firing the same items as sequential singles.
+        # identical to firing the same items as sequential singles. A per-task
+        # cost-cap breach (P4) can fire with no run — guard kill_run.
         try:
-            with transaction.atomic():
-                RunService.kill_run(item.run_id, reason=e.reason,
-                                    tenant_id=tenant.id, customer_id=customer.id)
+            if item.run_id is not None:
+                with transaction.atomic():
+                    RunService.kill_run(item.run_id, reason=e.reason,
+                                        tenant_id=tenant.id, customer_id=customer.id)
         except Exception:
             # A kill failure must never 500 the whole batch. NOTE: the run is
             # left ACTIVE, so later items on it may SUCCEED instead of getting

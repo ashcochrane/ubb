@@ -170,6 +170,10 @@ class UsageService:
         _tags = tags or {}
         service_id = _tags.get("service", "")
         agent_id = _tags.get("agent", "")
+        # P4 (D12): per-task identity for the per-task cost cap. Caller-controlled
+        # 'task' tag, falling back to service/agent so existing taggers get
+        # coverage; "" => no per-task cap for this event.
+        task_id = _tags.get("task", "") or service_id or agent_id
         if not product_id:
             product_id = _tags.get("product", "") or ""
         run = None
@@ -191,6 +195,14 @@ class UsageService:
                     run = RunService.accumulate_cost(
                         run_id, billed_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
+                # P4 (D12): per-task cost cap. Same savepoint as the per-run cap,
+                # BEFORE event creation — a breach raises HardStopExceeded
+                # (reason=task_limit_exceeded), the event rolls back, and the
+                # endpoint returns 429. Runs regardless of run_id (can fire
+                # run-less; the endpoint's kill_run is guarded on run_id).
+                from apps.billing.queries import check_task_cost_cap
+                check_task_cost_cap(owner_id, tenant, task_id, billed_cost_micros,
+                                    run_id=run_id, now=now)
                 create_kwargs = {}
                 if effective_at is not None:
                     create_kwargs["effective_at"] = effective_at

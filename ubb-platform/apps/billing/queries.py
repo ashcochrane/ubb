@@ -68,6 +68,18 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
         owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
 
 
+def check_task_cost_cap(owner_id, tenant, task_id, billed_cost_micros, *, run_id=None, now=None):
+    """Per-task cost cap (P4) — cross-product port for the metering choke point.
+    Raises apps.platform.runs.services.HardStopExceeded (reason
+    task_limit_exceeded) if this event would push the task over the tenant's
+    per-task cap (enforcing mode only). No-op otherwise. Called inside
+    record_usage's savepoint BEFORE the event is created so a breach rolls the
+    event back (rejected, 429), exactly like the per-run cap."""
+    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    LiveLedgerService.check_task_cost(
+        owner_id, tenant, task_id, billed_cost_micros, run_id=run_id, now=now)
+
+
 def read_live_stop(owner_id, tenant) -> dict:
     """Read the customer-wide stop verdict for a billing owner — the
     cross-product port for the metering replay paths. Returns
