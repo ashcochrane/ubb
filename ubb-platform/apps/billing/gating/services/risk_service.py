@@ -55,6 +55,23 @@ class RiskService:
 
         # Optionally create a Run, snapshotting wallet balance and billing config limits
         if create_run:
+            # Tier-2 P5 (D11/I6): per-owner concurrency cap (enforcing-only).
+            # The "slot count" is simply the number of ACTIVE runs for the
+            # billing owner — accurate + leak-free (no Redis slot to leak); the
+            # reaper frees capacity by terminating stale runs. A pooled business
+            # shares one cap because every seat's run pins it as billing owner.
+            # Bounded over-admit on the read-then-create race is accepted.
+            from apps.platform.tenants.flags import enforcing
+            # > 0 (not truthiness): 0/NULL = no concurrency cap, and a negative
+            # mis-config can never block every run (mirrors the rpm > 0 guard).
+            if (enforcing(customer.tenant) and config
+                    and config.max_concurrent_requests and config.max_concurrent_requests > 0):
+                from apps.platform.runs.models import Run
+                active_runs = Run.objects.filter(
+                    billing_owner_id=owner.id, status="active").count()
+                if active_runs >= config.max_concurrent_requests:
+                    return {"allowed": False, "reason": "concurrency_limit",
+                            "balance_micros": balance, "run_id": None}
             from apps.billing.queries import get_billing_config
             from apps.platform.runs.services import RunService
 

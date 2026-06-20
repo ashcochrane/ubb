@@ -205,6 +205,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.platform.runs.tasks.close_abandoned_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
+    "reap-stale-runs": {
+        "task": "apps.platform.runs.tasks.reap_stale_runs",
+        "schedule": crontab(minute="*/5"),  # Tier-2 P5: every 5 minutes
+    },
     "flush-api-key-last-used": {
         "task": "core.tasks.flush_api_key_last_used",
         "schedule": crontab(minute="*/5"),

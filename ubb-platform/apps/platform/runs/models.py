@@ -73,6 +73,11 @@ class Run(BaseModel):
                 fields=["status", "last_event_at"],
                 name="idx_run_status_heartbeat",
             ),
+            # Tier-2 (P5): the concurrency cap counts active runs per owner.
+            models.Index(
+                fields=["billing_owner_id", "status"],
+                name="idx_run_owner_status",
+            ),
         ]
 
     def __str__(self):
