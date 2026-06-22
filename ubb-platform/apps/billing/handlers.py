@@ -34,7 +34,31 @@ def handle_usage_recorded_billing(event_id, payload):
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=payload["customer_id"])
         if tenant.billing_mode == "postpaid":
-            pass  # no prepaid balance to draw down
+            # Tier-2 P6b (D13): no prepaid balance to draw down, but a postpaid
+            # owner that crossed its budget cap must be durably SUSPENDED so the
+            # start-gate blocks new runs. Driven by the synchronous customer-wide
+            # stop flag (set by record_usage_debit at the crossing) — the single
+            # source of truth — so this handler is the SOLE emitter of
+            # customer.suspended for postpaid too, on the winning active->
+            # suspended transition (serialized on the owner Customer row).
+            from apps.platform.tenants.flags import enforcing
+            if enforcing(tenant):
+                from apps.platform.customers.models import Customer as _Customer
+                from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+                # Record-time-pinned owner (matches the prepaid branch) so a
+                # re-parent between record_usage and this async handler can't
+                # read the flag on the wrong owner.
+                owner_id = payload.get("billing_owner_id") or str(seat.resolve_billing_owner().id)
+                if LiveLedgerService.read_stop(owner_id, tenant)["stop"]:
+                    with transaction.atomic():
+                        locked = _Customer.objects.select_for_update().get(id=owner_id)
+                        if locked.status == "active":
+                            locked.status = "suspended"
+                            locked.suspension_reason = "budget_exceeded"
+                            locked.save(update_fields=["status", "suspension_reason", "updated_at"])
+                            write_event(CustomerSuspended(
+                                tenant_id=str(tenant.id), customer_id=str(owner_id),
+                                reason="budget_exceeded", balance_micros=0))
         else:
             from apps.billing.wallets.models import WalletTransaction
             from apps.billing.wallets.grants import GrantLedger
@@ -84,7 +108,8 @@ def handle_usage_recorded_billing(event_id, payload):
                                 overage_micros=-new_balance))
                         if new_balance < -limit and owner.status == "active":
                             owner.status = "suspended"
-                            owner.save(update_fields=["status", "updated_at"])
+                            owner.suspension_reason = "min_balance_exceeded"  # P6b/D15
+                            owner.save(update_fields=["status", "suspension_reason", "updated_at"])
                             write_event(CustomerSuspended(
                                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                                 reason="min_balance_exceeded", balance_micros=new_balance))

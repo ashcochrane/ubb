@@ -32,6 +32,11 @@ class Customer(SoftDeleteMixin, BaseModel):
     account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
+    # Tier-2 P6b (D15): why the customer was suspended. Set on every suspend;
+    # only a MONETARY reason (min_balance_exceeded / budget_exceeded) is
+    # auto-cleared on recovery, so a top-up never silently un-suspends an
+    # admin/fraud suspension. "" when active / suspended for an unrecorded reason.
+    suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
         db_table = "ubb_customer"

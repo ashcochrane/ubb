@@ -53,6 +53,15 @@ def reconcile_live_ledgers():
                 cust_ids = list(get_customer_ids_with_usage(tenant.id, start, end))
                 owners = {c.resolve_billing_owner().id
                           for c in Customer.all_objects.filter(id__in=cust_ids)}
+                # P6b deadlock fix: ALSO reconcile owners suspended for budget
+                # that have NO current-month usage. A suspended owner is
+                # start-gate-blocked, so it never appears in
+                # get_customer_ids_with_usage — and reconcile_postpaid (its only
+                # un-suspend path; credit() is a postpaid no-op) would never run,
+                # stranding it suspended forever past month rollover.
+                owners |= set(Customer.all_objects.filter(
+                    tenant=tenant, status="suspended", suspension_reason="budget_exceeded"
+                ).values_list("id", flat=True))
                 for owner_id in owners:
                     LiveLedgerService.reconcile_postpaid(owner_id, tenant)
             else:

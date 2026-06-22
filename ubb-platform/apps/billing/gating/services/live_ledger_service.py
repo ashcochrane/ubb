@@ -269,6 +269,30 @@ class LiveLedgerService:
     def _clear_stop(owner_id):
         _client().delete(_stop_key(owner_id))
 
+    # Monetary suspension reasons that may be auto-cleared on recovery (D15).
+    _MONEY_SUSPEND_REASONS = ("min_balance_exceeded", "budget_exceeded")
+
+    @staticmethod
+    def _maybe_unsuspend(owner_id):
+        """Durably reactivate an owner that was suspended for a MONETARY reason,
+        once the balance/spend has recovered (D15). Serializes on the owner
+        Customer row (the same row the suspend paths lock), and the winning
+        suspended->active transition guard prevents flip-flop. NEVER un-suspends
+        an admin/fraud suspension (suspension_reason not monetary)."""
+        from django.db import transaction
+        from apps.platform.customers.models import Customer
+        try:
+            with transaction.atomic():
+                owner = Customer.objects.select_for_update().get(id=owner_id)
+                if (owner.status == "suspended"
+                        and owner.suspension_reason in LiveLedgerService._MONEY_SUSPEND_REASONS):
+                    owner.status = "active"
+                    owner.suspension_reason = ""
+                    owner.save(update_fields=["status", "suspension_reason", "updated_at"])
+        except Exception:
+            logger.warning("live_ledger.unsuspend_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
+
     @staticmethod
     def read_stop(owner_id, tenant) -> dict:
         """Current customer-wide stop verdict. Short-circuits to not-stopped
@@ -337,9 +361,16 @@ class LiveLedgerService:
             # above the floor clears the cooperative stop flag so the customer's
             # runs may resume. (A negative credit / grant-expiry never clears.)
             if v is not None and amount_micros > 0:
-                from apps.billing.queries import get_customer_min_balance
-                if int(v) >= -get_customer_min_balance(owner_id, tenant.id):
+                from apps.billing.queries import get_customer_min_balance, get_customer_balance
+                floor = get_customer_min_balance(owner_id, tenant.id)
+                if int(v) >= -floor:
                     LiveLedgerService._clear_stop(owner_id)
+                    # P6b/D15: un-suspend on the DURABLE wallet, NOT the live
+                    # counter — a dispute/refund debit is not mirrored to the
+                    # live counter, so v can over-state and would otherwise flip
+                    # status active while the true balance is still below floor.
+                    if get_customer_balance(owner_id) >= -floor:
+                        LiveLedgerService._maybe_unsuspend(owner_id)
         except Exception:
             logger.warning("live_ledger.credit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -367,6 +398,7 @@ class LiveLedgerService:
             # never fired due to a transient Redis error).
             if not LiveLedgerService._crossed("prepaid", v, owner_id, tenant):
                 LiveLedgerService._clear_stop(owner_id)
+                LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 backstop
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -391,6 +423,7 @@ class LiveLedgerService:
             # stale-flag window to one reconcile cycle.
             if not LiveLedgerService._crossed("postpaid", v, owner_id, tenant):
                 LiveLedgerService._clear_stop(owner_id)
+                LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 (month rollover)
         except Exception:
             logger.warning("live_ledger.reconcile_postpaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
