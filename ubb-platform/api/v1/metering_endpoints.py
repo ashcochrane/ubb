@@ -73,9 +73,20 @@ def record_usage(request, payload: RecordUsageRequest):
         from django.db import transaction
         # A per-task cost-cap breach (P4) can fire with no run — guard kill_run.
         if payload.run_id is not None:
+            from apps.platform.events.outbox import write_event
+            from apps.platform.events.schemas import RunLimitExceeded
             with transaction.atomic():
-                RunService.kill_run(payload.run_id, reason=e.reason,
-                                    tenant_id=request.auth.tenant.id, customer_id=customer.id)
+                killed = RunService.kill_run(payload.run_id, reason=e.reason,
+                                             tenant_id=request.auth.tenant.id, customer_id=customer.id)
+                # P6 fan-out: notify sibling/idle workers of THIS run (the
+                # posting worker already gets the 429). scope="run".
+                write_event(RunLimitExceeded(
+                    tenant_id=str(request.auth.tenant.id), customer_id=str(customer.id),
+                    billing_owner_id=str(killed.billing_owner_id or ""),
+                    run_id=str(killed.id), external_run_id=killed.external_run_id,
+                    task_id=killed.task_id, reason=e.reason, scope="run",
+                    total_cost_micros=e.total_cost_micros,
+                    limit_micros=killed.cost_limit_micros or 0))
         return metering_api.create_response(request, {
             "error": "hard_stop_exceeded",
             "reason": e.reason,
@@ -158,9 +169,18 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
         # cost-cap breach (P4) can fire with no run — guard kill_run.
         try:
             if item.run_id is not None:
+                from apps.platform.events.outbox import write_event
+                from apps.platform.events.schemas import RunLimitExceeded
                 with transaction.atomic():
-                    RunService.kill_run(item.run_id, reason=e.reason,
-                                        tenant_id=tenant.id, customer_id=customer.id)
+                    killed = RunService.kill_run(item.run_id, reason=e.reason,
+                                                 tenant_id=tenant.id, customer_id=customer.id)
+                    write_event(RunLimitExceeded(  # P6 fan-out (scope="run")
+                        tenant_id=str(tenant.id), customer_id=str(customer.id),
+                        billing_owner_id=str(killed.billing_owner_id or ""),
+                        run_id=str(killed.id), external_run_id=killed.external_run_id,
+                        task_id=killed.task_id, reason=e.reason, scope="run",
+                        total_cost_micros=e.total_cost_micros,
+                        limit_micros=killed.cost_limit_micros or 0))
         except Exception:
             # A kill failure must never 500 the whole batch. NOTE: the run is
             # left ACTIVE, so later items on it may SUCCEED instead of getting

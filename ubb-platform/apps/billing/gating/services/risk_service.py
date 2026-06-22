@@ -14,6 +14,16 @@ class RiskService:
                 return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None, "run_id": None}
             if who.status == "closed":
                 return {"allowed": False, "reason": "account_closed", "balance_micros": None, "run_id": None}
+        # Tier-2 P6: honor the synchronous customer-wide stop flag at the
+        # start-gate (ENFORCING only) so a flag-stopped owner's NEW runs are
+        # blocked even before the durable suspend lands, and for postpaid
+        # owner-aggregate stops. Advisory sets the flag but UBB never blocks.
+        from apps.platform.tenants.flags import enforcing
+        if enforcing(customer.tenant):
+            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+            if LiveLedgerService.read_stop(owner.id, customer.tenant)["stop"]:
+                return {"allowed": False, "reason": "customer_stopped",
+                        "balance_micros": None, "run_id": None}
         try:
             config = customer.tenant.risk_config
         except RiskConfig.DoesNotExist:
