@@ -51,6 +51,12 @@ logger = logging.getLogger("ubb.billing")
 
 LEDGER_TTL_SECONDS = 62 * 24 * 3600  # current month + buffer; refreshed on every write
 
+# Observability (P7): reconcile loud-logs when the live counter has drifted from
+# the durable ledger by more than this (a healthy counter tracks within a few
+# events). A persistent spike means a missed credit/debit hook or an unhealed
+# seed window — the analog of Stage D's drawdown-repair spike alert.
+DRIFT_ALERT_MICROS = 50_000_000  # $50
+
 # --- Lua sources -----------------------------------------------------------
 
 # Prepaid: atomic seed-if-absent (to the durable balance) then DECRBY. Two
@@ -388,9 +394,14 @@ class LiveLedgerService:
         from apps.billing.locking import lock_for_billing
         from apps.billing.queries import get_customer_balance
         try:
+            before = LiveLedgerService.read_prepaid(owner_id)
             with transaction.atomic():
                 lock_for_billing(owner_id)  # serialize vs credit/drawdown
                 durable = int(get_customer_balance(owner_id))
+                if before is not None and abs(before - durable) > DRIFT_ALERT_MICROS:
+                    logger.error("live_ledger.drift_spike", extra={"data": {
+                        "owner_id": str(owner_id), "mode": "prepaid",
+                        "live_micros": before, "durable_micros": durable}})
                 v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
                                        durable, LEDGER_TTL_SECONDS))
             # Recovery backstop: clear the stop flag if drift-correction shows
@@ -414,7 +425,12 @@ class LiveLedgerService:
         now = now or timezone.now()
         label, start, end = _month_label_bounds(now)
         try:
+            before = LiveLedgerService.read_postpaid(owner_id, now=now)
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
+            if before is not None and abs(before - durable) > DRIFT_ALERT_MICROS:
+                logger.error("live_ledger.drift_spike", extra={"data": {
+                    "owner_id": str(owner_id), "mode": "postpaid",
+                    "live_micros": before, "durable_micros": durable}})
             v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
                                    durable, LEDGER_TTL_SECONDS))
             # Recovery backstop incl. MONTH ROLLOVER: the new month's livespend
@@ -443,6 +459,18 @@ class LiveLedgerService:
 
     @staticmethod
     def cleanup_keys(tenant):
-        """Delete an owner's Tier-2 keys when a tenant is disabled (D17). Wired
-        in P7; not needed by P2."""
-        raise NotImplementedError("LiveLedgerService.cleanup_keys is wired in P7")
+        """Delete the non-month-scoped Tier-2 Redis keys (livebal + stop flag)
+        for every owner of a tenant (D17). Call on an enforcement_mode
+        TRANSITION so a re-enable / mode change never reads a STALE stop flag
+        (which could wrongly durably-suspend) or a stale prepaid balance (62-day
+        TTL). The month-scoped counters (livespend/taskcost) self-reset monthly,
+        are reconcile-corrected, and are short-circuited while mode==off, so
+        they need no explicit cleanup. Best-effort."""
+        from apps.platform.customers.models import Customer
+        try:
+            client = _client()
+            for oid in Customer.all_objects.filter(tenant_id=tenant.id).values_list("id", flat=True):
+                client.delete(_livebal_key(oid), _stop_key(oid))
+        except Exception:
+            logger.warning("live_ledger.cleanup_failed",
+                           extra={"data": {"tenant_id": str(tenant.id)}})

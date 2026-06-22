@@ -452,6 +452,15 @@ def update_tenant_config(request, payload: TenantConfigIn):
         t.products = payload.products
     if payload.require_cost_card_coverage is not None:
         t.require_cost_card_coverage = payload.require_cost_card_coverage
+    enforcement_changed = False
+    if payload.enforcement_mode is not None:
+        from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES
+        valid_modes = {c[0] for c in ENFORCEMENT_MODE_CHOICES}
+        if payload.enforcement_mode not in valid_modes:
+            return 422, {"error": f"enforcement_mode must be one of {sorted(valid_modes)}",
+                         "code": "invalid_config"}
+        enforcement_changed = payload.enforcement_mode != t.enforcement_mode
+        t.enforcement_mode = payload.enforcement_mode
     try:
         t.save()
     except ValidationError as e:
@@ -459,4 +468,10 @@ def update_tenant_config(request, payload: TenantConfigIn):
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
         )
         return 422, {"error": msg, "code": "invalid_config"}
+    if enforcement_changed:
+        # D17: clear stale Tier-2 keys so the new mode starts clean (esp. a
+        # leftover stop flag that could wrongly suspend after a re-enable).
+        from django.db import transaction
+        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+        transaction.on_commit(lambda: LiveLedgerService.cleanup_keys(t))
     return 200, _config_out(t)

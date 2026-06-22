@@ -6,7 +6,7 @@ import httpx
 
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
-    UBBHardStopError, UBBRunNotActiveError,
+    UBBHardStopError, UBBRunNotActiveError, UBBCustomerStoppedError,
 )
 from ubb.retry import request_with_retry
 from ubb.types import (
@@ -104,7 +104,8 @@ class MeteringClient:
                      product_id: str = "", metadata: dict | None = None,
                      run_id: str | None = None,
                      usage_metrics: dict | None = None,
-                     recorded_at: datetime | str | None = None) -> RecordUsageResult:
+                     recorded_at: datetime | str | None = None,
+                     raise_on_stop: bool = False) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage.
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
@@ -113,6 +114,12 @@ class MeteringClient:
         backfill window (default 34 days; typed 422 codes: effective_at_naive,
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
+
+        ``raise_on_stop`` (Tier-2): when True, raise UBBCustomerStoppedError if
+        the response carries a customer-wide stop verdict (result.stop). The
+        event is still recorded+charged either way; this is purely an
+        ergonomic choice between checking result.stop and catching an exception.
+        A per-run/task hard cap always raises UBBHardStopError (429) regardless.
         """
         body: dict = {
             "customer_id": customer_id,
@@ -144,8 +151,12 @@ class MeteringClient:
             body["run_id"] = run_id
         r = self._request_usage("post", "/api/v1/metering/usage", json=body)
         data = r.json()
-        return RecordUsageResult(**{k: v for k, v in data.items()
-                                    if k in RecordUsageResult.__dataclass_fields__})
+        result = RecordUsageResult(**{k: v for k, v in data.items()
+                                      if k in RecordUsageResult.__dataclass_fields__})
+        if raise_on_stop and result.stop:
+            raise UBBCustomerStoppedError(
+                reason=result.stop_reason, scope=result.stop_scope, run_id=result.run_id)
+        return result
 
     def record_batch(self, events: list[dict]) -> BatchResult:
         """Record up to 100 INDEPENDENT usage events via POST

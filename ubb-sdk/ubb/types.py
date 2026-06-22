@@ -26,6 +26,13 @@ class RecordUsageResult:
     run_id: str | None = None
     run_total_cost_micros: int | None = None
     hard_stop: bool = False
+    # Tier-2: customer-wide cooperative spend stop (on a 200 — the event WAS
+    # recorded + charged). `stop` means "halt this customer's runs at the next
+    # safe boundary". Distinct from `hard_stop` (per-run/task 429, run already
+    # killed) and `suspended` (the owner's durable status).
+    stop: bool = False
+    stop_reason: str | None = None
+    stop_scope: str | None = None
     usage_metrics: dict | None = None
     pricing_provenance: dict | None = None
     uncosted_metrics: list | None = None

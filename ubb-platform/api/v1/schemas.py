@@ -400,6 +400,8 @@ class TenantConfigIn(Schema):
     products: Optional[list[str]] = None
     require_cost_card_coverage: Optional[bool] = None
     automatic_tax_enabled: Optional[bool] = None
+    # Tier-2 spend-control mode: off | advisory | enforcing.
+    enforcement_mode: Optional[str] = None
     # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
