@@ -125,8 +125,11 @@ def deliver_webhook(event):
     livemode = not bool(is_sandbox)
 
     for config in configs:
-        # Check event type filter
-        if config.event_types and event.event_type not in config.event_types:
+        # Event-type filter (explicit opt-in; see catalog.py for the contract):
+        #   ["*"]      -> all events
+        #   []         -> no events (deliver nothing)
+        #   ["a","b"]  -> only those types
+        if "*" not in config.event_types and event.event_type not in config.event_types:
             continue
 
         _deliver_to_config(config, event, livemode=livemode)

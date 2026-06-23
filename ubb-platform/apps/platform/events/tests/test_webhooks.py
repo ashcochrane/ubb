@@ -84,8 +84,10 @@ class TestDeliverWebhook:
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_delivers_when_event_types_empty(self, mock_client_class, mock_validate):
-        """Empty event_types means deliver all events."""
+    def test_empty_event_types_delivers_nothing(self, mock_client_class, mock_validate):
+        """Empty event_types is an explicit subscription to nothing — no delivery."""
+        # Configure a working response so that if delivery were (wrongly)
+        # attempted, the assertions fail cleanly rather than erroring on plumbing.
         mock_response = MagicMock(status_code=200, text="OK")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -98,6 +100,29 @@ class TestDeliverWebhook:
             url="https://example.com/hook",
             secret="test-secret",
             event_types=[],
+        )
+
+        deliver_webhook(self.event)
+
+        assert WebhookDeliveryAttempt.objects.count() == 0
+        mock_client_class.assert_not_called()
+
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_wildcard_delivers_all(self, mock_client_class, mock_validate):
+        """["*"] subscribes to every event type."""
+        mock_response = MagicMock(status_code=200, text="OK")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -118,7 +143,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -142,7 +167,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="my-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -159,7 +184,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
             is_active=False,
         )
 
@@ -181,7 +206,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -217,7 +242,7 @@ class TestWebhookTimeoutRetry:
             tenant=self.tenant,
             url="https://slow.example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ReadTimeout):
@@ -237,7 +262,7 @@ class TestWebhookTimeoutRetry:
             tenant=self.tenant,
             url="https://slow.example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ConnectTimeout):
@@ -276,7 +301,7 @@ class TestWebhookNetworkErrorRetry:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ConnectError):
@@ -301,7 +326,7 @@ class TestWebhookNetworkErrorRetry:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         # Should not raise
@@ -334,7 +359,7 @@ class TestWebhookDeliveryRevalidatesSSRF:
     def test_delivery_blocked_when_url_now_resolves_private(self, mock_validate, mock_client_class):
         mock_validate.side_effect = ValueError("Webhook URL must not point to private/internal addresses")
         TenantWebhookConfig.objects.create(tenant=self.tenant, url="https://rebind.attacker.example/hook",
-                                           secret="test-secret", event_types=[])
+                                           secret="test-secret", event_types=["*"])
         deliver_webhook(self.event)
         mock_client_class.assert_not_called()                       # no outbound request
         assert WebhookDeliveryAttempt.objects.count() == 1
@@ -368,6 +393,60 @@ class TestWebhookConfigAPI:
         assert data["url"] == "https://example.com/hook"
         assert data["is_active"] is True
         assert data["event_types"] == ["usage.recorded"]
+
+    def test_create_requires_event_types(self):
+        """Omitting event_types is rejected — no implicit default subscription."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps({"url": "https://example.com/hook", "secret": "a" * 32}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_rejects_empty_event_types(self):
+        """An empty list would be a silent no-op webhook — reject it."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": []}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_rejects_unknown_event_type(self):
+        """A typo'd event type is rejected loudly instead of matching nothing forever."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {
+                    "url": "https://example.com/hook",
+                    "secret": "a" * 32,
+                    "event_types": ["usage.recieved"],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 400
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_accepts_wildcard(self):
+        """["*"] is the explicit opt-in to all events."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": ["*"]}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 201
+        assert resp.json()["event_types"] == ["*"]
 
     def test_list_webhook_configs(self):
         TenantWebhookConfig.objects.create(
@@ -443,7 +522,7 @@ class TestPinnedIPTransport:
             tenant=tenant,
             url="https://rebind.example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         validated_ip = "1.2.3.4"
@@ -514,7 +593,7 @@ class TestSignatureV2:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret=self.SECRET,
-            event_types=[],
+            event_types=["*"],
         )
 
     def _deliver_and_capture(self):

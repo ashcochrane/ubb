@@ -33,7 +33,7 @@ def test_live_tenant_payload_has_livemode_true(mock_client_class, _validate):
     mock_client_class.return_value = client
     tenant = Tenant.objects.create(name="L", products=["metering"])
     TenantWebhookConfig.objects.create(
-        tenant=tenant, url="https://example.com/hook", secret="s", event_types=[])
+        tenant=tenant, url="https://example.com/hook", secret="s", event_types=["*"])
     event = OutboxEvent.objects.create(
         event_type="usage.recorded", payload={"x": 1}, tenant_id=str(tenant.id))
 
@@ -53,7 +53,7 @@ def test_sandbox_tenant_payload_has_livemode_false(mock_client_class, _validate)
     live = Tenant.objects.create(name="L", products=["metering"])
     sandbox = get_or_create_sandbox(live)
     TenantWebhookConfig.objects.create(
-        tenant=sandbox, url="https://example.com/hook", secret="s", event_types=[])
+        tenant=sandbox, url="https://example.com/hook", secret="s", event_types=["*"])
     event = OutboxEvent.objects.create(
         event_type="sandbox.reset_completed", payload={}, tenant_id=str(sandbox.id))
 
@@ -74,7 +74,7 @@ def test_signature_covers_the_livemode_field(mock_client_class, _validate):
     mock_client_class.return_value = client
     tenant = Tenant.objects.create(name="L", products=["metering"])
     TenantWebhookConfig.objects.create(
-        tenant=tenant, url="https://example.com/hook", secret="sig-secret", event_types=[])
+        tenant=tenant, url="https://example.com/hook", secret="sig-secret", event_types=["*"])
     event = OutboxEvent.objects.create(
         event_type="usage.recorded", payload={}, tenant_id=str(tenant.id))
 
