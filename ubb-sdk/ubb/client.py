@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
@@ -154,21 +156,32 @@ class UBBClient:
         )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
-                     provider_cost_micros: int, billed_cost_micros: int | None = None,
+                     provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      product_id: str = "", metadata: dict | None = None,
-                     run_id: str | None = None) -> RecordUsageResult:
-        """Record a usage event via metering.
+                     run_id: str | None = None,
+                     usage_metrics: dict | None = None,
+                     recorded_at: datetime | str | None = None,
+                     raise_on_stop: bool = False) -> RecordUsageResult:
+        """Record a usage event via metering — a full passthrough to
+        ``MeteringClient.record_usage()`` (kept in signature parity by
+        test_sdk_delegation.TestRecordUsageSignatureParity).
 
-        Delegates to metering.record_usage(). Wallet deduction is handled
-        server-side via the billing outbox handler — the SDK does NOT call
-        billing.debit() to avoid double-debit.
+        Pricing: supply ``provider_cost_micros`` (explicit cost) and/or
+        ``usage_metrics`` (named metrics priced server-side by the rate card);
+        both are optional here and the server enforces its pricing rules.
+        ``recorded_at`` backdates the event (tz-aware datetime or ISO-8601
+        string, bounded by the tenant's backfill window). ``raise_on_stop``
+        raises UBBCustomerStoppedError on a customer-wide stop verdict.
 
-        If run_id is provided, the event is associated with the run and
-        the run's hard stop limits are checked. Raises UBBHardStopError
-        if the run exceeds its limits (the run is automatically killed).
-        Raises UBBRunNotActiveError if the run is already killed/completed.
+        Wallet deduction is handled server-side via the billing outbox handler
+        — the SDK does NOT call billing.debit() to avoid double-debit.
+
+        If run_id is provided, the event is associated with the run and the
+        run's hard stop limits are checked. Raises UBBHardStopError if the run
+        exceeds its limits (the run is automatically killed). Raises
+        UBBRunNotActiveError if the run is already killed/completed.
         """
         metering = self._require_metering()
         return metering.record_usage(
@@ -185,6 +198,9 @@ class UBBClient:
             product_id=product_id,
             metadata=metadata,
             run_id=run_id,
+            usage_metrics=usage_metrics,
+            recorded_at=recorded_at,
+            raise_on_stop=raise_on_stop,
         )
 
     def close_run(self, run_id: str) -> CloseRunResult:
