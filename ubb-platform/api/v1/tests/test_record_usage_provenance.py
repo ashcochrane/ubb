@@ -5,7 +5,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import Rate
 
 
 class RecordUsageProvenanceTest(TestCase):
@@ -18,9 +18,9 @@ class RecordUsageProvenanceTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_provenance_1"
         )
-        # cost RateCard: 5_000 micros per 1_000_000 input_tokens
+        # cost Rate: 5_000 micros per 1_000_000 input_tokens
         # => 1000 tokens => 1000 * 5_000 / 1_000_000 = 5 micros
-        RateCard.objects.create(
+        Rate.objects.create(
             tenant=self.tenant,
             customer=None,
             card_type="cost",

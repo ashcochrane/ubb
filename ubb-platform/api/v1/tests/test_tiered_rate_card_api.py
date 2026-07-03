@@ -6,7 +6,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import PricingPeriodCounter, RateCard
+from apps.metering.pricing.models import PricingPeriodCounter, Rate
 
 GOOD_TIERS = [
     {"up_to": 100, "rate_per_unit_micros": 10, "unit_quantity": 1},
@@ -113,13 +113,13 @@ class TieredRateCardApiTest(TestCase):
             path="/api/v1/metering/pricing/rate-cards/batch")
         self.assertEqual(resp.status_code, 422, resp.content)
         self.assertIn("cards[1]", resp.json()["error"])
-        self.assertEqual(RateCard.objects.count(), 0)  # all-or-nothing
+        self.assertEqual(Rate.objects.count(), 0)  # all-or-nothing
 
     def test_bulk_creates_graduated_card_with_tiers(self):
         resp = self._post({"cards": [GRADUATED_BODY]},
                           path="/api/v1/metering/pricing/rate-cards/batch")
         self.assertEqual(resp.status_code, 200, resp.content)
-        card = RateCard.objects.get(id=resp.json()["created"][0])
+        card = Rate.objects.get(id=resp.json()["created"][0])
         self.assertEqual(card.tiers, GOOD_TIERS)
 
     # ---- update (versioning) ----
@@ -130,7 +130,7 @@ class TieredRateCardApiTest(TestCase):
         resp = self._put(card_id, {"product_id": "new-product"})
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["tiers"], GOOD_TIERS)
-        new_card = RateCard.objects.get(id=resp.json()["id"])
+        new_card = Rate.objects.get(id=resp.json()["id"])
         self.assertEqual(new_card.tiers, GOOD_TIERS)
 
     def test_put_with_explicit_null_tiers_keeps_tiers(self):

@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import RateCard, TIERED_PRICING_MODELS
+from apps.metering.pricing.models import Rate, TIERED_PRICING_MODELS
 from apps.metering.pricing.services.tier_counter_service import (
     TierCounterService, month_bounds,
 )
@@ -66,7 +66,7 @@ class PricingService:
 
     @staticmethod
     def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
-        base = list(RateCard.objects.filter(
+        base = list(Rate.objects.filter(
             tenant=tenant, card_type=card_type, provider=provider or "", event_type=event_type or "",
             metric_name=metric_name, currency=currency, valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of)))

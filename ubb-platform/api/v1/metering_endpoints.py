@@ -24,7 +24,7 @@ from api.v1.schemas import (
     RateCardIn, RateCardOut, RateCardUpdateIn, RateCardBatchIn,
 )
 from apps.metering.pricing.models import (
-    RateCard, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
+    Rate, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
@@ -597,7 +597,7 @@ def _resolve_card_currency(tenant, raw_currency):
 def list_rate_cards(request, card_type: str = None, include_history: bool = False,
                     as_of: datetime = None):
     _product_check(request)
-    qs = RateCard.objects.filter(tenant=request.auth.tenant)
+    qs = Rate.objects.filter(tenant=request.auth.tenant)
     if as_of is not None:
         qs = qs.filter(valid_from__lte=as_of).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
@@ -629,7 +629,7 @@ def create_rate_card(request, payload: RateCardIn):
     customer = None
     if payload.customer_id:
         customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    card = RateCard.objects.create(
+    card = Rate.objects.create(
         tenant=request.auth.tenant,
         customer=customer,
         card_type=payload.card_type,
@@ -679,7 +679,7 @@ def bulk_create_rate_cards(request, payload: RateCardBatchIn):
             customer = None
             if c.customer_id:
                 customer = get_object_or_404(Customer, id=c.customer_id, tenant=request.auth.tenant)
-            obj = RateCard.objects.create(
+            obj = Rate.objects.create(
                 tenant=request.auth.tenant,
                 customer=customer,
                 card_type=c.card_type,
@@ -715,12 +715,12 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
         del changes["tiers"]  # explicit null = keep the current tiers
 
     with transaction.atomic():
-        old = RateCard.objects.filter(
+        old = Rate.objects.filter(
             id=card_id, tenant=request.auth.tenant, valid_to__isnull=True
         ).first()
         if old is None:
-            target = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant)
-            old = RateCard.objects.filter(
+            target = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant)
+            old = Rate.objects.filter(
                 tenant=request.auth.tenant, lineage_id=target.lineage_id,
                 valid_to__isnull=True,
             ).first()
@@ -772,7 +772,7 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
         old.valid_to = timezone.now()
         old.save(update_fields=["valid_to", "updated_at"])
 
-        card = RateCard.objects.create(
+        card = Rate.objects.create(
             tenant=request.auth.tenant,
             customer=customer,
             lineage_id=old.lineage_id,
@@ -784,7 +784,7 @@ def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
 @metering_api.get("/pricing/rate-cards/{lineage_id}/history", response=list[RateCardOut])
 def rate_card_history(request, lineage_id: UUID):
     _product_check(request)
-    qs = RateCard.objects.filter(
+    qs = Rate.objects.filter(
         tenant=request.auth.tenant, lineage_id=lineage_id).order_by("-valid_from", "id")
     return [_rate_card_to_out(c) for c in qs]
 
@@ -792,7 +792,7 @@ def rate_card_history(request, lineage_id: UUID):
 @metering_api.delete("/pricing/rate-cards/{card_id}")
 def delete_rate_card(request, card_id: UUID):
     _product_check(request)
-    card = get_object_or_404(RateCard, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
+    card = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
     card.valid_to = timezone.now()
     card.save(update_fields=["valid_to", "updated_at"])
     return {"status": "deleted"}

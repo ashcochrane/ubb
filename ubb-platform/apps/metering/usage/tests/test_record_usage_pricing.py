@@ -4,7 +4,7 @@ import pytest
 from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
@@ -19,7 +19,7 @@ class TestRecordUsagePricing:
 
     def test_priced_from_cost_card_when_no_caller_cost(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        RateCard.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", usage_metrics={"input_tokens": 1000})
@@ -110,7 +110,7 @@ class TestStrictCoverageUnitsOnly:
         t, c, http, auth = self._setup(strict=True)
         # Add a cost card for the tenant so we can enable strict mode, but use a
         # different metric in the event so it's still uncovered.
-        RateCard.objects.create(tenant=t, card_type="cost", provider="", event_type="",
+        Rate.objects.create(tenant=t, card_type="cost", provider="", event_type="",
             metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
         resp = self._post(http, auth, c, {
             "request_id": "r6", "idempotency_key": "ik6",

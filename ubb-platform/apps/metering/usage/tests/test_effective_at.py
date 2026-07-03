@@ -9,7 +9,7 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
-from apps.metering.pricing.models import PricingPeriodCounter, RateCard
+from apps.metering.pricing.models import PricingPeriodCounter, Rate
 from apps.metering.pricing.services.tier_counter_service import month_bounds
 from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
 from apps.metering.usage.services.usage_service import (
@@ -172,15 +172,15 @@ class TestHistoricalPricing:
         provenance pins v1's rate_card_id."""
         t, c = _setup()
         now = timezone.now()
-        v1 = RateCard.objects.create(
+        v1 = Rate.objects.create(
             tenant=t, card_type="price", metric_name="tok",
             pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1)
-        RateCard.objects.filter(id=v1.id).update(
+        Rate.objects.filter(id=v1.id).update(
             valid_from=now - timedelta(days=40), valid_to=now - timedelta(days=10))
-        v2 = RateCard.objects.create(
+        v2 = Rate.objects.create(
             tenant=t, card_type="price", metric_name="tok", lineage_id=v1.lineage_id,
             pricing_model="per_unit", rate_per_unit_micros=50, unit_quantity=1)
-        RateCard.objects.filter(id=v2.id).update(valid_from=now - timedelta(days=10))
+        Rate.objects.filter(id=v2.id).update(valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(
             t, c, "r1", "k1", usage_metrics={"tok": 100},
@@ -198,10 +198,10 @@ class TestHistoricalPricing:
         """Tier interplay: a backfill into LAST month advances LAST month's
         PricingPeriodCounter (month from as_of), never this month's."""
         t, c = _setup()
-        card = RateCard.objects.create(
+        card = Rate.objects.create(
             tenant=t, card_type="price", metric_name="tok",
             pricing_model="graduated", tiers=TIERS)
-        RateCard.objects.filter(id=card.id).update(
+        Rate.objects.filter(id=card.id).update(
             valid_from=timezone.now() - timedelta(days=70))
         eff = _prior_month_eff()
         prior_start, _ = month_bounds(eff)

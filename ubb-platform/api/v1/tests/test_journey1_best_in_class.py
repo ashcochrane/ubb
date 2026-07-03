@@ -19,7 +19,7 @@ can't deserialize, a query param django-ninja doesn't bind). This exercises the
 real URL routing, the real pricing/COGS engine, and the real SDK response
 contract end to end.
 
-COGS arithmetic (RateCard.compute with unit_quantity=1, fixed_micros=0):
+COGS arithmetic (Rate.compute with unit_quantity=1, fixed_micros=0):
     compute(units) == (units * rate_per_unit_micros + unit_quantity // 2)
                       // unit_quantity + fixed_micros
   - service "alpha" card: rate 2/unit  -> compute(100) == (100*2 + 0)//1 == 200

@@ -478,7 +478,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 class RateCardValidationTest(TestCase):
     def setUp(self):
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="RateCard Tenant", products=["metering"])
+        self.tenant = Tenant.objects.create(name="Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
     def test_create_rate_card_rejects_invalid_card_type(self):
@@ -531,7 +531,7 @@ class RateCardValidationTest(TestCase):
 class RateCardBatchCreateTest(TestCase):
     def setUp(self):
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Batch RateCard Tenant", products=["metering"])
+        self.tenant = Tenant.objects.create(name="Batch Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
     def test_bulk_create_rate_cards(self):
@@ -545,12 +545,12 @@ class RateCardBatchCreateTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code in (200, 201)
         assert resp.json()["count"] == 2
-        from apps.metering.pricing.models import RateCard
-        assert RateCard.objects.filter(tenant=self.tenant).count() == 2
+        from apps.metering.pricing.models import Rate
+        assert Rate.objects.filter(tenant=self.tenant).count() == 2
 
     def test_bulk_create_is_atomic_on_invalid(self):
-        from apps.metering.pricing.models import RateCard
-        before = RateCard.objects.filter(tenant=self.tenant).count()
+        from apps.metering.pricing.models import Rate
+        before = Rate.objects.filter(tenant=self.tenant).count()
         body = {"cards": [
             {"card_type": "cost", "metric_name": "ok", "pricing_model": "per_unit",
              "rate_per_unit_micros": 1, "unit_quantity": 1},
@@ -560,7 +560,7 @@ class RateCardBatchCreateTest(TestCase):
             data=json.dumps(body), content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 422
-        assert RateCard.objects.filter(tenant=self.tenant).count() == before  # zero created
+        assert Rate.objects.filter(tenant=self.tenant).count() == before  # zero created
 
 
 class UsageTimeseriesEndpointTest(TestCase):

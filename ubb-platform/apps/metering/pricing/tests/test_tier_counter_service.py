@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import PricingPeriodCounter, RateCard
+from apps.metering.pricing.models import PricingPeriodCounter, Rate
 from apps.metering.pricing.services.tier_counter_service import (
     TierCounterService, month_bounds,
 )
@@ -17,7 +17,7 @@ TIERS = [{"up_to": None, "rate_per_unit_micros": 1, "unit_quantity": 1}]
 def _setup():
     tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
     customer = Customer.objects.create(tenant=tenant, external_id="c1")
-    card = RateCard.objects.create(
+    card = Rate.objects.create(
         tenant=tenant, card_type="price", metric_name="tok",
         pricing_model="graduated", tiers=TIERS)
     return tenant, customer, card
@@ -71,7 +71,7 @@ class TestLockAndAdvance:
 
     def test_separate_lineages_get_separate_counters(self):
         tenant, customer, card = _setup()
-        other = RateCard.objects.create(
+        other = Rate.objects.create(
             tenant=tenant, card_type="price", metric_name="other_tok",
             pricing_model="graduated", tiers=TIERS)
         now = timezone.now()

@@ -122,7 +122,7 @@ def validate_tiers(card_type, pricing_model, tiers):
             prev_up_to = up_to
 
 
-class RateCard(BaseModel):
+class Rate(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="rate_cards")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="rate_cards", null=True, blank=True)
@@ -172,7 +172,7 @@ class RateCard(BaseModel):
             # No caller may price a tiered card without period context — this is
             # also the guard that keeps tiered cards out of the cost loop.
             raise ValueError(
-                f"RateCard.compute() cannot price tiered pricing_model "
+                f"Rate.compute() cannot price tiered pricing_model "
                 f"'{self.pricing_model}' without period context; use compute_marginal()")
         if self.pricing_model == "flat":
             return self.fixed_micros

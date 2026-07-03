@@ -349,8 +349,8 @@ class TenantConfigCurrencyTest(TestCase):
     def test_409_after_active_rate_card(self):
         """Cards are currency-pinned: a currency change would silently stop
         every card from matching and collapse COGS to the markup fallback."""
-        from apps.metering.pricing.models import RateCard
-        RateCard.objects.create(
+        from apps.metering.pricing.models import Rate
+        Rate.objects.create(
             tenant=self.tenant, card_type="cost", metric_name="tokens",
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency)
@@ -358,8 +358,8 @@ class TenantConfigCurrencyTest(TestCase):
 
     def test_retired_rate_card_does_not_lock(self):
         from django.utils import timezone
-        from apps.metering.pricing.models import RateCard
-        RateCard.objects.create(
+        from apps.metering.pricing.models import Rate
+        Rate.objects.create(
             tenant=self.tenant, card_type="cost", metric_name="tokens",
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency, valid_to=timezone.now())

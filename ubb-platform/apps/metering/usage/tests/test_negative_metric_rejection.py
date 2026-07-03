@@ -12,7 +12,7 @@ from django.db import transaction
 from django.test import Client
 from django.utils import timezone
 
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.tier_counter_service import TierCounterService
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
@@ -50,7 +50,7 @@ class TestNegativeMetricSchemaRejection:
     def test_negative_metric_non_tiered_card_returns_422(self):
         """Non-tiered (per_unit) card: schema rejects negative metric before pricing."""
         tenant, customer, http, auth = _setup_http()
-        RateCard.objects.create(
+        Rate.objects.create(
             tenant=tenant, card_type="price", metric_name="calls",
             pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )
@@ -63,7 +63,7 @@ class TestNegativeMetricSchemaRejection:
     def test_negative_metric_tiered_card_returns_422(self):
         """Tiered (graduated) card: schema rejects negative metric before ladder advance."""
         tenant, customer, http, auth = _setup_http()
-        RateCard.objects.create(
+        Rate.objects.create(
             tenant=tenant, card_type="price", metric_name="tok",
             pricing_model="graduated", tiers=GRADUATED_TIERS,
         )
@@ -79,7 +79,7 @@ class TestNegativeMetricSchemaRejection:
             name="Strict", products=["metering"], require_cost_card_coverage=True)
         _, raw_key = TenantApiKey.create_key(tenant, label="test")
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        RateCard.objects.create(
+        Rate.objects.create(
             tenant=tenant, card_type="cost", metric_name="tok",
             pricing_model="per_unit", rate_per_unit_micros=1, unit_quantity=1,
         )
@@ -127,7 +127,7 @@ class TestLockAndAdvanceNegativeUnitsGuard:
     def _setup(self):
         tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        card = RateCard.objects.create(
+        card = Rate.objects.create(
             tenant=tenant, card_type="price", metric_name="tok",
             pricing_model="graduated", tiers=GRADUATED_TIERS,
         )

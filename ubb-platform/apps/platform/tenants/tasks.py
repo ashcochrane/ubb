@@ -33,7 +33,7 @@ _SKIP_LABELS = frozenset({
 # Customer-scoped config (per-customer rate cards, markups, budgets, billing
 # profiles, auto-top-up configs) always dies with the customers it points at.
 CONFIG_MODEL_LABELS = frozenset({
-    "pricing.RateCard",
+    "pricing.Rate",
     "pricing.TenantMarkup",
     "subscriptions.TenantBillingPlan",
     "subscriptions.MarginThresholdConfig",

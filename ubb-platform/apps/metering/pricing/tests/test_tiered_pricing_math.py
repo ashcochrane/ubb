@@ -1,23 +1,23 @@
 """Pure-math tests for graduated/package cumulative pricing + tier validation.
 
-No DB: RateCard instances are constructed unsaved — compute_cumulative /
+No DB: Rate instances are constructed unsaved — compute_cumulative /
 compute_marginal / validate_tiers are pure functions of the card's fields.
 """
 import random
 
 import pytest
 
-from apps.metering.pricing.models import RateCard, validate_tiers
+from apps.metering.pricing.models import Rate, validate_tiers
 from apps.metering.pricing.services.pricing_service import _event_bands
 
 
 def _graduated_card(tiers):
-    return RateCard(card_type="price", metric_name="m",
+    return Rate(card_type="price", metric_name="m",
                     pricing_model="graduated", tiers=tiers)
 
 
 def _package_card(rate, block, fixed=0):
-    return RateCard(card_type="price", metric_name="m", pricing_model="package",
+    return Rate(card_type="price", metric_name="m", pricing_model="package",
                     rate_per_unit_micros=rate, unit_quantity=block,
                     fixed_micros=fixed, tiers=[])
 
@@ -150,7 +150,7 @@ class TestKnownValues:
             _package_card(10, 5).compute(10)
 
     def test_compute_cumulative_raises_for_untiered_models(self):
-        card = RateCard(card_type="price", metric_name="m", pricing_model="per_unit",
+        card = Rate(card_type="price", metric_name="m", pricing_model="per_unit",
                         rate_per_unit_micros=1, unit_quantity=1)
         with pytest.raises(ValueError, match="tiered"):
             card.compute_cumulative(5)

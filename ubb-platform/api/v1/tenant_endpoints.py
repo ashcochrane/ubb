@@ -360,7 +360,7 @@ def _currency_locked_reason(t):
     from django.db.models import Q
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.wallets.models import WalletTransaction
-    from apps.metering.pricing.models import RateCard
+    from apps.metering.pricing.models import Rate
     from apps.subscriptions.models import StripeSubscription, TenantBillingPlan
 
     if WalletTransaction.objects.filter(wallet__customer__tenant=t).exists():
@@ -373,7 +373,7 @@ def _currency_locked_reason(t):
         return "a usage invoice has been pushed to Stripe"
     if StripeSubscription.objects.filter(tenant=t).exists():
         return "Stripe subscriptions exist"
-    if RateCard.objects.filter(tenant=t, valid_to__isnull=True).exists():
+    if Rate.objects.filter(tenant=t, valid_to__isnull=True).exists():
         return "active rate cards exist (cards are currency-pinned)"
     return None
 
@@ -386,7 +386,7 @@ def get_tenant_config(request):
 @tenant_api.patch("/config", response={200: TenantConfigOut, 409: dict, 422: dict})
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
-    from apps.metering.pricing.models import RateCard
+    from apps.metering.pricing.models import Rate
     from apps.platform.tenants.models import SUPPORTED_CURRENCIES
     t = request.auth.tenant
     new_currency = None
@@ -413,7 +413,7 @@ def update_tenant_config(request, payload: TenantConfigIn):
                     "code": "currency_locked",
                 }
     if payload.require_cost_card_coverage is True and not t.require_cost_card_coverage:
-        if not RateCard.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
+        if not Rate.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
             return 422, {
                 "error": "require_cost_card_coverage cannot be enabled with zero active cost rate cards",
                 "code": "no_cost_cards",

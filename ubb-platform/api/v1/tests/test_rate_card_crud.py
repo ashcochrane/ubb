@@ -4,7 +4,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import Rate
 
 COST_CARD_BODY = {
     "card_type": "cost",
@@ -102,7 +102,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(put_resp.json()["rate_per_unit_micros"], 9999)
 
         # Old card should now have valid_to set (soft-expired)
-        old_card = RateCard.objects.get(id=original_id)
+        old_card = Rate.objects.get(id=original_id)
         self.assertIsNotNone(old_card.valid_to)
 
         # GET should list only the new card
@@ -126,7 +126,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(len(list_resp.json()), 0)
 
         # DB record still exists but has valid_to
-        card = RateCard.objects.get(id=card_id)
+        card = Rate.objects.get(id=card_id)
         self.assertIsNotNone(card.valid_to)
 
     def test_full_lifecycle(self):
@@ -236,7 +236,7 @@ class RateCardCurrencyPinTest(TestCase):
             path="/api/v1/metering/pricing/rate-cards/batch")
         self.assertEqual(resp.status_code, 422, resp.content)
         self.assertIn("cards[1]", resp.json()["error"])
-        self.assertEqual(RateCard.objects.count(), 0)  # all-or-nothing
+        self.assertEqual(Rate.objects.count(), 0)  # all-or-nothing
 
     def test_update_with_mismatched_currency_returns_422(self):
         created = self._post(COST_CARD_BODY)
@@ -249,6 +249,6 @@ class RateCardCurrencyPinTest(TestCase):
         self.assertEqual(resp.status_code, 422, resp.content)
         self.assertIn("does not match tenant currency", resp.json()["error"])
         # The active version is untouched
-        active = RateCard.objects.get(id=card_id)
+        active = Rate.objects.get(id=card_id)
         self.assertIsNone(active.valid_to)
         self.assertEqual(active.currency, "usd")

@@ -35,7 +35,7 @@ def verify_tier_rerate(period_start_iso=None):
     from datetime import date, timedelta
 
     from apps.metering.pricing.models import (
-        PricingPeriodCounter, RateCard, TIERED_PRICING_MODELS,
+        PricingPeriodCounter, Rate, TIERED_PRICING_MODELS,
     )
     from apps.metering.usage.models import UsageEvent
 
@@ -93,7 +93,7 @@ def verify_tier_rerate(period_start_iso=None):
                     f"prior_units={e['prior_units']} expected={expected_prior}")
                 break
             expected_prior = e["units_total_after"]
-        versions = list(RateCard.objects.filter(
+        versions = list(Rate.objects.filter(
             tenant_id=counter.tenant_id, lineage_id=counter.lineage_id,
             valid_from__lt=utc_day_start(counter.period_end),
         ).filter(Q(valid_to__isnull=True)

@@ -205,9 +205,9 @@ class SandboxResetTest(TestCase):
 
     def _seed_config_rows(self, tenant):
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import RateCard
+        from apps.metering.pricing.models import Rate
 
-        RateCard.objects.create(
+        Rate.objects.create(
             tenant=tenant, card_type="cost", metric_name="tokens",
             rate_per_unit_micros=10)
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
@@ -230,7 +230,7 @@ class SandboxResetTest(TestCase):
     def test_reset_keep_config_wipes_domain_preserves_config_and_keys(self):
         from apps.billing.gating.models import BudgetConfig
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.pricing.models import RateCard
+        from apps.metering.pricing.models import Rate
         from apps.metering.usage.models import UsageEvent
 
         self._seed_domain_rows(self.sandbox, "sb-")
@@ -252,7 +252,7 @@ class SandboxResetTest(TestCase):
         self.assertEqual(UsageEvent.objects.filter(tenant=self.sandbox).count(), 0)
 
         # Config preserved
-        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 1)
+        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 1)
@@ -277,14 +277,14 @@ class SandboxResetTest(TestCase):
 
     def test_reset_without_keep_config_wipes_config_too(self):
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import RateCard
+        from apps.metering.pricing.models import Rate
 
         self._seed_domain_rows(self.sandbox, "sb-")
         self._seed_config_rows(self.sandbox)
 
         result = reset_sandbox_tenant_sync(self.sandbox.id, keep_config=False)
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 0)

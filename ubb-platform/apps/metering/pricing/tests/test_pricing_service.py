@@ -1,7 +1,7 @@
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import RateCard, TenantMarkup
+from apps.metering.pricing.models import Rate, TenantMarkup
 from apps.metering.pricing.services.pricing_service import PricingService, PricingError
 
 
@@ -21,7 +21,7 @@ class TestPricing:
 
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        RateCard.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", dimensions={"model": "gpt-4"},
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
@@ -32,9 +32,9 @@ class TestPricing:
 
     def test_price_card_charges_on_different_metric(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        RateCard.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        RateCard.objects.create(tenant=t, card_type="price", provider="openai", event_type="chat",
+        Rate.objects.create(tenant=t, card_type="price", provider="openai", event_type="chat",
             metric_name="seats", pricing_model="flat", fixed_micros=9_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, event_type="chat", provider="openai",
@@ -44,9 +44,9 @@ class TestPricing:
 
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        RateCard.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", dimensions={}, rate_per_unit_micros=1_000, unit_quantity=1_000_000)
-        RateCard.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", dimensions={"model": "gpt-4"}, rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         prov, _, _ = PricingService.price(tenant=t, customer=c, event_type="e", provider="o",
             usage_metrics={"tok": 1_000_000}, tags={"model": "gpt-4"}, currency="usd",
@@ -100,7 +100,7 @@ class TestPricing:
         t.require_cost_card_coverage = True
         t.save(update_fields=["require_cost_card_coverage"])
         c = Customer.objects.create(tenant=t, external_id="c4")
-        RateCard.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, event_type="e", provider="o",
