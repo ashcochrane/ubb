@@ -113,6 +113,31 @@ class RunService:
         return run
 
     @staticmethod
+    def accumulate_cost_settled(run_id, cost_micros, *, tenant_id=None, customer_id=None):
+        """Settlement-path cost accumulation (Task 6: async ingest settle_raw).
+
+        Same row lock + heartbeat stamp as accumulate_cost, but deliberately
+        carries NO limit checks and TOLERATES a non-active run: enforcement
+        already happened at accept time (the estimate hold gate), so a settle
+        that lands after the run was killed/completed must still record the
+        TRUE cost against the run's total — never raise, never roll back the
+        settle. Must be called inside @transaction.atomic.
+        """
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
+
+        run.total_cost_micros = run.total_cost_micros + cost_micros
+        run.event_count += 1
+        run.last_event_at = timezone.now()
+        run.save(update_fields=["total_cost_micros", "event_count",
+                                "last_event_at", "updated_at"])
+        return run
+
+    @staticmethod
     def kill_run(run_id, reason="", *, tenant_id=None, customer_id=None):
         """Mark a run as killed. Idempotent — no-op if already in a terminal state.
 

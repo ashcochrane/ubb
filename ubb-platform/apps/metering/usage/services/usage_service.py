@@ -6,7 +6,7 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from apps.metering.pricing.services.tier_counter_service import month_bounds
-from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
+from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, UsageEvent
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 
@@ -118,6 +118,37 @@ def _result(event, run_total, *, stop=False, stop_reason=None, stop_scope=None,
         "service_id": event.service_id,
         "agent_id": event.agent_id,
     }
+
+
+def _parse_effective_at(payload):
+    """Parse the ISO-8601 ``effective_at`` string a RawIngestEvent's payload
+    carries (written by ``item.model_dump(mode="json")`` at accept time) back
+    into a timezone-aware datetime, or None when absent. Uses
+    ``django.utils.dateparse.parse_datetime`` — the same sanctioned parser
+    outbox-payload consumers use elsewhere (apps/billing/handlers.py,
+    apps/subscriptions/handlers.py) for this exact ISO-string-from-JSON shape."""
+    raw = payload.get("effective_at")
+    if not raw:
+        return None
+    from django.utils.dateparse import parse_datetime
+    return parse_datetime(raw)
+
+
+def _write_tier_mirrors(tenant_id, customer_id, provenance, as_of):
+    """Settlement-side counterpart of EstimationService's TierMirror.read:
+    for every tiered metric this event priced, mirror its post-event ladder
+    position so the NEXT accept-time estimate for this (tenant, customer,
+    lineage) anchors close to the truth. Keyed by ``as_of`` (the event's
+    EFFECTIVE instant), not settle wall-clock time — a backdated settle must
+    write into the PRIOR month's mirror bucket, never the current one (the
+    ladder it just advanced is period-scoped by the same as_of, per
+    TierCounterService.lock_and_advance)."""
+    from apps.metering.pricing.services.card_cache import TierMirror
+    for metric in provenance.get("metrics", []):
+        tier_breakdown = metric.get("tier_breakdown")
+        if tier_breakdown:
+            TierMirror.write(tenant_id, customer_id, tier_breakdown["lineage_id"],
+                             tier_breakdown["units_total_after"], as_of)
 
 
 def _replay_stop(customer, tenant):
@@ -265,3 +296,127 @@ class UsageService:
         return _result(event, run_total=run.total_cost_micros if run else None,
                        stop=live.get("stop", False), stop_reason=live.get("stop_reason"),
                        stop_scope=live.get("stop_scope"))
+
+    @staticmethod
+    def settle_raw(raw):
+        """Exact-settle one accepted RawIngestEvent (Task 6).
+
+        Enforcement already happened at accept (the estimate hold gate) — this
+        path NEVER rejects: it prices exactly, records durably, and adjusts the
+        live counter by (estimate - exact). Tier-ladder locks are worker-only
+        contention here (the synchronous record_usage path never reaches this
+        code, so no cross-path deadlock risk).
+
+        Returns "settled" or "duplicate". Any OTHER exception (a poison
+        payload — e.g. a strict-coverage PricingError) propagates UNCAUGHT;
+        the caller (apps.metering.usage.tasks.settle_raw_events) owns the
+        attempts/failed bookkeeping and hold release for that case.
+        """
+        from apps.billing.queries import settle_ingest_hold, release_ingest_hold
+        from apps.metering.pricing.services.pricing_service import PricingService
+        from apps.platform.runs.services import RunService
+
+        tenant, customer = raw.tenant, raw.customer
+        run_id_str = str(raw.run_id) if raw.run_id else None
+        try:
+            with transaction.atomic():
+                # settle_raw_events's batch claim only SELECTs (it never marks
+                # rows), so two overlapping task invocations can both claim the
+                # same still-"pending" id. Re-locking the SPECIFIC row here and
+                # rechecking status is the exactly-once guarantee for the
+                # hold-adjustment side effects below: a racing settle that
+                # already resolved this raw makes this a silent no-op.
+                raw = RawIngestEvent.objects.select_for_update().get(id=raw.id)
+                if raw.status != "pending":
+                    return raw.status
+                p = raw.payload
+                effective_at = _parse_effective_at(p)
+                # Pin ONE "now" for both the pricer's as_of AND the tier-mirror
+                # write below — PricingService.price would otherwise default
+                # as_of internally at ITS OWN now() call, and a separate
+                # now() at the mirror-write site (after this whole
+                # transaction commits) could theoretically straddle a month
+                # boundary and bucket the mirror into the wrong period.
+                as_of = effective_at or timezone.now()
+                tags = p.get("tags")
+                _tags = tags or {}
+                service_id = _tags.get("service", "")
+                agent_id = _tags.get("agent", "")
+                product_id = p.get("product_id") or _tags.get("product", "") or ""
+                currency = (tenant.default_currency or "usd").lower()
+                # Pricing runs INSIDE this transaction: tiered price cards
+                # advance the period ladder (PricingPeriodCounter) under a row
+                # lock, so a raced duplicate insert below rolls the advance
+                # back too (mirrors record_usage's savepoint pattern).
+                provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
+                    tenant=tenant, customer=customer,
+                    event_type=p.get("event_type") or "", provider=p.get("provider") or "",
+                    usage_metrics=p.get("usage_metrics"), tags=tags,
+                    currency=currency, caller_provider_cost=p.get("provider_cost_micros"),
+                    caller_billed=p.get("billed_cost_micros"), units=p.get("units"),
+                    as_of=as_of)
+                create_kwargs = {}
+                if effective_at is not None:
+                    create_kwargs["effective_at"] = effective_at
+                event = UsageEvent.objects.create(
+                    tenant=tenant, customer=customer,
+                    request_id=p.get("request_id", ""),
+                    idempotency_key=raw.idempotency_key,
+                    metadata=p.get("metadata") or {},
+                    event_type=p.get("event_type") or "", provider=p.get("provider") or "",
+                    provider_cost_micros=provider_cost_micros,
+                    billed_cost_micros=billed_cost_micros,
+                    units=p.get("units"), currency=currency,
+                    usage_metrics=p.get("usage_metrics") or {},
+                    pricing_provenance=provenance,
+                    product_id=product_id, tags=tags, run_id=raw.run_id,
+                    billing_owner_id=raw.billing_owner_id,
+                    service_id=service_id, agent_id=agent_id, **create_kwargs)
+                if raw.run_id:
+                    RunService.accumulate_cost_settled(raw.run_id, billed_cost_micros)
+                if effective_at is not None:
+                    eff_month_start = month_bounds(effective_at)[0]
+                    if eff_month_start < month_bounds(timezone.now())[0]:
+                        # Backfill into a PRIOR month: same marker + swallow
+                        # pattern as record_usage.
+                        try:
+                            with transaction.atomic():
+                                BackfillDirtyPeriod.objects.create(
+                                    tenant=tenant, customer=customer,
+                                    period_start=eff_month_start)
+                        except IntegrityError:
+                            pass
+                write_event(UsageRecorded(
+                    tenant_id=str(tenant.id), customer_id=str(customer.id),
+                    event_id=str(event.id),
+                    cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
+                    billed_cost_micros=billed_cost_micros, event_type=p.get("event_type") or "",
+                    provider=p.get("provider") or "", run_id=run_id_str,
+                    billing_owner_id=str(raw.billing_owner_id),
+                    effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
+                raw.status = "settled"
+                raw.save(update_fields=["status", "updated_at"])
+        except IntegrityError:
+            raw.status = "duplicate"
+            raw.save(update_fields=["status", "updated_at"])
+            if raw.held:
+                release_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
+                                    raw.estimate_micros)
+            return "duplicate"
+        if raw.held:
+            settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
+                               raw.estimate_micros - billed_cost_micros)
+        else:
+            # idem-hit at accept took NO hold (held=False). If the first
+            # append had already settled, THIS attempt hits IntegrityError
+            # above and returns "duplicate" without reaching here. If the
+            # first append was LOST (crash between hold and append), this row
+            # is the only survivor and the orphaned hold already decremented
+            # the live counter once — this full debit double-counts against
+            # that orphan. Documented, NOT fixed here (spec invariant 7): the
+            # hourly reconcile_prepaid MIN-merge is the corrector; see
+            # test_settlement.py's orphan-hold pin.
+            settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
+                               -billed_cost_micros)
+        _write_tier_mirrors(tenant.id, customer.id, provenance, as_of)
+        return "settled"

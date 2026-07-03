@@ -599,6 +599,12 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 release_ingest_hold(owner_id, tenant, run_id, estimate_micros)
             _ingest_idem_unwind(tenant.id, fresh_idem_keys)
             raise HttpError(503, "raw ingest append failed")
+        # Kick the settle workers once the raws are durably committed — the
+        # 10s beat sweep (settle-raw-events) is the backstop for a lost
+        # dispatch, so this on_commit hook is a fast-path nicety, not a
+        # durability requirement.
+        from apps.metering.usage.tasks import settle_raw_events
+        transaction.on_commit(lambda: settle_raw_events.delay())
 
     accepted = sum(1 for r in results if r["accepted"])
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
