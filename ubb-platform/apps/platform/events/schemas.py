@@ -328,6 +328,19 @@ class StopFired:
     owner_id = the billing owner the stop flag is keyed on (resolve_billing_owner).
     scope    = "customer" — the whole owner is stopped (mirrors
                RunLimitExceeded's scope="customer" fan-out semantics).
+
+    Delivery is best-effort, not exactly-once: ``_set_stop`` writes this event
+    inside a SAVEPOINT nested in the CALLER's outer transaction (record_usage
+    / HoldService.acquire's ambient atomic block). If that OUTER transaction
+    later rolls back for an unrelated reason, this row rolls back with it —
+    but the Redis flag it was emitted for is NOT rolled back (``client.set``
+    already committed to Redis, outside the DB transaction). The NX
+    transition-detector on the stop key means a LATER ``_set_stop`` call sees
+    the flag already set and skips re-emitting until ``_clear_stop`` runs —
+    so webhook delivery for THIS transition is orphaned (flag set, event row
+    gone) until the flag next clears and re-sets. The accept-time verdict
+    carried on every ack is the authoritative enforcement signal; this event
+    is a best-effort notification convenience on top of it, not a substitute.
     """
     EVENT_TYPE = "stop.fired"
     tenant_id: str

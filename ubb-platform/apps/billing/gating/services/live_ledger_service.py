@@ -319,6 +319,21 @@ class LiveLedgerService:
         (Called in autocommit from the async ingest path, atomic() just opens
         its own short transaction — equally safe.)
 
+        Guarantee scope: the savepoint isolates STATEMENT-level DB errors
+        (deadlock, timeout, constraint violation) on the INSERT itself — it
+        does NOT cover a DEAD CONNECTION. If the DB connection drops out from
+        under the ambient transaction (network partition, server restart)
+        while inside this savepoint, Django/psycopg2 cannot roll back to a
+        savepoint over a severed connection — the whole OUTER transaction is
+        doomed regardless, and the caller's subsequent statements will raise
+        on that same dead connection. This is not a gap specific to
+        _set_stop: any statement in the ambient transaction would doom it the
+        same way. The savepoint's job is narrower and still holds: recover
+        the ambient transaction from an INSERT-specific DB error so the
+        caller's money-path statements (which ran BEFORE this call, e.g. the
+        live-counter debit's outbox write) are not collaterally rolled back
+        by a stop-flag bookkeeping failure.
+
         tenant_id is optional: a call site without tenant context (there is
         none today, but keeping this defensive) degrades to pub/sub-only
         rather than crashing.

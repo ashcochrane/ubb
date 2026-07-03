@@ -1,7 +1,12 @@
-"""In-process (L1) rate-card candidate cache + Redis tier-position mirror.
+"""In-process (L1) resolved-rate cache + Redis tier-position mirror.
 
-L1 caches the CANDIDATE Rate rows per resolution key for TTL_SECONDS;
-dimension matching runs per call (tags vary per event). Version key
+L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
+cache) per tag-LESS resolution key for TTL_SECONDS — one entry per (tenant,
+customer, card_type, provider, event_type, metric, currency), not a set of
+candidate rows to re-match. Dimension (tag)-bearing lookups bypass L1
+entirely and re-resolve every call (tags vary per event; caching a
+tag-influenced result under a tag-less key would wrongly positive/negative-
+cache for a different tag set — see ``resolve``). Version key
 ubb:cardver:{tenant} is read at most once per request: begin_request stores
 the observed version in a contextvars.ContextVar — request/context-scoped, so
 a stale concurrent request can never clobber the version a fresher request

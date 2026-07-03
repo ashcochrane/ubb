@@ -252,6 +252,12 @@ class HoldService:
                     o.update(verdict)
             return out
         except Exception:
+            # A failure THIS late (e.g. in _threshold's ORM lookup, _set_stop,
+            # or read_stop) already ran the Redis pipe -- money already moved
+            # -- so this fail-open only means a crossing here goes UNDETECTED
+            # for one batch; the next acquire()/record_usage_debit call
+            # re-evaluates the now-updated counter and catches it then (a
+            # one-batch stop-flag delay, not a lost debit).
             logger.warning("hold_service.acquire_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
             return [_noop_hold() for _ in items]  # fail-open

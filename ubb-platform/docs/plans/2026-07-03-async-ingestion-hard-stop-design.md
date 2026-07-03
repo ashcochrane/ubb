@@ -139,17 +139,40 @@ the existing `products` flag pattern.
    flag + start-gate.
 6. **Redis failure = fail-open** (current philosophy: loud log, durable
    start-gate backstop). Optional future per-tenant fail-closed knob.
-7. **Orphaned holds** (crash between hold and append) are corrected by the
-   existing hourly MIN-merge reconcile.
+7. **Orphaned holds** (crash between hold and append) are NOT auto-corrected
+   by the hourly reconcile. An orphan pushes the live counter LOWER than the
+   durable balance (over-restrictive, fails safe); the MIN-merge only ever
+   LOWERS toward the durable balance, so an already-lower value is a FIXED
+   POINT it leaves untouched (pinned by
+   `test_settlement.py::OrphanHoldUnheldBranchTest`). The drift persists as
+   bounded over-restrictive drift — surfaced by the existing
+   `DRIFT_ALERT_MICROS` spike alert — and heals only via a credit/top-up
+   (which raises the counter through `LiveLedgerService.credit`),
+   `cleanup_keys` (an enforcement-mode transition), or the 62-day key TTL. An
+   automatic repair mechanism (e.g. a reconcile variant that can raise a
+   live counter back toward the durable value when it is HELD-orphan-caused
+   rather than a genuine in-flight decrement) is a named follow-up, not yet
+   built.
 
 ## Guarantee accounting
 
 | | today (sync) | Rung A/B (async) | competitors |
 |---|---|---|---|
 | wallet-floor overage bound | ~1 event (cooperative) | ~1 batch estimate + tier-boundary error | burn-rate × pipeline lag (unbounded under backlog) |
-| per-run / per-task caps | exact-reject | exact-reject (Redis check-then-incr) | n/a |
+| per-run / per-task caps | exact-reject | exact-reject (Redis check-then-incr)* | n/a |
 | enforcement built by | platform | platform | customer (webhook DIY) |
 | throughput | ~100–300/s | A: ~10–50k/s; B: ~100k+/s aggregate | 100k/s (Metronome headline) |
+
+`*` Per-run caps are exact-reject on both paths (`HoldService.acquire`'s
+run-cap check-then-increment mirrors `RunService.accumulate_cost`). Per-TASK
+caps (P4, `RiskConfig.max_cost_per_task_micros`) are **sync-path-only** in
+Rung A v1: `check_task_cost_cap` is called from `UsageService.record_usage`
+but neither `HoldService.acquire` nor `UsageService.settle_raw` ever call it,
+so async-settled spend never feeds `ubb:taskcost:*`. A tenant that mixes
+synchronous and async ingestion for the same task gets an under-enforced
+task cap (the async share of that task's spend is invisible to it). Wiring
+per-task caps into the async accept/settle path is future work, not yet
+scheduled.
 
 ## Testing strategy
 
