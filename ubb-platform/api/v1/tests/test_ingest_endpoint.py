@@ -418,6 +418,64 @@ class EffectiveAtTest(IngestEndpointTestBase):
         self.assertEqual(stored, eff)
 
 
+class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
+    """Replay-wins parity for effective_at validation (mirrors the dead-run
+    probe and the sync path's replay-before-validation contract): a replayed
+    key whose FIRST accept already passed validation must be accepted as a
+    duplicate suspect even if the billing period has since closed or the
+    backfill window aged out — a whole-batch retry must never flip an
+    already-accepted item into a rejection."""
+
+    def test_idem_hit_on_closed_period_is_replay_not_rejection(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        eff = (timezone.now() - timedelta(days=1)).isoformat()
+        event = self._event(billed_cost_micros=200_000, effective_at=eff)
+        first = self._post([event])
+        self.assertTrue(first.json()["results"][0]["accepted"])
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 200_000)
+
+        # The period FREEZES between the first accept and the retry.
+        with patch("apps.billing.queries.is_usage_period_closed", return_value=True):
+            second = self._post([event])  # SAME idempotency_key
+        self.assertEqual(second.status_code, 200)
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertTrue(r2["duplicate_suspect"])
+        self.assertFalse(r2["rejected"])
+        rows = list(RawIngestEvent.objects.order_by("created_at"))
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(rows[1].held)
+        # No second hold taken for the replay.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 200_000)
+
+    def test_fresh_key_on_closed_period_still_rejected_without_burning_key(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        eff = (timezone.now() - timedelta(days=1)).isoformat()
+        event = self._event(billed_cost_micros=200_000, effective_at=eff)
+        with patch("apps.billing.queries.is_usage_period_closed", return_value=True):
+            resp = self._post([event])
+        r = resp.json()["results"][0]
+        self.assertTrue(r["rejected"])
+        self.assertEqual(r["reason"], "billing_period_closed")
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
+        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+
+        # The probe is read-only: the rejection must not have burned the key,
+        # so the retry (period reopened) is a genuine first accept + real hold.
+        second = self._post([event])
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertFalse(r2["duplicate_suspect"])
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 200_000)
+
+
 class MixedBatchTest(IngestEndpointTestBase):
     def test_positional_alignment_and_exactly_one_new_hold(self):
         """One request mixing all four verdict shapes: [valid held item,

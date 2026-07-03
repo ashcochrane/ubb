@@ -419,6 +419,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     owners: dict = {}
     run_exists: dict = {}  # threaded into _record_batch_item for the sync-fallback route
     item_customer: list = [None] * n
+    eff_rejected: dict = {}   # i -> EffectiveAtError code, pending the replay probe
+    forced_replay: set = set()  # replay-wins winners (probed idem key present)
 
     now = timezone.now()
     tenant_currency = (tenant.default_currency or "usd").lower()
@@ -449,10 +451,33 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             try:
                 validate_effective_at(tenant, owners[cid], item.effective_at, now)
             except EffectiveAtError as e:
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason=e.code, mode="async")
+                # Not rejected yet: replay-wins first (probe below). The
+                # customer is valid, so keep it resolvable for the replay
+                # append path.
+                eff_rejected[i] = e.code
+                item_customer[i] = customer
                 continue
         item_customer[i] = customer
+
+    # ---- replay-wins for effective_at-rejected items (mirrors the sync
+    # path's replay-before-validation contract in record_usage AND the
+    # dead-run probe below): a replayed key whose FIRST accept already passed
+    # validation must be accepted as a duplicate suspect (held=False append,
+    # no hold) even if the backfill window has since aged past the timestamp
+    # or the billing period closed — a whole-batch retry must not flip an
+    # already-accepted item into a rejection. Read-only EXISTS probe — never
+    # SETNX; absent => genuinely new spend, rejected with the validation code
+    # WITHOUT writing the key (the probe fails CLOSED to "absent"). ----
+    if eff_rejected:
+        eff_idx = list(eff_rejected)
+        probe_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
+                      for i in eff_idx]
+        for i, present in zip(eff_idx, _ingest_idem_present(tenant.id, probe_keys)):
+            if present:
+                forced_replay.add(i)
+            else:
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason=eff_rejected[i], mode="async")
 
     # ---- run metadata (30s L1 cache) + run-active check. Runs BEFORE the
     # idempotency SETNX: a locally-rejected item must NOT burn its idem key,
@@ -464,10 +489,14 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     run_cap_seed: dict = {}  # i -> (run_cap_micros | None, run_seed_micros)
     dead_run_idx: list = []  # replay-wins candidates (run no longer active)
     run_ids_needed = {str(items[i].run_id) for i in range(n)
-                      if results[i] is None and items[i].run_id is not None}
+                      if results[i] is None and i not in forced_replay
+                      and items[i].run_id is not None}
     run_meta = _run_meta_for(tenant, run_ids_needed)
     for i in range(n):
-        if results[i] is not None:
+        # forced_replay items (effective_at replay-wins above) take no hold,
+        # so the run-cap/dead-run machinery is moot for them — and replay
+        # must win over run_not_active too, matching the sync path.
+        if results[i] is not None or i in forced_replay:
             continue
         item = items[i]
         if item.run_id is not None:
@@ -485,7 +514,6 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     # already-accepted item, so it is accepted as a duplicate suspect (no
     # hold, held=False append) instead of rejected; absent => genuinely new
     # spend on a dead run, rejected run_not_active WITHOUT writing the key. ----
-    forced_replay: set = set()
     if dead_run_idx:
         probe_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
                       for i in dead_run_idx]

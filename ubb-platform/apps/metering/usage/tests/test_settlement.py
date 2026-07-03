@@ -326,6 +326,119 @@ class EffectiveAtSettleTest(SettlementTestBase):
                          eff.astimezone(dt_timezone.utc).isoformat())
 
 
+class DuplicateRaceExactlyOnceReleaseTest(SettlementTestBase):
+    """Two workers racing the SAME held duplicate raw must release its hold
+    exactly once. The IntegrityError rolls back settle_raw's atomic — dropping
+    the top-of-function row lock while DB status is still "pending" — so the
+    duplicate resolution must re-lock and let only the pending -> duplicate
+    flip WINNER release. The race is simulated deterministically: the winner
+    resolves the row (flip + release) in the exact rollback -> re-lock gap the
+    fix closes, injected via a call-counting select_for_update wrapper."""
+
+    def test_racing_duplicate_resolution_releases_hold_exactly_once(self):
+        from apps.billing.queries import release_ingest_hold
+        owner_id = self.customer.id
+        payload = {"request_id": "r1", "billed_cost_micros": 500_000,
+                   "provider_cost_micros": 0}
+
+        acquire_ingest_holds(owner_id, self.tenant,
+                             [{"estimate_micros": 500_000, "run_id": None,
+                               "run_cap_micros": None, "run_seed_micros": 0}])
+        raw1 = self._raw(idempotency_key="race-key", payload=payload,
+                         estimate_micros=500_000, held=True)
+        self.assertEqual(UsageService.settle_raw(raw1), "settled")
+        balance_after_first = LiveLedgerService.read_prepaid(owner_id)
+
+        acquire_ingest_holds(owner_id, self.tenant,
+                             [{"estimate_micros": 500_000, "run_id": None,
+                               "run_cap_micros": None, "run_seed_micros": 0}])
+        raw2 = self._raw(idempotency_key="race-key", payload=payload,
+                         estimate_micros=500_000, held=True)
+        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+                         balance_after_first - 500_000)
+
+        real_sfu = RawIngestEvent.objects.select_for_update
+        calls = {"n": 0}
+
+        def interleaved_sfu(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                # call 1 = settle_raw's top lock; call 2 = the duplicate
+                # resolution's re-lock — i.e. the loser is now in the
+                # rollback -> re-lock gap. The RACING WINNER resolves the raw
+                # here: flips it and releases the hold, exactly what a second
+                # settle_raw_events invocation would have done.
+                RawIngestEvent.objects.filter(
+                    id=raw2.id, status="pending").update(status="duplicate")
+                release_ingest_hold(owner_id, self.tenant, None, 500_000)
+            return real_sfu(*args, **kwargs)
+
+        with patch.object(RawIngestEvent.objects, "select_for_update",
+                          side_effect=interleaved_sfu):
+            result = UsageService.settle_raw(raw2)
+
+        # The loser's except path DID re-lock (the fix exists)...
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(result, "duplicate")
+        raw2.refresh_from_db()
+        self.assertEqual(raw2.status, "duplicate")
+        self.assertEqual(UsageEvent.objects.count(), 1)
+        # ...and did NOT release again: exactly ONE release (the winner's) —
+        # a double release would leave the balance 500_000 ABOVE this.
+        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), balance_after_first)
+
+
+class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
+    """Same exactly-once discipline for the poison bookkeeping path: the
+    task's failure handler must re-lock the raw and skip (no attempts bump, no
+    release) when a racing invocation resolved it in the settle-rollback ->
+    bookkeeping gap."""
+
+    def test_stale_poison_worker_skips_resolved_raw_without_second_release(self):
+        from apps.billing.queries import release_ingest_hold
+        owner_id = self.customer.id
+        acquire_ingest_holds(owner_id, self.tenant,
+                             [{"estimate_micros": 250_000, "run_id": None,
+                               "run_cap_micros": None, "run_seed_micros": 0}])
+        raw = self._raw(idempotency_key="poison-race-key",
+                        payload={"request_id": "r1"},
+                        estimate_micros=250_000, held=True)
+        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+                         self.wallet.balance_micros - 250_000)
+
+        real_sfu = RawIngestEvent.objects.select_for_update
+        calls = {"n": 0}
+
+        def interleaved_sfu(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                # call 1 = the task's batch claim; call 2 = the failure
+                # handler's re-lock (settle_raw itself is patched to raise
+                # before touching the DB). The RACING WINNER resolves the raw
+                # as poisoned — flips it and releases — in the gap.
+                RawIngestEvent.objects.filter(
+                    id=raw.id, status="pending").update(
+                        status="failed", attempts=MAX_SETTLE_ATTEMPTS)
+                release_ingest_hold(owner_id, self.tenant, None, 250_000)
+            return real_sfu(*args, **kwargs)
+
+        with patch.object(UsageService, "settle_raw",
+                          side_effect=RuntimeError("simulated settle crash")), \
+             patch.object(RawIngestEvent.objects, "select_for_update",
+                          side_effect=interleaved_sfu):
+            settle_raw_events()
+
+        # The handler DID re-lock (the fix exists)...
+        self.assertEqual(calls["n"], 2)
+        raw.refresh_from_db()
+        self.assertEqual(raw.status, "failed")
+        # ...took no unlocked read-modify-write over the winner's attempts...
+        self.assertEqual(raw.attempts, MAX_SETTLE_ATTEMPTS)
+        # ...and released nothing itself: exactly ONE release (the winner's).
+        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+                         self.wallet.balance_micros)
+
+
 class SettleRawEventsTaskTest(SettlementTestBase):
     """Direct coverage of the task's own claim/loop/re-enqueue control flow,
     beyond what the settle_raw-focused tests above exercise."""

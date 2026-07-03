@@ -373,7 +373,9 @@ class UsageService:
                     billing_owner_id=raw.billing_owner_id,
                     service_id=service_id, agent_id=agent_id, **create_kwargs)
                 if raw.run_id:
-                    RunService.accumulate_cost_settled(raw.run_id, billed_cost_micros)
+                    RunService.accumulate_cost_settled(
+                        raw.run_id, billed_cost_micros,
+                        tenant_id=tenant.id, customer_id=customer.id)
                 if effective_at is not None:
                     eff_month_start = month_bounds(effective_at)[0]
                     if eff_month_start < month_bounds(timezone.now())[0]:
@@ -397,11 +399,25 @@ class UsageService:
                 raw.status = "settled"
                 raw.save(update_fields=["status", "updated_at"])
         except IntegrityError:
-            raw.status = "duplicate"
-            raw.save(update_fields=["status", "updated_at"])
-            if raw.held:
-                release_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
-                                    raw.estimate_micros)
+            # The IntegrityError rolled the atomic back — RELEASING the row
+            # lock taken at the top while the DB status is still "pending" —
+            # so a second settle_raw_events invocation that claimed this same
+            # id can be racing us right here. Resolve under a FRESH lock and
+            # let only the winner (the pending -> duplicate flip) release the
+            # hold: a hold release is a Redis credit, so a double release
+            # would over-credit the live gate (over-permissive — the worst
+            # failure direction). Redis effects stay post-commit, mirroring
+            # the settled path.
+            with transaction.atomic():
+                locked = RawIngestEvent.objects.select_for_update().get(id=raw.id)
+                if locked.status != "pending":
+                    # A racer already resolved (and, if held, released) it.
+                    return locked.status
+                locked.status = "duplicate"
+                locked.save(update_fields=["status", "updated_at"])
+            if locked.held:
+                release_ingest_hold(locked.billing_owner_id, tenant, run_id_str,
+                                    locked.estimate_micros)
             return "duplicate"
         if raw.held:
             settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,

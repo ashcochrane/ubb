@@ -846,10 +846,18 @@ def settle_raw(raw):
     accept; this path NEVER rejects — it prices exactly, records durably,
     and adjusts the live counter by (estimate - exact)."""
     from apps.billing.queries import settle_ingest_hold, release_ingest_hold
-    p = raw.payload
     tenant, customer = raw.tenant, raw.customer
     try:
         with transaction.atomic():
+            # AS-BUILT: the claim in settle_raw_events only COLLECTS ids (it
+            # never marks rows), so two overlapping invocations can claim the
+            # same still-"pending" id. Re-locking the specific row and
+            # re-checking status here is the exactly-once guarantee for every
+            # Redis hold adjustment below.
+            raw = RawIngestEvent.objects.select_for_update().get(id=raw.id)
+            if raw.status != "pending":
+                return raw.status
+            p = raw.payload
             provider_cost, billed, provenance = PricingService.price(
                 tenant=tenant, customer=customer,
                 event_type=p.get("event_type", ""), provider=p.get("provider", ""),
@@ -867,16 +875,27 @@ def settle_raw(raw):
                 # ... same field mapping as record_usage's create() ...
             )
             if raw.run_id:
-                RunService.accumulate_cost_settled(raw.run_id, billed)
+                RunService.accumulate_cost_settled(
+                    raw.run_id, billed, tenant_id=tenant.id, customer_id=customer.id)
             write_event(UsageRecorded(...))  # same construction as record_usage
             raw.status = "settled"
             raw.save(update_fields=["status", "updated_at"])
     except IntegrityError:
-        raw.status = "duplicate"
-        raw.save(update_fields=["status", "updated_at"])
-        if raw.held:
-            release_ingest_hold(raw.billing_owner_id, tenant, raw.run_id,
-                                raw.estimate_micros)
+        # AS-BUILT: the IntegrityError rolled the atomic back, RELEASING the
+        # row lock while DB status is still "pending" — a racing worker can be
+        # right here too. Resolve under a FRESH lock; only the winner of the
+        # pending -> duplicate flip releases the hold (post-commit), so the
+        # release is exactly-once (a double release over-credits the live
+        # gate — over-permissive, the worst direction).
+        with transaction.atomic():
+            locked = RawIngestEvent.objects.select_for_update().get(id=raw.id)
+            if locked.status != "pending":
+                return locked.status  # racer already resolved (and released)
+            locked.status = "duplicate"
+            locked.save(update_fields=["status", "updated_at"])
+        if locked.held:
+            release_ingest_hold(locked.billing_owner_id, tenant, raw.run_id,
+                                locked.estimate_micros)
         return "duplicate"
     if raw.held:
         settle_ingest_hold(raw.billing_owner_id, tenant, raw.run_id,
@@ -888,6 +907,13 @@ def settle_raw(raw):
     _write_tier_mirrors(tenant, customer, provenance)  # SET units_total_after per metric
     return "settled"
 ```
+
+AS-BUILT NOTE (poison bookkeeping, same lock discipline): `settle_raw_events`'s
+exception handler mirrors the duplicate path — it re-locks the raw
+(`select_for_update`), re-checks `status == "pending"` under the lock,
+increments `attempts` atomically (an unlocked read-modify-write would lose
+increments between racing invocations), flips to `"failed"` inside the lock at
+the 5-attempt ceiling, and only the flip WINNER releases the hold post-commit.
 
 IMPLEMENTER NOTE (subtle, load-bearing): the un-held branch (`raw.held is False`) covers the retry-append case. If the FIRST append settled already, this settle hits IntegrityError → duplicate → no double debit. If the first append was LOST (crash between hold and append), this row is the only survivor and carries `held=False` while the orphaned hold decremented the counter — the full `-billed` debit here would double-count against the orphan; the hourly `reconcile_prepaid` MIN-merge is the documented corrector (spec invariant 7). Do not "fix" this locally; write the test to pin the reconcile behavior instead.
 
