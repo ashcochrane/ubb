@@ -16,6 +16,7 @@ from api.v1.schemas import (
     CreateGrantRequest, GrantOut, PaginatedGrants,
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
+    CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceOut, PostpaidConfigIn, PostpaidConfigOut,
 )
 from core.auth import ApiKeyAuth, ProductAccess
@@ -759,6 +760,46 @@ def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     return _budget_out(_upsert_budget(request.auth.tenant, customer, payload))
+
+
+# ---------- Per-customer billing profile (overdraft override + grant expiry) ----------
+
+
+def _billing_profile_out(profile):
+    return {"min_balance_micros": profile.min_balance_micros,
+            "topup_grant_expiry_days": profile.topup_grant_expiry_days}
+
+
+@billing_api.get("/customers/{customer_id}/billing-profile",
+                 response=CustomerBillingProfileOut)
+def get_customer_billing_profile(request, customer_id: UUID):
+    _product_check(request)
+    from apps.billing.wallets.models import CustomerBillingProfile
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    profile = CustomerBillingProfile.objects.filter(customer=customer).first()
+    if not profile:
+        return {"min_balance_micros": None, "topup_grant_expiry_days": None}
+    return _billing_profile_out(profile)
+
+
+@billing_api.put("/customers/{customer_id}/billing-profile",
+                 response={200: CustomerBillingProfileOut, 422: dict})
+def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
+    _product_check(request)
+    from apps.billing.wallets.models import CustomerBillingProfile
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    if payload.min_balance_micros is not None and payload.min_balance_micros < 0:
+        return 422, {"error": "min_balance_micros must be >= 0 (allowed overdraft "
+                              "magnitude), or null to inherit the tenant default",
+                     "code": "invalid_config"}
+    if payload.topup_grant_expiry_days is not None and payload.topup_grant_expiry_days <= 0:
+        return 422, {"error": "topup_grant_expiry_days must be > 0, or null for no expiry",
+                     "code": "invalid_config"}
+    profile, _ = CustomerBillingProfile.objects.update_or_create(
+        customer=customer,
+        defaults={"min_balance_micros": payload.min_balance_micros,
+                  "topup_grant_expiry_days": payload.topup_grant_expiry_days})
+    return 200, _billing_profile_out(profile)
 
 
 @billing_api.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)

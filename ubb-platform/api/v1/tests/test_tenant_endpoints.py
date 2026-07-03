@@ -211,6 +211,45 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(self.tenant.run_cost_limit_micros, 42_000_000)
         self.assertEqual(self.tenant.min_balance_micros, 7_000_000)
 
+    # --- PATCH: per-task cost cap (RiskConfig subset) ---
+
+    def test_get_config_includes_max_cost_per_task_default_none(self):
+        body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
+        self.assertIsNone(body["max_cost_per_task_micros"])
+
+    def test_patch_sets_max_cost_per_task_creates_risk_config(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"max_cost_per_task_micros": 25_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        from apps.billing.gating.models import RiskConfig
+        rc = RiskConfig.objects.get(tenant=self.tenant)
+        self.assertEqual(rc.max_cost_per_task_micros, 25_000_000)
+        self.assertEqual(response.json()["max_cost_per_task_micros"], 25_000_000)
+
+    def test_patch_max_cost_per_task_nonpositive_returns_422(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"max_cost_per_task_micros": 0}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json().get("code"), "invalid_config")
+
+    def test_patch_null_clears_max_cost_per_task(self):
+        from apps.billing.gating.models import RiskConfig
+        RiskConfig.objects.create(tenant=self.tenant, max_cost_per_task_micros=25_000_000)
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"max_cost_per_task_micros": None}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        rc = RiskConfig.objects.get(tenant=self.tenant)
+        self.assertIsNone(rc.max_cost_per_task_micros)
+
 
 class TenantConfigCurrencyTest(TestCase):
     """CUR-1: writable default_currency — 2-decimal allowlist, 409 once money exists."""

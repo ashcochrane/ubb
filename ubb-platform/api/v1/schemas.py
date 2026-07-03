@@ -288,6 +288,19 @@ class BudgetConfigOut(Schema):
     fail_closed: bool
 
 
+class CustomerBillingProfileIn(Schema):
+    # Both are null-able overrides (PUT = full replace, so null clears the
+    # override): null min_balance_micros = inherit the tenant default; null
+    # topup_grant_expiry_days = top-ups never expire.
+    min_balance_micros: Optional[int] = None
+    topup_grant_expiry_days: Optional[int] = None
+
+
+class CustomerBillingProfileOut(Schema):
+    min_balance_micros: Optional[int] = None
+    topup_grant_expiry_days: Optional[int] = None
+
+
 class BudgetStatusOut(Schema):
     period: str
     spend_micros: int
@@ -399,6 +412,8 @@ class TenantConfigOut(Schema):
     min_balance_micros: int = 0
     run_cost_limit_micros: Optional[int] = None
     hard_stop_balance_micros: Optional[int] = None
+    # Per-task cost ceiling (lives on RiskConfig); null = no cap.
+    max_cost_per_task_micros: Optional[int] = None
 
 
 class TenantConfigIn(Schema):
@@ -418,6 +433,8 @@ class TenantConfigIn(Schema):
     min_balance_micros: Optional[int] = None
     run_cost_limit_micros: Optional[int] = None
     hard_stop_balance_micros: Optional[int] = None
+    # Per-task cost ceiling (RiskConfig). Omit = unchanged; null = no cap.
+    max_cost_per_task_micros: Optional[int] = None
 
 
 class PlanIn(Schema):

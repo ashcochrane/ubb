@@ -324,6 +324,8 @@ def get_sandbox(request):
 
 
 def _config_out(t):
+    from apps.billing.gating.models import RiskConfig
+    rc = RiskConfig.objects.filter(tenant=t).first()
     return {
         "name": t.name,
         "billing_mode": t.billing_mode,
@@ -337,6 +339,7 @@ def _config_out(t):
         "min_balance_micros": t.min_balance_micros,
         "run_cost_limit_micros": t.run_cost_limit_micros,
         "hard_stop_balance_micros": t.hard_stop_balance_micros,
+        "max_cost_per_task_micros": rc.max_cost_per_task_micros if rc else None,
     }
 
 
@@ -471,6 +474,11 @@ def update_tenant_config(request, payload: TenantConfigIn):
         t.run_cost_limit_micros = payload.run_cost_limit_micros
     if "hard_stop_balance_micros" in fields_set:
         t.hard_stop_balance_micros = payload.hard_stop_balance_micros
+    if ("max_cost_per_task_micros" in fields_set
+            and payload.max_cost_per_task_micros is not None
+            and payload.max_cost_per_task_micros <= 0):
+        return 422, {"error": "max_cost_per_task_micros must be > 0, or null for no cap",
+                     "code": "invalid_config"}
     enforcement_changed = False
     if payload.enforcement_mode is not None:
         from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES
@@ -487,6 +495,14 @@ def update_tenant_config(request, payload: TenantConfigIn):
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
         )
         return 422, {"error": msg, "code": "invalid_config"}
+    # Per-task cap lives on RiskConfig; write it only after the tenant save
+    # succeeds. Created lazily so a tenant that sets only this field gets a row.
+    if "max_cost_per_task_micros" in fields_set:
+        from apps.billing.gating.models import RiskConfig
+        rc, _ = RiskConfig.objects.get_or_create(tenant=t)
+        if rc.max_cost_per_task_micros != payload.max_cost_per_task_micros:
+            rc.max_cost_per_task_micros = payload.max_cost_per_task_micros
+            rc.save(update_fields=["max_cost_per_task_micros", "updated_at"])
     if enforcement_changed:
         # D17: clear stale Tier-2 keys so the new mode starts clean (esp. a
         # leftover stop flag that could wrongly suspend after a re-enable).
