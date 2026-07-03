@@ -22,10 +22,11 @@ from api.v1.schemas import (
     CloseRunResponse,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
-    RateCardIn, RateCardOut, RateCardUpdateIn, RateCardBatchIn,
+    RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
 )
 from apps.metering.pricing.models import (
-    Rate, CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
+    Rate, RateCard, RateCardAssignment,
+    CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
@@ -583,25 +584,38 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
 _billing_check = ProductAccess("billing")
 
 
-def _rate_card_to_out(c):
+def _book_to_out(b):
     return {
-        "id": str(c.id),
-        "lineage_id": str(c.lineage_id),
-        "card_type": c.card_type,
-        "metric_name": c.metric_name,
-        "provider": c.provider,
-        "event_type": c.event_type,
-        "dimensions": c.dimensions,
-        "pricing_model": c.pricing_model,
-        "rate_per_unit_micros": c.rate_per_unit_micros,
-        "unit_quantity": c.unit_quantity,
-        "fixed_micros": c.fixed_micros,
-        "tiers": c.tiers,
-        "currency": c.currency,
-        "product_id": c.product_id,
-        "customer_id": str(c.customer_id) if c.customer_id else None,
-        "valid_from": c.valid_from.isoformat(),
-        "valid_to": c.valid_to.isoformat() if c.valid_to else None,
+        "id": str(b.id),
+        "card_type": b.card_type,
+        "provider_key": b.provider_key,
+        "key": b.key,
+        "name": b.name,
+        "currency": b.currency,
+        "version": b.version,
+        "is_default": b.is_default,
+    }
+
+
+def _rate_to_out(r):
+    return {
+        "id": str(r.id),
+        "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
+        "lineage_id": str(r.lineage_id),
+        "card_type": r.card_type,
+        "metric_name": r.metric_name,
+        "provider": r.provider,
+        "event_type": r.event_type,
+        "dimensions": r.dimensions,
+        "pricing_model": r.pricing_model,
+        "rate_per_unit_micros": r.rate_per_unit_micros,
+        "unit_quantity": r.unit_quantity,
+        "fixed_micros": r.fixed_micros,
+        "tiers": r.tiers,
+        "currency": r.currency,
+        "product_id": r.product_id,
+        "valid_from": r.valid_from.isoformat(),
+        "valid_to": r.valid_to.isoformat() if r.valid_to else None,
     }
 
 
@@ -630,200 +644,109 @@ def _resolve_card_currency(tenant, raw_currency):
     return card_currency
 
 
-@metering_api.get("/pricing/rate-cards", response=list[RateCardOut])
-def list_rate_cards(request, card_type: str = None, include_history: bool = False,
-                    as_of: datetime = None):
+@metering_api.get("/pricing/rate-cards", response=list[BookOut])
+def list_books(request, card_type: str = None):
+    """List the tenant's rate-card BOOKS (containers). Rates live under a book
+    and are read via GET /pricing/rate-cards/{book_id}/rates."""
     _product_check(request)
-    qs = Rate.objects.filter(tenant=request.auth.tenant)
+    qs = RateCard.objects.filter(tenant=request.auth.tenant)
+    if card_type:
+        qs = qs.filter(card_type=card_type)
+    return [_book_to_out(b) for b in qs.order_by(
+        "card_type", "provider_key", "key", "id")]
+
+
+@metering_api.post("/pricing/rate-cards", response={200: BookOut, 422: dict})
+def create_book(request, payload: BookIn):
+    """Create a rate-card BOOK. Rates are added under it (so every API-created
+    rate is book-scoped and therefore resolvable)."""
+    _gate_card_type(request, payload.card_type)
+    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
+    if payload.card_type not in valid_types:
+        return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
+    try:
+        currency = _resolve_card_currency(request.auth.tenant, payload.currency)
+    except ValueError as e:
+        return 422, {"error": str(e)}
+    book = RateCard.objects.create(
+        tenant=request.auth.tenant, card_type=payload.card_type,
+        provider_key=payload.provider_key, key=payload.key, name=payload.name,
+        currency=currency, is_default=payload.is_default)
+    return 200, _book_to_out(book)
+
+
+@metering_api.get("/pricing/rate-cards/{book_id}/rates", response={200: list[RateOut], 404: dict})
+def list_book_rates(request, book_id: UUID, include_history: bool = False,
+                    as_of: datetime = None):
+    """List the rates in a book. Active-only by default; ``include_history``
+    returns every version (superseded rows carry a ``valid_to``), and ``as_of``
+    returns the version active at that instant (point-in-time)."""
+    _product_check(request)
+    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    qs = Rate.objects.filter(tenant=request.auth.tenant, rate_card=book)
     if as_of is not None:
         qs = qs.filter(valid_from__lte=as_of).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
-    if card_type:
-        qs = qs.filter(card_type=card_type)
-    return [_rate_card_to_out(c) for c in qs.order_by(
-        "card_type", "provider", "event_type", "metric_name", "-valid_from", "id")]
+    return 200, [_rate_to_out(r) for r in qs.order_by(
+        "provider", "event_type", "metric_name", "-valid_from", "id")]
 
 
-@metering_api.post("/pricing/rate-cards", response={200: RateCardOut, 422: dict})
-def create_rate_card(request, payload: RateCardIn):
-    _gate_card_type(request, payload.card_type)
-    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
+@metering_api.post("/pricing/rate-cards/{book_id}/rates", response={200: RateOut, 422: dict})
+def add_rate(request, book_id: UUID, payload: RateIn):
+    """Add a rate to a book. card_type and currency are inherited from the book
+    (single source of truth); tier/enum validation mirrors the old flat create."""
+    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    _gate_card_type(request, book.card_type)
     valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
-    if payload.card_type not in valid_types:
-        return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
     if payload.pricing_model not in valid_models:
         return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
     try:
-        validate_tiers(payload.card_type, payload.pricing_model, payload.tiers)
+        validate_tiers(book.card_type, payload.pricing_model, payload.tiers)
     except ValueError as e:
         return 422, {"error": str(e)}
-    try:
-        currency = _resolve_card_currency(request.auth.tenant, payload.currency)
-    except ValueError as e:
-        return 422, {"error": str(e)}
-    customer = None
-    if payload.customer_id:
-        customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    card = Rate.objects.create(
-        tenant=request.auth.tenant,
-        customer=customer,
-        card_type=payload.card_type,
-        metric_name=payload.metric_name,
-        provider=payload.provider,
-        event_type=payload.event_type,
-        dimensions=payload.dimensions,
+    rate = Rate.objects.create(
+        tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
+        metric_name=payload.metric_name, provider=payload.provider,
+        event_type=payload.event_type, dimensions=payload.dimensions,
         pricing_model=payload.pricing_model,
         rate_per_unit_micros=payload.rate_per_unit_micros,
-        unit_quantity=payload.unit_quantity,
-        fixed_micros=payload.fixed_micros,
-        tiers=payload.tiers,
-        currency=currency,
-        product_id=payload.product_id,
-    )
-    return 200, _rate_card_to_out(card)
+        unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
+        tiers=payload.tiers, currency=book.currency, product_id=payload.product_id,
+        book_version_from=book.version)
+    return 200, _rate_to_out(rate)
 
 
-@metering_api.post("/pricing/rate-cards/batch", response={200: dict, 422: dict})
-def bulk_create_rate_cards(request, payload: RateCardBatchIn):
-    cards = payload.cards
-    if not cards or len(cards) > 100:
-        return 422, {"error": "cards must be 1..100"}
-    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
-    valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
-    # Pre-validate EVERY card before creating any (all-or-nothing)
-    currencies = []
-    for i, c in enumerate(cards):
-        if c.card_type not in valid_types:
-            return 422, {"error": f"cards[{i}].card_type invalid"}
-        if c.pricing_model not in valid_models:
-            return 422, {"error": f"cards[{i}].pricing_model invalid"}
-        try:
-            validate_tiers(c.card_type, c.pricing_model, c.tiers)
-        except ValueError as e:
-            return 422, {"error": f"cards[{i}]: {e}"}
-        try:
-            currencies.append(_resolve_card_currency(request.auth.tenant, c.currency))
-        except ValueError as e:
-            return 422, {"error": f"cards[{i}]: {e}"}
-        # Replicate product-gating from single-create: price cards need billing product
-        if c.card_type == "price":
-            _billing_check(request)
-    created = []
-    with transaction.atomic():
-        for c, currency in zip(cards, currencies):
-            customer = None
-            if c.customer_id:
-                customer = get_object_or_404(Customer, id=c.customer_id, tenant=request.auth.tenant)
-            obj = Rate.objects.create(
-                tenant=request.auth.tenant,
-                customer=customer,
-                card_type=c.card_type,
-                metric_name=c.metric_name,
-                provider=c.provider,
-                event_type=c.event_type,
-                dimensions=c.dimensions,
-                pricing_model=c.pricing_model,
-                rate_per_unit_micros=c.rate_per_unit_micros,
-                unit_quantity=c.unit_quantity,
-                fixed_micros=c.fixed_micros,
-                tiers=c.tiers,
-                currency=currency,
-                product_id=c.product_id,
-            )
-            created.append(str(obj.id))
-    return 200, {"created": created, "count": len(created)}
+@metering_api.post("/pricing/rate-cards/{book_id}/publish", response={200: BookOut, 422: dict})
+def publish_book(request, book_id: UUID, payload: PublishIn):
+    """Atomically reprice a set of the book's rates: each change supersedes the
+    matching active rate (same lineage, valid_to stamped) and opens a new
+    version; the book version bumps once. All-or-nothing."""
+    from apps.metering.pricing.services.book_service import BookService
+
+    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    _gate_card_type(request, book.card_type)
+    try:
+        BookService.publish(book, [c.dict(exclude_none=True) for c in payload.changes])
+    except ValueError as e:
+        return 422, {"error": str(e)}
+    book.refresh_from_db()
+    return 200, _book_to_out(book)
 
 
-_RATE_CARD_COPY_FIELDS = (
-    "card_type", "metric_name", "provider", "event_type", "dimensions",
-    "pricing_model", "rate_per_unit_micros", "unit_quantity", "fixed_micros",
-    "tiers", "currency", "product_id",
-)
-
-
-@metering_api.put("/pricing/rate-cards/{card_id}", response={200: RateCardOut, 422: dict})
-def update_rate_card(request, card_id: UUID, payload: RateCardUpdateIn):
-    # Resolve the target: by id (any version), falling back to the active card
-    # sharing that lineage. Only active (valid_to IS NULL) versions are editable.
-    changes = payload.dict(exclude_unset=True)
-    if "tiers" in changes and changes["tiers"] is None:
-        del changes["tiers"]  # explicit null = keep the current tiers
-
-    with transaction.atomic():
-        old = Rate.objects.filter(
-            id=card_id, tenant=request.auth.tenant, valid_to__isnull=True
-        ).first()
-        if old is None:
-            target = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant)
-            old = Rate.objects.filter(
-                tenant=request.auth.tenant, lineage_id=target.lineage_id,
-                valid_to__isnull=True,
-            ).first()
-            if old is None:
-                from ninja.errors import HttpError
-                raise HttpError(404, "No active version for this rate card")
-
-        # Build the new version: copy all fields from old, apply request changes.
-        new_values = {f: getattr(old, f) for f in _RATE_CARD_COPY_FIELDS}
-        for f in _RATE_CARD_COPY_FIELDS:
-            if f in changes:
-                new_values[f] = changes[f]
-
-        customer = old.customer
-        if "customer_id" in changes:
-            if changes["customer_id"]:
-                customer = get_object_or_404(
-                    Customer, id=changes["customer_id"], tenant=request.auth.tenant)
-            else:
-                customer = None
-
-        # Preserve the Wave 1 enum validation.
-        valid_types = {c[0] for c in CARD_TYPE_CHOICES}
-        valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
-        if new_values["card_type"] not in valid_types:
-            return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
-        if new_values["pricing_model"] not in valid_models:
-            return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
-        try:
-            validate_tiers(new_values["card_type"], new_values["pricing_model"],
-                           new_values["tiers"])
-        except ValueError as e:
-            return 422, {"error": str(e)}
-
-        # CUR-1: the new version must stay in the tenant's currency — whether
-        # the currency came from the request or was copied from the old card
-        # (a pre-currency-change card cannot be silently carried forward).
-        try:
-            new_values["currency"] = _resolve_card_currency(
-                request.auth.tenant, new_values["currency"])
-        except ValueError as e:
-            return 422, {"error": str(e)}
-
-        _gate_card_type(request, new_values["card_type"])
-
-        # Close the old version, then open the new one. valid_from on the new row
-        # (auto_now_add) is >= the old row's valid_to, so the windows never overlap
-        # and the active-row partial unique constraint always sees exactly one.
-        old.valid_to = timezone.now()
-        old.save(update_fields=["valid_to", "updated_at"])
-
-        card = Rate.objects.create(
-            tenant=request.auth.tenant,
-            customer=customer,
-            lineage_id=old.lineage_id,
-            **new_values,
-        )
-    return 200, _rate_card_to_out(card)
-
-
-@metering_api.get("/pricing/rate-cards/{lineage_id}/history", response=list[RateCardOut])
-def rate_card_history(request, lineage_id: UUID):
-    _product_check(request)
-    qs = Rate.objects.filter(
-        tenant=request.auth.tenant, lineage_id=lineage_id).order_by("-valid_from", "id")
-    return [_rate_card_to_out(c) for c in qs]
+@metering_api.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 422: dict})
+def assign_book(request, customer_id: UUID, payload: AssignIn):
+    """Assign a PRICE book to a customer (one per customer per currency).
+    Resolution consults the assigned book before the per-provider default."""
+    _billing_check(request)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    book = get_object_or_404(RateCard, id=payload.rate_card_id,
+                             tenant=request.auth.tenant, card_type="price")
+    RateCardAssignment.objects.update_or_create(
+        tenant=request.auth.tenant, customer=customer, currency=book.currency,
+        defaults={"rate_card": book})
+    return 200, {"assigned": str(book.id)}
 
 
 @metering_api.delete("/pricing/rate-cards/{card_id}")

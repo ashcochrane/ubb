@@ -135,13 +135,20 @@ class Command(BaseCommand):
         self.stdout.write(f'# Get wallet balance')
         self.stdout.write(f'curl -H "Authorization: Bearer {raw_key}" '
                           f'http://localhost:8001/api/v1/billing/customers/{customer.id}/balance\n')
-        self.stdout.write(f'# Create a cost rate card (2 micros per input_token)')
+        self.stdout.write(f'# Create a cost rate-card BOOK, then add a rate under it '
+                          f'(2 micros per input_token)')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
-            f'-d \'{{"card_type": "cost", "metric_name": "input_tokens", '
-            f'"pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1}}\' '
+            f'-d \'{{"card_type": "cost", "key": "default", "provider_key": "", '
+            f'"is_default": true}}\' '
             f'http://localhost:8001/api/v1/metering/pricing/rate-cards\n')
+        self.stdout.write(
+            f'curl -X POST -H "Authorization: Bearer {raw_key}" '
+            f'-H "Content-Type: application/json" '
+            f'-d \'{{"metric_name": "input_tokens", "pricing_model": "per_unit", '
+            f'"rate_per_unit_micros": 2, "unit_quantity": 1}}\' '
+            f'http://localhost:8001/api/v1/metering/pricing/rate-cards/$BOOK_ID/rates\n')
         self.stdout.write(f'# Record a usage event (engine computes COGS from rate card)')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '

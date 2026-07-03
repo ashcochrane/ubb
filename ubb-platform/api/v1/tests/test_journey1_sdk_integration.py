@@ -12,12 +12,20 @@ undetected (e.g. a `/api/v1/metering/pricing/rate-cards` 404, or a response body
 the SDK can't deserialize). A live-server test exercises real URL routing and
 the real response contract end to end.
 """
+import httpx
 import pytest
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
+
+
+def _post(api, path, body):
+    """POST JSON to the live server's book-centric pricing surface (raw HTTP)."""
+    r = api.post(path, json=body)
+    r.raise_for_status()
+    return r.json()
 
 
 @pytest.fixture
@@ -64,14 +72,20 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
                             currency="usd")
 
     client = MeteringClient(api_key=raw_key, base_url=live_server.url)
+    api = httpx.Client(base_url=live_server.url,
+                       headers={"Authorization": f"Bearer {raw_key}"})
     try:
-        # (a) rate-card create reaches the REAL route (would 404 before the URL fix).
-        #     A 404 here would raise UBBAPIError -> test fails. It does not.
-        card = client.create_rate_card(card_type="cost", metric_name="output_tokens",
-                                       pricing_model="per_unit", rate_per_unit_micros=5,
-                                       unit_quantity=1)
-        assert card.card_type == "cost"
-        assert card.metric_name == "output_tokens"
+        # (a) the book-centric create routes reach the REAL server over HTTP (a
+        #     404/422 on a renamed route would raise here). Create a cost book,
+        #     then add a rate under it -> every API rate is book-scoped.
+        book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
+            "card_type": "cost", "key": "extra", "provider_key": ""})["id"]
+        rate = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
+            "metric_name": "output_tokens", "pricing_model": "per_unit",
+            "rate_per_unit_micros": 5, "unit_quantity": 1})
+        assert rate["card_type"] == "cost"
+        assert rate["metric_name"] == "output_tokens"
+        assert rate["rate_card_id"] == book_id
 
         # (b) record usage with usage_metrics and NO caller cost -> engine computes COGS.
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
@@ -92,3 +106,4 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
                    for r in rep["by_product"])
     finally:
         client.close()
+        api.close()

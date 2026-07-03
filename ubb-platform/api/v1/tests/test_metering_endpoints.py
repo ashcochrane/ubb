@@ -529,21 +529,34 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
 
 class RateCardValidationTest(TestCase):
+    """Book-centric surface: a BOOK create validates card_type; adding a rate
+    validates the pricing_model/tier shape; a publish soft-versions history."""
+
     def setUp(self):
         self.client = Client()
         self.tenant = Tenant.objects.create(name="Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
-    def test_create_rate_card_rejects_invalid_card_type(self):
-        resp = self.client.post("/api/v1/metering/pricing/rate-cards",
-            data=json.dumps({"card_type": "costs", "metric_name": "input_tokens"}),
+    def _post(self, path, body):
+        return self.client.post(path, data=json.dumps(body),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def _cost_book(self):
+        r = self._post("/api/v1/metering/pricing/rate-cards",
+                       {"card_type": "cost", "key": "openai", "provider_key": "openai"})
+        assert r.status_code == 200, r.content
+        return r.json()["id"]
+
+    def test_create_book_rejects_invalid_card_type(self):
+        resp = self._post("/api/v1/metering/pricing/rate-cards",
+                          {"card_type": "costs", "key": "x"})
         assert resp.status_code == 422
 
-    def test_create_rate_card_rejects_invalid_pricing_model(self):
-        resp = self.client.post("/api/v1/metering/pricing/rate-cards",
-            data=json.dumps({"card_type": "cost", "metric_name": "input_tokens", "pricing_model": "graduated"}),
-            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+    def test_add_rate_rejects_invalid_pricing_model(self):
+        # graduated is a valid model but forbidden on cost cards -> 422.
+        book_id = self._cost_book()
+        resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+                          {"metric_name": "input_tokens", "pricing_model": "graduated"})
         assert resp.status_code == 422
 
     def test_record_usage_surfaces_uncosted_metrics(self):
@@ -556,62 +569,66 @@ class RateCardValidationTest(TestCase):
         assert resp.status_code == 200
         assert "unknown_metric" in resp.json().get("uncosted_metrics", [])
 
-    def test_rate_card_update_keeps_lineage_and_versions_history(self):
-        # create a cost card
-        r1 = self.client.post("/api/v1/metering/pricing/rate-cards",
-            data={"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
-                  "rate_per_unit_micros": 2, "unit_quantity": 1},
-            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        assert r1.status_code in (200, 201)
-        card1 = r1.json(); cid = card1["id"]; lineage = card1["lineage_id"]
-        # update the rate
-        r2 = self.client.put(f"/api/v1/metering/pricing/rate-cards/{cid}",
-            data={"rate_per_unit_micros": 9}, content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        assert r2.status_code == 200
-        card2 = r2.json()
-        assert card2["lineage_id"] == lineage  # same lineage
-        assert card2["id"] != cid              # new version row
+    def test_publish_keeps_lineage_and_versions_history(self):
+        # create a cost book + a rate (rate 2)
+        book_id = self._cost_book()
+        r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+            {"metric_name": "tokens", "pricing_model": "per_unit",
+             "rate_per_unit_micros": 2, "unit_quantity": 1})
+        assert r1.status_code == 200, r1.content
+        rate1 = r1.json(); rid = rate1["id"]; lineage = rate1["lineage_id"]
+        # reprice the rate via publish -> new version supersedes the old
+        pub = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish",
+            {"changes": [{"metric_name": "tokens", "rate_per_unit_micros": 9}]})
+        assert pub.status_code == 200, pub.content
+        assert pub.json()["version"] == 2
         # history: both versions, newest first
-        h = self.client.get(f"/api/v1/metering/pricing/rate-cards/{lineage}/history",
-                            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
+        h = self.client.get(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates?include_history=true",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
         assert len(h) == 2
         assert h[0]["rate_per_unit_micros"] == 9 and h[1]["rate_per_unit_micros"] == 2
+        assert h[0]["lineage_id"] == lineage and h[1]["lineage_id"] == lineage  # same lineage
+        assert h[0]["id"] != rid  # new version row
         # old version has valid_to set; new version valid_to is null
         assert h[1]["valid_to"] is not None and h[0]["valid_to"] is None
 
 
 class RateCardBatchCreateTest(TestCase):
+    """Adding multiple rates under one book (the batch endpoint is gone)."""
+
     def setUp(self):
         self.client = Client()
         self.tenant = Tenant.objects.create(name="Batch Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
-    def test_bulk_create_rate_cards(self):
-        body = {"cards": [
-            {"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
-             "rate_per_unit_micros": 2, "unit_quantity": 1},
-            {"card_type": "cost", "metric_name": "images", "pricing_model": "flat", "fixed_micros": 500},
-        ]}
-        resp = self.client.post("/api/v1/metering/pricing/rate-cards/batch",
-            data=json.dumps(body), content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        assert resp.status_code in (200, 201)
-        assert resp.json()["count"] == 2
-        from apps.metering.pricing.models import Rate
-        assert Rate.objects.filter(tenant=self.tenant).count() == 2
+    def _post(self, path, body):
+        return self.client.post(path, data=json.dumps(body),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
-    def test_bulk_create_is_atomic_on_invalid(self):
+    def _cost_book(self):
+        r = self._post("/api/v1/metering/pricing/rate-cards",
+                       {"card_type": "cost", "key": "openai", "provider_key": "openai"})
+        assert r.status_code == 200, r.content
+        return r.json()["id"]
+
+    def test_add_many_rates_under_a_book(self):
         from apps.metering.pricing.models import Rate
+        book_id = self._cost_book()
+        r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+            {"metric_name": "tokens", "pricing_model": "per_unit",
+             "rate_per_unit_micros": 2, "unit_quantity": 1})
+        r2 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+            {"metric_name": "images", "pricing_model": "flat", "fixed_micros": 500})
+        assert r1.status_code == 200 and r2.status_code == 200
+        assert Rate.objects.filter(tenant=self.tenant, rate_card_id=book_id).count() == 2
+
+    def test_invalid_rate_creates_nothing(self):
+        from apps.metering.pricing.models import Rate
+        book_id = self._cost_book()
         before = Rate.objects.filter(tenant=self.tenant).count()
-        body = {"cards": [
-            {"card_type": "cost", "metric_name": "ok", "pricing_model": "per_unit",
-             "rate_per_unit_micros": 1, "unit_quantity": 1},
-            {"card_type": "BOGUS", "metric_name": "bad"},
-        ]}
-        resp = self.client.post("/api/v1/metering/pricing/rate-cards/batch",
-            data=json.dumps(body), content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+            {"metric_name": "bad", "pricing_model": "package"})  # tiered forbidden on cost
         assert resp.status_code == 422
         assert Rate.objects.filter(tenant=self.tenant).count() == before  # zero created
 

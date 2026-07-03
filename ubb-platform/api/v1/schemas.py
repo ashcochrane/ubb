@@ -393,8 +393,12 @@ class PostpaidConfigOut(Schema):
     consolidate_with_subscription: bool = False
 
 
-class RateCardIn(Schema):
-    card_type: str
+# --- Two-level pricing: a RateCard BOOK groups many Rates ---
+
+
+class RateIn(Schema):
+    """A single Rate added under a book. card_type and currency are inherited
+    from the book, so they are NOT accepted here (the book owns them)."""
     metric_name: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
     event_type: str = Field(default="", max_length=100)
@@ -404,31 +408,57 @@ class RateCardIn(Schema):
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
     tiers: list = Field(default_factory=list)
+    product_id: str = Field(default="", max_length=100)
+
+
+class BookIn(Schema):
+    card_type: str
+    provider_key: str = Field(default="", max_length=100)
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(default="", max_length=255)
     # CUR-1: omitted/None defaults to the tenant's default_currency; an
     # explicit value must MATCH the tenant currency (422 otherwise).
     currency: Optional[str] = Field(default=None, max_length=3)
-    product_id: str = Field(default="", max_length=100)
-    customer_id: Optional[UUID] = None
+    is_default: bool = False
 
 
-class RateCardUpdateIn(Schema):
-    card_type: Optional[str] = None
-    metric_name: Optional[str] = Field(default=None, max_length=100)
-    provider: Optional[str] = Field(default=None, max_length=100)
-    event_type: Optional[str] = Field(default=None, max_length=100)
-    dimensions: Optional[dict] = None
+class BookOut(Schema):
+    id: str
+    card_type: str
+    provider_key: str
+    key: str
+    name: str
+    currency: str
+    version: int
+    is_default: bool
+
+
+class RateChangeIn(Schema):
+    """One reprice in a publish. Match keys (metric_name/provider/event_type/
+    dimensions) locate the active rate; the remaining (nullable) fields, when
+    present, override it in the new version."""
+    metric_name: str
+    provider: str = ""
+    event_type: str = ""
+    dimensions: dict = Field(default_factory=dict)
     pricing_model: Optional[str] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
-    tiers: Optional[list] = None  # None (or omitted) = keep current tiers
-    currency: Optional[str] = Field(default=None, max_length=3)
-    product_id: Optional[str] = Field(default=None, max_length=100)
-    customer_id: Optional[UUID] = None
+    tiers: Optional[list] = None
 
 
-class RateCardOut(Schema):
+class PublishIn(Schema):
+    changes: list[RateChangeIn]
+
+
+class AssignIn(Schema):
+    rate_card_id: UUID
+
+
+class RateOut(Schema):
     id: str
+    rate_card_id: str
     lineage_id: str
     card_type: str
     metric_name: str
@@ -442,13 +472,8 @@ class RateCardOut(Schema):
     tiers: list
     currency: str
     product_id: str
-    customer_id: Optional[str] = None
     valid_from: str
     valid_to: Optional[str] = None
-
-
-class RateCardBatchIn(Schema):
-    cards: list[RateCardIn]
 
 
 class TenantConfigOut(Schema):

@@ -2,7 +2,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.models import Rate, RateCard, validate_tiers
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
@@ -46,6 +46,10 @@ class BookService:
                         data[k] = ch[k]
                 data["book_version_from"] = new_version
                 data["book_version_to"] = None
+                # Re-validate the repriced shape so a publish can never create an
+                # invalid tiered rate (e.g. graduated with empty tiers). Raises
+                # ValueError -> rolls back the whole publish (endpoint maps 422).
+                validate_tiers(data["card_type"], data["pricing_model"], data["tiers"])
                 # Close the old row, then open the new (valid_from auto_now_add > T).
                 old.valid_to = as_of
                 old.book_version_to = locked.version

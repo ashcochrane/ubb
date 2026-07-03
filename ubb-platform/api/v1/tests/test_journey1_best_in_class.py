@@ -27,6 +27,7 @@ COGS arithmetic (Rate.compute with unit_quantity=1, fixed_micros=0):
 """
 import datetime as dt
 
+import httpx
 import pytest
 
 from django.utils import timezone
@@ -34,6 +35,20 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
+
+
+def _post(api, path, body):
+    """POST JSON to the live server's book-centric pricing surface (raw HTTP:
+    the SDK has no book methods yet, so drive the real routes directly)."""
+    r = api.post(path, json=body)
+    r.raise_for_status()
+    return r.json()
+
+
+def _get(api, path, params=None):
+    r = api.get(path, params=params)
+    r.raise_for_status()
+    return r.json()
 
 
 @pytest.fixture
@@ -81,20 +96,23 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
     Customer.objects.create(tenant=tenant, external_id="c2")  # C2: isolation/noise
 
     client = MeteringClient(api_key=raw_key, base_url=live_server.url)
+    api = httpx.Client(base_url=live_server.url,
+                       headers={"Authorization": f"Bearer {raw_key}"})
     try:
-        # ---- 2. bulk-create TWO dimensional cost cards for metric "tokens" ----
-        # They differ ONLY by the {"service": ...} dimension. The pricing engine
-        # matches a card's dimensions against the event's tags.
-        batch = client.bulk_create_rate_cards([
-            {"card_type": "cost", "metric_name": "tokens",
-             "dimensions": {"service": "alpha"},
-             "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1},
-            {"card_type": "cost", "metric_name": "tokens",
-             "dimensions": {"service": "beta"},
-             "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1},
-        ])
-        assert batch["count"] == 2
-        assert len(batch["created"]) == 2
+        # ---- 2. create a default cost BOOK, then add TWO dimensional rates for
+        # metric "tokens" that differ ONLY by the {"service": ...} dimension. The
+        # pricing engine matches a rate's dimensions against the event's tags.
+        # Every rate lives under a book -> book-scoped resolution can find it. ----
+        book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
+            "card_type": "cost", "key": "cogs", "provider_key": "",
+            "is_default": True})["id"]
+        alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
+            "metric_name": "tokens", "dimensions": {"service": "alpha"},
+            "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
+        beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
+            "metric_name": "tokens", "dimensions": {"service": "beta"},
+            "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
+        assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
         # ---- 3. record 8 events for C1: 2 products x 2 services x 2 agents,
         # spread across 3 days; ONE event carries a mis-typed agent tag. ----
@@ -200,30 +218,42 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         assert ts_by_service == by_service == {
             "alpha": 800, "beta": 2000, "(unattributed)": COST_UNATTR}
 
-        # ---- 6. rate-card version history + point-in-time as_of ----
-        alpha_card_id = batch["created"][0]   # the {"service":"alpha"} cost card
-        # Capture a timestamp strictly BEFORE the update (old rate is active then).
+        # ---- 6. version history via publish + point-in-time as_of ----
+        # Capture a timestamp strictly BEFORE the reprice (old rate active then).
         before_update = timezone.now()
 
-        updated = client.update_rate_card(alpha_card_id, rate_per_unit_micros=99)
-        lineage_id = updated.lineage_id
+        # Reprice the {"service":"alpha"} rate to 99 via publish (supersedes v1,
+        # opens v2, bumps the book version) — the book-scoped reprice path.
+        published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
+            "changes": [{"metric_name": "tokens", "dimensions": {"service": "alpha"},
+                         "rate_per_unit_micros": 99}]})
+        assert published["version"] == 2
 
-        history = client.get_rate_card_history(lineage_id)
-        assert len(history) == 2                       # original + new version
-        assert history[0].rate_per_unit_micros == 99   # newest first
-        assert history[1].rate_per_unit_micros == 2    # the original alpha rate
+        def _alpha_rows(include_history=False, as_of=None):
+            params = {}
+            if include_history:
+                params["include_history"] = "true"
+            if as_of is not None:
+                params["as_of"] = as_of
+            rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+                        params=params or None)
+            return [r for r in rows if r["dimensions"] == {"service": "alpha"}]
+
+        history = _alpha_rows(include_history=True)
+        assert len(history) == 2                          # original + new version
+        assert history[0]["rate_per_unit_micros"] == 99   # newest first
+        assert history[1]["rate_per_unit_micros"] == 2    # the original alpha rate
         # Non-overlapping validity: old version closed, new version open.
-        assert history[1].valid_to is not None
-        assert history[0].valid_to is None
-        assert history[1].valid_to <= history[0].valid_from  # windows don't overlap
+        assert history[1]["valid_to"] is not None
+        assert history[0]["valid_to"] is None
+        assert history[1]["valid_to"] <= history[0]["valid_from"]  # windows don't overlap
 
-        # as_of BEFORE the update -> the OLD rate (2) is the active version then.
-        as_of_iso = before_update.isoformat()
-        at_before = {c.lineage_id: c for c in client.list_rate_cards(as_of=as_of_iso)}
-        assert at_before[lineage_id].rate_per_unit_micros == 2
+        # as_of BEFORE the reprice -> the OLD rate (2) is the active version then.
+        at_before = _alpha_rows(as_of=before_update.isoformat())
+        assert len(at_before) == 1 and at_before[0]["rate_per_unit_micros"] == 2
         # And the current active list shows the NEW rate (99).
-        now_active = {c.lineage_id: c for c in client.list_rate_cards(card_type="cost")}
-        assert now_active[lineage_id].rate_per_unit_micros == 99
+        now_active = _alpha_rows()
+        assert len(now_active) == 1 and now_active[0]["rate_per_unit_micros"] == 99
 
         # ---- 7. opt-in strict mode: an uncosted metric is REJECTED (no silent $0) ----
         tenant.require_cost_card_coverage = True
@@ -236,3 +266,4 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         assert exc.value.status_code == 422
     finally:
         client.close()
+        api.close()
