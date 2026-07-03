@@ -14,7 +14,7 @@
 - All new models inherit `core.models.BaseModel` (UUID pk, timestamps).
 - Metering must not import billing internals — cross-product calls go through `apps/billing/queries.py` (add ports there; pattern: `record_live_usage_debit`).
 - Redis `ubb:*` keys use the RAW client (`redis.from_url(settings.REDIS_URL)` + Lua EVAL), never django-redis `cache.*` (D9 in live_ledger_service.py).
-- **Never under-hold**: every estimate must be ≥ the exact price wherever tier state is involved (take `max(marginal at mirror prior, marginal at 0)`).
+- **Never under-hold**: every estimate must be ≥ the exact price wherever tier state is involved. Take `max(marginal at mirror prior, marginal at 0)` AND, for graduated cards, additionally floor the estimate at the worst (max) per-unit rate among the tiers not fully below the mirror prior plus their flat fees — the two anchors alone under-hold on increasing-rate ladders because the mirror lags the true position downward only (spec: "estimate at the max applicable rate").
 - **Never ack before durable append**; on append failure, release holds in the same request and return 503.
 - Idempotency: Redis SETNX is a fast filter only; idem-hit **skips the hold but still appends**; the `UsageEvent` unique constraint at settle is the exactly-once authority; duplicate settle releases the hold.
 - Cooperative stop semantics (I3): the crossing event is still accepted/recorded; the verdict flips on its ack; the flag stops subsequent events.
@@ -329,9 +329,9 @@ git commit -m "feat(pricing): L1 card cache + Redis tier mirror for accept-time 
   - `EstimationService.estimate(tenant, customer, *, event_type, provider, usage_metrics, tags, currency, caller_billed, caller_provider_cost, units, now) -> Estimate` where `Estimate = namedtuple("Estimate", "micros exact")`.
 - Estimation rules (mirror of `PricingService.price`, read-only):
   1. `caller_billed is not None` → `Estimate(caller_billed, exact=True)`.
-  2. Per metric with a price card: non-tiered → `card.compute(units)` (exact); tiered/graduated → `max(card.compute_marginal(prior_mirror, units), card.compute_marginal(0, units))` (never-under-hold), `exact=False`.
-  3. No price card matched any metric → markup path: needs provider cost — from `caller_provider_cost` or cost cards via `card.compute`; then `MarkupService.apply(provider_cost, tenant=tenant, customer=customer)`. Cost cards are never tiered (enforced by `validate_tiers`), so this is exact.
-  4. Nothing resolvable and no caller costs and `units or usage_metrics` present → raise `Unpriceable`.
+  2. Per metric with a price card: non-tiered → `card.compute(units)` (exact); tiered/graduated → `max(card.compute_marginal(prior_mirror, units), card.compute_marginal(0, units))`, and for graduated cards additionally floored at the max applicable band rate over the tiers not fully below the mirror plus their flat fees (never-under-hold on increasing-rate ladders too; package cards have `tiers == []` and are covered by the `marginal(0)` anchor), `exact=False`.
+  3. No price card matched any metric → markup path mirrors the pricer exactly: provider cost from `caller_provider_cost` or cost cards via `card.compute` (0 when nothing matches, non-strict tenants never fail here); then `MarkupService.apply(provider_cost, tenant=tenant, customer=customer)`. Cost cards are never tiered (enforced by `validate_tiers`), so this is exact.
+  4. `Unpriceable` is raised only where the real pricer raises `PricingError` — strict-coverage tenants (`require_cost_card_coverage`) with uncosted metrics (checked even when price cards match), or strict tenants with `units > 0`, no `usage_metrics`, and no caller cost.
 
 - [ ] **Step 1: Write the failing tests** — the load-bearing one is the **property test** against the real pricer:
 
@@ -387,6 +387,9 @@ def test_tiered_never_under_holds(tenant, customer, graduated_card_fixture, prio
 
 
 def test_unpriceable_raises(tenant, customer):
+    # Unpriceable mirrors the pricer's PricingError: strict coverage only.
+    tenant.require_cost_card_coverage = True
+    tenant.save(update_fields=["require_cost_card_coverage"])
     CardCache.begin_request(tenant.id)
     with pytest.raises(Unpriceable):
         EstimationService.estimate(
@@ -420,8 +423,20 @@ class EstimationService:
     def estimate(tenant, customer, *, event_type, provider, usage_metrics,
                  tags, currency, caller_billed, caller_provider_cost, units, now):
         if caller_billed is not None:
-            return Estimate(int(caller_billed), True)
+            return Estimate(caller_billed, True)
         usage_metrics = usage_metrics or {}
+        # Strict cost coverage mirrors the pricer's PricingError risk exactly:
+        # it checks coverage BEFORE pricing, even when price cards match and
+        # even when the caller supplies the aggregate cost.
+        if getattr(tenant, "require_cost_card_coverage", False):
+            if caller_provider_cost is None and (units or 0) > 0 and not usage_metrics:
+                raise Unpriceable(
+                    "strict cost coverage: units > 0 with no usage_metrics")
+            uncosted = [m for m in usage_metrics
+                        if CardCache.resolve(tenant, customer, "cost", provider,
+                                             event_type, m, tags, currency) is None]
+            if uncosted:
+                raise Unpriceable(f"no cost rate card for metrics: {uncosted}")
         total, matched, exact = 0, False, True
         for metric, units_val in sorted(usage_metrics.items()):
             card = CardCache.resolve(tenant, customer, "price", provider,
@@ -432,27 +447,43 @@ class EstimationService:
             if card.pricing_model in TIERED_PRICING_MODELS:
                 prior = TierMirror.read(tenant.id, customer.id,
                                         str(card.lineage_id), now)
-                # never-under-hold: max over the two anchor positions
-                total += max(card.compute_marginal(prior, units_val),
-                             card.compute_marginal(0, units_val))
+                # never-under-hold: anchor at the mirror and at 0...
+                est = max(card.compute_marginal(prior, units_val),
+                          card.compute_marginal(0, units_val))
+                # ...but on INCREASING-rate ladders the marginal grows with
+                # prior, so those anchors under-hold. graduated: guard with
+                # the spec's "estimate at the max applicable rate" over the
+                # tiers not fully below the mirror. (package cards have
+                # tiers == [] and are covered by the marginal(0) anchor.)
+                if card.tiers:
+                    remaining = [t for t in card.tiers
+                                 if t["up_to"] is None or t["up_to"] > prior]
+                    if remaining:
+                        worst_rate = max(
+                            (units_val * t["rate_per_unit_micros"]
+                             + t.get("unit_quantity", 1_000_000) // 2)
+                            // t.get("unit_quantity", 1_000_000)
+                            for t in remaining)
+                        est = max(est, worst_rate + sum(
+                            t.get("flat_micros", 0) for t in remaining))
+                total += est
                 exact = False
             else:
                 total += card.compute(units_val)
         if matched:
             return Estimate(total, exact)
-        # markup fallback mirrors PricingService: needs a provider cost
-        provider_cost, cost_matched = 0, False
+        # Markup fallback mirrors PricingService exactly: billed is
+        # markup(provider cost); a non-strict tenant with no matching cost
+        # cards simply bills markup(0) — never a failure.
         if caller_provider_cost is not None:
-            provider_cost, cost_matched = int(caller_provider_cost), True
+            provider_cost = caller_provider_cost
         else:
+            provider_cost = 0
             for metric, units_val in usage_metrics.items():
                 card = CardCache.resolve(tenant, customer, "cost", provider,
                                          event_type, metric, tags, currency)
                 if card is not None:
                     provider_cost += card.compute(units_val)
-                    cost_matched = True
-        if not cost_matched and (usage_metrics or (units or 0) > 0):
-            raise Unpriceable(f"no price/cost card for event_type={event_type!r}")
         from apps.metering.pricing.services.markup_service import MarkupService
         return Estimate(MarkupService.apply(provider_cost, tenant=tenant,
                                             customer=customer), True)
