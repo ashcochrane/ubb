@@ -393,6 +393,12 @@ class TenantConfigOut(Schema):
     automatic_tax_enabled: bool
     # Tier-2 spend-control mode (read-only here; off|advisory|enforcing).
     enforcement_mode: str = "off"
+    # Spend-safety caps (tenant defaults). min_balance_micros is the allowed
+    # OVERDRAFT magnitude (balance may go to -min_balance before blocking), not
+    # a positive floor. run_cost_limit/hard_stop_balance are null = no cap.
+    min_balance_micros: int = 0
+    run_cost_limit_micros: Optional[int] = None
+    hard_stop_balance_micros: Optional[int] = None
 
 
 class TenantConfigIn(Schema):
@@ -405,6 +411,13 @@ class TenantConfigIn(Schema):
     # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    # Spend-safety caps. Omitting a key leaves it unchanged. min_balance_micros
+    # is the allowed overdraft magnitude (>= 0; cannot be null). For the two
+    # nullable caps, sending an explicit null CLEARS the cap (distinguished from
+    # "omitted" via model_fields_set in the endpoint); a positive value sets it.
+    min_balance_micros: Optional[int] = None
+    run_cost_limit_micros: Optional[int] = None
+    hard_stop_balance_micros: Optional[int] = None
 
 
 class PlanIn(Schema):

@@ -334,6 +334,9 @@ def _config_out(t):
         "is_active": t.is_active,
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
+        "min_balance_micros": t.min_balance_micros,
+        "run_cost_limit_micros": t.run_cost_limit_micros,
+        "hard_stop_balance_micros": t.hard_stop_balance_micros,
     }
 
 
@@ -452,6 +455,22 @@ def update_tenant_config(request, payload: TenantConfigIn):
         t.products = payload.products
     if payload.require_cost_card_coverage is not None:
         t.require_cost_card_coverage = payload.require_cost_card_coverage
+    # Spend-safety caps. model_fields_set distinguishes an omitted key (leave
+    # alone) from an explicit null (clear the cap) for the two nullable fields.
+    fields_set = payload.model_fields_set
+    if payload.min_balance_micros is not None:
+        if payload.min_balance_micros < 0:
+            return 422, {"error": "min_balance_micros must be >= 0 (it is the "
+                                  "allowed overdraft magnitude, not a floor)",
+                         "code": "invalid_config"}
+        t.min_balance_micros = payload.min_balance_micros
+    if "run_cost_limit_micros" in fields_set:
+        if payload.run_cost_limit_micros is not None and payload.run_cost_limit_micros <= 0:
+            return 422, {"error": "run_cost_limit_micros must be > 0, or null for no cap",
+                         "code": "invalid_config"}
+        t.run_cost_limit_micros = payload.run_cost_limit_micros
+    if "hard_stop_balance_micros" in fields_set:
+        t.hard_stop_balance_micros = payload.hard_stop_balance_micros
     enforcement_changed = False
     if payload.enforcement_mode is not None:
         from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES

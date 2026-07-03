@@ -139,6 +139,78 @@ class TenantConfigEndpointTest(TestCase):
         body = response.json()
         self.assertEqual(body.get("code"), "invalid_config")
 
+    # --- PATCH: spend-safety caps (previously ORM-only) ---
+
+    def test_get_config_includes_spend_cap_defaults(self):
+        body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
+        self.assertEqual(body["min_balance_micros"], 0)
+        self.assertIsNone(body["run_cost_limit_micros"])
+        self.assertIsNone(body["hard_stop_balance_micros"])
+
+    def test_patch_sets_all_three_spend_caps(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({
+                "min_balance_micros": 5_000_000,
+                "run_cost_limit_micros": 50_000_000,
+                "hard_stop_balance_micros": -5_000_000,
+            }),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.min_balance_micros, 5_000_000)
+        self.assertEqual(self.tenant.run_cost_limit_micros, 50_000_000)
+        self.assertEqual(self.tenant.hard_stop_balance_micros, -5_000_000)
+        self.assertEqual(response.json()["run_cost_limit_micros"], 50_000_000)
+
+    def test_patch_run_cost_limit_zero_or_negative_returns_422(self):
+        for bad in (0, -1):
+            response = self.http_client.patch(
+                "/api/v1/tenant/config",
+                data=json.dumps({"run_cost_limit_micros": bad}),
+                content_type="application/json", **self._auth(),
+            )
+            self.assertEqual(response.status_code, 422, f"value {bad} should be rejected")
+            self.assertEqual(response.json().get("code"), "invalid_config")
+
+    def test_patch_min_balance_negative_returns_422(self):
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"min_balance_micros": -1}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json().get("code"), "invalid_config")
+
+    def test_patch_null_clears_nullable_caps(self):
+        self.tenant.run_cost_limit_micros = 50_000_000
+        self.tenant.hard_stop_balance_micros = -5_000_000
+        self.tenant.save()
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"run_cost_limit_micros": None, "hard_stop_balance_micros": None}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.tenant.refresh_from_db()
+        self.assertIsNone(self.tenant.run_cost_limit_micros)
+        self.assertIsNone(self.tenant.hard_stop_balance_micros)
+
+    def test_patch_omitting_caps_leaves_them_unchanged(self):
+        self.tenant.run_cost_limit_micros = 42_000_000
+        self.tenant.min_balance_micros = 7_000_000
+        self.tenant.save()
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"billing_mode": "meter_only"}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.run_cost_limit_micros, 42_000_000)
+        self.assertEqual(self.tenant.min_balance_micros, 7_000_000)
+
 
 class TenantConfigCurrencyTest(TestCase):
     """CUR-1: writable default_currency — 2-decimal allowlist, 409 once money exists."""
