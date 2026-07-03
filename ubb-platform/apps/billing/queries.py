@@ -89,6 +89,43 @@ def read_live_stop(owner_id, tenant) -> dict:
     return LiveLedgerService.read_stop(owner_id, tenant)
 
 
+def acquire_ingest_holds(owner_id, tenant, items):
+    """Accept-time atomic estimate-hold gate for the async ingest path
+    (Task 4) — the cross-product PORT for the metering ingest choke point.
+
+    items: [{"estimate_micros": int, "run_id": str|None,
+             "run_cap_micros": int|None, "run_seed_micros": int}]
+
+    Returns one verdict dict per item, same order as `items`:
+    {"held": bool, "rejected": bool, "reason": str|None, "stop": bool,
+     "stop_reason": str|None, "stop_scope": str|None}. No-op passthrough
+    (every item held, unstopped) when the tenant's enforcement_mode is off.
+    NEVER raises — fails open on any Redis error (the durable start-gate
+    remains the backstop), mirroring record_live_usage_debit.
+    """
+    from apps.billing.gating.services.hold_service import HoldService
+    return HoldService.acquire(owner_id, tenant, items)
+
+
+def settle_ingest_hold(owner_id, tenant, run_id, delta_micros):
+    """Settle a prior estimate hold once the actual billed cost is known
+    (Task 6) — cross-product port. delta_micros = estimate − exact: positive
+    credits back the over-hold, negative debits further. Routes through
+    HoldService.settle -> LiveLedgerService.credit (the same MIN-merge-safe
+    site every other credit hook uses). Never raises."""
+    from apps.billing.gating.services.hold_service import HoldService
+    HoldService.settle(owner_id, tenant, run_id, delta_micros)
+
+
+def release_ingest_hold(owner_id, tenant, run_id, estimate_micros):
+    """Fully release (credit back) a prior estimate hold — duplicate
+    ingest, failed append, or any path that must undo acquire() entirely.
+    Cross-product port; equivalent to
+    settle_ingest_hold(delta_micros=estimate_micros). Never raises."""
+    from apps.billing.gating.services.hold_service import HoldService
+    HoldService.release(owner_id, tenant, run_id, estimate_micros)
+
+
 def is_usage_period_closed(owner_id, period_start) -> bool:
     """True when the billing owner's postpaid usage invoice for the calendar
     month starting at ``period_start`` (date) is FROZEN — i.e. matches the
