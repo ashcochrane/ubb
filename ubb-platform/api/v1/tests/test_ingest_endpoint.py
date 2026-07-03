@@ -25,6 +25,10 @@ class IngestEndpointTestBase(TestCase):
 
     def setUp(self):
         cache.clear()
+        # The run-metadata L1 cache is module-level in-process state; clear it
+        # so a status cached by one test can never leak into another.
+        from api.v1 import metering_endpoints
+        metering_endpoints._RUN_META_CACHE.clear()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="AsyncIngest", products=["metering", "billing", "metering_async"],
@@ -206,6 +210,65 @@ class BatchSizeBoundsTest(IngestEndpointTestBase):
         events = [self._event(billed_cost_micros=1) for _ in range(1001)]
         resp = self._post(events)
         self.assertEqual(resp.status_code, 422)
+
+
+class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
+    """Local rejections (run_not_active, validation) must run BEFORE the
+    idempotency SETNX pipeline, or the rejected attempt burns the key: the
+    client's legitimate retry after fixing the problem would then misread as
+    an idem-hit — appended with held=False, i.e. accepted spend with NO hold
+    ever taken (a one-event enforcement bypass on the retry path)."""
+
+    def test_run_not_active_rejection_then_retry_is_genuine_first_accept(self):
+        killed_run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="killed",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        event = self._event(run_id=str(killed_run.id), billed_cost_micros=400_000)
+        first = self._post([event])
+        self.assertEqual(first.status_code, 200)
+        r1 = first.json()["results"][0]
+        self.assertTrue(r1["rejected"])
+        self.assertEqual(r1["reason"], "run_not_active")
+        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+
+        active_run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        event["run_id"] = str(active_run.id)  # SAME idempotency_key
+        second = self._post([event])
+        self.assertEqual(second.status_code, 200)
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertFalse(r2["duplicate_suspect"])
+        # A REAL hold this time — the rejection must not have burned the key.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 400_000)
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+
+    def test_currency_mismatch_rejection_then_retry_is_genuine_first_accept(self):
+        event = self._event(currency="eur", billed_cost_micros=300_000)
+        first = self._post([event])
+        self.assertEqual(first.status_code, 200)
+        r1 = first.json()["results"][0]
+        self.assertTrue(r1["rejected"])
+        self.assertEqual(r1["reason"], "validation_error")
+        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+
+        del event["currency"]  # corrected; SAME idempotency_key
+        second = self._post([event])
+        self.assertEqual(second.status_code, 200)
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertFalse(r2["duplicate_suspect"])
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 300_000)
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
 
 
 class RunHeldItemTest(IngestEndpointTestBase):

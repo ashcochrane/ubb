@@ -379,13 +379,44 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             continue
         item_customer[i] = customer
 
+    # ---- run metadata (30s L1 cache) + run_not_active rejection. Runs
+    # BEFORE the idempotency SETNX: a locally-rejected item must NOT burn its
+    # idem key, or the client's legitimate retry (after fixing the problem /
+    # against an active run) would misread as an idem-hit and be appended
+    # held=False — accepted spend with NO hold ever taken, a one-event
+    # enforcement bypass on the retry path. Same reason customer/currency
+    # validation above precedes the SETNX. ----
+    run_cap_seed: dict = {}  # i -> (run_cap_micros | None, run_seed_micros)
+    run_ids_needed = {str(items[i].run_id) for i in range(n)
+                      if results[i] is None and items[i].run_id is not None}
+    run_meta = _run_meta_for(tenant, run_ids_needed)
+    for i in range(n):
+        if results[i] is not None:
+            continue
+        item = items[i]
+        if item.run_id is not None:
+            meta = run_meta.get(str(item.run_id))
+            if meta is None or meta[2] != "active" or meta[3] != str(item_customer[i].id):
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason="run_not_active", mode="async")
+                continue
+            run_cap_seed[i] = (meta[0], meta[1])
+        else:
+            run_cap_seed[i] = (None, 0)
+
     # ---- idempotency pre-filter: one pipelined redis round trip for the
-    # whole batch, only for items that survived customer/currency validation ----
+    # whole batch, only for items still viable after EVERY local rejection
+    # above (customer/currency validation, run_not_active) ----
     pending_idx = [i for i in range(n) if results[i] is None]
     idem_keys = [(str(items[i].customer_id), items[i].idempotency_key) for i in pending_idx]
     idem_hits = dict(zip(pending_idx, _ingest_idem_prefilter(tenant.id, idem_keys)))
 
-    # ---- per item: idem routing, estimate (Unpriceable -> sync fallback) ----
+    # ---- per item: idem routing, estimate (Unpriceable -> sync fallback).
+    # Estimation deliberately stays AFTER the idem check: an idem-hit takes no
+    # hold so it needs no estimate, and skipping the estimate for an
+    # Unpriceable replay is safe because the sync_fallback route is already
+    # idempotent through record_usage's own (tenant, customer,
+    # idempotency_key) replay path. ----
     hold_candidates: list = []   # (i, item, customer, owner_id, Estimate)
     append_only: list = []       # (i, item, customer, owner_id) idem-hit rows
     owner_stop_cache: dict = {}
@@ -415,23 +446,9 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             continue
         hold_candidates.append((i, item, customer, owner_id, est))
 
-    # ---- run metadata (30s L1 cache) for run-bearing candidates ----
-    run_ids_needed = {str(item.run_id) for (_, item, _, _, _) in hold_candidates
-                      if item.run_id is not None}
-    run_meta = _run_meta_for(tenant, run_ids_needed)
-
     acquire_by_owner: dict = {}
     for i, item, customer, owner_id, est in hold_candidates:
-        if item.run_id is not None:
-            meta = run_meta.get(str(item.run_id))
-            if meta is None or meta[2] != "active" or meta[3] != str(customer.id):
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason="run_not_active",
-                                             estimated_cost_micros=est.micros, mode="async")
-                continue
-            cap, seed = meta[0], meta[1]
-        else:
-            cap, seed = None, 0
+        cap, seed = run_cap_seed[i]
         acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est, cap, seed))
 
     # ---- acquire holds (one pipelined redis round trip per owner) ----
