@@ -312,3 +312,25 @@ class RunLimitExceeded:
     scope: str = "run"
     total_cost_micros: int = 0
     limit_micros: int = 0
+
+
+@dataclass(frozen=True)
+class StopFired:
+    """Customer-wide cooperative stop flag TRANSITION (unset -> set) — Task 7.
+
+    Emitted (best-effort, alongside a ``ubb:stopchan:{owner_id}`` Redis
+    pub/sub publish) exactly once per transition by
+    ``LiveLedgerService._set_stop`` so the existing outgoing-webhook system
+    can deliver ``stop.fired`` to tenant endpoints. A repeat crossing while
+    the flag is already set only refreshes its TTL and does NOT re-emit this
+    event (see the SET NX transition detector in _set_stop).
+
+    owner_id = the billing owner the stop flag is keyed on (resolve_billing_owner).
+    scope    = "customer" — the whole owner is stopped (mirrors
+               RunLimitExceeded's scope="customer" fan-out semantics).
+    """
+    EVENT_TYPE = "stop.fired"
+    tenant_id: str
+    owner_id: str
+    reason: str
+    scope: str = "customer"

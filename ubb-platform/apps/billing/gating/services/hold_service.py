@@ -203,7 +203,7 @@ class HoldService:
 
             if crossed:
                 from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
-                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP)
+                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
             verdict = LiveLedgerService.read_stop(owner_id, tenant)
             for o in out:
                 if o["held"]:

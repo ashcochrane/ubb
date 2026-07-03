@@ -34,6 +34,7 @@ WEBHOOK_EVENT_TYPES = (
     # budgets / runs
     "budget.threshold_reached",
     "run.limit_exceeded",
+    "stop.fired",
     # margins / economics
     "margin.customer_unprofitable",
     "margin.provider_cost_spike",

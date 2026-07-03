@@ -14,6 +14,8 @@ Redis and asserts the exact final balance (no lost updates).
 import threading
 
 import pytest
+import redis
+from django.conf import settings
 from django.core.cache import cache
 
 from apps.billing.gating.models import BudgetConfig
@@ -21,6 +23,7 @@ from apps.billing.gating.services.hold_service import HoldService
 from apps.billing.gating.services.live_ledger_service import LiveLedgerService
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
+from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db
@@ -80,6 +83,112 @@ def test_floor_crossing_sets_stop_but_holds(enforced_prepaid_tenant, funded_owne
     assert out[0]["held"] is True          # cooperative (I3)
     assert out[0]["stop"] is True
     assert out[0]["stop_scope"] == "customer"
+
+
+# ---- Task 7: stop propagation (pub/sub + stop.fired outbox event) --------
+
+def _raw_client():
+    # Same idiom as test_card_cache.py: a separate raw connection to the
+    # SAME test Redis db (15) that _client() inside the services uses.
+    return redis.from_url(settings.REDIS_URL)
+
+
+def _subscribe(owner_id):
+    client = _raw_client()
+    # ignore_subscribe_messages: get_message() should only ever surface the
+    # real published payload, never the channel's own "subscribe" ack.
+    pubsub = client.pubsub(ignore_subscribe_messages=True)
+    # PubSub.__init__ only keeps a reference to client.connection_pool, NOT to
+    # `client` itself. Without this, `client` (a plain local var) would be
+    # garbage-collected the moment this function returns, and redis.Redis.__del__
+    # calls close() -> connection_pool.disconnect(inuse_connections=True) —
+    # which tears down the very (in-use!) socket `pubsub` just subscribed on,
+    # silently. The pubsub object doesn't notice: its next get_message() call
+    # transparently reconnects + re-subscribes (redis-py's on_connect hook), so
+    # there's no exception — but any publish sent during that dead window is
+    # lost with zero visible error. Keeping `client` alive on the pubsub object
+    # for the caller's lifetime prevents this.
+    pubsub._keepalive_client = client
+    pubsub.subscribe(f"ubb:stopchan:{owner_id}")
+    # Force the SUBSCRIBE round-trip to complete before returning, so a
+    # publish emitted immediately after this call is guaranteed to be seen.
+    pubsub.get_message(timeout=1)
+    return pubsub
+
+
+def test_floor_crossing_publishes_once_and_emits_one_outbox_row(
+        enforced_prepaid_tenant, funded_owner):
+    pubsub = _subscribe(funded_owner.id)
+    try:
+        HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(19_600_000)])
+        assert pubsub.get_message(timeout=0.2) is None  # no crossing yet -> no publish
+
+        out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])
+        assert out[0]["stop"] is True
+
+        msg = pubsub.get_message(timeout=1)
+        assert msg is not None and msg["type"] == "message"
+        assert msg["data"].decode() == "customer_wide_stop"
+        assert pubsub.get_message(timeout=0.2) is None  # exactly one message
+
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        event = OutboxEvent.objects.get(event_type="stop.fired")
+        assert event.payload["owner_id"] == str(funded_owner.id)
+        assert event.payload["reason"] == "customer_wide_stop"
+        assert event.payload["scope"] == "customer"
+        assert event.payload["tenant_id"] == str(enforced_prepaid_tenant.id)
+    finally:
+        pubsub.close()
+
+
+def test_second_crossing_while_flag_set_does_not_spam(enforced_prepaid_tenant, funded_owner):
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(19_600_000)])
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])  # crosses
+    assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+
+    pubsub = _subscribe(funded_owner.id)
+    try:
+        # Still stopped (flag already set) -> another crossing must NOT
+        # publish/emit again (transition-only, no spam).
+        out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])
+        assert out[0]["stop"] is True
+        assert pubsub.get_message(timeout=0.3) is None
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+    finally:
+        pubsub.close()
+
+
+def test_clear_stop_then_recross_re_arms_transition(enforced_prepaid_tenant, funded_owner):
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(19_600_000)])
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])  # crosses
+    assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+
+    LiveLedgerService._clear_stop(funded_owner.id)
+
+    pubsub = _subscribe(funded_owner.id)
+    try:
+        out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])
+        assert out[0]["stop"] is True
+        msg = pubsub.get_message(timeout=1)
+        assert msg is not None and msg["data"].decode() == "customer_wide_stop"
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 2
+    finally:
+        pubsub.close()
+
+
+def test_publish_failure_does_not_raise_into_acquire(enforced_prepaid_tenant, funded_owner, monkeypatch):
+    def _boom_publish(self, *args, **kwargs):
+        raise ConnectionError("redis publish down")
+
+    monkeypatch.setattr(redis.Redis, "publish", _boom_publish)
+
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(19_600_000)])
+    out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])  # crosses
+    assert out[0]["held"] is True
+    assert out[0]["stop"] is True
+    # The outbox event (a separate best-effort side effect) still fires even
+    # though pub/sub publish blew up.
+    assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
 
 
 def test_run_cap_rejects_without_touching_balance(enforced_prepaid_tenant, funded_owner):

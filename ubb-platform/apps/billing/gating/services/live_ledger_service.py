@@ -243,7 +243,7 @@ class LiveLedgerService:
             # flag lifts only on recovery (credit / reconcile).
             if LiveLedgerService._crossed(mode, v, owner_id, tenant):
                 from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
-                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP)
+                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
             base.update(LiveLedgerService.read_stop(owner_id, tenant))
             return base
         except Exception:
@@ -268,8 +268,45 @@ class LiveLedgerService:
         return value < -get_customer_min_balance(owner_id, tenant.id)
 
     @staticmethod
-    def _set_stop(owner_id, reason):
-        _client().set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS)
+    def _set_stop(owner_id, reason, tenant_id=None):
+        """Set the customer-wide cooperative stop flag, and on the unset->set
+        TRANSITION only (SET ... NX on the flag key itself is the transition
+        detector — no companion key needed) fan out two best-effort side
+        effects: a ``ubb:stopchan:{owner_id}`` Redis pub/sub publish (Plan 2's
+        future SSE endpoint) and a ``StopFired`` outbox event (so the existing
+        outgoing-webhook system delivers ``stop.fired``).
+
+        A repeat crossing while the flag is already set (was_new falsy) only
+        refreshes the TTL — no re-publish/re-emit (no spam). ``_clear_stop``
+        deletes the key outright, so the NEXT ``_set_stop`` naturally re-arms
+        the transition (no separate "already notified" bookkeeping to keep in
+        sync). Both side effects NEVER raise into the caller — each wrapped
+        in its own try/except — since this is called from the accept-time
+        money path (record_usage_debit / HoldService.acquire).
+
+        tenant_id is optional: a call site without tenant context (there is
+        none today, but keeping this defensive) degrades to pub/sub-only
+        rather than crashing.
+        """
+        client = _client()
+        was_new = client.set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS, nx=True)
+        if not was_new:
+            client.expire(_stop_key(owner_id), LEDGER_TTL_SECONDS)
+            return
+        try:
+            client.publish(f"ubb:stopchan:{owner_id}", reason)
+        except Exception:
+            logger.warning("live_ledger.stop_publish_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
+        if tenant_id:
+            try:
+                from apps.platform.events.outbox import write_event
+                from apps.platform.events.schemas import StopFired
+                write_event(StopFired(tenant_id=str(tenant_id), owner_id=str(owner_id),
+                                      reason=reason, scope="customer"))
+            except Exception:
+                logger.warning("live_ledger.stop_event_failed",
+                               extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
     def _clear_stop(owner_id):
