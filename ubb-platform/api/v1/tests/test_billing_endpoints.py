@@ -241,6 +241,51 @@ class BillingDebitEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    # --- floor guard (Phase 1): debit respects the overdraft floor by default ---
+
+    def _debit(self, external_id, amount, key, allow_negative=None):
+        body = {"customer_id": external_id, "amount_micros": amount,
+                "reference": "od", "idempotency_key": key}
+        if allow_negative is not None:
+            body["allow_negative"] = allow_negative
+        return self.http_client.post(
+            "/api/v1/billing/debit", data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def test_debit_blocked_when_it_would_overdraw(self):
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_1")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        resp = self._debit("od_1", 2_000_000, "od_k1")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json().get("code"), "would_overdraw")
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, 1_000_000)
+
+    def test_debit_allow_negative_forces_overdraw(self):
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_2")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        resp = self._debit("od_2", 2_000_000, "od_k2", allow_negative=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
+
+    def test_debit_within_overdraft_cushion_allowed(self):
+        from apps.billing.wallets.models import CustomerBillingProfile
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_3")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        CustomerBillingProfile.objects.create(customer=c, min_balance_micros=5_000_000)
+        resp = self._debit("od_3", 3_000_000, "od_k3")  # -> -2M, floor -5M: allowed
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -2_000_000)
+
+    def test_debit_postpaid_skips_floor(self):
+        self.tenant.billing_mode = "postpaid"
+        self.tenant.save()
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_4")
+        Wallet.objects.create(customer=c, balance_micros=0)
+        resp = self._debit("od_4", 1_000_000, "od_k4")  # postpaid: negative is normal
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
+
 
 class BillingCreditEndpointTest(TestCase):
     def setUp(self):
@@ -390,6 +435,7 @@ class DebitCreditHardeningTest(TestCase):
                 "amount_micros": 1_000_000,
                 "reference": "ref_lazy",
                 "idempotency_key": "idem_d_lazy",
+                "allow_negative": True,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",

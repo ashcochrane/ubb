@@ -78,18 +78,20 @@ class BillingClient:
     # ---- public API ----
 
     def debit(self, customer_id: str, amount_micros: int, reference: str,
-              idempotency_key: str) -> dict:
+              idempotency_key: str, allow_negative: bool = False) -> dict:
         """Debit a customer's wallet via POST /api/v1/billing/debit.
 
         idempotency_key is required (server-enforced) so a retried debit never
-        double-charges. This is the raw, floor-less escape hatch — for a
-        guarded withdrawal use ``withdraw``.
+        double-charges. By default the debit still respects the customer's
+        overdraft floor; pass allow_negative=True to force a correction past it.
+        For a guarded withdrawal use ``withdraw``.
         """
         r = self._request("post", "/api/v1/billing/debit", json={
             "customer_id": customer_id,
             "amount_micros": amount_micros,
             "reference": reference,
             "idempotency_key": idempotency_key,
+            "allow_negative": allow_negative,
         })
         return r.json()
 

@@ -196,6 +196,9 @@ class DebitRequest(Schema):
     # key is excluded from the (wallet, key) partial unique constraint, so an
     # unkeyed retry would double-debit. Matches withdraw/refund/grant.
     idempotency_key: str = Field(min_length=1, max_length=500)
+    # Debit respects the customer's overdraft floor by default (like drawdown);
+    # allow_negative=true forces a correction past it (logged as forced_overdraw).
+    allow_negative: bool = False
 
 
 class CreditRequest(Schema):

@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from typing import Optional
 from uuid import UUID
@@ -28,6 +29,7 @@ from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoic
 from django.shortcuts import get_object_or_404
 
 billing_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_billing_v1")
+logger = logging.getLogger("ubb.billing")
 
 _product_check = ProductAccess("billing")
 
@@ -75,7 +77,30 @@ def debit(request, payload: DebitRequest):
         if existing:
             return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(existing.id)}
 
-        wallet.balance_micros -= payload.amount_micros
+        # Floor guard (Phase 1): a raw debit still respects the overdraft
+        # cushion unless the caller forces it. Mirrors the drawdown gate —
+        # non-postpaid only; postpaid balances are meant to go negative.
+        new_balance = wallet.balance_micros - payload.amount_micros
+        if request.auth.tenant.billing_mode != "postpaid":
+            from apps.billing.queries import get_customer_min_balance
+            floor = get_customer_min_balance(wallet.customer_id, request.auth.tenant.id)
+            if new_balance < -floor:
+                if not payload.allow_negative:
+                    return billing_api.create_response(
+                        request,
+                        {"error": "debit would breach the overdraft floor; "
+                                  "pass allow_negative=true to force",
+                         "code": "would_overdraw", "floor_micros": floor,
+                         "balance_micros": wallet.balance_micros},
+                        status=400)
+                logger.warning("billing.forced_overdraw", extra={"data": {
+                    "customer_id": str(wallet.customer_id),
+                    "amount_micros": payload.amount_micros,
+                    "balance_before_micros": wallet.balance_micros,
+                    "balance_after_micros": new_balance,
+                    "floor_micros": floor, "reference": payload.reference}})
+
+        wallet.balance_micros = new_balance
         wallet.save(update_fields=["balance_micros", "updated_at"])
 
         txn = WalletTransaction.objects.create(
