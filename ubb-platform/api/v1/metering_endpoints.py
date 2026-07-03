@@ -17,6 +17,7 @@ from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     UsageBatchRequest, UsageBatchResponse,
     PaginatedUsageResponse,
+    UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
     CloseRunResponse,
     UsageAnalyticsResponse,
@@ -275,6 +276,42 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
         ],
         "next_cursor": next_cursor,
         "has_more": has_more,
+    }
+
+
+@metering_api.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: dict})
+def get_usage_event(request, event_id: UUID):
+    """Fetch one usage event's full pricing receipt (audit / dispute lookup).
+
+    Returns every priced field plus pricing_provenance — the recorded
+    "why this amount" (engine version, price source, per-metric card, and
+    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    this is where it is read back. Tenant-scoped; 404 for an unknown or
+    foreign event id."""
+    _product_check(request)
+    from apps.metering.usage.models import UsageEvent
+
+    e = get_object_or_404(UsageEvent, id=event_id, tenant=request.auth.tenant)
+    return 200, {
+        "id": e.id,
+        "request_id": e.request_id,
+        "idempotency_key": e.idempotency_key,
+        "event_type": e.event_type,
+        "provider": e.provider,
+        "product_id": e.product_id,
+        "service_id": e.service_id,
+        "agent_id": e.agent_id,
+        "units": e.units,
+        "currency": e.currency,
+        "provider_cost_micros": e.provider_cost_micros,
+        "billed_cost_micros": e.billed_cost_micros,
+        "usage_metrics": e.usage_metrics or {},
+        "pricing_provenance": e.pricing_provenance or {},
+        "tags": e.tags,
+        "metadata": e.metadata,
+        "run_id": str(e.run_id) if e.run_id else None,
+        "effective_at": e.effective_at.isoformat(),
+        "created_at": e.created_at.isoformat(),
     }
 
 

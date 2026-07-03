@@ -191,6 +191,59 @@ class PricingMarkupsCRUDTest(TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+class UsageEventDetailEndpointTest(TestCase):
+    """GET /usage/{event_id} returns the full pricing receipt (provenance)."""
+
+    def setUp(self):
+        self.http = Client()
+        self.tenant = Tenant.objects.create(name="Rcpt", products=["metering"])
+        _, self.key = TenantApiKey.create_key(self.tenant, label="r")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
+
+    def _event(self, tenant=None, customer=None):
+        from apps.metering.usage.models import UsageEvent
+        t = tenant or self.tenant
+        c = customer or self.customer
+        return UsageEvent.objects.create(
+            tenant=t, customer=c,
+            request_id=f"req-{c.external_id}", idempotency_key=f"idem-{c.external_id}",
+            provider_cost_micros=300_000, billed_cost_micros=450_000,
+            event_type="chat", provider="openai", units=35_000, currency="usd",
+            pricing_provenance={
+                "engine_version": "2.1.0",
+                "metrics": [{"metric": "input_tokens", "price_card_id": "abc",
+                             "tier_breakdown": [
+                                 {"tier": 1, "qty": 30_000, "micros": 300_000},
+                                 {"tier": 2, "qty": 5_000, "micros": 150_000}]}]})
+
+    def test_get_event_returns_full_receipt(self):
+        ev = self._event()
+        resp = self.http.get(f"/api/v1/metering/usage/{ev.id}", **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["id"], str(ev.id))
+        self.assertEqual(body["billed_cost_micros"], 450_000)
+        self.assertEqual(body["pricing_provenance"]["engine_version"], "2.1.0")
+        self.assertEqual(
+            body["pricing_provenance"]["metrics"][0]["price_card_id"], "abc")
+
+    def test_get_unknown_event_returns_404(self):
+        resp = self.http.get(
+            "/api/v1/metering/usage/00000000-0000-0000-0000-000000000000",
+            **self._auth())
+        self.assertEqual(resp.status_code, 404)
+
+    def test_get_event_of_other_tenant_returns_404(self):
+        other = Tenant.objects.create(name="Other", products=["metering"])
+        other_cust = Customer.objects.create(tenant=other, external_id="oc")
+        ev = self._event(tenant=other, customer=other_cust)
+        resp = self.http.get(f"/api/v1/metering/usage/{ev.id}", **self._auth())
+        self.assertEqual(resp.status_code, 404)
+
+
 class MeteringRunEndpointTest(TestCase):
     def setUp(self):
         self.http_client = Client()

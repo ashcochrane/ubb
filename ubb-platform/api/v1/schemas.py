@@ -112,6 +112,31 @@ class UsageEventOut(Schema):
     effective_at: str
 
 
+class UsageEventDetailOut(Schema):
+    # Full pricing receipt for one event — the audit lookup. pricing_provenance
+    # is the recorded "why this amount" (engine version, price source, per-metric
+    # card id, tier-by-tier breakdown) omitted from the lean list view.
+    id: UUID
+    request_id: str
+    idempotency_key: str
+    event_type: str = ""
+    provider: str = ""
+    product_id: str = ""
+    service_id: str = ""
+    agent_id: str = ""
+    units: Optional[int] = None
+    currency: str = "usd"
+    provider_cost_micros: int
+    billed_cost_micros: int
+    usage_metrics: dict = {}
+    pricing_provenance: dict = {}
+    tags: Optional[dict] = None
+    metadata: dict = {}
+    run_id: Optional[str] = None
+    effective_at: str
+    created_at: str
+
+
 class ConfigureAutoTopUpRequest(Schema):
     is_enabled: bool
     trigger_threshold_micros: int = Field(ge=0)
