@@ -1,3 +1,6 @@
+import threading
+import time
+
 import redis
 import pytest
 from django.conf import settings
@@ -6,6 +9,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.services import card_cache as card_cache_module
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.card_cache import CardCache, TierMirror
 from apps.metering.pricing.services.pricing_service import PricingService
@@ -42,8 +46,10 @@ def price_card_fixture(tenant):
 
 @pytest.fixture(autouse=True)
 def _clean_ubb_redis_keys():
-    """Clean up ubb:cardver:* / ubb:tiermirror:* keys this file's tests create."""
+    """Clean up ubb:cardver:* / ubb:tiermirror:* keys this file's tests create,
+    and the in-process L1 dict, so tests stay independent."""
     yield
+    card_cache_module._l1.clear()
     r = redis.from_url(settings.REDIS_URL)
     for pattern in ("ubb:cardver:*", "ubb:tiermirror:*"):
         for key in r.scan_iter(match=pattern):
@@ -104,6 +110,57 @@ def test_dimensioned_card_bypasses_l1_for_different_tag_sets(tenant, customer):
                                    "tokens", {"model": "gpt-3.5"}, "usd")
     assert got_gpt4 is not None and got_gpt4.id == rate_gpt4.id
     assert got_gpt35 is not None and got_gpt35.id == rate_gpt35.id
+
+
+def test_stale_begin_request_in_other_context_does_not_clobber(tenant, customer, price_card_fixture):
+    """Concurrency guard: this context observed the post-publish version; a
+    stale reader storing its pre-publish observation in ANOTHER context (its
+    own thread) must not clobber it — the fresh context must still re-read.
+    With a shared module-level dict this test fails (stale write wins and the
+    stale L1 entry is served with zero queries)."""
+    CardCache.begin_request(tenant.id)
+    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+
+    CardCache.invalidate(tenant.id)
+    CardCache.begin_request(tenant.id)  # fresh: observes the bumped version
+
+    # Stale reader: its Redis GET happened BEFORE the publish (simulated by a
+    # stub client returning None) and its store lands now, AFTER the fresh
+    # observation above, in its own thread and therefore its own context.
+    class _PrePublishClient:
+        def get(self, key):
+            return None  # version key did not exist pre-publish
+
+    original_client = card_cache_module._client
+    card_cache_module._client = lambda: _PrePublishClient()
+    try:
+        t = threading.Thread(target=CardCache.begin_request, args=(tenant.id,))
+        t.start()
+        t.join()
+    finally:
+        card_cache_module._client = original_client
+
+    # The L1 entry was cached at the pre-publish version; the fresh context's
+    # observation survived the stale store, so resolve re-reads the DB.
+    with CaptureQueriesContext(connection) as ctx:
+        got = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
+                                "tokens", {}, "usd")
+    assert got is not None
+    assert len(ctx.captured_queries) > 0
+
+
+def test_l1_cap_clears_instead_of_growing_unbounded(tenant, customer, price_card_fixture):
+    """An insert at the cap clears the L1 (crude bound) rather than growing it."""
+    CardCache.begin_request(tenant.id)
+    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+    # Pad to the cap with synthetic entries.
+    while len(card_cache_module._l1) < card_cache_module._L1_MAX:
+        card_cache_module._l1[("pad", len(card_cache_module._l1))] = (
+            0, time.monotonic() + 30, None)
+    # A resolve miss (different metric) inserts one entry -> triggers the clear.
+    CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
+                      "other_metric", {}, "usd")
+    assert len(card_cache_module._l1) == 1
 
 
 def test_tier_mirror_roundtrip(tenant, customer):

@@ -192,21 +192,34 @@ def test_tier_mirror_roundtrip(tenant, customer):
 
 L1 caches the CANDIDATE Rate rows per resolution key for TTL_SECONDS;
 dimension matching runs per call (tags vary per event). Version key
-ubb:cardver:{tenant} is checked once per request (begin_request), so a
-publish-time invalidation propagates within one request boundary + TTL.
+ubb:cardver:{tenant} is read at most once per request: begin_request stores
+the observed version in a contextvars.ContextVar — request/context-scoped, so
+a stale concurrent request can never clobber the version a fresher request
+observed — and resolve compares cached entries against it. A publish-time
+invalidation therefore propagates within one request boundary + TTL.
 """
+import contextvars
 import time
+
 from django.conf import settings
 
 TTL_SECONDS = 30
 MIRROR_TTL_SECONDS = 62 * 24 * 3600  # month + buffer; do NOT import billing internals here
-_l1 = {}          # key -> (version, expires_monotonic, [Rate])
-_req_version = {} # tenant_id -> version observed by begin_request
+_L1_MAX = 4096    # crude bound: clear-on-full (not an LRU) caps worker memory
+_l1 = {}          # key -> (version, expires_monotonic, Rate | None)
+# Request-scoped {tenant_id: version} observed by begin_request. Copy-on-write:
+# set() replaces the whole dict so no context ever mutates another's view.
+_ctx_versions = contextvars.ContextVar("card_cache_versions")
+
+_redis = None  # lazy singleton; bound to settings.REDIS_URL at first use
 
 
 def _client():
-    import redis
-    return redis.from_url(settings.REDIS_URL)
+    global _redis
+    if _redis is None:
+        import redis
+        _redis = redis.from_url(settings.REDIS_URL)
+    return _redis
 
 
 def _ver_key(tenant_id):
@@ -218,9 +231,10 @@ class CardCache:
     def begin_request(tenant_id):
         try:
             v = _client().get(_ver_key(tenant_id))
-            _req_version[str(tenant_id)] = int(v) if v else 0
+            ver = int(v) if v else 0
         except Exception:
-            _req_version[str(tenant_id)] = 0  # fail-open: TTL still bounds staleness
+            ver = 0  # fail-open: TTL still bounds staleness
+        _ctx_versions.set({**_ctx_versions.get({}), str(tenant_id): ver})
 
     @staticmethod
     def invalidate(tenant_id):
@@ -231,6 +245,9 @@ class CardCache:
 
     @staticmethod
     def resolve(tenant, customer, card_type, provider, event_type, metric, tags, currency):
+        """Resolve with PricingService._resolve_card semantics, via the L1
+        cache when tags are empty. Returned Rate instances are shared cache
+        objects — callers must NOT mutate them."""
         from django.utils import timezone
         from apps.metering.pricing.services.pricing_service import PricingService
         if tags:
@@ -240,7 +257,7 @@ class CardCache:
             return PricingService._resolve_card(
                 tenant, customer, card_type, provider, event_type, metric,
                 tags, currency, timezone.now())
-        ver = _req_version.get(str(tenant.id), 0)
+        ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "",
                card_type, provider or "", event_type or "", metric, currency)
         hit = _l1.get(key)
@@ -249,6 +266,8 @@ class CardCache:
         rate = PricingService._resolve_card(
             tenant, customer, card_type, provider, event_type, metric,
             tags, currency, timezone.now())
+        if len(_l1) >= _L1_MAX:
+            _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, rate)
         return rate
 
