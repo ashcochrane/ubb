@@ -223,6 +223,12 @@ def test_assigned_book_wins_then_falls_back_to_default(db):
     def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
                                   metric_name="output_tokens", currency="usd",
                                   rate_per_unit_micros=30, rate_card=default)
+    # Conflicting default-book rate for the SAME metric as ent_in — proves the
+    # assigned book shadows the default book rather than resolving by
+    # elimination (only possible because Rate uniqueness is now per-book).
+    def_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                                 metric_name="input_tokens", currency="usd",
+                                 rate_per_unit_micros=99, rate_card=default)
     now = timezone.now()
     assert PricingService._resolve_card(t, c, "price", "gemini", "", "input_tokens", {}, "usd", now).id == ent_in.id
     assert PricingService._resolve_card(t, c, "price", "gemini", "", "output_tokens", {}, "usd", now).id == def_out.id

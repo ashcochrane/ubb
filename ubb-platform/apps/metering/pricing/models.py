@@ -155,15 +155,10 @@ class Rate(BaseModel):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "card_type", "provider", "event_type", "metric_name",
+                fields=["rate_card", "provider", "event_type", "metric_name",
                         "dimensions_hash", "currency"],
-                condition=models.Q(valid_to__isnull=True, customer__isnull=True),
-                name="uq_ratecard_active_tenant"),
-            models.UniqueConstraint(
-                fields=["tenant", "customer", "card_type", "provider", "event_type", "metric_name",
-                        "dimensions_hash", "currency"],
-                condition=models.Q(valid_to__isnull=True, customer__isnull=False),
-                name="uq_ratecard_active_customer"),
+                condition=models.Q(valid_to__isnull=True),
+                name="uq_rate_active_in_book"),
         ]
 
     def save(self, *args, **kwargs):
