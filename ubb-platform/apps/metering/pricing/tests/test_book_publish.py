@@ -52,6 +52,11 @@ def test_publish_is_all_or_nothing_on_error():
     book.refresh_from_db()
     assert book.version == 1  # rolled back
     assert Rate.objects.filter(rate_card=book, valid_to__isnull=True).count() == 2
+    ri.refresh_from_db(); ro.refresh_from_db()
+    assert ri.valid_to is None and ro.valid_to is None  # originals still active, not superseded
+    active_ids = set(Rate.objects.filter(rate_card=book, valid_to__isnull=True)
+                     .values_list("id", flat=True))
+    assert active_ids == {ri.id, ro.id}  # exactly the originals; no new row leaked in
 
 
 def test_publish_preserves_lineage_for_tiered_marginal_continuity():

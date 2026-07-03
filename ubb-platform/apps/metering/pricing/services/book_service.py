@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Q, F
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard
@@ -20,6 +20,10 @@ class BookService:
         event_type, dimensions). Supersedes it (valid_to=T, book_version_to=old
         version) and inserts a new active rate (same lineage_id, valid_from>=T,
         book_version_from=new version). Bumps book.version once. All-or-nothing.
+
+        `as_of` is expected to be ~now (used for the supersede timestamp);
+        future-dated scheduling is not supported because the new rate's
+        valid_from is auto-stamped at insert.
         """
         as_of = as_of or timezone.now()
         with transaction.atomic():
