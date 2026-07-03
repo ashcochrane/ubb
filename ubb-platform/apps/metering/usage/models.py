@@ -137,7 +137,11 @@ class RawIngestEvent(BaseModel):
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE)
     billing_owner_id = models.UUIDField(db_index=True)
     run_id = models.UUIDField(null=True, blank=True)
-    idempotency_key = models.CharField(max_length=255)
+    # 500, matching IngestEventIn/RecordUsageRequest's schema max_length and
+    # UsageEvent.idempotency_key: a 256-500 char caller key must not DataError
+    # the whole batch's bulk_create (which the endpoint's failure path retries
+    # forever, since the same over-long key would poison every retry too).
+    idempotency_key = models.CharField(max_length=500)
     payload = models.JSONField(default=dict)
     estimate_micros = models.BigIntegerField(default=0)
     estimate_exact = models.BooleanField(default=False)

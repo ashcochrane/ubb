@@ -166,6 +166,47 @@ class UnpriceableSyncFallbackTest(IngestEndpointTestBase):
         self.assertEqual(RawIngestEvent.objects.count(), 0)
 
 
+class SyncFallbackRejectionIdemUnwindTest(IngestEndpointTestBase):
+    """Final-review fix batch #4: an Unpriceable item's idem key is SET by
+    the accept-time prefilter; if the inline sync fallback then REJECTS it
+    (e.g. a strict-coverage PricingError), the key must not stay burned — or
+    a retry misreads as an idem-hit (accepted, held=False, no hold ever
+    taken) and settle would re-raise the same poison payload into a false
+    "failed" incident."""
+
+    def test_sync_fallback_rejection_unwinds_idem_key_for_genuine_retry(self):
+        self.tenant.require_cost_card_coverage = True
+        self.tenant.save(update_fields=["require_cost_card_coverage"])
+        event = self._event(billed_cost_micros=None, usage_metrics={"tokens": 100})
+
+        resp = self._post([event])
+        self.assertEqual(resp.status_code, 200)
+        r = resp.json()["results"][0]
+        self.assertTrue(r["rejected"])
+        self.assertEqual(r["mode"], "sync_fallback")
+        self.assertEqual(r["reason"], "pricing_error")
+        self.assertEqual(UsageEvent.objects.count(), 0)
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
+
+        from api.v1.metering_endpoints import _idem_key
+        key = _idem_key(self.tenant.id, self.customer.id, event["idempotency_key"])
+        import redis
+        from django.conf import settings
+        client = redis.from_url(settings.REDIS_URL)
+        self.assertFalse(client.exists(key))  # unburned
+
+        retry = self._post([event])  # identical batch, identical idem key
+        self.assertEqual(retry.status_code, 200)
+        r2 = retry.json()["results"][0]
+        # A genuine first attempt -- same rejection again, NOT a replay.
+        self.assertTrue(r2["rejected"])
+        self.assertEqual(r2["mode"], "sync_fallback")
+        self.assertEqual(r2["reason"], "pricing_error")
+        self.assertFalse(r2["duplicate_suspect"])
+        self.assertEqual(UsageEvent.objects.count(), 0)
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
+
+
 class MissingProductFlagTest(IngestEndpointTestBase):
     def test_tenant_without_metering_async_gets_403(self):
         plain_tenant = Tenant.objects.create(
@@ -532,3 +573,91 @@ class RunHeldItemTest(IngestEndpointTestBase):
         self.assertEqual(raw.run_id, run.id)
         self.assertEqual(raw.payload["run_id"], str(run.id))
         self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 400_000)
+
+
+class PostpaidPriorMonthGuardTest(TestCase):
+    """Final-review fix batch #2 (I9 parity): a postpaid backfill accepted
+    through the ASYNC ingest path must not inflate the CURRENT month's live
+    spend counter (mirrors record_usage_debit's sync-path guard), but the
+    per-run cost-cap check-then-increment must still apply regardless."""
+
+    def setUp(self):
+        cache.clear()
+        from api.v1 import metering_endpoints
+        metering_endpoints._RUN_META_CACHE.clear()
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="PostpaidAsyncIngest",
+            products=["metering", "billing", "metering_async"],
+            billing_mode="postpaid", enforcement_mode="enforcing",
+            backfill_window_days=60,
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="pcust1")
+
+    def tearDown(self):
+        cache.clear()
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    def _post(self, events):
+        return self.http_client.post(
+            "/api/v1/metering/usage/ingest",
+            data=json.dumps({"events": events}),
+            content_type="application/json",
+            **self._auth(),
+        )
+
+    def _event(self, **overrides):
+        base = {
+            "customer_id": str(self.customer.id),
+            "request_id": f"req-{uuid.uuid4()}",
+            "idempotency_key": f"idem-{uuid.uuid4()}",
+            "billed_cost_micros": 1_000_000,
+        }
+        base.update(overrides)
+        return base
+
+    def test_prior_month_backfill_skips_livespend_but_run_cap_still_enforced(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=0, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        now = timezone.now()
+        prior_month_eff = (now.replace(day=1) - timedelta(days=1)).isoformat()
+
+        # One batch, same run: item 0 (4M) is held but must NOT touch this
+        # month's livespend; item 1 (2M) pushes the run's Redis cost-cap
+        # counter (4M + 2M = 6M > 5M cap) over the top and must still be
+        # rejected -- proving the run-cap check ran even though the balance
+        # move was skipped for both (cooperative, sequential within the same
+        # pipelined batch).
+        resp = self._post([
+            self._event(run_id=str(run.id), billed_cost_micros=4_000_000,
+                        effective_at=prior_month_eff),
+            self._event(run_id=str(run.id), billed_cost_micros=2_000_000,
+                        effective_at=prior_month_eff),
+        ])
+        self.assertEqual(resp.status_code, 200)
+        r0, r1 = resp.json()["results"]
+        self.assertTrue(r0["accepted"])
+        self.assertFalse(r0["rejected"])
+        self.assertTrue(r1["rejected"])
+        self.assertEqual(r1["reason"], "cost_limit_exceeded")
+
+        # The backfilled (accepted) item never touched THIS month's livespend.
+        self.assertIsNone(LiveLedgerService.read_postpaid(self.customer.id))
+        self.assertEqual(RawIngestEvent.objects.count(), 1)  # only the held item
+
+    def test_current_month_item_unaffected_by_the_guard(self):
+        resp = self._post([self._event(billed_cost_micros=2_500_000)])
+        self.assertEqual(resp.status_code, 200)
+        r = resp.json()["results"][0]
+        self.assertTrue(r["accepted"])
+        # No effective_at (== now, current month) -> livespend moves normally.
+        self.assertEqual(LiveLedgerService.read_postpaid(self.customer.id), 2_500_000)

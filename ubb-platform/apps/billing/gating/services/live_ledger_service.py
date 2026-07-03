@@ -253,19 +253,42 @@ class LiveLedgerService:
 
     # ---- customer-wide stop flag (P3) ----
     @staticmethod
-    def _crossed(mode, value, owner_id, tenant) -> bool:
-        """True if the live counter has crossed the owner's threshold:
-        prepaid balance below the wallet floor (-min_balance), or postpaid
-        month-to-date spend at/over the budget cap (cap * hard_stop_pct)."""
+    def _threshold(mode, owner_id, tenant):
+        """Resolve the ONE comparable crossing bound for this (mode, owner):
+        postpaid -> cap_micros * hard_stop_pct // 100 (or None if there is no
+        BudgetConfig / cap <= 0 -> can never cross); prepaid -> -min_balance
+        (the wallet floor). Exactly ONE ORM lookup (BudgetConfig, or
+        CustomerBillingProfile/BillingTenantConfig via get_customer_min_balance).
+
+        Extracted out of ``_crossed`` so a caller processing MANY items for the
+        SAME owner in one call (HoldService.acquire) can resolve this ONCE per
+        call and compare every item's post-hold value against it in plain
+        Python, instead of re-querying per item."""
         if mode == "postpaid":
             from apps.billing.gating.models import BudgetConfig
             cfg = (BudgetConfig.objects.filter(tenant_id=tenant.id, customer_id=owner_id).first()
                    or BudgetConfig.objects.filter(tenant_id=tenant.id, customer__isnull=True).first())
             if not cfg or cfg.cap_micros <= 0:
-                return False
-            return value >= cfg.cap_micros * cfg.hard_stop_pct // 100
+                return None
+            return cfg.cap_micros * cfg.hard_stop_pct // 100
         from apps.billing.queries import get_customer_min_balance
-        return value < -get_customer_min_balance(owner_id, tenant.id)
+        return -get_customer_min_balance(owner_id, tenant.id)
+
+    @staticmethod
+    def _crossed(mode, value, owner_id, tenant) -> bool:
+        """True if the live counter has crossed the owner's threshold:
+        prepaid balance below the wallet floor (-min_balance), or postpaid
+        month-to-date spend at/over the budget cap (cap * hard_stop_pct).
+        Resolves the threshold via ``_threshold`` — ONE ORM query per call.
+        A caller evaluating many items per owner in one batch should instead
+        call ``_threshold`` once and compare each item in Python (see
+        HoldService.acquire)."""
+        threshold = LiveLedgerService._threshold(mode, owner_id, tenant)
+        if threshold is None:
+            return False
+        if mode == "postpaid":
+            return value >= threshold
+        return value < threshold
 
     @staticmethod
     def _set_stop(owner_id, reason, tenant_id=None):

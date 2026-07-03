@@ -417,11 +417,12 @@ class UsageService:
                 locked.save(update_fields=["status", "updated_at"])
             if locked.held:
                 release_ingest_hold(locked.billing_owner_id, tenant, run_id_str,
-                                    locked.estimate_micros)
+                                    locked.estimate_micros, effective_at=effective_at)
             return "duplicate"
         if raw.held:
             settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
-                               raw.estimate_micros - billed_cost_micros)
+                               raw.estimate_micros - billed_cost_micros,
+                               effective_at=effective_at)
         else:
             # idem-hit at accept took NO hold (held=False). If the first
             # append had already settled, THIS attempt hits IntegrityError
@@ -433,6 +434,6 @@ class UsageService:
             # hourly reconcile_prepaid MIN-merge is the corrector; see
             # test_settlement.py's orphan-hold pin.
             settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
-                               -billed_cost_micros)
+                               -billed_cost_micros, effective_at=effective_at)
         _write_tier_mirrors(tenant.id, customer.id, provenance, as_of)
         return "settled"

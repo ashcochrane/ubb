@@ -439,6 +439,34 @@ class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
                          self.wallet.balance_micros)
 
 
+class WideIdempotencyKeyTest(SettlementTestBase):
+    """Final-review fix batch #1: RawIngestEvent.idempotency_key must accept
+    keys up to 500 chars (matching the API schema's max_length=500 and
+    UsageEvent.idempotency_key's own width) — a 256-500 char caller key used
+    to DataError the whole batch's bulk_create, and the endpoint's only
+    failure-recovery path is "the client retries", so that error was
+    permanent, not transient."""
+
+    def test_400_char_idempotency_key_ingests_and_settles_cleanly(self):
+        long_key = "k" * 400
+        event = self._event(billed_cost_micros=250_000, idempotency_key=long_key)
+
+        resp = self._post([event])
+        self.assertEqual(resp.status_code, 200)
+        r = resp.json()["results"][0]
+        self.assertTrue(r["accepted"])
+
+        raw = RawIngestEvent.objects.get()
+        self.assertEqual(raw.idempotency_key, long_key)
+        self.assertTrue(raw.held)
+
+        result = UsageService.settle_raw(raw)
+        self.assertEqual(result, "settled")
+        event_row = UsageEvent.objects.get()
+        self.assertEqual(event_row.idempotency_key, long_key)
+        self.assertEqual(event_row.billed_cost_micros, 250_000)
+
+
 class SettleRawEventsTaskTest(SettlementTestBase):
     """Direct coverage of the task's own claim/loop/re-enqueue control flow,
     beyond what the settle_raw-focused tests above exercise."""

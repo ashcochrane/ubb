@@ -64,9 +64,17 @@ class EstimationService:
                     remaining = [t for t in card.tiers
                                  if t["up_to"] is None or t["up_to"] > prior]
                     if remaining:
+                        # Ceiling division (not half-up): pricing ALL units at
+                        # a single tier's rate must dominate the real marginal
+                        # even when the true split rounds EACH band up
+                        # separately (half-up on the single-rate estimate can
+                        # itself round DOWN by just under one unit_quantity's
+                        # worth, which — stacked against two bands each
+                        # rounding up — could under-hold by a few micros).
+                        # ceil() never rounds down, closing that gap.
                         worst_rate = max(
                             (units_val * t["rate_per_unit_micros"]
-                             + t.get("unit_quantity", 1_000_000) // 2)
+                             + t.get("unit_quantity", 1_000_000) - 1)
                             // t.get("unit_quantity", 1_000_000)
                             for t in remaining)
                         est = max(est, worst_rate + sum(

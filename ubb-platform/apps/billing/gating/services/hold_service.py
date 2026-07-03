@@ -21,11 +21,18 @@ N-item batch is still N atomic server-side ops:
   2. prepaid: seed-if-absent (from the durable wallet balance) then DECRBY
      the estimate — mirrors ``_SEED_AND_DECR``.
      postpaid: INCRBY the estimate onto the live spend counter — mirrors
-     ``_SPEND_INCR``.
-  3. Back in Python: ``LiveLedgerService._crossed`` threshold-crossing
-     detection sets the cooperative stop flag. This NEVER rejects or rolls
-     back the hold that crossed it (I3 — cooperative, not transactional);
-     the item is still held.
+     ``_SPEND_INCR``. EXCEPT when the item's ``effective_at`` is backdated to
+     a PRIOR calendar month (I9 parity with ``record_usage_debit``): the
+     spend move is skipped for that one item so a legitimate backfill cannot
+     uncorrectably inflate the CURRENT month's live spend (the MAX-merge
+     reconcile only ever raises). The run-cap check-then-increment above
+     still applies regardless.
+  3. Back in Python: the owner's crossing threshold is resolved ONCE per
+     ``acquire()`` call (``LiveLedgerService._threshold`` — not per item, to
+     avoid an ORM query per item) and every held item's post-hold value is
+     compared against it in Python. A crossing sets the cooperative stop
+     flag. This NEVER rejects or rolls back the hold that crossed it (I3 —
+     cooperative, not transactional); the item is still held.
 
 ``settle``/``release`` credit back (or further debit) through
 ``LiveLedgerService.credit`` — the same MIN-merge-safe site every other
@@ -45,6 +52,7 @@ from apps.billing.gating.services.live_ledger_service import (
     _livebal_key,
     _livespend_key,
     _month_label_bounds,
+    _same_month,
     _client,
 )
 
@@ -76,6 +84,16 @@ _NO_RUN_SENTINEL = "ubb:runcost:_none"
 # ARGV[5] = run_seed_micros (seed for a brand-new runcost key).
 # ARGV[6] = '1' => postpaid (INCRBY the spend counter, mirrors _SPEND_INCR);
 #           '0' => prepaid (seed-if-absent then DECRBY, mirrors _SEED_AND_DECR).
+# ARGV[7] = '1' => skip the balance/spend move entirely (I9 parity: a
+#           postpaid item backdated to a PRIOR month must not inflate THIS
+#           month's live spend counter — mirrors record_usage_debit's
+#           _same_month guard). The run-cap check-then-increment above still
+#           runs unconditionally; only the KEYS[1] move is skipped. Prepaid
+#           callers always pass '0' here (livebal is not month-scoped — a
+#           backfill still legitimately reduces spendable balance).
+#           When skipped, returns the CURRENT (untouched) KEYS[1] value (0 if
+#           absent) so the caller's crossing check still sees whatever a
+#           SIBLING item in the same batch already moved it to.
 # Returns {held(0/1), rejected(0/1), post_value}. A rejection returns
 # {0, 1, 0} and is guaranteed to have touched NOTHING on KEYS[1].
 _ACQUIRE = """
@@ -90,6 +108,10 @@ if cap >= 0 then
         return {0, 1, 0}
     end
     redis.call('SET', KEYS[2], newrun, 'EX', ARGV[3])
+end
+if tonumber(ARGV[7]) == 1 then
+    local cur = redis.call('GET', KEYS[1])
+    return {1, 0, cur and tonumber(cur) or 0}
 end
 local v
 if tonumber(ARGV[6]) == 1 then
@@ -143,7 +165,18 @@ class HoldService:
         """Atomically check-and-reserve an estimated cost for each item.
 
         items: [{"estimate_micros": int, "run_id": str|None,
-                 "run_cap_micros": int|None, "run_seed_micros": int}]
+                 "run_cap_micros": int|None, "run_seed_micros": int,
+                 "effective_at": datetime|None}]
+
+        effective_at (I9 parity with record_usage_debit): for a POSTPAID
+        tenant, an item backdated to a PRIOR calendar month does not move the
+        livespend counter (a legitimate backfill must not inflate THIS
+        month's spend uncorrectably — the reconcile MAX-merge only ever
+        RAISES, so an inflated value could never self-correct). The run-cap
+        check-then-increment still runs for these items — only the
+        balance/spend move is skipped. PREPAID is untouched: livebal is not
+        month-scoped, so a backfill still legitimately reduces the spendable
+        balance.
 
         Returns one verdict dict per item, in the SAME order as `items`:
         {"held": bool, "rejected": bool, "reason": str|None, "stop": bool,
@@ -164,9 +197,10 @@ class HoldService:
         from apps.billing.queries import get_customer_balance
 
         postpaid = tenant.billing_mode == "postpaid"
+        now = timezone.now()
         try:
             if postpaid:
-                label, _, _ = _month_label_bounds(timezone.now())
+                label, _, _ = _month_label_bounds(now)
                 bal_key = _livespend_key(owner_id, label)
                 seed = 0
             else:
@@ -179,6 +213,7 @@ class HoldService:
                 run_id = it.get("run_id")
                 cap = it.get("run_cap_micros")
                 has_cap = bool(run_id) and cap is not None
+                skip_balance = postpaid and not _same_month(it.get("effective_at"), now)
                 pipe.eval(
                     _ACQUIRE, 2,
                     bal_key, _runcost_key(run_id) if run_id else _NO_RUN_SENTINEL,
@@ -186,10 +221,15 @@ class HoldService:
                     int(cap) if has_cap else -1,
                     int(it.get("run_seed_micros") or 0),
                     1 if postpaid else 0,
+                    1 if skip_balance else 0,
                 )
             raw_results = pipe.execute()
 
+            # Threshold-crossing bound resolved ONCE per owner for this whole
+            # batch (not per item — that would be an ORM query per item; see
+            # LiveLedgerService._threshold) and compared in plain Python below.
             mode = "postpaid" if postpaid else "prepaid"
+            threshold = LiveLedgerService._threshold(mode, owner_id, tenant)
             out = []
             crossed = False
             for held, rejected, post in raw_results:
@@ -197,8 +237,10 @@ class HoldService:
                     out.append(_reject_hold())
                     continue
                 value = int(post)
-                if LiveLedgerService._crossed(mode, value, owner_id, tenant):
-                    crossed = True
+                if threshold is not None:
+                    over = value >= threshold if mode == "postpaid" else value < threshold
+                    if over:
+                        crossed = True
                 out.append(_noop_hold())
 
             if crossed:
@@ -215,7 +257,7 @@ class HoldService:
             return [_noop_hold() for _ in items]  # fail-open
 
     @staticmethod
-    def settle(owner_id, tenant, run_id, delta_micros):
+    def settle(owner_id, tenant, run_id, delta_micros, *, effective_at=None):
         """delta = estimate − exact. Positive => credit back the over-hold
         (the actual cost came in lower than the estimate); negative =>
         debit further (an underestimate).
@@ -235,9 +277,22 @@ class HoldService:
         self-correct, and budget caps would fire increasingly early for the
         rest of the month.
 
-        Month-rollover window (postpaid): a hold acquired in month M that
-        settles in month M+1 adjusts M+1's livespend key (acquire inflated
-        M's). The exposure is only the few seconds of ingest latency
+        Prior-month settle guard (I9 parity): `effective_at` is the settled
+        event's effective instant (optional; None == "treat as current
+        month", so every pre-existing caller that omits it is unaffected). For
+        POSTPAID, when `effective_at` falls in a PRIOR calendar month relative
+        to settle wall-clock time, the livespend adjustment is skipped
+        entirely — HoldService.acquire already skipped this event's hold-time
+        move for the same reason (see its `skip_balance` guard), so applying
+        a delta here would adjust a counter this event never touched. The
+        per-run cost counter adjustment below is NOT month-scoped and always
+        applies regardless. PREPAID is untouched (livebal is not
+        month-scoped — a backfill still legitimately reduces spendable
+        balance).
+
+        Month-rollover window (postpaid, same-month case): a hold acquired in
+        month M that settles in month M+1 adjusts M+1's livespend key (acquire
+        inflated M's). The exposure is only the few seconds of ingest latency
         straddling the rollover instant, and the MAX-merge reconcile toward
         each month's durable billed total re-corrects both months' counters
         within one reconcile cycle.
@@ -251,16 +306,18 @@ class HoldService:
             if tenant.billing_mode == "postpaid":
                 if enforcement_on(tenant):
                     from django.utils import timezone
-                    try:
-                        label, _, _ = _month_label_bounds(timezone.now())
-                        key = _livespend_key(owner_id, label)
-                        pipe = _client().pipeline()
-                        pipe.incrby(key, -delta_micros)
-                        pipe.expire(key, LEDGER_TTL_SECONDS)
-                        pipe.execute()
-                    except Exception:
-                        logger.warning("hold_service.settle_failed",
-                                       extra={"data": {"owner_id": str(owner_id)}})
+                    now = timezone.now()
+                    if _same_month(effective_at, now):
+                        try:
+                            label, _, _ = _month_label_bounds(now)
+                            key = _livespend_key(owner_id, label)
+                            pipe = _client().pipeline()
+                            pipe.incrby(key, -delta_micros)
+                            pipe.expire(key, LEDGER_TTL_SECONDS)
+                            pipe.execute()
+                        except Exception:
+                            logger.warning("hold_service.settle_failed",
+                                           extra={"data": {"owner_id": str(owner_id)}})
             else:
                 LiveLedgerService.credit(owner_id, tenant, delta_micros)
         if run_id and delta_micros and enforcement_on(tenant):
@@ -272,8 +329,9 @@ class HoldService:
                                extra={"data": {"run_id": str(run_id)}})
 
     @staticmethod
-    def release(owner_id, tenant, run_id, estimate_micros):
+    def release(owner_id, tenant, run_id, estimate_micros, *, effective_at=None):
         """Full credit-back of a hold — duplicate ingest, failed append, or
         any path that must UNDO an acquire() entirely. Equivalent to
-        settle(delta_micros=estimate_micros)."""
-        HoldService.settle(owner_id, tenant, run_id, estimate_micros)
+        settle(delta_micros=estimate_micros). `effective_at` forwards to
+        settle()'s prior-month guard — see its docstring."""
+        HoldService.settle(owner_id, tenant, run_id, estimate_micros, effective_at=effective_at)

@@ -94,7 +94,12 @@ def acquire_ingest_holds(owner_id, tenant, items):
     (Task 4) — the cross-product PORT for the metering ingest choke point.
 
     items: [{"estimate_micros": int, "run_id": str|None,
-             "run_cap_micros": int|None, "run_seed_micros": int}]
+             "run_cap_micros": int|None, "run_seed_micros": int,
+             "effective_at": datetime|None}]
+
+    effective_at (optional, default None == current month) gates the I9
+    postpaid prior-month guard in HoldService.acquire: a backdated item's
+    livespend move is skipped while its run-cap check still applies.
 
     Returns one verdict dict per item, same order as `items`:
     {"held": bool, "rejected": bool, "reason": str|None, "stop": bool,
@@ -107,23 +112,31 @@ def acquire_ingest_holds(owner_id, tenant, items):
     return HoldService.acquire(owner_id, tenant, items)
 
 
-def settle_ingest_hold(owner_id, tenant, run_id, delta_micros):
+def settle_ingest_hold(owner_id, tenant, run_id, delta_micros, *, effective_at=None):
     """Settle a prior estimate hold once the actual billed cost is known
     (Task 6) — cross-product port. delta_micros = estimate − exact: positive
     credits back the over-hold, negative debits further. Routes through
     HoldService.settle -> LiveLedgerService.credit (the same MIN-merge-safe
-    site every other credit hook uses). Never raises."""
+    site every other credit hook uses). Never raises.
+
+    effective_at (optional, default None == current month): forwards to
+    HoldService.settle's prior-month guard — a POSTPAID event backdated to a
+    prior calendar month skips the livespend adjustment (I9 parity; its
+    matching acquire() already skipped the hold-time move). Omitting it
+    preserves every pre-existing caller's behavior exactly."""
     from apps.billing.gating.services.hold_service import HoldService
-    HoldService.settle(owner_id, tenant, run_id, delta_micros)
+    HoldService.settle(owner_id, tenant, run_id, delta_micros, effective_at=effective_at)
 
 
-def release_ingest_hold(owner_id, tenant, run_id, estimate_micros):
+def release_ingest_hold(owner_id, tenant, run_id, estimate_micros, *, effective_at=None):
     """Fully release (credit back) a prior estimate hold — duplicate
     ingest, failed append, or any path that must undo acquire() entirely.
     Cross-product port; equivalent to
-    settle_ingest_hold(delta_micros=estimate_micros). Never raises."""
+    settle_ingest_hold(delta_micros=estimate_micros). Never raises.
+    effective_at forwards to the same prior-month guard as
+    settle_ingest_hold (optional, default None == current month)."""
     from apps.billing.gating.services.hold_service import HoldService
-    HoldService.release(owner_id, tenant, run_id, estimate_micros)
+    HoldService.release(owner_id, tenant, run_id, estimate_micros, effective_at=effective_at)
 
 
 def is_usage_period_closed(owner_id, period_start) -> bool:

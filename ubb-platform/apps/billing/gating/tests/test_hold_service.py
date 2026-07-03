@@ -17,11 +17,13 @@ import pytest
 import redis
 from django.conf import settings
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.hold_service import HoldService
 from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-from apps.billing.wallets.models import Wallet
+from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
@@ -309,6 +311,67 @@ def test_postpaid_budget_crossing_sets_stop(enforced_postpaid_tenant, postpaid_o
     assert out[0]["stop_scope"] == "customer"
 
 
+# ---- Final-review fix batch #2: I9 postpaid prior-month guard parity -----
+
+def _prior_month_instant():
+    from django.utils import timezone
+    from datetime import timedelta
+    now = timezone.now()
+    return now.replace(day=1) - timedelta(days=1)
+
+
+def test_postpaid_prior_month_acquire_skips_livespend_but_keeps_run_cap(
+        enforced_postpaid_tenant, postpaid_owner):
+    """A batch item backdated to a PRIOR calendar month must not move the
+    live spend counter (I9 parity with record_usage_debit) but its run-cap
+    check-then-increment must still be enforced."""
+    prior = _prior_month_instant()
+    item1 = _item(4_000_000, run_id="rp1", cap=5_000_000)
+    item1["effective_at"] = prior
+    out1 = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item1])
+    assert out1[0]["held"] is True
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
+
+    item2 = _item(2_000_000, run_id="rp1", cap=5_000_000)
+    item2["effective_at"] = prior
+    out2 = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item2])
+    assert out2[0]["rejected"] and out2[0]["reason"] == "cost_limit_exceeded"
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
+
+
+def test_postpaid_current_month_acquire_unaffected_by_prior_month_guard(
+        enforced_postpaid_tenant, postpaid_owner):
+    """Regression: an item with no effective_at (or a current-month one)
+    must move the live spend counter exactly as before the I9 fix."""
+    item = _item(4_000_000)
+    item["effective_at"] = None
+    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item])
+    assert out[0]["held"] is True
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 4_000_000
+
+
+def test_postpaid_settle_of_prior_month_event_skips_livespend_adjustment(
+        enforced_postpaid_tenant, postpaid_owner):
+    """settle() must mirror acquire()'s prior-month skip: settling an event
+    whose effective_at falls in a PRIOR month must not adjust the current
+    month's (unrelated) livespend counter."""
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(3_000_000)])
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 3_000_000
+
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
+                       delta_micros=500_000, effective_at=_prior_month_instant())
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 3_000_000  # unchanged
+
+
+def test_postpaid_settle_of_current_month_event_unaffected_by_the_guard(
+        enforced_postpaid_tenant, postpaid_owner):
+    """Regression: a settle with NO effective_at (or a current-month one)
+    still adjusts the live spend counter exactly as before."""
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(3_000_000)])
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None, delta_micros=500_000)
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_500_000
+
+
 def test_enforcement_off_is_noop_fail_open(funded_owner):
     off_tenant = Tenant.objects.create(name="Off", products=["metering", "billing"],
                                        billing_mode="prepaid", enforcement_mode="off")
@@ -328,6 +391,34 @@ def test_fail_open_on_redis_error_holds_every_item(enforced_prepaid_tenant, fund
                               [_item(1_000_000), _item(2_000_000, run_id="r1", cap=1)])
     assert len(out) == 2
     assert all(o["held"] and not o["rejected"] and not o["stop"] for o in out)
+
+
+# ---- Final-review fix batch #3: threshold hoisted out of the per-item loop
+
+def test_acquire_threshold_query_count_does_not_scale_with_batch_size(
+        enforced_prepaid_tenant, funded_owner):
+    """Before the fix, LiveLedgerService._crossed (and its ORM lookup) ran
+    ONCE PER HELD ITEM inside acquire()'s loop -- so a 50-item batch issued
+    ~50x the ORM queries of a 1-item batch. The threshold is now resolved
+    ONCE per acquire() call and compared per item in plain Python, so the
+    query count must be IDENTICAL regardless of N."""
+    CustomerBillingProfile.objects.create(customer=funded_owner, min_balance_micros=-5_000_000)
+
+    with CaptureQueriesContext(connection) as ctx_one:
+        out1 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(10_000)])
+    assert out1[0]["held"]
+    one_item_queries = len(ctx_one.captured_queries)
+
+    with CaptureQueriesContext(connection) as ctx_many:
+        out50 = HoldService.acquire(
+            funded_owner.id, enforced_prepaid_tenant, [_item(10_000) for _ in range(50)])
+    assert all(o["held"] for o in out50)
+    fifty_item_queries = len(ctx_many.captured_queries)
+
+    assert fifty_item_queries == one_item_queries
+    # Sanity bound: a small per-batch constant (seed read + threshold read),
+    # not a query storm.
+    assert fifty_item_queries <= 3
 
 
 def test_batch_pipelines_multiple_items_one_call(enforced_prepaid_tenant, funded_owner):

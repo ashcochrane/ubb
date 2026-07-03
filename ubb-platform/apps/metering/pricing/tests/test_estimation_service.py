@@ -78,6 +78,29 @@ def increasing_graduated_card_fixture(tenant):
     return rate
 
 
+@pytest.fixture
+def fractional_rounding_ladder_card_fixture(tenant):
+    """A tiny INCREASING ladder (rate 1 up to 1 unit, then rate 2;
+    unit_quantity=3) chosen so half-up rounding of the estimate's single-tier
+    "worst rate" term can itself round DOWN while the real per-band marginal
+    (two bands, each separately half-up rounded) rounds UP -- a concrete case
+    where the pre-fix half-up estimate under-held by a whole micro (mirror=0,
+    units=2, true_prior=3: half-up estimate=1 micro < real marginal=2
+    micros). Ceiling division closes this gap."""
+    book = RateCard.objects.create(
+        tenant=tenant, card_type="price", provider_key="openai", currency="usd",
+        key="openai-fractional", is_default=True, version=1)
+    rate = Rate.objects.create(
+        tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
+        metric_name="tokens", currency="usd", pricing_model="graduated",
+        tiers=[
+            {"up_to": 1, "rate_per_unit_micros": 1, "unit_quantity": 3},
+            {"up_to": None, "rate_per_unit_micros": 2, "unit_quantity": 3},
+        ],
+        rate_card=book, book_version_from=1)
+    return rate
+
+
 @pytest.fixture(autouse=True)
 def _clean_ubb_redis_keys():
     """Clean up ubb:cardver:* / ubb:tiermirror:* keys this file's tests
@@ -149,6 +172,26 @@ def test_increasing_ladder_never_under_holds(
         assert e.micros >= card.compute_marginal(true_prior, units), (
             f"under-hold: estimate {e.micros} < exact "
             f"{card.compute_marginal(true_prior, units)} at true prior {true_prior}")
+
+
+def test_fractional_rounding_ladder_never_under_holds(
+        tenant, customer, fractional_rounding_ladder_card_fixture):
+    """Regression pin for the ceiling-division fix (final-review batch #11):
+    the pre-fix half-up "worst rate" division under-held by 1 micro at
+    mirror=0, units=2, true_prior=3 (estimate=1 < exact marginal=2). Verify
+    that exact point plus a spread of nearby true_priors."""
+    now = timezone.now()
+    card = fractional_rounding_ladder_card_fixture
+    TierMirror.write(tenant.id, customer.id, str(card.lineage_id), 0, now)
+    CardCache.begin_request(tenant.id)
+    e = EstimationService.estimate(
+        tenant, customer, event_type="llm_call", provider="openai",
+        usage_metrics={"tokens": 2}, tags={}, currency="usd",
+        caller_billed=None, caller_provider_cost=None, units=None, now=now)
+    for true_prior in range(0, 16):
+        assert e.micros >= card.compute_marginal(true_prior, 2), (
+            f"under-hold: estimate {e.micros} < exact "
+            f"{card.compute_marginal(true_prior, 2)} at true prior {true_prior}")
 
 
 def test_markup_only_event_matches_pricer(tenant, customer):

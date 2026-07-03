@@ -38,7 +38,7 @@ def settle_raw_events(batch_size=200):
     """
     from apps.billing.queries import release_ingest_hold
     from apps.metering.usage.models import RawIngestEvent
-    from apps.metering.usage.services.usage_service import UsageService
+    from apps.metering.usage.services.usage_service import UsageService, _parse_effective_at
 
     with transaction.atomic():
         ids = list(
@@ -85,7 +85,8 @@ def settle_raw_events(batch_size=200):
                 if poisoned.held:
                     release_ingest_hold(poisoned.billing_owner_id, raw.tenant,
                                         str(poisoned.run_id) if poisoned.run_id else None,
-                                        poisoned.estimate_micros)
+                                        poisoned.estimate_micros,
+                                        effective_at=_parse_effective_at(poisoned.payload))
                 logger.error("settle_raw.poisoned", extra={"data": {
                     "raw_id": str(raw_id), "tenant_id": str(raw.tenant_id),
                     "attempts": poisoned.attempts}})

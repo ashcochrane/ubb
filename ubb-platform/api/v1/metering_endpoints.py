@@ -570,6 +570,21 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         except Unpriceable:
             sync_result = _record_batch_item(request, tenant, item, customers, run_exists)
             results[i] = _sync_fallback_verdict(sync_result)
+            if not sync_result.get("ok"):
+                # This item's idem key was already SET by the prefilter above
+                # (it was a pending_idx miss, not a forced_replay/idem-hit),
+                # but the inline sync fallback REJECTED it (e.g. a strict-
+                # coverage PricingError) — no RawIngestEvent/UsageEvent was
+                # ever created for it. Left burned, a retry would misread as
+                # an idem-hit: accepted, held=False append, no hold ever
+                # taken (a money-gate bypass), and settle would then re-raise
+                # the SAME poison payload -> poisons to "failed" -> a false
+                # incident alert. Unwind just this one key so the retry is a
+                # genuine first attempt (mirrors the append-failure unwind
+                # below, scoped per-item instead of whole-batch).
+                _ingest_idem_unwind(
+                    tenant.id,
+                    [_idem_key(tenant.id, item.customer_id, item.idempotency_key)])
             continue
         hold_candidates.append((i, item, customer, owner_id, est))
 
@@ -580,7 +595,12 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     # ---- acquire holds (one pipelined redis round trip per owner) ----
     raw_objs: list = []
-    release_list: list = []  # (owner_id, run_id_str_or_None, estimate_micros) for held rows
+    # (owner_id, run_id_str_or_None, estimate_micros, effective_at) for held
+    # rows -- effective_at threads the I9 prior-month guard through release
+    # (see HoldService.settle) so undoing a hold here mirrors exactly what
+    # acquire() did (a skipped-livespend hold must be released as a skipped-
+    # livespend release, not a full current-month credit-back).
+    release_list: list = []
 
     for i, item, customer, owner_id in append_only:
         raw_objs.append(RawIngestEvent(
@@ -592,7 +612,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     for owner_id, entries in acquire_by_owner.items():
         acquire_payload = [{"estimate_micros": est.micros,
                             "run_id": str(item.run_id) if item.run_id else None,
-                            "run_cap_micros": cap, "run_seed_micros": seed}
+                            "run_cap_micros": cap, "run_seed_micros": seed,
+                            "effective_at": item.effective_at}
                            for (_, item, _, est, cap, seed) in entries]
         verdicts = acquire_ingest_holds(owner_id, tenant, acquire_payload)
         for (i, item, customer, est, cap, seed), v in zip(entries, verdicts):
@@ -609,7 +630,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 run_id=item.run_id, idempotency_key=item.idempotency_key,
                 payload=item.model_dump(mode="json"), estimate_micros=est.micros,
                 estimate_exact=est.exact, held=True))
-            release_list.append((owner_id, str(item.run_id) if item.run_id else None, est.micros))
+            release_list.append((owner_id, str(item.run_id) if item.run_id else None,
+                                 est.micros, item.effective_at))
 
     # ---- durability boundary: the raw append. On failure, undo every hold
     # taken above (never leave money reserved for a batch that never landed)
@@ -623,8 +645,9 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         except Exception:
             logger.exception("ingest.append_failed", extra={"data": {
                 "tenant_id": str(tenant.id), "count": len(raw_objs)}})
-            for owner_id, run_id, estimate_micros in release_list:
-                release_ingest_hold(owner_id, tenant, run_id, estimate_micros)
+            for owner_id, run_id, estimate_micros, effective_at in release_list:
+                release_ingest_hold(owner_id, tenant, run_id, estimate_micros,
+                                    effective_at=effective_at)
             _ingest_idem_unwind(tenant.id, fresh_idem_keys)
             raise HttpError(503, "raw ingest append failed")
         # Kick the settle workers once the raws are durably committed — the
