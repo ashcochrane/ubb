@@ -6,6 +6,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingError
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 
@@ -19,7 +20,7 @@ class TestRecordUsagePricing:
 
     def test_priced_from_cost_card_when_no_caller_cost(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", usage_metrics={"input_tokens": 1000})

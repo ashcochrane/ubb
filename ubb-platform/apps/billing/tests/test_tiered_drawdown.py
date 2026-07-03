@@ -8,6 +8,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.metering.pricing.models import Rate
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.services.usage_service import UsageService
 
 TIERS = [
@@ -24,7 +25,7 @@ def _setup(card_kwargs):
     wallet = Wallet.objects.create(customer=customer)
     wallet.balance_micros = 100_000_000
     wallet.save(update_fields=["balance_micros"])
-    card = Rate.objects.create(tenant=tenant, card_type="price", **card_kwargs)
+    card = rate_in_default_book(tenant, card_type="price", **card_kwargs)
     return tenant, customer, wallet, card
 
 

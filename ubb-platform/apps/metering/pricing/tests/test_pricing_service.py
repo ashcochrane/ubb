@@ -3,6 +3,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate, TenantMarkup
 from apps.metering.pricing.services.pricing_service import PricingService, PricingError
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 
 
 @pytest.mark.django_db
@@ -21,7 +22,7 @@ class TestPricing:
 
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", dimensions={"model": "gpt-4"},
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
@@ -32,9 +33,9 @@ class TestPricing:
 
     def test_price_card_charges_on_different_metric(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        Rate.objects.create(tenant=t, card_type="cost", provider="openai", event_type="chat",
+        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        Rate.objects.create(tenant=t, card_type="price", provider="openai", event_type="chat",
+        rate_in_default_book(t, card_type="price", provider="openai", event_type="chat",
             metric_name="seats", pricing_model="flat", fixed_micros=9_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, event_type="chat", provider="openai",
@@ -44,9 +45,9 @@ class TestPricing:
 
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", dimensions={}, rate_per_unit_micros=1_000, unit_quantity=1_000_000)
-        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", dimensions={"model": "gpt-4"}, rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         prov, _, _ = PricingService.price(tenant=t, customer=c, event_type="e", provider="o",
             usage_metrics={"tok": 1_000_000}, tags={"model": "gpt-4"}, currency="usd",
@@ -100,7 +101,7 @@ class TestPricing:
         t.require_cost_card_coverage = True
         t.save(update_fields=["require_cost_card_coverage"])
         c = Customer.objects.create(tenant=t, external_id="c4")
-        Rate.objects.create(tenant=t, card_type="cost", provider="o", event_type="e",
+        rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
             metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, event_type="e", provider="o",
@@ -182,3 +183,56 @@ class TestPricing:
                 tenant=t, customer=c, event_type="e", provider="o",
                 usage_metrics={"unmatched": 5}, tags=None, currency="usd",
                 caller_provider_cost=None, caller_billed=None, units=5)
+
+
+def test_unassigned_customer_uses_provider_default_book(db):
+    from apps.metering.pricing.models import Rate, RateCard
+    from apps.metering.pricing.services.pricing_service import PricingService
+    from apps.platform.tenants.models import Tenant
+    from apps.platform.customers.models import Customer
+    from django.utils import timezone
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
+                                   currency="usd", key="gemini", is_default=True)
+    r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                            metric_name="input_tokens", currency="usd",
+                            rate_per_unit_micros=10, rate_card=book)
+    got = PricingService._resolve_card(t, c, "price", "gemini", "",
+                                       "input_tokens", {}, "usd", timezone.now())
+    assert got is not None and got.id == r.id
+
+
+def test_assigned_book_wins_then_falls_back_to_default(db):
+    from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
+    from apps.metering.pricing.services.pricing_service import PricingService
+    from apps.platform.tenants.models import Tenant
+    from apps.platform.customers.models import Customer
+    from django.utils import timezone
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    default = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
+                                      currency="usd", key="gemini", is_default=True)
+    ent = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
+                                  currency="usd", key="ent")
+    RateCardAssignment.objects.create(tenant=t, customer=c, rate_card=ent, currency="usd")
+    # Enterprise overrides input_tokens; output_tokens only exists in default.
+    ent_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                                 metric_name="input_tokens", currency="usd",
+                                 rate_per_unit_micros=5, rate_card=ent)
+    def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                                  metric_name="output_tokens", currency="usd",
+                                  rate_per_unit_micros=30, rate_card=default)
+    now = timezone.now()
+    assert PricingService._resolve_card(t, c, "price", "gemini", "", "input_tokens", {}, "usd", now).id == ent_in.id
+    assert PricingService._resolve_card(t, c, "price", "gemini", "", "output_tokens", {}, "usd", now).id == def_out.id
+
+
+def test_no_default_book_for_provider_returns_none(db):
+    from apps.metering.pricing.services.pricing_service import PricingService
+    from apps.platform.tenants.models import Tenant
+    from apps.platform.customers.models import Customer
+    from django.utils import timezone
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    assert PricingService._resolve_card(t, c, "price", "openai", "", "input_tokens", {}, "usd", timezone.now()) is None

@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, TIERED_PRICING_MODELS
+from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment, TIERED_PRICING_MODELS
 from apps.metering.pricing.services.tier_counter_service import (
     TierCounterService, month_bounds,
 )
@@ -65,19 +65,45 @@ class PricingService:
         return True
 
     @staticmethod
-    def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
-        base = list(Rate.objects.filter(
-            tenant=tenant, card_type=card_type, provider=provider or "", event_type=event_type or "",
+    def _resolve_rate_within(book, provider, event_type, metric_name, tags, currency, as_of):
+        if book is None:
+            return None
+        cands = [c for c in Rate.objects.filter(
+            rate_card=book, provider=provider or "", event_type=event_type or "",
             metric_name=metric_name, currency=currency, valid_from__lte=as_of,
-        ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of)))
-        owners = ([customer.id] if customer is not None else []) + [None]
-        for owner in owners:
-            cands = [c for c in base if c.customer_id == owner
-                     and PricingService._dimensions_match(c.dimensions, tags)]
-            if cands:
-                cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
-                return cands[0]
-        return None
+        ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
+            if PricingService._dimensions_match(c.dimensions, tags)]
+        if not cands:
+            return None
+        cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
+        return cands[0]
+
+    @staticmethod
+    def _assigned_book(tenant, customer, card_type, currency):
+        if customer is None or card_type != "price":
+            return None
+        a = RateCardAssignment.objects.filter(
+            tenant=tenant, customer=customer, currency=currency,
+            rate_card__card_type="price").select_related("rate_card").first()
+        return a.rate_card if a else None
+
+    @staticmethod
+    def _default_book(tenant, card_type, provider, currency):
+        return RateCard.objects.filter(
+            tenant=tenant, card_type=card_type, provider_key=provider or "",
+            currency=currency, is_default=True).first()
+
+    @staticmethod
+    def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
+        book = PricingService._assigned_book(tenant, customer, card_type, currency)
+        if book is not None:
+            rate = PricingService._resolve_rate_within(
+                book, provider, event_type, metric_name, tags, currency, as_of)
+            if rate is not None:
+                return rate
+        default_book = PricingService._default_book(tenant, card_type, provider, currency)
+        return PricingService._resolve_rate_within(
+            default_book, provider, event_type, metric_name, tags, currency, as_of)
 
     @staticmethod
     def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,

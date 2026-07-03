@@ -23,6 +23,7 @@ from django.db import connection
 from django.test import TransactionTestCase
 
 from apps.metering.pricing.models import PricingPeriodCounter, Rate
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
@@ -38,8 +39,8 @@ N = 60  # units per event; two events → total 120
 def _setup():
     tenant = Tenant.objects.create(name="RACE_TIER", products=["metering", "billing"])
     customer = Customer.objects.create(tenant=tenant, external_id="race_c1")
-    card = Rate.objects.create(
-        tenant=tenant, card_type="price", metric_name="tok",
+    card = rate_in_default_book(
+        tenant, card_type="price", metric_name="tok",
         pricing_model="graduated", tiers=TIERS,
     )
     return tenant, customer, card

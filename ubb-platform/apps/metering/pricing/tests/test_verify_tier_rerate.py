@@ -12,6 +12,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing import tasks as pricing_tasks
 from apps.metering.pricing.models import PricingPeriodCounter, Rate
 from apps.metering.pricing.tasks import verify_tier_rerate, _previous_month_start
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 
@@ -24,8 +25,8 @@ TIERS = [
 def _setup_period():
     tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
     customer = Customer.objects.create(tenant=tenant, external_id="c1")
-    card = Rate.objects.create(
-        tenant=tenant, card_type="price", metric_name="tok",
+    card = rate_in_default_book(
+        tenant, card_type="price", metric_name="tok",
         pricing_model="graduated", tiers=TIERS)
     for i, units in enumerate([60, 50, 40]):
         UsageService.record_usage(tenant, customer, f"r{i}", f"k{i}",

@@ -14,6 +14,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.metering.pricing.models import PricingPeriodCounter, Rate
 from apps.metering.pricing.services.pricing_service import PricingError
+from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 
@@ -26,8 +27,8 @@ TIERS = [
 def _setup():
     tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
     customer = Customer.objects.create(tenant=tenant, external_id="c1")
-    card = Rate.objects.create(
-        tenant=tenant, card_type="price", metric_name="tok",
+    card = rate_in_default_book(
+        tenant, card_type="price", metric_name="tok",
         pricing_model="graduated", tiers=TIERS)
     return tenant, customer, card
 
@@ -53,8 +54,8 @@ class TestTieredRecordUsage:
     def test_package_marginal_zero_inside_block(self):
         tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        card = Rate.objects.create(
-            tenant=tenant, card_type="price", metric_name="calls",
+        card = rate_in_default_book(
+            tenant, card_type="price", metric_name="calls",
             pricing_model="package", rate_per_unit_micros=2_000_000,
             unit_quantity=1_000, tiers=[])
         r1 = UsageService.record_usage(tenant, customer, "r1", "k1",
@@ -71,8 +72,8 @@ class TestTieredRecordUsage:
 
     def test_two_tiered_metrics_in_one_event(self):
         tenant, customer, card = _setup()
-        other = Rate.objects.create(
-            tenant=tenant, card_type="price", metric_name="alt",
+        other = rate_in_default_book(
+            tenant, card_type="price", metric_name="alt",
             pricing_model="graduated", tiers=TIERS)
         r = UsageService.record_usage(tenant, customer, "r1", "k1",
                                       usage_metrics={"tok": 60, "alt": 150})
@@ -148,14 +149,14 @@ class TestTieredRecordUsage:
         tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
         seat_override = Customer.objects.create(tenant=tenant, external_id="c-override")
         seat_plain = Customer.objects.create(tenant=tenant, external_id="c-plain")
-        default_card = Rate.objects.create(
-            tenant=tenant, card_type="price", metric_name="tok",
+        default_card = rate_in_default_book(
+            tenant, card_type="price", metric_name="tok",
             pricing_model="graduated", tiers=TIERS)
-        override_card = Rate.objects.create(
-            tenant=tenant, customer=seat_override, card_type="price",
+        override_card = rate_in_default_book(
+            tenant, customer=seat_override, card_type="price",
             metric_name="tok", pricing_model="graduated", tiers=TIERS)
-        dimensional_card = Rate.objects.create(
-            tenant=tenant, card_type="price", metric_name="tok",
+        dimensional_card = rate_in_default_book(
+            tenant, card_type="price", metric_name="tok",
             dimensions={"model": "gpt-4"}, pricing_model="graduated", tiers=TIERS)
 
         UsageService.record_usage(tenant, seat_override, "r1", "k1",
@@ -216,8 +217,8 @@ class TestTieredRecordUsage:
     def test_hand_crafted_tiered_cost_card_raises_pricing_error(self):
         tenant = Tenant.objects.create(name="T", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        Rate.objects.create(  # bypasses endpoint validation on purpose
-            tenant=tenant, card_type="cost", metric_name="tok",
+        rate_in_default_book(  # bypasses endpoint validation on purpose
+            tenant, card_type="cost", metric_name="tok",
             pricing_model="graduated", tiers=TIERS)
         with pytest.raises(PricingError, match="cost cards"):
             UsageService.record_usage(tenant, customer, "r1", "k1",
