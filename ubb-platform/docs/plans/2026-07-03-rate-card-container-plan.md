@@ -343,6 +343,40 @@ def test_customer_scoped_price_rate_gets_book_and_assignment():
     assert r.rate_card.is_default is False
     a = RateCardAssignment.objects.get(tenant=t, customer=c, currency="usd")
     assert a.rate_card_id == r.rate_card_id
+
+
+def test_same_provider_two_currencies_get_separate_books():
+    # Regression: currency must be part of the book grouping key (design §6).
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    usd = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                              metric_name="input_tokens", currency="usd",
+                              rate_per_unit_micros=10)
+    eur = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                              metric_name="input_tokens", currency="eur",
+                              rate_per_unit_micros=9)
+    _backfill()
+    usd.refresh_from_db(); eur.refresh_from_db()
+    assert usd.rate_card_id != eur.rate_card_id
+    assert usd.rate_card.currency == "usd" and eur.rate_card.currency == "eur"
+
+
+def test_multi_provider_customer_shares_one_book_and_assignment():
+    # Regression: a customer's custom rates across providers land in ONE
+    # (customer, currency) book so the single assignment covers them all (§5).
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    g = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                            metric_name="input_tokens", currency="usd",
+                            customer=c, rate_per_unit_micros=5)
+    o = Rate.objects.create(tenant=t, card_type="price", provider="openai",
+                            metric_name="input_tokens", currency="usd",
+                            customer=c, rate_per_unit_micros=6)
+    _backfill()
+    g.refresh_from_db(); o.refresh_from_db()
+    assert g.rate_card_id == o.rate_card_id  # one book spans both providers
+    assert RateCardAssignment.objects.filter(tenant=t, customer=c, currency="usd").count() == 1
+    a = RateCardAssignment.objects.get(tenant=t, customer=c, currency="usd")
+    assert a.rate_card_id == g.rate_card_id
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -368,13 +402,26 @@ versions inherit their lineage sibling's book in a second pass.
 
 
 def _book_for(RateCard, tenant_id, card_type, provider, currency, customer_id):
+    """Resolve-or-create the book a rate belongs to. The natural key
+    (tenant, card_type, key) must encode everything that distinguishes a book,
+    so `key` includes `currency` (design §6: default books are per
+    (tenant, card_type, provider, currency)). Customer books are per
+    (customer, currency) and SPAN providers — matching the one-assignment-
+    per-(customer, currency) model (design §5), so provider is NOT in the
+    customer key and provider_key stays "" (the is_default partial-unique does
+    not apply to non-default books; Task-4 resolution filters rates within the
+    book by Rate.provider, so a provider-spanning customer book resolves fine)."""
     is_default = customer_id is None
-    key = (provider or "default") if is_default else f"cust-{customer_id}-{provider or 'default'}"
+    if is_default:
+        key = f"{provider or 'default'}-{currency}"
+        provider_key, name = provider or "", provider or "default"
+    else:
+        key = f"cust-{customer_id}-{currency}"
+        provider_key, name = "", "custom"
     book, _ = RateCard.objects.get_or_create(
         tenant_id=tenant_id, card_type=card_type, key=key[:64],
-        defaults={"provider_key": provider or "", "currency": currency,
-                  "name": provider or "default", "version": 1,
-                  "is_default": is_default},
+        defaults={"provider_key": provider_key, "currency": currency,
+                  "name": name, "version": 1, "is_default": is_default},
     )
     return book
 
@@ -523,8 +570,18 @@ def test_assigned_book_wins_then_falls_back_to_default(db):
     def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
                                   metric_name="output_tokens", currency="usd",
                                   rate_per_unit_micros=30, rate_card=default)
+    # Discrimination: the SAME metric (input_tokens) also lives in the default
+    # book. The assigned book must shadow it. Both rows are customer=NULL, which
+    # is only legal under the per-book unique constraint (Step 3b) — without it
+    # this pair would collide, which is exactly why that constraint is required.
+    def_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                                 metric_name="input_tokens", currency="usd",
+                                 rate_per_unit_micros=99, rate_card=default)
     now = timezone.now()
+    # Assigned book wins for input_tokens (ent_in=5, not def_in=99) — the old
+    # owner-loop resolver, blind to books, could return def_in; the new one can't.
     assert PricingService._resolve_card(t, c, "price", "gemini", "", "input_tokens", {}, "usd", now).id == ent_in.id
+    # Falls back to the default book for a metric the assigned book lacks.
     assert PricingService._resolve_card(t, c, "price", "gemini", "", "output_tokens", {}, "usd", now).id == def_out.id
 
 
@@ -592,6 +649,24 @@ In `apps/metering/pricing/services/pricing_service.py`, replace the `_resolve_ca
             default_book, provider, event_type, metric_name, tags, currency, as_of)
 ```
 Update the import at the top: `from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment, TIERED_PRICING_MODELS`.
+
+- [ ] **Step 3b: Replace the Rate uniqueness constraints with a per-book constraint**
+
+The book model requires the SAME metric to exist in different books (an enterprise book shadowing the default book for `input_tokens`). The inherited constraints `uq_ratecard_active_tenant` / `uq_ratecard_active_customer` key on `(tenant, [customer,] card_type, provider, event_type, metric_name, dimensions_hash, currency)` — WITHOUT `rate_card` — so two `customer=NULL` rates for the same metric in different books collide, forbidding the core feature. Replace BOTH constraints in `Rate.Meta.constraints` (`apps/metering/pricing/models.py`) with one book-scoped constraint:
+```python
+    constraints = [
+        models.UniqueConstraint(
+            fields=["rate_card", "provider", "event_type", "metric_name",
+                    "dimensions_hash", "currency"],
+            condition=models.Q(valid_to__isnull=True),
+            name="uq_rate_active_in_book"),
+    ]
+```
+`rate_card` already implies `tenant` + `card_type` + `currency`, so this is the correct book-scoped uniqueness (one active rate per metric-tuple per book). Existing post-backfill data satisfies it (the old constraints already forbade dup metrics within what became a single book). Then generate the migration:
+```bash
+cd ubb-platform && DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations pricing --name rate_book_unique_constraint
+```
+It must come after `0012` (RemoveConstraint ×2 + AddConstraint). Confirm `makemigrations --check` is clean afterward. If any existing test asserted the OLD constraint raising an IntegrityError, update it to the new per-book semantics (keep it asserting real DB behavior).
 
 - [ ] **Step 4: Add a shared test helper for book-attached rates**
 
