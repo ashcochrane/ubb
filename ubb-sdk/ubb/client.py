@@ -514,33 +514,34 @@ class UBBClient:
 
     def withdraw(self, customer_id: str, amount_micros: int,
                  idempotency_key: str, description: str = "") -> WithdrawResult:
-        """Withdraw from customer wallet. Requires billing product.
+        """Withdraw from a customer wallet. Requires billing product.
 
-        Note: This delegates to billing.debit with a withdraw reference.
-        The billing client doesn't have a dedicated withdraw endpoint yet,
-        so we use the debit endpoint.
+        Routes to the guarded /withdraw endpoint (floor-checked — rejects an
+        overdraw), NOT the raw debit escape hatch. customer_id is the platform
+        customer UUID.
         """
         billing = self._require_billing()
-        result = billing.debit(customer_id, amount_micros, f"withdraw:{idempotency_key}")
+        result = billing.withdraw(customer_id, amount_micros, idempotency_key,
+                                  description)
         return WithdrawResult(
             transaction_id=result.get("transaction_id", ""),
-            balance_micros=result.get("new_balance_micros", 0),
+            balance_micros=result.get("balance_micros", 0),
         )
 
     def refund_usage(self, customer_id: str, usage_event_id: str,
                      idempotency_key: str, reason: str = "") -> RefundResult:
         """Refund a usage event. Requires billing product.
 
-        Delegates to billing.credit with a refund reference.
+        Routes to the guarded, lot-aware /refund endpoint, which resolves the
+        original charge amount server-side (no client-supplied amount). NOT a
+        raw credit. customer_id is the platform customer UUID.
         """
         billing = self._require_billing()
-        result = billing.credit(
-            customer_id, amount_micros=0,
-            source="refund", reference=f"refund:{usage_event_id}:{idempotency_key}",
-        )
+        result = billing.refund(customer_id, usage_event_id, idempotency_key,
+                                reason)
         return RefundResult(
-            refund_id=result.get("transaction_id", ""),
-            balance_micros=result.get("new_balance_micros", 0),
+            refund_id=result.get("refund_id", ""),
+            balance_micros=result.get("balance_micros", 0),
         )
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,

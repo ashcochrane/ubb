@@ -25,11 +25,13 @@ class BillingClientTest(unittest.TestCase):
         })
         result = self.client.debit(
             customer_id="cust_1", amount_micros=1_500_000, reference="evt_1",
+            idempotency_key="idem_1",
         )
         self.assertEqual(result["transaction_id"], "txn_1")
         self.assertEqual(result["balance_after_micros"], 8_500_000)
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/debit")
+        self.assertEqual(call_args.kwargs["json"]["idempotency_key"], "idem_1")
 
     # ---- credit ----
 
@@ -40,11 +42,42 @@ class BillingClientTest(unittest.TestCase):
         })
         result = self.client.credit(
             customer_id="cust_1", amount_micros=1_500_000,
-            source="top_up", reference="topup_1",
+            source="top_up", reference="topup_1", idempotency_key="idem_2",
         )
         self.assertEqual(result["transaction_id"], "txn_2")
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/credit")
+        self.assertEqual(call_args.kwargs["json"]["idempotency_key"], "idem_2")
+
+    # ---- withdraw (guarded, floor-checked) ----
+
+    @patch("ubb.billing.httpx.Client.post")
+    def test_withdraw_hits_guarded_endpoint(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "transaction_id": "txn_w", "balance_micros": 4_000_000,
+        })
+        result = self.client.withdraw(
+            customer_id="cust_1", amount_micros=1_000_000, idempotency_key="w1",
+        )
+        self.assertEqual(result["transaction_id"], "txn_w")
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/billing/customers/cust_1/withdraw")
+        self.assertEqual(mock_post.call_args.kwargs["json"]["idempotency_key"], "w1")
+
+    # ---- refund (guarded, lot-aware) ----
+
+    @patch("ubb.billing.httpx.Client.post")
+    def test_refund_hits_guarded_endpoint(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "refund_id": "evt_1", "balance_micros": 6_000_000,
+        })
+        result = self.client.refund(
+            customer_id="cust_1", usage_event_id="evt_1", idempotency_key="r1",
+        )
+        self.assertEqual(result["refund_id"], "evt_1")
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/billing/customers/cust_1/refund")
+        self.assertEqual(mock_post.call_args.kwargs["json"]["usage_event_id"], "evt_1")
 
     # ---- get_balance ----
 
@@ -167,7 +200,8 @@ class BillingClientTest(unittest.TestCase):
     def test_auth_error_raises(self, mock_post):
         mock_post.return_value = MagicMock(status_code=401)
         with self.assertRaises(UBBAuthError):
-            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref")
+            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref",
+                              idempotency_key="idem")
 
     @patch("ubb.billing.httpx.Client.get")
     def test_api_error_raises(self, mock_get):
@@ -183,21 +217,24 @@ class BillingClientTest(unittest.TestCase):
             json=lambda: {"detail": "Product 'billing' not enabled for this tenant"},
         )
         with self.assertRaises(UBBAPIError) as ctx:
-            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref")
+            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref",
+                              idempotency_key="idem")
         self.assertEqual(ctx.exception.status_code, 403)
 
     @patch("ubb.billing.httpx.Client.post")
     def test_timeout_raises_connection_error(self, mock_post):
         mock_post.side_effect = httpx.TimeoutException("timed out")
         with self.assertRaises(UBBConnectionError) as ctx:
-            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref")
+            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref",
+                              idempotency_key="idem")
         self.assertIsNotNone(ctx.exception.original)
 
     @patch("ubb.billing.httpx.Client.post")
     def test_connect_error_raises_connection_error(self, mock_post):
         mock_post.side_effect = httpx.ConnectError("connection refused")
         with self.assertRaises(UBBConnectionError) as ctx:
-            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref")
+            self.client.debit(customer_id="c1", amount_micros=1000, reference="ref",
+                              idempotency_key="idem")
         self.assertIn("Could not connect", str(ctx.exception))
 
     # ---- context manager ----

@@ -166,29 +166,33 @@ class UBBClientTest(unittest.TestCase):
         self.assertIsInstance(result, AutoTopUpResult)
         self.assertEqual(result.status, "enabled")
 
-    # --- withdraw (delegates to billing.debit) ---
+    # --- withdraw (delegates to the guarded billing.withdraw) ---
 
     def test_withdraw(self):
-        self.client.billing.debit = MagicMock(
-            return_value={"transaction_id": "txn_1", "new_balance_micros": 5000000}
+        self.client.billing.withdraw = MagicMock(
+            return_value={"transaction_id": "txn_1", "balance_micros": 5000000}
         )
         result = self.client.withdraw(customer_id="c1", amount_micros=10_000,
                                       idempotency_key="w1")
         self.assertIsInstance(result, WithdrawResult)
         self.assertEqual(result.transaction_id, "txn_1")
         self.assertEqual(result.balance_micros, 5000000)
+        # Routes to the guarded endpoint, NOT billing.debit.
+        self.client.billing.withdraw.assert_called_once_with("c1", 10_000, "w1", "")
 
-    # --- refund_usage (delegates to billing.credit) ---
+    # --- refund_usage (delegates to the guarded, lot-aware billing.refund) ---
 
     def test_refund_usage(self):
-        self.client.billing.credit = MagicMock(
-            return_value={"transaction_id": "ref_1", "new_balance_micros": 11000000}
+        self.client.billing.refund = MagicMock(
+            return_value={"refund_id": "evt_1", "balance_micros": 11000000}
         )
         result = self.client.refund_usage(
             customer_id="c1", usage_event_id="evt_1", idempotency_key="rf1", reason="mistake",
         )
         self.assertIsInstance(result, RefundResult)
-        self.assertEqual(result.refund_id, "ref_1")
+        self.assertEqual(result.refund_id, "evt_1")
+        self.assertEqual(result.balance_micros, 11000000)
+        self.client.billing.refund.assert_called_once_with("c1", "evt_1", "rf1", "mistake")
 
     # --- get_transactions (delegates to billing) ---
 

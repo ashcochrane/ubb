@@ -77,24 +77,62 @@ class BillingClient:
 
     # ---- public API ----
 
-    def debit(self, customer_id: str, amount_micros: int, reference: str) -> dict:
-        """Debit a customer's wallet via POST /api/v1/billing/debit."""
+    def debit(self, customer_id: str, amount_micros: int, reference: str,
+              idempotency_key: str) -> dict:
+        """Debit a customer's wallet via POST /api/v1/billing/debit.
+
+        idempotency_key is required (server-enforced) so a retried debit never
+        double-charges. This is the raw, floor-less escape hatch — for a
+        guarded withdrawal use ``withdraw``.
+        """
         r = self._request("post", "/api/v1/billing/debit", json={
             "customer_id": customer_id,
             "amount_micros": amount_micros,
             "reference": reference,
+            "idempotency_key": idempotency_key,
         })
         return r.json()
 
     def credit(self, customer_id: str, amount_micros: int, source: str,
-               reference: str) -> dict:
-        """Credit a customer's wallet via POST /api/v1/billing/credit."""
+               reference: str, idempotency_key: str) -> dict:
+        """Credit a customer's wallet via POST /api/v1/billing/credit.
+
+        idempotency_key is required (server-enforced). Adds plain, non-expiring
+        adjustment money — for refunding a usage charge use ``refund``.
+        """
         r = self._request("post", "/api/v1/billing/credit", json={
             "customer_id": customer_id,
             "amount_micros": amount_micros,
             "source": source,
             "reference": reference,
+            "idempotency_key": idempotency_key,
         })
+        return r.json()
+
+    def withdraw(self, customer_id: str, amount_micros: int,
+                 idempotency_key: str, description: str = "") -> dict:
+        """Withdraw from a wallet via the guarded POST
+        /customers/{customer_id}/withdraw (floor-checked — a debit is not).
+        customer_id is the platform customer UUID."""
+        r = self._request(
+            "post", f"/api/v1/billing/customers/{customer_id}/withdraw", json={
+                "amount_micros": amount_micros,
+                "idempotency_key": idempotency_key,
+                "description": description,
+            })
+        return r.json()
+
+    def refund(self, customer_id: str, usage_event_id: str,
+               idempotency_key: str, reason: str = "") -> dict:
+        """Refund a usage charge via the lot-aware POST
+        /customers/{customer_id}/refund (resolves the original charge amount
+        server-side). customer_id is the platform customer UUID."""
+        r = self._request(
+            "post", f"/api/v1/billing/customers/{customer_id}/refund", json={
+                "usage_event_id": usage_event_id,
+                "reason": reason,
+                "idempotency_key": idempotency_key,
+            })
         return r.json()
 
     def get_balance(self, customer_id: str) -> BalanceResult:
