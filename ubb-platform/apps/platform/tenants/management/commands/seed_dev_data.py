@@ -183,7 +183,7 @@ class Command(BaseCommand):
                 f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"key":"pro-monthly","name":"Pro","access_fee_micros":10000000,'
-                f'"per_seat_micros":5000000,"interval":"month","usage_mode":"invoice_item"}}\' \\\n'
+                f'"per_seat_micros":5000000,"interval":"month"}}\' \\\n'
                 f'  http://localhost:8001/api/v1/platform/plans\n'
             )
             self.stdout.write(

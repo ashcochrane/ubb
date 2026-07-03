@@ -413,7 +413,6 @@ class PlanIn(Schema):
     access_fee_micros: int = Field(default=0, ge=0)
     per_seat_micros: int = Field(default=0, ge=0)
     interval: str = "month"
-    usage_mode: str = "invoice_item"
 
 
 class PlanOut(Schema):
@@ -423,7 +422,6 @@ class PlanOut(Schema):
     access_fee_micros: int
     per_seat_micros: int
     interval: str
-    usage_mode: str
 
 
 class PlanUpdateIn(Schema):

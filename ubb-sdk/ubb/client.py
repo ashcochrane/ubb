@@ -243,8 +243,7 @@ class UBBClient:
     # ---- subscription orchestration (plan / subscribe / seats) ----
 
     def create_plan(self, key: str, name: str, *, access_fee_micros: int = 0,
-                    per_seat_micros: int = 0, interval: str = "month",
-                    usage_mode: str = "invoice_item") -> dict:
+                    per_seat_micros: int = 0, interval: str = "month") -> dict:
         """Define a tenant billing plan via the platform API.
 
         Calls POST /api/v1/platform/plans and returns the created plan as a dict.
@@ -256,7 +255,6 @@ class UBBClient:
             "access_fee_micros": access_fee_micros,
             "per_seat_micros": per_seat_micros,
             "interval": interval,
-            "usage_mode": usage_mode,
         })
         return r.json()
 

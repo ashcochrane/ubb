@@ -88,7 +88,6 @@ class TenantBillingPlan(BaseModel):
     access_fee_micros = models.BigIntegerField(default=0)
     per_seat_micros = models.BigIntegerField(default=0)
     interval = models.CharField(max_length=5, default="month")  # month|year
-    usage_mode = models.CharField(max_length=12, default="invoice_item")  # invoice_item|none
     stripe_access_product_id = models.CharField(max_length=255, blank=True, default="")
     stripe_access_price_id = models.CharField(max_length=255, blank=True, default="")
     stripe_seat_product_id = models.CharField(max_length=255, blank=True, default="")

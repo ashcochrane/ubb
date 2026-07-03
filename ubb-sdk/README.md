@@ -423,7 +423,6 @@ plan = client.create_plan(
     access_fee_micros=10_000_000,   # $10/month platform fee
     per_seat_micros=5_000_000,      # $5/seat/month
     interval="month",               # "month" | "year"
-    usage_mode="invoice_item",      # usage is billed on its own standalone invoice, not appended here
 )
 print(plan["key"])   # "pro-monthly"
 ```
@@ -486,8 +485,8 @@ client.resume_subscription("org-42")   # clears a pause AND any pending at-perio
 Usage recorded via `client.record_usage(...)` is billed on its OWN standalone, auto-finalized
 Stripe invoice at period close (a two-phase create-draft-then-pin flow). A postpaid customer
 receives TWO Stripe invoices per period: the subscription renewal (access fee + seats) and a
-separate usage invoice. `usage_mode` does not change this — usage is never appended to the
-subscription invoice. (Consolidating both onto one bill is deferred, not shipped.)
+separate usage invoice. (Tenants can opt into consolidating usage onto the subscription
+renewal — configured platform-side via the postpaid usage config, not the SDK.)
 
 ### Step 6 — End-customer can view their own bills
 
@@ -515,8 +514,7 @@ client.get_connect_status()
 
 # create_plan  → dict
 client.create_plan(key: str, name: str, *, access_fee_micros: int = 0,
-    per_seat_micros: int = 0, interval: str = "month",
-    usage_mode: str = "invoice_item")
+    per_seat_micros: int = 0, interval: str = "month")
 
 # subscribe_customer  → dict  (keys: subscription_id, amount_micros, quantity)
 client.subscribe_customer(external_id: str, plan_key: str, seats: int = 0)

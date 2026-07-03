@@ -338,7 +338,7 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
         plan = {
             "id": "p1", "key": "pro", "name": "Pro",
             "access_fee_micros": 50_000_000, "per_seat_micros": 8_000_000,
-            "interval": "month", "usage_mode": "invoice_item",
+            "interval": "month",
         }
         mock_resp = MagicMock(status_code=201, json=lambda: plan)
         self.client.metering._request = MagicMock(return_value=mock_resp)
@@ -352,7 +352,6 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
                 "access_fee_micros": 50_000_000,
                 "per_seat_micros": 8_000_000,
                 "interval": "month",
-                "usage_mode": "invoice_item",
             },
         )
         self.assertEqual(result["key"], "pro")

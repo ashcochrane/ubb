@@ -115,7 +115,6 @@ def _plan_out(plan):
         "access_fee_micros": plan.access_fee_micros,
         "per_seat_micros": plan.per_seat_micros,
         "interval": plan.interval,
-        "usage_mode": plan.usage_mode,
     }
 
 
@@ -131,7 +130,6 @@ def create_plan(request, payload: PlanIn):
             access_fee_micros=payload.access_fee_micros,
             per_seat_micros=payload.per_seat_micros,
             interval=payload.interval,
-            usage_mode=payload.usage_mode,
         )
     except IntegrityError:
         return 422, {"error": f"plan with key '{payload.key}' already exists"}
