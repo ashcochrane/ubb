@@ -168,3 +168,28 @@ Existing pricing suite is the regression net (must stay green through the rename
 - Whether any **customer-scoped cost** rates exist today (affects the cost-side branch of the migration; a quick query settles it before we write the migration).
 - Final route names for the rate-management sub-resource (`/rate-cards/{id}/rates` vs `/pricing/rates`).
 - Whether to physically drop the `Rate.customer` column in this phase or leave it dormant until the contracts phase (functionally it leaves the resolution path regardless).
+
+### 10.1 Ops note: prod parity check before applying `0012_backfill_books`
+
+Before applying migration `0012` to staging/prod, run the parity probe to size
+the backfill and confirm the customer-scoped-cost open item above (a nonzero
+"cost customer-scoped" count means the cost-side branch of `_book_backfill`
+needs a second look before rollout):
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py shell -c "
+from apps.metering.pricing.models import Rate
+print('cost customer-scoped:', Rate.objects.filter(card_type='cost', customer__isnull=False).count())
+print('active rates:', Rate.objects.filter(valid_to__isnull=True).count())
+"
+```
+
+After `migrate`, confirm the count of orphaned (`rate_card IS NULL`) active
+rates is zero:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py shell -c "
+from apps.metering.pricing.models import Rate
+print('orphaned active rates:', Rate.objects.filter(valid_to__isnull=True, rate_card__isnull=True).count())
+"
+```
