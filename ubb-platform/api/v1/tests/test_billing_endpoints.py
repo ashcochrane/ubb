@@ -286,6 +286,30 @@ class BillingDebitEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
 
+    # --- attribution (Phase 1): reason_code + actor stored on the ledger ---
+
+    def test_debit_records_reason_code_and_actor(self):
+        from apps.billing.wallets.models import WalletTransaction
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+                             "reference": "adj", "idempotency_key": "attr_k1",
+                             "reason_code": "correction", "actor": "ops@acme.co"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(resp.status_code, 200)
+        txn = WalletTransaction.objects.get(id=resp.json()["transaction_id"])
+        self.assertEqual(txn.reason_code, "correction")
+        self.assertEqual(txn.actor, "ops@acme.co")
+
+    def test_debit_rejects_unknown_reason_code(self):
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+                             "reference": "adj", "idempotency_key": "attr_k2",
+                             "reason_code": "bogus"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(resp.status_code, 422)
+
 
 class BillingCreditEndpointTest(TestCase):
     def setUp(self):
@@ -410,6 +434,20 @@ class BillingCreditEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_credit_records_reason_code_and_actor(self):
+        from apps.billing.wallets.models import WalletTransaction
+        response = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "cust_credit_1", "amount_micros": 1_000_000,
+                             "source": "manual", "reference": "adj",
+                             "idempotency_key": "attr_c1",
+                             "reason_code": "goodwill", "actor": "ops@acme.co"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(response.status_code, 200)
+        txn = WalletTransaction.objects.get(id=response.json()["transaction_id"])
+        self.assertEqual(txn.reason_code, "goodwill")
+        self.assertEqual(txn.actor, "ops@acme.co")
 
 
 class DebitCreditHardeningTest(TestCase):

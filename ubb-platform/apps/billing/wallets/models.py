@@ -49,6 +49,11 @@ class WalletTransaction(BaseModel):
     reference_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     idempotency_key = models.CharField(max_length=500, blank=True, null=True, db_index=True)
     usage_event_id = models.UUIDField(null=True, blank=True, db_index=True)
+    # Phase 1 attribution for manual adjustments (the debit/credit escape hatch):
+    # reason_code categorizes the movement; actor is the caller-supplied operator
+    # or system identity. Blank on automated (usage/top-up/refund/...) txns.
+    reason_code = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    actor = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         db_table = "ubb_wallet_transaction"

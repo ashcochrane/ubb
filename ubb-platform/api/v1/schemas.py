@@ -188,6 +188,9 @@ class RefundRequest(Schema):
     idempotency_key: str = Field(min_length=1, max_length=500)
 
 
+REASON_CODES = ("correction", "goodwill", "chargeback", "write_off", "migration", "other")
+
+
 class DebitRequest(Schema):
     customer_id: str = Field(min_length=1, max_length=255)
     amount_micros: int = Field(gt=0, le=999_999_999_999)
@@ -199,6 +202,17 @@ class DebitRequest(Schema):
     # Debit respects the customer's overdraft floor by default (like drawdown);
     # allow_negative=true forces a correction past it (logged as forced_overdraw).
     allow_negative: bool = False
+    # Attribution (Phase 1): reason_code categorizes the adjustment; actor is
+    # who/what initiated it. Optional today; recommended on every manual move.
+    reason_code: str = Field(default="", max_length=32)
+    actor: str = Field(default="", max_length=255)
+
+    @field_validator("reason_code")
+    @classmethod
+    def reason_code_valid(cls, v):
+        if v and v not in REASON_CODES:
+            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
+        return v
 
 
 class CreditRequest(Schema):
@@ -208,6 +222,16 @@ class CreditRequest(Schema):
     reference: str = Field(min_length=1, max_length=500)
     # Required — see DebitRequest.idempotency_key.
     idempotency_key: str = Field(min_length=1, max_length=500)
+    # Attribution (Phase 1) — see DebitRequest.
+    reason_code: str = Field(default="", max_length=32)
+    actor: str = Field(default="", max_length=255)
+
+    @field_validator("reason_code")
+    @classmethod
+    def reason_code_valid(cls, v):
+        if v and v not in REASON_CODES:
+            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
+        return v
 
 
 class DebitCreditResponse(Schema):

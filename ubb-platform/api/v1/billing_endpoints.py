@@ -111,6 +111,8 @@ def debit(request, payload: DebitRequest):
             description="External debit",
             reference_id=payload.reference,
             idempotency_key=payload.idempotency_key,
+            reason_code=payload.reason_code,
+            actor=payload.actor,
         )
         GrantLedger.allocate(wallet, txn, payload.amount_micros)  # F4.3: usage order
 
@@ -155,6 +157,8 @@ def credit(request, payload: CreditRequest):
             description=f"Credit: {payload.source}",
             reference_id=payload.reference,
             idempotency_key=payload.idempotency_key,
+            reason_code=payload.reason_code,
+            actor=payload.actor,
         )
         # Tier-2 (P2/D20): mirror the manual credit onto the live balance after
         # commit (mandatory — MIN-merge cannot re-raise a missed credit). No-op

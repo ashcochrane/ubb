@@ -78,13 +78,15 @@ class BillingClient:
     # ---- public API ----
 
     def debit(self, customer_id: str, amount_micros: int, reference: str,
-              idempotency_key: str, allow_negative: bool = False) -> dict:
+              idempotency_key: str, allow_negative: bool = False,
+              reason_code: str = "", actor: str = "") -> dict:
         """Debit a customer's wallet via POST /api/v1/billing/debit.
 
         idempotency_key is required (server-enforced) so a retried debit never
         double-charges. By default the debit still respects the customer's
         overdraft floor; pass allow_negative=True to force a correction past it.
-        For a guarded withdrawal use ``withdraw``.
+        reason_code/actor attribute the adjustment for the audit trail. For a
+        guarded withdrawal use ``withdraw``.
         """
         r = self._request("post", "/api/v1/billing/debit", json={
             "customer_id": customer_id,
@@ -92,15 +94,19 @@ class BillingClient:
             "reference": reference,
             "idempotency_key": idempotency_key,
             "allow_negative": allow_negative,
+            "reason_code": reason_code,
+            "actor": actor,
         })
         return r.json()
 
     def credit(self, customer_id: str, amount_micros: int, source: str,
-               reference: str, idempotency_key: str) -> dict:
+               reference: str, idempotency_key: str,
+               reason_code: str = "", actor: str = "") -> dict:
         """Credit a customer's wallet via POST /api/v1/billing/credit.
 
         idempotency_key is required (server-enforced). Adds plain, non-expiring
         adjustment money — for refunding a usage charge use ``refund``.
+        reason_code/actor attribute the adjustment for the audit trail.
         """
         r = self._request("post", "/api/v1/billing/credit", json={
             "customer_id": customer_id,
@@ -108,6 +114,8 @@ class BillingClient:
             "source": source,
             "reference": reference,
             "idempotency_key": idempotency_key,
+            "reason_code": reason_code,
+            "actor": actor,
         })
         return r.json()
 
