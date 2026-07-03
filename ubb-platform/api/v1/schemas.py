@@ -192,7 +192,10 @@ class DebitRequest(Schema):
     customer_id: str = Field(min_length=1, max_length=255)
     amount_micros: int = Field(gt=0, le=999_999_999_999)
     reference: str = Field(min_length=1, max_length=500)
-    idempotency_key: Optional[str] = Field(default=None, max_length=500)
+    # Required: every balance-mutating write must be safely replayable. A NULL
+    # key is excluded from the (wallet, key) partial unique constraint, so an
+    # unkeyed retry would double-debit. Matches withdraw/refund/grant.
+    idempotency_key: str = Field(min_length=1, max_length=500)
 
 
 class CreditRequest(Schema):
@@ -200,7 +203,8 @@ class CreditRequest(Schema):
     amount_micros: int = Field(gt=0, le=999_999_999_999)
     source: str = Field(min_length=1, max_length=255)
     reference: str = Field(min_length=1, max_length=500)
-    idempotency_key: Optional[str] = Field(default=None, max_length=500)
+    # Required — see DebitRequest.idempotency_key.
+    idempotency_key: str = Field(min_length=1, max_length=500)
 
 
 class DebitCreditResponse(Schema):

@@ -68,12 +68,12 @@ def debit(request, payload: DebitRequest):
         wallet, customer = lock_for_billing(customer.id)
         GrantLedger.expire_due(wallet)  # F4.3 lazy expiry: never consume a due lot
 
-        if payload.idempotency_key:
-            existing = WalletTransaction.objects.filter(
-                wallet=wallet, idempotency_key=payload.idempotency_key,
-            ).first()
-            if existing:
-                return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(existing.id)}
+        # idempotency_key is required (schema-enforced) — always replay-safe.
+        existing = WalletTransaction.objects.filter(
+            wallet=wallet, idempotency_key=payload.idempotency_key,
+        ).first()
+        if existing:
+            return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(existing.id)}
 
         wallet.balance_micros -= payload.amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
@@ -85,7 +85,7 @@ def debit(request, payload: DebitRequest):
             balance_after_micros=wallet.balance_micros,
             description="External debit",
             reference_id=payload.reference,
-            idempotency_key=payload.idempotency_key or None,
+            idempotency_key=payload.idempotency_key,
         )
         GrantLedger.allocate(wallet, txn, payload.amount_micros)  # F4.3: usage order
 
@@ -112,12 +112,12 @@ def credit(request, payload: CreditRequest):
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer.id)
 
-        if payload.idempotency_key:
-            existing = WalletTransaction.objects.filter(
-                wallet=wallet, idempotency_key=payload.idempotency_key,
-            ).first()
-            if existing:
-                return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(existing.id)}
+        # idempotency_key is required (schema-enforced) — always replay-safe.
+        existing = WalletTransaction.objects.filter(
+            wallet=wallet, idempotency_key=payload.idempotency_key,
+        ).first()
+        if existing:
+            return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(existing.id)}
 
         wallet.balance_micros += payload.amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
@@ -129,7 +129,7 @@ def credit(request, payload: CreditRequest):
             balance_after_micros=wallet.balance_micros,
             description=f"Credit: {payload.source}",
             reference_id=payload.reference,
-            idempotency_key=payload.idempotency_key or None,
+            idempotency_key=payload.idempotency_key,
         )
         # Tier-2 (P2/D20): mirror the manual credit onto the live balance after
         # commit (mandatory — MIN-merge cannot re-raise a missed credit). No-op

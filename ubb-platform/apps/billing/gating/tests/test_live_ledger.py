@@ -257,7 +257,8 @@ class TestCreditHookFiresThroughEndpoint:
             resp = Client().post(
                 "/api/v1/billing/credit",
                 data=json.dumps({"customer_id": "c1", "amount_micros": 20_000_000,
-                                 "source": "goodwill", "reference": "tkt-1"}),
+                                 "source": "goodwill", "reference": "tkt-1",
+                                 "idempotency_key": "idem_tkt_1"}),
                 content_type="application/json",
                 HTTP_AUTHORIZATION=f"Bearer {raw}")
         assert resp.status_code == 200

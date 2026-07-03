@@ -73,7 +73,8 @@ class TestEnforcementSeam:
         with django_capture_on_commit_callbacks(execute=True):
             cr = client.post("/api/v1/billing/credit", data=json.dumps({
                 "customer_id": "jim", "amount_micros": 20_000_000,
-                "source": "topup", "reference": "tp1"}), **hdr)
+                "source": "topup", "reference": "tp1",
+                "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200
 
         # 6. Start-gate ALLOWS again (recovery — the seam closes the loop).

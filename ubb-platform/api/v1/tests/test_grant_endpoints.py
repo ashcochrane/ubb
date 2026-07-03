@@ -135,7 +135,8 @@ class GrantEndpointsTest(TestCase):
         # Consume 8 of the lot through /debit, then dent the cached balance.
         self._post("/api/v1/billing/debit", {
             "customer_id": self.customer.external_id,
-            "amount_micros": 8_000_000, "reference": "evt_x"})
+            "amount_micros": 8_000_000, "reference": "evt_x",
+            "idempotency_key": "idem_evt_x"})
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 2_000_000)
         grant = CreditGrant.objects.get(pk=grant_id)

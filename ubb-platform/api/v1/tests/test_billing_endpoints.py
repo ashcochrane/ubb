@@ -145,6 +145,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 1_500_000,
                 "reference": "evt_123",
+                "idempotency_key": "idem_evt_123",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -161,6 +162,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 3_000_000,
                 "reference": "evt_456",
+                "idempotency_key": "idem_evt_456",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -175,6 +177,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 2_000_000,
                 "reference": "evt_789",
+                "idempotency_key": "idem_evt_789",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -194,6 +197,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "nonexistent",
                 "amount_micros": 1_000_000,
                 "reference": "ref_1",
+                "idempotency_key": "idem_d_ref_1",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -212,6 +216,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 500_000,
                 "reference": "ref_2",
+                "idempotency_key": "idem_d_ref_2",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {other_raw_key}",
@@ -229,6 +234,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 500_000,
                 "reference": "ref_3",
+                "idempotency_key": "idem_d_ref_3",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
@@ -259,6 +265,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 5_000_000,
                 "source": "manual_adjustment",
                 "reference": "adj_001",
+                "idempotency_key": "idem_adj_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -276,6 +283,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 7_000_000,
                 "source": "promo",
                 "reference": "promo_001",
+                "idempotency_key": "idem_promo_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -291,6 +299,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 3_000_000,
                 "source": "goodwill",
                 "reference": "gw_001",
+                "idempotency_key": "idem_gw_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -311,6 +320,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 1_000_000,
                 "source": "test",
                 "reference": "ref_1",
+                "idempotency_key": "idem_c_ref_1",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -330,6 +340,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_2",
+                "idempotency_key": "idem_c_ref_2",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {other_raw_key}",
@@ -348,6 +359,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_3",
+                "idempotency_key": "idem_c_ref_3",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
@@ -377,6 +389,7 @@ class DebitCreditHardeningTest(TestCase):
                 "customer_id": "no_wallet_debit",
                 "amount_micros": 1_000_000,
                 "reference": "ref_lazy",
+                "idempotency_key": "idem_d_lazy",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -396,6 +409,7 @@ class DebitCreditHardeningTest(TestCase):
                 "amount_micros": 5_000_000,
                 "source": "promo",
                 "reference": "ref_lazy",
+                "idempotency_key": "idem_c_lazy",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -476,6 +490,7 @@ class DebitCreditHardeningTest(TestCase):
                 "customer_id": "lock_debit",
                 "amount_micros": 1_000_000,
                 "reference": "ref_lock",
+                "idempotency_key": "idem_ref_lock",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -485,6 +500,28 @@ class DebitCreditHardeningTest(TestCase):
         txn = WalletTransaction.objects.get(wallet__customer=customer)
         self.assertEqual(txn.transaction_type, "DEBIT")
         self.assertEqual(txn.balance_after_micros, 4_000_000)
+
+    def test_debit_requires_idempotency_key(self):
+        Customer.objects.create(tenant=self.tenant, external_id="need_key_d")
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "need_key_d", "amount_micros": 1_000_000,
+                             "reference": "ref_nokey"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_credit_requires_idempotency_key(self):
+        Customer.objects.create(tenant=self.tenant, external_id="need_key_c")
+        resp = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "need_key_c", "amount_micros": 1_000_000,
+                             "source": "x", "reference": "ref_nokey"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 422)
 
 
 class WithdrawOutboxEventTest(TestCase):
