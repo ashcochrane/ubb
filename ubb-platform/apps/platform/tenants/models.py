@@ -7,7 +7,11 @@ from django.db import models
 from core.models import BaseModel
 
 
-VALID_PRODUCTS = {"metering", "billing", "subscriptions", "referrals"}
+# "metering_async" is a metering SUB-feature flag (POST /metering/usage/ingest),
+# not a separate billable product — it still requires "metering" to be present
+# (enforced nowhere else; the endpoint gate checks it directly via
+# tenant.products) and rides the same products JSONField for zero extra schema.
+VALID_PRODUCTS = {"metering", "billing", "subscriptions", "referrals", "metering_async"}
 
 # CUR-1: currencies a tenant may set as default_currency. 2-DECIMAL (cents
 # style) currencies ONLY — every micros<->Stripe-amount conversion path in the

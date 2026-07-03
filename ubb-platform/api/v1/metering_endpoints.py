@@ -16,6 +16,7 @@ from django.utils import timezone
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     UsageBatchRequest, UsageBatchResponse,
+    IngestBatchRequest, IngestBatchResponse,
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
@@ -229,6 +230,258 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"results": results, "succeeded": succeeded,
             "failed": len(results) - succeeded}
+
+
+# --- Async ingest (estimate -> atomic hold -> durable append) ---
+
+# Task 5 (30s L1 cache): {run_id: (cost_limit_micros, total_cost_micros,
+# status, customer_id, expires_monotonic)} — ONE batched Run.objects.values()
+# read per ingest call for any run_ids not already cached/fresh, instead of a
+# query per event. Clear-on-full bound mirrors CardCache._l1 (not an LRU).
+_RUN_META_CACHE: dict = {}
+_RUN_META_TTL_SECONDS = 30
+_RUN_META_MAX = 4096
+
+
+def _run_meta_for(tenant, run_ids):
+    import time
+    if not run_ids:
+        return {}
+    now_mono = time.monotonic()
+    missing = [rid for rid in run_ids
+               if rid not in _RUN_META_CACHE or _RUN_META_CACHE[rid][4] <= now_mono]
+    if missing:
+        rows = Run.objects.filter(tenant=tenant, id__in=missing).values(
+            "id", "cost_limit_micros", "total_cost_micros", "status", "customer_id")
+        found = set()
+        if len(_RUN_META_CACHE) >= _RUN_META_MAX:
+            _RUN_META_CACHE.clear()
+        for row in rows:
+            rid = str(row["id"])
+            found.add(rid)
+            _RUN_META_CACHE[rid] = (row["cost_limit_micros"], row["total_cost_micros"],
+                                    row["status"], str(row["customer_id"]),
+                                    now_mono + _RUN_META_TTL_SECONDS)
+        for rid in missing:
+            if rid not in found:
+                # No such run (wrong tenant / never existed) — cache a
+                # sentinel so a hot retry-storm of a bad run_id still costs
+                # one query per TTL window, not one per event.
+                _RUN_META_CACHE[rid] = (None, 0, None, None, now_mono + _RUN_META_TTL_SECONDS)
+    return {rid: _RUN_META_CACHE[rid] for rid in run_ids}
+
+
+def _ingest_idem_prefilter(tenant_id, keys):
+    """Pipelined SETNX pre-filter for a whole batch, one Redis round trip.
+
+    keys: [(customer_id_str, idempotency_key), ...]. Returns list[bool]
+    positionally aligned: True = idem-HIT (the key already existed — a
+    duplicate suspect), False = first time seen. Fails OPEN (every key reads
+    as "first time") on any Redis error, mirroring every other Tier-2 gate's
+    fail-open contract — the durable RawIngestEvent log (NO unique constraint,
+    by design) and UsageEvent's real idempotency constraint at settle time
+    remain the backstop against a double-hold false negative here.
+    """
+    if not keys:
+        return []
+    try:
+        from django.conf import settings
+        import redis
+        client = redis.from_url(settings.REDIS_URL)
+        pipe = client.pipeline()
+        for cid, key in keys:
+            pipe.set(f"ubb:idem:{tenant_id}:{cid}:{key}", 1, nx=True, ex=604800)
+        raw = pipe.execute()
+        return [not bool(r) for r in raw]
+    except Exception:
+        logger.warning("ingest.idem_prefilter_failed", extra={"data": {"tenant_id": str(tenant_id)}})
+        return [False] * len(keys)
+
+
+def _ingest_verdict(*, accepted, mode, estimated_cost_micros=None, rejected=False,
+                    reason=None, stop=False, stop_reason=None, stop_scope=None,
+                    duplicate_suspect=False):
+    return {
+        "accepted": accepted, "estimated_cost_micros": estimated_cost_micros,
+        "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
+        "rejected": rejected, "reason": reason, "mode": mode,
+        "duplicate_suspect": duplicate_suspect,
+    }
+
+
+def _sync_fallback_verdict(sync_result):
+    """Translate a `_record_batch_item` result (Unpriceable route) into the
+    ingest per-item verdict shape, mode='sync_fallback'."""
+    if sync_result.get("ok"):
+        return {
+            "accepted": True, "estimated_cost_micros": sync_result.get("billed_cost_micros"),
+            "stop": sync_result.get("stop", False), "stop_reason": sync_result.get("stop_reason"),
+            "stop_scope": sync_result.get("stop_scope"), "rejected": False, "reason": None,
+            "mode": "sync_fallback", "duplicate_suspect": False,
+            "event_id": sync_result.get("event_id"),
+        }
+    return {
+        "accepted": False, "estimated_cost_micros": None, "stop": False,
+        "stop_reason": None, "stop_scope": None, "rejected": True,
+        "reason": sync_result.get("error"), "mode": "sync_fallback",
+        "duplicate_suspect": False,
+    }
+
+
+@metering_api.post("/usage/ingest", response={200: IngestBatchResponse})
+def ingest_usage_batch(request, payload: IngestBatchRequest):
+    """Async accept path: estimate -> atomic hold -> durable raw append -> 202-style
+    verdicts. Exact pricing settles in workers (estimate-hold-settle; see
+    docs/plans/2026-07-03-async-ingestion-hard-stop-design.md). Settlement is
+    claimed by the settle_raw_events task (wired in the settlement change) —
+    this endpoint's only durability contract is that every held/duplicate-
+    suspect item lands in RawIngestEvent before the response is returned.
+    """
+    _product_check(request)
+    tenant = request.auth.tenant
+    if "metering_async" not in (tenant.products or []):
+        return metering_api.create_response(
+            request, {"error": "feature_not_enabled"}, status=403)
+
+    from ninja.errors import HttpError
+    from apps.metering.pricing.services.card_cache import CardCache
+    from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
+    from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
+    from apps.metering.usage.models import RawIngestEvent
+
+    items = payload.events
+    n = len(items)
+    results: list = [None] * n
+    customers: dict = {}
+    owners: dict = {}
+    run_exists: dict = {}  # threaded into _record_batch_item for the sync-fallback route
+    item_customer: list = [None] * n
+
+    now = timezone.now()
+    tenant_currency = (tenant.default_currency or "usd").lower()
+    CardCache.begin_request(tenant.id)
+
+    # ---- resolve customers + owners once per customer; validate currency ----
+    for i, item in enumerate(items):
+        cid = str(item.customer_id)
+        if cid not in customers:
+            customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
+        customer = customers[cid]
+        if customer is None:
+            results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                         reason="not_found", mode="async")
+            continue
+        if cid not in owners:
+            owners[cid] = customer.resolve_billing_owner().id
+        if item.currency and str(item.currency).strip().lower() != tenant_currency:
+            results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                         reason="validation_error", mode="async")
+            continue
+        item_customer[i] = customer
+
+    # ---- idempotency pre-filter: one pipelined redis round trip for the
+    # whole batch, only for items that survived customer/currency validation ----
+    pending_idx = [i for i in range(n) if results[i] is None]
+    idem_keys = [(str(items[i].customer_id), items[i].idempotency_key) for i in pending_idx]
+    idem_hits = dict(zip(pending_idx, _ingest_idem_prefilter(tenant.id, idem_keys)))
+
+    # ---- per item: idem routing, estimate (Unpriceable -> sync fallback) ----
+    hold_candidates: list = []   # (i, item, customer, owner_id, Estimate)
+    append_only: list = []       # (i, item, customer, owner_id) idem-hit rows
+    owner_stop_cache: dict = {}
+    for i in pending_idx:
+        item = items[i]
+        customer = item_customer[i]
+        owner_id = owners[str(item.customer_id)]
+        if idem_hits[i]:
+            if owner_id not in owner_stop_cache:
+                owner_stop_cache[owner_id] = read_live_stop(owner_id, tenant)
+            results[i] = _ingest_verdict(accepted=True, duplicate_suspect=True,
+                                         estimated_cost_micros=0, mode="async",
+                                         **owner_stop_cache[owner_id])
+            append_only.append((i, item, customer, owner_id))
+            continue
+        try:
+            est = EstimationService.estimate(
+                tenant=tenant, customer=customer, event_type=item.event_type or "",
+                provider=item.provider or "", usage_metrics=item.usage_metrics,
+                tags=item.tags, currency=tenant_currency,
+                caller_billed=item.billed_cost_micros,
+                caller_provider_cost=item.provider_cost_micros,
+                units=item.units, now=now)
+        except Unpriceable:
+            sync_result = _record_batch_item(request, tenant, item, customers, run_exists)
+            results[i] = _sync_fallback_verdict(sync_result)
+            continue
+        hold_candidates.append((i, item, customer, owner_id, est))
+
+    # ---- run metadata (30s L1 cache) for run-bearing candidates ----
+    run_ids_needed = {str(item.run_id) for (_, item, _, _, _) in hold_candidates
+                      if item.run_id is not None}
+    run_meta = _run_meta_for(tenant, run_ids_needed)
+
+    acquire_by_owner: dict = {}
+    for i, item, customer, owner_id, est in hold_candidates:
+        if item.run_id is not None:
+            meta = run_meta.get(str(item.run_id))
+            if meta is None or meta[2] != "active" or meta[3] != str(customer.id):
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason="run_not_active",
+                                             estimated_cost_micros=est.micros, mode="async")
+                continue
+            cap, seed = meta[0], meta[1]
+        else:
+            cap, seed = None, 0
+        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est, cap, seed))
+
+    # ---- acquire holds (one pipelined redis round trip per owner) ----
+    raw_objs: list = []
+    release_list: list = []  # (owner_id, run_id_str_or_None, estimate_micros) for held rows
+
+    for i, item, customer, owner_id in append_only:
+        raw_objs.append(RawIngestEvent(
+            tenant=tenant, customer=customer, billing_owner_id=owner_id,
+            run_id=item.run_id, idempotency_key=item.idempotency_key,
+            payload=item.model_dump(mode="json"), estimate_micros=0,
+            estimate_exact=False, held=False))
+
+    for owner_id, entries in acquire_by_owner.items():
+        acquire_payload = [{"estimate_micros": est.micros,
+                            "run_id": str(item.run_id) if item.run_id else None,
+                            "run_cap_micros": cap, "run_seed_micros": seed}
+                           for (_, item, _, est, cap, seed) in entries]
+        verdicts = acquire_ingest_holds(owner_id, tenant, acquire_payload)
+        for (i, item, customer, est, cap, seed), v in zip(entries, verdicts):
+            if v["rejected"]:
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason=v["reason"],
+                                             estimated_cost_micros=est.micros, mode="async")
+                continue
+            results[i] = _ingest_verdict(accepted=True, estimated_cost_micros=est.micros,
+                                         mode="async", stop=v["stop"],
+                                         stop_reason=v["stop_reason"], stop_scope=v["stop_scope"])
+            raw_objs.append(RawIngestEvent(
+                tenant=tenant, customer=customer, billing_owner_id=owner_id,
+                run_id=item.run_id, idempotency_key=item.idempotency_key,
+                payload=item.model_dump(mode="json"), estimate_micros=est.micros,
+                estimate_exact=est.exact, held=True))
+            release_list.append((owner_id, str(item.run_id) if item.run_id else None, est.micros))
+
+    # ---- durability boundary: the raw append. On failure, undo every hold
+    # taken above (never leave money reserved for a batch that never landed)
+    # and surface a 5xx so the caller retries the whole batch. ----
+    if raw_objs:
+        try:
+            RawIngestEvent.objects.bulk_create(raw_objs)
+        except Exception:
+            logger.exception("ingest.append_failed", extra={"data": {
+                "tenant_id": str(tenant.id), "count": len(raw_objs)}})
+            for owner_id, run_id, estimate_micros in release_list:
+                release_ingest_hold(owner_id, tenant, run_id, estimate_micros)
+            raise HttpError(503, "raw ingest append failed")
+
+    accepted = sum(1 for r in results if r["accepted"])
+    return {"results": results, "accepted": accepted, "rejected": n - accepted}
 
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)

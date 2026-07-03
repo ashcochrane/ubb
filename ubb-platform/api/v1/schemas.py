@@ -66,6 +66,28 @@ class UsageBatchResponse(Schema):
     failed: int
 
 
+class IngestEventIn(RecordUsageRequest):
+    """One item in an async ingest batch (POST /usage/ingest). Field-for-field
+    identical to RecordUsageRequest (the sync batch item) — a distinct name so
+    the ingest request/response schemas are independently versionable."""
+    pass
+
+
+class IngestBatchRequest(Schema):
+    events: list[IngestEventIn] = Field(min_length=1, max_length=1000)
+
+
+class IngestBatchResponse(Schema):
+    # Per-item results, positionally aligned with the request's events[]. Each
+    # entry: {accepted, estimated_cost_micros, stop, stop_reason, stop_scope,
+    # rejected, reason, mode, duplicate_suspect} plus (for accepted
+    # sync_fallback items) event_id — kept as `dict` (not a strict sub-schema)
+    # to match the UsageBatchResponse precedent above.
+    results: list[dict]
+    accepted: int
+    rejected: int
+
+
 class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
