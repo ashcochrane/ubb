@@ -139,6 +139,10 @@ class Rate(BaseModel):
     tiers = models.JSONField(default=list, blank=True)
     currency = models.CharField(max_length=3, default="usd")
     product_id = models.CharField(max_length=100, blank=True, default="")
+    rate_card = models.ForeignKey("pricing.RateCard", on_delete=models.PROTECT,
+                                  related_name="rates", null=True, blank=True)
+    book_version_from = models.PositiveIntegerField(default=1)
+    book_version_to = models.PositiveIntegerField(null=True, blank=True)
     lineage_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     valid_from = models.DateTimeField(auto_now_add=True, db_index=True)
     valid_to = models.DateTimeField(null=True, blank=True)
@@ -225,6 +229,59 @@ class Rate(BaseModel):
         units = units or 0
         return (self.compute_cumulative(prior_units + units)
                 - self.compute_cumulative(prior_units))
+
+
+class RateCard(BaseModel):
+    """Container grouping many Rates, versioned and assigned as a unit.
+
+    Naming wart: the physical table is `ubb_rate_card_container` because the
+    legacy `ubb_rate_card` table now backs the `Rate` model (the old, misnamed
+    RateCard). The Python names are correct: RateCard = the sheet, Rate = a line.
+    """
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="rate_card_containers")
+    card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
+    # provider_key pins the book to one provider so the per-provider default
+    # invariant is DB-enforceable ("" is the no-provider bucket).
+    provider_key = models.CharField(max_length=100, blank=True, default="")
+    currency = models.CharField(max_length=3, default="usd")
+    key = models.SlugField(max_length=64)
+    name = models.CharField(max_length=255, blank=True, default="")
+    version = models.PositiveIntegerField(default=1)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "ubb_rate_card_container"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "card_type", "key"], name="uq_ratecard_tenant_key"),
+            models.UniqueConstraint(
+                fields=["tenant", "card_type", "provider_key", "currency"],
+                condition=models.Q(is_default=True),
+                name="uq_ratecard_one_default_per_provider"),
+        ]
+
+    def __str__(self):
+        return f"RateCard({self.key} v{self.version})"
+
+
+class RateCardAssignment(BaseModel):
+    """A customer's assigned PRICE book (one per customer per currency)."""
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="rate_card_assignments")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
+                                 related_name="rate_card_assignments")
+    rate_card = models.ForeignKey(RateCard, on_delete=models.CASCADE,
+                                  related_name="assignments")
+    currency = models.CharField(max_length=3, default="usd")
+
+    class Meta:
+        db_table = "ubb_rate_card_assignment"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "customer", "currency"],
+                name="uq_assignment_customer_currency"),
+        ]
 
 
 class PricingPeriodCounter(BaseModel):
