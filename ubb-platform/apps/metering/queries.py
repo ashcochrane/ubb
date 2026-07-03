@@ -273,7 +273,10 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
     if start_date:
         qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
-        qs = qs.filter(effective_at__lt=utc_day_start(end_date))
+        # end_date is INCLUSIVE, matching the /analytics/usage rollup — this is
+        # the sole caller (the /analytics/usage/timeseries endpoint), so the two
+        # sibling endpoints resolve the same date inputs identically.
+        qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
     valid_group_by = ("provider", "event_type", "product_id", "service_id", "agent_id")
     cols = ["bucket"]

@@ -92,12 +92,6 @@ class BoundaryEquivalenceTest(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event_count"], 2)
 
-    def test_usage_timeseries_half_open(self):
-        series = queries.get_usage_timeseries(
-            self.tenant.id, start_date=date(2026, 6, 1), end_date=date(2026, 7, 1))
-        self.assertEqual([s["bucket"] for s in series], ["2026-06-01", "2026-06-30"])
-        self.assertTrue(all(s["event_count"] == 1 for s in series))
-
     def test_dimensional_margin_half_open(self):
         rows = queries.get_dimensional_margin(
             self.tenant.id, group_by="provider",
@@ -131,6 +125,15 @@ class BoundaryEquivalenceTest(TestCase):
         # 06-30T23:59:59.999999 included; 07-01T00:00:00 and May excluded.
         self.assertEqual(body["total_events"], 2)
         self.assertEqual(body["total_billed_cost_micros"], 2_000_000)
+
+    def test_usage_timeseries_inclusive_end(self):
+        # Aligned with the /analytics/usage rollup: end_date is INCLUSIVE, so
+        # the 06-30 bucket is present (its last-microsecond event counts) while
+        # the 07-01T00:00:00 event and the May event are excluded.
+        series = queries.get_usage_timeseries(
+            self.tenant.id, start_date=date(2026, 6, 1), end_date=date(2026, 6, 30))
+        self.assertEqual([s["bucket"] for s in series], ["2026-06-01", "2026-06-30"])
+        self.assertTrue(all(s["event_count"] == 1 for s in series))
 
 
 class SqlShapeRegressionTest(TestCase):

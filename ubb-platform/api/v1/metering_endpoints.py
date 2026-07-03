@@ -522,7 +522,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 @metering_api.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: dict})
 def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
                      customer_id: str = None, group_by: str = None):
-    """Time-series spend rollup: daily or hourly COGS per tenant/customer."""
+    """Time-series spend rollup: daily or hourly COGS per tenant/customer.
+
+    start_date and end_date are both INCLUSIVE calendar dates, matching the
+    /analytics/usage rollup so the same inputs cover the same window on both.
+    """
     _product_check(request)
     if granularity not in ("hour", "day"):
         return 422, {"error": "granularity must be hour or day"}
