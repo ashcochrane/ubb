@@ -220,29 +220,49 @@ class HoldService:
         (the actual cost came in lower than the estimate); negative =>
         debit further (an underestimate).
 
-        Routes the balance-side adjustment through LiveLedgerService.credit
-        — the SAME MIN-merge-safe site every other credit hook (top-up,
-        refund-reversal, manual credit) uses, so a fast-path drop here fails
-        the SAME safe direction (over-restrictive, never under-restrictive)
-        as every other credit path. Best-effort on the per-run counter;
-        NEVER raises.
+        PREPAID: routes the balance-side adjustment through
+        LiveLedgerService.credit — the SAME MIN-merge-safe site every other
+        credit hook (top-up, refund-reversal, manual credit) uses, so a
+        fast-path drop here fails the SAME safe direction (over-restrictive,
+        never under-restrictive) as every other credit path.
 
-        KNOWN LIMITATION (postpaid): LiveLedgerService.credit() is
-        documented as a deliberate no-op for postpaid tenants ("no
-        spendable balance"), so a positive delta (over-estimate) on a
-        postpaid hold does NOT lower the live month-to-date spend counter
-        — it stays inflated by the over-hold until month rollover, since
-        reconcile_postpaid() only ever MAX-merges (raises, never lowers).
-        Net effect: a postpaid owner whose estimates run high could see the
-        live spend counter (and therefore the budget-cap crossing check)
-        read higher than the true durable spend for the rest of the month.
-        Flagging for Task 5/6 — no postpaid-specific counter-lowering path
-        exists yet; the brief's specified design routes settle exclusively
-        through credit().
+        POSTPAID: credit() is a deliberate no-op for postpaid ("no spendable
+        balance"), so settle applies the delta DIRECTLY to the CURRENT
+        month's livespend counter (INCRBY −delta: a positive over-hold delta
+        LOWERS the spend, a negative delta raises it further). Without this,
+        every over-estimate would permanently inflate the counter — the
+        reconcile_postpaid MAX-merge only ever RAISES, so it could never
+        self-correct, and budget caps would fire increasingly early for the
+        rest of the month.
+
+        Month-rollover window (postpaid): a hold acquired in month M that
+        settles in month M+1 adjusts M+1's livespend key (acquire inflated
+        M's). The exposure is only the few seconds of ingest latency
+        straddling the rollover instant, and the MAX-merge reconcile toward
+        each month's durable billed total re-corrects both months' counters
+        within one reconcile cycle.
+
+        The per-run cost counter adjustment stays mode-independent.
+        Best-effort everywhere; NEVER raises. Does NOT clear stop flags —
+        recovery stays with reconcile/credit(), matching existing semantics.
         """
         delta_micros = int(delta_micros)
         if delta_micros:
-            LiveLedgerService.credit(owner_id, tenant, delta_micros)
+            if tenant.billing_mode == "postpaid":
+                if enforcement_on(tenant):
+                    from django.utils import timezone
+                    try:
+                        label, _, _ = _month_label_bounds(timezone.now())
+                        key = _livespend_key(owner_id, label)
+                        pipe = _client().pipeline()
+                        pipe.incrby(key, -delta_micros)
+                        pipe.expire(key, LEDGER_TTL_SECONDS)
+                        pipe.execute()
+                    except Exception:
+                        logger.warning("hold_service.settle_failed",
+                                       extra={"data": {"owner_id": str(owner_id)}})
+            else:
+                LiveLedgerService.credit(owner_id, tenant, delta_micros)
         if run_id and delta_micros and enforcement_on(tenant):
             try:
                 _client().eval(_RUNCOST_CREDIT_IF_PRESENT, 1,

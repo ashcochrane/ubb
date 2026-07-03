@@ -160,6 +160,37 @@ def test_postpaid_run_cap_uses_positive_estimate(enforced_postpaid_tenant, postp
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
 
 
+def test_postpaid_settle_delta_lowers_live_spend(enforced_postpaid_tenant, postpaid_owner):
+    """Postpaid settle must lower the live month-to-date spend counter by the
+    over-hold (LiveLedgerService.credit no-ops for postpaid, so settle needs
+    its own direct livespend adjustment — otherwise every over-estimate
+    permanently inflates the counter: reconcile_postpaid only MAX-merges and
+    can never lower it back)."""
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(2_500_000)])
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_500_000
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
+                       delta_micros=300_000)   # exact was 2_200_000
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_200_000
+
+
+def test_postpaid_settle_negative_delta_raises_live_spend(enforced_postpaid_tenant, postpaid_owner):
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(2_500_000)])
+    # exact came in HIGHER than the estimate -> delta negative -> spend rises.
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
+                       delta_micros=-100_000)
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_600_000
+
+
+def test_postpaid_release_restores_live_spend(enforced_postpaid_tenant, postpaid_owner):
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(4_000_000)])
+    HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(1_000_000)])
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 5_000_000
+    # Full release of the second hold (duplicate/failed append) -> back to
+    # the pre-hold value.
+    HoldService.release(postpaid_owner.id, enforced_postpaid_tenant, None, 1_000_000)
+    assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 4_000_000
+
+
 def test_postpaid_budget_crossing_sets_stop(enforced_postpaid_tenant, postpaid_owner):
     BudgetConfig.objects.create(tenant=enforced_postpaid_tenant, customer=postpaid_owner,
                                 cap_micros=10_000_000, hard_stop_pct=100)

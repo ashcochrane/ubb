@@ -511,7 +511,7 @@ git commit -m "feat(pricing): conservative accept-time cost estimation (never un
 - Consumes: key helpers + `_client()` + flags pattern from `live_ledger_service.py`; `get_customer_balance`, `get_customer_min_balance` (queries.py).
 - Produces (also exported via `apps/billing/queries.py` as `acquire_ingest_holds`, `settle_ingest_hold`, `release_ingest_hold`):
   - `HoldService.acquire(owner_id, tenant, items) -> list[dict]` — `items: [{"estimate_micros": int, "run_id": str|None, "run_cap_micros": int|None, "run_seed_micros": int}]`; returns per-item `{"held": bool, "rejected": bool, "reason": str|None, "stop": bool, "stop_reason": str|None, "stop_scope": str|None}`. Semantics per item, in one Lua eval each (pipelined): run-cap check-then-incr FIRST (reject leaves livebal untouched); then livebal seed+DECRBY; floor crossing sets the stop flag (cooperative — item still held). Prepaid path only for the balance; postpaid mirrors `_SPEND_INCR` on livespend.
-  - `HoldService.settle(owner_id, tenant, run_id, delta_micros)` — `delta = estimate − exact`; positive credits livebal back (reuses `LiveLedgerService.credit`), negative debits further; adjusts `ubb:runcost:{run}` by `−delta`.
+  - `HoldService.settle(owner_id, tenant, run_id, delta_micros)` — `delta = estimate − exact`; prepaid: positive credits livebal back (reuses `LiveLedgerService.credit`), negative debits further; postpaid: adjusts the current month's livespend key directly by `−delta` (credit() no-ops for postpaid and the reconcile MAX-merge can never lower an inflated counter); adjusts `ubb:runcost:{run}` by `−delta` in both modes.
   - `HoldService.release(owner_id, tenant, run_id, estimate_micros)` — full credit-back (duplicate/failed/append-failure), i.e. `settle(..., delta_micros=estimate_micros)`.
 
 - [ ] **Step 1: Write the failing tests** — must include the race test:
@@ -697,12 +697,42 @@ class HoldService:
 
     @staticmethod
     def settle(owner_id, tenant, run_id, delta_micros):
-        """delta = estimate - exact. Positive => credit back the over-hold."""
+        """delta = estimate - exact. Positive => credit back the over-hold.
+
+        PREPAID routes through LiveLedgerService.credit (MIN-merge-safe).
+        POSTPAID: credit() no-ops for postpaid, so settle adjusts the CURRENT
+        month's livespend key directly (INCRBY -delta) — otherwise every
+        over-estimate would permanently inflate the counter (the reconcile
+        MAX-merge only raises, never lowers) and budget caps would fire
+        increasingly early. Month-rollover window: a hold acquired in month M
+        settling in M+1 adjusts M+1's key; bounded to the seconds of ingest
+        latency around rollover and re-corrected for both months by the
+        MAX-merge reconcile toward each month's durable total within one
+        cycle. Never clears stop flags (recovery stays with reconcile/credit).
+        The runcost adjustment is mode-independent and exists-guarded
+        (Lua _RUNCOST_CREDIT_IF_PRESENT, TTL-refreshing) so an uncapped run
+        never grows a stray TTL-less counter."""
+        delta_micros = int(delta_micros)
         if delta_micros:
-            LiveLedgerService.credit(owner_id, tenant, int(delta_micros))
-        if run_id:
+            if tenant.billing_mode == "postpaid":
+                if enforcement_on(tenant):
+                    from django.utils import timezone
+                    try:
+                        label, _, _ = _month_label_bounds(timezone.now())
+                        key = _livespend_key(owner_id, label)
+                        pipe = _client().pipeline()
+                        pipe.incrby(key, -delta_micros)
+                        pipe.expire(key, LEDGER_TTL_SECONDS)
+                        pipe.execute()
+                    except Exception:
+                        logger.warning("hold_service.settle_failed",
+                                       extra={"data": {"owner_id": str(owner_id)}})
+            else:
+                LiveLedgerService.credit(owner_id, tenant, delta_micros)
+        if run_id and delta_micros and enforcement_on(tenant):
             try:
-                _client().incrby(_runcost_key(run_id), -int(delta_micros))
+                _client().eval(_RUNCOST_CREDIT_IF_PRESENT, 1,
+                               _runcost_key(run_id), -delta_micros, LEDGER_TTL_SECONDS)
             except Exception:
                 logger.warning("hold_service.run_settle_failed",
                                extra={"data": {"run_id": str(run_id)}})
