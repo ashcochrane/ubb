@@ -271,6 +271,193 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         self.assertTrue(raw.held)
 
 
+class RunMetaCacheEvictionTest(IngestEndpointTestBase):
+    def test_clear_on_full_with_mixed_cached_and_new_runs_does_not_500(self):
+        """Clear-on-full regression: with the cache at _RUN_META_MAX, a batch
+        mixing an already-cached run and an uncached one triggers the clear —
+        the entries fresh for THIS call must survive into the return value
+        (the first cut re-read the module cache after clearing it: KeyError)."""
+        from api.v1 import metering_endpoints
+        run_a = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id)
+        run_b = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id)
+        with patch.object(metering_endpoints, "_RUN_META_MAX", 1):
+            first = self._post([self._event(run_id=str(run_a.id), billed_cost_micros=100_000)])
+            self.assertEqual(first.status_code, 200)  # caches run_a; cache now AT the max
+            resp = self._post([
+                self._event(run_id=str(run_a.id), billed_cost_micros=100_000),
+                self._event(run_id=str(run_b.id), billed_cost_micros=100_000),
+            ])
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertTrue(results[0]["accepted"])
+        self.assertTrue(results[1]["accepted"])
+
+
+class AppendFailureIdemUnwindTest(IngestEndpointTestBase):
+    def test_retry_after_append_failure_takes_real_holds(self):
+        """The append-failure 503 is the DESIGNED recovery path: the client
+        retries the same batch. The failed attempt must unwind the idem keys
+        it freshly set, or the retry reads as all idem-hits — appended
+        held=False with no hold ever taken (money-gate bypass)."""
+        event = self._event(billed_cost_micros=500_000)
+        with patch(
+            "apps.metering.usage.models.RawIngestEvent.objects.bulk_create",
+            side_effect=RuntimeError("db down"),
+        ):
+            first = self._post([event])
+        self.assertGreaterEqual(first.status_code, 500)
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000)
+
+        retry = self._post([event])  # identical batch, identical idem key
+        self.assertEqual(retry.status_code, 200)
+        r = retry.json()["results"][0]
+        self.assertTrue(r["accepted"])
+        self.assertFalse(r["duplicate_suspect"])
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+        # A REAL hold on the retry — decremented exactly once overall.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 500_000)
+
+
+class DeadRunReplayWinsTest(IngestEndpointTestBase):
+    def test_idem_hit_on_killed_run_is_replay_not_rejection(self):
+        """Replay-wins parity with the sync path (record_usage returns the
+        existing event BEFORE any validation): a replayed key whose run has
+        since been killed must be accepted as a duplicate suspect (held=False
+        append, no hold), not rejected run_not_active."""
+        from api.v1 import metering_endpoints
+        run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id)
+        event = self._event(run_id=str(run.id), billed_cost_micros=400_000)
+        first = self._post([event])
+        self.assertTrue(first.json()["results"][0]["accepted"])
+
+        Run.objects.filter(id=run.id).update(status="killed")
+        metering_endpoints._RUN_META_CACHE.clear()  # the 30s cache would mask the kill
+
+        second = self._post([event])  # SAME idempotency_key
+        self.assertEqual(second.status_code, 200)
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertTrue(r2["duplicate_suspect"])
+        self.assertFalse(r2["rejected"])
+        rows = list(RawIngestEvent.objects.order_by("created_at"))
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(rows[1].held)
+        # No second hold taken for the replay.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 400_000)
+
+    def test_fresh_key_on_killed_run_still_rejected_without_burning_key(self):
+        run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="killed",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            billing_owner_id=self.customer.id)
+        event = self._event(run_id=str(run.id), billed_cost_micros=400_000)
+        resp = self._post([event])
+        r = resp.json()["results"][0]
+        self.assertTrue(r["rejected"])
+        self.assertEqual(r["reason"], "run_not_active")
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
+        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+
+
+class EffectiveAtTest(IngestEndpointTestBase):
+    def test_naive_effective_at_rejected_before_idem_no_burned_key(self):
+        event = self._event(billed_cost_micros=200_000,
+                            effective_at="2026-07-01T00:00:00")  # no tz
+        resp = self._post([event])
+        self.assertEqual(resp.status_code, 200)
+        r = resp.json()["results"][0]
+        self.assertTrue(r["rejected"])
+        self.assertEqual(r["reason"], "effective_at_naive")
+        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        # Rejection precedes the SETNX: the corrected retry (same key) is a
+        # genuine first accept with a real hold.
+        event["effective_at"] = "2026-07-01T00:00:00Z"
+        second = self._post([event])
+        r2 = second.json()["results"][0]
+        self.assertTrue(r2["accepted"])
+        self.assertFalse(r2["duplicate_suspect"])
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 200_000)
+
+    def test_too_old_effective_at_rejected(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        too_old = (timezone.now() - timedelta(days=60)).isoformat()  # window default 34d
+        resp = self._post([self._event(billed_cost_micros=200_000, effective_at=too_old)])
+        r = resp.json()["results"][0]
+        self.assertTrue(r["rejected"])
+        self.assertEqual(r["reason"], "effective_at_too_old")
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
+
+    def test_valid_effective_at_accepted_and_preserved_in_payload(self):
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        eff = timezone.now() - timedelta(days=1)
+        resp = self._post([self._event(billed_cost_micros=200_000,
+                                       effective_at=eff.isoformat())])
+        self.assertEqual(resp.status_code, 200)
+        r = resp.json()["results"][0]
+        self.assertTrue(r["accepted"])
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+        # Round-trip: settlement must be able to price as_of the ORIGINAL
+        # effective instant from the stored payload.
+        stored = datetime.fromisoformat(raw.payload["effective_at"])
+        self.assertEqual(stored, eff)
+
+
+class MixedBatchTest(IngestEndpointTestBase):
+    def test_positional_alignment_and_exactly_one_new_hold(self):
+        """One request mixing all four verdict shapes: [valid held item,
+        run-cap reject, idem-hit replay, currency-mismatch reject]. Results
+        must align positionally and exactly ONE new hold may be taken."""
+        capped_run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, cost_limit_micros=100_000,
+            billing_owner_id=self.customer.id)
+        replay_event = self._event(billed_cost_micros=250_000)
+        pre = self._post([replay_event])  # seed the idem-hit item (takes a hold)
+        self.assertTrue(pre.json()["results"][0]["accepted"])
+        balance_before = LiveLedgerService.read_prepaid(self.customer.id)
+        raw_before = RawIngestEvent.objects.count()
+
+        resp = self._post([
+            self._event(billed_cost_micros=500_000),                             # 0: held
+            self._event(run_id=str(capped_run.id), billed_cost_micros=600_000),  # 1: run-cap
+            replay_event,                                                        # 2: idem-hit
+            self._event(currency="eur", billed_cost_micros=100_000),             # 3: currency
+        ])
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        r0, r1, r2, r3 = body["results"]
+        self.assertTrue(r0["accepted"] and not r0["duplicate_suspect"])
+        self.assertEqual(r0["estimated_cost_micros"], 500_000)
+        self.assertTrue(r1["rejected"])
+        self.assertEqual(r1["reason"], "cost_limit_exceeded")
+        self.assertTrue(r2["accepted"] and r2["duplicate_suspect"])
+        self.assertTrue(r3["rejected"])
+        self.assertEqual(r3["reason"], "validation_error")
+        self.assertEqual(body["accepted"], 2)
+        self.assertEqual(body["rejected"], 2)
+        # Exactly one NEW hold (the valid item); replay + rejects take none.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         balance_before - 500_000)
+        # Two new raw rows: the held item + the held=False replay append.
+        self.assertEqual(RawIngestEvent.objects.count(), raw_before + 2)
+
+
 class RunHeldItemTest(IngestEndpointTestBase):
     def test_run_bearing_item_under_cap_is_held_with_run_id_in_payload(self):
         run = Run.objects.create(

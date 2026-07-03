@@ -248,54 +248,116 @@ def _run_meta_for(tenant, run_ids):
     if not run_ids:
         return {}
     now_mono = time.monotonic()
-    missing = [rid for rid in run_ids
-               if rid not in _RUN_META_CACHE or _RUN_META_CACHE[rid][4] <= now_mono]
+    # The return dict is built from LOCAL captures only — never by re-reading
+    # the module cache at the end. The clear-on-full below wipes entries that
+    # are fresh for THIS call, so a final read-back would KeyError whenever a
+    # batch mixes a cached run with an uncached one at the size bound.
+    out = {}
+    missing = []
+    for rid in run_ids:
+        hit = _RUN_META_CACHE.get(rid)
+        if hit is not None and hit[4] > now_mono:
+            out[rid] = hit  # captured before any clear-on-full can wipe it
+        else:
+            missing.append(rid)
     if missing:
         rows = Run.objects.filter(tenant=tenant, id__in=missing).values(
             "id", "cost_limit_micros", "total_cost_micros", "status", "customer_id")
-        found = set()
         if len(_RUN_META_CACHE) >= _RUN_META_MAX:
-            _RUN_META_CACHE.clear()
+            _RUN_META_CACHE.clear()  # crude bound; `out` already holds this call's hits
         for row in rows:
             rid = str(row["id"])
-            found.add(rid)
-            _RUN_META_CACHE[rid] = (row["cost_limit_micros"], row["total_cost_micros"],
-                                    row["status"], str(row["customer_id"]),
-                                    now_mono + _RUN_META_TTL_SECONDS)
+            entry = (row["cost_limit_micros"], row["total_cost_micros"],
+                     row["status"], str(row["customer_id"]),
+                     now_mono + _RUN_META_TTL_SECONDS)
+            _RUN_META_CACHE[rid] = entry
+            out[rid] = entry
         for rid in missing:
-            if rid not in found:
+            if rid not in out:
                 # No such run (wrong tenant / never existed) — cache a
                 # sentinel so a hot retry-storm of a bad run_id still costs
                 # one query per TTL window, not one per event.
-                _RUN_META_CACHE[rid] = (None, 0, None, None, now_mono + _RUN_META_TTL_SECONDS)
-    return {rid: _RUN_META_CACHE[rid] for rid in run_ids}
+                entry = (None, 0, None, None, now_mono + _RUN_META_TTL_SECONDS)
+                _RUN_META_CACHE[rid] = entry
+                out[rid] = entry
+    return out
+
+
+def _idem_key(tenant_id, customer_id, idempotency_key):
+    return f"ubb:idem:{tenant_id}:{customer_id}:{idempotency_key}"
+
+
+def _ingest_redis():
+    from django.conf import settings
+    import redis
+    return redis.from_url(settings.REDIS_URL)
 
 
 def _ingest_idem_prefilter(tenant_id, keys):
     """Pipelined SETNX pre-filter for a whole batch, one Redis round trip.
 
-    keys: [(customer_id_str, idempotency_key), ...]. Returns list[bool]
+    keys: full ubb:idem:* key strings (see _idem_key). Returns list[bool]
     positionally aligned: True = idem-HIT (the key already existed — a
-    duplicate suspect), False = first time seen. Fails OPEN (every key reads
-    as "first time") on any Redis error, mirroring every other Tier-2 gate's
-    fail-open contract — the durable RawIngestEvent log (NO unique constraint,
-    by design) and UsageEvent's real idempotency constraint at settle time
-    remain the backstop against a double-hold false negative here.
+    duplicate suspect), False = first time seen (the key is now SET, 7-day
+    TTL). Fails OPEN (every key reads as "first time") on any Redis error,
+    mirroring every other Tier-2 gate's fail-open contract — the durable
+    RawIngestEvent log (NO unique constraint, by design) and UsageEvent's
+    real idempotency constraint at settle time remain the backstop against a
+    double-hold false negative here.
     """
     if not keys:
         return []
     try:
-        from django.conf import settings
-        import redis
-        client = redis.from_url(settings.REDIS_URL)
-        pipe = client.pipeline()
-        for cid, key in keys:
-            pipe.set(f"ubb:idem:{tenant_id}:{cid}:{key}", 1, nx=True, ex=604800)
+        pipe = _ingest_redis().pipeline()
+        for k in keys:
+            pipe.set(k, 1, nx=True, ex=604800)
         raw = pipe.execute()
         return [not bool(r) for r in raw]
     except Exception:
         logger.warning("ingest.idem_prefilter_failed", extra={"data": {"tenant_id": str(tenant_id)}})
         return [False] * len(keys)
+
+
+def _ingest_idem_present(tenant_id, keys):
+    """Read-only presence probe (pipelined EXISTS — never writes) for the
+    replay-wins path: an item whose run is no longer active is treated as an
+    idempotent REPLAY (accepted, duplicate_suspect, no hold) if its key is
+    already present, mirroring the sync path's replay-before-validation
+    contract in UsageService.record_usage. Fails CLOSED to "absent" — the
+    caller then rejects run_not_active rather than accepting unheld spend on
+    an unverifiable replay claim.
+    """
+    if not keys:
+        return []
+    try:
+        pipe = _ingest_redis().pipeline()
+        for k in keys:
+            pipe.exists(k)
+        return [bool(r) for r in pipe.execute()]
+    except Exception:
+        logger.warning("ingest.idem_probe_failed", extra={"data": {"tenant_id": str(tenant_id)}})
+        return [False] * len(keys)
+
+
+def _ingest_idem_unwind(tenant_id, keys):
+    """Best-effort pipelined DELETE of the idem keys THIS request freshly SET
+    — the append-failure unwind. Must run BEFORE the 503 is raised so the
+    client's retry of the same batch re-enters the full estimate+hold gate
+    instead of misreading as all idem-hits (which would append held=False
+    rows with no hold ever taken — a money-gate bypass on the DESIGNED
+    recovery path). A key stranded by a failure HERE is exactly that known
+    bypass for one event, so the failure is logged at ERROR, loudly.
+    """
+    if not keys:
+        return
+    try:
+        pipe = _ingest_redis().pipeline()
+        for k in keys:
+            pipe.delete(k)
+        pipe.execute()
+    except Exception:
+        logger.error("ingest.idem_unwind_failed", extra={"data": {
+            "tenant_id": str(tenant_id), "stranded_keys": len(keys)}})
 
 
 def _ingest_verdict(*, accepted, mode, estimated_cost_micros=None, rejected=False,
@@ -346,6 +408,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     from ninja.errors import HttpError
     from apps.metering.pricing.services.card_cache import CardCache
     from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
+    from apps.metering.usage.services.usage_service import EffectiveAtError, validate_effective_at
     from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
     from apps.metering.usage.models import RawIngestEvent
 
@@ -361,7 +424,12 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     tenant_currency = (tenant.default_currency or "usd").lower()
     CardCache.begin_request(tenant.id)
 
-    # ---- resolve customers + owners once per customer; validate currency ----
+    # ---- resolve customers + owners once per customer; validate currency +
+    # effective_at. validate_effective_at is the sanctioned per-event ORM
+    # exception (closed-period guard queries the owner's invoice) and runs
+    # ONLY for effective_at-bearing items — the common path stays query-free.
+    # Estimation deliberately stays on the current-month tier mirror even for
+    # backdated items (conservative enough; settle prices as_of exactly). ----
     for i, item in enumerate(items):
         cid = str(item.customer_id)
         if cid not in customers:
@@ -377,16 +445,24 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             results[i] = _ingest_verdict(accepted=False, rejected=True,
                                          reason="validation_error", mode="async")
             continue
+        if item.effective_at is not None:
+            try:
+                validate_effective_at(tenant, owners[cid], item.effective_at, now)
+            except EffectiveAtError as e:
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason=e.code, mode="async")
+                continue
         item_customer[i] = customer
 
-    # ---- run metadata (30s L1 cache) + run_not_active rejection. Runs
-    # BEFORE the idempotency SETNX: a locally-rejected item must NOT burn its
-    # idem key, or the client's legitimate retry (after fixing the problem /
-    # against an active run) would misread as an idem-hit and be appended
-    # held=False — accepted spend with NO hold ever taken, a one-event
-    # enforcement bypass on the retry path. Same reason customer/currency
+    # ---- run metadata (30s L1 cache) + run-active check. Runs BEFORE the
+    # idempotency SETNX: a locally-rejected item must NOT burn its idem key,
+    # or the client's legitimate retry (after fixing the problem / against an
+    # active run) would misread as an idem-hit and be appended held=False —
+    # accepted spend with NO hold ever taken, a one-event enforcement bypass
+    # on the retry path. Same reason customer/currency/effective_at
     # validation above precedes the SETNX. ----
     run_cap_seed: dict = {}  # i -> (run_cap_micros | None, run_seed_micros)
+    dead_run_idx: list = []  # replay-wins candidates (run no longer active)
     run_ids_needed = {str(items[i].run_id) for i in range(n)
                       if results[i] is None and items[i].run_id is not None}
     run_meta = _run_meta_for(tenant, run_ids_needed)
@@ -397,19 +473,40 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         if item.run_id is not None:
             meta = run_meta.get(str(item.run_id))
             if meta is None or meta[2] != "active" or meta[3] != str(item_customer[i].id):
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason="run_not_active", mode="async")
+                dead_run_idx.append(i)
                 continue
             run_cap_seed[i] = (meta[0], meta[1])
         else:
             run_cap_seed[i] = (None, 0)
 
+    # ---- replay-wins for dead-run items (mirrors the sync path: record_usage
+    # returns the existing event BEFORE any validation). A read-only EXISTS
+    # probe — never SETNX — decides: key present => this is a replay of an
+    # already-accepted item, so it is accepted as a duplicate suspect (no
+    # hold, held=False append) instead of rejected; absent => genuinely new
+    # spend on a dead run, rejected run_not_active WITHOUT writing the key. ----
+    forced_replay: set = set()
+    if dead_run_idx:
+        probe_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
+                      for i in dead_run_idx]
+        for i, present in zip(dead_run_idx, _ingest_idem_present(tenant.id, probe_keys)):
+            if present:
+                forced_replay.add(i)
+            else:
+                results[i] = _ingest_verdict(accepted=False, rejected=True,
+                                             reason="run_not_active", mode="async")
+
     # ---- idempotency pre-filter: one pipelined redis round trip for the
     # whole batch, only for items still viable after EVERY local rejection
-    # above (customer/currency validation, run_not_active) ----
-    pending_idx = [i for i in range(n) if results[i] is None]
-    idem_keys = [(str(items[i].customer_id), items[i].idempotency_key) for i in pending_idx]
+    # above (customer/currency/effective_at validation, run_not_active).
+    # forced_replay items are already known replays — no SETNX needed. ----
+    pending_idx = [i for i in range(n) if results[i] is None and i not in forced_replay]
+    idem_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
+                 for i in pending_idx]
     idem_hits = dict(zip(pending_idx, _ingest_idem_prefilter(tenant.id, idem_keys)))
+    # Keys THIS request freshly SET — deleted again if the raw append fails,
+    # so the retry re-enters the estimate+hold gate (see _ingest_idem_unwind).
+    fresh_idem_keys = [k for i, k in zip(pending_idx, idem_keys) if not idem_hits[i]]
 
     # ---- per item: idem routing, estimate (Unpriceable -> sync fallback).
     # Estimation deliberately stays AFTER the idem check: an idem-hit takes no
@@ -420,11 +517,13 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     hold_candidates: list = []   # (i, item, customer, owner_id, Estimate)
     append_only: list = []       # (i, item, customer, owner_id) idem-hit rows
     owner_stop_cache: dict = {}
-    for i in pending_idx:
+    for i in range(n):
+        if results[i] is not None:  # forced_replay items are still None here
+            continue
         item = items[i]
         customer = item_customer[i]
         owner_id = owners[str(item.customer_id)]
-        if idem_hits[i]:
+        if i in forced_replay or idem_hits[i]:
             if owner_id not in owner_stop_cache:
                 owner_stop_cache[owner_id] = read_live_stop(owner_id, tenant)
             results[i] = _ingest_verdict(accepted=True, duplicate_suspect=True,
@@ -486,7 +585,10 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     # ---- durability boundary: the raw append. On failure, undo every hold
     # taken above (never leave money reserved for a batch that never landed)
-    # and surface a 5xx so the caller retries the whole batch. ----
+    # AND delete the idem keys this request freshly set (or the client's
+    # retry of this same batch would read as all idem-hits and bypass the
+    # estimate+hold gate entirely), then surface a 5xx so the caller retries
+    # the whole batch. ----
     if raw_objs:
         try:
             RawIngestEvent.objects.bulk_create(raw_objs)
@@ -495,6 +597,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 "tenant_id": str(tenant.id), "count": len(raw_objs)}})
             for owner_id, run_id, estimate_micros in release_list:
                 release_ingest_hold(owner_id, tenant, run_id, estimate_micros)
+            _ingest_idem_unwind(tenant.id, fresh_idem_keys)
             raise HttpError(503, "raw ingest append failed")
 
     accepted = sum(1 for r in results if r["accepted"])
