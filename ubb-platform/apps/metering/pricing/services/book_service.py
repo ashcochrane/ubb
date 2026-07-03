@@ -3,6 +3,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard, validate_tiers
+from apps.metering.pricing.services.card_cache import CardCache
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
@@ -58,4 +59,5 @@ class BookService:
             locked.version = new_version
             locked.save(update_fields=["version", "updated_at"])
             book.version = new_version
+            transaction.on_commit(lambda: CardCache.invalidate(locked.tenant_id))
             return book
