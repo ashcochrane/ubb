@@ -43,3 +43,34 @@ def test_customer_scoped_price_rate_gets_book_and_assignment():
     assert r.rate_card.is_default is False
     a = RateCardAssignment.objects.get(tenant=t, customer=c, currency="usd")
     assert a.rate_card_id == r.rate_card_id
+
+
+def test_same_provider_two_currencies_get_separate_books():
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    usd = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                              metric_name="input_tokens", currency="usd",
+                              rate_per_unit_micros=10)
+    eur = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                              metric_name="input_tokens", currency="eur",
+                              rate_per_unit_micros=9)
+    _backfill()
+    usd.refresh_from_db(); eur.refresh_from_db()
+    assert usd.rate_card_id != eur.rate_card_id
+    assert usd.rate_card.currency == "usd" and eur.rate_card.currency == "eur"
+
+
+def test_multi_provider_customer_shares_one_book_and_assignment():
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    g = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+                            metric_name="input_tokens", currency="usd",
+                            customer=c, rate_per_unit_micros=5)
+    o = Rate.objects.create(tenant=t, card_type="price", provider="openai",
+                            metric_name="input_tokens", currency="usd",
+                            customer=c, rate_per_unit_micros=6)
+    _backfill()
+    g.refresh_from_db(); o.refresh_from_db()
+    assert g.rate_card_id == o.rate_card_id
+    assert RateCardAssignment.objects.filter(tenant=t, customer=c, currency="usd").count() == 1
+    a = RateCardAssignment.objects.get(tenant=t, customer=c, currency="usd")
+    assert a.rate_card_id == g.rate_card_id

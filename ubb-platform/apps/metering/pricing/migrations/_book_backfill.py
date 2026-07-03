@@ -9,13 +9,26 @@ versions inherit their lineage sibling's book in a second pass.
 
 
 def _book_for(RateCard, tenant_id, card_type, provider, currency, customer_id):
+    """Resolve-or-create the book a rate belongs to. The natural key
+    (tenant, card_type, key) must encode everything that distinguishes a book,
+    so `key` includes `currency` (default books are per
+    (tenant, card_type, provider, currency)). Customer books are per
+    (customer, currency) and SPAN providers (matching the one-assignment-
+    per-(customer, currency) model), so provider is NOT in the customer key and
+    provider_key stays "" (the is_default partial-unique does not apply to
+    non-default books; resolution filters rates within the book by
+    Rate.provider, so a provider-spanning customer book resolves fine)."""
     is_default = customer_id is None
-    key = (provider or "default") if is_default else f"cust-{customer_id}-{provider or 'default'}"
+    if is_default:
+        key = f"{provider or 'default'}-{currency}"
+        provider_key, name = provider or "", provider or "default"
+    else:
+        key = f"cust-{customer_id}-{currency}"
+        provider_key, name = "", "custom"
     book, _ = RateCard.objects.get_or_create(
         tenant_id=tenant_id, card_type=card_type, key=key[:64],
-        defaults={"provider_key": provider or "", "currency": currency,
-                  "name": provider or "default", "version": 1,
-                  "is_default": is_default},
+        defaults={"provider_key": provider_key, "currency": currency,
+                  "name": name, "version": 1, "is_default": is_default},
     )
     return book
 
