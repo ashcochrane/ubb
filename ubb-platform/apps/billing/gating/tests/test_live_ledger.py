@@ -234,6 +234,50 @@ class TestStopFlag:
         assert replay["event_id"] == res["event_id"]
         assert replay["stop"] is True
 
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_stop_fired_db_failure_cannot_poison_record_usage_transaction(self, _m, monkeypatch):
+        """Task 7 regression: _set_stop's StopFired outbox INSERT runs INSIDE
+        record_usage's outer @transaction.atomic on the sync path. If that
+        INSERT fails at the DB level, a bare try/except swallows the Python
+        exception but leaves the ambient Postgres transaction ABORTED — the
+        very next statement (write_event(UsageRecorded)) would raise
+        "current transaction is aborted", 500ing the money path. _set_stop's
+        savepoint (transaction.atomic inside the try/except) must roll the
+        failed INSERT back cleanly.
+
+        The failure is simulated with a REAL failed SQL statement (SELECT 1/0
+        -> DataError, a DatabaseError subclass), not a pure-Python raise —
+        only a genuine DB error aborts the transaction, so only this shape of
+        test can catch a missing savepoint."""
+        from django.db import connection
+        from apps.platform.events.models import OutboxEvent
+
+        orig_create = OutboxEvent.objects.create
+
+        def _create(**kwargs):
+            if kwargs.get("event_type") == "stop.fired":
+                with connection.cursor() as cur:
+                    cur.execute("SELECT 1/0")  # DataError; aborts the ambient tx
+            return orig_create(**kwargs)
+
+        monkeypatch.setattr(OutboxEvent.objects, "create", _create)
+
+        t = _tenant()  # prepaid, enforcing; floor = 0
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        res = UsageService.record_usage(
+            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            billed_cost_micros=6_000_000)  # crosses the floor -> _set_stop fires
+        # record_usage returned normally, with the stop verdict.
+        assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
+        assert UsageEvent.objects.filter(id=res["event_id"]).exists()
+        # The UsageRecorded outbox row (written AFTER the failed StopFired
+        # insert, in the same outer transaction) still landed...
+        assert OutboxEvent.objects.filter(
+            event_type="usage.recorded", payload__event_id=str(res["event_id"])).exists()
+        # ...and the StopFired emission was dropped (best-effort), not retried.
+        assert not OutboxEvent.objects.filter(event_type="stop.fired").exists()
+
 
 @pytest.mark.django_db
 class TestCreditHookFiresThroughEndpoint:

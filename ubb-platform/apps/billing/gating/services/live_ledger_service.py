@@ -280,9 +280,21 @@ class LiveLedgerService:
         refreshes the TTL — no re-publish/re-emit (no spam). ``_clear_stop``
         deletes the key outright, so the NEXT ``_set_stop`` naturally re-arms
         the transition (no separate "already notified" bookkeeping to keep in
-        sync). Both side effects NEVER raise into the caller — each wrapped
-        in its own try/except — since this is called from the accept-time
-        money path (record_usage_debit / HoldService.acquire).
+        sync).
+
+        NEVER raises into the caller — this runs on the accept-time money
+        path (record_usage_debit / HoldService.acquire). The pub/sub publish
+        is guarded by try/except (not a DB statement, so that suffices). The
+        outbox write is additionally SAVEPOINT-isolated (``transaction.atomic``
+        inside the try/except — the budget_service.check_thresholds pattern):
+        on the sync path _set_stop runs inside record_usage's outer atomic
+        block, and a DB-level INSERT failure (deadlock, timeout) aborts the
+        ambient Postgres transaction — a bare try/except would swallow the
+        Python exception but leave every subsequent statement in the caller
+        raising "current transaction is aborted". The savepoint rolls the
+        failed INSERT back cleanly so the ambient transaction stays usable.
+        (Called in autocommit from the async ingest path, atomic() just opens
+        its own short transaction — equally safe.)
 
         tenant_id is optional: a call site without tenant context (there is
         none today, but keeping this defensive) degrades to pub/sub-only
@@ -300,10 +312,12 @@ class LiveLedgerService:
                            extra={"data": {"owner_id": str(owner_id)}})
         if tenant_id:
             try:
+                from django.db import transaction
                 from apps.platform.events.outbox import write_event
                 from apps.platform.events.schemas import StopFired
-                write_event(StopFired(tenant_id=str(tenant_id), owner_id=str(owner_id),
-                                      reason=reason, scope="customer"))
+                with transaction.atomic():
+                    write_event(StopFired(tenant_id=str(tenant_id), owner_id=str(owner_id),
+                                          reason=reason, scope="customer"))
             except Exception:
                 logger.warning("live_ledger.stop_event_failed",
                                extra={"data": {"owner_id": str(owner_id)}})
