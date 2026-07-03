@@ -14,7 +14,7 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", customer=Non
             is_default=True, defaults={"key": (provider or "default")[:64]})
     else:
         book, _ = RateCard.objects.get_or_create(
-            tenant=tenant, card_type=card_type, key=f"cust-{customer.id}"[:64],
+            tenant=tenant, card_type=card_type, key=f"cust-{customer.id}-{currency}"[:64],
             defaults={"provider_key": provider, "currency": currency})
         if card_type == "price":
             RateCardAssignment.objects.get_or_create(

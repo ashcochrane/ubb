@@ -59,6 +59,17 @@ def test_same_provider_two_currencies_get_separate_books():
     assert usd.rate_card.currency == "usd" and eur.rate_card.currency == "eur"
 
 
+def test_backfill_raises_on_orphaned_customer_cost_rate():
+    import pytest
+    t = Tenant.objects.create(name="T", default_currency="usd")
+    c = Customer.objects.create(tenant=t, external_id="c1")
+    Rate.objects.create(tenant=t, card_type="cost", provider="gemini",
+                        metric_name="input_tokens", currency="usd",
+                        customer=c, rate_per_unit_micros=3)
+    with pytest.raises(RuntimeError, match="customer-scoped cost"):
+        _backfill()
+
+
 def test_multi_provider_customer_shares_one_book_and_assignment():
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")

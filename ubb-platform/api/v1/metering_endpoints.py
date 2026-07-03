@@ -3,7 +3,7 @@ import re
 from datetime import date, datetime
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum, Count, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
@@ -668,10 +668,13 @@ def create_book(request, payload: BookIn):
         currency = _resolve_card_currency(request.auth.tenant, payload.currency)
     except ValueError as e:
         return 422, {"error": str(e)}
-    book = RateCard.objects.create(
-        tenant=request.auth.tenant, card_type=payload.card_type,
-        provider_key=payload.provider_key, key=payload.key, name=payload.name,
-        currency=currency, is_default=payload.is_default)
+    try:
+        book = RateCard.objects.create(
+            tenant=request.auth.tenant, card_type=payload.card_type,
+            provider_key=payload.provider_key, key=payload.key, name=payload.name,
+            currency=currency, is_default=payload.is_default)
+    except IntegrityError as e:
+        return 422, {"error": f"rate-card book conflict: {e}"}
     return 200, _book_to_out(book)
 
 
@@ -699,6 +702,9 @@ def add_rate(request, book_id: UUID, payload: RateIn):
     (single source of truth); tier/enum validation mirrors the old flat create."""
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
+    if book.is_default and payload.provider != book.provider_key:
+        return 422, {"error": (f"rate provider {payload.provider!r} must match the "
+                               f"default book's provider {book.provider_key!r}")}
     valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
     if payload.pricing_model not in valid_models:
         return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
@@ -706,15 +712,18 @@ def add_rate(request, book_id: UUID, payload: RateIn):
         validate_tiers(book.card_type, payload.pricing_model, payload.tiers)
     except ValueError as e:
         return 422, {"error": str(e)}
-    rate = Rate.objects.create(
-        tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
-        metric_name=payload.metric_name, provider=payload.provider,
-        event_type=payload.event_type, dimensions=payload.dimensions,
-        pricing_model=payload.pricing_model,
-        rate_per_unit_micros=payload.rate_per_unit_micros,
-        unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-        tiers=payload.tiers, currency=book.currency, product_id=payload.product_id,
-        book_version_from=book.version)
+    try:
+        rate = Rate.objects.create(
+            tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
+            metric_name=payload.metric_name, provider=payload.provider,
+            event_type=payload.event_type, dimensions=payload.dimensions,
+            pricing_model=payload.pricing_model,
+            rate_per_unit_micros=payload.rate_per_unit_micros,
+            unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
+            tiers=payload.tiers, currency=book.currency, product_id=payload.product_id,
+            book_version_from=book.version)
+    except IntegrityError as e:
+        return 422, {"error": f"rate conflict: {e}"}
     return 200, _rate_to_out(rate)
 
 

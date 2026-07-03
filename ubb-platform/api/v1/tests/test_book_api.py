@@ -84,6 +84,25 @@ class BookApiTest(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["currency"], "usd")
 
+    def test_add_rate_provider_must_match_default_book_provider(self):
+        r = self._post("/api/v1/metering/pricing/rate-cards", {
+            "card_type": "price", "provider_key": "gemini", "key": "gemini",
+            "name": "Gemini", "is_default": True})
+        self.assertEqual(r.status_code, 200, r.content)
+        book_id = r.json()["id"]
+
+        # Mismatched provider on a default book -> 422, unresolvable rate rejected.
+        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
+            "metric_name": "input_tokens", "provider": "openai",
+            "pricing_model": "per_unit", "rate_per_unit_micros": 10})
+        self.assertEqual(r.status_code, 422, r.content)
+
+        # Matching provider -> 200.
+        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
+            "metric_name": "input_tokens", "provider": "gemini",
+            "pricing_model": "per_unit", "rate_per_unit_micros": 10})
+        self.assertEqual(r.status_code, 200, r.content)
+
     # ---- list ----
 
     def test_list_books_and_rates(self):

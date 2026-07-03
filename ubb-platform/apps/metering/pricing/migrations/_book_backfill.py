@@ -38,6 +38,16 @@ def forwards(apps, schema_editor):
     RateCard = apps.get_model("pricing", "RateCard")
     RateCardAssignment = apps.get_model("pricing", "RateCardAssignment")
 
+    # Guard (design §6): customer-scoped COST rates have no book resolution path
+    # (cost books are not assignable), so backfilling them would silently drop the
+    # customer's cost basis. Fail loudly so a human resolves them first.
+    orphan_cost = Rate.objects.filter(
+        card_type="cost", customer__isnull=False, valid_to__isnull=True).count()
+    if orphan_cost:
+        raise RuntimeError(
+            f"{orphan_cost} active customer-scoped cost rate(s) have no book "
+            "resolution path; resolve these before backfilling (design §6).")
+
     # Pass 1: active rates -> books.
     for r in Rate.objects.filter(valid_to__isnull=True, rate_card__isnull=True):
         customer_id = r.customer_id
@@ -66,6 +76,11 @@ def forwards(apps, schema_editor):
             book_id = book.id
         r.rate_card_id = book_id
         r.save(update_fields=["rate_card"])
+
+    # Parity: every active rate must now belong to exactly one book.
+    orphaned = Rate.objects.filter(valid_to__isnull=True, rate_card__isnull=True).count()
+    if orphaned:
+        raise RuntimeError(f"backfill parity failure: {orphaned} active rate(s) without a book")
 
 
 def backwards(apps, schema_editor):
