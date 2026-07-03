@@ -144,6 +144,52 @@ class PricingMarkupsCRUDTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["markup_percentage_micros"], 15000000)
 
+    def test_customer_markup_zero_shadows_tenant_default(self):
+        # Documents WHY delete exists: a 0/0 override is NOT the same as
+        # inheriting — it shadows the tenant default and pins the customer at cost.
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=None,
+            markup_percentage_micros=15000000, fixed_uplift_micros=0)
+        self.http_client.put(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            data=json.dumps({"markup_percentage_micros": 0, "fixed_uplift_micros": 0}),
+            content_type="application/json", **self._auth())
+        resp = self.http_client.get(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth())
+        self.assertEqual(resp.json()["markup_percentage_micros"], 0)
+
+    def test_delete_customer_markup_reverts_to_tenant_default(self):
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=None,
+            markup_percentage_micros=15000000, fixed_uplift_micros=0)
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            markup_percentage_micros=50000000, fixed_uplift_micros=0)
+        resp = self.http_client.delete(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "deleted")
+        # Now resolves to the tenant default (15%), NOT to zero.
+        resp = self.http_client.get(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth())
+        self.assertEqual(resp.json()["markup_percentage_micros"], 15000000)
+
+    def test_delete_customer_markup_idempotent_when_no_override(self):
+        resp = self.http_client.delete(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "no_override")
+
+    def test_delete_customer_markup_unknown_customer_404(self):
+        resp = self.http_client.delete(
+            "/api/v1/metering/pricing/customers/00000000-0000-0000-0000-000000000000/markup",
+            **self._auth())
+        self.assertEqual(resp.status_code, 404)
+
 
 class MeteringRunEndpointTest(TestCase):
     def setUp(self):

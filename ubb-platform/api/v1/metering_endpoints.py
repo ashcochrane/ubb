@@ -356,6 +356,22 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
+@metering_api.delete("/pricing/customers/{customer_id}/markup")
+def delete_customer_markup(request, customer_id: UUID):
+    """Remove a customer's markup override so they revert to inheriting the
+    tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
+    resolves as the customer's markup and SHADOWS the tenant default, pinning
+    the customer at cost. Idempotent: 'no_override' when none existed; a bad
+    customer id is a 404."""
+    _product_check(request)
+    from apps.metering.pricing.models import TenantMarkup
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    deleted, _ = TenantMarkup.objects.filter(
+        tenant=request.auth.tenant, customer=customer).delete()
+    return {"status": "deleted" if deleted else "no_override"}
+
+
 # --- Analytics ---
 
 
