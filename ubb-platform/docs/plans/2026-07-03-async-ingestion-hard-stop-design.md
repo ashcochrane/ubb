@@ -1,7 +1,7 @@
 # Async Ingestion with Accept-Time Hard Stop (Rung A → B)
 
 **Date:** 2026-07-03
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented (Rung A core) — 2026-07-03; SSE/SDK batching and Redpanda log swap are follow-up plans
 **Related:** 2026-06-19-prepaid-hard-stop-design.md (Tier-2 live ledger), 2026-07-03-rate-card-container-plan.md (BookService.publish — invalidation hook)
 
 ## Problem
@@ -179,3 +179,53 @@ Escrow/local-lease gate in the gateway, TigerBeetle as hold engine
 DB invariant), Rust/Go gateway, ClickHouse settlement/analytics, gRPC
 streaming ingest, flag-only "throughput mode" tenant knob. Each sits behind
 a seam named above; none blocks Rung A/B.
+
+## Implementation record (2026-07-03)
+
+Rung A core landed end-to-end on `feat/async-ingest-hard-stop`: `RawIngestEvent`
+model, the card/tier-mirror cache, `EstimationService` (never-under-hold,
+exact on non-tiered cards), `HoldService`'s atomic Redis batch gate, the
+`POST /api/v1/metering/usage/ingest` accept endpoint, `settle_raw_events`
+settlement, and stop-flag pub/sub + `stop.fired` outbox propagation — closed
+out by `api/v1/tests/test_ingest_e2e.py`, a single burn-to-floor test driving
+the REAL endpoint, the REAL settlement task, and the REAL outbox wallet-
+drawdown handler (no mocks) for a prepaid/enforcing owner funded $20 against
+a non-tiered $10/1,000,000-token price card.
+
+**Measured numbers (from the E2E test, deterministic across repeated runs):**
+- Crossing batch (3 events, $6/$5/$2 estimated): the second item crosses the
+  wallet floor; both it and every later item in that same pipelined batch
+  report `stop: true` (HoldService.acquire applies one uniform verdict per
+  acquire() call, not per positional crossing point — a deliberate
+  batch-granularity cooperative behavior, now pinned by a test).
+- **Overage bound observed:** live balance at flag-set = **-$3.00**
+  (-3,000,000 micros) against a crossing-batch estimate sum of **$13.00**
+  (13,000,000 micros) — i.e. actual overage was ~23% of the "≤ one batch"
+  bound the design commits to, confirming the bound holds with headroom on
+  this fixture (not merely non-negative).
+- Exact convergence: `sum(UsageEvent.billed_cost_micros)` == $23.00 ==
+  $20.00 − durable wallet balance (-$3.00); live counter equals the durable
+  balance both before AND after `reconcile_prepaid` (the non-tiered card's
+  estimate is exact, so estimate-then-settle nets to equality, not just an
+  inequality).
+- Whole-batch replay of the final batch produced zero new `UsageEvent` rows
+  and zero new holds, exercised through BOTH the accept-layer idempotency
+  prefilter (duplicate_suspect) and the settle-layer `UsageEvent` unique
+  constraint (verified exactly-once at both boundaries).
+- Exactly one `ubb:stopchan:{owner_id}` pub/sub message and exactly one
+  `stop.fired` outbox row for the crossing (transition-only, no spam).
+
+**Full-suite regression gate:** `1611 passed, 27 failed, 3 skipped` — the 27
+failures are entirely in `apps/billing/invoicing` and `apps/subscriptions`
+(files untouched by this branch; pre-existing baseline carried from
+`feat/rate-card-container`). Zero failures in metering, gating, wallets,
+topups, runs, platform/events, or api/v1.
+
+The Task 1–7 per-task reviews (opus, money-path scrutiny throughout)
+surfaced and closed several CRITICAL/Important defects along the way
+(under-hold on increasing-rate ladders, postpaid settle sign trap, hold-leak
+races, StopFired transaction-poisoning). A residual list of deliberately
+deferred MINOR items (documentation/comment-only items, no behavior risk)
+accumulated task-by-task is carried in `.superpowers/sdd/progress.md` for the
+whole-branch final review — none block this "Rung A core: implemented"
+status.
