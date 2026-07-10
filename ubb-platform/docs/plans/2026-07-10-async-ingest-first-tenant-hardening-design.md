@@ -80,10 +80,14 @@ property is false precisely for markup tenants.
 `card_cache.py` as-built (the reviewed pattern: per-tenant version key in
 Redis, request-pinned via `contextvars`, bounded L1 dict, L2 Redis):
 
-- L2 key `ubb:markupcache:{tenant_id}:{version}:{customer_id|default}` →
-  serialized markup params (the fields `calculate_markup_micros` needs), or a
-  `"none"` sentinel (negative cache — "no markup configured" is the common
-  case and must also be one lookup).
+- L1 key `(tenant_id, customer_id|"")` → resolved `TenantMarkup` instance or
+  `None` (negative cache — "no markup configured" is the common case and must
+  also be one dict hit), validated against the Redis version key
+  `ubb:markupver:{tenant_id}`. No L2 value store: `card_cache.py` as-built
+  holds values in L1 only (Redis carries just the version), and an L2 adds
+  nothing here — an L1 miss repopulates with one ORM resolve per (tenant,
+  customer) per 30s TTL per worker. *(Corrected from an earlier draft that
+  described an L2 value key, to match the pattern actually being mirrored.)*
 - Version bump on `TenantMarkup.save()` and `.delete()` overrides — at the
   model layer so no service path can bypass it (same reasoning as
   UsageEvent's model-layer immutability).
