@@ -10,6 +10,8 @@ from apps.platform.runs.services import RunService
 from apps.billing.wallets.models import Wallet
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.metering.pricing.models import TenantMarkup
+from apps.metering.pricing.services import markup_cache
+from apps.metering.pricing.services.markup_cache import MarkupCache
 
 
 class MeteringProductGatingTest(TestCase):
@@ -78,6 +80,10 @@ class PricingMarkupsCRUDTest(TestCase):
         self.tenant = Tenant.objects.create(name="Test", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        # Module-level L1 + contextvar are in-process state: reset per test,
+        # mirroring apps/metering/pricing/tests/test_markup_cache.py.
+        markup_cache._l1.clear()
+        markup_cache._ctx_versions.set({})
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -189,6 +195,41 @@ class PricingMarkupsCRUDTest(TestCase):
             "/api/v1/metering/pricing/customers/00000000-0000-0000-0000-000000000000/markup",
             **self._auth())
         self.assertEqual(resp.status_code, 404)
+
+    def test_delete_customer_markup_bumps_l1_cache_immediately(self):
+        """Regression: deleting a customer override that is LOWER than the
+        tenant default must not leave MarkupCache's L1 serving the stale,
+        lower markup for the TTL window — that under-estimates cost and
+        therefore under-holds (money leak). The endpoint must delete via the
+        model layer (TenantMarkup.delete()) so the version bump added in
+        8272e5a actually fires; a queryset .filter(...).delete() bypasses it."""
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=None,
+            markup_percentage_micros=50_000_000, fixed_uplift_micros=0)  # tenant default 50%
+        TenantMarkup.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            markup_percentage_micros=10_000_000, fixed_uplift_micros=0)  # customer discount 10%
+
+        # Pre-populate L1 with the override, as the estimation hot path would.
+        MarkupCache.begin_request(self.tenant.id)
+        cached = MarkupCache.resolve(self.tenant, self.customer)
+        self.assertIsNotNone(cached)
+        self.assertEqual(cached.markup_percentage_micros, 10_000_000)
+
+        resp = self.http_client.delete(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
+            **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "deleted")
+
+        # A new request pins whatever version is current in Redis. If delete()
+        # bumped it, the stale L1 entry misses on version and resolve() falls
+        # through to a live ORM resolve — landing on the tenant default, not
+        # the deleted (lower) override.
+        MarkupCache.begin_request(self.tenant.id)
+        resolved = MarkupCache.resolve(self.tenant, self.customer)
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.markup_percentage_micros, 50_000_000)
 
 
 class UsageEventDetailEndpointTest(TestCase):

@@ -895,9 +895,11 @@ def delete_customer_markup(request, customer_id: UUID):
     from apps.metering.pricing.models import TenantMarkup
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    deleted, _ = TenantMarkup.objects.filter(
-        tenant=request.auth.tenant, customer=customer).delete()
-    return {"status": "deleted" if deleted else "no_override"}
+    markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer=customer).first()
+    if markup is None:
+        return {"status": "no_override"}
+    markup.delete()  # instance delete — the model layer bumps MarkupCache's version
+    return {"status": "deleted"}
 
 
 # --- Analytics ---
