@@ -449,6 +449,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     from ninja.errors import HttpError
     from apps.metering.pricing.services.card_cache import CardCache
+    from apps.metering.pricing.services.markup_cache import MarkupCache
     from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
     from apps.metering.usage.services.usage_service import EffectiveAtError, validate_effective_at
     from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
@@ -467,6 +468,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     now = timezone.now()
     tenant_currency = (tenant.default_currency or "usd").lower()
     CardCache.begin_request(tenant.id)
+    MarkupCache.begin_request(tenant.id)
 
     # ---- resolve customers + owners once per customer; validate currency +
     # effective_at. validate_effective_at is the sanctioned per-event ORM
