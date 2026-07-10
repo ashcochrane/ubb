@@ -721,6 +721,26 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
 
 
+@metering_api.get("/ops/ingest-health", auth=None)
+def ops_ingest_health(request, tenant_id: str = None):
+    """Operator-facing pipeline health (spec §3) — deliberately NOT behind
+    ApiKeyAuth: tenant keys must not grant ops visibility. Gated on the
+    deployment-level UBB_OPS_TOKEN via constant-time compare; when the
+    setting is unset the endpoint 404s (fail closed, invisible)."""
+    import hmac
+    from django.conf import settings as dj_settings
+    token = getattr(dj_settings, "UBB_OPS_TOKEN", "")
+    if not token:
+        return metering_api.create_response(
+            request, {"error": "not_found"}, status=404)
+    supplied = request.headers.get("X-Ops-Token", "")
+    if not hmac.compare_digest(supplied.encode(), token.encode()):
+        return metering_api.create_response(
+            request, {"error": "unauthorized"}, status=401)
+    from apps.metering.usage.services.ingest_health import ingest_health
+    return ingest_health(tenant_id=tenant_id)
+
+
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None):
