@@ -56,3 +56,61 @@ class AutoTopUpService:
                 extra={"data": {"customer_id": str(customer.id)}},
             )
             return None
+
+    @staticmethod
+    def apply_topup_credit(attempt, payment_intent) -> bool:
+        """Idempotently credit the wallet for a succeeded auto-topup PaymentIntent.
+        Convergent: called by the charge task, the payment_intent.succeeded webhook, and reconcile.
+        Exactly-once via WalletTransaction idempotency_key=auto_topup:{pi_id}. Returns True if it credited.
+
+        F4.3: the credit also creates a PAID CreditGrant lot inside the same
+        savepoint as the TOP_UP transaction — the loser branch creates nothing,
+        so the grant inherits exactly-once from auto_topup:{pi_id} for all
+        three callers with zero changes to them. Expiry comes from the owner's
+        CustomerBillingProfile.topup_grant_expiry_days (NULL = never expires)."""
+        from apps.billing.locking import lock_for_billing, lock_top_up_attempt
+        from apps.billing.wallets.grants import GrantLedger
+        from apps.billing.wallets.models import WalletTransaction
+
+        pi_id = payment_intent.id if hasattr(payment_intent, "id") else payment_intent["id"]
+        key = f"auto_topup:{pi_id}"
+        lc = getattr(payment_intent, "latest_charge", None)
+        charge_id = (lc.id if hasattr(lc, "id") else lc) if lc else None
+        amount_micros = attempt.amount_micros
+
+        with transaction.atomic():
+            wallet, customer = lock_for_billing(attempt.customer_id)
+            if WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).exists():
+                return False
+            attempt = lock_top_up_attempt(attempt.id)
+            new_balance = wallet.balance_micros + amount_micros
+            try:
+                with transaction.atomic():  # savepoint: race backstop on the unique constraint
+                    txn = WalletTransaction.objects.create(
+                        wallet=wallet, transaction_type="TOP_UP", amount_micros=amount_micros,
+                        balance_after_micros=new_balance, description="Auto top-up",
+                        reference_id=str(attempt.id), idempotency_key=key)
+                    GrantLedger.create_grant(
+                        wallet, customer.tenant_id, kind="paid",
+                        amount_micros=amount_micros,
+                        expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
+                        source="auto_topup", source_reference=str(attempt.id), txn=txn)
+            except IntegrityError:
+                return False
+            wallet.balance_micros = new_balance
+            wallet.save(update_fields=["balance_micros", "updated_at"])
+            attempt.status = "succeeded"
+            attempt.stripe_payment_intent_id = pi_id
+            fields = ["status", "stripe_payment_intent_id", "updated_at"]
+            if charge_id:
+                attempt.stripe_charge_id = charge_id
+                fields.append("stripe_charge_id")
+            attempt.save(update_fields=fields)
+            # Tier-2 (P2/D20): mirror the winning credit onto the live balance
+            # after commit (mandatory — MIN-merge cannot re-raise a missed
+            # credit). No-op when enforcement is off / postpaid.
+            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+            transaction.on_commit(
+                lambda oid=wallet.customer_id, t=customer.tenant, amt=amount_micros:
+                LiveLedgerService.credit(oid, t, amt))
+            return True

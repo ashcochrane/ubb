@@ -7,7 +7,14 @@ from django.conf import settings
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
 
+assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+# Global pin: every UBB Stripe call sends this version. The mocked suite cannot
+# validate the header — only the gated live test (test_live_stripe_ar.py) proves
+# it against real Stripe.
+STRIPE_API_VERSION = "2025-03-31.basil"   # canonical form; bare 2025-03-31 is not a valid version
+stripe.api_version = STRIPE_API_VERSION
 logger = logging.getLogger(__name__)
 
 
@@ -30,18 +37,39 @@ def micros_to_cents(amount_micros):
     return amount_micros // 10_000
 
 
-def stripe_call(fn, *, retryable=False, idempotency_key=None, max_retries=3, **kwargs):
+def api_key_for_tenant(tenant):
+    """The Stripe secret key for a tenant's mode (F4.4).
+
+    Sandbox tenants MUST use the TEST key — and the test key must actually be
+    a test key (refuse-live): a live secret in STRIPE_TEST_SECRET_KEY is a
+    config error that would leak sandbox traffic into live Stripe.
+    """
+    if getattr(tenant, "is_sandbox", False):
+        key = settings.STRIPE_TEST_SECRET_KEY
+        if not key or not key.startswith("sk_test_"):
+            raise StripeFatalError(
+                "Sandbox Stripe calls require STRIPE_TEST_SECRET_KEY "
+                "(must start with sk_test_)."
+            )
+        return key
+    return settings.STRIPE_SECRET_KEY
+
+
+def stripe_call(fn, *, api_key, retryable=False, idempotency_key=None, max_retries=3, **kwargs):
     """
     Wrap a Stripe API call with error mapping and optional retry.
 
+    - api_key is REQUIRED (no default): every call site must pass the key for
+      the tenant in scope (api_key_for_tenant) — a forgotten site is a
+      TypeError, never a silent live-key call from a sandbox flow (F4.4).
     - retryable=True + idempotency_key: retries with exponential backoff + jitter
     - retryable=True + no key: forced to non-retryable (safety)
     - Maps Stripe exceptions to domain exceptions
     """
-    if not settings.STRIPE_SECRET_KEY:
+    if not api_key:
         raise StripeFatalError(
-            "STRIPE_SECRET_KEY is not configured. "
-            "Set it in the environment to enable Stripe operations."
+            "Stripe API key is not configured. "
+            "Set STRIPE_SECRET_KEY in the environment to enable Stripe operations."
         )
     if retryable and not idempotency_key:
         retryable = False
@@ -52,7 +80,7 @@ def stripe_call(fn, *, retryable=False, idempotency_key=None, max_retries=3, **k
         try:
             if idempotency_key:
                 kwargs["idempotency_key"] = idempotency_key
-            return fn(**kwargs)
+            return fn(api_key=api_key, **kwargs)
         except stripe.error.RateLimitError as e:
             _log_stripe_error(fn, e, attempt)
             if attempt < attempts - 1:
@@ -122,6 +150,15 @@ class StripeService:
         NOT on the connected account — this is UBB billing the tenant.
         auto_advance=False until items attached, then finalize explicitly.
         """
+        # Belt-and-braces (F4.4): _calculate_fees already returns 0 for sandbox
+        # tenants so their periods close at 0 and never reach this method via
+        # the <=0 skip — but a direct call must fail loudly, never invoice a
+        # sandbox on UBB's live Stripe account.
+        if tenant.is_sandbox:
+            raise StripeFatalError(
+                f"Sandbox tenant {tenant.id} must never be platform-fee invoiced"
+            )
+
         from apps.billing.queries import get_billing_config
         billing_config = get_billing_config(tenant.id)
 
@@ -134,9 +171,12 @@ class StripeService:
         if amount_cents <= 0:
             return None
 
+        api_key = api_key_for_tenant(tenant)
+
         # Create invoice with auto_advance=False to prevent early finalization
         invoice = stripe_call(
             stripe.Invoice.create,
+            api_key=api_key,
             retryable=True,
             idempotency_key=f"platform-invoice-{billing_period.id}",
             customer=billing_config.stripe_customer_id,
@@ -146,6 +186,7 @@ class StripeService:
 
         stripe_call(
             stripe.InvoiceItem.create,
+            api_key=api_key,
             retryable=True,
             idempotency_key=f"platform-item-{billing_period.id}",
             customer=billing_config.stripe_customer_id,
@@ -157,6 +198,7 @@ class StripeService:
 
         finalized = stripe_call(
             stripe.Invoice.finalize_invoice,
+            api_key=api_key,
             retryable=True,
             idempotency_key=f"platform-finalize-{billing_period.id}",
             invoice=invoice.id,

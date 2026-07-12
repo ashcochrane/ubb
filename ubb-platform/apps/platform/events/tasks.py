@@ -9,6 +9,7 @@ import logging
 from datetime import timedelta
 
 from celery import shared_task
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -47,36 +48,37 @@ def process_single_event(self, event_id):
     """Process a single outbox event -- dispatches to all registered handlers."""
     from apps.platform.events.dispatch import dispatch_to_handlers
 
-    try:
-        event = OutboxEvent.objects.select_for_update(skip_locked=True).get(id=event_id)
-    except OutboxEvent.DoesNotExist:
-        return
+    with transaction.atomic():
+        try:
+            event = OutboxEvent.objects.select_for_update(skip_locked=True).get(id=event_id)
+        except OutboxEvent.DoesNotExist:
+            return
 
-    if event.status not in ("pending",):
-        return
+        if event.status not in ("pending",):
+            return
 
-    event.status = "processing"
-    event.save(update_fields=["status", "updated_at"])
+        event.status = "processing"
+        event.save(update_fields=["status", "updated_at"])
 
-    try:
-        dispatch_to_handlers(event)
-        event.status = "processed"
-        event.processed_at = timezone.now()
-    except Exception as e:
-        event.retry_count += 1
-        event.last_error = str(e)[:2000]
-        if event.retry_count >= event.max_retries:
-            event.status = "failed"
-            alert_dead_letter(event)
-        else:
-            event.status = "pending"
-            event.next_retry_at = calculate_backoff(event.retry_count)
-        logger.exception(
-            "outbox.handler_failed",
-            extra={"data": {"event_id": event_id, "retry_count": event.retry_count}},
-        )
+        try:
+            dispatch_to_handlers(event)
+            event.status = "processed"
+            event.processed_at = timezone.now()
+        except Exception as e:
+            event.retry_count += 1
+            event.last_error = str(e)[:2000]
+            if event.retry_count >= event.max_retries:
+                event.status = "failed"
+                alert_dead_letter(event)
+            else:
+                event.status = "pending"
+                event.next_retry_at = calculate_backoff(event.retry_count)
+            logger.exception(
+                "outbox.handler_failed",
+                extra={"data": {"event_id": event_id, "retry_count": event.retry_count}},
+            )
 
-    event.save()
+        event.save()
 
 
 @shared_task(queue="ubb_events")

@@ -145,6 +145,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 1_500_000,
                 "reference": "evt_123",
+                "idempotency_key": "idem_evt_123",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -161,6 +162,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 3_000_000,
                 "reference": "evt_456",
+                "idempotency_key": "idem_evt_456",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -175,6 +177,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 2_000_000,
                 "reference": "evt_789",
+                "idempotency_key": "idem_evt_789",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -194,6 +197,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "nonexistent",
                 "amount_micros": 1_000_000,
                 "reference": "ref_1",
+                "idempotency_key": "idem_d_ref_1",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -212,6 +216,7 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 500_000,
                 "reference": "ref_2",
+                "idempotency_key": "idem_d_ref_2",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {other_raw_key}",
@@ -229,11 +234,81 @@ class BillingDebitEndpointTest(TestCase):
                 "customer_id": "cust_debit_1",
                 "amount_micros": 500_000,
                 "reference": "ref_3",
+                "idempotency_key": "idem_d_ref_3",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+    # --- floor guard (Phase 1): debit respects the overdraft floor by default ---
+
+    def _debit(self, external_id, amount, key, allow_negative=None):
+        body = {"customer_id": external_id, "amount_micros": amount,
+                "reference": "od", "idempotency_key": key}
+        if allow_negative is not None:
+            body["allow_negative"] = allow_negative
+        return self.http_client.post(
+            "/api/v1/billing/debit", data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def test_debit_blocked_when_it_would_overdraw(self):
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_1")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        resp = self._debit("od_1", 2_000_000, "od_k1")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json().get("code"), "would_overdraw")
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, 1_000_000)
+
+    def test_debit_allow_negative_forces_overdraw(self):
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_2")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        resp = self._debit("od_2", 2_000_000, "od_k2", allow_negative=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
+
+    def test_debit_within_overdraft_cushion_allowed(self):
+        from apps.billing.wallets.models import CustomerBillingProfile
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_3")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        CustomerBillingProfile.objects.create(customer=c, min_balance_micros=5_000_000)
+        resp = self._debit("od_3", 3_000_000, "od_k3")  # -> -2M, floor -5M: allowed
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -2_000_000)
+
+    def test_debit_postpaid_skips_floor(self):
+        self.tenant.billing_mode = "postpaid"
+        self.tenant.save()
+        c = Customer.objects.create(tenant=self.tenant, external_id="od_4")
+        Wallet.objects.create(customer=c, balance_micros=0)
+        resp = self._debit("od_4", 1_000_000, "od_k4")  # postpaid: negative is normal
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
+
+    # --- attribution (Phase 1): reason_code + actor stored on the ledger ---
+
+    def test_debit_records_reason_code_and_actor(self):
+        from apps.billing.wallets.models import WalletTransaction
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+                             "reference": "adj", "idempotency_key": "attr_k1",
+                             "reason_code": "correction", "actor": "ops@acme.co"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(resp.status_code, 200)
+        txn = WalletTransaction.objects.get(id=resp.json()["transaction_id"])
+        self.assertEqual(txn.reason_code, "correction")
+        self.assertEqual(txn.actor, "ops@acme.co")
+
+    def test_debit_rejects_unknown_reason_code(self):
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+                             "reference": "adj", "idempotency_key": "attr_k2",
+                             "reason_code": "bogus"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(resp.status_code, 422)
 
 
 class BillingCreditEndpointTest(TestCase):
@@ -259,6 +334,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 5_000_000,
                 "source": "manual_adjustment",
                 "reference": "adj_001",
+                "idempotency_key": "idem_adj_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -276,6 +352,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 7_000_000,
                 "source": "promo",
                 "reference": "promo_001",
+                "idempotency_key": "idem_promo_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -291,6 +368,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 3_000_000,
                 "source": "goodwill",
                 "reference": "gw_001",
+                "idempotency_key": "idem_gw_001",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -311,6 +389,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 1_000_000,
                 "source": "test",
                 "reference": "ref_1",
+                "idempotency_key": "idem_c_ref_1",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -330,6 +409,7 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_2",
+                "idempotency_key": "idem_c_ref_2",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {other_raw_key}",
@@ -348,11 +428,26 @@ class BillingCreditEndpointTest(TestCase):
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_3",
+                "idempotency_key": "idem_c_ref_3",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_credit_records_reason_code_and_actor(self):
+        from apps.billing.wallets.models import WalletTransaction
+        response = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "cust_credit_1", "amount_micros": 1_000_000,
+                             "source": "manual", "reference": "adj",
+                             "idempotency_key": "attr_c1",
+                             "reason_code": "goodwill", "actor": "ops@acme.co"}),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(response.status_code, 200)
+        txn = WalletTransaction.objects.get(id=response.json()["transaction_id"])
+        self.assertEqual(txn.reason_code, "goodwill")
+        self.assertEqual(txn.actor, "ops@acme.co")
 
 
 class DebitCreditHardeningTest(TestCase):
@@ -377,6 +472,8 @@ class DebitCreditHardeningTest(TestCase):
                 "customer_id": "no_wallet_debit",
                 "amount_micros": 1_000_000,
                 "reference": "ref_lazy",
+                "idempotency_key": "idem_d_lazy",
+                "allow_negative": True,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -396,6 +493,7 @@ class DebitCreditHardeningTest(TestCase):
                 "amount_micros": 5_000_000,
                 "source": "promo",
                 "reference": "ref_lazy",
+                "idempotency_key": "idem_c_lazy",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -476,6 +574,7 @@ class DebitCreditHardeningTest(TestCase):
                 "customer_id": "lock_debit",
                 "amount_micros": 1_000_000,
                 "reference": "ref_lock",
+                "idempotency_key": "idem_ref_lock",
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -485,6 +584,28 @@ class DebitCreditHardeningTest(TestCase):
         txn = WalletTransaction.objects.get(wallet__customer=customer)
         self.assertEqual(txn.transaction_type, "DEBIT")
         self.assertEqual(txn.balance_after_micros, 4_000_000)
+
+    def test_debit_requires_idempotency_key(self):
+        Customer.objects.create(tenant=self.tenant, external_id="need_key_d")
+        resp = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "need_key_d", "amount_micros": 1_000_000,
+                             "reference": "ref_nokey"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_credit_requires_idempotency_key(self):
+        Customer.objects.create(tenant=self.tenant, external_id="need_key_c")
+        resp = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "need_key_c", "amount_micros": 1_000_000,
+                             "source": "x", "reference": "ref_nokey"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(resp.status_code, 422)
 
 
 class WithdrawOutboxEventTest(TestCase):
@@ -704,3 +825,40 @@ class TopUpWithConnectorTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class TenantUsageInvoicePeriodValidationTest(TestCase):
+    """#13 — ?period bad input must return 400, not 500."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Period Test Tenant", products=["metering", "billing"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def _get(self, period):
+        return self.http_client.get(
+            f"/api/v1/billing/tenant/usage-invoices?period={period}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_period_non_numeric_returns_400(self):
+        response = self._get("abc")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_no_dash_returns_400(self):
+        response = self._get("2026")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_month_out_of_range_returns_400(self):
+        response = self._get("2026-13")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_month_zero_returns_400(self):
+        response = self._get("2026-00")
+        self.assertEqual(response.status_code, 400)
+
+    def test_period_valid_returns_200(self):
+        response = self._get("2026-06")
+        self.assertEqual(response.status_code, 200)

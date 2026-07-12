@@ -39,7 +39,7 @@ class TestMeteringOnlyTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
-                "cost_micros": 1_000_000,
+                "provider_cost_micros": 1_000_000,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -161,7 +161,7 @@ class TestMeteringBillingTenant(TestCase):
 
     def test_gets_403_on_subscriptions(self):
         response = self.http_client.get(
-            "/api/v1/subscriptions/economics",
+            "/api/v1/subscriptions/customers/00000000-0000-0000-0000-000000000000/subscription",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)
@@ -193,7 +193,7 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
-                "cost_micros": 1_000_000,
+                "provider_cost_micros": 1_000_000,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -246,7 +246,7 @@ class TestBothProductsTenant(TestCase):
                 "customer_id": str(self.customer.id),
                 "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
-                "cost_micros": 2_000_000,
+                "provider_cost_micros": 2_000_000,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",

@@ -159,3 +159,22 @@ class TestCleanupOutbox:
         cleanup_outbox()
 
         assert OutboxEvent.objects.filter(id=event.id).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+class TestProcessSingleEventProdAutocommit:
+    """Runs in autocommit (transaction=True), mirroring Celery prod where there is
+    no implicit outer transaction. Guards F1: select_for_update must be wrapped in
+    transaction.atomic() inside the task."""
+
+    def test_processes_pending_event_without_enclosing_transaction(self):
+        from apps.platform.events.tasks import process_single_event
+        tenant = Tenant.objects.create(name="Test", products=["metering"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", payload={"tenant_id": str(tenant.id)}, tenant_id=tenant.id)
+        with patch("apps.platform.events.dispatch.dispatch_to_handlers") as mock_dispatch:
+            process_single_event(str(event.id))
+        event.refresh_from_db()
+        assert event.status == "processed"
+        assert event.processed_at is not None
+        mock_dispatch.assert_called_once()

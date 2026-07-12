@@ -4,12 +4,15 @@ from ninja.errors import HttpError
 from core.auth import ApiKeyAuth
 from core.url_validation import validate_webhook_url
 from apps.platform.events.webhook_models import TenantWebhookConfig
+from apps.platform.events.catalog import is_valid_event_selector
 
 
 class WebhookConfigCreateRequest(Schema):
     url: str = Field(max_length=500)
     secret: str = Field(min_length=32, max_length=255)
-    event_types: list[str] = []
+    # Required and non-empty — there is no implicit "subscribe to everything".
+    # Pass ["*"] to opt in to all events, or specific types. See events/catalog.py.
+    event_types: list[str] = Field(min_length=1)
     is_active: bool = True
 
 
@@ -30,6 +33,14 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
         validate_webhook_url(payload.url)
     except ValueError as e:
         raise HttpError(400, str(e))
+
+    unknown = sorted({t for t in payload.event_types if not is_valid_event_selector(t)})
+    if unknown:
+        raise HttpError(
+            400,
+            f"Unknown event type(s): {', '.join(unknown)}. "
+            'Use "*" to subscribe to all events, or see the event catalog for valid types.',
+        )
 
     config = TenantWebhookConfig.objects.create(
         tenant=request.auth.tenant,

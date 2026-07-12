@@ -7,11 +7,14 @@ Verifies that:
 4. Methods properly delegate to the appropriate product client
 5. create_customer uses metering's _request for the platform API
 """
+import inspect
+
 import pytest
 from unittest.mock import MagicMock, patch
 
 from ubb import UBBClient, SubscriptionsClient
 from ubb.exceptions import UBBError
+from ubb.metering import MeteringClient
 from ubb.types import BalanceResult, TopUpResult, PaginatedResponse, WalletTransaction
 
 
@@ -85,7 +88,7 @@ class TestMeteringDelegationRequiresMetering:
 
     def test_record_usage_requires_metering(self):
         with pytest.raises(UBBError, match="metering"):
-            self.client.record_usage("cust1", "r1", "i1")
+            self.client.record_usage("cust1", "r1", "i1", provider_cost_micros=1000)
 
     def test_pre_check_without_metering_delegates_to_billing(self):
         """pre_check no longer requires metering — delegates to billing if available."""
@@ -162,6 +165,59 @@ class TestMeteringDelegation:
         )
         assert result is expected
 
+    def test_record_usage_forwards_metrics_backdating_and_stop(self):
+        """The facade passes the richer metering params through, and works
+        without provider_cost_micros (metrics-only recording)."""
+        sentinel = object()
+        self.client.metering.record_usage = MagicMock(return_value=sentinel)
+        result = self.client.record_usage(
+            "cust1", "r1", "i1",
+            usage_metrics={"tokens": 1000},
+            recorded_at="2026-06-01T00:00:00Z",
+            raise_on_stop=True,
+        )
+        assert result is sentinel
+        _, kwargs = self.client.metering.record_usage.call_args
+        assert kwargs["usage_metrics"] == {"tokens": 1000}
+        assert kwargs["recorded_at"] == "2026-06-01T00:00:00Z"
+        assert kwargs["raise_on_stop"] is True
+
+
+class TestRecordUsageSignatureParity:
+    """UBBClient.record_usage must be a non-lossy passthrough of
+    MeteringClient.record_usage: every call the metering client accepts, the
+    facade must accept too. Guards against the facade silently drifting behind
+    the lower-level client (the regression that hid named-metrics and
+    backdating from facade users)."""
+
+    # Params the facade intentionally does NOT mirror (none today). Add here
+    # with a comment if a deliberate divergence is ever introduced.
+    KNOWN_DIVERGENCES: set = set()
+
+    def test_facade_accepts_every_metering_param(self):
+        facade = inspect.signature(UBBClient.record_usage).parameters
+        lower = inspect.signature(MeteringClient.record_usage).parameters
+        for name in lower:
+            if name == "self" or name in self.KNOWN_DIVERGENCES:
+                continue
+            assert name in facade, (
+                f"UBBClient.record_usage is missing '{name}', which "
+                f"MeteringClient.record_usage accepts"
+            )
+
+    def test_facade_does_not_tighten_optional_params(self):
+        facade = inspect.signature(UBBClient.record_usage).parameters
+        lower = inspect.signature(MeteringClient.record_usage).parameters
+        empty = inspect.Parameter.empty
+        for name, param in lower.items():
+            if name == "self" or name in self.KNOWN_DIVERGENCES:
+                continue
+            if param.default is not empty and name in facade:
+                assert facade[name].default is not empty, (
+                    f"UBBClient.record_usage made '{name}' required, but it is "
+                    f"optional on MeteringClient.record_usage"
+                )
+
 
 class TestCreateCustomerDelegation:
     """create_customer uses metering._request to call the platform API."""
@@ -181,6 +237,9 @@ class TestCreateCustomerDelegation:
                 "external_id": "ext1",
                 "stripe_customer_id": "cus_123",
                 "metadata": {},
+                "account_type": "individual",
+                "parent_external_id": "",
+                "billing_topology": "",
             }
         )
         assert result.external_id == "ext1"

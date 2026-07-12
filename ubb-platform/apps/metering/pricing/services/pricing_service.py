@@ -1,207 +1,209 @@
-"""Pricing service: rate lookup, dimension matching, markup application."""
-
-import logging
-from typing import Dict, Optional, Tuple
-
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
+from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment, TIERED_PRICING_MODELS
+from apps.metering.pricing.services.tier_counter_service import (
+    TierCounterService, month_bounds,
+)
 
-logger = logging.getLogger(__name__)
-
-PRICING_ENGINE_VERSION = "1.0.0"
+PRICING_ENGINE_VERSION = "2.1.0"
 
 
 class PricingError(Exception):
     pass
 
 
+def _event_bands(card, prior, new_total):
+    """Bands of T(q) this event actually touched, decomposed per band as
+    cumulative differences so the band micros sum EXACTLY to the event's
+    marginal amount (flat_micros appears on the band the event first enters)."""
+    if new_total <= prior:
+        return []
+    if card.pricing_model == "package":
+        return [{
+            "up_to": None,
+            "units_in_band": new_total - prior,
+            "rate_per_unit_micros": card.rate_per_unit_micros,
+            "unit_quantity": card.unit_quantity,
+            "flat_micros": card.fixed_micros if prior <= 0 else 0,
+            "micros": card.compute_marginal(prior, new_total - prior),
+        }]
+    bands, lower = [], 0
+    for tier in card.tiers:
+        up_to = tier["up_to"]
+        rate = tier["rate_per_unit_micros"]
+        unit_quantity = tier.get("unit_quantity", 1_000_000)
+        flat = tier.get("flat_micros", 0)
+        seg_before = max(0, (prior if up_to is None else min(prior, up_to)) - lower)
+        seg_after = max(0, (new_total if up_to is None else min(new_total, up_to)) - lower)
+        if seg_after > seg_before:
+            entered = prior <= lower  # this event is the first past `lower`
+            micros = ((flat if entered else 0)
+                      + (seg_after * rate + unit_quantity // 2) // unit_quantity
+                      - (seg_before * rate + unit_quantity // 2) // unit_quantity)
+            bands.append({
+                "up_to": up_to,
+                "units_in_band": seg_after - seg_before,
+                "rate_per_unit_micros": rate,
+                "unit_quantity": unit_quantity,
+                "flat_micros": flat if entered else 0,
+                "micros": micros,
+            })
+        if up_to is None or new_total <= up_to:
+            break
+        lower = up_to
+    return bands
+
+
 class PricingService:
-    """
-    Calculates dual costs (provider COGS + billed revenue) from raw usage metrics.
-
-    Pipeline per metric:
-      1. Find matching ProviderRate (dimension match, most-specific wins)
-      2. calculate_cost_micros(units) -> provider_cost_micros
-
-    Then for the event total:
-      3. Find TenantMarkup (event_type+provider -> event_type -> global)
-      4. Apply markup -> billed_cost_micros
-    """
+    @staticmethod
+    def _dimensions_match(card_dimensions, tags):
+        tags = tags or {}
+        for k, v in (card_dimensions or {}).items():
+            if str(tags.get(k)) != str(v):
+                return False
+        return True
 
     @staticmethod
-    def validate_usage_metrics(usage_metrics: Dict) -> None:
-        """Validate that all metric values are non-negative integers."""
-        for key, value in usage_metrics.items():
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise PricingError(
-                    f"Metric '{key}' must be an integer, got {type(value).__name__}"
-                )
-            if value < 0:
-                raise PricingError(
-                    f"Metric '{key}' must be >= 0, got {value}"
-                )
-
-    @staticmethod
-    def price_event(
-        tenant,
-        event_type: str,
-        provider: str,
-        usage_metrics: Dict[str, int],
-        properties: Dict = None,
-        as_of=None,
-    ) -> Tuple[int, int, Dict]:
-        """
-        Price a usage event from raw metrics.
-
-        Args:
-            tenant: Tenant instance
-            event_type: e.g. "gemini_api_call"
-            provider: e.g. "google_gemini"
-            usage_metrics: e.g. {"input_tokens": 1500, "output_tokens": 300}
-            properties: dimension values for rate matching, e.g. {"model": "gemini-2.0-flash"}
-            as_of: pricing effective timestamp (default: now)
-
-        Returns:
-            (provider_cost_micros, billed_cost_micros, provenance)
-
-        Raises:
-            PricingError: if no rate found for a metric, or invalid metric values
-        """
-        as_of = as_of or timezone.now()
-        properties = properties or {}
-
-        if not usage_metrics:
-            return 0, 0, {"engine_version": PRICING_ENGINE_VERSION, "metrics": {}}
-
-        PricingService.validate_usage_metrics(usage_metrics)
-
-        total_provider_cost = 0
-        provenance_metrics = {}
-
-        for metric_name, units in usage_metrics.items():
-            rate = PricingService._find_rate(
-                tenant=tenant,
-                provider=provider,
-                event_type=event_type,
-                metric_name=metric_name,
-                properties=properties,
-                as_of=as_of,
-            )
-            if rate is None:
-                raise PricingError(
-                    f"No rate found: {provider}/{event_type}/{metric_name} "
-                    f"properties={properties}"
-                )
-
-            metric_cost = rate.calculate_cost_micros(units)
-            total_provider_cost += metric_cost
-
-            provenance_metrics[metric_name] = {
-                "rate_id": str(rate.id),
-                "units": units,
-                "cost_per_unit_micros": rate.cost_per_unit_micros,
-                "unit_quantity": rate.unit_quantity,
-                "dimensions": rate.dimensions,
-                "cost_micros": metric_cost,
-            }
-
-        # Apply tenant markup
-        markup_obj = PricingService._find_markup(
-            tenant=tenant,
-            event_type=event_type,
-            provider=provider,
-            as_of=as_of,
-        )
-
-        markup_micros = 0
-        markup_provenance = {}
-        if markup_obj:
-            markup_micros = markup_obj.calculate_markup_micros(total_provider_cost)
-            markup_provenance = {
-                "markup_id": str(markup_obj.id),
-                "percentage_micros": markup_obj.markup_percentage_micros,
-                "fixed_uplift_micros": markup_obj.fixed_uplift_micros,
-                "markup_micros": markup_micros,
-            }
-
-        billed_cost = total_provider_cost + markup_micros
-
-        provenance = {
-            "engine_version": PRICING_ENGINE_VERSION,
-            "calculated_at": as_of.isoformat(),
-            "metrics": provenance_metrics,
-            "markup": markup_provenance,
-            "provider_cost_micros": total_provider_cost,
-            "billed_cost_micros": billed_cost,
-        }
-
-        return total_provider_cost, billed_cost, provenance
-
-    @staticmethod
-    def _find_rate(
-        tenant,
-        provider: str,
-        event_type: str,
-        metric_name: str,
-        properties: Dict,
-        as_of,
-    ) -> Optional[ProviderRate]:
-        """Find best matching ProviderRate using dimension matching."""
-        rates = ProviderRate.objects.filter(
-            tenant=tenant,
-            provider=provider,
-            event_type=event_type,
-            metric_name=metric_name,
-            valid_from__lte=as_of,
-        ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
-
-        matched = []
-        for rate in rates:
-            if PricingService._dimensions_match(rate.dimensions, properties):
-                matched.append(rate)
-
-        if not matched:
+    def _resolve_rate_within(book, provider, event_type, metric_name, tags, currency, as_of):
+        if book is None:
             return None
-
-        # Most specific (most dimension keys), then newest valid_from
-        matched.sort(
-            key=lambda r: (len(r.dimensions) if r.dimensions else 0, r.valid_from),
-            reverse=True,
-        )
-        return matched[0]
-
-    @staticmethod
-    def _dimensions_match(rate_dimensions: Dict, event_properties: Dict) -> bool:
-        """All rate dimension key-values must exist in event properties."""
-        if not rate_dimensions:
-            return True
-        return all(
-            event_properties.get(k) == v for k, v in rate_dimensions.items()
-        )
-
-    @staticmethod
-    def _find_markup(tenant, event_type: str, provider: str, as_of) -> Optional[TenantMarkup]:
-        """
-        Find best TenantMarkup with precedence:
-          1. tenant + event_type + provider
-          2. tenant + event_type
-          3. tenant (global)
-        """
-        base = TenantMarkup.objects.filter(
-            tenant=tenant,
-            valid_from__lte=as_of,
+        cands = [c for c in Rate.objects.filter(
+            rate_card=book, provider=provider or "", event_type=event_type or "",
+            metric_name=metric_name, currency=currency, valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
+            if PricingService._dimensions_match(c.dimensions, tags)]
+        if not cands:
+            return None
+        cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
+        return cands[0]
 
-        # Most specific first
-        markup = base.filter(event_type=event_type, provider=provider).order_by("-valid_from").first()
-        if markup:
-            return markup
+    @staticmethod
+    def _assigned_book(tenant, customer, card_type, currency):
+        if customer is None or card_type != "price":
+            return None
+        a = RateCardAssignment.objects.filter(
+            tenant=tenant, customer=customer, currency=currency,
+            rate_card__card_type="price").select_related("rate_card").first()
+        return a.rate_card if a else None
 
-        markup = base.filter(event_type=event_type, provider="").order_by("-valid_from").first()
-        if markup:
-            return markup
+    @staticmethod
+    def _default_book(tenant, card_type, provider, currency):
+        return RateCard.objects.filter(
+            tenant=tenant, card_type=card_type, provider_key=provider or "",
+            currency=currency, is_default=True).first()
 
-        markup = base.filter(event_type="", provider="").order_by("-valid_from").first()
-        return markup
+    @staticmethod
+    def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
+        book = PricingService._assigned_book(tenant, customer, card_type, currency)
+        if book is not None:
+            rate = PricingService._resolve_rate_within(
+                book, provider, event_type, metric_name, tags, currency, as_of)
+            if rate is not None:
+                return rate
+        default_book = PricingService._default_book(tenant, card_type, provider, currency)
+        return PricingService._resolve_rate_within(
+            default_book, provider, event_type, metric_name, tags, currency, as_of)
+
+    @staticmethod
+    def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
+              caller_provider_cost, caller_billed, units=None, as_of=None):
+        as_of = as_of or timezone.now()
+        usage_metrics = usage_metrics or {}
+        prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
+
+        # ---- COST ----
+        if caller_provider_cost is not None:
+            provider_cost = caller_provider_cost
+            prov["cost_source"] = "caller"
+            # When the strict coverage flag is on, every metric in usage_metrics must have
+            # a matching cost card even when the caller supplies the aggregate cost.
+            # Without this check the caller-cost path silently bypasses the guarantee.
+            if usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
+                uncosted = [m for m in usage_metrics
+                            if PricingService._resolve_card(
+                                tenant, customer, "cost", provider,
+                                event_type, m, tags, currency, as_of) is None]
+                if uncosted:
+                    prov["uncosted_metrics"] = uncosted
+                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
+        else:
+            provider_cost = 0
+            uncosted = []
+            # Strict mode: units > 0 with no usage_metrics means cost is unknowable —
+            # no metric name to resolve a rate card against.  Caller-supplied
+            # provider_cost_micros is still accepted (cost is explicitly known).
+            if (units or 0) > 0 and not usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
+                raise PricingError(
+                    "strict cost coverage: units > 0 with no usage_metrics — no cost rate "
+                    "card can match; pass usage_metrics or provider_cost_micros")
+            for metric, units_val in usage_metrics.items():
+                card = PricingService._resolve_card(tenant, customer, "cost", provider,
+                                                    event_type, metric, tags, currency, as_of)
+                if card is None:
+                    uncosted.append(metric)
+                    continue
+                if card.pricing_model in TIERED_PRICING_MODELS:
+                    # Defensive: validate_tiers forbids tiered cost cards at the
+                    # API; a hand-crafted row must fail loudly, not mis-price.
+                    raise PricingError(
+                        f"tiered pricing_model '{card.pricing_model}' is not allowed "
+                        f"on cost cards (rate card {card.id})")
+                amt = card.compute(units_val)
+                provider_cost += amt
+                prov["metrics"].append({"metric": metric, "units": units_val, "card_type": "cost",
+                    "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
+            prov["cost_source"] = "rate_card"
+            if uncosted:
+                prov["uncosted_metrics"] = uncosted
+                if getattr(tenant, "require_cost_card_coverage", False):
+                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
+
+        # ---- PRICE ----
+        if caller_billed is not None:
+            billed = caller_billed
+            prov["price_source"] = "caller"
+        else:
+            price_total, matched = 0, False
+            # sorted(): deterministic counter-lock order across metrics — deadlock-free
+            # when concurrent events share multiple tiered metrics.
+            for metric, units_val in sorted(usage_metrics.items()):
+                card = PricingService._resolve_card(tenant, customer, "price", provider,
+                                                    event_type, metric, tags, currency, as_of)
+                if card is None:
+                    continue
+                matched = True
+                entry = {"metric": metric, "units": units_val, "card_type": "price",
+                         "rate_card_id": str(card.id), "pricing_model": card.pricing_model}
+                if card.pricing_model in TIERED_PRICING_MODELS:
+                    # Incrementally exact tiered rating: advance the period
+                    # ladder under a row lock, price the marginal difference.
+                    prior, new_total = TierCounterService.lock_and_advance(
+                        tenant, customer, card, units_val, as_of)
+                    amt = card.compute_marginal(prior, units_val)
+                    cumulative_before = card.compute_cumulative(prior)
+                    entry["tier_breakdown"] = {
+                        "prior_units": prior,
+                        "units_total_after": new_total,
+                        "cumulative_before_micros": cumulative_before,
+                        "cumulative_after_micros": cumulative_before + amt,
+                        "period_start": month_bounds(as_of)[0].isoformat(),
+                        "lineage_id": str(card.lineage_id),
+                        "bands": _event_bands(card, prior, new_total),
+                    }
+                else:
+                    amt = card.compute(units_val)
+                entry["micros"] = amt
+                price_total += amt
+                prov["metrics"].append(entry)
+            if matched:
+                billed = price_total
+                prov["price_source"] = "rate_card"
+            else:
+                from apps.metering.pricing.services.markup_service import MarkupService
+                billed = MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
+                prov["price_source"] = "markup"
+
+        prov["provider_cost_micros"] = provider_cost
+        prov["billed_cost_micros"] = billed
+        return provider_cost, billed, prov

@@ -1,16 +1,21 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 import httpx
 from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import RecordUsageResult, UsageEvent, PaginatedResponse
+from ubb.types import (
+    RecordUsageResult, UsageEvent, PaginatedResponse, TenantMarkup,
+    BatchItemResult, BatchResult,
+)
 
 
 class MeteringClientTest(unittest.TestCase):
     def setUp(self):
-        self.client = MeteringClient(api_key="ubb_live_test123", base_url="http://localhost:8001")
+        self.client = MeteringClient(api_key="ubb_live_test123", base_url="http://localhost:8001",
+                                     max_retries=0)
 
     def tearDown(self):
         self.client.close()
@@ -18,49 +23,158 @@ class MeteringClientTest(unittest.TestCase):
     # ---- record_usage ----
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_cost_micros(self, mock_post):
+    def test_record_usage_basic(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_1", "new_balance_micros": 8_500_000, "suspended": False,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
-            cost_micros=1_500_000,
+            provider_cost_micros=1_500_000,
         )
         self.assertIsInstance(result, RecordUsageResult)
         self.assertEqual(result.event_id, "evt_1")
         self.assertEqual(result.new_balance_micros, 8_500_000)
         self.assertFalse(result.suspended)
+        self.assertEqual(mock_post.call_args.kwargs["json"]["provider_cost_micros"], 1_500_000)
         # Verify endpoint
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/usage")
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_usage_metrics(self, mock_post):
+    def test_record_usage_with_explicit_billed(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_2", "new_balance_micros": 9_000_000, "suspended": False,
             "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r2", idempotency_key="i2",
+            provider_cost_micros=500_000, billed_cost_micros=1_000_000,
             event_type="chat_completion", provider="openai",
-            usage_metrics={"input_tokens": 100, "output_tokens": 50},
-            properties={"model": "gpt-4"},
         )
         self.assertIsInstance(result, RecordUsageResult)
         self.assertEqual(result.billed_cost_micros, 1_000_000)
         self.assertEqual(result.provider_cost_micros, 500_000)
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["provider_cost_micros"], 500_000)
+        self.assertEqual(body["billed_cost_micros"], 1_000_000)
+        # No usage_metrics supplied → must not appear in body
+        self.assertNotIn("usage_metrics", body)
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_group_keys(self, mock_post):
+    def test_record_usage_with_tags(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            cost_micros=1_000_000, group_keys={"project": "proj_1"},
+            provider_cost_micros=1_000_000, tags={"project": "proj_1"},
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["group_keys"], {"project": "proj_1"})
+        self.assertEqual(body["tags"], {"project": "proj_1"})
+
+    # ---- recorded_at (F4.2) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_recorded_at_datetime_serialized(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_4", "suspended": False,
+        })
+        ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r4", idempotency_key="i4",
+            provider_cost_micros=1, recorded_at=ts,
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["effective_at"], "2026-06-01T12:00:00+00:00")
+        self.assertNotIn("recorded_at", body)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_recorded_at_iso_string_passthrough(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_5", "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r5", idempotency_key="i5",
+            provider_cost_micros=1, recorded_at="2026-06-01T12:00:00+02:00",
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["effective_at"], "2026-06-01T12:00:00+02:00")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_naive_recorded_at_rejected_before_http(self, mock_post):
+        with self.assertRaises(ValueError):
+            self.client.record_usage(
+                customer_id="cust_1", request_id="r6", idempotency_key="i6",
+                provider_cost_micros=1, recorded_at=datetime(2026, 6, 1, 12, 0),
+            )
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_omitted_recorded_at_not_in_body(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_7", "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r7", idempotency_key="i7",
+            provider_cost_micros=1,
+        )
+        self.assertNotIn("effective_at", mock_post.call_args.kwargs["json"])
+
+    # ---- record_batch (F4.2) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_maps_recorded_at_and_parses_results(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [
+                {"ok": True, "event_id": "evt_1", "billed_cost_micros": 5},
+                {"ok": False, "error": "effective_at_too_old", "detail": "too old"},
+            ],
+            "succeeded": 1, "failed": 1,
+        })
+        result = self.client.record_batch([
+            {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+             "recorded_at": datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)},
+            {"customer_id": "cust_1", "request_id": "r2", "idempotency_key": "k2",
+             "recorded_at": "2026-01-01T00:00:00+00:00"},
+        ])
+        # Endpoint + body mapping
+        self.assertEqual(mock_post.call_args.args[0], "/api/v1/metering/usage/batch")
+        wire = mock_post.call_args.kwargs["json"]["events"]
+        self.assertEqual(wire[0]["effective_at"], "2026-06-01T12:00:00+00:00")
+        self.assertEqual(wire[1]["effective_at"], "2026-01-01T00:00:00+00:00")
+        self.assertNotIn("recorded_at", wire[0])
+        self.assertNotIn("recorded_at", wire[1])
+        # Result parsing
+        self.assertIsInstance(result, BatchResult)
+        self.assertEqual(result.succeeded, 1)
+        self.assertEqual(result.failed, 1)
+        self.assertIsInstance(result.results[0], BatchItemResult)
+        self.assertTrue(result.results[0].ok)
+        self.assertEqual(result.results[0].event_id, "evt_1")
+        self.assertEqual(result.results[0].data["billed_cost_micros"], 5)
+        self.assertFalse(result.results[1].ok)
+        self.assertEqual(result.results[1].error, "effective_at_too_old")
+        self.assertEqual(result.results[1].detail, "too old")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_naive_recorded_at_rejected_before_http(self, mock_post):
+        with self.assertRaises(ValueError):
+            self.client.record_batch([
+                {"customer_id": "cust_1", "request_id": "r1",
+                 "idempotency_key": "k1", "recorded_at": datetime(2026, 6, 1)},
+            ])
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_batch_does_not_mutate_caller_events(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [{"ok": True, "event_id": "e1"}], "succeeded": 1, "failed": 0,
+        })
+        ev = {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+              "recorded_at": "2026-06-01T12:00:00+00:00"}
+        self.client.record_batch([ev])
+        self.assertIn("recorded_at", ev)  # caller's dict untouched
+        self.assertNotIn("effective_at", ev)
 
     # ---- get_usage ----
 
@@ -68,7 +182,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_get_usage(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
-                {"id": "e1", "request_id": "r1", "cost_micros": 10000,
+                {"id": "e1", "request_id": "r1", "billed_cost_micros": 10000,
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],
             "next_cursor": "cur_abc",
@@ -95,14 +209,14 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(call_kwargs.kwargs["params"]["limit"], 10)
 
     @patch("ubb.metering.httpx.Client.get")
-    def test_get_usage_with_group_filter(self, mock_get):
+    def test_get_usage_with_tag_filter(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [], "next_cursor": None, "has_more": False,
         })
-        self.client.get_usage(customer_id="cust_1", group_key="project", group_value="proj_1")
+        self.client.get_usage(customer_id="cust_1", tag_key="project", tag_value="proj_1")
         call_kwargs = mock_get.call_args
-        self.assertEqual(call_kwargs.kwargs["params"]["group_key"], "project")
-        self.assertEqual(call_kwargs.kwargs["params"]["group_value"], "proj_1")
+        self.assertEqual(call_kwargs.kwargs["params"]["tag_key"], "project")
+        self.assertEqual(call_kwargs.kwargs["params"]["tag_value"], "proj_1")
 
     # ---- error handling ----
 
@@ -112,7 +226,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBAuthError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                cost_micros=1000,
+                provider_cost_micros=1000,
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -122,7 +236,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBAPIError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                cost_micros=1000,
+                provider_cost_micros=1000,
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -134,7 +248,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConflictError):
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                cost_micros=1000,
+                provider_cost_micros=1000,
             )
 
     @patch("ubb.metering.httpx.Client.post")
@@ -143,7 +257,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                cost_micros=1000,
+                provider_cost_micros=1000,
             )
         self.assertIsNotNone(ctx.exception.original)
 
@@ -153,7 +267,7 @@ class MeteringClientTest(unittest.TestCase):
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
                 customer_id="c1", request_id="r1", idempotency_key="i1",
-                cost_micros=1000,
+                provider_cost_micros=1000,
             )
         self.assertIn("Could not connect", str(ctx.exception))
 
@@ -171,6 +285,223 @@ class MeteringClientTest(unittest.TestCase):
         with patch.object(self.client._http, "close") as mock_close:
             self.client.close()
             mock_close.assert_called_once()
+
+    # ---- record_usage with usage_metrics (no provider_cost_micros) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_with_usage_metrics_no_cost(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_m1", "new_balance_micros": 9_000_000, "suspended": False,
+        })
+        result = self.client.record_usage(
+            customer_id="c", request_id="r", idempotency_key="i",
+            usage_metrics={"input_tokens": 1000},
+        )
+        self.assertIsInstance(result, RecordUsageResult)
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
+        self.assertNotIn("provider_cost_micros", body)
+
+    # ---- record_usage tolerates extra server fields (usage_metrics/provenance/uncosted) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_full_server_body_with_extra_fields(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "e1", "suspended": False,
+            "provider_cost_micros": 2000, "billed_cost_micros": 2000,
+            "usage_metrics": {"input_tokens": 1000},
+            "pricing_provenance": {"engine_version": "x"},
+            "uncosted_metrics": ["foo"],
+        })
+        res = self.client.record_usage(
+            customer_id="c", request_id="r", idempotency_key="i",
+            usage_metrics={"input_tokens": 1000},
+        )
+        self.assertIsInstance(res, RecordUsageResult)
+        self.assertEqual(res.provider_cost_micros, 2000)
+        self.assertEqual(res.uncosted_metrics, ["foo"])
+
+    # ---- rate-card URL correctness ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_create_rate_card_url(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "id": "rc_1", "card_type": "cost", "metric_name": "input_tokens",
+            "provider": "", "event_type": "", "dimensions": {},
+            "pricing_model": "per_unit", "rate_per_unit_micros": 0,
+            "unit_quantity": 1_000_000, "fixed_micros": 0, "currency": "usd",
+            "product_id": "", "customer_id": None,
+        })
+        self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        call_args = mock_post.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_rate_cards_url(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+        self.client.list_rate_cards()
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+    @patch("ubb.metering.httpx.Client.delete")
+    def test_delete_rate_card_url(self, mock_delete):
+        mock_delete.return_value = MagicMock(status_code=204, json=lambda: {})
+        self.client.delete_rate_card("rc_42")
+        call_args = mock_delete.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc_42")
+
+    # ---- usage_analytics ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_url_and_params(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"rows": []})
+        result = self.client.usage_analytics(customer_id="c", tag_key="agent")
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
+        params = call_args.kwargs["params"]
+        self.assertEqual(params["customer_id"], "c")
+        self.assertEqual(params["tag_key"], "agent")
+        self.assertEqual(result, {"rows": []})
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_dimensions_sent_as_repeated_params(self, mock_get):
+        """dimensions list is forwarded as-is so httpx encodes repeated params."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "total_events": 1,
+            "breakdowns": {"product_id": [{"dimension": "search", "event_count": 1,
+                                           "total_provider_cost_micros": 300_000,
+                                           "total_billed_cost_micros": 500_000}]},
+        })
+        result = self.client.usage_analytics(
+            customer_id="c1",
+            dimensions=["product_id", "service_id", "tag:region"],
+        )
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
+        params = call_args.kwargs["params"]
+        # dimensions list is passed straight through — httpx will repeat the key
+        self.assertEqual(params["dimensions"], ["product_id", "service_id", "tag:region"])
+        self.assertEqual(params["customer_id"], "c1")
+        # breakdowns dict is returned transparently
+        self.assertIn("breakdowns", result)
+        self.assertIn("product_id", result["breakdowns"])
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_analytics_no_dimensions_no_key(self, mock_get):
+        """When dimensions is omitted the key must not appear in the request params."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"total_events": 0})
+        self.client.usage_analytics()
+        params = mock_get.call_args.kwargs["params"]
+        self.assertNotIn("dimensions", params)
+
+    # ---- usage_timeseries ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_url_and_params(self, mock_get):
+        """usage_timeseries sends correct path and query parameters."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "day",
+            "group_by": "",
+            "series": [
+                {"bucket": "2026-06-01", "provider_cost_micros": 100_000,
+                 "billed_cost_micros": 150_000, "markup_micros": 50_000, "event_count": 1},
+            ],
+        })
+        result = self.client.usage_timeseries(
+            granularity="day",
+            start_date="2026-06-01",
+            end_date="2026-07-01",
+            customer_id="cust_1",
+        )
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage/timeseries")
+        params = call_args.kwargs["params"]
+        self.assertEqual(params["granularity"], "day")
+        self.assertEqual(params["start_date"], "2026-06-01")
+        self.assertEqual(params["end_date"], "2026-07-01")
+        self.assertEqual(params["customer_id"], "cust_1")
+        self.assertNotIn("group_by", params)
+        self.assertEqual(result["granularity"], "day")
+        self.assertEqual(len(result["series"]), 1)
+        self.assertEqual(result["series"][0]["provider_cost_micros"], 100_000)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_group_by_forwarded(self, mock_get):
+        """group_by param is forwarded when provided."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "hour", "group_by": "provider", "series": [],
+        })
+        self.client.usage_timeseries(granularity="hour", group_by="provider")
+        params = mock_get.call_args.kwargs["params"]
+        self.assertEqual(params["granularity"], "hour")
+        self.assertEqual(params["group_by"], "provider")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_usage_timeseries_omits_none_params(self, mock_get):
+        """start_date/end_date/customer_id/group_by are omitted when None."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "granularity": "day", "group_by": "", "series": [],
+        })
+        self.client.usage_timeseries()
+        params = mock_get.call_args.kwargs["params"]
+        self.assertNotIn("start_date", params)
+        self.assertNotIn("end_date", params)
+        self.assertNotIn("customer_id", params)
+        self.assertNotIn("group_by", params)
+
+
+    # ---- markup methods ----
+
+    @patch("ubb.metering.httpx.Client.put")
+    def test_set_markup(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 20_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.set_markup(markup_percentage_micros=20_000_000, fixed_uplift_micros=0)
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 20_000_000)
+        self.assertEqual(result.fixed_uplift_micros, 0)
+        call_args = mock_put.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
+        body = call_args.kwargs["json"]
+        self.assertEqual(body["markup_percentage_micros"], 20_000_000)
+        self.assertEqual(body["fixed_uplift_micros"], 0)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_markup(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 10_000_000, "fixed_uplift_micros": 500_000,
+        })
+        result = self.client.get_markup()
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 10_000_000)
+        self.assertEqual(result.fixed_uplift_micros, 500_000)
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
+
+    @patch("ubb.metering.httpx.Client.put")
+    def test_set_customer_markup(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.set_customer_markup("cust_1", markup_percentage_micros=5_000_000)
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 5_000_000)
+        call_args = mock_put.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
+        body = call_args.kwargs["json"]
+        self.assertEqual(body["markup_percentage_micros"], 5_000_000)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_customer_markup(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
+        })
+        result = self.client.get_customer_markup("cust_1")
+        self.assertIsInstance(result, TenantMarkup)
+        self.assertEqual(result.markup_percentage_micros, 5_000_000)
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
 
 
 if __name__ == "__main__":

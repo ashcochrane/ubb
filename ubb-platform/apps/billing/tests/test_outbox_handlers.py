@@ -125,9 +125,8 @@ class TestBillingOutboxHandler:
         assert txn.idempotency_key.startswith("usage_deduction:")
 
     def test_usage_deduction_replay_no_double_deduct(self):
-        """Replaying the same outbox event must not create a second deduction."""
+        """Replaying the same outbox event must not create a second deduction (silent no-op)."""
         from apps.billing.handlers import handle_usage_recorded_billing
-        from django.db import IntegrityError
 
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
@@ -152,10 +151,11 @@ class TestBillingOutboxHandler:
 
         handle_usage_recorded_billing(str(event.id), event.payload)
 
-        # Simulate replay with same event_id
-        with pytest.raises(IntegrityError):
-            handle_usage_recorded_billing(str(event.id), event.payload)
+        # Simulate replay with same event_id — must be a silent no-op, not raise
+        handle_usage_recorded_billing(str(event.id), event.payload)
 
+        wallet.refresh_from_db()
+        assert wallet.balance_micros == 9_500_000  # debited exactly once
         txn_count = WalletTransaction.objects.filter(wallet=wallet).count()
         assert txn_count == 1
 
@@ -280,6 +280,102 @@ class TestBillingOutboxHandler:
 
         customer.refresh_from_db()
         assert customer.status == "active"
+
+    def test_drawdown_invokes_budget_record(self):
+        from unittest.mock import patch
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+
+        tenant = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                       stripe_connected_account_id="acct_test")
+        customer = Customer.objects.create(tenant=tenant, external_id="ext_b")
+        w = Wallet.objects.create(customer=customer)
+        w.balance_micros = 10_000_000
+        w.save(update_fields=["balance_micros"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        with patch("apps.billing.gating.services.budget_service.BudgetService.record_usage_spend") as mock_rec:
+            handle_usage_recorded_billing(str(event.id), event.payload)
+        mock_rec.assert_called_once()
+        assert str(mock_rec.call_args.args[0].id) == str(customer.id)  # the customer
+        assert mock_rec.call_args.args[1] == 2_000_000                 # billed amount
+
+    def test_postpaid_tenant_skips_wallet_deduction(self):
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+        tenant = Tenant.objects.create(name="PP", products=["metering", "billing"],
+                                       billing_mode="postpaid")
+        customer = Customer.objects.create(tenant=tenant, external_id="pp1")
+        w = Wallet.objects.create(customer=customer)
+        w.balance_micros = 10_000_000
+        w.save(update_fields=["balance_micros"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        handle_usage_recorded_billing(str(event.id), event.payload)
+        w.refresh_from_db()
+        assert w.balance_micros == 10_000_000  # untouched — postpaid is invoiced, not drawn down
+
+    def test_overage_event_fires_once_on_crossing_below_zero(self):
+        import uuid
+        from unittest.mock import patch
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet
+        tenant = Tenant.objects.create(name="OV", products=["metering", "billing"], billing_mode="prepaid")
+        c = Customer.objects.create(tenant=tenant, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        ev_id = str(uuid.uuid4())
+        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
+                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
+        with patch("apps.billing.handlers.write_event") as mw:
+            handle_usage_recorded_billing(str(e.id), payload)
+            names = [type(call.args[0]).__name__ for call in mw.call_args_list]
+        assert "BalanceOverage" in names
+
+    def test_redelivery_does_not_double_debit_or_refire_overage(self):
+        import uuid
+        from unittest.mock import patch
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        tenant = Tenant.objects.create(name="OV2", products=["metering", "billing"], billing_mode="prepaid")
+        c = Customer.objects.create(tenant=tenant, external_id="c1")
+        w = Wallet.objects.create(customer=c, balance_micros=1_000_000)
+        ev_id = str(uuid.uuid4())
+        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
+                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
+        handle_usage_recorded_billing(str(e.id), payload)
+        with patch("apps.billing.handlers.write_event") as mw:
+            handle_usage_recorded_billing(str(e.id), payload)   # re-deliver
+            assert not mw.called                                 # no overage re-fire
+        w.refresh_from_db()
+        assert w.balance_micros == -500_000                      # debited once
+        assert WalletTransaction.objects.filter(wallet=w, idempotency_key=f"usage_deduction:{ev_id}").count() == 1
+
+    def test_pooled_seat_debits_business_wallet_records_spend_on_seat(self):
+        import uuid
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.billing.wallets.models import Wallet, WalletTransaction
+        tenant = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=tenant, external_id="biz", account_type="business",
+                                      billing_topology="pooled")
+        seat = Customer.objects.create(tenant=tenant, external_id="s1", account_type="seat", parent=biz)
+        bw = Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded", tenant_id=tenant.id,
+            payload={"tenant_id": str(tenant.id), "customer_id": str(seat.id),
+                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+        handle_usage_recorded_billing(str(event.id), event.payload)
+        bw.refresh_from_db()
+        assert bw.balance_micros == 8_000_000  # the BUSINESS pool was debited
+        assert not Wallet.objects.filter(customer=seat).exists()  # seat has no wallet
+        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="USAGE_DEDUCTION").count() == 1
 
 
 class TestBillingHandlerEmitsBalanceLow:

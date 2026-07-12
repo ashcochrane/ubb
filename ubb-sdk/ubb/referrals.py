@@ -5,14 +5,16 @@ import httpx
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
+from ubb.retry import request_with_retry
 
 
 class ReferralsClient:
     """Product-specific client for the UBB Referrals API (/api/v1/referrals/)."""
 
     def __init__(self, api_key: str, base_url: str = "http://localhost:8001",
-                 timeout: float = 10.0) -> None:
+                 timeout: float = 10.0, max_retries: int = 3) -> None:
         self._base_url = base_url.rstrip("/")
+        self._max_retries = max_retries
         self._http = httpx.Client(
             base_url=self._base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -27,7 +29,7 @@ class ReferralsClient:
 
     # ---- internal request helper ----
 
-    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+    def _request_once(self, method: str, path: str, **kwargs) -> httpx.Response:
         try:
             response = getattr(self._http, method)(path, **kwargs)
         except httpx.TimeoutException as e:
@@ -40,8 +42,21 @@ class ReferralsClient:
         if response.status_code == 409:
             raise UBBConflictError(detail)
         if response.status_code >= 400:
-            raise UBBAPIError(response.status_code, detail)
+            err = UBBAPIError(response.status_code, detail)
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    err.retry_after = float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            raise err
         return response
+
+    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        return request_with_retry(
+            self._request_once, max_retries=self._max_retries,
+            method=method, path=path, **kwargs,
+        )
 
     @staticmethod
     def _extract_error_detail(response: httpx.Response) -> str:

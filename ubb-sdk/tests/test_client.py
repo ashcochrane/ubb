@@ -60,7 +60,7 @@ class UBBClientTest(unittest.TestCase):
             }
         )
         result = self.client.record_usage(
-            customer_id="c1", request_id="r1", idempotency_key="i1", cost_micros=1500000,
+            customer_id="c1", request_id="r1", idempotency_key="i1", provider_cost_micros=1500000,
         )
         self.assertEqual(result.new_balance_micros, 8500000)
         self.assertFalse(result.suspended)
@@ -81,6 +81,9 @@ class UBBClientTest(unittest.TestCase):
                 "external_id": "u42",
                 "stripe_customer_id": "cus_abc",
                 "metadata": {},
+                "account_type": "individual",
+                "parent_external_id": "",
+                "billing_topology": "",
             }
         )
 
@@ -123,7 +126,7 @@ class UBBClientTest(unittest.TestCase):
 
     def test_get_usage(self):
         expected = PaginatedResponse(
-            data=[UsageEvent(id="e1", request_id="r1", cost_micros=10000,
+            data=[UsageEvent(id="e1", request_id="r1", billed_cost_micros=10000,
                              metadata={}, effective_at="2025-01-01T00:00:00Z")],
             next_cursor="cur_abc", has_more=True,
         )
@@ -163,29 +166,33 @@ class UBBClientTest(unittest.TestCase):
         self.assertIsInstance(result, AutoTopUpResult)
         self.assertEqual(result.status, "enabled")
 
-    # --- withdraw (delegates to billing.debit) ---
+    # --- withdraw (delegates to the guarded billing.withdraw) ---
 
     def test_withdraw(self):
-        self.client.billing.debit = MagicMock(
-            return_value={"transaction_id": "txn_1", "new_balance_micros": 5000000}
+        self.client.billing.withdraw = MagicMock(
+            return_value={"transaction_id": "txn_1", "balance_micros": 5000000}
         )
         result = self.client.withdraw(customer_id="c1", amount_micros=10_000,
                                       idempotency_key="w1")
         self.assertIsInstance(result, WithdrawResult)
         self.assertEqual(result.transaction_id, "txn_1")
         self.assertEqual(result.balance_micros, 5000000)
+        # Routes to the guarded endpoint, NOT billing.debit.
+        self.client.billing.withdraw.assert_called_once_with("c1", 10_000, "w1", "")
 
-    # --- refund_usage (delegates to billing.credit) ---
+    # --- refund_usage (delegates to the guarded, lot-aware billing.refund) ---
 
     def test_refund_usage(self):
-        self.client.billing.credit = MagicMock(
-            return_value={"transaction_id": "ref_1", "new_balance_micros": 11000000}
+        self.client.billing.refund = MagicMock(
+            return_value={"refund_id": "evt_1", "balance_micros": 11000000}
         )
         result = self.client.refund_usage(
             customer_id="c1", usage_event_id="evt_1", idempotency_key="rf1", reason="mistake",
         )
         self.assertIsInstance(result, RefundResult)
-        self.assertEqual(result.refund_id, "ref_1")
+        self.assertEqual(result.refund_id, "evt_1")
+        self.assertEqual(result.balance_micros, 11000000)
+        self.client.billing.refund.assert_called_once_with("c1", "evt_1", "rf1", "mistake")
 
     # --- get_transactions (delegates to billing) ---
 
@@ -212,6 +219,248 @@ class UBBClientTest(unittest.TestCase):
             self.client.close()
             mock_met_close.assert_called_once()
             mock_bill_close.assert_called_once()
+
+
+class TenantConfigClientTest(unittest.TestCase):
+    """Tests for UBBClient.get_tenant_config and update_tenant_config."""
+
+    CONFIG_FIXTURE = {
+        "name": "TestTenant",
+        "billing_mode": "meter_only",
+        "products": ["metering"],
+        "require_cost_card_coverage": False,
+        "default_currency": "usd",
+        "stripe_connected_account_id": "acct_test",
+        "is_active": True,
+    }
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_get_tenant_config_calls_correct_endpoint(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: self.CONFIG_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.get_tenant_config()
+        self.client.metering._request.assert_called_once_with("get", "/api/v1/tenant/config")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["billing_mode"], "meter_only")
+        self.assertIn("metering", result["products"])
+
+    def test_update_tenant_config_sends_only_non_none_fields(self):
+        updated = {**self.CONFIG_FIXTURE, "billing_mode": "postpaid", "products": ["metering", "billing"]}
+        mock_resp = MagicMock(status_code=200, json=lambda: updated)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.update_tenant_config(billing_mode="postpaid",
+                                                   products=["metering", "billing"])
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config",
+            json={"billing_mode": "postpaid", "products": ["metering", "billing"]},
+        )
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["billing_mode"], "postpaid")
+
+    def test_update_tenant_config_omits_none_fields(self):
+        """Only require_cost_card_coverage=True is set; billing_mode and products are omitted."""
+        updated = {**self.CONFIG_FIXTURE, "require_cost_card_coverage": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: updated)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_tenant_config(require_cost_card_coverage=True)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config",
+            json={"require_cost_card_coverage": True},
+        )
+
+    def test_update_tenant_config_empty_call_sends_empty_body(self):
+        """Calling with no args sends an empty body."""
+        mock_resp = MagicMock(status_code=200, json=lambda: self.CONFIG_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_tenant_config()
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config", json={},
+        )
+
+
+class ConnectClientTest(unittest.TestCase):
+    """Tests for UBBClient.start_connect_onboarding and get_connect_status."""
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_start_connect_onboarding_calls_correct_endpoint(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"authorize_url": "https://connect.stripe.com/oauth/authorize?x=1"},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.start_connect_onboarding(return_url="https://x/done")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/connect/start", json={"return_url": "https://x/done"},
+        )
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["authorize_url"].startswith("https://connect.stripe.com"))
+
+    def test_start_connect_onboarding_defaults_empty_return_url(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"authorize_url": "https://c/x"})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.start_connect_onboarding()
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/connect/start", json={"return_url": ""},
+        )
+
+    def test_get_connect_status_calls_correct_endpoint(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"account_id": "acct_x", "charges_enabled": True, "onboarded": True},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.get_connect_status()
+        self.client.metering._request.assert_called_once_with("get", "/api/v1/connect/status")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["account_id"], "acct_x")
+        self.assertTrue(result["onboarded"])
+
+
+class SubscriptionOrchestrationClientTest(unittest.TestCase):
+    """Tests for UBBClient.create_plan / subscribe_customer / set_seats."""
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_create_plan(self):
+        plan = {
+            "id": "p1", "key": "pro", "name": "Pro",
+            "access_fee_micros": 50_000_000, "per_seat_micros": 8_000_000,
+            "interval": "month",
+        }
+        mock_resp = MagicMock(status_code=201, json=lambda: plan)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.create_plan(
+            "pro", "Pro", access_fee_micros=50_000_000, per_seat_micros=8_000_000,
+        )
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/plans", json={
+                "key": "pro",
+                "name": "Pro",
+                "access_fee_micros": 50_000_000,
+                "per_seat_micros": 8_000_000,
+                "interval": "month",
+            },
+        )
+        self.assertEqual(result["key"], "pro")
+
+    def test_subscribe_customer(self):
+        mock_resp = MagicMock(
+            status_code=200,
+            json=lambda: {"subscription_id": "sub_1", "amount_micros": 130_000_000, "quantity": 10},
+        )
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.subscribe_customer("biz", "pro", seats=10)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscribe",
+            json={"plan_key": "pro", "seats": 10},
+        )
+        self.assertEqual(result["subscription_id"], "sub_1")
+        self.assertEqual(result["quantity"], 10)
+
+    def test_set_seats(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"seats": 12})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.set_seats("biz", 12)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/seats",
+            json={"seats": 12},
+        )
+        self.assertEqual(result["seats"], 12)
+
+
+class SubscriptionLifecycleClientTest(unittest.TestCase):
+    """F5.4: update_plan / cancel_subscription / pause_subscription / resume_subscription."""
+
+    LIFECYCLE_FIXTURE = {
+        "subscription_id": "sub_1", "status": "active",
+        "cancel_at_period_end": False, "paused": False,
+    }
+
+    def setUp(self):
+        self.client = UBBClient(api_key="ubb_live_test", base_url="http://localhost:8001",
+                                metering=True, billing=False)
+
+    def tearDown(self):
+        self.client.close()
+
+    def test_update_plan_sends_only_non_none_axes(self):
+        plan = {"key": "pro", "per_seat_micros": 6_000_000, "pricing_version": 2}
+        mock_resp = MagicMock(status_code=200, json=lambda: plan)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.update_plan("pro", per_seat_micros=6_000_000)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/platform/plans/pro",
+            json={"migrate_existing": False, "per_seat_micros": 6_000_000},
+        )
+        self.assertEqual(result["pricing_version"], 2)
+
+    def test_update_plan_migrate_existing(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"key": "pro", "pricing_version": 2})
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_plan("pro", access_fee_micros=60_000_000, migrate_existing=True)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/platform/plans/pro",
+            json={"migrate_existing": True, "access_fee_micros": 60_000_000},
+        )
+
+    def test_cancel_subscription_default_at_period_end(self):
+        body = {**self.LIFECYCLE_FIXTURE, "cancel_at_period_end": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.cancel_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            json={"at_period_end": True},
+        )
+        self.assertTrue(result["cancel_at_period_end"])
+
+    def test_cancel_subscription_immediate(self):
+        body = {**self.LIFECYCLE_FIXTURE, "status": "canceled"}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.cancel_subscription("biz", at_period_end=False)
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            json={"at_period_end": False},
+        )
+        self.assertEqual(result["status"], "canceled")
+
+    def test_pause_subscription(self):
+        body = {**self.LIFECYCLE_FIXTURE, "paused": True}
+        mock_resp = MagicMock(status_code=200, json=lambda: body)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.pause_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/pause", json={},
+        )
+        self.assertTrue(result["paused"])
+
+    def test_resume_subscription(self):
+        mock_resp = MagicMock(status_code=200, json=lambda: self.LIFECYCLE_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        result = self.client.resume_subscription("biz")
+        self.client.metering._request.assert_called_once_with(
+            "post", "/api/v1/platform/customers/biz/subscription/resume", json={},
+        )
+        self.assertFalse(result["paused"])
+        self.assertFalse(result["cancel_at_period_end"])
 
 
 if __name__ == "__main__":

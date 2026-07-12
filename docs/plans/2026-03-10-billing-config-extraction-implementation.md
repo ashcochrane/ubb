@@ -1,3 +1,5 @@
+> ⚠️ NOTE (one embedded snippet is stale): an embedded subscription-sync snippet in this doc uses the pre-Basil `stripe_sub.plan.*` / `expand=["data.plan.product"]` shape; UBB now reads `subscription.items.data[]` (Basil) — see `2026-06-09-wave4-j2-orchestration-implementation.md`. The billing-config-extraction content of this doc is unaffected and current. Master truth: `2026-06-10-program-current-state.md`.
+
 # Billing Config Extraction Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

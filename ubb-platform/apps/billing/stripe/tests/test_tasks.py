@@ -98,9 +98,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             stripe_charge_id=charge_id,
         )
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_no_mismatch_for_matching_charge(self, mock_sleep, mock_retrieve):
+    def test_no_mismatch_for_matching_charge(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_ok", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
@@ -110,13 +112,17 @@ class ReconcileTopupsWithStripeTest(TestCase):
 
         reconcile_topups_with_stripe()
 
+        from django.conf import settings
         mock_retrieve.assert_called_once_with(
             "ch_ok", stripe_account="acct_test",
+            api_key=settings.STRIPE_SECRET_KEY,  # F4.4: live tenant -> platform key
         )
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_flags_amount_mismatch(self, mock_sleep, mock_retrieve):
+    def test_flags_amount_mismatch(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_bad", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
@@ -128,9 +134,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             reconcile_topups_with_stripe()
         self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_flags_refunded_charge(self, mock_sleep, mock_retrieve):
+    def test_flags_refunded_charge(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_refunded", amount_micros=5_000_000)
         mock_charge = MagicMock()
         mock_charge.status = "succeeded"
@@ -142,9 +150,11 @@ class ReconcileTopupsWithStripeTest(TestCase):
             reconcile_topups_with_stripe()
         self.assertTrue(any("reconciliation mismatch" in msg for msg in cm.output))
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_skips_old_attempts(self, mock_sleep, mock_retrieve):
+    def test_skips_old_attempts(self, mock_sleep, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         attempt = self._create_attempt("ch_old")
         # Make attempt older than 48 hours
         TopUpAttempt.objects.filter(pk=attempt.pk).update(
@@ -155,21 +165,34 @@ class ReconcileTopupsWithStripeTest(TestCase):
 
         mock_retrieve.assert_not_called()
 
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
     @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
     @patch("apps.billing.connectors.stripe.tasks.time.sleep")
-    def test_handles_stripe_error_gracefully(self, mock_sleep, mock_retrieve):
+    def test_handles_stripe_error_gracefully(self, mock_sleep, mock_retrieve, mock_pi_list):
         import stripe as stripe_lib
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         self._create_attempt("ch_error")
         mock_retrieve.side_effect = stripe_lib.error.StripeError("API down")
 
-        # Should not raise
-        reconcile_topups_with_stripe()
+        # Should not raise — the audit sweep logs and moves on
+        with self.assertLogs("apps.billing.connectors.stripe.tasks", level="WARNING") as cm:
+            reconcile_topups_with_stripe()
 
-    def test_skips_attempts_without_charge_id(self):
+        mock_retrieve.assert_called_once()
+        self.assertTrue(any("charge fetch failed" in msg for msg in cm.output))
+
+    @patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list")
+    @patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve")
+    def test_skips_attempts_without_charge_id(self, mock_retrieve, mock_pi_list):
+        mock_pi_list.return_value = MagicMock(auto_paging_iter=lambda: iter([]))
         TopUpAttempt.objects.create(
             customer=self.customer, amount_micros=5_000_000,
             trigger="manual", status="succeeded",
             stripe_charge_id=None,
         )
-        # No Stripe API call should be attempted — no mock needed
         reconcile_topups_with_stripe()
+
+        # The audit sweep must enter (PI list called) but never fetch a
+        # charge for an attempt with no charge id.
+        mock_pi_list.assert_called_once()
+        mock_retrieve.assert_not_called()

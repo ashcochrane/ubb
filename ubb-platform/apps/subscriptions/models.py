@@ -28,9 +28,17 @@ class StripeSubscription(BaseModel):
     amount_micros = models.BigIntegerField()
     currency = models.CharField(max_length=3, default="usd")
     interval = models.CharField(max_length=10)
+    quantity = models.IntegerField(default=1)
     current_period_start = models.DateTimeField()
     current_period_end = models.DateTimeField()
     last_synced_at = models.DateTimeField()
+    # F5.4 lifecycle mirror flags ONLY — Stripe stays the source of truth.
+    # cancel_at_period_end: Stripe keeps status "active" until the period ends.
+    # paused: Stripe keeps status "active" under pause_collection, so the
+    # explicit flag is the only local signal that collection is voided.
+    cancel_at_period_end = models.BooleanField(default=False)
+    paused = models.BooleanField(default=False)
+    canceled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_stripe_subscription"
@@ -54,11 +62,17 @@ class SubscriptionInvoice(BaseModel):
         StripeSubscription, on_delete=models.CASCADE, related_name="invoices"
     )
     stripe_invoice_id = models.CharField(max_length=255, unique=True, db_index=True)
-    amount_paid_micros = models.BigIntegerField()
+    amount_paid_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    period_start = models.DateTimeField()
-    period_end = models.DateTimeField()
-    paid_at = models.DateTimeField()
+    # NULL until the invoice carries the data: an open (finalized, unpaid) row may
+    # arrive before period/paid_at are known.
+    period_start = models.DateTimeField(null=True, blank=True)
+    period_end = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, default="open")  # open|paid|void|uncollectible
+    hosted_invoice_url = models.CharField(max_length=1000, blank=True, default="")
+    invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
+    payment_failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_subscription_invoice"
@@ -67,5 +81,44 @@ class SubscriptionInvoice(BaseModel):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"
 
 
+class TenantBillingPlan(BaseModel):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="billing_plans")
+    key = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    access_fee_micros = models.BigIntegerField(default=0)
+    per_seat_micros = models.BigIntegerField(default=0)
+    interval = models.CharField(max_length=5, default="month")  # month|year
+    stripe_access_product_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_access_price_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_seat_product_id = models.CharField(max_length=255, blank=True, default="")
+    stripe_seat_price_id = models.CharField(max_length=255, blank=True, default="")
+    provisioned_at = models.DateTimeField(null=True, blank=True)
+    # F5.4: bumped once per update_plan_prices call that re-prices a provisioned
+    # axis. New Stripe Prices are keyed plan-price-{axis}-{plan.id}-v{version};
+    # existing subscriptions keep their old price (grandfathered) unless migrated.
+    pricing_version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = "ubb_billing_plan"
+        constraints = [models.UniqueConstraint(fields=["tenant", "key"], name="uq_billing_plan_tenant_key")]
+
+
+class CustomerSubscriptionItem(BaseModel):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="sub_items")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="sub_items")
+    stripe_subscription = models.ForeignKey(
+        "subscriptions.StripeSubscription", on_delete=models.CASCADE, related_name="line_items"
+    )
+    stripe_subscription_item_id = models.CharField(max_length=255, unique=True)
+    axis = models.CharField(max_length=8)  # access|seat
+    stripe_price_id = models.CharField(max_length=255)
+    unit_amount_micros = models.BigIntegerField(default=0)
+    quantity = models.IntegerField(default=1)
+    plan = models.ForeignKey(TenantBillingPlan, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_customer_sub_item"
+
+
 # Import economics models so Django discovers them for migrations
-from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics  # noqa: E402, F401
+from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig  # noqa: E402, F401

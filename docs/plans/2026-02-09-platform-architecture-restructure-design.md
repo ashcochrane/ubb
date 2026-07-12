@@ -1,3 +1,5 @@
+> ⚠️ SUPERSEDED (pricing model only): `ProviderRate` was deleted (migration `apps/metering/pricing/migrations/0005_delete_providerrate.py`) and replaced by the two-card `RateCard` + `PricingService` engine — see `2026-06-08-pricing-stageA-rate-card-engine-design.md`. Master truth: `2026-06-10-program-current-state.md`.
+
 # Platform Architecture Restructure Design
 
 **Date:** 2026-02-09

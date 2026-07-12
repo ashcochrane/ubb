@@ -20,9 +20,9 @@ class UsageEventModelTest(TestCase):
             customer=self.customer,
             request_id="req_abc123",
             idempotency_key="idem_abc123",
-            cost_micros=500_000,
+            billed_cost_micros=500_000,
         )
-        self.assertEqual(event.cost_micros, 500_000)
+        self.assertEqual(event.billed_cost_micros, 500_000)
         self.assertEqual(event.request_id, "req_abc123")
         self.assertIsNotNone(event.effective_at)
 
@@ -32,9 +32,9 @@ class UsageEventModelTest(TestCase):
             customer=self.customer,
             request_id="req_abc123",
             idempotency_key="idem_abc123",
-            cost_micros=500_000,
+            billed_cost_micros=500_000,
         )
-        event.cost_micros = 999_999
+        event.billed_cost_micros = 999_999
         with self.assertRaises(ValueError):
             event.save()
 
@@ -44,10 +44,22 @@ class UsageEventModelTest(TestCase):
             customer=self.customer,
             request_id="req_abc123",
             idempotency_key="idem_abc123",
-            cost_micros=500_000,
+            billed_cost_micros=500_000,
         )
         with self.assertRaises(ValueError):
             event.delete()
+
+    def test_new_fields_have_defaults(self):
+        event = UsageEvent.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            request_id="req_defaults",
+            idempotency_key="idem_defaults",
+            billed_cost_micros=500_000,
+        )
+        assert event.currency == "usd"
+        assert event.units is None
+        assert event.product_id == ""
 
     def test_idempotency_constraint(self):
         UsageEvent.objects.create(
@@ -55,7 +67,7 @@ class UsageEventModelTest(TestCase):
             customer=self.customer,
             request_id="req_abc123",
             idempotency_key="idem_duplicate",
-            cost_micros=500_000,
+            billed_cost_micros=500_000,
         )
         with self.assertRaises(IntegrityError):
             UsageEvent.objects.create(
@@ -63,5 +75,5 @@ class UsageEventModelTest(TestCase):
                 customer=self.customer,
                 request_id="req_def456",
                 idempotency_key="idem_duplicate",
-                cost_micros=300_000,
+                billed_cost_micros=300_000,
             )

@@ -41,3 +41,116 @@ class Invoice(BaseModel):
 
     def __str__(self):
         return f"Invoice({self.customer.external_id}: {self.status})"
+
+
+USAGE_INVOICE_STATUS = [
+    ("pending", "Pending"), ("pushing", "Pushing"), ("pushed", "Pushed"),
+    ("skipped", "Skipped"), ("failed", "Failed"), ("failed_permanent", "Failed permanent"),
+]
+
+USAGE_INVOICE_PUSH_PHASE = [
+    ("", "Not started"), ("invoice_created", "Invoice created"),
+    ("items_pinned", "Items pinned"), ("finalized", "Finalized"),
+]
+
+USAGE_INVOICE_KIND = [
+    ("standalone", "Standalone"), ("consolidated", "Consolidated"),
+]
+
+
+class CustomerUsageInvoice(BaseModel):
+    """A postpaid customer's usage for one calendar month, pushed to Stripe as line items."""
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="usage_invoices")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="usage_invoices")
+    period_start = models.DateField()
+    period_end = models.DateField()
+    total_billed_micros = models.BigIntegerField(default=0)
+    currency = models.CharField(max_length=3, default="usd")
+    status = models.CharField(max_length=20, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
+    stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    skip_reason = models.CharField(max_length=50, blank=True, default="")
+    push_attempts = models.PositiveIntegerField(default=0)
+    first_attempted_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_error = models.TextField(blank=True, default="")
+    push_phase = models.CharField(max_length=20, choices=USAGE_INVOICE_PUSH_PHASE, blank=True, default="")
+    # F5.5: which Stripe invoice carries the usage. "consolidated" = the
+    # subscription renewal draft (stripe_invoice_id is then a SUBSCRIPTION
+    # invoice, so AR repair must also follow the subscription routing). A
+    # partial-split rec keeps "consolidated" for audit even though it records
+    # the standalone remainder invoice it finalized itself.
+    invoice_kind = models.CharField(
+        max_length=12, choices=USAGE_INVOICE_KIND, default="standalone")
+    # Incremented by repush_usage_invoice --rebill-void: rotates every Stripe
+    # idempotency-key family so a replay inside Stripe's 24h key window can never
+    # return the recorded (now-void) invoice. Generation 0 keeps the exact legacy
+    # key strings for in-flight rows.
+    rebill_generation = models.PositiveIntegerField(default=0)
+    # Frozen-at-first-claim aggregation: [[label, amount_micros], ...]. Pinned in
+    # Phase 1 of the first push attempt so line_index identity is stable across
+    # retries even if the tenant flips usage_line_item_group_by mid-retry.
+    line_snapshot = models.JSONField(default=list, blank=True)
+    residual_micros = models.BigIntegerField(default=0)
+    # F1.1: the carry-in reserved (take-and-zero) from the owner's residual
+    # ledger at first claim and PINNED on the row for its lifetime — retries
+    # replay the pin, never a second reservation. NULL = not yet reserved.
+    carry_in_micros = models.BigIntegerField(null=True, blank=True, default=None)
+    pushed_at = models.DateTimeField(null=True, blank=True)
+    payment_status = models.CharField(max_length=20, null=True, blank=True)  # open|paid|void|uncollectible (NULL = not yet collectible)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    payment_failed_at = models.DateTimeField(null=True, blank=True)
+    hosted_invoice_url = models.CharField(max_length=1000, blank=True, default="")
+    invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
+
+    class Meta:
+        db_table = "ubb_customer_usage_invoice"
+        constraints = [models.UniqueConstraint(
+            fields=["customer", "period_start"], name="uq_usage_invoice_customer_period")]
+
+    def __str__(self):
+        return f"UsageInvoice({self.customer_id}: {self.period_start} {self.status})"
+
+
+class UsageInvoiceLineItem(BaseModel):
+    usage_invoice = models.ForeignKey(CustomerUsageInvoice, on_delete=models.CASCADE, related_name="line_items")
+    dimension = models.CharField(max_length=255, blank=True, default="")
+    amount_micros = models.BigIntegerField(default=0)
+    stripe_invoice_item_id = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "ubb_usage_invoice_line_item"
+
+
+class PostpaidResidualLedger(BaseModel):
+    """F1.1: per-billing-owner accumulator for sub-cent usage residue.
+
+    Replaces the order-sensitive 'latest prior pushed row' chain read, which
+    double-counted on out-of-order retries and on concurrent adjacent-period
+    pushes. Semantics: Phase 1 of a push RESERVES (take-and-zero, pinned on
+    CustomerUsageInvoice.carry_in_micros) under select_for_update; Phase 3
+    DEPOSITS the push's residual_micros back. Commutative, so push order and
+    concurrency cannot double-count or strand a residual. Lock order is always
+    usage-invoice row first, then ledger."""
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="residual_ledgers")
+    customer = models.OneToOneField(
+        "customers.Customer", on_delete=models.CASCADE, related_name="residual_ledger")
+    balance_micros = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "ubb_postpaid_residual_ledger"
+
+    def __str__(self):
+        return f"ResidualLedger({self.customer_id}: {self.balance_micros})"
+
+
+class PostpaidUsageConfig(BaseModel):
+    tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="postpaid_config")
+    usage_line_item_group_by = models.CharField(max_length=64, blank=True, default="")
+    # F5.5 opt-in: at period close, pin the usage lines onto the billing
+    # owner's subscription-renewal DRAFT invoice (one Stripe invoice per
+    # period) instead of minting a standalone usage invoice. Standalone stays
+    # the automatic fallback whenever the renewal-draft window is missed.
+    consolidate_with_subscription = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "ubb_postpaid_usage_config"

@@ -295,6 +295,12 @@ This uses the same `SeparateDatabaseAndState` pattern proven in the Wallet and T
 
 ## Verification
 
+> **SUPERSEDED (2026-06-12):** these grep rules are replaced by the AST-enforced dependency
+> matrix in `ubb-platform/apps/platform/tests/test_product_boundaries.py` (see
+> [ADR-001](../architecture/2026-06-12-adr-001-product-boundaries.md)). The test covers all
+> four products plus the `apps -> api` direction, resolves relative imports, and catches lazy
+> function-body imports that grep misses. The rules below are kept for historical context.
+
 After all changes:
 1. `grep -r "from apps.billing" apps/platform/` returns zero results
 2. `grep -r "from apps.metering" apps/billing/` returns zero results (except tenant_billing read-only query — documented tech debt)

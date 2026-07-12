@@ -2,9 +2,12 @@
 Billing-specific lock helpers.
 
 See core/locking.py for canonical lock ordering:
-    Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
+    Run -> Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
 
 These helpers enforce the ordering for billing operations.
+
+Note: Run and Wallet locks are never co-held today; Run is listed first in the
+canonical order to reserve the position if that ever changes.
 """
 from core.locking import lock_row
 
@@ -20,10 +23,19 @@ def lock_for_billing(customer_id):
     from apps.billing.wallets.models import Wallet
     from apps.platform.customers.models import Customer
 
-    wallet, _created = Wallet.objects.select_for_update().get_or_create(
-        customer_id=customer_id,
-        defaults={"balance_micros": 0, "currency": "USD"},
-    )
+    wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
+    if wallet is None:
+        # CUR-1: a new wallet is born in the customer's tenant currency
+        # (normalized lowercase), never a hardcoded USD.
+        tenant_currency = (
+            Customer.objects.filter(id=customer_id)
+            .values_list("tenant__default_currency", flat=True).first()
+            or "usd"
+        ).lower()
+        wallet = Wallet.objects.create(
+            customer_id=customer_id, balance_micros=0, currency=tenant_currency)
+    elif wallet.deleted_at is not None:
+        wallet.restore()
     customer = Customer.objects.select_for_update().get(id=customer_id)
     return wallet, customer
 

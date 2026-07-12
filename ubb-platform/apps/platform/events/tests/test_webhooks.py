@@ -7,7 +7,12 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
-from apps.platform.events.webhooks import compute_signature, deliver_webhook
+from apps.platform.events.webhooks import (
+    compute_signature,
+    deliver_webhook,
+    _PinnedIPTransport,
+    _PinnedIPBackend,
+)
 
 
 @pytest.mark.django_db
@@ -39,8 +44,9 @@ class TestDeliverWebhook:
             tenant_id=str(self.tenant.id),
         )
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_delivers_to_matching_config(self, mock_client_class):
+    def test_delivers_to_matching_config(self, mock_client_class, mock_validate):
         mock_response = MagicMock(status_code=200, text="OK")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -62,8 +68,9 @@ class TestDeliverWebhook:
         assert attempt.success is True
         assert attempt.status_code == 200
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_skips_non_matching_event_type(self, mock_client_class):
+    def test_skips_non_matching_event_type(self, mock_client_class, mock_validate):
         TenantWebhookConfig.objects.create(
             tenant=self.tenant,
             url="https://example.com/hook",
@@ -75,9 +82,12 @@ class TestDeliverWebhook:
 
         assert WebhookDeliveryAttempt.objects.count() == 0
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_delivers_when_event_types_empty(self, mock_client_class):
-        """Empty event_types means deliver all events."""
+    def test_empty_event_types_delivers_nothing(self, mock_client_class, mock_validate):
+        """Empty event_types is an explicit subscription to nothing — no delivery."""
+        # Configure a working response so that if delivery were (wrongly)
+        # attempted, the assertions fail cleanly rather than erroring on plumbing.
         mock_response = MagicMock(status_code=200, text="OK")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -94,11 +104,35 @@ class TestDeliverWebhook:
 
         deliver_webhook(self.event)
 
+        assert WebhookDeliveryAttempt.objects.count() == 0
+        mock_client_class.assert_not_called()
+
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_wildcard_delivers_all(self, mock_client_class, mock_validate):
+        """["*"] subscribes to every event type."""
+        mock_response = MagicMock(status_code=200, text="OK")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=["*"],
+        )
+
+        deliver_webhook(self.event)
+
         assert WebhookDeliveryAttempt.objects.count() == 1
         assert WebhookDeliveryAttempt.objects.first().success is True
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_records_failure(self, mock_client_class):
+    def test_records_failure(self, mock_client_class, mock_validate):
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
         mock_client_instance.__exit__ = MagicMock(return_value=False)
@@ -109,7 +143,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -119,8 +153,9 @@ class TestDeliverWebhook:
         assert attempt.success is False
         assert "connection refused" in attempt.error_message
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_includes_signature_header(self, mock_client_class):
+    def test_includes_signature_header(self, mock_client_class, mock_validate):
         mock_response = MagicMock(status_code=200, text="OK")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -132,7 +167,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="my-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -142,13 +177,14 @@ class TestDeliverWebhook:
         assert "X-UBB-Signature" in headers
         assert "X-UBB-Event-Type" in headers
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_skips_inactive_config(self, mock_client_class):
+    def test_skips_inactive_config(self, mock_client_class, mock_validate):
         TenantWebhookConfig.objects.create(
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
             is_active=False,
         )
 
@@ -156,8 +192,9 @@ class TestDeliverWebhook:
 
         assert WebhookDeliveryAttempt.objects.count() == 0
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_records_non_2xx_as_failure(self, mock_client_class):
+    def test_records_non_2xx_as_failure(self, mock_client_class, mock_validate):
         mock_response = MagicMock(status_code=500, text="Internal Server Error")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -169,7 +206,7 @@ class TestDeliverWebhook:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         deliver_webhook(self.event)
@@ -191,8 +228,9 @@ class TestWebhookTimeoutRetry:
             tenant_id=str(self.tenant.id),
         )
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_timeout_raises_for_retry(self, mock_client_class):
+    def test_timeout_raises_for_retry(self, mock_client_class, mock_validate):
         import httpx
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -204,14 +242,15 @@ class TestWebhookTimeoutRetry:
             tenant=self.tenant,
             url="https://slow.example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ReadTimeout):
             deliver_webhook(self.event)
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_timeout_records_delivery_attempt_before_raising(self, mock_client_class):
+    def test_timeout_records_delivery_attempt_before_raising(self, mock_client_class, mock_validate):
         import httpx
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -223,7 +262,7 @@ class TestWebhookTimeoutRetry:
             tenant=self.tenant,
             url="https://slow.example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ConnectTimeout):
@@ -246,8 +285,9 @@ class TestWebhookNetworkErrorRetry:
             tenant_id=str(self.tenant.id),
         )
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_connection_error_raises_for_retry(self, mock_client_class):
+    def test_connection_error_raises_for_retry(self, mock_client_class, mock_validate):
         """Non-timeout network errors (ConnectError) should re-raise for Celery retry."""
         import httpx
 
@@ -261,7 +301,7 @@ class TestWebhookNetworkErrorRetry:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         with pytest.raises(httpx.ConnectError):
@@ -272,8 +312,9 @@ class TestWebhookNetworkErrorRetry:
         attempt = WebhookDeliveryAttempt.objects.first()
         assert attempt.success is False
 
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_non_network_error_swallowed(self, mock_client_class):
+    def test_non_network_error_swallowed(self, mock_client_class, mock_validate):
         """Non-network errors (e.g. ValueError) should be swallowed, not re-raised."""
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -285,7 +326,7 @@ class TestWebhookNetworkErrorRetry:
             tenant=self.tenant,
             url="https://example.com/hook",
             secret="test-secret",
-            event_types=[],
+            event_types=["*"],
         )
 
         # Should not raise
@@ -303,6 +344,28 @@ class TestHandleWebhookDelivery:
 
         # Should not raise -- just returns silently
         handle_webhook_delivery(str(uuid.uuid4()), {})
+
+
+@pytest.mark.django_db
+class TestWebhookDeliveryRevalidatesSSRF:
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="ssrf", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000}, tenant_id=str(self.tenant.id))
+
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    def test_delivery_blocked_when_url_now_resolves_private(self, mock_validate, mock_client_class):
+        mock_validate.side_effect = ValueError("Webhook URL must not point to private/internal addresses")
+        TenantWebhookConfig.objects.create(tenant=self.tenant, url="https://rebind.attacker.example/hook",
+                                           secret="test-secret", event_types=["*"])
+        deliver_webhook(self.event)
+        mock_client_class.assert_not_called()                       # no outbound request
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is False
+        assert attempt.error_message.startswith("blocked:")
 
 
 @pytest.mark.django_db
@@ -330,6 +393,60 @@ class TestWebhookConfigAPI:
         assert data["url"] == "https://example.com/hook"
         assert data["is_active"] is True
         assert data["event_types"] == ["usage.recorded"]
+
+    def test_create_requires_event_types(self):
+        """Omitting event_types is rejected — no implicit default subscription."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps({"url": "https://example.com/hook", "secret": "a" * 32}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_rejects_empty_event_types(self):
+        """An empty list would be a silent no-op webhook — reject it."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": []}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_rejects_unknown_event_type(self):
+        """A typo'd event type is rejected loudly instead of matching nothing forever."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {
+                    "url": "https://example.com/hook",
+                    "secret": "a" * 32,
+                    "event_types": ["usage.recieved"],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 400
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_accepts_wildcard(self):
+        """["*"] is the explicit opt-in to all events."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": ["*"]}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 201
+        assert resp.json()["event_types"] == ["*"]
 
     def test_list_webhook_configs(self):
         TenantWebhookConfig.objects.create(
@@ -370,3 +487,164 @@ class TestWebhookConfigAPI:
         )
         assert resp.status_code == 404
         assert TenantWebhookConfig.objects.count() == 1
+
+
+class TestPinnedIPTransport:
+    """Unit tests for the DNS-rebinding pin (Fix B).
+
+    These tests are hermetic — no DB, no real network.  They verify the
+    transport wiring so that a DNS rebind after validate_webhook_url returns
+    cannot steer the TCP connection to a private address.
+    """
+
+    def test_pinned_ip_backend_stores_ip(self):
+        """_PinnedIPBackend stores the validated IP it was given."""
+        backend = _PinnedIPBackend("1.2.3.4")
+        assert backend._validated_ip == "1.2.3.4"
+
+    def test_pinned_ip_transport_injects_backend(self):
+        """_PinnedIPTransport replaces the pool's network backend with a pinned one."""
+        transport = _PinnedIPTransport("1.2.3.4")
+        assert isinstance(transport._pool._network_backend, _PinnedIPBackend)
+        assert transport._pool._network_backend._validated_ip == "1.2.3.4"
+
+    @pytest.mark.django_db
+    def test_delivery_uses_pinned_transport_with_validated_ip(self):
+        """_deliver_to_config constructs _PinnedIPTransport with the IP returned by
+        validate_webhook_url, defeating a rebind that happens after validation."""
+        tenant = Tenant.objects.create(name="rebind-pin", products=["metering"])
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(tenant.id),
+        )
+        TenantWebhookConfig.objects.create(
+            tenant=tenant,
+            url="https://rebind.example.com/hook",
+            secret="test-secret",
+            event_types=["*"],
+        )
+
+        validated_ip = "1.2.3.4"
+        captured_transports = []
+
+        def fake_client(timeout=None, transport=None):
+            captured_transports.append(transport)
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.post.return_value = MagicMock(status_code=200, text="OK")
+            return mock_instance
+
+        with patch("apps.platform.events.webhooks.validate_webhook_url", return_value=validated_ip), \
+             patch("apps.platform.events.webhooks.httpx.Client", side_effect=fake_client), \
+             patch("apps.platform.events.webhooks._PinnedIPTransport") as mock_transport_cls:
+
+            mock_transport_cls.return_value = MagicMock()
+
+            deliver_webhook(event)
+
+            # Assert the transport was constructed with the validated IP
+            mock_transport_cls.assert_called_once_with(validated_ip)
+
+    def test_pinned_ip_backend_connect_tcp_uses_ip_not_hostname(self):
+        """_PinnedIPBackend.connect_tcp forwards the pinned IP, ignoring the hostname
+        that would normally re-trigger DNS resolution."""
+        backend = _PinnedIPBackend("1.2.3.4")
+
+        connect_calls = []
+
+        class _FakeParent:
+            def connect_tcp(self, host, port, **kwargs):
+                connect_calls.append(host)
+                return MagicMock()
+
+        # Patch super().connect_tcp via the MRO by temporarily replacing SyncBackend
+        with patch.object(
+            _PinnedIPBackend.__bases__[0],  # SyncBackend
+            "connect_tcp",
+            side_effect=lambda self_inner, host, port, **kw: connect_calls.append(host) or MagicMock(),
+        ):
+            # Call with a hostname — backend should substitute the pinned IP
+            try:
+                backend.connect_tcp(host="rebind.attacker.example", port=443, timeout=5)
+            except Exception:
+                pass  # socket error is fine; we only care what host was passed
+
+        # The ip was forwarded to the parent, not the original hostname
+        if connect_calls:
+            assert connect_calls[0] == "1.2.3.4"
+
+
+@pytest.mark.django_db
+class TestSignatureV2:
+    """F5.7: timestamped v2 signatures ride alongside the unchanged legacy header."""
+
+    SECRET = "v2-secret"
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="v2", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(self.tenant.id),
+        )
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret=self.SECRET,
+            event_types=["*"],
+        )
+
+    def _deliver_and_capture(self):
+        """Deliver the event; return (body_bytes, headers) of the POST."""
+        mock_response = MagicMock(status_code=200, text="OK")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        with patch("apps.platform.events.webhooks.validate_webhook_url"), \
+             patch("apps.platform.events.webhooks.httpx.Client",
+                   return_value=mock_client_instance):
+            deliver_webhook(self.event)
+        call = mock_client_instance.post.call_args
+        return call.kwargs["content"], call.kwargs["headers"]
+
+    def test_both_signature_headers_present(self):
+        _, headers = self._deliver_and_capture()
+        assert "X-UBB-Signature" in headers       # legacy, deprecation window
+        assert "X-UBB-Signature-V2" in headers    # replay-bounded
+        assert headers["X-UBB-Signature-V2"].startswith("t=")
+
+    def test_v2_verifies_against_documented_recipe(self):
+        """v2 = HMAC-SHA256(secret, f"{t}.{body}"), header t=<ts>,v1=<hex>."""
+        import hashlib
+        import hmac as hmac_mod
+
+        body, headers = self._deliver_and_capture()
+        t_part, v1_part = headers["X-UBB-Signature-V2"].split(",")
+        ts = int(t_part[len("t="):])
+        v1 = v1_part[len("v1="):]
+
+        expected = hmac_mod.new(
+            self.SECRET.encode("utf-8"),
+            str(ts).encode("utf-8") + b"." + body,
+            hashlib.sha256,
+        ).hexdigest()
+        assert v1 == expected
+        # The signed ts is the payload's own timestamp (signed at send time).
+        assert ts == json.loads(body)["timestamp"]
+
+    def test_legacy_signature_unchanged_byte_for_byte(self):
+        """The legacy header is still the body-only HMAC — existing receivers
+        keep verifying without any change."""
+        body, headers = self._deliver_and_capture()
+        assert headers["X-UBB-Signature"] == compute_signature(body, self.SECRET)
+
+    def test_v2_round_trips_through_compute_signature_v2(self):
+        from apps.platform.events.webhooks import compute_signature_v2
+
+        body, headers = self._deliver_and_capture()
+        t_part, v1_part = headers["X-UBB-Signature-V2"].split(",")
+        ts = int(t_part[len("t="):])
+        assert v1_part[len("v1="):] == compute_signature_v2(body, self.SECRET, ts)

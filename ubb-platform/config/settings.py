@@ -140,7 +140,10 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_economics"),
     Queue("ubb_subscriptions"),
     Queue("ubb_referrals"),
+    Queue("ubb_metering"),
 ]
+
+from datetime import timedelta
 
 from celery.schedules import crontab
 
@@ -152,6 +155,10 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-wallet-balances": {
         "task": "apps.billing.wallets.tasks.reconcile_wallet_balances",
         "schedule": crontab(minute=0, hour="*/1"),  # Every hour
+    },
+    "expire-credit-grants": {
+        "task": "apps.billing.wallets.tasks.expire_credit_grants",
+        "schedule": crontab(minute=10),  # hourly at :10
     },
     "cleanup-webhook-events": {
         "task": "apps.billing.stripe.tasks.cleanup_webhook_events",
@@ -191,7 +198,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "reconcile-topups-with-stripe": {
         "task": "apps.billing.connectors.stripe.tasks.reconcile_topups_with_stripe",
-        "schedule": crontab(minute=0, hour=6),  # Daily at 6 AM UTC
+        "schedule": crontab(minute=20),  # Hourly at :20
     },
     "emit-referral-payouts": {
         "task": "apps.referrals.tasks.emit_referral_payouts_task",
@@ -201,6 +208,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.platform.runs.tasks.close_abandoned_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
+    "reap-stale-runs": {
+        "task": "apps.platform.runs.tasks.reap_stale_runs",
+        "schedule": crontab(minute="*/5"),  # Tier-2 P5: every 5 minutes
+    },
     "flush-api-key-last-used": {
         "task": "core.tasks.flush_api_key_last_used",
         "schedule": crontab(minute="*/5"),
@@ -208,6 +219,56 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-webhook-delivery-attempts": {
         "task": "apps.platform.events.tasks_webhook_cleanup.cleanup_webhook_delivery_attempts",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC
+    },
+    "reconcile-budget-counters": {
+        "task": "apps.billing.gating.tasks.reconcile_budget_counters",
+        "schedule": crontab(minute=15),  # hourly at :15
+    },
+    "reconcile-live-ledgers": {
+        "task": "apps.billing.gating.tasks.reconcile_live_ledgers",
+        "schedule": crontab(minute=25),  # hourly at :25 (free slot; D16)
+    },
+    "close-postpaid-usage-periods": {
+        "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",
+        # 1st 00:05 UTC — INSIDE the renewal-draft window (F5.5 consolidation):
+        # Stripe mints the subscription renewal draft at the 00:00 anchor and
+        # auto-finalizes it ~1h later; a consolidated close must land between.
+        "schedule": crontab(minute=5, hour=0, day_of_month=1),
+    },
+    "reconcile-postpaid-usage": {
+        "task": "apps.billing.invoicing.tasks.reconcile_postpaid_usage",
+        "schedule": crontab(minute=45),  # hourly at :45
+    },
+    "reconcile-usage-drawdowns": {
+        "task": "apps.billing.wallets.tasks.reconcile_usage_drawdowns",
+        "schedule": crontab(minute=40),  # hourly at :40
+    },
+    "reconcile-cost-accumulators": {
+        "task": "apps.subscriptions.tasks.reconcile_cost_accumulators",
+        "schedule": crontab(minute=50),  # hourly at :50
+    },
+    "resnapshot-dirty-periods": {
+        "task": "apps.subscriptions.tasks.resnapshot_dirty_periods",
+        # hourly at :55 — AFTER reconcile-cost-accumulators (:50) so the
+        # accumulators the snapshots read are already ledger-corrected.
+        "schedule": crontab(minute=55),
+    },
+    "reconcile-invoice-payment-status": {
+        "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
+        "schedule": crontab(minute=15),
+    },
+    "verify-tier-rerate": {
+        "task": "apps.metering.pricing.tasks.verify_tier_rerate",
+        # 1st 03:15 UTC — after the 1st 00:05 postpaid close of the same morning
+        "schedule": crontab(minute=15, hour=3, day_of_month=1),
+    },
+    "settle-raw-events": {
+        "task": "apps.metering.usage.tasks.settle_raw_events",
+        # Straggler sweeper for the async ingest settlement path: the ingest
+        # endpoint's on_commit dispatch is the primary trigger; this catches a
+        # lost dispatch or a crashed worker mid-batch. Sub-minute cadence
+        # (crontab has no seconds field) — a plain float/timedelta schedule.
+        "schedule": timedelta(seconds=10),
     },
 }
 
@@ -219,6 +280,10 @@ UBB_INVOICE_PERIOD_DAYS = int(os.environ.get("UBB_INVOICE_PERIOD_DAYS", "7"))
 UBB_PLATFORM_FEE_PERCENTAGE = float(
     os.environ.get("UBB_PLATFORM_FEE_PERCENTAGE", "1.0")
 )
+# Postpaid push retry bound: both limits sit inside Stripe's 24h idempotency-key
+# window so every automatic retry of usage-invoice-{id} keys stays a safe replay.
+UBB_POSTPAID_PUSH_MAX_ATTEMPTS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_ATTEMPTS", "8"))
+UBB_POSTPAID_PUSH_MAX_AGE_HOURS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_AGE_HOURS", "20"))
 
 # Logging
 LOGGING = {
@@ -251,7 +316,15 @@ LOGGING = {
 
 # Stripe
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_CONNECT_CLIENT_ID = os.environ.get("STRIPE_CONNECT_CLIENT_ID", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+# Stripe TEST mode (sandbox tenants, F4.4). When STRIPE_TEST_WEBHOOK_SECRET is
+# configured, the LIVE webhook endpoints reject livemode=False events (test
+# traffic must use /webhooks/stripe/test); when unset, all-test dev setups
+# (STRIPE_SECRET_KEY=sk_test_...) keep working unchanged.
+STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY", "")
+STRIPE_TEST_WEBHOOK_SECRET = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "")
+STRIPE_CONNECT_TEST_CLIENT_ID = os.environ.get("STRIPE_CONNECT_TEST_CLIENT_ID", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

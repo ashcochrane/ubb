@@ -163,3 +163,104 @@ class RiskServiceRunTest(TestCase):
         self.assertTrue(result["allowed"])
         run = Run.objects.get(id=result["run_id"])
         self.assertEqual(run.balance_snapshot_micros, 0)
+
+
+import pytest
+from django.core.cache import cache as django_cache
+from apps.billing.gating.models import BudgetConfig
+from apps.billing.gating.services.budget_service import BudgetService
+
+
+@pytest.mark.django_db
+class TestRiskServiceBudget:
+    def setup_method(self):
+        django_cache.clear()
+
+    def _funded(self, **cfg):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="T", products=["metering", "billing"])
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        w = Wallet.objects.create(customer=c)
+        w.balance_micros = 10_000_000  # plenty — affordability passes
+        w.save(update_fields=["balance_micros"])
+        if cfg:
+            BudgetConfig.objects.create(tenant=t, customer=c, **cfg)
+        return c
+
+    def _spend(self, c, amount):
+        from apps.metering.usage.models import UsageEvent
+        UsageEvent.objects.create(tenant=c.tenant, customer=c, request_id="r", idempotency_key="i",
+                                  provider_cost_micros=amount, billed_cost_micros=amount)
+        BudgetService.record_spend(c.tenant_id, c.id, amount)
+
+    def test_no_budget_config_allows(self):
+        c = self._funded()
+        assert RiskService.check(c)["allowed"] is True
+
+    def test_enforcing_over_cap_denies(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="enforcing", hard_stop_pct=100)
+        self._spend(c, 1_000)  # at cap
+        res = RiskService.check(c)
+        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+
+    def test_advisory_over_cap_allows(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="advisory")
+        self._spend(c, 5_000)  # way over
+        assert RiskService.check(c)["allowed"] is True
+
+    def test_gate_fail_open_when_redis_down_with_budget_config(self):
+        # Even with an enforcing budget config, a Redis outage must NOT block the
+        # pre-call gate — the money is still guarded by the Postgres credit check.
+        from unittest.mock import patch
+        c = self._funded(cap_micros=1_000, enforce_mode="enforcing")
+        with patch("apps.billing.gating.services.budget_service.cache.get",
+                   side_effect=ConnectionError("redis down")):
+            res = RiskService.check(c)
+        assert res["allowed"] is True
+
+    def test_postpaid_negative_balance_still_allowed(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="pp")
+        Wallet.objects.create(customer=c, balance_micros=-9_999_999)  # deep negative
+        assert RiskService.check(c)["allowed"] is True  # postpaid never gates on credit balance
+
+    def test_postpaid_budget_cap_still_enforced(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.metering.usage.models import UsageEvent
+        t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="pp")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="enforcing")
+        UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
+                                  provider_cost_micros=1_000, billed_cost_micros=1_000)
+        BudgetService.record_spend(t.id, c.id, 1_000)
+        res = RiskService.check(c)
+        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+
+    def test_suspended_business_gates_its_seat(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
+                                      billing_topology="pooled", status="suspended")
+        seat = Customer.objects.create(tenant=t, external_id="s1", account_type="seat", parent=biz)
+        Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        res = RiskService.check(seat)
+        assert res["allowed"] is False and res["reason"] == "insufficient_funds"
+
+    def test_pooled_seat_affordability_reads_business_wallet(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        from apps.billing.wallets.models import Wallet
+        t = Tenant.objects.create(name="PB", products=["metering", "billing"], billing_mode="prepaid")
+        biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
+                                      billing_topology="pooled")
+        seat = Customer.objects.create(tenant=t, external_id="s1", account_type="seat", parent=biz)
+        Wallet.objects.create(customer=biz, balance_micros=-9_999_999)  # business pool deep negative
+        assert RiskService.check(seat)["allowed"] is False

@@ -6,15 +6,29 @@ from apps.billing.gating.models import RiskConfig
 class RiskService:
     @staticmethod
     def check(customer, create_run=False, run_metadata=None, external_run_id=""):
-        if customer.status == "suspended":
-            return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None, "run_id": None}
-        if customer.status == "closed":
-            return {"allowed": False, "reason": "account_closed", "balance_micros": None, "run_id": None}
+        from apps.billing.accounts import resolve_billing_owner
+        owner = resolve_billing_owner(customer)
+        # Status: gate if the seat OR its billing-owner (business) is suspended/closed
+        for who in ([customer] if owner.id == customer.id else [customer, owner]):
+            if who.status == "suspended":
+                return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None, "run_id": None}
+            if who.status == "closed":
+                return {"allowed": False, "reason": "account_closed", "balance_micros": None, "run_id": None}
+        # Tier-2 P6: honor the synchronous customer-wide stop flag at the
+        # start-gate (ENFORCING only) so a flag-stopped owner's NEW runs are
+        # blocked even before the durable suspend lands, and for postpaid
+        # owner-aggregate stops. Advisory sets the flag but UBB never blocks.
+        from apps.platform.tenants.flags import enforcing
+        if enforcing(customer.tenant):
+            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+            if LiveLedgerService.read_stop(owner.id, customer.tenant)["stop"]:
+                return {"allowed": False, "reason": "customer_stopped",
+                        "balance_micros": None, "run_id": None}
         try:
             config = customer.tenant.risk_config
         except RiskConfig.DoesNotExist:
             config = None
-        # Fixed-window rate limiting (degrades gracefully if Redis is down)
+        # Fixed-window rate limiting (per-seat; degrades gracefully if Redis is down)
         if config and config.max_requests_per_minute and config.max_requests_per_minute > 0:
             try:
                 cache_key = f"ratelimit:{customer.id}:rpm"
@@ -28,23 +42,46 @@ class RiskService:
             except Exception:
                 pass  # Degrade: skip rate limiting if cache is unavailable
 
-        # Affordability check
+        # Affordability check: read wallet from billing owner (business for pooled seat, else self)
         from apps.billing.wallets.models import Wallet
         try:
-            wallet = Wallet.objects.get(customer=customer)
-            balance = wallet.balance_micros
+            balance = Wallet.objects.get(customer=owner).balance_micros
         except Wallet.DoesNotExist:
             balance = 0
 
         from apps.billing.queries import get_customer_min_balance
-        threshold = get_customer_min_balance(customer.id, customer.tenant_id)
-        if balance < -threshold:
+        threshold = get_customer_min_balance(owner.id, owner.tenant_id)
+        if owner.tenant.billing_mode != "postpaid" and balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "run_id": None}
+
+        # Budget cap: checked per-seat (customer, not owner)
+        from apps.billing.gating.services.budget_service import BudgetService
+        budget = BudgetService.check(customer)
+        if not budget["allowed"]:
+            return {"allowed": False, "reason": budget["reason"],
+                    "balance_micros": balance, "run_id": None}
 
         result = {"allowed": True, "reason": None, "balance_micros": balance, "run_id": None}
 
         # Optionally create a Run, snapshotting wallet balance and billing config limits
         if create_run:
+            # Tier-2 P5 (D11/I6): per-owner concurrency cap (enforcing-only).
+            # The "slot count" is simply the number of ACTIVE runs for the
+            # billing owner — accurate + leak-free (no Redis slot to leak); the
+            # reaper frees capacity by terminating stale runs. A pooled business
+            # shares one cap because every seat's run pins it as billing owner.
+            # Bounded over-admit on the read-then-create race is accepted.
+            from apps.platform.tenants.flags import enforcing
+            # > 0 (not truthiness): 0/NULL = no concurrency cap, and a negative
+            # mis-config can never block every run (mirrors the rpm > 0 guard).
+            if (enforcing(customer.tenant) and config
+                    and config.max_concurrent_requests and config.max_concurrent_requests > 0):
+                from apps.platform.runs.models import Run
+                active_runs = Run.objects.filter(
+                    billing_owner_id=owner.id, status="active").count()
+                if active_runs >= config.max_concurrent_requests:
+                    return {"allowed": False, "reason": "concurrency_limit",
+                            "balance_micros": balance, "run_id": None}
             from apps.billing.queries import get_billing_config
             from apps.platform.runs.services import RunService
 
@@ -57,6 +94,8 @@ class RiskService:
                 hard_stop_balance_micros=billing_config.hard_stop_balance_micros,
                 metadata=run_metadata or {},
                 external_run_id=external_run_id,
+                # Tier-2 (D4/I6): pin the resolved billing owner on the run.
+                billing_owner_id=owner.id,
             )
             result["run_id"] = str(run.id)
             result["cost_limit_micros"] = run.cost_limit_micros

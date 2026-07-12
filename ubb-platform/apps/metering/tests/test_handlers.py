@@ -12,7 +12,7 @@ class HandleRefundRequestedTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.event = UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="r1", idempotency_key="i1", cost_micros=1_000_000,
+            request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
 
     def test_creates_refund_record(self):

@@ -77,8 +77,15 @@ class TenantBillingService:
         """Calculate fees per product using ProductFeeConfig.
 
         Falls back to legacy percentage if no ProductFeeConfig rows exist.
+
+        Sandbox tenants (F4.4) NEVER accrue platform fees: their periods close
+        at 0 and generate_tenant_platform_invoices marks them invoiced with no
+        Stripe call (the <=0 branch).
         """
         from apps.billing.tenant_billing.models import ProductFeeConfig
+
+        if tenant.is_sandbox:
+            return 0, []
 
         total_fee = 0
         line_items = []
@@ -153,10 +160,18 @@ class TenantBillingService:
         failures. Safe to run on open or closed periods.
 
         Reads via metering query interface — no direct model import.
+
+        Policy (F4.2): platform fees accrue in the ARRIVAL period
+        (basis="arrival" = created_at), matching the wall-clock live
+        accumulate_usage counter. A backdated event arriving this month is
+        fee-billed THIS month — otherwise the live accumulator and this
+        reconcile would permanently disagree about backdated events (the
+        accumulate-vs-reconcile drift asymmetry).
         """
         from apps.metering.queries import get_period_totals
 
-        totals = get_period_totals(period.tenant_id, period.period_start, period.period_end)
+        totals = get_period_totals(period.tenant_id, period.period_start,
+                                   period.period_end, basis="arrival")
         recomputed_cost = totals["total_cost_micros"]
         recomputed_count = totals["event_count"]
 

@@ -557,3 +557,24 @@ Start with **Option A** (direct calls with clear interfaces), then evolve to **O
 | **Consistency** | Eventual OK | Strong required |
 
 **The golden rule:** Usage never touches payment providers. Billing never touches usage calculations. They communicate through events and commands.
+
+---
+
+## Addendum (2026-06-12): Current State
+
+This document's vision is now implemented and machine-enforced. Three updates:
+
+1. **The "Current State (Tightly Coupled)" example above is fixed.** `usage_service.py` has
+   zero billing imports today — auto-top-up rides the outbox exactly as the "Target State"
+   sketch describes (`balance.low` event written at the record-usage choke point; billing's
+   handler decides whether to charge). The "CURRENT" code block above is kept for historical
+   contrast only.
+2. **There are four products now, not two.** Metering, billing, subscriptions, and referrals
+   all sit on a shared platform kernel (`apps/platform`: tenants, customers, events/outbox,
+   runs). The two-product framing above still captures the core metering/billing contract, but
+   the binding rules live elsewhere — see point 3.
+3. **The boundaries are now a machine-checked dependency matrix.** See
+   [ADR-001: Product Boundaries](2026-06-12-adr-001-product-boundaries.md), enforced by
+   `ubb-platform/apps/platform/tests/test_product_boundaries.py` on every CI run (including
+   lazy function-body imports). That ADR — not this document — is the authority on which
+   imports are allowed.

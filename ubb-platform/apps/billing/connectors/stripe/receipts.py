@@ -6,7 +6,11 @@ tenant's Stripe Connected Account.
 import logging
 from django.utils import timezone
 from apps.billing.invoicing.models import Invoice
-from apps.billing.stripe.services.stripe_service import stripe_call, micros_to_cents
+from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant,
+    stripe_call,
+    micros_to_cents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +23,10 @@ class ReceiptService:
         Only creates local Invoice record if ALL Stripe calls succeed.
         On Stripe failure, no local record is created — the next webhook
         retry or manual trigger can retry from scratch.
+
+        F5.3 guard: NEVER pass automatic_tax on a receipt — it documents an
+        amount that was ALREADY charged (paid_out_of_band); adding tax would
+        make the receipt disagree with the money that actually moved.
         """
         # Idempotency: skip if invoice already exists
         if Invoice.objects.filter(top_up_attempt=top_up_attempt).exists():
@@ -30,10 +38,12 @@ class ReceiptService:
         connected_account = get_tenant_stripe_account(customer.tenant_id)
         customer_stripe_id = get_customer_stripe_id(customer.id)
         amount_cents = micros_to_cents(top_up_attempt.amount_micros)
+        api_key = api_key_for_tenant(customer.tenant)
 
         try:
             stripe_invoice = stripe_call(
                 stripe.Invoice.create,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-{top_up_attempt.id}",
                 customer=customer_stripe_id,
@@ -45,6 +55,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.InvoiceItem.create,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-item-{top_up_attempt.id}",
                 customer=customer_stripe_id,
@@ -57,6 +68,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.Invoice.finalize_invoice,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-finalize-{top_up_attempt.id}",
                 invoice=stripe_invoice.id,
@@ -65,6 +77,7 @@ class ReceiptService:
 
             stripe_call(
                 stripe.Invoice.pay,
+                api_key=api_key,
                 retryable=True,
                 idempotency_key=f"receipt-pay-{top_up_attempt.id}",
                 invoice=stripe_invoice.id,

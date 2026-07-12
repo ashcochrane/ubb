@@ -1,5 +1,6 @@
 from django.db import models, transaction
 
+from apps.platform.customers.hooks import notify_seat_roster_changed
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 
@@ -9,6 +10,9 @@ CUSTOMER_STATUS_CHOICES = [
     ("suspended", "Suspended"),
     ("closed", "Closed"),
 ]
+
+ACCOUNT_TYPE_CHOICES = [("individual", "Individual"), ("business", "Business"), ("seat", "Seat")]
+BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
 
 
 class Customer(SoftDeleteMixin, BaseModel):
@@ -23,20 +27,42 @@ class Customer(SoftDeleteMixin, BaseModel):
         default="active",
         db_index=True,
     )
-    min_balance_micros = models.BigIntegerField(null=True, blank=True)
     metadata = models.JSONField(default=dict)
+    revenue_mode = models.CharField(max_length=20, blank=True, default="")  # "" | "billed" | "metered_only"
+    account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
+    billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
+    # Tier-2 P6b (D15): why the customer was suspended. Set on every suspend;
+    # only a MONETARY reason (min_balance_exceeded / budget_exceeded) is
+    # auto-cleared on recovery, so a top-up never silently un-suspends an
+    # admin/fraud suspension. "" when active / suspended for an unrecorded reason.
+    suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
         db_table = "ubb_customer"
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "external_id"],
+                condition=models.Q(deleted_at__isnull=True),
                 name="uq_customer_tenant_external",
             ),
         ]
 
+    def resolve_billing_owner(self):
+        """The Customer whose wallet/card/auto-top-up funds this customer:
+        the business for a POOLED seat, otherwise self."""
+        if self.account_type == "seat" and self.parent_id:
+            if self.parent.billing_topology == "pooled":
+                return self.parent
+        return self
+
     def soft_delete(self):
-        """Soft delete customer and emit outbox event for product cleanup."""
+        """Soft delete customer and emit outbox event for product cleanup.
+
+        Removing a seat shrinks the business roster: push the decremented live
+        seat count to Stripe on commit so a removed seat never keeps billing as a
+        ghost on the subscription's per-seat quantity.
+        """
         with transaction.atomic():
             super().soft_delete()
             from apps.platform.events.outbox import write_event
@@ -45,6 +71,8 @@ class Customer(SoftDeleteMixin, BaseModel):
                 tenant_id=str(self.tenant_id),
                 customer_id=str(self.id),
             ))
+            if self.account_type == "seat" and self.parent_id:
+                notify_seat_roster_changed(self.parent)
 
     def __str__(self):
         return f"Customer({self.external_id})"

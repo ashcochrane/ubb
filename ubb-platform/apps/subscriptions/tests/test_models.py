@@ -115,10 +115,12 @@ class TestCustomerCostAccumulator:
         acc = CustomerCostAccumulator.objects.create(
             tenant=tenant, customer=customer,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
-            total_cost_micros=5_000_000, event_count=10,
+            total_provider_cost_micros=4_000_000, total_billed_cost_micros=5_000_000,
+            event_count=10,
         )
         acc.refresh_from_db()
-        assert acc.total_cost_micros == 5_000_000
+        assert acc.total_provider_cost_micros == 4_000_000
+        assert acc.total_billed_cost_micros == 5_000_000
         assert acc.event_count == 10
 
     def test_accumulator_unique_constraint(self):
@@ -138,3 +140,33 @@ class TestCustomerCostAccumulator:
                 tenant=tenant, customer=customer,
                 period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
             )
+
+
+@pytest.mark.django_db
+class TestMarginModels:
+    def test_revenue_profile_and_threshold_and_accumulator_fields(self):
+        from apps.subscriptions.economics.models import (
+            CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        import datetime
+        t = Tenant.objects.create(name="T")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        acc = CustomerCostAccumulator.objects.create(
+            tenant=t, customer=c, period_start=datetime.date(2026, 6, 1),
+            period_end=datetime.date(2026, 7, 1),
+            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
+        assert acc.total_provider_cost_micros == 800_000
+        rp = CustomerRevenueProfile.objects.create(
+            tenant=t, customer=c, recurring_amount_micros=500_000_000,
+            effective_from=datetime.date(2026, 6, 1))
+        assert rp.interval == "month"
+        cfg = MarginThresholdConfig.objects.create(tenant=t)
+        assert cfg.min_margin_pct == 0
+        assert cfg.provider_cost_spike_pct == 25
+        econ = CustomerEconomics.objects.create(
+            tenant=t, customer=c, period_start=datetime.date(2026, 6, 1),
+            period_end=datetime.date(2026, 7, 1), subscription_revenue_micros=500_000_000,
+            usage_billed_micros=1_000_000, provider_cost_micros=800_000,
+            gross_margin_micros=500_200_000)
+        assert econ.is_unprofitable is False

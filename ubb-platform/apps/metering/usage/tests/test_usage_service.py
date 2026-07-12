@@ -4,10 +4,61 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.runs.models import Run
 from apps.platform.runs.services import RunService, HardStopExceeded, RunNotActive
-from apps.metering.pricing.models import ProviderRate, TenantMarkup
 from apps.metering.usage.models import UsageEvent
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.services.usage_service import UsageService, _result
+
+
+# Tier-2 (D5/I4): the customer-wide stop verdict must travel on EVERY
+# record_usage return path. P0 only adds the fields (defaulting to the old
+# behavior); this guards against the verdict being half-wired in P3 (the
+# classic bug is updating the happy path but missing the replay returns).
+_STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
+
+
+class ResultSignatureTest(TestCase):
+    """P0 acceptance gate (D5/I4): stop fields present on all three paths."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="T")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        Wallet.objects.create(customer=self.customer)
+
+    def test_result_builder_includes_stop_fields_with_safe_defaults(self):
+        # Both idempotent-replay returns (usage_service.py:128 and :197) go
+        # through this single builder, so asserting it here covers the replay
+        # paths that are awkward to trigger deterministically.
+        event = MagicMock(
+            id="e1", provider_cost_micros=1, billed_cost_micros=1, units=None,
+            run_id=None, usage_metrics={}, pricing_provenance={},
+            service_id="", agent_id="",
+        )
+        out = _result(event, run_total=None)
+        self.assertTrue(_STOP_KEYS <= set(out))
+        self.assertFalse(out["stop"])
+        self.assertIsNone(out["stop_reason"])
+        self.assertIsNone(out["stop_scope"])
+        self.assertFalse(out["suspended"])
+        self.assertIsNone(out["new_balance_micros"])
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_stop_fields_on_happy_path_and_replay(self, _mock):
+        first = UsageService.record_usage(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+        )
+        self.assertTrue(_STOP_KEYS <= set(first), "stop fields missing on happy path")
+        self.assertFalse(first["stop"])
+
+        # Same idempotency_key -> the replay return (the path that returns the
+        # original event) must ALSO carry the stop fields.
+        replay = UsageService.record_usage(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+        )
+        self.assertEqual(first["event_id"], replay["event_id"])
+        self.assertTrue(_STOP_KEYS <= set(replay), "stop fields missing on replay path")
+        self.assertFalse(replay["stop"])
 
 
 class UsageServiceCoreTest(TestCase):
@@ -35,13 +86,13 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_1",
             idempotency_key="idem_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result["new_balance_micros"])
         self.assertFalse(result["suspended"])
         # Verify event was created
         event = UsageEvent.objects.get(id=result["event_id"])
-        self.assertEqual(event.cost_micros, 1_000_000)
+        self.assertEqual(event.billed_cost_micros, 1_000_000)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_does_not_deduct_wallet(self, mock_process):
@@ -53,7 +104,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_1",
             idempotency_key="idem_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 100_000_000)
@@ -65,14 +116,14 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_2",
             idempotency_key="idem_2",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         result2 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
             request_id="req_2",
             idempotency_key="idem_2",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertEqual(result1["event_id"], result2["event_id"])
         # Only one event created
@@ -93,7 +144,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_3",
             idempotency_key="idem_3",
-            cost_micros=10_000_000,
+            provider_cost_micros=10_000_000,
         )
         self.assertFalse(result["suspended"])
         self.customer.refresh_from_db()
@@ -107,7 +158,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_snap_1",
             idempotency_key="idem_snap_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result1["new_balance_micros"])
 
@@ -116,7 +167,7 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_snap_1",
             idempotency_key="idem_snap_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertEqual(result2["event_id"], result1["event_id"])
         self.assertIsNone(result2["new_balance_micros"])
@@ -139,133 +190,13 @@ class UsageServiceCoreTest(TestCase):
             customer=self.customer,
             request_id="req_4",
             idempotency_key="idem_4",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         # No attempt created by metering -- billing handles this now
         attempt = TopUpAttempt.objects.filter(
             customer=self.customer, trigger="auto_topup", status="pending"
         ).first()
         self.assertIsNone(attempt)
-
-
-class UsageServicePricingTest(TestCase):
-    def setUp(self):
-        self.tenant = Tenant.objects.create(
-            name="Test", stripe_connected_account_id="acct_test"
-        )
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1"
-        )
-        self.wallet = Wallet.objects.create(customer=self.customer)
-
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=75_000,
-            unit_quantity=1_000_000,
-        )
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="output_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=300_000,
-            unit_quantity=1_000_000,
-        )
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics(self, mock_process):
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_priced_1",
-            idempotency_key="idem_priced_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        self.assertEqual(result["provider_cost_micros"], 75_000)
-        self.assertEqual(result["billed_cost_micros"], 75_000)
-        # Wallet NOT deducted (billing handles this now)
-        self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance_micros, 0)
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_raw_metrics_and_markup(self, mock_process):
-        TenantMarkup.objects.create(
-            tenant=self.tenant,
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            markup_percentage_micros=20_000_000,
-        )
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_markup_1",
-            idempotency_key="idem_markup_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        self.assertEqual(result["provider_cost_micros"], 75_000)
-        self.assertEqual(result["billed_cost_micros"], 75_000 + 15_000)
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_legacy_cost_micros_still_works(self, mock_process):
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_legacy_1",
-            idempotency_key="idem_legacy_1",
-            cost_micros=1_000_000,
-        )
-        self.assertIsNone(result["provider_cost_micros"])
-        self.assertIsNone(result["billed_cost_micros"])
-        self.assertIsNone(result["new_balance_micros"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_event_stores_provenance(self, mock_process):
-        UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_prov_1",
-            idempotency_key="idem_prov_1",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 500},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        event = UsageEvent.objects.get(
-            idempotency_key="idem_prov_1", tenant=self.tenant, customer=self.customer
-        )
-        self.assertEqual(event.event_type, "gemini_api_call")
-        self.assertEqual(event.provider, "google_gemini")
-        self.assertIn("engine_version", event.pricing_provenance)
-        self.assertIn("input_tokens", event.pricing_provenance["metrics"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_raw_metrics_idempotent_includes_dual_costs(self, mock_process):
-        kwargs = dict(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_idem_priced",
-            idempotency_key="idem_idem_priced",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        result1 = UsageService.record_usage(**kwargs)
-        result2 = UsageService.record_usage(**kwargs)
-        self.assertEqual(result1["event_id"], result2["event_id"])
-        self.assertEqual(result2["provider_cost_micros"], 75_000)
-        self.assertEqual(result2["billed_cost_micros"], 75_000)
 
 
 class UsageServiceEventEmissionTest(TestCase):
@@ -286,7 +217,7 @@ class UsageServiceEventEmissionTest(TestCase):
             customer=self.customer,
             request_id="req_emit_1",
             idempotency_key="idem_emit_1",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         outbox = OutboxEvent.objects.get(event_type="usage.recorded")
         self.assertEqual(outbox.payload["tenant_id"], str(self.tenant.id))
@@ -294,35 +225,6 @@ class UsageServiceEventEmissionTest(TestCase):
         self.assertEqual(outbox.payload["cost_micros"], 1_000_000)
         self.assertEqual(outbox.payload["event_type"], "")
         self.assertEqual(outbox.payload["event_id"], result["event_id"])
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_writes_billed_cost_for_priced_events(self, mock_process):
-        from apps.platform.events.models import OutboxEvent
-
-        ProviderRate.objects.create(
-            tenant=self.tenant,
-            provider="google_gemini",
-            event_type="gemini_api_call",
-            metric_name="input_tokens",
-            dimensions={"model": "gemini-2.0-flash"},
-            cost_per_unit_micros=75_000,
-            unit_quantity=1_000_000,
-        )
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_emit_2",
-            idempotency_key="idem_emit_2",
-            event_type="gemini_api_call",
-            provider="google_gemini",
-            usage_metrics={"input_tokens": 1_000_000},
-            properties={"model": "gemini-2.0-flash"},
-        )
-        outbox = OutboxEvent.objects.get(event_type="usage.recorded")
-        self.assertEqual(outbox.payload["cost_micros"], 75_000)  # billed_cost_micros
-        self.assertEqual(outbox.payload["event_type"], "gemini_api_call")
-        self.assertEqual(outbox.payload["event_id"], result["event_id"])
-
 
 class UsageServiceRunTest(TestCase):
     """Tests for run-aware usage recording (hard stop integration)."""
@@ -348,7 +250,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_run_1",
             idempotency_key="idem_run_1",
-            cost_micros=3_000_000,
+            provider_cost_micros=3_000_000,
             run_id=run.id,
         )
         self.assertEqual(result["run_total_cost_micros"], 3_000_000)
@@ -370,7 +272,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_run_link",
             idempotency_key="idem_run_link",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         event = UsageEvent.objects.get(id=result["event_id"])
@@ -383,7 +285,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_no_run",
             idempotency_key="idem_no_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         self.assertIsNone(result["run_total_cost_micros"])
         self.assertFalse(result["hard_stop"])
@@ -404,7 +306,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_hs_1",
             idempotency_key="idem_hs_1",
-            cost_micros=9_000_000,
+            provider_cost_micros=9_000_000,
             run_id=run.id,
         )
 
@@ -415,7 +317,7 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_hs_2",
                 idempotency_key="idem_hs_2",
-                cost_micros=2_000_000,
+                provider_cost_micros=2_000_000,
                 run_id=run.id,
             )
         self.assertEqual(ctx.exception.reason, "cost_limit_exceeded")
@@ -443,7 +345,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_floor_1",
             idempotency_key="idem_floor_1",
-            cost_micros=7_000_000,
+            provider_cost_micros=7_000_000,
             run_id=run.id,
         )
 
@@ -453,7 +355,7 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_floor_2",
                 idempotency_key="idem_floor_2",
-                cost_micros=2_000_000,
+                provider_cost_micros=2_000_000,
                 run_id=run.id,
             )
         self.assertEqual(ctx.exception.reason, "balance_floor_exceeded")
@@ -470,7 +372,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_outbox_run",
             idempotency_key="idem_outbox_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         outbox = OutboxEvent.objects.filter(event_type="usage.recorded").first()
@@ -485,7 +387,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_outbox_norun",
             idempotency_key="idem_outbox_norun",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
         )
         outbox = OutboxEvent.objects.filter(event_type="usage.recorded").first()
         self.assertIsNone(outbox.payload["run_id"])
@@ -501,7 +403,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_idem_run",
             idempotency_key="idem_idem_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         self.assertEqual(result1["run_id"], str(run.id))
@@ -512,7 +414,7 @@ class UsageServiceRunTest(TestCase):
             customer=self.customer,
             request_id="req_idem_run",
             idempotency_key="idem_idem_run",
-            cost_micros=1_000_000,
+            provider_cost_micros=1_000_000,
             run_id=run.id,
         )
         self.assertEqual(result2["event_id"], result1["event_id"])
@@ -532,6 +434,32 @@ class UsageServiceRunTest(TestCase):
                 customer=self.customer,
                 request_id="req_killed",
                 idempotency_key="idem_killed",
-                cost_micros=1_000_000,
+                provider_cost_micros=1_000_000,
                 run_id=run.id,
             )
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_concurrent_duplicate_does_not_double_count_run(self, mock_process):
+        run = RunService.create_run(self.tenant, self.customer, balance_snapshot_micros=100_000_000)
+        UsageService.record_usage(tenant=self.tenant, customer=self.customer,
+            request_id="req_dup", idempotency_key="idem_dup",
+            provider_cost_micros=5_000_000, run_id=run.id)
+        run.refresh_from_db()
+        self.assertEqual(run.total_cost_micros, 5_000_000)
+        self.assertEqual(run.event_count, 1)
+        orig_filter = UsageEvent.objects.filter
+        class _MissingFirst:
+            def first(self): return None
+        def _fake_filter(*args, **kwargs):
+            if "idempotency_key" in kwargs:
+                return _MissingFirst()
+            return orig_filter(*args, **kwargs)
+        with patch.object(UsageEvent.objects, "filter", side_effect=_fake_filter):
+            UsageService.record_usage(tenant=self.tenant, customer=self.customer,
+                request_id="req_dup", idempotency_key="idem_dup",
+                provider_cost_micros=5_000_000, run_id=run.id)
+        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant, customer=self.customer,
+            idempotency_key="idem_dup").count(), 1)
+        run.refresh_from_db()
+        self.assertEqual(run.event_count, 1)          # fails today: 2
+        self.assertEqual(run.total_cost_micros, 5_000_000)  # fails today: 10_000_000

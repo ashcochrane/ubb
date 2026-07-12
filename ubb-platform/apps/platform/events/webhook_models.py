@@ -13,7 +13,7 @@ class TenantWebhookConfig(BaseModel):
     secret = models.CharField(max_length=255, help_text="HMAC-SHA256 signing secret")
     event_types = models.JSONField(
         default=list,
-        help_text='List of event types to deliver, e.g. ["usage.recorded", "referral.reward_earned"]. Empty list = all events.',
+        help_text='Event types to deliver: ["*"] = all, [] = none, or specific types like ["usage.recorded"].',
     )
     is_active = models.BooleanField(default=True)
 

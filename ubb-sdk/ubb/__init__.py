@@ -6,18 +6,24 @@ from ubb.referrals import ReferralsClient
 from ubb.types import (
     PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
     UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult,
-    WalletTransaction, PaginatedResponse,
+    WalletTransaction, PaginatedResponse, TenantMarkup,
+    BatchItemResult, BatchResult,
 )
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
     UBBValidationError, UBBConnectionError, UBBConflictError,
+    UBBWebhookVerificationError,
 )
+from ubb.webhooks import verify_webhook, verify_webhook_legacy
 
 __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     "PreCheckResult", "RecordUsageResult", "CustomerResult", "BalanceResult",
     "UsageEvent", "TopUpResult", "AutoTopUpResult", "WithdrawResult", "RefundResult",
-    "WalletTransaction", "PaginatedResponse",
+    "WalletTransaction", "PaginatedResponse", "TenantMarkup",
+    "BatchItemResult", "BatchResult",
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
+    "UBBWebhookVerificationError",
+    "verify_webhook", "verify_webhook_legacy",
 ]

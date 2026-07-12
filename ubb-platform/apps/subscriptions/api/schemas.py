@@ -37,7 +37,8 @@ class CustomerEconomicsOut(Schema):
     external_id: str
     plan: str
     subscription_revenue_micros: int
-    usage_cost_micros: int
+    usage_billed_micros: int
+    provider_cost_micros: int
     gross_margin_micros: int
     margin_percentage: float
 

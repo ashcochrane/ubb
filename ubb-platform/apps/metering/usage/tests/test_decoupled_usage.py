@@ -27,7 +27,7 @@ class TestDecoupledUsageService:
                 customer=customer,
                 request_id="req1",
                 idempotency_key="idem1",
-                cost_micros=5_000_000,
+                provider_cost_micros=5_000_000,
             )
 
         wallet.refresh_from_db()
@@ -52,7 +52,7 @@ class TestDecoupledUsageService:
                 customer=customer,
                 request_id="req1",
                 idempotency_key="idem1",
-                cost_micros=100_000_000,  # Way over threshold
+                provider_cost_micros=100_000_000,  # Way over threshold
             )
 
         customer.refresh_from_db()

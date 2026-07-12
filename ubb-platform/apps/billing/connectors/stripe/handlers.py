@@ -25,10 +25,14 @@ def handle_balance_low_stripe(event_id, payload):
     if not get_tenant_stripe_account(tenant_id):
         return  # No Stripe connector -- tenant handles via webhook
 
+    from apps.platform.tenants.models import Tenant
+    if not Tenant.objects.filter(id=tenant_id, charges_enabled=True).exists():
+        return  # Connected account is not charge-ready -- never charge it
+
+    from apps.billing.connectors.stripe.tasks import charge_auto_topup_task
+
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer_id)
         attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
-
-    if attempt:
-        from apps.billing.connectors.stripe.tasks import charge_auto_topup_task
-        charge_auto_topup_task.delay(str(attempt.id))
+        if attempt:
+            transaction.on_commit(lambda aid=attempt.id: charge_auto_topup_task.delay(str(aid)))

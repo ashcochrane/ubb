@@ -9,6 +9,10 @@ from django.utils import timezone
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant
+from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
+from apps.platform.events.outbox import write_event
+from apps.platform.events.schemas import AutoTopupRequiresAction
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,6 @@ def charge_auto_topup_task(attempt_id):
     Idempotent: checks attempt status before and after charging.
     """
     from apps.billing.topups.models import TopUpAttempt
-    from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
 
     # Pre-charge check (outside transaction — no lock needed)
     try:
@@ -40,146 +43,166 @@ def charge_auto_topup_task(attempt_id):
         )
         return
 
-    if attempt.status != "pending":
-        logger.info(
-            "TopUpAttempt already processed, skipping",
-            extra={"data": {"attempt_id": str(attempt_id), "status": attempt.status}},
-        )
-        return
+    from apps.billing.topups.models import AutoTopUpConfig
+    from apps.billing.topups.services import AutoTopUpService
 
-    # Charge Stripe (outside transaction — no DB locks held)
-    charge_result = None
-    charge_error = None
-    try:
-        charge_result = charge_saved_payment_method(
-            attempt.customer, attempt.amount_micros, attempt
-        )
-    except (StripePaymentError, StripeFatalError) as e:
-        charge_error = e
-    # StripeTransientError propagates to Celery for autoretry
-
-    # Post-charge update (atomic, with locks)
+    # Pre-charge guard (under lock): skip if already processed OR already funded past the trigger.
     with transaction.atomic():
         wallet, customer = lock_for_billing(attempt.customer_id)
         attempt = lock_top_up_attempt(attempt.id)
-
         if attempt.status != "pending":
-            # Race: webhook or another worker already processed it
+            return
+        cfg = AutoTopUpConfig.objects.filter(customer_id=attempt.customer_id, is_enabled=True).first()
+        threshold = cfg.trigger_threshold_micros if cfg else 0
+        if wallet.balance_micros >= threshold:
+            attempt.status = "superseded"
+            attempt.save(update_fields=["status", "updated_at"])
+            logger.info("Auto top-up superseded (already funded)",
+                        extra={"data": {"attempt_id": str(attempt.id)}})
             return
 
-        if charge_error:
+    # Charge Stripe (no DB lock held)
+    charge_result = charge_error = None
+    try:
+        charge_result = charge_saved_payment_method(attempt.customer, attempt.amount_micros, attempt)
+    except (StripePaymentError, StripeFatalError) as e:
+        charge_error = e
+
+    if charge_error is not None:
+        if getattr(charge_error, "code", None) == "authentication_required":
+            pi = getattr(charge_error, "payment_intent", None)
+            with transaction.atomic():
+                attempt = lock_top_up_attempt(attempt.id)
+                if attempt.status != "pending":
+                    return
+                attempt.status = "requires_action"
+                if pi is not None:
+                    attempt.stripe_payment_intent_id = pi.id if hasattr(pi, "id") else pi
+                attempt.failure_reason = {"error_type": "AuthenticationRequired", "code": "authentication_required"}
+                attempt.save(update_fields=["status", "stripe_payment_intent_id", "failure_reason", "updated_at"])
+                write_event(AutoTopupRequiresAction(
+                    tenant_id=str(attempt.customer.tenant_id), customer_id=str(attempt.customer_id),
+                    attempt_id=str(attempt.id), amount_micros=attempt.amount_micros, code="authentication_required"))
+            return
+        with transaction.atomic():
+            attempt = lock_top_up_attempt(attempt.id)
+            if attempt.status != "pending":
+                return
             attempt.status = "failed"
             attempt.failure_reason = {
                 "error_type": type(charge_error).__name__,
                 "code": getattr(charge_error, "code", None),
                 "decline_code": getattr(charge_error, "decline_code", None),
-                "message": str(charge_error),
-            }
+                "message": str(charge_error)}
             attempt.save(update_fields=["status", "failure_reason", "updated_at"])
-            logger.warning(
-                "Auto top-up charge failed",
-                extra={"data": {
-                    "attempt_id": str(attempt.id),
-                    "customer_id": str(customer.id),
-                    "error": attempt.failure_reason,
-                }},
-            )
+        return
+
+    status = getattr(charge_result, "status", "") if charge_result else ""
+    if status == "succeeded":
+        AutoTopUpService.apply_topup_credit(attempt, charge_result)
+        return
+    if status in ("requires_action", "processing"):
+        logger.info("Auto top-up deferred", extra={"data": {"attempt_id": str(attempt.id), "pi_status": status}})
+        return
+    with transaction.atomic():
+        attempt = lock_top_up_attempt(attempt.id)
+        if attempt.status != "pending":
             return
-
-        if charge_result and getattr(charge_result, "status", "") == "succeeded":
-            wallet.balance_micros += attempt.amount_micros
-            wallet.save(update_fields=["balance_micros", "updated_at"])
-
-            from apps.billing.wallets.models import WalletTransaction
-            WalletTransaction.objects.create(
-                wallet=wallet,
-                transaction_type="TOP_UP",
-                amount_micros=attempt.amount_micros,
-                balance_after_micros=wallet.balance_micros,
-                description="Auto top-up",
-                reference_id=str(attempt.id),
-            )
-
-            attempt.status = "succeeded"
-            attempt.stripe_payment_intent_id = charge_result.id
-            # Persist charge ID for reconciliation
-            if hasattr(charge_result, "latest_charge") and charge_result.latest_charge:
-                attempt.stripe_charge_id = (
-                    charge_result.latest_charge.id
-                    if hasattr(charge_result.latest_charge, "id")
-                    else charge_result.latest_charge
-                )
-            attempt.save(update_fields=[
-                "status", "stripe_payment_intent_id", "stripe_charge_id", "updated_at"
-            ])
-
-            logger.info(
-                "Auto top-up succeeded",
-                extra={"data": {
-                    "attempt_id": str(attempt.id),
-                    "customer_id": str(customer.id),
-                    "amount_micros": attempt.amount_micros,
-                }},
-            )
-        else:
-            attempt.status = "failed"
-            attempt.failure_reason = {
-                "error_type": "NoPaymentMethod",
-                "message": "No saved payment method or charge did not succeed",
-            }
-            attempt.save(update_fields=["status", "failure_reason", "updated_at"])
+        attempt.status = "failed"
+        attempt.failure_reason = {"error_type": "NoPaymentMethod",
+                                  "message": "No saved payment method or charge did not succeed"}
+        attempt.save(update_fields=["status", "failure_reason", "updated_at"])
 
 
 @shared_task(queue="ubb_billing")
 def reconcile_topups_with_stripe():
-    """Daily spot-check: compare succeeded TopUpAttempts against Stripe charges.
-
-    Queries Stripe for each attempt with a stripe_charge_id from the last 48 hours.
-    Flags mismatches (amount, status, refunds) for investigation.
-    Rate-limited to avoid Stripe API limits.
-    """
+    """Stripe-driven repair sweep: credit any succeeded auto-topup PaymentIntent that has no
+    local wallet credit. Lookback exceeds Stripe's 3-day webhook-retry horizon so it only
+    repairs genuinely-lost events. Idempotent via apply_topup_credit (auto_topup:{pi_id})."""
     from apps.billing.topups.models import TopUpAttempt
+    from apps.billing.topups.services import AutoTopUpService
+    from apps.billing.wallets.models import WalletTransaction
+    from apps.platform.tenants.models import Tenant
+
+    cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
+    repaired = 0
+    seen = set()  # (account, is_sandbox) — same account+mode never swept twice
+    tenants = (Tenant.objects.exclude(stripe_connected_account_id="")
+               .exclude(stripe_connected_account_id__isnull=True))
+    for tenant in tenants:
+        # F4.4: list with the TENANT's mode key — a Connect acct_ id is the
+        # same in test and live mode, so a live tenant and its sandbox sibling
+        # sharing one account get separate (live/test) sweeps.
+        account = tenant.stripe_connected_account_id
+        if (account, tenant.is_sandbox) in seen:
+            continue
+        seen.add((account, tenant.is_sandbox))
+        try:
+            api_key = api_key_for_tenant(tenant)
+        except StripeFatalError:
+            # Sandbox tenant without STRIPE_TEST_SECRET_KEY — nothing to sweep.
+            continue
+        try:
+            pis = stripe.PaymentIntent.list(created={"gte": cutoff}, limit=100,
+                                            stripe_account=account, api_key=api_key)
+        except stripe.error.StripeError:
+            logger.warning("Reconcile: PI list failed", extra={"data": {"account": account}})
+            continue
+        for pi in pis.auto_paging_iter():
+            attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+            if not attempt_id or getattr(pi, "status", "") != "succeeded":
+                continue
+            if WalletTransaction.objects.filter(idempotency_key=f"auto_topup:{pi.id}").exists():
+                continue
+            try:
+                attempt = TopUpAttempt.objects.get(id=attempt_id)
+            except (TopUpAttempt.DoesNotExist, ValueError):
+                continue
+            # Mode guard: a PI seen with this mode's key may only ever credit
+            # an attempt of the SAME mode (test PI -> sandbox attempt).
+            if attempt.customer.tenant.is_sandbox != tenant.is_sandbox:
+                logger.error("Reconcile: PI/attempt mode mismatch — skipped", extra={"data": {
+                    "attempt_id": str(attempt.id), "pi": pi.id,
+                    "swept_is_sandbox": tenant.is_sandbox}})
+                continue
+            if AutoTopUpService.apply_topup_credit(attempt, pi):
+                repaired += 1
+                logger.warning("Reconcile repaired uncredited auto-topup",
+                               extra={"data": {"attempt_id": str(attempt.id), "pi": pi.id}})
+            time.sleep(0.1)
+    if repaired:
+        logger.warning("Auto-topup reconcile repaired credits", extra={"data": {"repaired": repaired}})
+
+    # Secondary: amount/refund audit of locally-succeeded attempts (drift detection).
     from apps.platform.queries import get_tenant_stripe_account
-
-    cutoff = timezone.now() - timedelta(hours=48)
-
-    attempts = TopUpAttempt.objects.filter(
-        status="succeeded",
-        stripe_charge_id__isnull=False,
-        updated_at__gte=cutoff,
+    audit_cutoff = timezone.now() - timedelta(hours=48)
+    audit_attempts = TopUpAttempt.objects.filter(
+        status="succeeded", stripe_charge_id__isnull=False, updated_at__gte=audit_cutoff,
     ).select_related("customer__tenant")
-
     mismatches = 0
-    for attempt in attempts.iterator():
+    for attempt in audit_attempts.iterator():
         try:
             charge = stripe.Charge.retrieve(
                 attempt.stripe_charge_id,
                 stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
+                api_key=api_key_for_tenant(attempt.customer.tenant),
             )
+        except StripeFatalError:
+            # Sandbox attempt without STRIPE_TEST_SECRET_KEY — cannot audit.
+            continue
         except stripe.error.StripeError:
             logger.warning("Stripe charge fetch failed", extra={"data": {
-                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id,
-            }})
+                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id}})
             continue
-
         expected_micros = attempt.amount_micros
         actual_micros = charge.amount * 10_000
-
         if charge.status != "succeeded" or actual_micros != expected_micros or charge.refunded:
             mismatches += 1
             logger.error("Stripe reconciliation mismatch", extra={"data": {
-                "attempt_id": str(attempt.id),
-                "charge_id": attempt.stripe_charge_id,
-                "expected_micros": expected_micros,
-                "actual_micros": actual_micros,
-                "charge_status": charge.status,
-                "refunded": charge.refunded,
-            }})
-
-        time.sleep(0.1)  # Rate limit: ~10 req/sec
-
+                "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id,
+                "expected_micros": expected_micros, "actual_micros": actual_micros,
+                "charge_status": charge.status, "refunded": charge.refunded}})
+        time.sleep(0.1)
     if mismatches > 0:
-        logger.error(
-            "Stripe reconciliation completed with mismatches",
-            extra={"data": {"mismatch_count": mismatches}},
-        )
+        logger.error("Stripe reconciliation completed with mismatches",
+                     extra={"data": {"mismatch_count": mismatches}})

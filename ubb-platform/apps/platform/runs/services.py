@@ -35,10 +35,12 @@ class RunService:
     @staticmethod
     def create_run(tenant, customer, balance_snapshot_micros,
                    cost_limit_micros=None, hard_stop_balance_micros=None,
-                   metadata=None, external_run_id=""):
+                   metadata=None, external_run_id="", billing_owner_id=None):
         """Create a Run, snapshotting hard stop config and wallet balance.
 
         Limits are passed explicitly by the caller (billing pre-check).
+        Tier-2 (D4): billing_owner_id is PINNED here (resolve_billing_owner)
+        so the concurrency slot + reapers never re-resolve a re-parented owner.
         Must be called inside @transaction.atomic.
         """
         return Run.objects.create(
@@ -49,10 +51,11 @@ class RunService:
             hard_stop_balance_micros=hard_stop_balance_micros,
             metadata=metadata or {},
             external_run_id=external_run_id,
+            billing_owner_id=billing_owner_id,
         )
 
     @staticmethod
-    def accumulate_cost(run_id, cost_micros):
+    def accumulate_cost(run_id, cost_micros, *, tenant_id=None, customer_id=None):
         """Atomically accumulate cost on a run and check both hard stop conditions.
 
         Must be called inside @transaction.atomic.
@@ -68,7 +71,12 @@ class RunService:
         On failure, the Run is NOT modified — the caller handles killing it
         in a separate transaction after the outer @transaction.atomic rolls back.
         """
-        run = Run.objects.select_for_update().get(id=run_id)
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
 
         if run.status != "active":
             raise RunNotActive(run_id=str(run.id), status=run.status)
@@ -94,19 +102,53 @@ class RunService:
                 estimated_balance=estimated_balance,
             )
 
-        # Under both limits — accumulate
+        # Under both limits — accumulate. Tier-2 (D10): stamp the heartbeat in
+        # the SAME write so the stale-run reaper can tell a live run from a
+        # crashed one. This is the single heartbeat-stamp site.
         run.total_cost_micros = new_total
         run.event_count += 1
-        run.save(update_fields=["total_cost_micros", "event_count", "updated_at"])
+        run.last_event_at = timezone.now()
+        run.save(update_fields=["total_cost_micros", "event_count",
+                                "last_event_at", "updated_at"])
         return run
 
     @staticmethod
-    def kill_run(run_id, reason=""):
+    def accumulate_cost_settled(run_id, cost_micros, *, tenant_id=None, customer_id=None):
+        """Settlement-path cost accumulation (Task 6: async ingest settle_raw).
+
+        Same row lock + heartbeat stamp as accumulate_cost, but deliberately
+        carries NO limit checks and TOLERATES a non-active run: enforcement
+        already happened at accept time (the estimate hold gate), so a settle
+        that lands after the run was killed/completed must still record the
+        TRUE cost against the run's total — never raise, never roll back the
+        settle. Must be called inside @transaction.atomic.
+        """
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
+
+        run.total_cost_micros = run.total_cost_micros + cost_micros
+        run.event_count += 1
+        run.last_event_at = timezone.now()
+        run.save(update_fields=["total_cost_micros", "event_count",
+                                "last_event_at", "updated_at"])
+        return run
+
+    @staticmethod
+    def kill_run(run_id, reason="", *, tenant_id=None, customer_id=None):
         """Mark a run as killed. Idempotent — no-op if already in a terminal state.
 
         Must be called inside @transaction.atomic.
         """
-        run = Run.objects.select_for_update().get(id=run_id)
+        qs = Run.objects.select_for_update()
+        if tenant_id is not None:
+            qs = qs.filter(tenant_id=tenant_id)
+        if customer_id is not None:
+            qs = qs.filter(customer_id=customer_id)
+        run = qs.get(id=run_id)
         if run.status in ("killed", "completed", "failed"):
             return run
         run.status = "killed"
