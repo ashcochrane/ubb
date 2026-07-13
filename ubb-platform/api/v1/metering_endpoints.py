@@ -721,24 +721,41 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
 
 
-@metering_api.get("/ops/ingest-health", auth=None)
+@metering_api.get("/ops/ingest-health", auth=None, include_in_schema=False)
 def ops_ingest_health(request, tenant_id: str = None):
     """Operator-facing pipeline health (spec §3) — deliberately NOT behind
     ApiKeyAuth: tenant keys must not grant ops visibility. Gated on the
     deployment-level UBB_OPS_TOKEN via constant-time compare; when the
-    setting is unset the endpoint 404s (fail closed, invisible)."""
+    setting is unset the endpoint 404s (fail closed, invisible).
+    Excluded from the OpenAPI schema/docs (include_in_schema=False) — the
+    schema is public and unauthenticated, so listing this route there would
+    fingerprint it regardless of the token gate below."""
     import hmac
     from django.conf import settings as dj_settings
+    from django.views.defaults import page_not_found
     token = getattr(dj_settings, "UBB_OPS_TOKEN", "")
     if not token:
-        return metering_api.create_response(
-            request, {"error": "not_found"}, status=404)
+        # Same handler Django uses for an unmatched route in production —
+        # NOT ninja's JSON 404 — so this response is byte-for-byte
+        # indistinguishable from a path that was never registered at all.
+        return page_not_found(request, exception=None)
     supplied = request.headers.get("X-Ops-Token", "")
     if not hmac.compare_digest(supplied.encode(), token.encode()):
         return metering_api.create_response(
             request, {"error": "unauthorized"}, status=401)
+    # Manual parse, AFTER both token gates: keeping the param typed as `str`
+    # (not `UUID`) means ninja never 422s a malformed tenant_id before the
+    # token check runs — that would let an unauthenticated caller distinguish
+    # "wrong shape" from "not found" and re-open the fingerprinting hole.
+    parsed_tenant_id = None
+    if tenant_id:
+        try:
+            parsed_tenant_id = UUID(tenant_id)
+        except ValueError:
+            return metering_api.create_response(
+                request, {"error": "invalid_tenant_id"}, status=422)
     from apps.metering.usage.services.ingest_health import ingest_health
-    return ingest_health(tenant_id=tenant_id)
+    return ingest_health(tenant_id=parsed_tenant_id)
 
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
