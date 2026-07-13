@@ -79,17 +79,19 @@ def record_usage(request, payload: RecordUsageRequest):
             from apps.platform.events.outbox import write_event
             from apps.platform.events.schemas import RunLimitExceeded
             with transaction.atomic():
-                killed = RunService.kill_run(payload.run_id, reason=e.reason,
-                                             tenant_id=request.auth.tenant.id, customer_id=customer.id)
+                killed, transitioned = RunService.kill_run(
+                    payload.run_id, reason=e.reason,
+                    tenant_id=request.auth.tenant.id, customer_id=customer.id)
                 # P6 fan-out: notify sibling/idle workers of THIS run (the
                 # posting worker already gets the 429). scope="run".
-                write_event(RunLimitExceeded(
-                    tenant_id=str(request.auth.tenant.id), customer_id=str(customer.id),
-                    billing_owner_id=str(killed.billing_owner_id or ""),
-                    run_id=str(killed.id), external_run_id=killed.external_run_id,
-                    task_id=killed.task_id, reason=e.reason, scope="run",
-                    total_cost_micros=e.total_cost_micros,
-                    limit_micros=killed.cost_limit_micros or 0))
+                if transitioned:
+                    write_event(RunLimitExceeded(
+                        tenant_id=str(request.auth.tenant.id), customer_id=str(customer.id),
+                        billing_owner_id=str(killed.billing_owner_id or ""),
+                        run_id=str(killed.id), external_run_id=killed.external_run_id,
+                        task_id=killed.task_id, reason=e.reason, scope="run",
+                        total_cost_micros=e.total_cost_micros,
+                        limit_micros=killed.cost_limit_micros or 0))
         return metering_api.create_response(request, {
             "error": "hard_stop_exceeded",
             "reason": e.reason,
@@ -175,15 +177,17 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
                 from apps.platform.events.outbox import write_event
                 from apps.platform.events.schemas import RunLimitExceeded
                 with transaction.atomic():
-                    killed = RunService.kill_run(item.run_id, reason=e.reason,
-                                                 tenant_id=tenant.id, customer_id=customer.id)
-                    write_event(RunLimitExceeded(  # P6 fan-out (scope="run")
-                        tenant_id=str(tenant.id), customer_id=str(customer.id),
-                        billing_owner_id=str(killed.billing_owner_id or ""),
-                        run_id=str(killed.id), external_run_id=killed.external_run_id,
-                        task_id=killed.task_id, reason=e.reason, scope="run",
-                        total_cost_micros=e.total_cost_micros,
-                        limit_micros=killed.cost_limit_micros or 0))
+                    killed, transitioned = RunService.kill_run(
+                        item.run_id, reason=e.reason,
+                        tenant_id=tenant.id, customer_id=customer.id)
+                    if transitioned:
+                        write_event(RunLimitExceeded(  # P6 fan-out (scope="run")
+                            tenant_id=str(tenant.id), customer_id=str(customer.id),
+                            billing_owner_id=str(killed.billing_owner_id or ""),
+                            run_id=str(killed.id), external_run_id=killed.external_run_id,
+                            task_id=killed.task_id, reason=e.reason, scope="run",
+                            total_cost_micros=e.total_cost_micros,
+                            limit_micros=killed.cost_limit_micros or 0))
         except Exception:
             # A kill failure must never 500 the whole batch. NOTE: the run is
             # left ACTIVE, so later items on it may SUCCEED instead of getting
@@ -281,6 +285,44 @@ def _run_meta_for(tenant, run_ids):
                 _RUN_META_CACHE[rid] = entry
                 out[rid] = entry
     return out
+
+
+def _kill_capped_run(tenant, run_id, customer):
+    """Kill a run whose per-run cap rejected async items — parity with the
+    sync path's HardStopExceeded handler (kill + RunLimitExceeded fan-out,
+    one atomic). Emits the event ONLY when this call performed the
+    active->killed transition, so batches racing a stale _RUN_META_CACHE
+    entry can never double-emit. A kill failure must never 500 the batch
+    (the verdicts are already correct) — loud log, same contract as
+    _record_batch_item's kill."""
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import RunLimitExceeded
+    from apps.platform.runs import reasons
+    from apps.platform.runs.services import RunService
+    try:
+        with transaction.atomic():
+            killed, transitioned = RunService.kill_run(
+                run_id, reason=reasons.COST_LIMIT_EXCEEDED,
+                tenant_id=tenant.id, customer_id=customer.id)
+            if transitioned:
+                write_event(RunLimitExceeded(
+                    tenant_id=str(tenant.id), customer_id=str(customer.id),
+                    billing_owner_id=str(killed.billing_owner_id or ""),
+                    run_id=str(killed.id), external_run_id=killed.external_run_id,
+                    task_id=killed.task_id, reason=reasons.COST_LIMIT_EXCEEDED,
+                    scope="run",
+                    # Durable total as read under the row lock; the live Redis
+                    # counter may be slightly ahead (estimate holds).
+                    total_cost_micros=killed.total_cost_micros,
+                    limit_micros=killed.cost_limit_micros or 0))
+        # Local-process cache: next batch rejects run_not_active immediately.
+        # Other processes converge within _RUN_META_TTL_SECONDS.
+        _RUN_META_CACHE.pop(run_id, None)
+    except Exception:
+        logger.exception("run.kill_failed", extra={"data": {
+            "run_id": run_id, "tenant_id": str(tenant.id),
+            "customer_id": str(customer.id),
+            "reason": reasons.COST_LIMIT_EXCEEDED}})
 
 
 def _idem_key(tenant_id, customer_id, idempotency_key):
@@ -407,6 +449,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     from ninja.errors import HttpError
     from apps.metering.pricing.services.card_cache import CardCache
+    from apps.metering.pricing.services.markup_cache import MarkupCache
     from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
     from apps.metering.usage.services.usage_service import EffectiveAtError, validate_effective_at
     from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
@@ -425,6 +468,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     now = timezone.now()
     tenant_currency = (tenant.default_currency or "usd").lower()
     CardCache.begin_request(tenant.id)
+    MarkupCache.begin_request(tenant.id)
 
     # ---- resolve customers + owners once per customer; validate currency +
     # effective_at. validate_effective_at is the sanctioned per-event ORM
@@ -657,8 +701,61 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         from apps.metering.usage.tasks import settle_raw_events
         transaction.on_commit(lambda: settle_raw_events.delay())
 
+    # ---- run-kill parity (spec §1). A cost_limit_exceeded verdict means the
+    # run's cap is provably hit — kill it so sibling workers stop, exactly
+    # like the sync path's HardStopExceeded handler. Placed AFTER the append
+    # boundary: the 503 path above raises first, so kills only happen for
+    # batches that landed (the client's retry re-derives the same rejections
+    # and kills then). A fully-rejected batch has no raws and reaches here
+    # directly. ----
+    capped = {}
+    for i in range(n):
+        r = results[i]
+        if (r is not None and r.get("reason") == "cost_limit_exceeded"
+                and items[i].run_id is not None):
+            capped[str(items[i].run_id)] = item_customer[i]
+    for rid, run_customer in capped.items():
+        _kill_capped_run(tenant, rid, run_customer)
+
     accepted = sum(1 for r in results if r["accepted"])
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
+
+
+@metering_api.get("/ops/ingest-health", auth=None, include_in_schema=False)
+def ops_ingest_health(request, tenant_id: str = None):
+    """Operator-facing pipeline health (spec §3) — deliberately NOT behind
+    ApiKeyAuth: tenant keys must not grant ops visibility. Gated on the
+    deployment-level UBB_OPS_TOKEN via constant-time compare; when the
+    setting is unset the endpoint 404s (fail closed, invisible).
+    Excluded from the OpenAPI schema/docs (include_in_schema=False) — the
+    schema is public and unauthenticated, so listing this route there would
+    fingerprint it regardless of the token gate below."""
+    import hmac
+    from django.conf import settings as dj_settings
+    from django.views.defaults import page_not_found
+    token = getattr(dj_settings, "UBB_OPS_TOKEN", "")
+    if not token:
+        # Same handler Django uses for an unmatched route in production —
+        # NOT ninja's JSON 404 — so this response is byte-for-byte
+        # indistinguishable from a path that was never registered at all.
+        return page_not_found(request, exception=None)
+    supplied = request.headers.get("X-Ops-Token", "")
+    if not hmac.compare_digest(supplied.encode(), token.encode()):
+        return metering_api.create_response(
+            request, {"error": "unauthorized"}, status=401)
+    # Manual parse, AFTER both token gates: keeping the param typed as `str`
+    # (not `UUID`) means ninja never 422s a malformed tenant_id before the
+    # token check runs — that would let an unauthenticated caller distinguish
+    # "wrong shape" from "not found" and re-open the fingerprinting hole.
+    parsed_tenant_id = None
+    if tenant_id:
+        try:
+            parsed_tenant_id = UUID(tenant_id)
+        except ValueError:
+            return metering_api.create_response(
+                request, {"error": "invalid_tenant_id"}, status=422)
+    from apps.metering.usage.services.ingest_health import ingest_health
+    return ingest_health(tenant_id=parsed_tenant_id)
 
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
@@ -835,9 +932,11 @@ def delete_customer_markup(request, customer_id: UUID):
     from apps.metering.pricing.models import TenantMarkup
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    deleted, _ = TenantMarkup.objects.filter(
-        tenant=request.auth.tenant, customer=customer).delete()
-    return {"status": "deleted" if deleted else "no_override"}
+    markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer=customer).first()
+    if markup is None:
+        return {"status": "no_override"}
+    markup.delete()  # instance delete — the model layer bumps MarkupCache's version
+    return {"status": "deleted"}
 
 
 # --- Analytics ---

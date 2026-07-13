@@ -94,3 +94,28 @@ def settle_raw_events(batch_size=200):
     if len(ids) >= batch_size:
         settle_raw_events.delay(batch_size=batch_size)
     return settled
+
+
+@shared_task(queue="ubb_metering")
+def monitor_ingest_health():
+    """Beat (5 min): ONE structured ingest.health line per run; level = worst
+    threshold breached. WARNING at the configured lag/depth thresholds,
+    ERROR at 5x either — or at ANY failed (poison) raws: those are never
+    auto-cleared, so alerting EVERY cycle until an operator acts is
+    deliberate noise, not a bug."""
+    from django.conf import settings
+    from apps.metering.usage.services.ingest_health import ingest_health
+
+    h = ingest_health()
+    lag_warn = settings.UBB_INGEST_SETTLE_LAG_WARN_SECONDS
+    depth_warn = settings.UBB_INGEST_QUEUE_DEPTH_WARN
+    level = logging.INFO
+    if (h["oldest_pending_age_seconds"] > lag_warn
+            or h["pending_count"] > depth_warn):
+        level = logging.WARNING
+    if (h["failed_count"] > 0
+            or h["oldest_pending_age_seconds"] > 5 * lag_warn
+            or h["pending_count"] > 5 * depth_warn):
+        level = logging.ERROR
+    logger.log(level, "ingest.health", extra={"data": h})
+    return h

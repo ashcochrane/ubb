@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.test import TestCase
 
 from apps.platform.tenants.models import Tenant
@@ -174,7 +175,7 @@ class RunServiceKillTest(TestCase):
         run = RunService.create_run(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        killed = RunService.kill_run(run.id, reason="cost_limit_exceeded")
+        killed, _ = RunService.kill_run(run.id, reason="cost_limit_exceeded")
         self.assertEqual(killed.status, "killed")
         self.assertIsNotNone(killed.completed_at)
         self.assertEqual(killed.metadata["kill_reason"], "cost_limit_exceeded")
@@ -184,7 +185,7 @@ class RunServiceKillTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         RunService.kill_run(run.id)
-        killed = RunService.kill_run(run.id)  # second call = no-op
+        killed, _ = RunService.kill_run(run.id)  # second call = no-op
         self.assertEqual(killed.status, "killed")
 
     def test_kill_run_noop_on_completed(self):
@@ -192,7 +193,7 @@ class RunServiceKillTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         RunService.complete_run(run.id)
-        result = RunService.kill_run(run.id)
+        result, _ = RunService.kill_run(run.id)
         self.assertEqual(result.status, "completed")  # not changed to killed
 
 
@@ -228,3 +229,31 @@ class RunServiceCompleteTest(TestCase):
         RunService.kill_run(run.id)
         result = RunService.complete_run(run.id)
         self.assertEqual(result.status, "killed")  # not changed to completed
+
+
+class KillRunTransitionFlagTest(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="KillFlag")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="kf1")
+        self.run = Run.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            billing_owner_id=self.customer.id, balance_snapshot_micros=0,
+        )
+
+    def test_transitioned_true_exactly_once(self):
+        with transaction.atomic():
+            run, transitioned = RunService.kill_run(self.run.id)
+        self.assertTrue(transitioned)
+        self.assertEqual(run.status, "killed")
+        with transaction.atomic():
+            run, transitioned = RunService.kill_run(self.run.id)
+        self.assertFalse(transitioned)
+        self.assertEqual(run.status, "killed")
+
+    def test_transitioned_false_on_completed_run(self):
+        with transaction.atomic():
+            RunService.complete_run(self.run.id)
+        with transaction.atomic():
+            run, transitioned = RunService.kill_run(self.run.id)
+        self.assertFalse(transitioned)
+        self.assertEqual(run.status, "completed")  # kill never demotes completed

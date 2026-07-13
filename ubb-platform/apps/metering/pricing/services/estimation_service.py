@@ -97,6 +97,6 @@ class EstimationService:
                                          event_type, metric, tags, currency)
                 if card is not None:
                     provider_cost += card.compute(units_val)
-        from apps.metering.pricing.services.markup_service import MarkupService
-        return Estimate(MarkupService.apply(provider_cost, tenant=tenant,
-                                            customer=customer), True)
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+        return Estimate(MarkupCache.apply(provider_cost, tenant=tenant,
+                                          customer=customer), True)

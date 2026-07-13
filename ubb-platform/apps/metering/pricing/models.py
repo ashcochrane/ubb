@@ -35,6 +35,18 @@ class TenantMarkup(BaseModel):
         percent = (provider_cost_micros * self.markup_percentage_micros + 50_000_000) // 100_000_000
         return percent + self.fixed_uplift_micros
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+        MarkupCache.invalidate(self.tenant_id)
+
+    def delete(self, *args, **kwargs):
+        tenant_id = self.tenant_id
+        result = super().delete(*args, **kwargs)
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+        MarkupCache.invalidate(tenant_id)
+        return result
+
 
 CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
 PRICING_MODEL_CHOICES = [

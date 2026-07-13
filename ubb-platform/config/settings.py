@@ -270,6 +270,10 @@ CELERY_BEAT_SCHEDULE = {
         # (crontab has no seconds field) — a plain float/timedelta schedule.
         "schedule": timedelta(seconds=10),
     },
+    "monitor-ingest-health": {
+        "task": "apps.metering.usage.tasks.monitor_ingest_health",
+        "schedule": crontab(minute="*/5"),  # Every 5 minutes
+    },
 }
 
 # UBB Platform Settings
@@ -284,6 +288,12 @@ UBB_PLATFORM_FEE_PERCENTAGE = float(
 # window so every automatic retry of usage-invoice-{id} keys stays a safe replay.
 UBB_POSTPAID_PUSH_MAX_ATTEMPTS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_ATTEMPTS", "8"))
 UBB_POSTPAID_PUSH_MAX_AGE_HOURS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_AGE_HOURS", "20"))
+# Async-ingest ops (first-tenant hardening spec §3).
+UBB_OPS_TOKEN = os.environ.get("UBB_OPS_TOKEN", "")  # unset => ops endpoint 404s
+UBB_INGEST_SETTLE_LAG_WARN_SECONDS = int(
+    os.environ.get("UBB_INGEST_SETTLE_LAG_WARN_SECONDS", "120"))
+UBB_INGEST_QUEUE_DEPTH_WARN = int(
+    os.environ.get("UBB_INGEST_QUEUE_DEPTH_WARN", "10000"))
 
 # Logging
 LOGGING = {

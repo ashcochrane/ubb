@@ -139,7 +139,10 @@ class RunService:
 
     @staticmethod
     def kill_run(run_id, reason="", *, tenant_id=None, customer_id=None):
-        """Mark a run as killed. Idempotent — no-op if already in a terminal state.
+        """Mark a run as killed. Idempotent — no-op if already in a terminal
+        state. Returns (run, transitioned): transitioned is True iff THIS
+        call performed the active->killed transition, so callers can emit
+        fan-out events (RunLimitExceeded) exactly once even when racing.
 
         Must be called inside @transaction.atomic.
         """
@@ -150,13 +153,13 @@ class RunService:
             qs = qs.filter(customer_id=customer_id)
         run = qs.get(id=run_id)
         if run.status in ("killed", "completed", "failed"):
-            return run
+            return run, False
         run.status = "killed"
         run.completed_at = timezone.now()
         if reason:
             run.metadata = {**run.metadata, "kill_reason": reason}
         run.save(update_fields=["status", "completed_at", "metadata", "updated_at"])
-        return run
+        return run, True
 
     @staticmethod
     def complete_run(run_id):
