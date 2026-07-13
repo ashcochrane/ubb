@@ -58,6 +58,11 @@ them for "why we decided X", never edit them as current truth.
 
 GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+### Triage labels
+
+The five canonical labels, used as-is (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
 ### Domain docs
 
 Multi-context: `CONTEXT-MAP.md` at the repo root points to one `CONTEXT.md` per product
