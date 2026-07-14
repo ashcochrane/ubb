@@ -414,6 +414,8 @@ class DeadRunReplayWinsTest(IngestEndpointTestBase):
 
 class EffectiveAtTest(IngestEndpointTestBase):
     def test_naive_effective_at_rejected_before_idem_no_burned_key(self):
+        from datetime import timedelta
+        from django.utils import timezone
         event = self._event(billed_cost_micros=200_000,
                             effective_at="2026-07-01T00:00:00")  # no tz
         resp = self._post([event])
@@ -423,8 +425,10 @@ class EffectiveAtTest(IngestEndpointTestBase):
         self.assertEqual(r["reason"], "effective_at_naive")
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
         # Rejection precedes the SETNX: the corrected retry (same key) is a
-        # genuine first accept with a real hold.
-        event["effective_at"] = "2026-07-01T00:00:00Z"
+        # genuine first accept with a real hold. The retry must stay inside the
+        # ROLLING backfill_window_days accept bound, so stamp it relative to now
+        # (a hardcoded date would age out of the window and start rejecting).
+        event["effective_at"] = (timezone.now() - timedelta(days=1)).isoformat()
         second = self._post([event])
         r2 = second.json()["results"][0]
         self.assertTrue(r2["accepted"])
