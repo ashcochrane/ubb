@@ -27,7 +27,7 @@ from api.v1.schemas import (
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
-    CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES, validate_tiers,
+    CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
@@ -610,7 +610,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 tags=item.tags, currency=tenant_currency,
                 caller_billed=item.billed_cost_micros,
                 caller_provider_cost=item.provider_cost_micros,
-                units=item.units, now=now)
+                units=item.units)
         except Unpriceable:
             sync_result = _record_batch_item(request, tenant, item, customers, run_exists)
             results[i] = _sync_fallback_verdict(sync_result)
@@ -1140,7 +1140,6 @@ def _rate_to_out(r):
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
         "fixed_micros": r.fixed_micros,
-        "tiers": r.tiers,
         "currency": r.currency,
         "product_id": r.product_id,
         "valid_from": r.valid_from.isoformat(),
@@ -1238,10 +1237,6 @@ def add_rate(request, book_id: UUID, payload: RateIn):
     if payload.pricing_model not in valid_models:
         return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
     try:
-        validate_tiers(book.card_type, payload.pricing_model, payload.tiers)
-    except ValueError as e:
-        return 422, {"error": str(e)}
-    try:
         rate = Rate.objects.create(
             tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
             metric_name=payload.metric_name, provider=payload.provider,
@@ -1249,7 +1244,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
             pricing_model=payload.pricing_model,
             rate_per_unit_micros=payload.rate_per_unit_micros,
             unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-            tiers=payload.tiers, currency=book.currency, product_id=payload.product_id,
+            currency=book.currency, product_id=payload.product_id,
             book_version_from=book.version)
     except IntegrityError as e:
         return 422, {"error": f"rate conflict: {e}"}

@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.metering.pricing.models import Rate, RateCard
 from apps.metering.pricing.services import card_cache as card_cache_module
 from apps.metering.pricing.services.book_service import BookService
-from apps.metering.pricing.services.card_cache import CardCache, TierMirror
+from apps.metering.pricing.services.card_cache import CardCache
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -46,14 +46,13 @@ def price_card_fixture(tenant):
 
 @pytest.fixture(autouse=True)
 def _clean_ubb_redis_keys():
-    """Clean up ubb:cardver:* / ubb:tiermirror:* keys this file's tests create,
+    """Clean up ubb:cardver:* keys this file's tests create,
     and the in-process L1 dict, so tests stay independent."""
     yield
     card_cache_module._l1.clear()
     r = redis.from_url(settings.REDIS_URL)
-    for pattern in ("ubb:cardver:*", "ubb:tiermirror:*"):
-        for key in r.scan_iter(match=pattern):
-            r.delete(key)
+    for key in r.scan_iter(match="ubb:cardver:*"):
+        r.delete(key)
 
 
 def test_resolve_matches_pricing_service(tenant, customer, price_card_fixture):
@@ -161,13 +160,6 @@ def test_l1_cap_clears_instead_of_growing_unbounded(tenant, customer, price_card
     CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
                       "other_metric", {}, "usd")
     assert len(card_cache_module._l1) == 1
-
-
-def test_tier_mirror_roundtrip(tenant, customer):
-    now = timezone.now()
-    assert TierMirror.read(tenant.id, customer.id, "lin1", now) == 0
-    TierMirror.write(tenant.id, customer.id, "lin1", 900_000, now)
-    assert TierMirror.read(tenant.id, customer.id, "lin1", now) == 900_000
 
 
 def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_callbacks):

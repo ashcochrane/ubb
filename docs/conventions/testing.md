@@ -36,10 +36,10 @@ LocMemCache — gating/budget tests need cross-process cache semantics). Run eve
 
 - **Exercise real behavior end-to-end**, not mocks of your own code: record a usage event through
   `UsageService.record_usage`, then run the billing handler, then assert the wallet ledger — the way
-  `apps/billing/tests/test_tiered_drawdown.py` does.
-- **Assert invariants**, since so much of this domain is money and idempotency: marginals sum to the
-  closed form, a redelivered event debits exactly once, a zero-marginal event never touches the
-  wallet, a stale run gets reaped. Prefer an invariant assertion over a single golden value.
+  `apps/billing/gating/tests/test_budget_e2e.py` does.
+- **Assert invariants**, since so much of this domain is money and idempotency: a redelivered event
+  debits exactly once, accept-hold plus settle-delta nets to the exact price, a stale run gets
+  reaped. Prefer an invariant assertion over a single golden value.
 - **Money in micros**, as integers, everywhere in fixtures and assertions.
 
 ## "Done" means

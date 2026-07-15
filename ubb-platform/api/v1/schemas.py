@@ -429,7 +429,6 @@ class RateIn(Schema):
     rate_per_unit_micros: int = Field(default=0, ge=0)
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
-    tiers: list = Field(default_factory=list)
     product_id: str = Field(default="", max_length=100)
 
 
@@ -467,7 +466,6 @@ class RateChangeIn(Schema):
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
-    tiers: Optional[list] = None
 
 
 class PublishIn(Schema):
@@ -491,7 +489,6 @@ class RateOut(Schema):
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
-    tiers: list
     currency: str
     product_id: str
     valid_from: str

@@ -5,7 +5,7 @@ from datetime import timedelta, timezone as dt_timezone
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 
-from apps.metering.pricing.services.tier_counter_service import month_bounds
+from core.time_windows import month_bounds
 from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, UsageEvent
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
@@ -134,23 +134,6 @@ def _parse_effective_at(payload):
     return parse_datetime(raw)
 
 
-def _write_tier_mirrors(tenant_id, customer_id, provenance, as_of):
-    """Settlement-side counterpart of EstimationService's TierMirror.read:
-    for every tiered metric this event priced, mirror its post-event ladder
-    position so the NEXT accept-time estimate for this (tenant, customer,
-    lineage) anchors close to the truth. Keyed by ``as_of`` (the event's
-    EFFECTIVE instant), not settle wall-clock time — a backdated settle must
-    write into the PRIOR month's mirror bucket, never the current one (the
-    ladder it just advanced is period-scoped by the same as_of, per
-    TierCounterService.lock_and_advance)."""
-    from apps.metering.pricing.services.card_cache import TierMirror
-    for metric in provenance.get("metrics", []):
-        tier_breakdown = metric.get("tier_breakdown")
-        if tier_breakdown:
-            TierMirror.write(tenant_id, customer_id, tier_breakdown["lineage_id"],
-                             tier_breakdown["units_total_after"], as_of)
-
-
 def _replay_stop(customer, tenant):
     """Customer-wide stop verdict for the idempotent-replay return paths.
     Skips the owner resolve + Redis read entirely when enforcement is off, so
@@ -210,11 +193,8 @@ class UsageService:
         run = None
         try:
             with transaction.atomic():
-                # Pricing runs INSIDE the savepoint: tiered price cards advance
-                # the period ladder (PricingPeriodCounter) under a row lock, so
-                # a raced duplicate insert below must roll the advance back too.
                 # as_of=effective_at prices on the card versions valid at the
-                # EFFECTIVE time and advances the EFFECTIVE month's tier ladder.
+                # EFFECTIVE time.
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer, event_type=event_type or "",
                     provider=provider or "", usage_metrics=usage_metrics, tags=tags,
@@ -331,12 +311,6 @@ class UsageService:
                     return raw.status
                 p = raw.payload
                 effective_at = _parse_effective_at(p)
-                # Pin ONE "now" for both the pricer's as_of AND the tier-mirror
-                # write below — PricingService.price would otherwise default
-                # as_of internally at ITS OWN now() call, and a separate
-                # now() at the mirror-write site (after this whole
-                # transaction commits) could theoretically straddle a month
-                # boundary and bucket the mirror into the wrong period.
                 as_of = effective_at or timezone.now()
                 tags = p.get("tags")
                 _tags = tags or {}
@@ -344,10 +318,6 @@ class UsageService:
                 agent_id = _tags.get("agent", "")
                 product_id = p.get("product_id") or _tags.get("product", "") or ""
                 currency = (tenant.default_currency or "usd").lower()
-                # Pricing runs INSIDE this transaction: tiered price cards
-                # advance the period ladder (PricingPeriodCounter) under a row
-                # lock, so a raced duplicate insert below rolls the advance
-                # back too (mirrors record_usage's savepoint pattern).
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer,
                     event_type=p.get("event_type") or "", provider=p.get("provider") or "",
@@ -441,5 +411,4 @@ class UsageService:
             # heals it; see test_settlement.py's orphan-hold pin.
             settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
                                -billed_cost_micros, effective_at=effective_at)
-        _write_tier_mirrors(tenant.id, customer.id, provenance, as_of)
         return "settled"

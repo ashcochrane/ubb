@@ -74,23 +74,14 @@ _Avoid_: "book"/"sheet"/"container" as the canonical name — it is `RateCard`.
 Whether a card derives provider cost (`cost`) or billed cost (`price`).
 
 **pricing_model**:
-The shape of a rate — `per_unit`, `flat`, `graduated`, or `package`.
-
-**Tiered pricing**:
-The `graduated` and `package` price models, charged as marginal amounts against a per-period unit
-ladder rather than a flat rate.
-
-**Period ladder**:
-The per-(customer, rate lineage, calendar month) cumulative unit total that tiered pricing advances
-under a lock. (`apps/metering/pricing/models.py:PricingPeriodCounter`)
+The shape of a rate — `per_unit` or `flat`. (Tiered models — `graduated`/`package` — were deleted
+end to end by ADR-0003: the MVP launches without tiered pricing.)
 
 **lineage_id**:
-The stable identity a Rate keeps across version supersessions, linking its whole price history and
-its period ladder.
+The stable identity a Rate keeps across version supersessions, linking its whole price history.
 
 **Pricing provenance**:
-The audit trail stamped on each event — engine version, cost/price source, rate-card ids, and tier
-breakdown.
+The audit trail stamped on each event — engine version, cost/price source, and rate-card ids.
 
 ## Read contract & events
 
