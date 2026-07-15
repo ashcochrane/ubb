@@ -94,6 +94,15 @@ detector suppresses every re-emission until the flag clears.
   rollback; the patrol re-aligns it to durable truth (§C.2). Re-detection is guaranteed by the
   durable lane on the next landing event and by the patrol within the hour (§C.1).
 
+- **The doorbell must never 5xx the accept** (recon finding from the #16 session, routed here).
+  `write_event` dispatches via `transaction.on_commit(lambda: process_single_event.delay(id))`
+  (`apps/platform/events/outbox.py:15-37`); with the Celery broker down, `.delay()` raises
+  *after* the commit — a 5xx for an event that durably landed, contradicting the 200-always
+  contract. The post-commit dispatch gets a guard (broker errors swallowed + logged); the
+  minutely `sweep_outbox` (`apps/platform/events/tasks.py:84-132`) already re-dispatches
+  pending rows, so the row is the queue and the doorbell is a latency optimization —
+  broker-down delivery cost is ≤1 minute of added latency, never a lost event or a false error.
+
 ### B. Announcement bookkeeping
 
 "Guaranteed" must be checkable, so every signal-bearing row records what it last told the world:
@@ -239,6 +248,8 @@ tenant endpoint is worth a page even though the patrol guarantees eventual deliv
    the immediate reconcile; the flag is read only through `flags.py`; default is ON.
 10. MIN-merge regression pin: downward behavior byte-identical to today.
 11. The repair-rate spike alert fires past its threshold.
+12. Broker down at accept: the event row is durably written, the response is still 200, and
+    delivery happens via `sweep_outbox` within a minute of broker recovery.
 
 ## Consequences routed to other tickets
 
