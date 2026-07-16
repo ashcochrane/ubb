@@ -44,28 +44,22 @@ class SettlementTestBase(IngestEndpointTestBase):
 
 
 class NetsToExactTest(SettlementTestBase):
-    """(a) settle nets to exact; (e) tier mirror written to units_total_after.
+    """(a) settle nets to exact.
 
-    A decreasing graduated ladder (10/unit up to 1_000_000 units, then
-    8/unit) whose event straddles both tiers: EstimationService's
-    max-applicable-rate safety margin forces a genuine over-estimate (the
-    mirror is unset -> prior=0, so the base marginal already equals the exact
-    price; the "worst rate over the whole quantity" term is what pushes the
-    hold above it) — an over-hold at a REAL tiered card, produced by the REAL
-    accept path, settled through the real settle_raw.
+    With per_unit/flat-only pricing (ADR-0003) the estimate equals the exact
+    price by construction, so the one remaining accept-vs-settle difference
+    is rate-card CONFIG DRIFT: a reprice landing between accept and settle.
+    Reproduce exactly that — accept at 10/unit, publish 8/unit, settle — and
+    assert the live counter nets to the exact (settle-time) price.
     """
 
     def setUp(self):
         super().setUp()
         self.card = rate_in_default_book(
             self.tenant, card_type="price", metric_name="tokens",
-            pricing_model="graduated",
-            tiers=[
-                {"up_to": 1_000_000, "rate_per_unit_micros": 10_000_000},
-                {"up_to": None, "rate_per_unit_micros": 8_000_000},
-            ])
+            pricing_model="per_unit", rate_per_unit_micros=10_000_000)
 
-    def test_settle_nets_to_exact_and_writes_tier_mirror(self):
+    def test_settle_nets_to_exact_across_config_drift(self):
         event = self._event(billed_cost_micros=None,
                             usage_metrics={"tokens": 1_200_000})
         resp = self._post([event])
@@ -75,17 +69,23 @@ class NetsToExactTest(SettlementTestBase):
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
         estimate = raw.estimate_micros
-        # Genuine over-hold: EstimationService's max-applicable-rate guard
-        # prices the FULL 1_200_000 units at the higher (10/unit) tier rate.
-        self.assertGreater(estimate, 0)
+        # Estimate at accept-time config: 1_200_000 units @ 10/unit
+        # (unit_quantity 1_000_000 default) = 12_000_000, exact.
+        self.assertEqual(estimate, 12_000_000)
+        self.assertTrue(raw.estimate_exact)
+
+        # Config drift: reprice to 8/unit BEFORE the settle runs.
+        from apps.metering.pricing.services.book_service import BookService
+        BookService.publish(self.card.rate_card, [
+            {"metric_name": "tokens", "rate_per_unit_micros": 8_000_000},
+        ])
 
         result = UsageService.settle_raw(raw)
         self.assertEqual(result, "settled")
 
         exact = UsageEvent.objects.get()
-        # Exact marginal: 1_000_000 @ 10 + 200_000 @ 8 (unit_quantity 1_000_000
-        # default) = 10_000_000 + 1_600_000.
-        self.assertEqual(exact.billed_cost_micros, 11_600_000)
+        # Exact settle-time price: 1_200_000 @ 8/unit = 9_600_000.
+        self.assertEqual(exact.billed_cost_micros, 9_600_000)
         self.assertGreater(estimate, exact.billed_cost_micros)  # confirms a real delta
 
         raw.refresh_from_db()
@@ -97,13 +97,6 @@ class NetsToExactTest(SettlementTestBase):
             LiveLedgerService.read_prepaid(self.customer.id),
             self.wallet.balance_micros - exact.billed_cost_micros,
         )
-
-        # (e) tier mirror keyed by the event's effective (== settle-time,
-        # since no effective_at was supplied) month, holding units_total_after.
-        from apps.metering.pricing.services.card_cache import TierMirror
-        mirrored = TierMirror.read(self.tenant.id, self.customer.id,
-                                   str(self.card.lineage_id), timezone.now())
-        self.assertEqual(mirrored, 1_200_000)
 
         # Single UsageEvent, single outbox row.
         self.assertEqual(UsageEvent.objects.count(), 1)

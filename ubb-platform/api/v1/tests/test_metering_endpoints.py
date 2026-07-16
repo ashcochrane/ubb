@@ -256,9 +256,7 @@ class UsageEventDetailEndpointTest(TestCase):
             pricing_provenance={
                 "engine_version": "2.1.0",
                 "metrics": [{"metric": "input_tokens", "price_card_id": "abc",
-                             "tier_breakdown": [
-                                 {"tier": 1, "qty": 30_000, "micros": 300_000},
-                                 {"tier": 2, "qty": 5_000, "micros": 150_000}]}]})
+                             "units": 35_000, "micros": 450_000}]})
 
     def test_get_event_returns_full_receipt(self):
         ev = self._event()
@@ -594,7 +592,7 @@ class RateCardValidationTest(TestCase):
         assert resp.status_code == 422
 
     def test_add_rate_rejects_invalid_pricing_model(self):
-        # graduated is a valid model but forbidden on cost cards -> 422.
+        # graduated was deleted end to end (ADR-0003) — not a valid model -> 422.
         book_id = self._cost_book()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
                           {"metric_name": "input_tokens", "pricing_model": "graduated"})
@@ -669,7 +667,7 @@ class RateCardBatchCreateTest(TestCase):
         book_id = self._cost_book()
         before = Rate.objects.filter(tenant=self.tenant).count()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"metric_name": "bad", "pricing_model": "package"})  # tiered forbidden on cost
+            {"metric_name": "bad", "pricing_model": "package"})  # retired model (ADR-0003)
         assert resp.status_code == 422
         assert Rate.objects.filter(tenant=self.tenant).count() == before  # zero created
 

@@ -335,12 +335,12 @@ class MeteringClient:
 
     def create_rate_card(self, *, card_type, metric_name, provider="", event_type="",
                          dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
-                         unit_quantity=1_000_000, fixed_micros=0, tiers=None, currency="usd",
+                         unit_quantity=1_000_000, fixed_micros=0, currency="usd",
                          product_id="", customer_id=None):
         body = {"card_type": card_type, "metric_name": metric_name, "provider": provider,
                 "event_type": event_type, "dimensions": dimensions or {}, "pricing_model": pricing_model,
                 "rate_per_unit_micros": rate_per_unit_micros, "unit_quantity": unit_quantity,
-                "fixed_micros": fixed_micros, "tiers": tiers or [], "currency": currency,
+                "fixed_micros": fixed_micros, "currency": currency,
                 "product_id": product_id, "customer_id": customer_id}
         r = self._request("post", "/api/v1/metering/pricing/rate-cards", json=body)
         return self._rate_card(r.json())

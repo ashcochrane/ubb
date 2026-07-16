@@ -1,4 +1,4 @@
-"""In-process (L1) resolved-rate cache + Redis tier-position mirror.
+"""In-process (L1) resolved-rate cache.
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
 cache) per tag-LESS resolution key for TTL_SECONDS — one entry per (tenant,
@@ -19,7 +19,6 @@ import time
 from django.conf import settings
 
 TTL_SECONDS = 30
-MIRROR_TTL_SECONDS = 62 * 24 * 3600  # month + buffer; do NOT import billing internals here
 _L1_MAX = 4096    # crude bound: clear-on-full (not an LRU) caps worker memory
 _l1 = {}          # key -> (version, expires_monotonic, Rate | None)
 # Request-scoped {tenant_id: version} observed by begin_request. Copy-on-write:
@@ -85,25 +84,3 @@ class CardCache:
             _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, rate)
         return rate
-
-
-class TierMirror:
-    @staticmethod
-    def _key(tenant_id, customer_id, lineage_id, now):
-        return f"ubb:tiermirror:{tenant_id}:{customer_id}:{lineage_id}:{now:%Y-%m}"
-
-    @staticmethod
-    def read(tenant_id, customer_id, lineage_id, now):
-        try:
-            v = _client().get(TierMirror._key(tenant_id, customer_id, lineage_id, now))
-            return int(v) if v is not None else 0
-        except Exception:
-            return 0  # conservative: prior=0 estimates at the FIRST tier
-
-    @staticmethod
-    def write(tenant_id, customer_id, lineage_id, units_total, now):
-        try:
-            _client().set(TierMirror._key(tenant_id, customer_id, lineage_id, now),
-                          int(units_total), ex=MIRROR_TTL_SECONDS)
-        except Exception:
-            pass

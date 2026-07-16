@@ -2,13 +2,13 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, RateCard, validate_tiers
+from apps.metering.pricing.models import PRICING_MODEL_CHOICES, Rate, RateCard
 from apps.metering.pricing.services.card_cache import CardCache
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
     "metric_name", "dimensions", "pricing_model", "rate_per_unit_micros",
-    "unit_quantity", "fixed_micros", "tiers", "currency", "product_id",
+    "unit_quantity", "fixed_micros", "currency", "product_id",
     "lineage_id", "rate_card_id",
 )
 
@@ -42,15 +42,18 @@ class BookService:
                         f"publish: no active rate for {ch['metric_name']!r} in book {locked.key}")
                 data = {f: getattr(old, f) for f in _RATE_COPY_FIELDS}
                 for k in ("pricing_model", "rate_per_unit_micros", "unit_quantity",
-                          "fixed_micros", "tiers"):
+                          "fixed_micros"):
                     if k in ch:
                         data[k] = ch[k]
                 data["book_version_from"] = new_version
                 data["book_version_to"] = None
-                # Re-validate the repriced shape so a publish can never create an
-                # invalid tiered rate (e.g. graduated with empty tiers). Raises
+                # Re-validate the repriced shape so a publish can never create a
+                # rate with a retired/unknown pricing_model. Raises
                 # ValueError -> rolls back the whole publish (endpoint maps 422).
-                validate_tiers(data["card_type"], data["pricing_model"], data["tiers"])
+                valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
+                if data["pricing_model"] not in valid_models:
+                    raise ValueError(
+                        f"pricing_model must be one of {sorted(valid_models)}")
                 # Close the old row, then open the new (valid_from auto_now_add > T).
                 old.valid_to = as_of
                 old.book_version_to = locked.version

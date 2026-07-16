@@ -15,3 +15,21 @@ def utc_day_start(d: date) -> datetime:
 
 def utc_next_day_start(d: date) -> datetime:
     return utc_day_start(d + timedelta(days=1))
+
+
+def month_bounds(as_of):
+    """Calendar-month UTC bounds (DateField pair, half-open) containing as_of.
+
+    Always normalizes to UTC before extracting the date, so callers passing a
+    timezone-aware datetime with a non-UTC offset get the correct UTC month.
+    """
+    # Normalize aware datetimes to UTC; naive datetimes are treated as UTC.
+    if hasattr(as_of, "tzinfo") and as_of.tzinfo is not None:
+        as_of = as_of.astimezone(timezone.utc)
+    day = as_of.date()
+    start = day.replace(day=1)
+    if day.month == 12:
+        end = day.replace(year=day.year + 1, month=1, day=1)
+    else:
+        end = day.replace(month=day.month + 1, day=1)
+    return start, end

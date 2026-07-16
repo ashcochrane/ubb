@@ -42,9 +42,9 @@ only for genuinely synchronous needs; everything tolerant of latency goes on the
 - Take row locks with `select_for_update` in the canonical global order (Run → Wallet → Customer →
   TopUpAttempt → Invoice → UsageEvent; `core/locking.py`). Wallet mutations go through
   `lock_for_billing`, which also lazily creates the wallet in the tenant currency.
-- The serialization points that matter (tiered-pricing period ladder, wallet drawdown) row-lock a
-  single counter row and advance it **inside the caller's event-insert transaction** — don't split
-  the lock and the write across transactions.
+- The serialization points that matter (e.g. wallet drawdown) row-lock a single counter row and
+  advance it **inside the caller's event-insert transaction** — don't split the lock and the write
+  across transactions.
 
 ## Caching & invalidation
 

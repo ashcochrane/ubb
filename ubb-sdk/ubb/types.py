@@ -223,7 +223,6 @@ class RateCard:
     rate_per_unit_micros: int | None = None
     unit_quantity: int | None = None
     fixed_micros: int | None = None
-    tiers: list | None = None
     currency: str | None = None
     product_id: str | None = None
     customer_id: str | None = None
