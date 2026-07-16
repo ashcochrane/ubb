@@ -25,6 +25,9 @@ from core.time_windows import utc_day_start
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 PS2, PE2 = datetime.date(2026, 7, 1), datetime.date(2026, 8, 1)
+# Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
+# to "now", which is only inside a hardcoded window until the calendar rolls past it.
+MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 # --- pre-F3.2 reference implementations (inlined verbatim from aggregate_lines) ---
@@ -63,6 +66,7 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
 
 
 def _ev(t, c, key, billed, **kw):
+    kw.setdefault("effective_at", MID)
     return UsageEvent.objects.create(
         tenant=t, customer=c, request_id=f"r-{key}", idempotency_key=key,
         provider_cost_micros=1, billed_cost_micros=billed, **kw)

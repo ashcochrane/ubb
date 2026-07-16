@@ -5,6 +5,35 @@ changelog commits and searched `docs/` — neither turned up anything). This
 file starts a per-surface changelog for the `/api/v1/metering/pricing/*`
 routes; follow-on breaking changes to this surface should be appended here.
 
+## 2026-07-15 — Tiered pricing removed (BREAKING, ADR-0003)
+
+The `graduated` and `package` pricing models are **deleted end to end** — not
+gated (`docs/adr/0003-mvp-launches-without-tiered-pricing.md`; decided in
+issue #22, executed via issue #30). The MVP launches with `per_unit` and
+`flat` only; every arrival-time estimate now equals the settled price by
+construction (the only remaining accept-vs-settle difference is rate-card
+config drift).
+
+- **`POST /pricing/rate-cards/{book_id}/rates`** — `pricing_model` accepts
+  only `per_unit`/`flat` (anything else → 422); the `tiers` field is removed
+  from `RateIn`, `RateChangeIn` (publish), and `RateOut`.
+- **`POST /pricing/rate-cards/{book_id}/publish`** — validates
+  `pricing_model` against the narrowed choices (ValueError → 422, whole
+  publish rolls back).
+- **Model/migration** — `Rate.tiers` dropped; `PricingPeriodCounter` (the
+  per-period tier ladder) deleted; migration
+  `0014_delete_tiered_pricing.py` guards that no graduated/package rows
+  exist before touching the schema (fails loudly otherwise).
+- **Deleted machinery** — `TierCounterService` (ladder lock-and-advance),
+  `TierMirror` (Redis accept-time ladder mirror), the estimation service's
+  tiered never-under-hold branch, `tier_breakdown` provenance, and the
+  monthly `verify_tier_rerate` tripwire task + its beat schedule.
+- **SDK** — `create_rate_card(tiers=...)` parameter and `RateCard.tiers`
+  dataclass field removed; README tiered-pricing section deleted.
+- `month_bounds` moved from the deleted
+  `apps/metering/pricing/services/tier_counter_service.py` to
+  `core/time_windows.py` (still used by backfill period logic).
+
 ## 2026-07-03 — RateCard container reshape (BREAKING)
 
 **Branch:** `feat/rate-card-container`. Design doc:

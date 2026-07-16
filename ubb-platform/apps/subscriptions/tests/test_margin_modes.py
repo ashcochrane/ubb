@@ -8,11 +8,15 @@ from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from apps.subscriptions.economics.services import MarginService
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
+# Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
+# to "now", which is only inside a hardcoded window until the calendar rolls past it.
+MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 def _usage(t, c, provider, billed):
     UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
-                              provider_cost_micros=provider, billed_cost_micros=billed)
+                              provider_cost_micros=provider, billed_cost_micros=billed,
+                              effective_at=MID)
 
 
 @pytest.mark.django_db
