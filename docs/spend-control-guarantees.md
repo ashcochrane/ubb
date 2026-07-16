@@ -1,10 +1,12 @@
 # Spend-Control Guarantees — the proof, for a skeptical engineer
 
-> **DRAFT — wayfinder [#16](https://github.com/ashcochrane/ubb/issues/16).** Structure accepted
-> 2026-07-15; revised the same day into the final task/subtask vocabulary with both handed-off
-> specs folded in — the [one-rule enforcement spec](https://github.com/ashcochrane/ubb/pull/27)
-> and the [guaranteed-delivery + auto-repair spec](https://github.com/ashcochrane/ubb/pull/32).
-> Awaiting final sign-off on the ticket.
+> **Accepted 2026-07-15 — wayfinder [#16](https://github.com/ashcochrane/ubb/issues/16).**
+> Structure accepted and revised the same day into the final task/subtask vocabulary with both
+> handed-off specs folded in — the
+> [one-rule enforcement spec](https://github.com/ashcochrane/ubb/pull/27) and the
+> [guaranteed-delivery + auto-repair spec](https://github.com/ashcochrane/ubb/pull/32) — then
+> signed off on the ticket. The **Launch-gated** markings below are removed by the program
+> close-out ([#47](https://github.com/ashcochrane/ubb/issues/47)) as the build lands.
 
 You are about to put UBB between your agents and your Stripe account. This document is the
 case for trusting it with that position: exactly what we guarantee, the mechanism behind each
