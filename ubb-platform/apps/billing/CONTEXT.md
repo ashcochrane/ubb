@@ -39,8 +39,9 @@ remainders.
 
 **Min balance (wallet floor)**:
 The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
-signal (and whose re-crossing fires resume); the **hard** floor of the two-floor pair. A signal
-point, not a wall — events past it still land and bill, and the balance keeps showing reality.
+signal. A signal point, not a wall — events past it still land and bill, and the balance keeps
+showing reality. (The paired resume signal and the second, soft floor arrive with the
+signal-ledger and soft-floor tickets.)
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
 not the floor's meaning.
 

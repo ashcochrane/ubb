@@ -34,3 +34,34 @@ ALL_REASONS = frozenset({
     STALE,
     STALE_MAX_AGE,
 })
+
+# The reasons whose verdict drives the idempotent kill flow (a fresh
+# crossing); TASK_NOT_ACTIVE signals but never re-kills.
+CROSSING_REASONS = frozenset({TASK_LIMIT, CUSTOMER_FLOOR})
+
+
+def crossing_reason(verdicts):
+    """The kill-worthy reason an accumulate verdict dict names, or None.
+
+    The single verdict→reason map every consumer shares (sync response,
+    batch items, async settle) — a new crossing verdict is added HERE, not
+    at each call site. Priority: the task's own limit before the floor
+    snapshot when both cross on one event.
+    """
+    if verdicts.get("crossed_task_limit"):
+        return TASK_LIMIT
+    if verdicts.get("crossed_floor_snapshot"):
+        return CUSTOMER_FLOOR
+    return None
+
+
+def stop_reason(verdicts):
+    """The task-scoped ack stop_reason an accumulate verdict dict names, or
+    None when nothing task-scoped fired: a crossing reason, else
+    TASK_NOT_ACTIVE for an event that landed on a non-active task."""
+    reason = crossing_reason(verdicts)
+    if reason is not None:
+        return reason
+    if verdicts.get("task_not_active"):
+        return TASK_NOT_ACTIVE
+    return None

@@ -52,8 +52,7 @@ def _apply_task_kill(tenant, customer, task_id, result):
     from apps.platform.tasks import reasons
     from apps.platform.tasks.services import TaskService
     if (task_id is not None and result.get("stop_scope") == "task"
-            and result.get("stop_reason") in (reasons.TASK_LIMIT,
-                                              reasons.CUSTOMER_FLOOR)):
+            and result.get("stop_reason") in reasons.CROSSING_REASONS):
         TaskService.kill_and_announce(
             task_id, result["stop_reason"],
             tenant_id=tenant.id, customer_id=customer.id)

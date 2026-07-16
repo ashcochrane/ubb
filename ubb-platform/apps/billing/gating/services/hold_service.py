@@ -97,7 +97,7 @@ return v
 """
 
 
-def _noop_hold() -> dict:
+def _held_verdict() -> dict:
     """A fresh held/not-stopped verdict dict (never share a single mutable
     instance across items — callers may mutate their own copy)."""
     return {"held": True, "stop": False, "stop_reason": None, "stop_scope": None}
@@ -134,7 +134,7 @@ class HoldService:
         LiveLedgerService.record_usage_debit.
         """
         if not enforcement_on(tenant):
-            return [_noop_hold() for _ in items]
+            return [_held_verdict() for _ in items]
 
         from django.utils import timezone
         from apps.billing.queries import get_customer_balance
@@ -175,7 +175,7 @@ class HoldService:
                     over = value >= threshold if mode == "postpaid" else value < threshold
                     if over:
                         crossed = True
-                out.append(_noop_hold())
+                out.append(_held_verdict())
 
             if crossed:
                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
@@ -193,7 +193,7 @@ class HoldService:
             # one-batch stop-flag delay, not a lost debit).
             logger.warning("hold_service.acquire_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
-            return [_noop_hold() for _ in items]  # fail-open
+            return [_held_verdict() for _ in items]  # fail-open
 
     @staticmethod
     def settle(owner_id, tenant, delta_micros, *, effective_at=None):

@@ -288,12 +288,9 @@ class UsageService:
         stop_scope = live.get("stop_scope")
         if verdicts is not None:
             from apps.platform.tasks import reasons
-            if verdicts["crossed_task_limit"]:
-                stop, stop_reason, stop_scope = True, reasons.TASK_LIMIT, "task"
-            elif verdicts["crossed_floor_snapshot"]:
-                stop, stop_reason, stop_scope = True, reasons.CUSTOMER_FLOOR, "task"
-            elif verdicts["task_not_active"]:
-                stop, stop_reason, stop_scope = True, reasons.TASK_NOT_ACTIVE, "task"
+            task_reason = reasons.stop_reason(verdicts)
+            if task_reason is not None:
+                stop, stop_reason, stop_scope = True, task_reason, "task"
         return _result(event,
                        task_total_billed=task.total_billed_cost_micros if task else None,
                        task_total_provider=task.total_provider_cost_micros if task else None,
@@ -428,13 +425,10 @@ class UsageService:
         # the sync path, in its own transaction, after the settle committed.
         if verdicts is not None:
             from apps.platform.tasks import reasons
-            if verdicts["crossed_task_limit"]:
+            crossing = reasons.crossing_reason(verdicts)
+            if crossing is not None:
                 TaskService.kill_and_announce(
-                    raw.task_id, reasons.TASK_LIMIT,
-                    tenant_id=tenant.id, customer_id=customer.id)
-            elif verdicts["crossed_floor_snapshot"]:
-                TaskService.kill_and_announce(
-                    raw.task_id, reasons.CUSTOMER_FLOOR,
+                    raw.task_id, crossing,
                     tenant_id=tenant.id, customer_id=customer.id)
         if raw.held:
             settle_ingest_hold(raw.billing_owner_id, tenant,
