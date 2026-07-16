@@ -48,6 +48,9 @@ STATE_CLEARED = "cleared"
 # catch-up says reconciled.
 CLEAR_BALANCE_RECOVERED = "balance_recovered"
 CLEAR_RECONCILED = "reconciled"
+# Administrative silent close on an enforcement_mode transition (cleanup_keys)
+# — never rides a StopCleared event (a config flip is not a re-cross).
+CLEAR_ENFORCEMENT_MODE_TRANSITION = "enforcement_mode_transition"
 
 
 class StopSignalService:

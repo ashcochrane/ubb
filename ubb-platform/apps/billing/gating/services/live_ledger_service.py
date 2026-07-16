@@ -606,9 +606,11 @@ class LiveLedgerService:
         try:
             from django.utils import timezone
             from apps.billing.gating.models import StopSignalState
+            from apps.billing.gating.services.stop_signal_service import (
+                CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED, STATE_STOPPED)
             now = timezone.now()
-            StopSignalState.objects.filter(tenant_id=tenant.id, state="stopped").update(
-                state="cleared", reason="enforcement_mode_transition",
+            StopSignalState.objects.filter(tenant_id=tenant.id, state=STATE_STOPPED).update(
+                state=STATE_CLEARED, reason=CLEAR_ENFORCEMENT_MODE_TRANSITION,
                 transitioned_at=now, updated_at=now)
         except Exception:
             logger.warning("live_ledger.cleanup_ledger_failed",
