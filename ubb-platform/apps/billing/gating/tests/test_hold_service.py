@@ -179,7 +179,18 @@ def test_second_crossing_while_flag_set_does_not_spam(enforced_prepaid_tenant, f
         pubsub.close()
 
 
-def test_clear_stop_then_recross_re_arms_transition(enforced_prepaid_tenant, funded_owner):
+def test_flag_only_delete_does_not_re_emit_but_a_real_clear_re_arms(enforced_prepaid_tenant, funded_owner):
+    """#39: emission dedup moved from the Redis NX flag to the signal ledger.
+
+    A bare flag delete (a Redis flush / blind window, not a real recovery)
+    re-arms the FAST LANE's pub/sub + flag, but the re-driven ledger
+    transition loses (the episode is still open) — no duplicate stop.fired.
+    Closing the episode through the guard (as every real clearing path does)
+    re-arms emission: the next crossing opens episode 2 and fires again.
+    """
+    from apps.billing.gating.services.stop_signal_service import (
+        CLEAR_BALANCE_RECOVERED, StopSignalService)
+
     HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(19_600_000)])
     HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])  # crosses
     assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
@@ -192,9 +203,20 @@ def test_clear_stop_then_recross_re_arms_transition(enforced_prepaid_tenant, fun
         assert out[0]["stop"] is True
         msg = pubsub.get_message(timeout=1)
         assert msg is not None and msg["data"].decode() == "customer_wide_stop"
-        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 2
+        # Episode still open on the ledger -> the re-set lost the transition.
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
     finally:
         pubsub.close()
+
+    # A REAL clear (through the guard) closes episode 1...
+    StopSignalService.drive_clear(funded_owner.id, enforced_prepaid_tenant,
+                                  reason=CLEAR_BALANCE_RECOVERED)
+    LiveLedgerService._clear_stop(funded_owner.id)
+    # ...so the next crossing opens episode 2 and emits exactly once more.
+    HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(500_000)])
+    fired = OutboxEvent.objects.filter(event_type="stop.fired").order_by("created_at")
+    assert fired.count() == 2
+    assert [e.payload["episode_seq"] for e in fired] == [1, 2]
 
 
 def test_publish_failure_does_not_raise_into_acquire(enforced_prepaid_tenant, funded_owner, monkeypatch):

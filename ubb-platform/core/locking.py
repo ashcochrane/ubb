@@ -1,7 +1,13 @@
 """
 Canonical lock ordering for the UBB platform.
 
-Lock order: Task -> Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
+Lock order: Task -> Wallet -> Customer -> StopSignalState -> TopUpAttempt
+            -> Invoice -> UsageEvent
+
+StopSignalState (#39) locks AFTER Customer: the stop-signal transition guard
+(apps/billing/gating/services/stop_signal_service.py) locks the owner row
+first (it may flip status on the winning stop), then the ledger row — and
+callers already holding Wallet -> Customer via lock_for_billing nest cleanly.
 
 Within Task (#38): a PARENT task before its subtasks. Rollup accumulate,
 the cascade kill/close, and subtask registration all lock parent-first

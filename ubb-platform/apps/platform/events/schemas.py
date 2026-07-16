@@ -352,34 +352,55 @@ class SubtaskLimitExceeded:
 
 @dataclass(frozen=True)
 class StopFired:
-    """Customer-wide cooperative stop flag TRANSITION (unset -> set) — Task 7.
+    """Customer-wide stop signal — the stop half of the stop/resume pair (#39).
 
-    Emitted (best-effort, alongside a ``ubb:stopchan:{owner_id}`` Redis
-    pub/sub publish) exactly once per transition by
-    ``LiveLedgerService._set_stop`` so the existing outgoing-webhook system
-    can deliver ``stop.fired`` to tenant endpoints. A repeat crossing while
-    the flag is already set only refreshes its TTL and does NOT re-emit this
-    event (see the SET NX transition detector in _set_stop).
+    Emitted through the ``StopSignalState`` transition guard
+    (apps/billing/gating/services/stop_signal_service.py): every lane that
+    detects a floor/cap crossing — the fast Redis lane at arrival, the durable
+    drawdown handler, the hourly reconcile — drives a transition on the
+    owner's per-family ledger row, and only the WINNING stop transition emits
+    this event, so a crossing observed by several lanes fires exactly once per
+    episode. The emission commits atomically with the ledger transition (same
+    transaction), so the ledger and the event stream cannot disagree — a
+    caller's rollback takes both, and the durable lane / reconcile re-drives
+    the missed transition (late, never lost).
 
-    owner_id = the billing owner the stop flag is keyed on (resolve_billing_owner).
-    scope    = "customer" — the whole owner is stopped (consumers fan the
-               stop to every task they hold for the owner).
-
-    Delivery is best-effort, not exactly-once: ``_set_stop`` writes this event
-    inside a SAVEPOINT nested in the CALLER's outer transaction (record_usage
-    / HoldService.acquire's ambient atomic block). If that OUTER transaction
-    later rolls back for an unrelated reason, this row rolls back with it —
-    but the Redis flag it was emitted for is NOT rolled back (``client.set``
-    already committed to Redis, outside the DB transaction). The NX
-    transition-detector on the stop key means a LATER ``_set_stop`` call sees
-    the flag already set and skips re-emitting until ``_clear_stop`` runs —
-    so webhook delivery for THIS transition is orphaned (flag set, event row
-    gone) until the flag next clears and re-sets. The accept-time verdict
-    carried on every ack is the authoritative enforcement signal; this event
-    is a best-effort notification convenience on top of it, not a substitute.
+    owner_id    = the billing owner the stop is keyed on (resolve_billing_owner).
+    scope       = "customer" — the whole owner is stopped (consumers fan the
+                  stop to every task they hold for the owner).
+    episode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);
+                  the paired ``stop.cleared`` carries the same id, and the
+                  stop-context tagging / past-limit report (#41) key on it.
     """
     EVENT_TYPE = "stop.fired"
     tenant_id: str
     owner_id: str
     reason: str
     scope: str = "customer"
+    episode_seq: int = 0
+
+
+@dataclass(frozen=True)
+class StopCleared:
+    """The resume half of the stop/resume pair (#39, spec §E).
+
+    Fires the moment the balance re-crosses the floor — no hysteresis margin,
+    no ack latch (decision 4) — from any clearing path: the ``credit()`` hook
+    (fast lane, with a durable-balance fallback when Redis is blind) or the
+    hourly reconcile. All paths route through the same ``StopSignalState``
+    transition guard as ``stop.fired``; a clear that didn't win the transition
+    emits nothing, so resume fires exactly once per episode.
+
+    episode_seq    = the episode this clear closes (pairs with the stop.fired
+                     that opened it).
+    balance_micros = the balance at clearance, as seen by the clearing lane
+                     (live counter on the fast path, durable balance on the
+                     fallback/reconcile paths; postpaid passes 0).
+    """
+    EVENT_TYPE = "stop.cleared"
+    tenant_id: str
+    owner_id: str
+    reason: str
+    scope: str = "customer"
+    episode_seq: int = 0
+    balance_micros: int = 0

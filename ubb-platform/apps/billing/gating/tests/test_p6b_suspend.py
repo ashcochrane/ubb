@@ -1,10 +1,12 @@
-"""P6b (D13/D15): durable postpaid suspend + suspension_reason + un-suspend.
+"""P6b (D13/D15) as reshaped by #39: durable suspend + suspension_reason +
+un-suspend, riding the StopSignalState transition guard.
 
-The postpaid durable suspend is driven by the synchronous customer-wide stop
-flag (single source of truth) and emitted ONLY by the async handler on the
-winning active->suspended transition. suspension_reason records WHY; only a
-monetary reason is auto-cleared on recovery, so a top-up never silently
-un-suspends an admin/fraud suspension.
+The postpaid durable suspend now happens at the CROSSING, inside the winning
+stop transition (StopSignalService.drive_stop, reached from the fast lane's
+_set_stop) — the async drawdown handler no longer reads the stop flag, so a
+crossing observed by several lanes suspends and emits exactly once.
+suspension_reason records WHY; only a monetary reason is auto-cleared on
+recovery, so a top-up never silently un-suspends an admin/fraud suspension.
 """
 import uuid
 
@@ -41,11 +43,13 @@ class TestPostpaidDurableSuspend:
     def setup_method(self):
         cache.clear()
 
-    def test_durable_suspend_when_flag_set(self):
+    def test_durable_suspend_at_the_crossing(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())  # cap crossed -> flag
+        # The fast lane's crossing wins the stop transition and suspends there
+        # (#39) — the handler drain adds nothing for postpaid.
+        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 12_000_000))
         c.refresh_from_db()
         assert c.status == "suspended"
@@ -57,6 +61,7 @@ class TestPostpaidDurableSuspend:
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
         LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        LiveLedgerService.record_usage_debit(c.id, t, 5_000_000, now=timezone.now())
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
         assert _suspend_events(c.id).count() == 1  # winning transition only

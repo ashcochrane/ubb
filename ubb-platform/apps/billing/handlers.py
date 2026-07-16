@@ -20,7 +20,10 @@ def handle_usage_recorded_billing(event_id, payload):
     1. Deduct wallet balance (with proper locking)
     2. Create a WalletTransaction record (idempotent via usage_event_id key)
     3. Emit BalanceOverage when balance crosses zero (winning insert only)
-    4. Check min balance threshold → suspend and emit CustomerSuspended event
+    4. Detect a crossing of the CONFIGURED floor (#39 durable lane): drive the
+       StopSignalState transition guard, whose winner emits stop.fired and
+       performs the folded suspension (enforcement off keeps the Tier-1
+       level-based suspend, byte-for-byte)
     5. Check auto-topup threshold → emit BalanceLow event
     6. Accumulate billing period totals
 
@@ -33,33 +36,12 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=payload["customer_id"])
-        if tenant.billing_mode == "postpaid":
-            # Tier-2 P6b (D13): no prepaid balance to draw down, but a postpaid
-            # owner that crossed its budget cap must be durably SUSPENDED so the
-            # start-gate blocks new runs. Driven by the synchronous customer-wide
-            # stop flag (set by record_usage_debit at the crossing) — the single
-            # source of truth — so this handler is the SOLE emitter of
-            # customer.suspended for postpaid too, on the winning active->
-            # suspended transition (serialized on the owner Customer row).
-            from apps.platform.tenants.flags import enforcing
-            if enforcing(tenant):
-                from apps.platform.customers.models import Customer as _Customer
-                from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-                # Record-time-pinned owner (matches the prepaid branch) so a
-                # re-parent between record_usage and this async handler can't
-                # read the flag on the wrong owner.
-                owner_id = payload.get("billing_owner_id") or str(seat.resolve_billing_owner().id)
-                if LiveLedgerService.read_stop(owner_id, tenant)["stop"]:
-                    with transaction.atomic():
-                        locked = _Customer.objects.select_for_update().get(id=owner_id)
-                        if locked.status == "active":
-                            locked.status = "suspended"
-                            locked.suspension_reason = "budget_exceeded"
-                            locked.save(update_fields=["status", "suspension_reason", "updated_at"])
-                            write_event(CustomerSuspended(
-                                tenant_id=str(tenant.id), customer_id=str(owner_id),
-                                reason="budget_exceeded", balance_micros=0))
-        else:
+        # Postpaid has no wallet to draw down, and (#39) its budget-cap
+        # stop/suspension rides the StopSignalState transition guard from the
+        # fast lane at the crossing plus the hourly reconcile's SET power —
+        # this handler no longer reads the stop flag (the old D13 shape), so
+        # floor-stop and suspension cannot double-fire.
+        if tenant.billing_mode != "postpaid":
             from apps.billing.wallets.models import WalletTransaction
             from apps.billing.wallets.grants import GrantLedger
             from apps.billing.locking import lock_for_billing
@@ -102,11 +84,42 @@ def handle_usage_recorded_billing(event_id, payload):
                         GrantLedger.allocate(wallet, txn, billed_cost_micros)
                         limit = get_customer_min_balance(owner.id, tenant.id)
                         if old_balance >= 0 and new_balance < 0:   # I6
+                            # The zero-crossing EARLY WARNING (Stage D) — a
+                            # distinct event, deliberately NOT part of the
+                            # #39 stop/resume pair.
                             write_event(BalanceOverage(
                                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                                 balance_micros=new_balance, overage_limit_micros=limit,
                                 overage_micros=-new_balance))
-                        if new_balance < -limit and owner.status == "active":
+                        from apps.platform.tenants.flags import enforcement_on
+                        if enforcement_on(tenant):
+                            # #39 §D — the DURABLE lane of the stop signal: a
+                            # crossing of the CONFIGURED floor drives the
+                            # transition guard, independent of Redis health (a
+                            # crossing during a blind window signals late,
+                            # never lost). The winner emits stop.fired and
+                            # performs the folded suspension; a crossing the
+                            # fast lane already signaled loses silently.
+                            # Signal bookkeeping must never poison the debit:
+                            # drive_stop is savepoint-isolated, and a failure
+                            # here is re-driven by the hourly reconcile.
+                            if old_balance >= -limit and new_balance < -limit:
+                                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+                                from apps.billing.gating.services.stop_signal_service import (
+                                    StopSignalService)
+                                from apps.billing.gating.services.live_ledger_service import (
+                                    LiveLedgerService)
+                                try:
+                                    StopSignalService.drive_stop(
+                                        owner.id, tenant, reason=CUSTOMER_WIDE_STOP,
+                                        balance_micros=new_balance)
+                                except Exception:
+                                    logger.warning("billing.floor_stop_transition_failed",
+                                                   extra={"data": {"owner_id": str(owner.id)}})
+                                LiveLedgerService.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
+                        elif new_balance < -limit and owner.status == "active":
+                            # enforcement off: Tier-1 baseline suspension,
+                            # byte-for-byte (no signal suite, no ledger).
                             owner.status = "suspended"
                             owner.suspension_reason = "min_balance_exceeded"  # P6b/D15
                             owner.save(update_fields=["status", "suspension_reason", "updated_at"])
