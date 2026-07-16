@@ -36,6 +36,20 @@ _Avoid_: "group_keys" — renamed to `tags`.
 The raw, at-least-once intake path: a raw event is accepted, then later *settled* exactly-once into
 a durable priced usage event. (`apps/metering/usage/models.py:RawIngestEvent`)
 
+**Estimate**:
+The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will
+charge. Exact for caller-supplied, linear, and markup pricing.
+
+**Settle sweep**:
+The claim of pending raw events from the durable table itself — the accepted row *is* the queue
+entry; the broker dispatch is only a doorbell, the beat sweep the guarantee.
+_Avoid_: treating the broker message as the source of truth — a lost dispatch delays settlement,
+never loses the event.
+
+**Poisoned raw**:
+A raw event that exhausted its settle attempts; parked `failed` with its hold released — an
+operator incident, never a silent drop.
+
 **Refund**:
 A record linked one-to-one to a usage event, created only when billing emits `refund.requested`.
 (`apps/metering/usage/models.py:Refund`)

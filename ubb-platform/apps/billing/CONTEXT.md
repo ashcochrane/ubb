@@ -64,9 +64,25 @@ _Avoid_: a second enable flag — this is the single switch (mirrors the tenant'
 A per-tenant (optionally per-customer) monthly spend cap with alert levels.
 (`apps/billing/gating/models.py:BudgetConfig`)
 
-**Estimate-hold-settle**:
-The async-ingest accept-time reservation of an *estimated* cost on the live counter, later settled
-against the actual. (`apps/billing/gating/services/hold_service.py`)
+**Hold**:
+The arrival-time reservation of one async event's price on the live ledger, taken atomically with
+the per-run cap check *before* the event is durably appended; trued up at settle.
+(`apps/billing/gating/services/hold_service.py`)
+_Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event from landing.
+
+**Crossing**:
+The instant a debit or hold pushes an owner's live counter past its threshold (wallet floor or
+budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
+
+**Orphan hold**:
+A hold whose event never durably landed (crash between the hold and the append); the live balance
+reads *lower* than reality — the safe direction — until credited, repaired, or expired. The
+MIN-merge reconcile cannot heal it (it only ever lowers).
+
+**Safe direction (over-restrictive)**:
+The invariant that every accidental fast-lane failure makes the live view stingier — balance lower,
+spend higher — never looser. The first-use seed window is the single deliberate exception.
+_Avoid_: "fail-open means unprotected" — the durable lane keeps recording and billing throughout.
 
 **Task cost cap**:
 A tenant-wide per-task billed ceiling enforced across all runs sharing a `task_id`.
