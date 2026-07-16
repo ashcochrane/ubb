@@ -75,6 +75,14 @@ billing can both reference it without crossing a product boundary. Carries both 
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `tags` value) —
 tags are analytics-only and never attach a limit.
 
+**Subtask**:
+A parent-linked child unit of work — a task registered under an active top-level task, with its
+own COGS limit and lifecycle. Its spend rolls up into the parent's totals (the parent's cap covers
+everything underneath it); crossing its own limit kills it alone (`subtask.limit_exceeded`) while
+the parent keeps running; a parent kill/close cascades downward to its active subtasks — never
+upward. One containment level at launch. (`apps/platform/tasks/models.py:Task.parent`)
+_Avoid_: "child task", "nested task", and the retired label-era "task" sense.
+
 **Task limit (provider-cost limit)**:
 A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
 passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
@@ -83,9 +91,10 @@ races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a 
 _Avoid_: "hard stop" — that vocabulary retired with the 429.
 
 **Killed (task)**:
-The stop signal fired for this task — its limit or floor snapshot was crossed, or the reaper
-terminated it. Late events still land, bill, and count into the killed task's totals; the flip is
-the durable record that the signal fired, not a wall.
+The stop signal fired for this unit — its limit or floor snapshot was crossed, or the reaper
+terminated it. Late events still land, bill, and count into the killed unit's totals (and its
+parent's, for a subtask); the flip is the durable record that the signal fired, not a wall.
+Killing a parent cascades the flip to its active subtasks; killing a subtask kills it alone.
 (`apps/platform/tasks/services.py:TaskService.kill_task`)
 
 **Heartbeat**:
@@ -93,9 +102,10 @@ A task's most-recent-event timestamp; its absence past the stale window is what 
 on. (`apps/platform/tasks/models.py:Task.last_event_at`)
 
 **Stop reason**:
-The closed vocabulary of why a stop signal fired — `task_limit`, `customer_floor`,
-`task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`. One source of truth for every
-producer and consumer; rides the ack's `stop_reason`, never an HTTP error.
+The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
+`customer_floor`, `task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`, plus the
+kill-metadata-only `parent_killed` (a cascade flip, never on an ack or event). One source of truth
+for every producer and consumer; rides the ack's `stop_reason`, never an HTTP error.
 (`apps/platform/tasks/reasons.py`)
 
 ## Events
@@ -134,4 +144,5 @@ unsupported. (`core/soft_delete.py`)
 
 **Lock ordering**:
 The canonical global lock-acquisition order no code path may violate:
-Task → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent. (`core/locking.py`)
+Task → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent; within Task, a parent before its
+subtasks. (`core/locking.py`)

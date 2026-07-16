@@ -75,7 +75,7 @@ class TestPreCheckNoBilling(unittest.TestCase):
         self.assertEqual(result.balance_micros, 10_000_000)
         client.billing.pre_check.assert_called_once_with(
             "cust_1", start_task=False, task_metadata=None, external_task_id="",
-            provider_cost_limit_micros=None,
+            provider_cost_limit_micros=None, parent_task_id=None,
         )
         client.close()
 
@@ -282,6 +282,50 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         self.assertTrue(body["start_task"])
         self.assertEqual(body["task_metadata"], {"k": "v"})
         self.assertEqual(body["external_task_id"], "ext-2")
+
+    @patch.object(BillingClient, "_request")
+    def test_start_task_parent_task_id_registers_a_subtask(self, mock_bill_request):
+        """parent_task_id rides the wire and the created subtask's parent
+        comes back on PreCheckResult (#38)."""
+        mock_bill_request.return_value = MagicMock(
+            status_code=200, json=lambda: {
+                "allowed": True, "task_id": "sub_1", "parent_task_id": "task_1",
+                "provider_cost_limit_micros": 1_000_000,
+            }
+        )
+        result = self.client.start_task(
+            "cust_1", parent_task_id="task_1",
+            provider_cost_limit_micros=1_000_000,
+        )
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.task_id, "sub_1")
+        self.assertEqual(result.parent_task_id, "task_1")
+        body = mock_bill_request.call_args.kwargs["json"]
+        self.assertTrue(body["start_task"])
+        self.assertEqual(body["parent_task_id"], "task_1")
+
+    @patch.object(BillingClient, "_request")
+    def test_subtask_registration_refusal_threads_reason(self, mock_bill_request):
+        mock_bill_request.return_value = MagicMock(
+            status_code=200, json=lambda: {
+                "allowed": False, "reason": "parent_task_not_active",
+                "balance_micros": 10_000_000,
+            }
+        )
+        result = self.client.start_task("cust_1", parent_task_id="task_dead")
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.reason, "parent_task_not_active")
+        self.assertIsNone(result.task_id)
+
+    @patch.object(BillingClient, "_request")
+    def test_top_level_start_omits_parent_task_id_from_the_wire(self, mock_bill_request):
+        mock_bill_request.return_value = MagicMock(
+            status_code=200, json=lambda: {"allowed": True, "task_id": "task_3"}
+        )
+        result = self.client.start_task("cust_1")
+        self.assertIsNone(result.parent_task_id)
+        body = mock_bill_request.call_args.kwargs["json"]
+        self.assertNotIn("parent_task_id", body)
 
     def test_start_task_requires_billing(self):
         from ubb.exceptions import UBBError

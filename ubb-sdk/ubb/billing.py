@@ -152,8 +152,12 @@ class BillingClient:
 
     def pre_check(self, customer_id: str, start_task: bool = False,
                   task_metadata: dict | None = None, external_task_id: str = "",
-                  provider_cost_limit_micros: int | None = None) -> dict:
-        """Pre-check billing via POST /api/v1/billing/pre-check."""
+                  provider_cost_limit_micros: int | None = None,
+                  parent_task_id: str | None = None) -> dict:
+        """Pre-check billing via POST /api/v1/billing/pre-check.
+
+        ``parent_task_id`` (with start_task=True) registers a subtask under
+        that active top-level task."""
         body: dict = {"customer_id": customer_id}
         if start_task:
             body["start_task"] = True
@@ -163,6 +167,8 @@ class BillingClient:
             body["external_task_id"] = external_task_id
         if provider_cost_limit_micros is not None:
             body["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if parent_task_id is not None:
+            body["parent_task_id"] = parent_task_id
         r = self._request("post", "/api/v1/billing/pre-check", json=body)
         return r.json()
 

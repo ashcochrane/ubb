@@ -31,6 +31,18 @@ class Task(BaseModel):
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="tasks"
     )
+    # Subtask containment (#38): a subtask IS a Task row with `parent` set —
+    # one model, one containment level at launch (the parent must itself be
+    # parentless; the generic self-FK makes deepening later a validation
+    # change, not a remodel). Immutable after creation — a unit is never
+    # re-parented, which is what lets accumulate read it without a lock.
+    # Lock-ordering refinement (see core/locking.py): within Task, a
+    # transaction that locks both a parent and its child locks the PARENT
+    # first (rollup, cascade kill/close, and subtask registration all comply).
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="subtasks",
+    )
     status = models.CharField(
         max_length=20,
         choices=TASK_STATUS_CHOICES,

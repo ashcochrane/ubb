@@ -42,20 +42,24 @@ metering_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_metering_v1")
 _product_check = ProductAccess("metering")
 
 
-def _apply_task_kill(tenant, customer, task_id, result):
-    """One-rule (#37): a task-scoped crossing verdict on the result drives the
-    idempotent kill flow (active->killed flip + task.limit_exceeded on the
-    winning transition). The event is ALREADY recorded and billed — the kill
-    is a signal, never a wall, so this runs after record_usage returned, in
-    its own transaction, and never raises (a kill failure must not turn a
-    recorded event into a non-200)."""
-    from apps.platform.tasks import reasons
+def _apply_task_kill(tenant, customer, result):
+    """One-rule (#37): a crossing verdict on the result drives the idempotent
+    kill flow (active->killed flip + task.limit_exceeded /
+    subtask.limit_exceeded on the winning transition). The record path
+    computed the reasons.kill_plan directives and carried them privately as
+    ``_kills`` — popped HERE unconditionally so they never leak into a
+    response body (the batch path spreads the result dict verbatim). A
+    subtask's own crossing kills it ALONE; a parent crossing kills the
+    parent and cascades downward inside kill_task (#38).
+
+    The event is ALREADY recorded and billed — the kill is a signal, never a
+    wall, so this runs after record_usage returned, in its own transaction,
+    and never raises (a kill failure must not turn a recorded event into a
+    non-200)."""
     from apps.platform.tasks.services import TaskService
-    if (task_id is not None and result.get("stop_scope") == "task"
-            and result.get("stop_reason") in reasons.CROSSING_REASONS):
+    for target_id, reason in result.pop("_kills", None) or []:
         TaskService.kill_and_announce(
-            task_id, result["stop_reason"],
-            tenant_id=tenant.id, customer_id=customer.id)
+            target_id, reason, tenant_id=tenant.id, customer_id=customer.id)
 
 
 @metering_api.post("/usage", response={200: RecordUsageResponse})
@@ -104,7 +108,7 @@ def record_usage(request, payload: RecordUsageRequest):
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))
-    _apply_task_kill(request.auth.tenant, customer, payload.task_id, result)
+    _apply_task_kill(request.auth.tenant, customer, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return result
@@ -163,7 +167,7 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
         return {"ok": False, "error": e.code, "detail": str(e)}
     except ValueError as e:
         return {"ok": False, "error": "validation_error", "detail": str(e)}
-    _apply_task_kill(tenant, customer, item.task_id, result)
+    _apply_task_kill(tenant, customer, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return {"ok": True, **result}
@@ -737,13 +741,19 @@ def get_usage_event(request, event_id: UUID):
 
 @metering_api.post("/tasks/{task_id}/close", response=CloseTaskResponse)
 def close_task(request, task_id: UUID):
+    """Close (complete) a task or subtask. Closing a PARENT auto-completes
+    its active subtasks in the same transaction (#38) — cleanup is one call;
+    a killed subtask keeps its state. Closing a subtask completes it alone."""
     _product_check(request)
+    from django.db import transaction
     from apps.platform.tasks.services import TaskService
 
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
-    completed = TaskService.complete_task(task.id)
+    with transaction.atomic():
+        completed, _ = TaskService.complete_task(task.id)
     return {
         "task_id": str(completed.id),
+        "parent_task_id": str(completed.parent_id) if completed.parent_id else None,
         "status": completed.status,
         "total_billed_cost_micros": completed.total_billed_cost_micros,
         "total_provider_cost_micros": completed.total_provider_cost_micros,

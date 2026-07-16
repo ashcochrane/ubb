@@ -17,7 +17,10 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 
 # One-rule (#37): the full record_usage result contract. hard_stop and
 # run_total_cost_micros are RETIRED; both task totals travel denominationally
-# explicit, and parent_task_id is carried (always None until subtasks land).
+# explicit, and parent_task_id names the unit's parent when it is a subtask
+# (#38). The internal _kills key is popped by the endpoint layer and never
+# serialized — the exact-key-set assertion below pins that for the no-kill
+# paths.
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "billed_cost_micros", "units",
     "new_balance_micros", "suspended",

@@ -34,6 +34,7 @@ WEBHOOK_EVENT_TYPES = (
     # budgets / tasks
     "budget.threshold_reached",
     "task.limit_exceeded",
+    "subtask.limit_exceeded",
     "stop.fired",
     # margins / economics
     "margin.customer_unprofitable",

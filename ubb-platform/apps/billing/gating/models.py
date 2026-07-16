@@ -12,6 +12,10 @@ class RiskConfig(BaseModel):
     # start call names no explicit limit. NULL = no default: absent both, the
     # task is uncapped and no signal ever fires.
     default_task_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # Subtasks (#38): the same fallback for units registered with a parent
+    # (parent_task_id at the start-gate). Same denomination, same NULL = no
+    # default, same coverage gate.
+    default_subtask_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_risk_config"

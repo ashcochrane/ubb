@@ -375,6 +375,20 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
         self.assertEqual(result.total_provider_cost_micros, 1_750_000)
         self.assertEqual(result.event_count, 12)
+        self.assertIsNone(result.parent_task_id)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_close_subtask_carries_parent_task_id(self, mock_post):
+        from ubb.types import CloseTaskResult
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "task_id": "sub_1", "parent_task_id": "task_1",
+            "status": "completed",
+            "total_billed_cost_micros": 100, "total_provider_cost_micros": 80,
+            "event_count": 1,
+        })
+        result = self.client.close_task("sub_1")
+        self.assertIsInstance(result, CloseTaskResult)
+        self.assertEqual(result.parent_task_id, "task_1")
 
     # ---- rate-card URL correctness ----
 

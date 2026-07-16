@@ -11,9 +11,14 @@ class PreCheckRequest(Schema):
     start_task: bool = False
     task_metadata: Optional[dict] = None
     external_task_id: str = ""
-    # COGS-denominated task limit (what the job burns). Omitted/null = the
-    # tenant default (RiskConfig.default_task_provider_cost_limit_micros);
-    # absent both, the task is uncapped and no signal ever fires.
+    # Registers a SUBTASK under this active top-level task (#38): a child
+    # unit with its own limit whose spend rolls up into the parent's totals.
+    # Only meaningful with start_task=True (ignored otherwise).
+    parent_task_id: Optional[UUID] = None
+    # COGS-denominated unit limit (what the job burns). Omitted/null = the
+    # tenant default (RiskConfig.default_task_provider_cost_limit_micros, or
+    # default_subtask_provider_cost_limit_micros when parent_task_id is set);
+    # absent both, the unit is uncapped and no signal ever fires.
     provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
 
 
@@ -22,10 +27,14 @@ class PreCheckResponse(Schema):
     # reason vocabulary: insufficient_funds | account_closed |
     # customer_stopped | rate_limit_exceeded | budget-cap reasons |
     # concurrency_limit | cost_coverage_required (a resolved COGS limit
-    # requires Tenant.require_cost_card_coverage).
+    # requires Tenant.require_cost_card_coverage) | parent_task_not_active |
+    # subtask_depth_exceeded (subtask registration refusals, #38 — refusing
+    # work that hasn't happened, never a usage report).
     reason: Optional[str] = None
     balance_micros: Optional[int] = None
     task_id: Optional[str] = None
+    # Set when the started unit is a subtask — the parent it registered under.
+    parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
     floor_snapshot_micros: Optional[int] = None
 
@@ -106,20 +115,23 @@ class RecordUsageResponse(Schema):
     billed_cost_micros: Optional[int] = None
     units: Optional[int] = None
     task_id: Optional[str] = None
-    # Null until the subtask ticket lands (carried so the wire shape is final).
+    # Set when the named unit is a subtask — its parent task (#38).
     parent_task_id: Optional[str] = None
-    # The named task's running totals, denominationally explicit — billed
+    # The named unit's running totals, denominationally explicit — billed
     # (what you charge) and provider (what the job burns; only this one races
-    # the COGS limit).
+    # the COGS limit). A subtask's spend also rolls up into its parent's
+    # totals (containment); the parent's totals ride its own acks/events.
     task_total_billed_cost_micros: Optional[int] = None
     task_total_provider_cost_micros: Optional[int] = None
     # One-rule stop verdict on a 200 body — the event was ALWAYS recorded +
     # charged; `stop` means "stop sending work for the named scope". The
-    # scalar slot carries the most specific verdict (a task-scoped crossing
-    # wins over a simultaneous customer-wide stop; the latter surfaces on the
-    # next ack and via stop.fired). stop_reason ∈ task_limit | customer_floor
-    # | task_not_active | customer_wide_stop; stop_scope ∈ task | customer.
-    # `suspended` stays the durable owner status.
+    # scalar slot carries one verdict: a unit-scoped crossing wins over a
+    # simultaneous customer-wide stop, and among unit verdicts the WIDEST
+    # tripped scope wins (a parent trip beats a subtask trip — stop the whole
+    # tree); the losers surface on the next ack and via the pushed events.
+    # stop_reason ∈ task_limit | subtask_limit | customer_floor |
+    # task_not_active | customer_wide_stop; stop_scope ∈ task | subtask |
+    # customer. `suspended` stays the durable owner status.
     stop: bool = False
     stop_reason: Optional[str] = None
     stop_scope: Optional[str] = None
@@ -337,6 +349,9 @@ class TenantMarkupOut(Schema):
 
 class CloseTaskResponse(Schema):
     task_id: str
+    # Set when the closed unit is a subtask (#38). Closing a PARENT
+    # auto-completes its active subtasks; closing a subtask closes it alone.
+    parent_task_id: Optional[str] = None
     status: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int

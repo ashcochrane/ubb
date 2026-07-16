@@ -200,7 +200,10 @@ class MeteringClient:
                            failed=body.get("failed", 0))
 
     def close_task(self, task_id: str) -> CloseTaskResult:
-        """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close."""
+        """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close.
+
+        Closing a parent auto-completes its active subtasks server-side —
+        cleanup is one call. Closing a subtask closes it alone."""
         r = self._request("post", f"/api/v1/metering/tasks/{task_id}/close")
         return CloseTaskResult(**r.json())
 

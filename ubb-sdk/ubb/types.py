@@ -11,6 +11,8 @@ class PreCheckResult:
     can_proceed: bool | None = None
     balance_micros: int | None = None
     task_id: str | None = None
+    # Set when the started unit is a subtask — the parent it registered under.
+    parent_task_id: str | None = None
     provider_cost_limit_micros: int | None = None
     floor_snapshot_micros: int | None = None
 
@@ -31,7 +33,8 @@ class RecordUsageResult:
     task_total_provider_cost_micros: int | None = None
     # One-rule stop verdict (on a 200 — the event WAS recorded + charged).
     # `stop` means "stop sending work for the named scope" (stop_scope: task
-    # | customer). `suspended` is the owner's durable status.
+    # | subtask | customer — scope `subtask` kills the child alone, the
+    # parent keeps running). `suspended` is the owner's durable status.
     stop: bool = False
     stop_reason: str | None = None
     stop_scope: str | None = None
@@ -65,6 +68,9 @@ class CloseTaskResult:
     total_billed_cost_micros: int
     total_provider_cost_micros: int
     event_count: int
+    # Set when the closed unit is a subtask. Closing a PARENT auto-completes
+    # its active subtasks server-side; closing a subtask closes it alone.
+    parent_task_id: str | None = None
 
 @dataclass(frozen=True)
 class CustomerResult:

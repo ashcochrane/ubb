@@ -44,15 +44,18 @@ def close_abandoned_tasks():
     )
     closed_count = 0
 
+    from apps.platform.tasks.services import TaskService
+
     for task in stale_tasks.iterator():
         with transaction.atomic():
-            locked = Task.objects.select_for_update().get(id=task.id)
-            if locked.status != "active":
+            # complete_task owns the terminal-state recheck and the downward
+            # cascade (#38): auto-closing an abandoned parent auto-completes
+            # its active subtasks, same as an explicit close.
+            completed, transitioned = TaskService.complete_task(task.id)
+            if not transitioned:
                 continue
-            locked.status = "completed"
-            locked.completed_at = timezone.now()
-            locked.metadata["auto_closed"] = True
-            locked.save(update_fields=["status", "completed_at", "metadata", "updated_at"])
+            completed.metadata["auto_closed"] = True
+            completed.save(update_fields=["metadata", "updated_at"])
             closed_count += 1
 
     if closed_count:
@@ -71,22 +74,24 @@ def reap_stale_tasks():
 
     A task that emitted events then went silent for >15 min (STALE), or any
     task older than 6 h (STALE_MAX_AGE — a runaway hard ceiling), is killed
-    and a task.limit_exceeded event is emitted so sibling/idle workers tear
-    down.
+    and a task.limit_exceeded event (subtask.limit_exceeded for a stale
+    subtask, killed alone) is emitted so sibling/idle workers tear down.
+    Reaping a parent cascades the kill to its active subtasks (#38) — note a
+    parent whose subtasks are still emitting is never heartbeat-stale, since
+    rollup stamps the parent's heartbeat too.
 
     Enforcing-only: off/advisory tenants keep only the baseline
     close_abandoned_tasks (graceful >1h complete). Tasks that NEVER emitted
     are left to close_abandoned_tasks (no premature 15-min kill of a
-    slow-to-start task). The winning active->killed transition
-    (select_for_update) guards against double-emit.
+    slow-to-start task). The winning active->killed transition (inside
+    kill_and_announce) guards against double-emit.
     """
     from django.db.models import Q
     from apps.platform.tasks.models import Task
     from apps.platform.tasks.reasons import STALE, STALE_MAX_AGE
+    from apps.platform.tasks.services import TaskService
     from apps.platform.tenants.models import Tenant
     from apps.platform.tenants.flags import enforcing
-    from apps.platform.events.outbox import write_event
-    from apps.platform.events.schemas import TaskLimitExceeded
 
     now = timezone.now()
     age_cutoff = now - timedelta(hours=6)
@@ -107,26 +112,15 @@ def reap_stale_tasks():
             candidate_filter = age_filter
         candidates = Task.objects.filter(tenant=tenant, status="active").filter(candidate_filter)
         for task in candidates.iterator():
-            with transaction.atomic():
-                locked = Task.objects.select_for_update().get(id=task.id)
-                if locked.status != "active":
-                    continue  # another worker / the endpoint already terminated it
-                # Reason from the LOCKED snapshot (robust to a heartbeat that
-                # arrived during the unlocked candidate read).
-                reason = STALE_MAX_AGE if locked.created_at < age_cutoff else STALE
-                locked.status = "killed"
-                locked.completed_at = now
-                locked.metadata = {**locked.metadata, "kill_reason": reason}
-                locked.save(update_fields=["status", "completed_at", "metadata", "updated_at"])
-                write_event(TaskLimitExceeded(
-                    tenant_id=str(tenant.id), customer_id=str(locked.customer_id),
-                    billing_owner_id=str(locked.billing_owner_id or ""),
-                    task_id=str(locked.id), external_task_id=locked.external_task_id,
-                    reason=reason,
-                    total_billed_cost_micros=locked.total_billed_cost_micros,
-                    total_provider_cost_micros=locked.total_provider_cost_micros,
-                    provider_cost_limit_micros=locked.provider_cost_limit_micros or 0))
-            reaped += 1
+            # created_at is immutable, so the reason is stable across the
+            # unlocked candidate read; kill_and_announce owns the winning
+            # active->killed transition, the downward cascade, the
+            # task/subtask event split, and the exactly-once emit.
+            reason = STALE_MAX_AGE if task.created_at < age_cutoff else STALE
+            if TaskService.kill_and_announce(
+                    task.id, reason,
+                    tenant_id=tenant.id, customer_id=task.customer_id):
+                reaped += 1
 
     if reaped:
         logger.info("Reaped %d stale tasks", reaped)
