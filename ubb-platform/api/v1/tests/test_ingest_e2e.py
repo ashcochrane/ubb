@@ -34,7 +34,7 @@ from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.metering.usage.tasks import settle_raw_events
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.tasks import process_single_event
-from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
+from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
 
 from api.v1.tests.test_ingest_endpoint import IngestEndpointTestBase
 

@@ -5,10 +5,8 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
-from apps.platform.runs.services import RunService
+from apps.platform.tasks.services import TaskService
 from apps.billing.wallets.models import Wallet
-from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.metering.pricing.models import TenantMarkup
 from apps.metering.pricing.services import markup_cache
 from apps.metering.pricing.services.markup_cache import MarkupCache
@@ -283,27 +281,32 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
-class MeteringRunEndpointTest(TestCase):
+class MeteringTaskEndpointTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Run Tenant",
+            name="Task Tenant",
             products=["metering"],
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
-        )
-        BillingTenantConfig.objects.create(
-            tenant=self.tenant,
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_run_met"
+            tenant=self.tenant, external_id="cust_task_met"
         )
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    def _task(self, tenant=None, customer=None, balance=20_000_000,
+              limit=None, floor=None):
+        # One-rule (#37): the tenant-level run-era knobs are gone — limits are
+        # passed explicitly at task creation (as billing pre-check does).
+        return TaskService.create_task(
+            tenant or self.tenant, customer or self.customer,
+            balance_snapshot_micros=balance,
+            provider_cost_limit_micros=limit,
+            floor_snapshot_micros=floor,
+            billing_owner_id=(customer or self.customer).id,
+        )
 
     def _record(self, **extra):
         data = {
@@ -321,112 +324,136 @@ class MeteringRunEndpointTest(TestCase):
         )
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_with_run_id_success(self, mock_process):
-        run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
-        )
-        resp = self._record(run_id=str(run.id))
+    def test_record_usage_with_task_id_success(self, mock_process):
+        task = self._task()
+        resp = self._record(task_id=str(task.id))
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["run_id"], str(run.id))
-        self.assertEqual(body["run_total_cost_micros"], 1_000_000)
-        self.assertFalse(body["hard_stop"])
+        self.assertEqual(body["task_id"], str(task.id))
+        self.assertEqual(body["task_total_billed_cost_micros"], 1_000_000)
+        self.assertEqual(body["task_total_provider_cost_micros"], 1_000_000)
+        self.assertFalse(body["stop"])
+        self.assertNotIn("hard_stop", body)
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_hard_stop_returns_429(self, mock_process):
-        run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000,
-            cost_limit_micros=10_000_000, hard_stop_balance_micros=-5_000_000,
-        )
+    def test_record_usage_tipping_event_returns_200_and_kills_task(self, mock_process):
+        """One-rule (#37): the 429 hard-stop is retired — the tipping event
+        answers 200, LANDS, and the stop verdict rides the body while the
+        server kills the task."""
+        from apps.metering.usage.models import UsageEvent
+        from apps.platform.events.models import OutboxEvent
+
+        task = self._task(limit=10_000_000, floor=-5_000_000)
         # First event under limit
         resp = self._record(
-            run_id=str(run.id),
+            task_id=str(task.id),
             request_id="req_hs1",
             idempotency_key="idem_hs1",
             provider_cost_micros=9_000_000,
         )
         self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.json()["stop"])
 
-        # Second event breaches 10M ceiling
+        # Second event pushes the PROVIDER total past the 10M ceiling — still 200.
         resp = self._record(
-            run_id=str(run.id),
+            task_id=str(task.id),
             request_id="req_hs2",
             idempotency_key="idem_hs2",
             provider_cost_micros=2_000_000,
         )
-        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertTrue(body["hard_stop"])
-        self.assertEqual(body["reason"], "cost_limit_exceeded")
-        self.assertEqual(body["run_id"], str(run.id))
+        self.assertTrue(body["stop"])
+        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["stop_scope"], "task")
+        self.assertEqual(body["task_total_provider_cost_micros"], 11_000_000)
 
-        # Run should be killed
-        run.refresh_from_db()
-        self.assertEqual(run.status, "killed")
+        # The tipping event landed; the task is killed; the signal fired once.
+        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 2)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.metadata.get("kill_reason"), "task_limit")
+        self.assertEqual(task.total_provider_cost_micros, 11_000_000)
+        self.assertEqual(OutboxEvent.objects.filter(
+            event_type="task.limit_exceeded").count(), 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_stopped_run_returns_409(self, mock_process):
-        run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
-        )
-        RunService.kill_run(run.id)
+    def test_record_usage_killed_task_returns_200_task_not_active(self, mock_process):
+        """One-rule (#37): the 409 run_not_active is retired — an event for a
+        killed task answers 200, lands, bills, and counts; the body carries
+        the task_not_active verdict."""
+        from apps.metering.usage.models import UsageEvent
 
-        resp = self._record(run_id=str(run.id))
-        self.assertEqual(resp.status_code, 409)
+        task = self._task()
+        TaskService.kill_task(task.id)
+
+        resp = self._record(task_id=str(task.id))
+        self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["error"], "run_not_active")
+        self.assertTrue(body["stop"])
+        self.assertEqual(body["stop_reason"], "task_not_active")
+        self.assertEqual(body["stop_scope"], "task")
+
+        # Landed and counted into both totals.
+        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 1)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.total_billed_cost_micros, 1_000_000)
+        self.assertEqual(task.total_provider_cost_micros, 1_000_000)
+        self.assertEqual(task.event_count, 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_close_run_success(self, mock_process):
-        run = RunService.create_run(
-            self.tenant, self.customer, balance_snapshot_micros=20_000_000
-        )
+    def test_close_task_success(self, mock_process):
+        task = self._task()
         # Record some usage first
-        self._record(run_id=str(run.id))
+        self._record(task_id=str(task.id))
 
         resp = self.http_client.post(
-            f"/api/v1/metering/runs/{run.id}/close",
+            f"/api/v1/metering/tasks/{task.id}/close",
             content_type="application/json",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["run_id"], str(run.id))
+        self.assertEqual(body["task_id"], str(task.id))
         self.assertEqual(body["status"], "completed")
-        self.assertEqual(body["total_cost_micros"], 1_000_000)
+        self.assertEqual(body["total_billed_cost_micros"], 1_000_000)
+        self.assertEqual(body["total_provider_cost_micros"], 1_000_000)
         self.assertEqual(body["event_count"], 1)
 
-    def test_close_run_not_found_returns_404(self):
+    def test_close_task_not_found_returns_404(self):
         import uuid
         resp = self.http_client.post(
-            f"/api/v1/metering/runs/{uuid.uuid4()}/close",
+            f"/api/v1/metering/tasks/{uuid.uuid4()}/close",
             content_type="application/json",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 404)
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_cross_tenant_run_id_is_404_and_not_mutated(self, mock_process):
+    def test_record_usage_cross_tenant_task_id_is_404_and_not_mutated(self, mock_process):
         other_tenant = Tenant.objects.create(name="Victim", products=["metering"])
         other_customer = Customer.objects.create(tenant=other_tenant, external_id="victim_c")
-        victim_run = RunService.create_run(other_tenant, other_customer, balance_snapshot_micros=20_000_000)
-        resp = self._record(run_id=str(victim_run.id), request_id="req_idor1", idempotency_key="idem_idor1")
+        victim_task = self._task(tenant=other_tenant, customer=other_customer)
+        resp = self._record(task_id=str(victim_task.id), request_id="req_idor1", idempotency_key="idem_idor1")
         self.assertEqual(resp.status_code, 404)
-        victim_run.refresh_from_db()
-        self.assertEqual(victim_run.total_cost_micros, 0)
-        self.assertEqual(victim_run.event_count, 0)
-        self.assertEqual(victim_run.status, "active")
+        victim_task.refresh_from_db()
+        self.assertEqual(victim_task.total_billed_cost_micros, 0)
+        self.assertEqual(victim_task.total_provider_cost_micros, 0)
+        self.assertEqual(victim_task.event_count, 0)
+        self.assertEqual(victim_task.status, "active")
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_record_usage_cross_customer_same_tenant_run_id_is_404(self, mock_process):
+    def test_record_usage_cross_customer_same_tenant_task_id_is_404(self, mock_process):
         cust_b = Customer.objects.create(tenant=self.tenant, external_id="cust_b")
-        run_b = RunService.create_run(self.tenant, cust_b, balance_snapshot_micros=20_000_000)
-        resp = self._record(run_id=str(run_b.id), request_id="req_idor2", idempotency_key="idem_idor2")
+        task_b = self._task(customer=cust_b)
+        resp = self._record(task_id=str(task_b.id), request_id="req_idor2", idempotency_key="idem_idor2")
         self.assertEqual(resp.status_code, 404)
-        run_b.refresh_from_db()
-        self.assertEqual(run_b.total_cost_micros, 0)
-        self.assertEqual(run_b.event_count, 0)
-        self.assertEqual(run_b.status, "active")
+        task_b.refresh_from_db()
+        self.assertEqual(task_b.total_billed_cost_micros, 0)
+        self.assertEqual(task_b.total_provider_cost_micros, 0)
+        self.assertEqual(task_b.event_count, 0)
+        self.assertEqual(task_b.status, "active")
 
 
 class MeteringUsageAnalyticsEndpointTest(TestCase):

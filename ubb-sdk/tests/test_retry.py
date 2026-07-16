@@ -3,7 +3,7 @@ import unittest
 
 from ubb.exceptions import (
     UBBAPIError, UBBAuthError, UBBConnectionError, UBBConflictError,
-    UBBHardStopError, UBBRunNotActiveError, UBBValidationError,
+    UBBValidationError,
 )
 from unittest.mock import patch, MagicMock
 from ubb.retry import is_retryable, backoff_delay, request_with_retry
@@ -18,14 +18,6 @@ class TestRetryAfterAttribute(unittest.TestCase):
         err = UBBAPIError(429, "rate limited")
         err.retry_after = 1.5
         self.assertEqual(err.retry_after, 1.5)
-
-    def test_hard_stop_error_has_retry_after_none(self):
-        err = UBBHardStopError("run_1", "cost_exceeded", 100000)
-        self.assertIsNone(err.retry_after)
-
-    def test_run_not_active_error_has_retry_after_none(self):
-        err = UBBRunNotActiveError("run_1", "killed")
-        self.assertIsNone(err.retry_after)
 
 
 class TestIsRetryable(unittest.TestCase):
@@ -49,13 +41,13 @@ class TestIsRetryable(unittest.TestCase):
         err = UBBAPIError(504, "gateway timeout")
         self.assertTrue(is_retryable(err))
 
-    def test_hard_stop_error_not_retryable(self):
-        err = UBBHardStopError("run_1", "cost_exceeded", 100000)
-        self.assertFalse(is_retryable(err))
-
-    def test_run_not_active_error_not_retryable(self):
-        err = UBBRunNotActiveError("run_1", "killed")
-        self.assertFalse(is_retryable(err))
+    def test_no_domain_error_carve_outs_429_always_retryable(self):
+        """One-rule contract: usage reports never answer 429 for a spend
+        verdict, so a 429 is plain rate limiting — always retryable, no
+        domain-error special cases."""
+        err = UBBAPIError(429, "rate limited")
+        err.retry_after = 2.0
+        self.assertTrue(is_retryable(err))
 
     def test_auth_error_not_retryable(self):
         err = UBBAuthError("bad key")
@@ -171,18 +163,6 @@ class TestRequestWithRetry(unittest.TestCase):
         request_with_retry(fn, max_retries=3)
         mock_sleep.assert_called_once_with(2.5)
 
-    def test_no_retry_on_hard_stop(self):
-        fn = MagicMock(side_effect=UBBHardStopError("r1", "cost", 100))
-        with self.assertRaises(UBBHardStopError):
-            request_with_retry(fn, max_retries=3)
-        fn.assert_called_once()
-
-    def test_no_retry_on_run_not_active(self):
-        fn = MagicMock(side_effect=UBBRunNotActiveError("r1", "killed"))
-        with self.assertRaises(UBBRunNotActiveError):
-            request_with_retry(fn, max_retries=3)
-        fn.assert_called_once()
-
     def test_no_retry_on_400(self):
         fn = MagicMock(side_effect=UBBAPIError(400, "bad request"))
         with self.assertRaises(UBBAPIError):
@@ -258,18 +238,22 @@ class TestClientRetryIntegration(unittest.TestCase):
             self.assertEqual(mock_get.call_count, 2)
         client.close()
 
-    def test_metering_request_usage_no_retry_on_hard_stop(self):
+    @patch("ubb.retry.time.sleep")
+    def test_metering_usage_429_retried_via_generic_path(self, mock_sleep):
+        """The usage endpoint has NO special request handler anymore — a 429
+        goes through the same generic retry path as every other endpoint."""
         from ubb.metering import MeteringClient
-        client = MeteringClient("ubb_live_test", max_retries=3)
+        client = MeteringClient("ubb_live_test", max_retries=2)
         with patch.object(client._http, "post") as mock_post:
-            mock_post.return_value = MagicMock(
-                status_code=429,
-                json=lambda: {"hard_stop": True, "run_id": "r1",
-                              "reason": "cost", "total_cost_micros": 100},
-            )
-            with self.assertRaises(UBBHardStopError):
-                client._request_usage("post", "/api/v1/metering/usage", json={})
-            mock_post.assert_called_once()
+            resp_fail = MagicMock(status_code=429, text="rate limited")
+            resp_fail.json.return_value = {"error": "rate limited"}
+            resp_fail.headers = {}
+            resp_ok = MagicMock(status_code=200)
+            resp_ok.json.return_value = {"event_id": "evt_1"}
+            mock_post.side_effect = [resp_fail, resp_ok]
+            r = client._request("post", "/api/v1/metering/usage", json={})
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(r.json()["event_id"], "evt_1")
         client.close()
 
     @patch("ubb.retry.time.sleep")
@@ -373,7 +357,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
         client = MeteringClient("ubb_live_test", max_retries=2)
         with patch.object(client._http, "post") as mock_post:
             resp_fail = MagicMock(status_code=429, text="rate limited")
-            resp_fail.json.return_value = {"error": "rate limited"}  # no hard_stop
+            resp_fail.json.return_value = {"error": "rate limited"}
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {"event_id": "evt_1",
@@ -387,20 +371,24 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             mock_sleep.assert_called_once()
         client.close()
 
-    def test_record_usage_hard_stop_429_raises_after_one_call(self):
+    @patch("ubb.retry.time.sleep")
+    def test_record_usage_persistent_429_exhausts_retries_then_raises(self, mock_sleep):
+        """A 429 on record_usage is plain rate limiting: retried like any
+        other endpoint, and surfaced as a generic UBBAPIError once retries
+        are exhausted (idempotency keys make every replay safe)."""
         from ubb.metering import MeteringClient
-        client = MeteringClient("ubb_live_test", max_retries=3)
+        client = MeteringClient("ubb_live_test", max_retries=2)
         with patch.object(client._http, "post") as mock_post:
-            resp = MagicMock(status_code=429)
-            resp.json.return_value = {"hard_stop": True, "run_id": "run_1",
-                                      "reason": "cost_exceeded",
-                                      "total_cost_micros": 100}
+            resp = MagicMock(status_code=429, text="rate limited")
+            resp.json.return_value = {"error": "rate limited"}
+            resp.headers = {}
             mock_post.return_value = resp
-            with self.assertRaises(UBBHardStopError):
+            with self.assertRaises(UBBAPIError) as ctx:
                 client.record_usage(customer_id="c1", request_id="r1",
                                     idempotency_key="i1",
-                                    provider_cost_micros=10, run_id="run_1")
-            mock_post.assert_called_once()
+                                    provider_cost_micros=10, task_id="task_1")
+            self.assertEqual(ctx.exception.status_code, 429)
+            self.assertEqual(mock_post.call_count, 3)  # 1 + 2 retries
         client.close()
 
     def test_ubb_client_max_retries_0_propagates_to_all_clients(self):

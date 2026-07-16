@@ -22,7 +22,7 @@ from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, Usag
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tasks import MAX_SETTLE_ATTEMPTS, settle_raw_events
 from apps.platform.events.models import OutboxEvent
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 
 from api.v1.tests.test_ingest_endpoint import IngestEndpointTestBase
 
@@ -34,7 +34,7 @@ class SettlementTestBase(IngestEndpointTestBase):
     def _raw(self, **overrides):
         base = dict(
             tenant=self.tenant, customer=self.customer,
-            billing_owner_id=self.customer.id, run_id=None,
+            billing_owner_id=self.customer.id, task_id=None,
             idempotency_key="k1", payload={"request_id": "r1"},
             estimate_micros=0, estimate_exact=False, held=True,
             status="pending",
@@ -116,8 +116,7 @@ class DuplicateSettleTest(SettlementTestBase):
                   "provider_cost_micros": 0}
 
         acquire_ingest_holds(owner_id, self.tenant,
-                            [{"estimate_micros": 500_000, "run_id": None,
-                              "run_cap_micros": None, "run_seed_micros": 0}])
+                            [{"estimate_micros": 500_000}])
         raw1 = self._raw(idempotency_key="dup-key", payload=payload,
                         estimate_micros=500_000, held=True)
         self.assertEqual(UsageService.settle_raw(raw1), "settled")
@@ -125,8 +124,7 @@ class DuplicateSettleTest(SettlementTestBase):
         self.assertEqual(balance_after_first, self.wallet.balance_micros - 500_000)
 
         acquire_ingest_holds(owner_id, self.tenant,
-                            [{"estimate_micros": 500_000, "run_id": None,
-                              "run_cap_micros": None, "run_seed_micros": 0}])
+                            [{"estimate_micros": 500_000}])
         self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
                         balance_after_first - 500_000)
         raw2 = self._raw(idempotency_key="dup-key", payload=payload,
@@ -144,29 +142,74 @@ class DuplicateSettleTest(SettlementTestBase):
         self.assertEqual(LiveLedgerService.read_prepaid(owner_id), balance_after_first)
 
 
-class SettleAfterRunKillTest(SettlementTestBase):
-    """(c) A settle landing after the run was killed must still record true
-    cost against the run's total, and must never raise."""
+class SettleAfterTaskKillTest(SettlementTestBase):
+    """(c) A settle landing after the task was killed must still record true
+    costs into BOTH totals, and must never raise. One-rule (#37): settle now
+    also drives the kill flow — but only on a CROSSING verdict; a dead task
+    yields the task_not_active verdict, so no task.limit_exceeded is emitted
+    here."""
 
     def test_settle_after_kill_records_cost_no_exception(self):
-        run = Run.objects.create(
+        task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
             balance_snapshot_micros=20_000_000, billing_owner_id=self.customer.id)
-        resp = self._post([self._event(run_id=str(run.id), billed_cost_micros=500_000)])
+        resp = self._post([self._event(task_id=str(task.id), billed_cost_micros=500_000)])
         self.assertEqual(resp.status_code, 200)
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
 
-        Run.objects.filter(id=run.id).update(status="killed")
+        Task.objects.filter(id=task.id).update(status="killed")
 
         result = UsageService.settle_raw(raw)  # must not raise
         self.assertEqual(result, "settled")
 
-        run.refresh_from_db()
-        self.assertEqual(run.status, "killed")             # untouched
-        self.assertEqual(run.total_cost_micros, 500_000)   # true cost still recorded
-        self.assertEqual(run.event_count, 1)
-        self.assertIsNotNone(run.last_event_at)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")                    # untouched
+        self.assertEqual(task.total_billed_cost_micros, 500_000)   # true cost still recorded
+        self.assertEqual(task.event_count, 1)
+        self.assertIsNotNone(task.last_event_at)
+        # A dead task is a task_not_active verdict, never a crossing — no
+        # kill re-announcement.
+        self.assertEqual(OutboxEvent.objects.filter(
+            event_type="task.limit_exceeded").count(), 0)
+
+
+class SettleKillParityTest(SettlementTestBase):
+    """One-rule (#37) async kill parity: a raw whose EXACT provider cost
+    crosses the task's provider_cost_limit_micros gets the task killed at
+    settle, with exactly one task.limit_exceeded outbox row — the same
+    idempotent kill flow the sync path runs."""
+
+    def test_settle_crossing_kills_task_and_emits_exactly_one_event(self):
+        task = Task.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000,
+            provider_cost_limit_micros=1_000_000,
+            billing_owner_id=self.customer.id)
+        resp = self._post([self._event(task_id=str(task.id),
+                                       billed_cost_micros=500_000,
+                                       provider_cost_micros=2_000_000)])
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["results"][0]["accepted"])  # accept never kills
+        task.refresh_from_db()
+        self.assertEqual(task.status, "active")
+
+        raw = RawIngestEvent.objects.get()
+        result = UsageService.settle_raw(raw)
+        self.assertEqual(result, "settled")
+
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.metadata.get("kill_reason"), "task_limit")
+        self.assertEqual(task.total_provider_cost_micros, 2_000_000)
+        self.assertEqual(task.total_billed_cost_micros, 500_000)
+        events = OutboxEvent.objects.filter(event_type="task.limit_exceeded")
+        self.assertEqual(events.count(), 1)
+        payload = events.get().payload
+        self.assertEqual(payload["reason"], "task_limit")
+        self.assertEqual(payload["task_id"], str(task.id))
+        self.assertEqual(payload["total_provider_cost_micros"], 2_000_000)
+        self.assertEqual(payload["provider_cost_limit_micros"], 1_000_000)
 
 
 class PoisonEventTest(SettlementTestBase):
@@ -179,8 +222,7 @@ class PoisonEventTest(SettlementTestBase):
         self.tenant.save(update_fields=["require_cost_card_coverage"])
         owner_id = self.customer.id
         acquire_ingest_holds(owner_id, self.tenant,
-                            [{"estimate_micros": 250_000, "run_id": None,
-                              "run_cap_micros": None, "run_seed_micros": 0}])
+                            [{"estimate_micros": 250_000}])
         balance_after_hold = LiveLedgerService.read_prepaid(owner_id)
         self.assertEqual(balance_after_hold, self.wallet.balance_micros - 250_000)
 
@@ -231,8 +273,7 @@ class OrphanHoldUnheldBranchTest(SettlementTestBase):
         # live counter) but — by construction — no RawIngestEvent for it ever
         # exists (the process died before the durable append).
         acquire_ingest_holds(owner_id, self.tenant,
-                            [{"estimate_micros": 5_000_000, "run_id": None,
-                              "run_cap_micros": None, "run_seed_micros": 0}])
+                            [{"estimate_micros": 5_000_000}])
         self.assertEqual(LiveLedgerService.read_prepaid(owner_id), 45_000_000)
 
         # The RETRY's raw: the idem key was already SET by the crashed
@@ -335,16 +376,14 @@ class DuplicateRaceExactlyOnceReleaseTest(SettlementTestBase):
                    "provider_cost_micros": 0}
 
         acquire_ingest_holds(owner_id, self.tenant,
-                             [{"estimate_micros": 500_000, "run_id": None,
-                               "run_cap_micros": None, "run_seed_micros": 0}])
+                             [{"estimate_micros": 500_000}])
         raw1 = self._raw(idempotency_key="race-key", payload=payload,
                          estimate_micros=500_000, held=True)
         self.assertEqual(UsageService.settle_raw(raw1), "settled")
         balance_after_first = LiveLedgerService.read_prepaid(owner_id)
 
         acquire_ingest_holds(owner_id, self.tenant,
-                             [{"estimate_micros": 500_000, "run_id": None,
-                               "run_cap_micros": None, "run_seed_micros": 0}])
+                             [{"estimate_micros": 500_000}])
         raw2 = self._raw(idempotency_key="race-key", payload=payload,
                          estimate_micros=500_000, held=True)
         self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
@@ -363,7 +402,7 @@ class DuplicateRaceExactlyOnceReleaseTest(SettlementTestBase):
                 # settle_raw_events invocation would have done.
                 RawIngestEvent.objects.filter(
                     id=raw2.id, status="pending").update(status="duplicate")
-                release_ingest_hold(owner_id, self.tenant, None, 500_000)
+                release_ingest_hold(owner_id, self.tenant, 500_000)
             return real_sfu(*args, **kwargs)
 
         with patch.object(RawIngestEvent.objects, "select_for_update",
@@ -391,8 +430,7 @@ class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
         from apps.billing.queries import release_ingest_hold
         owner_id = self.customer.id
         acquire_ingest_holds(owner_id, self.tenant,
-                             [{"estimate_micros": 250_000, "run_id": None,
-                               "run_cap_micros": None, "run_seed_micros": 0}])
+                             [{"estimate_micros": 250_000}])
         raw = self._raw(idempotency_key="poison-race-key",
                         payload={"request_id": "r1"},
                         estimate_micros=250_000, held=True)
@@ -412,7 +450,7 @@ class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
                 RawIngestEvent.objects.filter(
                     id=raw.id, status="pending").update(
                         status="failed", attempts=MAX_SETTLE_ATTEMPTS)
-                release_ingest_hold(owner_id, self.tenant, None, 250_000)
+                release_ingest_hold(owner_id, self.tenant, 250_000)
             return real_sfu(*args, **kwargs)
 
         with patch.object(UsageService, "settle_raw",

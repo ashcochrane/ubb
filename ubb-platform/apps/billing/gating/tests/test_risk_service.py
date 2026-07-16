@@ -1,7 +1,7 @@
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -84,9 +84,9 @@ class RiskServiceTest(TestCase):
         self.assertTrue(result["allowed"])
         self.assertEqual(result["balance_micros"], 0)
 
-    def test_check_returns_null_run_id_by_default(self):
+    def test_check_returns_null_task_id_by_default(self):
         result = RiskService.check(self.customer)
-        self.assertIsNone(result["run_id"])
+        self.assertIsNone(result["task_id"])
 
 
 class RiskServiceRedisFailureTest(TestCase):
@@ -104,7 +104,7 @@ class RiskServiceRedisFailureTest(TestCase):
         self.assertTrue(result["allowed"])
 
 
-class RiskServiceRunTest(TestCase):
+class RiskServiceTaskTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(
@@ -113,56 +113,113 @@ class RiskServiceRunTest(TestCase):
         RiskConfig.objects.create(tenant=self.tenant)
         BillingTenantConfig.objects.create(
             tenant=self.tenant,
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
+            default_task_floor_snapshot_micros=-5_000_000,
         )
 
-    def test_check_with_create_run_returns_run_id(self):
+    def _enable_coverage(self):
+        # The tenant-config API requires an active cost rate card to flip
+        # this; tests set the model field directly (per the #37 brief).
+        self.tenant.require_cost_card_coverage = True
+        self.tenant.save(update_fields=["require_cost_card_coverage"])
+
+    def test_check_with_create_task_returns_task_id(self):
+        # No explicit limit and no RiskConfig default -> uncapped task; the
+        # floor snapshot comes from the tenant billing config.
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(self.customer, create_run=True)
+        result = RiskService.check(self.customer, create_task=True)
         self.assertTrue(result["allowed"])
-        self.assertIsNotNone(result["run_id"])
-        self.assertEqual(result["cost_limit_micros"], 10_000_000)
-        self.assertEqual(result["hard_stop_balance_micros"], -5_000_000)
+        self.assertIsNotNone(result["task_id"])
+        self.assertIsNone(result["provider_cost_limit_micros"])
+        self.assertEqual(result["floor_snapshot_micros"], -5_000_000)
 
-        # Verify Run was created in DB
-        run = Run.objects.get(id=result["run_id"])
-        self.assertEqual(run.status, "active")
-        self.assertEqual(run.balance_snapshot_micros, 20_000_000)
-        self.assertEqual(run.customer_id, self.customer.id)
+        # Verify the Task was created in DB
+        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(task.status, "active")
+        self.assertEqual(task.balance_snapshot_micros, 20_000_000)
+        self.assertEqual(task.customer_id, self.customer.id)
+        self.assertIsNone(task.provider_cost_limit_micros)
+        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
-    def test_check_denied_does_not_create_run(self):
-        Wallet.objects.create(customer=self.customer, balance_micros=-6_000_000)
-        result = RiskService.check(self.customer, create_run=True)
+    def test_explicit_limit_refused_without_coverage(self):
+        # A resolved non-null COGS limit with require_cost_card_coverage off
+        # is refused at the gate — no task is created.
+        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
+        result = RiskService.check(
+            self.customer, create_task=True,
+            provider_cost_limit_micros=10_000_000,
+        )
         self.assertFalse(result["allowed"])
-        self.assertIsNone(result["run_id"])
-        self.assertEqual(Run.objects.count(), 0)
+        self.assertEqual(result["reason"], "cost_coverage_required")
+        self.assertIsNone(result["task_id"])
+        self.assertEqual(Task.objects.count(), 0)
 
-    def test_check_without_create_run_returns_null_run_id(self):
+    def test_default_limit_refused_without_coverage(self):
+        # The tenant-default limit resolves non-null too — same refusal.
+        config = self.tenant.risk_config
+        config.default_task_provider_cost_limit_micros = 7_000_000
+        config.save(update_fields=["default_task_provider_cost_limit_micros"])
+        result = RiskService.check(self.customer, create_task=True)
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["reason"], "cost_coverage_required")
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_explicit_limit_with_coverage_creates_limited_task(self):
+        self._enable_coverage()
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(self.customer, create_run=False)
+        result = RiskService.check(
+            self.customer, create_task=True,
+            provider_cost_limit_micros=10_000_000,
+        )
         self.assertTrue(result["allowed"])
-        self.assertIsNone(result["run_id"])
-        self.assertEqual(Run.objects.count(), 0)
+        self.assertEqual(result["provider_cost_limit_micros"], 10_000_000)
+        self.assertEqual(result["floor_snapshot_micros"], -5_000_000)
+        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
+        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
-    def test_check_create_run_with_metadata_and_external_id(self):
+    def test_tenant_default_limit_applies_when_no_explicit_limit(self):
+        self._enable_coverage()
+        config = self.tenant.risk_config
+        config.default_task_provider_cost_limit_micros = 7_000_000
+        config.save(update_fields=["default_task_provider_cost_limit_micros"])
+        result = RiskService.check(self.customer, create_task=True)
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["provider_cost_limit_micros"], 7_000_000)
+        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(task.provider_cost_limit_micros, 7_000_000)
+
+    def test_check_denied_does_not_create_task(self):
+        Wallet.objects.create(customer=self.customer, balance_micros=-6_000_000)
+        result = RiskService.check(self.customer, create_task=True)
+        self.assertFalse(result["allowed"])
+        self.assertIsNone(result["task_id"])
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_check_without_create_task_returns_null_task_id(self):
+        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
+        result = RiskService.check(self.customer, create_task=False)
+        self.assertTrue(result["allowed"])
+        self.assertIsNone(result["task_id"])
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_check_create_task_with_metadata_and_external_id(self):
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
         result = RiskService.check(
             self.customer,
-            create_run=True,
-            run_metadata={"workflow": "search"},
-            external_run_id="ext-abc",
+            create_task=True,
+            task_metadata={"workflow": "search"},
+            external_task_id="ext-abc",
         )
-        run = Run.objects.get(id=result["run_id"])
-        self.assertEqual(run.metadata, {"workflow": "search"})
-        self.assertEqual(run.external_run_id, "ext-abc")
+        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(task.metadata, {"workflow": "search"})
+        self.assertEqual(task.external_task_id, "ext-abc")
 
-    def test_check_create_run_no_wallet_snapshots_zero(self):
+    def test_check_create_task_no_wallet_snapshots_zero(self):
         # No wallet created — balance defaults to 0
-        result = RiskService.check(self.customer, create_run=True)
+        result = RiskService.check(self.customer, create_task=True)
         self.assertTrue(result["allowed"])
-        run = Run.objects.get(id=result["run_id"])
-        self.assertEqual(run.balance_snapshot_micros, 0)
+        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(task.balance_snapshot_micros, 0)
 
 
 import pytest

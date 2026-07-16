@@ -1,11 +1,17 @@
-"""Task 4: HoldService — the atomic accept-time gate (Lua holds + Redis
-per-run cap) for the async ingest path.
+"""Task 4: HoldService — the atomic accept-time hold (Lua) for the async
+ingest path.
 
 HoldService reuses the Tier-2 live-ledger keys/semantics
 (live_ledger_service.py) — the SAME owner-keyed prepaid balance / postpaid
 spend counter and cooperative customer-wide stop flag that the synchronous
 record_usage_debit path maintains. A hold taken here is visible to (and
 raced against) the synchronous path through the identical Redis keys.
+
+One-rule (#37): acquire ALWAYS holds — nothing on this path ever rejects an
+item. Per-item verdicts carry only {held, stop, stop_reason, stop_scope};
+the retired accept-time per-unit cap lane (ubb:runcost:* keys, the
+check-then-increment reject branch) is gone, so unit-limit detection lives at
+settle (UsageService.settle_raw), never here.
 
 Money-gate concurrency correctness is the whole point of this module, so
 test_concurrent_holds_at_floor_race drives 20 REAL threads against REAL
@@ -34,10 +40,10 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture(autouse=True)
 def _flush_redis_keys():
     # Same idiom as the other Tier-2 gating tests (test_live_ledger.py etc):
-    # cache.clear() FLUSHDBs the dedicated test Redis db (15 — see root
+    # cache.clear() FLUSHDBs the dedicated test Redis db (see root
     # conftest.py), which also wipes the raw ubb:livebal:*/livespend:*/
-    # runcost:*/stop:* keys written via _client() (a separate raw connection
-    # to the SAME db — not routed through django's cache API/prefixing).
+    # stop:* keys written via _client() (a separate raw connection to the
+    # SAME db — not routed through django's cache API/prefixing).
     cache.clear()
     yield
     cache.clear()
@@ -67,9 +73,8 @@ def postpaid_owner(enforced_postpaid_tenant):
     return Customer.objects.create(tenant=enforced_postpaid_tenant, external_id="powner1")
 
 
-def _item(est, run_id=None, cap=None, seed=0):
-    return {"estimate_micros": est, "run_id": run_id,
-            "run_cap_micros": cap, "run_seed_micros": seed}
+def _item(est, effective_at=None):
+    return {"estimate_micros": est, "effective_at": effective_at}
 
 
 def test_hold_decrements_live_balance(enforced_prepaid_tenant, funded_owner):
@@ -87,11 +92,25 @@ def test_floor_crossing_sets_stop_but_holds(enforced_prepaid_tenant, funded_owne
     assert out[0]["stop_scope"] == "customer"
 
 
+def test_acquire_never_rejects_far_beyond_balance(enforced_prepaid_tenant, funded_owner):
+    # One-rule (#37) replacement pin for the retired accept-time cap lane:
+    # an item FAR beyond any balance is still held — the verdict dict has no
+    # rejected/reason keys at all; the crossing surfaces only via the
+    # cooperative stop fields.
+    out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
+                              [_item(999_000_000_000)])
+    assert out[0]["held"] is True
+    assert set(out[0]) == {"held", "stop", "stop_reason", "stop_scope"}
+    assert out[0]["stop"] is True
+    assert out[0]["stop_scope"] == "customer"
+    assert LiveLedgerService.read_prepaid(funded_owner.id) == 20_000_000 - 999_000_000_000
+
+
 # ---- Task 7: stop propagation (pub/sub + stop.fired outbox event) --------
 
 def _raw_client():
     # Same idiom as test_card_cache.py: a separate raw connection to the
-    # SAME test Redis db (15) that _client() inside the services uses.
+    # SAME test Redis db that _client() inside the services uses.
     return redis.from_url(settings.REDIS_URL)
 
 
@@ -193,82 +212,36 @@ def test_publish_failure_does_not_raise_into_acquire(enforced_prepaid_tenant, fu
     assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
 
 
-def test_run_cap_rejects_without_touching_balance(enforced_prepaid_tenant, funded_owner):
-    out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                              [_item(600_000, run_id="r1", cap=500_000)])
-    assert out[0]["rejected"] and out[0]["reason"] == "cost_limit_exceeded"
-    assert LiveLedgerService.read_prepaid(funded_owner.id) in (None, 20_000_000)
-
-
-def test_run_cap_accepts_up_to_cap_then_rejects(enforced_prepaid_tenant, funded_owner):
-    out1 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                               [_item(400_000, run_id="r1", cap=500_000)])
-    assert out1[0]["held"] and not out1[0]["rejected"]
-    # 400k + 200k = 600k > 500k cap -> reject; balance already moved for the
-    # FIRST item must be untouched by this second, rejected item.
-    out2 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                               [_item(200_000, run_id="r1", cap=500_000)])
-    assert out2[0]["rejected"]
-    assert LiveLedgerService.read_prepaid(funded_owner.id) == 20_000_000 - 400_000
-
-
 def test_settle_delta_credits_overhold(enforced_prepaid_tenant, funded_owner):
     HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(2_500_000)])
-    HoldService.settle(funded_owner.id, enforced_prepaid_tenant, None,
-                       delta_micros=300_000)   # exact was 2_200_000
+    HoldService.settle(funded_owner.id, enforced_prepaid_tenant, 300_000)  # exact was 2_200_000
     assert LiveLedgerService.read_prepaid(funded_owner.id) == 17_800_000
 
 
 def test_settle_negative_delta_debits_further(enforced_prepaid_tenant, funded_owner):
     HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(2_500_000)])
     # exact turned out HIGHER than the estimate -> delta is negative.
-    HoldService.settle(funded_owner.id, enforced_prepaid_tenant, None,
-                       delta_micros=-100_000)
+    HoldService.settle(funded_owner.id, enforced_prepaid_tenant, -100_000)
     assert LiveLedgerService.read_prepaid(funded_owner.id) == 17_400_000
 
 
 def test_release_fully_credits_back(enforced_prepaid_tenant, funded_owner):
     HoldService.acquire(funded_owner.id, enforced_prepaid_tenant, [_item(5_000_000)])
     assert LiveLedgerService.read_prepaid(funded_owner.id) == 15_000_000
-    HoldService.release(funded_owner.id, enforced_prepaid_tenant, None, 5_000_000)
+    HoldService.release(funded_owner.id, enforced_prepaid_tenant, 5_000_000)
     assert LiveLedgerService.read_prepaid(funded_owner.id) == 20_000_000
-
-
-def test_settle_credits_back_run_cost_counter_unblocking_further_holds(
-        enforced_prepaid_tenant, funded_owner):
-    out1 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                               [_item(400_000, run_id="r1", cap=500_000)])
-    assert out1[0]["held"]
-    out2 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                               [_item(200_000, run_id="r1", cap=500_000)])
-    assert out2[0]["rejected"]
-    # Full credit-back of the first hold's estimate -> run-cost counter drops
-    # back to 0, so a subsequent hold under the cap succeeds again.
-    HoldService.settle(funded_owner.id, enforced_prepaid_tenant, "r1", delta_micros=400_000)
-    out3 = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                               [_item(200_000, run_id="r1", cap=500_000)])
-    assert out3[0]["held"]
 
 
 def test_postpaid_incr_increases_spend_not_decreases(enforced_postpaid_tenant, postpaid_owner):
     """Regression pin for the sign-handling note in the task brief: the
     postpaid path must INCREASE the live spend counter by the estimate, never
-    decrease it (a naive DECRBY-of-negative implementation that leaks its sign
-    into the run-cap increment would get this backwards)."""
+    decrease it (a naive DECRBY-of-negative implementation would get this
+    backwards)."""
     out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(4_000_000)])
     assert out[0]["held"]
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 4_000_000
     HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(1_000_000)])
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 5_000_000
-
-
-def test_postpaid_run_cap_uses_positive_estimate(enforced_postpaid_tenant, postpaid_owner):
-    """The run-cap counter must accumulate the POSITIVE estimate even in
-    postpaid mode — not the signed value used for the spend counter move."""
-    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant,
-                              [_item(600_000, run_id="rp1", cap=500_000)])
-    assert out[0]["rejected"] and out[0]["reason"] == "cost_limit_exceeded"
-    assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
 
 
 def test_postpaid_settle_delta_lowers_live_spend(enforced_postpaid_tenant, postpaid_owner):
@@ -279,16 +252,14 @@ def test_postpaid_settle_delta_lowers_live_spend(enforced_postpaid_tenant, postp
     can never lower it back)."""
     HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(2_500_000)])
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_500_000
-    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
-                       delta_micros=300_000)   # exact was 2_200_000
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, 300_000)  # exact was 2_200_000
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_200_000
 
 
 def test_postpaid_settle_negative_delta_raises_live_spend(enforced_postpaid_tenant, postpaid_owner):
     HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(2_500_000)])
     # exact came in HIGHER than the estimate -> delta negative -> spend rises.
-    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
-                       delta_micros=-100_000)
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, -100_000)
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_600_000
 
 
@@ -298,7 +269,7 @@ def test_postpaid_release_restores_live_spend(enforced_postpaid_tenant, postpaid
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 5_000_000
     # Full release of the second hold (duplicate/failed append) -> back to
     # the pre-hold value.
-    HoldService.release(postpaid_owner.id, enforced_postpaid_tenant, None, 1_000_000)
+    HoldService.release(postpaid_owner.id, enforced_postpaid_tenant, 1_000_000)
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 4_000_000
 
 
@@ -320,22 +291,14 @@ def _prior_month_instant():
     return now.replace(day=1) - timedelta(days=1)
 
 
-def test_postpaid_prior_month_acquire_skips_livespend_but_keeps_run_cap(
+def test_postpaid_prior_month_acquire_skips_livespend(
         enforced_postpaid_tenant, postpaid_owner):
     """A batch item backdated to a PRIOR calendar month must not move the
-    live spend counter (I9 parity with record_usage_debit) but its run-cap
-    check-then-increment must still be enforced."""
-    prior = _prior_month_instant()
-    item1 = _item(4_000_000, run_id="rp1", cap=5_000_000)
-    item1["effective_at"] = prior
-    out1 = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item1])
-    assert out1[0]["held"] is True
-    assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
-
-    item2 = _item(2_000_000, run_id="rp1", cap=5_000_000)
-    item2["effective_at"] = prior
-    out2 = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item2])
-    assert out2[0]["rejected"] and out2[0]["reason"] == "cost_limit_exceeded"
+    live spend counter (I9 parity with record_usage_debit) — it is still
+    held."""
+    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant,
+                              [_item(4_000_000, effective_at=_prior_month_instant())])
+    assert out[0]["held"] is True
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) is None
 
 
@@ -343,9 +306,8 @@ def test_postpaid_current_month_acquire_unaffected_by_prior_month_guard(
         enforced_postpaid_tenant, postpaid_owner):
     """Regression: an item with no effective_at (or a current-month one)
     must move the live spend counter exactly as before the I9 fix."""
-    item = _item(4_000_000)
-    item["effective_at"] = None
-    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [item])
+    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant,
+                              [_item(4_000_000, effective_at=None)])
     assert out[0]["held"] is True
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 4_000_000
 
@@ -358,8 +320,8 @@ def test_postpaid_settle_of_prior_month_event_skips_livespend_adjustment(
     HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(3_000_000)])
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 3_000_000
 
-    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None,
-                       delta_micros=500_000, effective_at=_prior_month_instant())
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, 500_000,
+                       effective_at=_prior_month_instant())
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 3_000_000  # unchanged
 
 
@@ -368,7 +330,7 @@ def test_postpaid_settle_of_current_month_event_unaffected_by_the_guard(
     """Regression: a settle with NO effective_at (or a current-month one)
     still adjusts the live spend counter exactly as before."""
     HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(3_000_000)])
-    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, None, delta_micros=500_000)
+    HoldService.settle(postpaid_owner.id, enforced_postpaid_tenant, 500_000)
     assert LiveLedgerService.read_postpaid(postpaid_owner.id) == 2_500_000
 
 
@@ -376,7 +338,7 @@ def test_enforcement_off_is_noop_fail_open(funded_owner):
     off_tenant = Tenant.objects.create(name="Off", products=["metering", "billing"],
                                        billing_mode="prepaid", enforcement_mode="off")
     out = HoldService.acquire(funded_owner.id, off_tenant, [_item(999_000_000)])
-    assert out[0]["held"] and not out[0]["rejected"] and not out[0]["stop"]
+    assert out[0]["held"] and not out[0]["stop"]
     assert LiveLedgerService.read_prepaid(funded_owner.id) is None
 
 
@@ -388,9 +350,9 @@ def test_fail_open_on_redis_error_holds_every_item(enforced_prepaid_tenant, fund
 
     monkeypatch.setattr(hs_mod, "_client", _boom)
     out = HoldService.acquire(funded_owner.id, enforced_prepaid_tenant,
-                              [_item(1_000_000), _item(2_000_000, run_id="r1", cap=1)])
+                              [_item(1_000_000), _item(2_000_000)])
     assert len(out) == 2
-    assert all(o["held"] and not o["rejected"] and not o["stop"] for o in out)
+    assert all(o["held"] and not o["stop"] for o in out)
 
 
 # ---- Final-review fix batch #3: threshold hoisted out of the per-item loop

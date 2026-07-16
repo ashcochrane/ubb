@@ -5,12 +5,12 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
-from apps.platform.runs.services import RunService
-from apps.platform.runs.tasks import close_abandoned_runs
+from apps.platform.tasks.models import Task
+from apps.platform.tasks.services import TaskService
+from apps.platform.tasks.tasks import close_abandoned_tasks
 
 
-class CloseAbandonedRunsTest(TestCase):
+class CloseAbandonedTasksTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", products=["metering", "billing"]
@@ -19,64 +19,64 @@ class CloseAbandonedRunsTest(TestCase):
             tenant=self.tenant, external_id="cust-1"
         )
 
-    def _create_stale_run(self, **kwargs):
-        run = RunService.create_run(
+    def _create_stale_task(self, **kwargs):
+        task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=10_000_000, **kwargs
         )
         # Backdate created_at to make it stale (>1 hour old)
-        Run.objects.filter(id=run.id).update(
+        Task.objects.filter(id=task.id).update(
             created_at=timezone.now() - timedelta(hours=2)
         )
-        return run
+        return task
 
-    def test_close_abandoned_runs_closes_stale(self):
-        run = self._create_stale_run()
-        closed = close_abandoned_runs()
+    def test_close_abandoned_tasks_closes_stale(self):
+        task = self._create_stale_task()
+        closed = close_abandoned_tasks()
         self.assertEqual(closed, 1)
 
-        run.refresh_from_db()
-        self.assertEqual(run.status, "completed")
-        self.assertIsNotNone(run.completed_at)
-        self.assertTrue(run.metadata.get("auto_closed"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "completed")
+        self.assertIsNotNone(task.completed_at)
+        self.assertTrue(task.metadata.get("auto_closed"))
 
-    def test_close_abandoned_runs_skips_recent(self):
-        run = RunService.create_run(
+    def test_close_abandoned_tasks_skips_recent(self):
+        task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=10_000_000
         )
-        closed = close_abandoned_runs()
+        closed = close_abandoned_tasks()
         self.assertEqual(closed, 0)
 
-        run.refresh_from_db()
-        self.assertEqual(run.status, "active")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "active")
 
-    def test_close_abandoned_runs_skips_already_closed(self):
-        run = self._create_stale_run()
-        RunService.complete_run(run.id)
+    def test_close_abandoned_tasks_skips_already_closed(self):
+        task = self._create_stale_task()
+        TaskService.complete_task(task.id)
 
-        closed = close_abandoned_runs()
+        closed = close_abandoned_tasks()
         self.assertEqual(closed, 0)
 
-        run.refresh_from_db()
-        self.assertEqual(run.status, "completed")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "completed")
 
-    def test_close_abandoned_runs_skips_killed(self):
-        run = self._create_stale_run()
-        RunService.kill_run(run.id)
+    def test_close_abandoned_tasks_skips_killed(self):
+        task = self._create_stale_task()
+        TaskService.kill_task(task.id)
 
-        closed = close_abandoned_runs()
+        closed = close_abandoned_tasks()
         self.assertEqual(closed, 0)
 
-        run.refresh_from_db()
-        self.assertEqual(run.status, "killed")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")
 
-    def test_close_abandoned_runs_multiple(self):
-        self._create_stale_run()
-        self._create_stale_run()
-        # One recent run should not be closed
-        RunService.create_run(
+    def test_close_abandoned_tasks_multiple(self):
+        self._create_stale_task()
+        self._create_stale_task()
+        # One recent task should not be closed
+        TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=10_000_000
         )
 
-        closed = close_abandoned_runs()
+        closed = close_abandoned_tasks()
         self.assertEqual(closed, 2)
-        self.assertEqual(Run.objects.filter(status="active").count(), 1)
+        self.assertEqual(Task.objects.filter(status="active").count(), 1)

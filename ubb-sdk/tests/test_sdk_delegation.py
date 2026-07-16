@@ -98,7 +98,8 @@ class TestMeteringDelegationRequiresMetering:
         result = self.client.pre_check("cust1")
         assert result.allowed is True
         self.client.billing.pre_check.assert_called_once_with(
-            "cust1", start_run=False, run_metadata=None, external_run_id="",
+            "cust1", start_task=False, task_metadata=None, external_task_id="",
+            provider_cost_limit_micros=None,
         )
 
     def test_get_usage_requires_metering(self):
@@ -174,12 +175,14 @@ class TestMeteringDelegation:
             "cust1", "r1", "i1",
             usage_metrics={"tokens": 1000},
             recorded_at="2026-06-01T00:00:00Z",
+            task_id="task_1",
             raise_on_stop=True,
         )
         assert result is sentinel
         _, kwargs = self.client.metering.record_usage.call_args
         assert kwargs["usage_metrics"] == {"tokens": 1000}
         assert kwargs["recorded_at"] == "2026-06-01T00:00:00Z"
+        assert kwargs["task_id"] == "task_1"
         assert kwargs["raise_on_stop"] is True
 
 
@@ -299,7 +302,8 @@ class TestPreCheckWithoutEventType:
         })
         result = client.pre_check(customer_id="cust1")
         client.billing.pre_check.assert_called_once_with(
-            "cust1", start_run=False, run_metadata=None, external_run_id="",
+            "cust1", start_task=False, task_metadata=None, external_task_id="",
+            provider_cost_limit_micros=None,
         )
         assert result.allowed is True
         assert result.balance_micros == 5_000_000

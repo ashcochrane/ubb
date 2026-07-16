@@ -321,6 +321,61 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(res.provider_cost_micros, 2000)
         self.assertEqual(res.uncosted_metrics, ["foo"])
 
+    # ---- record_usage with task_id (one-rule task attribution) ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_task_id_on_wire_and_totals_parsed(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_t1", "suspended": False,
+            "task_id": "task_1", "parent_task_id": None,
+            "task_total_billed_cost_micros": 750_000,
+            "task_total_provider_cost_micros": 500_000,
+            "stop": False, "stop_reason": None, "stop_scope": None,
+        })
+        result = self.client.record_usage(
+            customer_id="cust_1", request_id="rt1", idempotency_key="it1",
+            provider_cost_micros=500_000, task_id="task_1",
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["task_id"], "task_1")
+        self.assertEqual(result.task_id, "task_1")
+        self.assertIsNone(result.parent_task_id)
+        self.assertEqual(result.task_total_billed_cost_micros, 750_000)
+        self.assertEqual(result.task_total_provider_cost_micros, 500_000)
+        self.assertFalse(result.stop)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_omitted_task_id_not_in_body(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_t2", "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="rt2", idempotency_key="it2",
+            provider_cost_micros=1,
+        )
+        self.assertNotIn("task_id", mock_post.call_args.kwargs["json"])
+
+    # ---- close_task ----
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_close_task_url_and_result(self, mock_post):
+        from ubb.types import CloseTaskResult
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "task_id": "task_1", "status": "completed",
+            "total_billed_cost_micros": 2_500_000,
+            "total_provider_cost_micros": 1_750_000,
+            "event_count": 12,
+        })
+        result = self.client.close_task("task_1")
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/metering/tasks/task_1/close")
+        self.assertIsInstance(result, CloseTaskResult)
+        self.assertEqual(result.task_id, "task_1")
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.total_billed_cost_micros, 2_500_000)
+        self.assertEqual(result.total_provider_cost_micros, 1_750_000)
+        self.assertEqual(result.event_count, 12)
+
     # ---- rate-card URL correctness ----
 
     @patch("ubb.metering.httpx.Client.post")

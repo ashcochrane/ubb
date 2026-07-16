@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 BATCH_URL = "/api/v1/metering/usage/batch"
@@ -111,12 +111,12 @@ class TestBatchBasics:
                                       "detail": "Customer not found"}
         assert resp["results"][1]["ok"] is True
 
-    def test_unknown_run_not_found(self):
+    def test_unknown_task_not_found(self):
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
-            _item(c, 1, run_id=str(uuid.uuid4()))]}).json()
+            _item(c, 1, task_id=str(uuid.uuid4()))]}).json()
         assert resp["results"][0] == {"ok": False, "error": "not_found",
-                                      "detail": "Run not found"}
+                                      "detail": "Task not found"}
 
     def test_mixed_effective_at_errors_isolated(self):
         t, c, http, auth = _setup()
@@ -152,85 +152,105 @@ class TestBatchBasics:
 
 
 @pytest.mark.django_db
-class TestBatchHardStopEquivalence:
-    def _run(self, t, c, limit=1_000):
-        return Run.objects.create(tenant=t, customer=c, status="active",
-                                  balance_snapshot_micros=10_000_000,
-                                  cost_limit_micros=limit)
+class TestBatchOneRuleParity:
+    """One-rule (#37): items that once returned ok=False hard_stop /
+    run_not_active now return ok=True with the stop-verdict fields — the
+    batch CONTINUES, and every item lands, bills, and counts."""
 
-    def _items(self, c, run, n0=1):
+    def _task(self, t, c, limit=1_000):
+        return Task.objects.create(tenant=t, customer=c, status="active",
+                                   balance_snapshot_micros=10_000_000,
+                                   provider_cost_limit_micros=limit,
+                                   billing_owner_id=c.id)
+
+    def _items(self, c, task, n0=1):
         return [
             {"customer_id": str(c.id), "request_id": f"r{n0}",
-             "idempotency_key": f"k{n0}", "billed_cost_micros": 600,
-             "run_id": str(run.id)},
+             "idempotency_key": f"k{n0}", "provider_cost_micros": 600,
+             "task_id": str(task.id)},
             {"customer_id": str(c.id), "request_id": f"r{n0+1}",
-             "idempotency_key": f"k{n0+1}", "billed_cost_micros": 600,
-             "run_id": str(run.id)},  # 1200 > 1000 → hard stop
+             "idempotency_key": f"k{n0+1}", "provider_cost_micros": 600,
+             "task_id": str(task.id)},  # 1200 > 1000 → task_limit crossing
             {"customer_id": str(c.id), "request_id": f"r{n0+2}",
-             "idempotency_key": f"k{n0+2}", "billed_cost_micros": 100,
-             "run_id": str(run.id)},  # run now killed → run_not_active
+             "idempotency_key": f"k{n0+2}", "provider_cost_micros": 100,
+             "task_id": str(task.id)},  # task now killed → task_not_active
         ]
 
-    def test_hard_stop_kills_run_then_continues(self):
+    def test_tipping_item_kills_task_and_batch_continues(self):
         t, c, http, auth = _setup()
-        run = self._run(t, c)
-        resp = _post(http, auth, BATCH_URL, {"events": self._items(c, run)}).json()
+        task = self._task(t, c)
+        resp = _post(http, auth, BATCH_URL, {"events": self._items(c, task)}).json()
         r1, r2, r3 = resp["results"]
         assert r1["ok"] is True
-        assert r2 == {"ok": False, "error": "hard_stop_exceeded",
-                      "reason": "cost_limit_exceeded", "run_id": str(run.id),
-                      "total_cost_micros": 1_200, "hard_stop": True}
-        assert r3 == {"ok": False, "error": "run_not_active",
-                      "run_id": str(run.id), "status": "killed"}
-        run.refresh_from_db()
-        assert run.status == "killed"
-        assert run.total_cost_micros == 600  # only item 1 accumulated
-        assert resp["succeeded"] == 1 and resp["failed"] == 2
+        assert r1["stop"] is False
+        # The tipping item answers ok=True with the stop verdict riding it.
+        assert r2["ok"] is True
+        assert r2["stop"] is True
+        assert r2["stop_reason"] == "task_limit"
+        assert r2["stop_scope"] == "task"
+        assert r2["task_total_provider_cost_micros"] == 1_200
+        # A later item on the killed task still LANDS, with task_not_active.
+        assert r3["ok"] is True
+        assert r3["stop"] is True
+        assert r3["stop_reason"] == "task_not_active"
+        assert r3["stop_scope"] == "task"
+        assert resp["succeeded"] == 3 and resp["failed"] == 0
 
-    def test_kill_run_failure_does_not_500_batch(self):
-        """F4.2 review Fix 5: a kill_run crash is contained — the item still
-        reports hard_stop_exceeded and LATER items are processed. NOTE: the
-        failed kill leaves the run ACTIVE, so the later item SUCCEEDS instead
-        of run_not_active — the run.kill_failed log is the operator signal."""
+        # Every item landed and counted into BOTH totals.
+        assert UsageEvent.objects.filter(tenant=t).count() == 3
+        task.refresh_from_db()
+        assert task.status == "killed"
+        assert task.metadata.get("kill_reason") == "task_limit"
+        assert task.total_provider_cost_micros == 1_300
+        assert task.total_billed_cost_micros == 1_300
+        assert task.event_count == 3
+
+    def test_kill_failure_does_not_500_batch(self):
+        """A kill_task crash is contained by kill_and_announce (it swallows
+        and logs task.kill_failed) — the batch still answers 200 with ok=True
+        items and every event lands. The failed kill leaves the task ACTIVE,
+        so later items keep re-reporting the task_limit crossing (the next
+        event's verdict retries the kill)."""
         from unittest import mock
         t, c, http, auth = _setup()
-        run = self._run(t, c)
-        with mock.patch("apps.platform.runs.services.RunService.kill_run",
+        task = self._task(t, c)
+        with mock.patch("apps.platform.tasks.services.TaskService.kill_task",
                         side_effect=RuntimeError("kill boom")) as kill:
-            resp = _post(http, auth, BATCH_URL, {"events": self._items(c, run)})
+            resp = _post(http, auth, BATCH_URL, {"events": self._items(c, task)})
         assert resp.status_code == 200  # never a 500
         body = resp.json()
         r1, r2, r3 = body["results"]
-        assert r1["ok"] is True
-        assert r2 == {"ok": False, "error": "hard_stop_exceeded",
-                      "reason": "cost_limit_exceeded", "run_id": str(run.id),
-                      "total_cost_micros": 1_200, "hard_stop": True}
-        kill.assert_called_once()
-        # The run was never killed -> item 3 (100 micros, 600+100 <= 1000)
-        # is PROCESSED and succeeds.
+        assert r1["ok"] is True and r1["stop"] is False
+        assert r2["ok"] is True
+        assert r2["stop_reason"] == "task_limit"
+        assert kill.called
+        # The task was never killed -> item 3 still lands; its provider total
+        # (1300) remains past the limit, so the crossing verdict repeats.
         assert r3["ok"] is True
-        run.refresh_from_db()
-        assert run.status == "active"
-        assert body["succeeded"] == 2 and body["failed"] == 1
+        assert r3["stop_reason"] == "task_limit"
+        task.refresh_from_db()
+        assert task.status == "active"
+        assert task.event_count == 3
+        assert body["succeeded"] == 3 and body["failed"] == 0
 
     def test_byte_equivalent_to_sequential_singles(self):
         """The batch per-item bodies equal the single endpoint's bodies for the
-        identical scenario (modulo the 'ok' marker and the run/customer ids)."""
+        identical scenario (modulo the 'ok' marker and the task/event ids)."""
         t, c, http, auth = _setup()
         c2 = Customer.objects.create(tenant=t, external_id="cust2")
-        run_b = self._run(t, c)
-        run_s = self._run(t, c2)
+        task_b = self._task(t, c)
+        task_s = self._task(t, c2)
 
         batch = _post(http, auth, BATCH_URL,
-                      {"events": self._items(c, run_b)}).json()
+                      {"events": self._items(c, task_b)}).json()
         single_bodies = []
-        for item in self._items(c2, run_s, n0=10):
+        for item in self._items(c2, task_s, n0=10):
             single_bodies.append(_post(http, auth, SINGLE_URL, item).json())
 
         def normalize(d):
             d = {k: v for k, v in d.items() if k not in ("ok",)}
-            if d.get("run_id"):
-                d["run_id"] = "RUN"
+            if d.get("task_id"):
+                d["task_id"] = "TASK"
             if d.get("event_id"):
                 d["event_id"] = "EVT"
             return d
