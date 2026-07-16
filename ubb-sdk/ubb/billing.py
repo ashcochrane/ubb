@@ -150,16 +150,19 @@ class BillingClient:
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/balance")
         return BalanceResult(**r.json())
 
-    def pre_check(self, customer_id: str, start_run: bool = False,
-                  run_metadata: dict | None = None, external_run_id: str = "") -> dict:
+    def pre_check(self, customer_id: str, start_task: bool = False,
+                  task_metadata: dict | None = None, external_task_id: str = "",
+                  provider_cost_limit_micros: int | None = None) -> dict:
         """Pre-check billing via POST /api/v1/billing/pre-check."""
         body: dict = {"customer_id": customer_id}
-        if start_run:
-            body["start_run"] = True
-        if run_metadata:
-            body["run_metadata"] = run_metadata
-        if external_run_id:
-            body["external_run_id"] = external_run_id
+        if start_task:
+            body["start_task"] = True
+        if task_metadata:
+            body["task_metadata"] = task_metadata
+        if external_task_id:
+            body["external_task_id"] = external_task_id
+        if provider_cost_limit_micros is not None:
+            body["provider_cost_limit_micros"] = provider_cost_limit_micros
         r = self._request("post", "/api/v1/billing/pre-check", json=body)
         return r.json()
 

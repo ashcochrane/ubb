@@ -1,5 +1,5 @@
-"""F4.2 caller timestamps: bounds matrix, historical pricing, tier-month
-interplay, closed-period guard, dirty-period markers, outbox payload."""
+"""F4.2 caller timestamps: bounds matrix, historical pricing, closed-period
+guard, dirty-period markers, outbox payload."""
 import json
 from datetime import timedelta
 
@@ -9,8 +9,7 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
-from apps.metering.pricing.models import PricingPeriodCounter, Rate
-from apps.metering.pricing.services.tier_counter_service import month_bounds
+from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
 from apps.metering.usage.services.usage_service import (
@@ -19,11 +18,7 @@ from apps.metering.usage.services.usage_service import (
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
-
-TIERS = [
-    {"up_to": 100, "rate_per_unit_micros": 10, "unit_quantity": 1},
-    {"up_to": None, "rate_per_unit_micros": 5, "unit_quantity": 1},
-]
+from core.time_windows import month_bounds
 
 
 def _setup(**tenant_kwargs):
@@ -192,27 +187,6 @@ class TestHistoricalPricing:
         r_new = UsageService.record_usage(
             t, c, "r2", "k2", usage_metrics={"tok": 100})
         assert r_new["billed_cost_micros"] == 5_000  # 100 @ v2's 50
-
-    def test_backdated_tiered_event_advances_last_months_counter(self):
-        """Tier interplay: a backfill into LAST month advances LAST month's
-        PricingPeriodCounter (month from as_of), never this month's."""
-        t, c = _setup()
-        card = rate_in_default_book(t, card_type="price", metric_name="tok",
-            pricing_model="graduated", tiers=TIERS)
-        Rate.objects.filter(id=card.id).update(
-            valid_from=timezone.now() - timedelta(days=70))
-        eff = _prior_month_eff()
-        prior_start, _ = month_bounds(eff)
-        cur_start, _ = month_bounds(timezone.now())
-
-        r = UsageService.record_usage(t, c, "r1", "k1",
-                                      usage_metrics={"tok": 60}, effective_at=eff)
-        assert r["billed_cost_micros"] == 600  # 60 @ 10, fresh prior-month ladder
-        counter = PricingPeriodCounter.objects.get(
-            lineage_id=card.lineage_id, period_start=prior_start)
-        assert counter.units_total == 60
-        assert not PricingPeriodCounter.objects.filter(
-            lineage_id=card.lineage_id, period_start=cur_start).exists()
 
 
 @pytest.mark.django_db

@@ -29,36 +29,24 @@ class UBBConflictError(UBBAPIError):
     def __init__(self, detail: str = ""):
         super().__init__(409, detail)
 
-class UBBHardStopError(UBBAPIError):
-    """429 Hard stop exceeded — run has been killed."""
-    def __init__(self, run_id: str, reason: str, total_cost_micros: int, detail: str = ""):
-        self.run_id = run_id
-        self.reason = reason
-        self.total_cost_micros = total_cost_micros
-        super().__init__(429, detail or f"Hard stop: {reason}")
+class UBBStoppedError(UBBError):
+    """A stop verdict rode a success response (one-rule contract).
 
-class UBBCustomerStoppedError(UBBError):
-    """Tier-2 customer-wide cooperative spend stop on a 200 response.
-
-    Raised by record_usage(..., raise_on_stop=True) when the customer crossed
-    their wallet floor / budget cap. The event WAS recorded and charged (unlike
-    UBBHardStopError's 429); this signals the caller to halt the customer's runs
-    at the next safe boundary. Default record_usage behavior is NOT to raise —
-    read result.stop instead (opt into raising for an exception-driven loop)."""
+    Raised by record_usage(..., raise_on_stop=True) when the ack carries
+    ``stop=True`` — a task crossed its provider-cost limit or floor snapshot
+    (scope "task"), an event landed on a non-active task, or the customer
+    crossed their wallet floor / budget cap (scope "customer"). The event WAS
+    recorded and charged either way — a stop is a signal, never a refusal;
+    this tells the caller to stop sending work for the named scope. Default
+    record_usage behavior is NOT to raise — read result.stop instead (opt
+    into raising for an exception-driven loop)."""
     def __init__(self, reason: str | None = None, scope: str | None = None,
-                 run_id: str | None = None):
+                 task_id: str | None = None):
         self.reason = reason
         self.scope = scope
-        self.run_id = run_id
-        super().__init__(f"Customer stopped: {reason or 'spend limit reached'}")
-
-
-class UBBRunNotActiveError(UBBAPIError):
-    """409 Run is not active (already killed or completed)."""
-    def __init__(self, run_id: str, status: str, detail: str = ""):
-        self.run_id = run_id
-        self.run_status = status
-        super().__init__(409, detail or f"Run {run_id} is {status}")
+        self.task_id = task_id
+        super().__init__(f"Stopped ({scope or 'unknown scope'}): "
+                         f"{reason or 'spend limit reached'}")
 
 class UBBWebhookVerificationError(UBBError):
     """Webhook signature verification failed.

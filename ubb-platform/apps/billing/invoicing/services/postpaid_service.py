@@ -148,8 +148,8 @@ class PostpaidUsageService:
                 # ms-wide guard-read→commit race, or a closed-period-predicate
                 # hole — is permanently excluded from these lines. Recompute
                 # the live aggregate and page on mismatch. Alert-only, never
-                # mutate (the verify_tier_rerate precedent): the frozen lines
-                # are what bills; the log is the operator's signal.
+                # mutate: the frozen lines are what bills; the log is the
+                # operator's signal.
                 live_total, _ = PostpaidUsageService.aggregate_lines(
                     tenant, customer, period_start, period_end)
                 if live_total != total:

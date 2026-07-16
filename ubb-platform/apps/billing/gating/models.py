@@ -7,11 +7,11 @@ class RiskConfig(BaseModel):
     max_requests_per_minute = models.IntegerField(default=60)
     max_concurrent_requests = models.IntegerField(default=10)
     gate_fail_closed = models.BooleanField(default=False)
-    # Tier-2 P4 (D12): tenant-wide per-task cost ceiling (billed micros, current
-    # calendar month, summed across all runs sharing a task_id). NULL/<=0 = no
-    # per-task cap. Enforced only in enforcement_mode="enforcing" — a breach is
-    # a 429 hard stop (HardStopExceeded reason=task_limit_exceeded).
-    max_cost_per_task_micros = models.BigIntegerField(null=True, blank=True)
+    # One-rule (#37): tenant default for Task.provider_cost_limit_micros —
+    # COGS-denominated (what the job burns), applied at the start-gate when a
+    # start call names no explicit limit. NULL = no default: absent both, the
+    # task is uncapped and no signal ever fires.
+    default_task_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_risk_config"

@@ -117,6 +117,42 @@ class BillingClientTest(unittest.TestCase):
         self.assertFalse(result["allowed"])
         self.assertEqual(result["reason"], "insufficient_funds")
 
+    @patch("ubb.billing.httpx.Client.post")
+    def test_pre_check_start_task_sends_task_keys(self, mock_post):
+        """The start-gate wire body uses the task vocabulary: start_task,
+        task_metadata, external_task_id, provider_cost_limit_micros; the
+        response carries task_id + the resolved limit and floor snapshot."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "allowed": True, "reason": None, "balance_micros": 10_000_000,
+            "task_id": "task_1", "provider_cost_limit_micros": 5_000_000,
+            "floor_snapshot_micros": 1_000_000,
+        })
+        result = self.client.pre_check(
+            customer_id="cust_1", start_task=True,
+            task_metadata={"job": "batch"}, external_task_id="ext-1",
+            provider_cost_limit_micros=5_000_000,
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertTrue(body["start_task"])
+        self.assertEqual(body["task_metadata"], {"job": "batch"})
+        self.assertEqual(body["external_task_id"], "ext-1")
+        self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
+        self.assertEqual(result["task_id"], "task_1")
+        self.assertEqual(result["provider_cost_limit_micros"], 5_000_000)
+        self.assertEqual(result["floor_snapshot_micros"], 1_000_000)
+
+    @patch("ubb.billing.httpx.Client.post")
+    def test_pre_check_omits_task_keys_when_not_starting(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "allowed": True, "reason": None, "balance_micros": 10_000_000,
+        })
+        self.client.pre_check(customer_id="cust_1")
+        body = mock_post.call_args.kwargs["json"]
+        self.assertNotIn("start_task", body)
+        self.assertNotIn("task_metadata", body)
+        self.assertNotIn("external_task_id", body)
+        self.assertNotIn("provider_cost_limit_micros", body)
+
     # ---- create_top_up ----
 
     @patch("ubb.billing.httpx.Client.post")

@@ -74,7 +74,8 @@ class TestPreCheckNoBilling(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.assertEqual(result.balance_micros, 10_000_000)
         client.billing.pre_check.assert_called_once_with(
-            "cust_1", start_run=False, run_metadata=None, external_run_id="",
+            "cust_1", start_task=False, task_metadata=None, external_task_id="",
+            provider_cost_limit_micros=None,
         )
         client.close()
 
@@ -99,7 +100,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         self.client.close()
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request_usage")
+    @patch.object(MeteringClient, "_request")
     def test_record_usage_delegates_to_metering_no_double_debit(self, mock_met_request, mock_bill_request):
         """record_usage delegates to metering only — wallet deduction is
         handled server-side via the billing outbox handler, NOT by the SDK."""
@@ -126,7 +127,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         # billing.debit must NOT be called — server handles deduction
         mock_bill_request.assert_not_called()
 
-    @patch.object(MeteringClient, "_request_usage")
+    @patch.object(MeteringClient, "_request")
     def test_record_usage_metering_only_no_debit_when_no_billing(self, mock_met_request):
         """When billing is not enabled, record_usage only calls metering."""
         client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
@@ -147,7 +148,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         client.close()
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request_usage")
+    @patch.object(MeteringClient, "_request")
     def test_record_usage_no_debit_when_billed_cost_is_zero(self, mock_met_request, mock_bill_request):
         """When billing is enabled but billed_cost is 0, no debit call."""
         mock_met_request.return_value = MagicMock(
@@ -166,7 +167,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         self.assertIsNone(result.balance_after_micros)
 
     @patch.object(BillingClient, "_request")
-    @patch.object(MeteringClient, "_request_usage")
+    @patch.object(MeteringClient, "_request")
     def test_record_usage_no_debit_when_billed_cost_is_none(self, mock_met_request, mock_bill_request):
         """When billing is enabled but billed_cost is None, no debit call."""
         mock_met_request.return_value = MagicMock(
@@ -229,6 +230,65 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         self.assertFalse(result.allowed)
         self.assertFalse(result.can_proceed)
         self.assertEqual(result.balance_micros, -6_000_000)
+
+    @patch.object(BillingClient, "_request")
+    def test_pre_check_start_task_threads_task_fields(self, mock_bill_request):
+        """start_task=True sends the task keys on the wire and threads the
+        created task's id/limit/floor back into PreCheckResult."""
+        mock_bill_request.return_value = MagicMock(
+            status_code=200, json=lambda: {
+                "allowed": True, "reason": None, "balance_micros": 10_000_000,
+                "task_id": "task_1",
+                "provider_cost_limit_micros": 5_000_000,
+                "floor_snapshot_micros": 1_000_000,
+            }
+        )
+        result = self.client.pre_check(
+            customer_id="cust_1", start_task=True,
+            task_metadata={"job": "batch-7"}, external_task_id="ext-7",
+            provider_cost_limit_micros=5_000_000,
+        )
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.task_id, "task_1")
+        self.assertEqual(result.provider_cost_limit_micros, 5_000_000)
+        self.assertEqual(result.floor_snapshot_micros, 1_000_000)
+        call = mock_bill_request.call_args
+        self.assertEqual(call.args[0], "post")
+        self.assertEqual(call.args[1], "/api/v1/billing/pre-check")
+        body = call.kwargs["json"]
+        self.assertTrue(body["start_task"])
+        self.assertEqual(body["task_metadata"], {"job": "batch-7"})
+        self.assertEqual(body["external_task_id"], "ext-7")
+        self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
+
+    @patch.object(BillingClient, "_request")
+    def test_start_task_convenience_wrapper(self, mock_bill_request):
+        """UBBClient.start_task is pre_check(start_task=True) with the same
+        task fields threaded through."""
+        mock_bill_request.return_value = MagicMock(
+            status_code=200, json=lambda: {
+                "allowed": True, "task_id": "task_2",
+                "provider_cost_limit_micros": 2_000_000,
+            }
+        )
+        result = self.client.start_task(
+            "cust_1", metadata={"k": "v"}, external_task_id="ext-2",
+            provider_cost_limit_micros=2_000_000,
+        )
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.task_id, "task_2")
+        self.assertEqual(result.provider_cost_limit_micros, 2_000_000)
+        body = mock_bill_request.call_args.kwargs["json"]
+        self.assertTrue(body["start_task"])
+        self.assertEqual(body["task_metadata"], {"k": "v"})
+        self.assertEqual(body["external_task_id"], "ext-2")
+
+    def test_start_task_requires_billing(self):
+        from ubb.exceptions import UBBError
+        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
+        with self.assertRaises(UBBError):
+            client.start_task("cust_1")
+        client.close()
 
     def test_pre_check_no_billing_trivially_allowed(self):
         """Without billing, pre_check returns trivially allowed."""

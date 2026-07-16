@@ -295,9 +295,10 @@ def pre_check(request, payload: PreCheckRequest):
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     result = RiskService.check(
         customer,
-        create_run=payload.start_run,
-        run_metadata=payload.run_metadata,
-        external_run_id=payload.external_run_id,
+        create_task=payload.start_task,
+        task_metadata=payload.task_metadata,
+        external_task_id=payload.external_task_id,
+        provider_cost_limit_micros=payload.provider_cost_limit_micros,
     )
     return result
 

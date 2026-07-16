@@ -5,7 +5,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 from apps.billing.wallets.models import Wallet
 from apps.billing.tenant_billing.models import BillingTenantConfig
 
@@ -669,23 +669,20 @@ class WithdrawOutboxEventTest(TestCase):
         self.assertEqual(events.count(), 0)
 
 
-class PreCheckRunTest(TestCase):
+class PreCheckTaskTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Run Tenant",
+            name="Task Tenant",
             products=["metering", "billing"],
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
         )
         BillingTenantConfig.objects.create(
             tenant=self.tenant,
-            run_cost_limit_micros=10_000_000,
-            hard_stop_balance_micros=-5_000_000,
+            default_task_floor_snapshot_micros=-5_000_000,
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_run_1"
+            tenant=self.tenant, external_id="cust_task_1"
         )
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=20_000_000
@@ -701,37 +698,70 @@ class PreCheckRunTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
 
-    def test_pre_check_start_run_returns_run_id(self):
-        resp = self._pre_check(start_run=True)
+    def test_pre_check_start_task_returns_task_id(self):
+        # Uncapped start (no provider_cost_limit_micros anywhere) — the
+        # coverage gate only fires for a RESOLVED limit, so no coverage
+        # setup is needed here. The floor snapshot comes from the tenant's
+        # BillingTenantConfig default.
+        resp = self._pre_check(start_task=True)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
-        self.assertIsNotNone(body["run_id"])
-        self.assertEqual(body["cost_limit_micros"], 10_000_000)
-        self.assertEqual(body["hard_stop_balance_micros"], -5_000_000)
+        self.assertIsNotNone(body["task_id"])
+        self.assertIsNone(body["provider_cost_limit_micros"])
+        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
 
-        # Run exists in DB
-        run = Run.objects.get(id=body["run_id"])
-        self.assertEqual(run.status, "active")
-        self.assertEqual(run.balance_snapshot_micros, 20_000_000)
+        # Task exists in DB
+        task = Task.objects.get(id=body["task_id"])
+        self.assertEqual(task.status, "active")
+        self.assertEqual(task.balance_snapshot_micros, 20_000_000)
+        self.assertIsNone(task.provider_cost_limit_micros)
+        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
-    def test_pre_check_start_run_denied_no_run_created(self):
-        self.wallet.balance_micros = -6_000_000
-        self.wallet.save()
-
-        resp = self._pre_check(start_run=True)
+    def test_pre_check_capped_start_refused_without_coverage(self):
+        # A COGS limit over uncovered events would silently count 0 — with
+        # require_cost_card_coverage off, a limited start is refused and no
+        # task is created (a start-gate refusal refuses work that hasn't
+        # happened, never a usage report).
+        resp = self._pre_check(start_task=True, provider_cost_limit_micros=10_000_000)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertFalse(body["allowed"])
-        self.assertIsNone(body["run_id"])
-        self.assertEqual(Run.objects.count(), 0)
+        self.assertEqual(body["reason"], "cost_coverage_required")
+        self.assertIsNone(body["task_id"])
+        self.assertEqual(Task.objects.count(), 0)
 
-    def test_pre_check_without_start_run_returns_null_run(self):
+    def test_pre_check_capped_start_with_coverage_snapshots_limit(self):
+        # Coverage on (set directly on the model — enabling it via the
+        # tenant-config API requires an active cost rate card).
+        self.tenant.require_cost_card_coverage = True
+        self.tenant.save(update_fields=["require_cost_card_coverage"])
+        resp = self._pre_check(start_task=True, provider_cost_limit_micros=10_000_000)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["allowed"])
+        self.assertEqual(body["provider_cost_limit_micros"], 10_000_000)
+        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
+        task = Task.objects.get(id=body["task_id"])
+        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
+
+    def test_pre_check_start_task_denied_no_task_created(self):
+        self.wallet.balance_micros = -6_000_000
+        self.wallet.save()
+
+        resp = self._pre_check(start_task=True)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertFalse(body["allowed"])
+        self.assertIsNone(body["task_id"])
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_pre_check_without_start_task_returns_null_task(self):
         resp = self._pre_check()
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
-        self.assertIsNone(body["run_id"])
+        self.assertIsNone(body["task_id"])
 
 
 class TopUpWithoutConnectorTest(TestCase):

@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     "apps.platform.tenants",
     "apps.platform.customers",
     "apps.platform.events",
-    "apps.platform.runs",
+    "apps.platform.tasks",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
@@ -204,12 +204,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.referrals.tasks.emit_referral_payouts_task",
         "schedule": crontab(minute=0, hour=4),  # Daily at 4 AM UTC
     },
-    "close-abandoned-runs": {
-        "task": "apps.platform.runs.tasks.close_abandoned_runs",
+    "close-abandoned-tasks": {
+        "task": "apps.platform.tasks.tasks.close_abandoned_tasks",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
-    "reap-stale-runs": {
-        "task": "apps.platform.runs.tasks.reap_stale_runs",
+    "reap-stale-tasks": {
+        "task": "apps.platform.tasks.tasks.reap_stale_tasks",
         "schedule": crontab(minute="*/5"),  # Tier-2 P5: every 5 minutes
     },
     "flush-api-key-last-used": {
@@ -256,11 +256,6 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-invoice-payment-status": {
         "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
         "schedule": crontab(minute=15),
-    },
-    "verify-tier-rerate": {
-        "task": "apps.metering.pricing.tasks.verify_tier_rerate",
-        # 1st 03:15 UTC — after the 1st 00:05 postpaid close of the same morning
-        "schedule": crontab(minute=15, hour=3, day_of_month=1),
     },
     "settle-raw-events": {
         "task": "apps.metering.usage.tasks.settle_raw_events",

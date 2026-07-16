@@ -14,10 +14,10 @@ Every stage is exercised for real, no mocks:
     -> REAL LiveLedgerService.reconcile_prepaid() MIN-merge.
 
 A single funded owner (prepaid, enforcing, metering_async, $20 wallet) is
-burned through the wallet floor via a REAL non-tiered ("per_unit") price
-card, $10 / 1,000,000 tokens — exact at every step (no tier-boundary
-estimate slop), so the estimate-then-settle nets-to-exact property (Task 3's
-invariant) can be pinned with EQUALITY, not just an inequality.
+burned through the wallet floor via a REAL "per_unit" price card,
+$10 / 1,000,000 tokens — exact at every step, so the estimate-then-settle
+nets-to-exact property (Task 3's invariant) can be pinned with EQUALITY,
+not just an inequality.
 
 Kept as ONE test method (the scenario is inherently sequential/stateful:
 batch -> settle -> batch -> settle -> reconcile -> replay) inside ONE test
@@ -34,7 +34,7 @@ from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.metering.usage.tasks import settle_raw_events
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.tasks import process_single_event
-from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
+from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
 
 from api.v1.tests.test_ingest_endpoint import IngestEndpointTestBase
 

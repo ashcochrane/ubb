@@ -38,14 +38,20 @@ Restoring the credit invariant after a dispute loss or Stripe refund by voiding/
 remainders.
 
 **Min balance (wallet floor)**:
-The negative-balance floor a wallet may reach before its owner is suspended.
-_Avoid_: "credit limit".
+The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
+signal. A signal point, not a wall — events past it still land and bill, and the balance keeps
+showing reality. (The paired resume signal and the second, soft floor arrive with the
+signal-ledger and soft-floor tickets.)
+_Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
+not the floor's meaning.
 
 ## Spend control
 
 **Start-gate (spend gate)**:
-The durable pre-run check — suspension, stop flag, rate/concurrency limits, affordability, budget —
-run before a Run is created. (`apps/billing/gating/services/risk_service.py`)
+The durable pre-start check — suspension, stop flag, rate/concurrency limits, affordability,
+budget, cost-card coverage — run before a Task is created. Refusing a start is legitimate under
+the one-rule model: it refuses work that hasn't happened, never a usage report.
+(`apps/billing/gating/services/risk_service.py`)
 
 **Live ledger (Tier-2 counter)**:
 The billing-owner-keyed Redis counter decremented synchronously at record time so the API response
@@ -54,7 +60,7 @@ can carry a real stop verdict; reconciled against the durable ledger.
 
 **Customer-wide stop flag**:
 The cooperative, owner-keyed flag set when the live counter crosses the wallet floor or budget cap;
-it blocks new runs until recovery.
+it blocks new task starts until recovery — usage reports keep landing and billing.
 
 **Enforcement mode**:
 `off` / `advisory` / `enforcing` — when `off`, spend control is a no-op and behavior is unchanged.
@@ -64,12 +70,26 @@ _Avoid_: a second enable flag — this is the single switch (mirrors the tenant'
 A per-tenant (optionally per-customer) monthly spend cap with alert levels.
 (`apps/billing/gating/models.py:BudgetConfig`)
 
-**Estimate-hold-settle**:
-The async-ingest accept-time reservation of an *estimated* cost on the live counter, later settled
-against the actual. (`apps/billing/gating/services/hold_service.py`)
+**Hold**:
+The arrival-time reservation of one async event's estimated price on the live ledger, taken
+*before* the event is durably appended; trued up at settle. Always holds, against the wallet only
+— task limits are detected at settle with exact costs.
+(`apps/billing/gating/services/hold_service.py`)
+_Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event from landing.
 
-**Task cost cap**:
-A tenant-wide per-task billed ceiling enforced across all runs sharing a `task_id`.
+**Crossing**:
+The instant a debit or hold pushes an owner's live counter past its threshold (wallet floor or
+budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
+
+**Orphan hold**:
+A hold whose event never durably landed (crash between the hold and the append); the live balance
+reads *lower* than reality — the safe direction — until credited, repaired, or expired. The
+MIN-merge reconcile cannot heal it (it only ever lowers).
+
+**Safe direction (over-restrictive)**:
+The invariant that every accidental fast-lane failure makes the live view stingier — balance lower,
+spend higher — never looser. The first-use seed window is the single deliberate exception.
+_Avoid_: "fail-open means unprotected" — the durable lane keeps recording and billing throughout.
 
 ## Auto top-up
 
@@ -134,4 +154,5 @@ _Avoid_: importing billing models from another product; go through `queries.py`/
 
 **Key events**:
 Consumes `usage.recorded` (drawdown); emits `balance_low` (→ auto-top-up), `balance_overage`,
-`customer_suspended`, `credit_grant_expired`, `budget.threshold_reached`, `stop.fired`.
+`customer_suspended`, `credit_grant_expired`, `budget.threshold_reached`, `stop.fired`. (The
+platform kernel emits `task.limit_exceeded` from the verdict-driven kill flow.)

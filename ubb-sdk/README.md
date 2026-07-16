@@ -168,38 +168,6 @@ for row in series["series"]:
     print(row["bucket"], row.get("dimension"), row["provider_cost_micros"])
 ```
 
-### 6. Tiered pricing (graduated + package price cards)
-
-Price cards (`card_type="price"`) support `pricing_model="graduated"` (a per-period
-ladder of rate bands) and `"package"` (per-block pricing, e.g. $5 per 1,000 calls,
-any partial block rounds up). Cost cards stay `per_unit`/`flat`.
-
-```python
-card = client.create_rate_card(
-    card_type="price",
-    metric_name="api_calls",
-    pricing_model="graduated",
-    tiers=[
-        # first 10,000 calls at $0.01/call, the rest at $0.005/call
-        {"up_to": 10_000, "rate_per_unit_micros": 10_000, "unit_quantity": 1},
-        {"up_to": None,   "rate_per_unit_micros": 5_000,  "unit_quantity": 1},
-    ],
-)
-```
-
-Each tier may also carry `flat_micros` (charged once, when the period's usage first
-enters that band). The last tier must have `up_to=None` (unbounded).
-
-> **Billed amounts are MARGINAL.** Every event is billed as the difference between the
-> period's cumulative charge before and after the event — so an event can legitimately
-> bill **0** inside an already-purchased package block, and the event that crosses a
-> graduated band boundary is billed across both bands. The sum of all event amounts in
-> a period is exact: it always equals the tier formula applied to the period total.
-
-`pricing_model="package"` uses the card's scalar fields instead of `tiers`:
-`rate_per_unit_micros` = price per block, `unit_quantity` = block size,
-`fixed_micros` = one-time period fee.
-
 ## Expiring credit grants (paid vs promo)
 
 Prepaid wallets support **credit grant lots** on top of the plain balance:
@@ -263,9 +231,8 @@ rounding in billing math.
 ## Key parameters
 
 - `card_type`: `"cost"` (COGS you pay the provider) or `"price"` (what you charge customers).
-- `pricing_model`: `"per_unit"` (rate × quantity / unit_quantity), `"flat"` (fixed charge per
-  event), `"graduated"` (per-period rate bands — price cards only), or `"package"`
-  (per-block, rounds up — price cards only).
+- `pricing_model`: `"per_unit"` (rate × quantity / unit_quantity) or `"flat"` (fixed charge per
+  event).
 - `unit_quantity`: the denominator — `1` means per-token; `1_000_000` means per-million-tokens.
 
 ## Retries
@@ -350,7 +317,7 @@ MeteringClient(api_key: str, base_url: str = "http://localhost:8001", timeout: f
 # create_rate_card  → RateCard
 client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
     dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
-    unit_quantity=1_000_000, fixed_micros=0, tiers=None, currency="usd",
+    unit_quantity=1_000_000, fixed_micros=0, currency="usd",
     product_id="", customer_id=None)
 
 # record_usage  → RecordUsageResult

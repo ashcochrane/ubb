@@ -325,7 +325,9 @@ def get_sandbox(request):
 
 def _config_out(t):
     from apps.billing.gating.models import RiskConfig
+    from apps.billing.queries import get_billing_config
     rc = RiskConfig.objects.filter(tenant=t).first()
+    bc = get_billing_config(t.id)
     return {
         "name": t.name,
         "billing_mode": t.billing_mode,
@@ -337,9 +339,10 @@ def _config_out(t):
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
         "min_balance_micros": t.min_balance_micros,
-        "run_cost_limit_micros": t.run_cost_limit_micros,
-        "hard_stop_balance_micros": t.hard_stop_balance_micros,
-        "max_cost_per_task_micros": rc.max_cost_per_task_micros if rc else None,
+        "default_task_provider_cost_limit_micros":
+            rc.default_task_provider_cost_limit_micros if rc else None,
+        "default_task_floor_snapshot_micros":
+            bc.default_task_floor_snapshot_micros,
     }
 
 
@@ -467,17 +470,11 @@ def update_tenant_config(request, payload: TenantConfigIn):
                                   "allowed overdraft magnitude, not a floor)",
                          "code": "invalid_config"}
         t.min_balance_micros = payload.min_balance_micros
-    if "run_cost_limit_micros" in fields_set:
-        if payload.run_cost_limit_micros is not None and payload.run_cost_limit_micros <= 0:
-            return 422, {"error": "run_cost_limit_micros must be > 0, or null for no cap",
-                         "code": "invalid_config"}
-        t.run_cost_limit_micros = payload.run_cost_limit_micros
-    if "hard_stop_balance_micros" in fields_set:
-        t.hard_stop_balance_micros = payload.hard_stop_balance_micros
-    if ("max_cost_per_task_micros" in fields_set
-            and payload.max_cost_per_task_micros is not None
-            and payload.max_cost_per_task_micros <= 0):
-        return 422, {"error": "max_cost_per_task_micros must be > 0, or null for no cap",
+    if ("default_task_provider_cost_limit_micros" in fields_set
+            and payload.default_task_provider_cost_limit_micros is not None
+            and payload.default_task_provider_cost_limit_micros <= 0):
+        return 422, {"error": "default_task_provider_cost_limit_micros must be "
+                              "> 0, or null for no default",
                      "code": "invalid_config"}
     enforcement_changed = False
     if payload.enforcement_mode is not None:
@@ -495,14 +492,29 @@ def update_tenant_config(request, payload: TenantConfigIn):
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
         )
         return 422, {"error": msg, "code": "invalid_config"}
-    # Per-task cap lives on RiskConfig; write it only after the tenant save
-    # succeeds. Created lazily so a tenant that sets only this field gets a row.
-    if "max_cost_per_task_micros" in fields_set:
+    # The task-default limit lives on RiskConfig; write it only after the
+    # tenant save succeeds. Created lazily so a tenant that sets only this
+    # field gets a row.
+    if "default_task_provider_cost_limit_micros" in fields_set:
         from apps.billing.gating.models import RiskConfig
         rc, _ = RiskConfig.objects.get_or_create(tenant=t)
-        if rc.max_cost_per_task_micros != payload.max_cost_per_task_micros:
-            rc.max_cost_per_task_micros = payload.max_cost_per_task_micros
-            rc.save(update_fields=["max_cost_per_task_micros", "updated_at"])
+        if (rc.default_task_provider_cost_limit_micros
+                != payload.default_task_provider_cost_limit_micros):
+            rc.default_task_provider_cost_limit_micros = (
+                payload.default_task_provider_cost_limit_micros)
+            rc.save(update_fields=["default_task_provider_cost_limit_micros",
+                                   "updated_at"])
+    # The task-default floor snapshot lives on BillingTenantConfig (the row
+    # RiskService reads at task creation).
+    if "default_task_floor_snapshot_micros" in fields_set:
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(t.id)
+        if (bc.default_task_floor_snapshot_micros
+                != payload.default_task_floor_snapshot_micros):
+            bc.default_task_floor_snapshot_micros = (
+                payload.default_task_floor_snapshot_micros)
+            bc.save(update_fields=["default_task_floor_snapshot_micros",
+                                   "updated_at"])
     if enforcement_changed:
         # D17: clear stale Tier-2 keys so the new mode starts clean (esp. a
         # leftover stop flag that could wrongly suspend after a re-enable).

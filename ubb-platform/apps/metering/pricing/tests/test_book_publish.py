@@ -36,7 +36,7 @@ def test_publish_supersedes_and_bumps_version_atomically():
     active = list(Rate.objects.filter(rate_card=book, valid_to__isnull=True).order_by("metric_name"))
     assert [a.rate_per_unit_micros for a in active] == [12, 33]
     assert all(a.book_version_from == 2 for a in active)
-    # lineage preserved (tiered continuity guarantee).
+    # lineage preserved (links each rate's whole price history).
     assert {a.lineage_id for a in active} == {ri.lineage_id, ro.lineage_id}
 
 
@@ -59,21 +59,18 @@ def test_publish_is_all_or_nothing_on_error():
     assert active_ids == {ri.id, ro.id}  # exactly the originals; no new row leaked in
 
 
-def test_publish_preserves_lineage_for_tiered_marginal_continuity():
+def test_publish_preserves_lineage_across_reprice():
     t = Tenant.objects.create(name="T", default_currency="usd")
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True, version=1)
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
                             metric_name="input_tokens", currency="usd",
-                            pricing_model="graduated",
-                            tiers=[{"up_to": 1000, "rate_per_unit_micros": 10},
-                                   {"up_to": None, "rate_per_unit_micros": 5}],
+                            pricing_model="per_unit", rate_per_unit_micros=10,
                             rate_card=book, book_version_from=1)
     old_lineage = r.lineage_id
     BookService.publish(book, changes=[{
         "metric_name": "input_tokens", "provider": "gemini", "event_type": "",
-        "dimensions": {}, "pricing_model": "graduated",
-        "tiers": [{"up_to": 1000, "rate_per_unit_micros": 12},
-                  {"up_to": None, "rate_per_unit_micros": 6}]}])
+        "dimensions": {}, "pricing_model": "per_unit",
+        "rate_per_unit_micros": 12}])
     new = Rate.objects.get(rate_card=book, valid_to__isnull=True)
-    assert new.lineage_id == old_lineage  # PricingPeriodCounter continuity intact
+    assert new.lineage_id == old_lineage  # price-history linkage intact

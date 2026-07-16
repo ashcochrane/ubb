@@ -7,7 +7,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 from apps.billing.wallets.models import Wallet
 from apps.billing.gating.services.live_ledger_service import LiveLedgerService
 from apps.metering.usage.models import RawIngestEvent, UsageEvent
@@ -20,15 +20,15 @@ class IngestEndpointTestBase(TestCase):
 
     Same Redis DB-15 cleanup idiom as apps/billing/gating/tests/test_hold_service.py
     — cache.clear() FLUSHDBs the dedicated test db, wiping every raw
-    ubb:idem:*/livebal:*/runcost:*/stop:* key this test file writes.
+    ubb:idem:*/livebal:*/stop:* key this test file writes.
     """
 
     def setUp(self):
         cache.clear()
-        # The run-metadata L1 cache is module-level in-process state; clear it
-        # so a status cached by one test can never leak into another.
+        # The task-metadata L1 cache is module-level in-process state; clear it
+        # so an entry cached by one test can never leak into another.
         from api.v1 import metering_endpoints
-        metering_endpoints._RUN_META_CACHE.clear()
+        metering_endpoints._TASK_META_CACHE.clear()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="AsyncIngest", products=["metering", "billing", "metering_async"],
@@ -109,22 +109,33 @@ class FloorCrossingTest(IngestEndpointTestBase):
         self.assertEqual(RawIngestEvent.objects.count(), 3)
 
 
-class RunCapRejectTest(IngestEndpointTestBase):
-    def test_run_cap_rejects_without_hold(self):
-        run = Run.objects.create(
+class TaskLimitAcceptAlwaysTest(IngestEndpointTestBase):
+    def test_over_limit_item_is_accepted_and_held(self):
+        """One-rule (#37): the accept-time unit-cap lane is retired. An item
+        that would blow straight past a tiny task provider limit is still
+        ACCEPTED and held — no cost_limit_exceeded rejection reason exists;
+        task-limit detection happens at settle with exact provider costs."""
+        task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=500_000,
+            balance_snapshot_micros=20_000_000, provider_cost_limit_micros=500_000,
             billing_owner_id=self.customer.id,
         )
-        resp = self._post([self._event(run_id=str(run.id), billed_cost_micros=600_000)])
+        resp = self._post([self._event(task_id=str(task.id),
+                                       billed_cost_micros=600_000,
+                                       provider_cost_micros=600_000)])
         self.assertEqual(resp.status_code, 200)
         r = resp.json()["results"][0]
-        self.assertFalse(r["accepted"])
-        self.assertTrue(r["rejected"])
-        self.assertEqual(r["reason"], "cost_limit_exceeded")
-        self.assertEqual(RawIngestEvent.objects.count(), 0)
-        # Rejection must touch NOTHING on the balance key (no partial hold).
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        self.assertTrue(r["accepted"])
+        self.assertFalse(r["rejected"])
+        self.assertIsNone(r["reason"])
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+        self.assertEqual(raw.task_id, task.id)
+        # A real hold was taken; accept never kills.
+        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+                         20_000_000 - 600_000)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "active")
 
 
 class IdemReplayTest(IngestEndpointTestBase):
@@ -254,32 +265,30 @@ class BatchSizeBoundsTest(IngestEndpointTestBase):
 
 
 class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
-    """Local rejections (run_not_active, validation) must run BEFORE the
+    """Local rejections (unknown task, validation) must run BEFORE the
     idempotency SETNX pipeline, or the rejected attempt burns the key: the
     client's legitimate retry after fixing the problem would then misread as
     an idem-hit — appended with held=False, i.e. accepted spend with NO hold
     ever taken (a one-event enforcement bypass on the retry path)."""
 
-    def test_run_not_active_rejection_then_retry_is_genuine_first_accept(self):
-        killed_run = Run.objects.create(
-            tenant=self.tenant, customer=self.customer, status="killed",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
-            billing_owner_id=self.customer.id,
-        )
-        event = self._event(run_id=str(killed_run.id), billed_cost_micros=400_000)
+    def test_unknown_task_rejection_then_retry_is_genuine_first_accept(self):
+        import uuid as _uuid
+        event = self._event(task_id=str(_uuid.uuid4()),  # no such task
+                            billed_cost_micros=400_000)
         first = self._post([event])
         self.assertEqual(first.status_code, 200)
         r1 = first.json()["results"][0]
         self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "run_not_active")
+        self.assertEqual(r1["reason"], "not_found")
+        self.assertEqual(RawIngestEvent.objects.count(), 0)
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
 
-        active_run = Run.objects.create(
+        real_task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id,
         )
-        event["run_id"] = str(active_run.id)  # SAME idempotency_key
+        event["task_id"] = str(real_task.id)  # fixed; SAME idempotency_key
         second = self._post([event])
         self.assertEqual(second.status_code, 200)
         r2 = second.json()["results"][0]
@@ -312,32 +321,37 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         self.assertTrue(raw.held)
 
 
-class RunMetaCacheEvictionTest(IngestEndpointTestBase):
-    def test_clear_on_full_with_mixed_cached_and_new_runs_does_not_500(self):
-        """Clear-on-full regression: with the cache at _RUN_META_MAX, a batch
-        mixing an already-cached run and an uncached one triggers the clear —
+class TaskMetaCacheEvictionTest(IngestEndpointTestBase):
+    def test_clear_on_full_with_mixed_cached_and_new_tasks_does_not_500(self):
+        """Clear-on-full regression: with the cache at _TASK_META_MAX, a batch
+        mixing an already-cached task and an uncached one triggers the clear —
         the entries fresh for THIS call must survive into the return value
-        (the first cut re-read the module cache after clearing it: KeyError)."""
+        (the first cut re-read the module cache after clearing it: KeyError).
+        Entries are (customer_id_str|None, expires) — existence/ownership only."""
         from api.v1 import metering_endpoints
-        run_a = Run.objects.create(
+        task_a = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id)
-        run_b = Run.objects.create(
+        task_b = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id)
-        with patch.object(metering_endpoints, "_RUN_META_MAX", 1):
-            first = self._post([self._event(run_id=str(run_a.id), billed_cost_micros=100_000)])
-            self.assertEqual(first.status_code, 200)  # caches run_a; cache now AT the max
+        with patch.object(metering_endpoints, "_TASK_META_MAX", 1):
+            first = self._post([self._event(task_id=str(task_a.id), billed_cost_micros=100_000)])
+            self.assertEqual(first.status_code, 200)  # caches task_a; cache now AT the max
             resp = self._post([
-                self._event(run_id=str(run_a.id), billed_cost_micros=100_000),
-                self._event(run_id=str(run_b.id), billed_cost_micros=100_000),
+                self._event(task_id=str(task_a.id), billed_cost_micros=100_000),
+                self._event(task_id=str(task_b.id), billed_cost_micros=100_000),
             ])
         self.assertEqual(resp.status_code, 200)
         results = resp.json()["results"]
         self.assertTrue(results[0]["accepted"])
         self.assertTrue(results[1]["accepted"])
+        # The cache holds (customer_id_str|None, expires) tuples.
+        entry = metering_endpoints._TASK_META_CACHE.get(str(task_b.id))
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry[0], str(self.customer.id))
 
 
 class AppendFailureIdemUnwindTest(IngestEndpointTestBase):
@@ -367,53 +381,45 @@ class AppendFailureIdemUnwindTest(IngestEndpointTestBase):
                          20_000_000 - 500_000)
 
 
-class DeadRunReplayWinsTest(IngestEndpointTestBase):
-    def test_idem_hit_on_killed_run_is_replay_not_rejection(self):
-        """Replay-wins parity with the sync path (record_usage returns the
-        existing event BEFORE any validation): a replayed key whose run has
-        since been killed must be accepted as a duplicate suspect (held=False
-        append, no hold), not rejected run_not_active."""
-        from api.v1 import metering_endpoints
-        run = Run.objects.create(
-            tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+class KilledTaskAcceptedTest(IngestEndpointTestBase):
+    def test_items_for_killed_task_are_accepted_and_held(self):
+        """One-rule (#37): the accept-time dead-unit reject is retired — a
+        task's STATUS never gates acceptance. Items for a killed task are
+        accepted + held and their raw rows appended; the task_not_active
+        verdict happens at settle. No replay probe is involved (these are
+        fresh keys, not idem-hits)."""
+        task = Task.objects.create(
+            tenant=self.tenant, customer=self.customer, status="killed",
+            balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id)
-        event = self._event(run_id=str(run.id), billed_cost_micros=400_000)
-        first = self._post([event])
-        self.assertTrue(first.json()["results"][0]["accepted"])
-
-        Run.objects.filter(id=run.id).update(status="killed")
-        metering_endpoints._RUN_META_CACHE.clear()  # the 30s cache would mask the kill
-
-        second = self._post([event])  # SAME idempotency_key
-        self.assertEqual(second.status_code, 200)
-        r2 = second.json()["results"][0]
-        self.assertTrue(r2["accepted"])
-        self.assertTrue(r2["duplicate_suspect"])
-        self.assertFalse(r2["rejected"])
+        resp = self._post([
+            self._event(task_id=str(task.id), billed_cost_micros=400_000),
+            self._event(task_id=str(task.id), billed_cost_micros=100_000),
+        ])
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["accepted"], 2)
+        self.assertEqual(body["rejected"], 0)
+        for r in body["results"]:
+            self.assertTrue(r["accepted"])
+            self.assertFalse(r["rejected"])
+            self.assertFalse(r["duplicate_suspect"])
         rows = list(RawIngestEvent.objects.order_by("created_at"))
         self.assertEqual(len(rows), 2)
-        self.assertFalse(rows[1].held)
-        # No second hold taken for the replay.
+        for raw in rows:
+            self.assertTrue(raw.held)
+            self.assertEqual(raw.task_id, task.id)
+        # Real holds were taken for both items.
         self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
-                         20_000_000 - 400_000)
-
-    def test_fresh_key_on_killed_run_still_rejected_without_burning_key(self):
-        run = Run.objects.create(
-            tenant=self.tenant, customer=self.customer, status="killed",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
-            billing_owner_id=self.customer.id)
-        event = self._event(run_id=str(run.id), billed_cost_micros=400_000)
-        resp = self._post([event])
-        r = resp.json()["results"][0]
-        self.assertTrue(r["rejected"])
-        self.assertEqual(r["reason"], "run_not_active")
-        self.assertEqual(RawIngestEvent.objects.count(), 0)
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+                         20_000_000 - 500_000)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "killed")  # accept never re-touches it
 
 
 class EffectiveAtTest(IngestEndpointTestBase):
     def test_naive_effective_at_rejected_before_idem_no_burned_key(self):
+        from datetime import timedelta
+        from django.utils import timezone
         event = self._event(billed_cost_micros=200_000,
                             effective_at="2026-07-01T00:00:00")  # no tz
         resp = self._post([event])
@@ -423,8 +429,10 @@ class EffectiveAtTest(IngestEndpointTestBase):
         self.assertEqual(r["reason"], "effective_at_naive")
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
         # Rejection precedes the SETNX: the corrected retry (same key) is a
-        # genuine first accept with a real hold.
-        event["effective_at"] = "2026-07-01T00:00:00Z"
+        # genuine first accept with a real hold. The retry must stay inside the
+        # ROLLING backfill_window_days accept bound, so stamp it relative to now
+        # (a hardcoded date would age out of the window and start rejecting).
+        event["effective_at"] = (timezone.now() - timedelta(days=1)).isoformat()
         second = self._post([event])
         r2 = second.json()["results"][0]
         self.assertTrue(r2["accepted"])
@@ -520,12 +528,9 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
 class MixedBatchTest(IngestEndpointTestBase):
     def test_positional_alignment_and_exactly_one_new_hold(self):
         """One request mixing all four verdict shapes: [valid held item,
-        run-cap reject, idem-hit replay, currency-mismatch reject]. Results
-        must align positionally and exactly ONE new hold may be taken."""
-        capped_run = Run.objects.create(
-            tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=100_000,
-            billing_owner_id=self.customer.id)
+        unknown-task reject, idem-hit replay, currency-mismatch reject].
+        Results must align positionally and exactly ONE new hold may be
+        taken."""
         replay_event = self._event(billed_cost_micros=250_000)
         pre = self._post([replay_event])  # seed the idem-hit item (takes a hold)
         self.assertTrue(pre.json()["results"][0]["accepted"])
@@ -533,10 +538,10 @@ class MixedBatchTest(IngestEndpointTestBase):
         raw_before = RawIngestEvent.objects.count()
 
         resp = self._post([
-            self._event(billed_cost_micros=500_000),                             # 0: held
-            self._event(run_id=str(capped_run.id), billed_cost_micros=600_000),  # 1: run-cap
-            replay_event,                                                        # 2: idem-hit
-            self._event(currency="eur", billed_cost_micros=100_000),             # 3: currency
+            self._event(billed_cost_micros=500_000),                            # 0: held
+            self._event(task_id=str(uuid.uuid4()), billed_cost_micros=600_000), # 1: unknown task
+            replay_event,                                                       # 2: idem-hit
+            self._event(currency="eur", billed_cost_micros=100_000),            # 3: currency
         ])
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -544,7 +549,7 @@ class MixedBatchTest(IngestEndpointTestBase):
         self.assertTrue(r0["accepted"] and not r0["duplicate_suspect"])
         self.assertEqual(r0["estimated_cost_micros"], 500_000)
         self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "cost_limit_exceeded")
+        self.assertEqual(r1["reason"], "not_found")
         self.assertTrue(r2["accepted"] and r2["duplicate_suspect"])
         self.assertTrue(r3["rejected"])
         self.assertEqual(r3["reason"], "validation_error")
@@ -557,34 +562,33 @@ class MixedBatchTest(IngestEndpointTestBase):
         self.assertEqual(RawIngestEvent.objects.count(), raw_before + 2)
 
 
-class RunHeldItemTest(IngestEndpointTestBase):
-    def test_run_bearing_item_under_cap_is_held_with_run_id_in_payload(self):
-        run = Run.objects.create(
+class TaskHeldItemTest(IngestEndpointTestBase):
+    def test_task_bearing_item_is_held_with_task_attribution(self):
+        task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=20_000_000, cost_limit_micros=5_000_000,
+            balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id,
         )
-        resp = self._post([self._event(run_id=str(run.id), billed_cost_micros=400_000)])
+        resp = self._post([self._event(task_id=str(task.id), billed_cost_micros=400_000)])
         self.assertEqual(resp.status_code, 200)
         r = resp.json()["results"][0]
         self.assertTrue(r["accepted"])
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
-        self.assertEqual(raw.run_id, run.id)
-        self.assertEqual(raw.payload["run_id"], str(run.id))
+        self.assertEqual(raw.task_id, task.id)
+        self.assertEqual(raw.payload["task_id"], str(task.id))
         self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 400_000)
 
 
 class PostpaidPriorMonthGuardTest(TestCase):
     """Final-review fix batch #2 (I9 parity): a postpaid backfill accepted
     through the ASYNC ingest path must not inflate the CURRENT month's live
-    spend counter (mirrors record_usage_debit's sync-path guard), but the
-    per-run cost-cap check-then-increment must still apply regardless."""
+    spend counter (mirrors record_usage_debit's sync-path guard)."""
 
     def setUp(self):
         cache.clear()
         from api.v1 import metering_endpoints
-        metering_endpoints._RUN_META_CACHE.clear()
+        metering_endpoints._TASK_META_CACHE.clear()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="PostpaidAsyncIngest",
@@ -619,40 +623,35 @@ class PostpaidPriorMonthGuardTest(TestCase):
         base.update(overrides)
         return base
 
-    def test_prior_month_backfill_skips_livespend_but_run_cap_still_enforced(self):
+    def test_prior_month_backfill_skips_livespend(self):
         from datetime import timedelta
         from django.utils import timezone
 
-        run = Run.objects.create(
+        task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
-            balance_snapshot_micros=0, cost_limit_micros=5_000_000,
+            balance_snapshot_micros=0,
             billing_owner_id=self.customer.id,
         )
         now = timezone.now()
         prior_month_eff = (now.replace(day=1) - timedelta(days=1)).isoformat()
 
-        # One batch, same run: item 0 (4M) is held but must NOT touch this
-        # month's livespend; item 1 (2M) pushes the run's Redis cost-cap
-        # counter (4M + 2M = 6M > 5M cap) over the top and must still be
-        # rejected -- proving the run-cap check ran even though the balance
-        # move was skipped for both (cooperative, sequential within the same
-        # pipelined batch).
+        # A backdated (prior-month) item is accepted + held, but must NOT
+        # touch this month's livespend counter (I9). One-rule (#37): the
+        # accept-time unit-cap lane is retired, so there is no cost-cap arm
+        # here any more — task limits are detected at settle.
         resp = self._post([
-            self._event(run_id=str(run.id), billed_cost_micros=4_000_000,
-                        effective_at=prior_month_eff),
-            self._event(run_id=str(run.id), billed_cost_micros=2_000_000,
+            self._event(task_id=str(task.id), billed_cost_micros=4_000_000,
                         effective_at=prior_month_eff),
         ])
         self.assertEqual(resp.status_code, 200)
-        r0, r1 = resp.json()["results"]
+        r0 = resp.json()["results"][0]
         self.assertTrue(r0["accepted"])
         self.assertFalse(r0["rejected"])
-        self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "cost_limit_exceeded")
 
         # The backfilled (accepted) item never touched THIS month's livespend.
         self.assertIsNone(LiveLedgerService.read_postpaid(self.customer.id))
-        self.assertEqual(RawIngestEvent.objects.count(), 1)  # only the held item
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
 
     def test_current_month_item_unaffected_by_the_guard(self):
         resp = self._post([self._event(billed_cost_micros=2_500_000)])

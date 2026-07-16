@@ -48,7 +48,7 @@ append-only **ledger entry** keyed this way — never a bare `balance += x`.
 - **Soft delete only.** Rows use `deleted_at` (`core/soft_delete.py`); hard delete through the ORM
   is unsupported. Default querysets hide deleted rows; use `all_objects` to see them.
 - **Lock ordering is canonical.** When taking more than one row lock, acquire in the global order
-  Run → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent (`core/locking.py`). Violating it
+  Task → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent (`core/locking.py`). Violating it
   risks deadlock. Wallet mutations go through `lock_for_billing`.
 - **`queries.py` returns plain data.** Cross-product read contracts return dicts/ints/lists, never
   ORM instances or querysets — so a product could later become a network hop.

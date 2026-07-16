@@ -5,7 +5,7 @@ from datetime import timedelta, timezone as dt_timezone
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 
-from apps.metering.pricing.services.tier_counter_service import month_bounds
+from core.time_windows import month_bounds
 from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, UsageEvent
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
@@ -94,15 +94,20 @@ def validate_tags(tags):
             raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
-def _result(event, run_total, *, stop=False, stop_reason=None, stop_scope=None,
+def _result(event, *, task_total_billed=None, task_total_provider=None,
+            stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None):
     """Build the record_usage response.
+
+    One-rule (#37): every recorded event answers success; the stop
+    instruction rides these fields. The named task's BOTH running totals
+    travel, denominationally explicit. parent_task_id is always null until
+    the subtask ticket lands.
 
     Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
     return path of record_usage — the happy path AND both idempotent-replay
     returns — so a replayed event for an already-stopped owner never reports
-    "all clear". The defaults reproduce pre-Tier-2 behavior exactly; P3 wires
-    the real verdict in from the synchronous stop-flag read.
+    "all clear".
     """
     return {
         "event_id": str(event.id),
@@ -110,8 +115,10 @@ def _result(event, run_total, *, stop=False, stop_reason=None, stop_scope=None,
         "billed_cost_micros": event.billed_cost_micros,
         "units": event.units,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
-        "run_id": str(event.run_id) if event.run_id else None,
-        "run_total_cost_micros": run_total, "hard_stop": False,
+        "task_id": str(event.task_id) if event.task_id else None,
+        "parent_task_id": None,
+        "task_total_billed_cost_micros": task_total_billed,
+        "task_total_provider_cost_micros": task_total_provider,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
         "usage_metrics": event.usage_metrics,
         "pricing_provenance": event.pricing_provenance,
@@ -134,23 +141,6 @@ def _parse_effective_at(payload):
     return parse_datetime(raw)
 
 
-def _write_tier_mirrors(tenant_id, customer_id, provenance, as_of):
-    """Settlement-side counterpart of EstimationService's TierMirror.read:
-    for every tiered metric this event priced, mirror its post-event ladder
-    position so the NEXT accept-time estimate for this (tenant, customer,
-    lineage) anchors close to the truth. Keyed by ``as_of`` (the event's
-    EFFECTIVE instant), not settle wall-clock time — a backdated settle must
-    write into the PRIOR month's mirror bucket, never the current one (the
-    ladder it just advanced is period-scoped by the same as_of, per
-    TierCounterService.lock_and_advance)."""
-    from apps.metering.pricing.services.card_cache import TierMirror
-    for metric in provenance.get("metrics", []):
-        tier_breakdown = metric.get("tier_breakdown")
-        if tier_breakdown:
-            TierMirror.write(tenant_id, customer_id, tier_breakdown["lineage_id"],
-                             tier_breakdown["units_total_after"], as_of)
-
-
 def _replay_stop(customer, tenant):
     """Customer-wide stop verdict for the idempotent-replay return paths.
     Skips the owner resolve + Redis read entirely when enforcement is off, so
@@ -168,7 +158,7 @@ class UsageService:
     def record_usage(tenant, customer, request_id, idempotency_key, *,
                      provider_cost_micros=None, billed_cost_micros=None, units=None,
                      provider="", event_type="", currency=None, tags=None,
-                     product_id="", metadata=None, run_id=None, usage_metrics=None,
+                     product_id="", metadata=None, task_id=None, usage_metrics=None,
                      effective_at=None):
         validate_tags(tags)
         existing = UsageEvent.objects.filter(
@@ -177,7 +167,7 @@ class UsageService:
             # Replay wins BEFORE effective_at validation: a whole-batch retry
             # must return the original event even if the window has since aged
             # past the timestamp or the period closed.
-            return _result(existing, run_total=None, **_replay_stop(customer, tenant))
+            return _result(existing, **_replay_stop(customer, tenant))
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result.
@@ -201,39 +191,22 @@ class UsageService:
         _tags = tags or {}
         service_id = _tags.get("service", "")
         agent_id = _tags.get("agent", "")
-        # P4 (D12): per-task identity for the per-task cost cap. Caller-controlled
-        # 'task' tag, falling back to service/agent so existing taggers get
-        # coverage; "" => no per-task cap for this event.
-        task_id = _tags.get("task", "") or service_id or agent_id
+        # Tags are analytics-only labels (#37): the task_id request field is
+        # the ONLY unit attribution — no tag-fallback inference, no label cap.
         if not product_id:
             product_id = _tags.get("product", "") or ""
-        run = None
+        task = None
+        verdicts = None
         try:
             with transaction.atomic():
-                # Pricing runs INSIDE the savepoint: tiered price cards advance
-                # the period ladder (PricingPeriodCounter) under a row lock, so
-                # a raced duplicate insert below must roll the advance back too.
                 # as_of=effective_at prices on the card versions valid at the
-                # EFFECTIVE time and advances the EFFECTIVE month's tier ladder.
+                # EFFECTIVE time.
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer, event_type=event_type or "",
                     provider=provider or "", usage_metrics=usage_metrics, tags=tags,
                     currency=currency, caller_provider_cost=provider_cost_micros,
                     caller_billed=billed_cost_micros, units=units,
                     as_of=effective_at)
-                if run_id is not None:
-                    from apps.platform.runs.services import RunService
-                    run = RunService.accumulate_cost(
-                        run_id, billed_cost_micros,
-                        tenant_id=tenant.id, customer_id=customer.id)
-                # P4 (D12): per-task cost cap. Same savepoint as the per-run cap,
-                # BEFORE event creation — a breach raises HardStopExceeded
-                # (reason=task_limit_exceeded), the event rolls back, and the
-                # endpoint returns 429. Runs regardless of run_id (can fire
-                # run-less; the endpoint's kill_run is guarded on run_id).
-                from apps.billing.queries import check_task_cost_cap
-                check_task_cost_cap(owner_id, tenant, task_id, billed_cost_micros,
-                                    run_id=run_id, now=now)
                 create_kwargs = {}
                 if effective_at is not None:
                     create_kwargs["effective_at"] = effective_at
@@ -245,20 +218,32 @@ class UsageService:
                     billed_cost_micros=billed_cost_micros,
                     units=units, currency=currency, usage_metrics=usage_metrics or {},
                     pricing_provenance=provenance,
-                    product_id=product_id or "", tags=tags, run_id=run_id,
+                    product_id=product_id or "", tags=tags, task_id=task_id,
                     billing_owner_id=owner_id,
                     service_id=service_id, agent_id=agent_id, **create_kwargs)
+                if task_id is not None:
+                    # One-rule: the ONE accumulate primitive — always records
+                    # both totals (the tipping event and everything after a
+                    # kill land, bill, and count) and returns crossing
+                    # verdicts instead of raising. The event create above and
+                    # this accumulate share the savepoint, so totals and
+                    # events can never diverge.
+                    from apps.platform.tasks.services import TaskService
+                    task, verdicts = TaskService.accumulate_cost(
+                        task_id, billed_cost_micros=billed_cost_micros,
+                        provider_cost_micros=provider_cost_micros,
+                        tenant_id=tenant.id, customer_id=customer.id)
         except IntegrityError as exc:
             try:
                 existing = UsageEvent.objects.get(
                     tenant=tenant, customer=customer, idempotency_key=idempotency_key)
             except UsageEvent.DoesNotExist:
                 # Not the idempotency duplicate — some other insert inside the
-                # savepoint failed (counter/run machinery). Surface the original
+                # savepoint failed (counter/task machinery). Surface the original
                 # IntegrityError attributably instead of masking it as a replay
                 # (or as an unexplained DoesNotExist).
                 raise exc
-            return _result(existing, run_total=None, **_replay_stop(customer, tenant))
+            return _result(existing, **_replay_stop(customer, tenant))
         # Tier-2 (P2/WS1): maintain the synchronous live counter on the SAME
         # billing owner the async drawdown will debit. Reached only once the
         # event has committed to the savepoint (the IntegrityError replay race
@@ -288,24 +273,43 @@ class UsageService:
             tenant_id=str(tenant.id), customer_id=str(customer.id), event_id=str(event.id),
             cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
             billed_cost_micros=billed_cost_micros, event_type=event_type or "",
-            provider=provider or "", run_id=str(run_id) if run_id else None,
+            provider=provider or "", task_id=str(task_id) if task_id else None,
             billing_owner_id=str(owner_id),
             # Normalized to UTC: the instance attribute keeps the caller's
             # original offset, but consumers bucket by UTC calendar month.
             effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
-        return _result(event, run_total=run.total_cost_micros if run else None,
-                       stop=live.get("stop", False), stop_reason=live.get("stop_reason"),
-                       stop_scope=live.get("stop_scope"))
+        # Stop-verdict fields: a task-scoped verdict (the most specific scope)
+        # wins the scalar slot; the customer-wide verdict fills it otherwise.
+        # A simultaneous customer-wide stop still surfaces on the next ack
+        # (and via stop.fired); the itemized multi-limit story is the
+        # past-limit ticket's stop_context array.
+        stop = live.get("stop", False)
+        stop_reason = live.get("stop_reason")
+        stop_scope = live.get("stop_scope")
+        if verdicts is not None:
+            from apps.platform.tasks import reasons
+            task_reason = reasons.stop_reason(verdicts)
+            if task_reason is not None:
+                stop, stop_reason, stop_scope = True, task_reason, "task"
+        return _result(event,
+                       task_total_billed=task.total_billed_cost_micros if task else None,
+                       task_total_provider=task.total_provider_cost_micros if task else None,
+                       stop=stop, stop_reason=stop_reason, stop_scope=stop_scope)
 
     @staticmethod
     def settle_raw(raw):
         """Exact-settle one accepted RawIngestEvent (Task 6).
 
-        Enforcement already happened at accept (the estimate hold gate) — this
-        path NEVER rejects: it prices exactly, records durably, and adjusts the
-        live counter by (estimate - exact). Tier-ladder locks are worker-only
-        contention here (the synchronous record_usage path never reaches this
-        code, so no cross-path deadlock risk).
+        This path NEVER rejects: it prices exactly, records durably, and
+        adjusts the live counter by (estimate - exact). One-rule (#37):
+        task-limit detection happens HERE, at settle, with exact costs —
+        the one accumulate primitive returns crossing verdicts and the same
+        idempotent kill flow + task.limit_exceeded event as the sync path
+        runs after the settle commits. Signal latency for async unit limits
+        is settle latency, by design (settle-time exact counting).
+        Tier-ladder locks are worker-only contention here (the synchronous
+        record_usage path never reaches this code, so no cross-path deadlock
+        risk).
 
         Returns "settled" or "duplicate". Any OTHER exception (a poison
         payload — e.g. a strict-coverage PricingError) propagates UNCAUGHT;
@@ -314,10 +318,10 @@ class UsageService:
         """
         from apps.billing.queries import settle_ingest_hold, release_ingest_hold
         from apps.metering.pricing.services.pricing_service import PricingService
-        from apps.platform.runs.services import RunService
+        from apps.platform.tasks.services import TaskService
 
         tenant, customer = raw.tenant, raw.customer
-        run_id_str = str(raw.run_id) if raw.run_id else None
+        verdicts = None
         try:
             with transaction.atomic():
                 # settle_raw_events's batch claim only SELECTs (it never marks
@@ -331,12 +335,6 @@ class UsageService:
                     return raw.status
                 p = raw.payload
                 effective_at = _parse_effective_at(p)
-                # Pin ONE "now" for both the pricer's as_of AND the tier-mirror
-                # write below — PricingService.price would otherwise default
-                # as_of internally at ITS OWN now() call, and a separate
-                # now() at the mirror-write site (after this whole
-                # transaction commits) could theoretically straddle a month
-                # boundary and bucket the mirror into the wrong period.
                 as_of = effective_at or timezone.now()
                 tags = p.get("tags")
                 _tags = tags or {}
@@ -344,10 +342,6 @@ class UsageService:
                 agent_id = _tags.get("agent", "")
                 product_id = p.get("product_id") or _tags.get("product", "") or ""
                 currency = (tenant.default_currency or "usd").lower()
-                # Pricing runs INSIDE this transaction: tiered price cards
-                # advance the period ladder (PricingPeriodCounter) under a row
-                # lock, so a raced duplicate insert below rolls the advance
-                # back too (mirrors record_usage's savepoint pattern).
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer,
                     event_type=p.get("event_type") or "", provider=p.get("provider") or "",
@@ -369,12 +363,18 @@ class UsageService:
                     units=p.get("units"), currency=currency,
                     usage_metrics=p.get("usage_metrics") or {},
                     pricing_provenance=provenance,
-                    product_id=product_id, tags=tags, run_id=raw.run_id,
+                    product_id=product_id, tags=tags, task_id=raw.task_id,
                     billing_owner_id=raw.billing_owner_id,
                     service_id=service_id, agent_id=agent_id, **create_kwargs)
-                if raw.run_id:
-                    RunService.accumulate_cost_settled(
-                        raw.run_id, billed_cost_micros,
+                if raw.task_id:
+                    # The ONE accumulate primitive — a settle landing after
+                    # the task was killed/completed still records the TRUE
+                    # costs against both totals (task_not_active is a
+                    # verdict, never a refusal); a crossing verdict drives
+                    # the kill flow after this transaction commits.
+                    _, verdicts = TaskService.accumulate_cost(
+                        raw.task_id, billed_cost_micros=billed_cost_micros,
+                        provider_cost_micros=provider_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
                 if effective_at is not None:
                     eff_month_start = month_bounds(effective_at)[0]
@@ -393,7 +393,8 @@ class UsageService:
                     event_id=str(event.id),
                     cost_micros=billed_cost_micros, provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros, event_type=p.get("event_type") or "",
-                    provider=p.get("provider") or "", run_id=run_id_str,
+                    provider=p.get("provider") or "",
+                    task_id=str(raw.task_id) if raw.task_id else None,
                     billing_owner_id=str(raw.billing_owner_id),
                     effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
                 raw.status = "settled"
@@ -416,11 +417,21 @@ class UsageService:
                 locked.status = "duplicate"
                 locked.save(update_fields=["status", "updated_at"])
             if locked.held:
-                release_ingest_hold(locked.billing_owner_id, tenant, run_id_str,
+                release_ingest_hold(locked.billing_owner_id, tenant,
                                     locked.estimate_micros, effective_at=effective_at)
             return "duplicate"
+        # One-rule (#37): the async kill parity — a crossing verdict at settle
+        # drives the SAME idempotent kill flow + task.limit_exceeded event as
+        # the sync path, in its own transaction, after the settle committed.
+        if verdicts is not None:
+            from apps.platform.tasks import reasons
+            crossing = reasons.crossing_reason(verdicts)
+            if crossing is not None:
+                TaskService.kill_and_announce(
+                    raw.task_id, crossing,
+                    tenant_id=tenant.id, customer_id=customer.id)
         if raw.held:
-            settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
+            settle_ingest_hold(raw.billing_owner_id, tenant,
                                raw.estimate_micros - billed_cost_micros,
                                effective_at=effective_at)
         else:
@@ -439,7 +450,6 @@ class UsageService:
             # drift persists (bounded, over-restrictive, DRIFT_ALERT_MICROS-
             # visible) until a credit/top-up, cleanup_keys, or the 62-day TTL
             # heals it; see test_settlement.py's orphan-hold pin.
-            settle_ingest_hold(raw.billing_owner_id, tenant, run_id_str,
+            settle_ingest_hold(raw.billing_owner_id, tenant,
                                -billed_cost_micros, effective_at=effective_at)
-        _write_tier_mirrors(tenant.id, customer.id, provenance, as_of)
         return "settled"

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import stripe
+from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
@@ -14,6 +15,9 @@ from apps.metering.usage.models import UsageEvent
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
+# Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
+# to "now", which is only inside a hardcoded window until the calendar rolls past it.
+MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 def _setup(**tenant_extra):
@@ -22,7 +26,7 @@ def _setup(**tenant_extra):
                               charges_enabled=True, **tenant_extra)
     c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
     UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-        provider_cost_micros=600_000, billed_cost_micros=1_000_000)
+        provider_cost_micros=600_000, billed_cost_micros=1_000_000, effective_at=MID)
     return t, c
 
 
