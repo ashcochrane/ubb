@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     "apps.platform.tenants",
     "apps.platform.customers",
     "apps.platform.events",
-    "apps.platform.runs",
+    "apps.platform.tasks",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
@@ -204,12 +204,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.referrals.tasks.emit_referral_payouts_task",
         "schedule": crontab(minute=0, hour=4),  # Daily at 4 AM UTC
     },
-    "close-abandoned-runs": {
-        "task": "apps.platform.runs.tasks.close_abandoned_runs",
+    "close-abandoned-tasks": {
+        "task": "apps.platform.tasks.tasks.close_abandoned_tasks",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
-    "reap-stale-runs": {
-        "task": "apps.platform.runs.tasks.reap_stale_runs",
+    "reap-stale-tasks": {
+        "task": "apps.platform.tasks.tasks.reap_stale_tasks",
         "schedule": crontab(minute="*/5"),  # Tier-2 P5: every 5 minutes
     },
     "flush-api-key-last-used": {

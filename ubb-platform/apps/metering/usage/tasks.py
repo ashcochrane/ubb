@@ -84,7 +84,6 @@ def settle_raw_events(batch_size=200):
             if poisoned is not None:
                 if poisoned.held:
                     release_ingest_hold(poisoned.billing_owner_id, raw.tenant,
-                                        str(poisoned.run_id) if poisoned.run_id else None,
                                         poisoned.estimate_micros,
                                         effective_at=_parse_effective_at(poisoned.payload))
                 logger.error("settle_raw.poisoned", extra={"data": {

@@ -1,8 +1,8 @@
-"""Accept-time atomic gate for the async ingest path (estimate-hold-settle).
+"""Accept-time hold for the async ingest path (estimate-hold-settle).
 
-Task 4: HoldService is the money gate for the async ingestion feature — the
-ONLY place an ESTIMATED cost is atomically checked-and-reserved before the
-async worker actually appends/records the real usage event (Tasks 5/6).
+Task 4: HoldService is the money mirror for the async ingestion feature — the
+ONLY place an ESTIMATED cost is atomically reserved before the async worker
+actually appends/records the real usage event (Tasks 5/6).
 
 It reuses the Tier-2 live-ledger keys/semantics wholesale
 (live_ledger_service.py): the SAME owner-keyed prepaid balance
@@ -13,31 +13,35 @@ synchronously on the accept-time path. There is only ONE live counter per
 owner — a hold taken here is immediately visible to (and races fairly
 against) the synchronous path, and vice versa.
 
+One-rule (#37): the acquire ALWAYS holds, against the wallet only. The old
+accept-time per-unit cap lane (its per-unit counter key family and its
+check-then-increment reject branch) retired unreplaced — task limits are
+provider-cost (COGS) denominated and exact provider cost exists only at
+settle, so unit-limit detection lives there (UsageService.settle_raw), not
+here. Nothing on this path ever rejects an item.
+
 Per item, ONE Lua eval (``_ACQUIRE``), pipelined across the whole batch so an
 N-item batch is still N atomic server-side ops:
 
-  1. run-cap check-then-increment FIRST. A rejection returns immediately
-     WITHOUT touching the balance/spend key at all (no partial hold).
-  2. prepaid: seed-if-absent (from the durable wallet balance) then DECRBY
+  1. prepaid: seed-if-absent (from the durable wallet balance) then DECRBY
      the estimate — mirrors ``_SEED_AND_DECR``.
      postpaid: INCRBY the estimate onto the live spend counter — mirrors
      ``_SPEND_INCR``. EXCEPT when the item's ``effective_at`` is backdated to
      a PRIOR calendar month (I9 parity with ``record_usage_debit``): the
      spend move is skipped for that one item so a legitimate backfill cannot
      uncorrectably inflate the CURRENT month's live spend (the MAX-merge
-     reconcile only ever raises). The run-cap check-then-increment above
-     still applies regardless.
-  3. Back in Python: the owner's crossing threshold is resolved ONCE per
+     reconcile only ever raises).
+  2. Back in Python: the owner's crossing threshold is resolved ONCE per
      ``acquire()`` call (``LiveLedgerService._threshold`` — not per item, to
      avoid an ORM query per item) and every held item's post-hold value is
      compared against it in Python. A crossing sets the cooperative stop
      flag. This NEVER rejects or rolls back the hold that crossed it (I3 —
-     cooperative, not transactional); the item is still held.
+     cooperative, not transactional); the item is still held. This is the
+     arrival-time fast trigger of the signal suite.
 
 ``settle``/``release`` credit back (or further debit) through
 ``LiveLedgerService.credit`` — the same MIN-merge-safe site every other
-credit hook (top-up, refund-reversal, manual credit) uses — and adjust the
-per-run cost counter (``ubb:runcost:{run_id}``) by the inverse delta.
+credit hook (top-up, refund-reversal, manual credit) uses.
 
 Fails OPEN on any error (Redis down, etc): every item is held, no stop —
 identical contract to ``record_usage_debit`` ("NEVER raises ... the durable
@@ -58,63 +62,29 @@ from apps.billing.gating.services.live_ledger_service import (
 
 logger = logging.getLogger("ubb.billing")
 
-# Sentinel KEYS[2] for an item that carries no run_id. The script never
-# touches KEYS[2] unless ARGV[4] (cap) >= 0, and the caller only ever passes
-# a non-negative cap when a real run_id accompanies it (see `has_cap` below)
-# — so this key name is never actually read or written. It exists purely to
-# satisfy EVAL's declared numkeys=2 contract.
-_NO_RUN_SENTINEL = "ubb:runcost:_none"
-
 # KEYS[1] = balance/spend key (livebal for prepaid, livespend for postpaid)
-# KEYS[2] = per-run cost-cap counter (ubb:runcost:{run_id}), or the sentinel
-#           above when there is no run_id for this item.
 # ARGV[1] = seed (prepaid: durable wallet balance; postpaid: unused, pass 0)
-# ARGV[2] = estimate_micros — ALWAYS POSITIVE. Used for BOTH the run-cap
-#           increment and the balance move; ARGV[6] (not the sign of this
-#           value) selects the balance-move direction. This is the fix for
-#           the sign-handling trap called out in the task brief: an earlier
-#           draft modeled the postpaid INCR as "DECRBY of a negative
-#           estimate" and reused that SAME signed value for the run-cap
-#           increment — which would have silently DECREMENTED the run-cost
-#           counter for postpaid runs instead of incrementing it. Keeping
-#           the estimate unsigned and branching explicitly on ARGV[6] avoids
-#           that trap entirely (do not "simplify" this back).
+# ARGV[2] = estimate_micros — ALWAYS POSITIVE. ARGV[4] (not the sign of this
+#           value) selects the balance-move direction.
 # ARGV[3] = ttl seconds — refreshed (EXPIRE) on every key this script touches.
-# ARGV[4] = run_cap_micros, or -1 when there is no run-level cap to enforce.
-# ARGV[5] = run_seed_micros (seed for a brand-new runcost key).
-# ARGV[6] = '1' => postpaid (INCRBY the spend counter, mirrors _SPEND_INCR);
+# ARGV[4] = '1' => postpaid (INCRBY the spend counter, mirrors _SPEND_INCR);
 #           '0' => prepaid (seed-if-absent then DECRBY, mirrors _SEED_AND_DECR).
-# ARGV[7] = '1' => skip the balance/spend move entirely (I9 parity: a
+# ARGV[5] = '1' => skip the balance/spend move entirely (I9 parity: a
 #           postpaid item backdated to a PRIOR month must not inflate THIS
 #           month's live spend counter — mirrors record_usage_debit's
-#           _same_month guard). The run-cap check-then-increment above still
-#           runs unconditionally; only the KEYS[1] move is skipped. Prepaid
-#           callers always pass '0' here (livebal is not month-scoped — a
-#           backfill still legitimately reduces spendable balance).
-#           When skipped, returns the CURRENT (untouched) KEYS[1] value (0 if
-#           absent) so the caller's crossing check still sees whatever a
-#           SIBLING item in the same batch already moved it to.
-# Returns {held(0/1), rejected(0/1), post_value}. A rejection returns
-# {0, 1, 0} and is guaranteed to have touched NOTHING on KEYS[1].
+#           _same_month guard). Prepaid callers always pass '0' here (livebal
+#           is not month-scoped — a backfill still legitimately reduces
+#           spendable balance). When skipped, returns the CURRENT (untouched)
+#           KEYS[1] value (0 if absent) so the caller's crossing check still
+#           sees whatever a SIBLING item in the same batch already moved it to.
+# Returns the post-hold counter value. Always holds — nothing here rejects.
 _ACQUIRE = """
-local cap = tonumber(ARGV[4])
-if cap >= 0 then
-    if redis.call('EXISTS', KEYS[2]) == 0 then
-        redis.call('SET', KEYS[2], ARGV[5], 'EX', ARGV[3])
-    end
-    local newrun = tonumber(redis.call('GET', KEYS[2])) + tonumber(ARGV[2])
-    if newrun > cap then
-        redis.call('EXPIRE', KEYS[2], ARGV[3])
-        return {0, 1, 0}
-    end
-    redis.call('SET', KEYS[2], newrun, 'EX', ARGV[3])
-end
-if tonumber(ARGV[7]) == 1 then
+if tonumber(ARGV[5]) == 1 then
     local cur = redis.call('GET', KEYS[1])
-    return {1, 0, cur and tonumber(cur) or 0}
+    return cur and tonumber(cur) or 0
 end
 local v
-if tonumber(ARGV[6]) == 1 then
+if tonumber(ARGV[4]) == 1 then
     v = redis.call('INCRBY', KEYS[1], ARGV[2])
 else
     if redis.call('EXISTS', KEYS[1]) == 0 then
@@ -123,64 +93,37 @@ else
     v = redis.call('DECRBY', KEYS[1], ARGV[2])
 end
 redis.call('EXPIRE', KEYS[1], ARGV[3])
-return {1, 0, v}
+return v
 """
-
-# settle()/release() credit-back (or further debit) of the per-run cost
-# counter: applies ONLY if the counter already exists — i.e. the run HAD a
-# cap at acquire time, so _ACQUIRE actually created it. Mirrors
-# _CREDIT_IF_PRESENT so a run that never had a cap never gets a stray,
-# TTL-less counter created here on settle. ARGV[1] may be negative (a
-# further debit — the actual cost exceeded the estimate). Refreshes TTL.
-# KEYS[1]=runcost key; ARGV[1]=delta (negated by the caller); ARGV[2]=ttl.
-_RUNCOST_CREDIT_IF_PRESENT = """
-if redis.call('EXISTS', KEYS[1]) == 1 then
-    local v = redis.call('INCRBY', KEYS[1], ARGV[1])
-    redis.call('EXPIRE', KEYS[1], ARGV[2])
-    return v
-end
-return nil
-"""
-
-
-def _runcost_key(run_id) -> str:
-    return f"ubb:runcost:{run_id}"
 
 
 def _noop_hold() -> dict:
     """A fresh held/not-stopped verdict dict (never share a single mutable
     instance across items — callers may mutate their own copy)."""
-    return {"held": True, "rejected": False, "reason": None,
-            "stop": False, "stop_reason": None, "stop_scope": None}
-
-
-def _reject_hold() -> dict:
-    return {"held": False, "rejected": True, "reason": "cost_limit_exceeded",
-            "stop": False, "stop_reason": None, "stop_scope": None}
+    return {"held": True, "stop": False, "stop_reason": None, "stop_scope": None}
 
 
 class HoldService:
     @staticmethod
     def acquire(owner_id, tenant, items):
-        """Atomically check-and-reserve an estimated cost for each item.
+        """Atomically reserve an estimated cost for each item — always holds.
 
-        items: [{"estimate_micros": int, "run_id": str|None,
-                 "run_cap_micros": int|None, "run_seed_micros": int,
-                 "effective_at": datetime|None}]
+        items: [{"estimate_micros": int, "effective_at": datetime|None}]
 
         effective_at (I9 parity with record_usage_debit): for a POSTPAID
         tenant, an item backdated to a PRIOR calendar month does not move the
         livespend counter (a legitimate backfill must not inflate THIS
         month's spend uncorrectably — the reconcile MAX-merge only ever
-        RAISES, so an inflated value could never self-correct). The run-cap
-        check-then-increment still runs for these items — only the
-        balance/spend move is skipped. PREPAID is untouched: livebal is not
-        month-scoped, so a backfill still legitimately reduces the spendable
-        balance.
+        RAISES, so an inflated value could never self-correct). PREPAID is
+        untouched: livebal is not month-scoped, so a backfill still
+        legitimately reduces the spendable balance.
 
         Returns one verdict dict per item, in the SAME order as `items`:
-        {"held": bool, "rejected": bool, "reason": str|None, "stop": bool,
-         "stop_reason": str|None, "stop_scope": str|None}.
+        {"held": True, "stop": bool, "stop_reason": str|None,
+         "stop_scope": str|None}. One-rule (#37): no item is ever rejected —
+        the stop fields are the cooperative customer-wide verdict, and a
+        crossing sets the stop flag without rolling back the hold that
+        crossed it.
 
         Disabled (enforcement_mode == "off"): every item is held, unstopped
         — a cheap no-op passthrough, matching every other Tier-2 gate (the
@@ -210,16 +153,10 @@ class HoldService:
             client = _client()
             pipe = client.pipeline()
             for it in items:
-                run_id = it.get("run_id")
-                cap = it.get("run_cap_micros")
-                has_cap = bool(run_id) and cap is not None
                 skip_balance = postpaid and not _same_month(it.get("effective_at"), now)
                 pipe.eval(
-                    _ACQUIRE, 2,
-                    bal_key, _runcost_key(run_id) if run_id else _NO_RUN_SENTINEL,
+                    _ACQUIRE, 1, bal_key,
                     seed, int(it["estimate_micros"]), LEDGER_TTL_SECONDS,
-                    int(cap) if has_cap else -1,
-                    int(it.get("run_seed_micros") or 0),
                     1 if postpaid else 0,
                     1 if skip_balance else 0,
                 )
@@ -232,10 +169,7 @@ class HoldService:
             threshold = LiveLedgerService._threshold(mode, owner_id, tenant)
             out = []
             crossed = False
-            for held, rejected, post in raw_results:
-                if rejected:
-                    out.append(_reject_hold())
-                    continue
+            for post in raw_results:
                 value = int(post)
                 if threshold is not None:
                     over = value >= threshold if mode == "postpaid" else value < threshold
@@ -244,12 +178,11 @@ class HoldService:
                 out.append(_noop_hold())
 
             if crossed:
-                from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
+                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
                 LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
             verdict = LiveLedgerService.read_stop(owner_id, tenant)
             for o in out:
-                if o["held"]:
-                    o.update(verdict)
+                o.update(verdict)
             return out
         except Exception:
             # A failure THIS late (e.g. in _threshold's ORM lookup, _set_stop,
@@ -263,7 +196,7 @@ class HoldService:
             return [_noop_hold() for _ in items]  # fail-open
 
     @staticmethod
-    def settle(owner_id, tenant, run_id, delta_micros, *, effective_at=None):
+    def settle(owner_id, tenant, delta_micros, *, effective_at=None):
         """delta = estimate − exact. Positive => credit back the over-hold
         (the actual cost came in lower than the estimate); negative =>
         debit further (an underestimate).
@@ -290,11 +223,9 @@ class HoldService:
         to settle wall-clock time, the livespend adjustment is skipped
         entirely — HoldService.acquire already skipped this event's hold-time
         move for the same reason (see its `skip_balance` guard), so applying
-        a delta here would adjust a counter this event never touched. The
-        per-run cost counter adjustment below is NOT month-scoped and always
-        applies regardless. PREPAID is untouched (livebal is not
-        month-scoped — a backfill still legitimately reduces spendable
-        balance).
+        a delta here would adjust a counter this event never touched.
+        PREPAID is untouched (livebal is not month-scoped — a backfill still
+        legitimately reduces spendable balance).
 
         Month-rollover window (postpaid, same-month case): a hold acquired in
         month M that settles in month M+1 adjusts M+1's livespend key (acquire
@@ -303,7 +234,6 @@ class HoldService:
         each month's durable billed total re-corrects both months' counters
         within one reconcile cycle.
 
-        The per-run cost counter adjustment stays mode-independent.
         Best-effort everywhere; NEVER raises. Does NOT clear stop flags —
         recovery stays with reconcile/credit(), matching existing semantics.
         """
@@ -326,18 +256,11 @@ class HoldService:
                                            extra={"data": {"owner_id": str(owner_id)}})
             else:
                 LiveLedgerService.credit(owner_id, tenant, delta_micros)
-        if run_id and delta_micros and enforcement_on(tenant):
-            try:
-                _client().eval(_RUNCOST_CREDIT_IF_PRESENT, 1,
-                               _runcost_key(run_id), -delta_micros, LEDGER_TTL_SECONDS)
-            except Exception:
-                logger.warning("hold_service.run_settle_failed",
-                               extra={"data": {"run_id": str(run_id)}})
 
     @staticmethod
-    def release(owner_id, tenant, run_id, estimate_micros, *, effective_at=None):
+    def release(owner_id, tenant, estimate_micros, *, effective_at=None):
         """Full credit-back of a hold — duplicate ingest, failed append, or
         any path that must UNDO an acquire() entirely. Equivalent to
         settle(delta_micros=estimate_micros). `effective_at` forwards to
         settle()'s prior-month guard — see its docstring."""
-        HoldService.settle(owner_id, tenant, run_id, estimate_micros, effective_at=effective_at)
+        HoldService.settle(owner_id, tenant, estimate_micros, effective_at=effective_at)

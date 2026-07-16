@@ -32,8 +32,11 @@ class UsageEvent(BaseModel):
     pricing_provenance = models.JSONField(default=dict, blank=True)
     usage_metrics = models.JSONField(default=dict, blank=True)
     tags = models.JSONField(null=True, blank=True)
-    run = models.ForeignKey(
-        "runs.Run", on_delete=models.CASCADE, related_name="usage_events",
+    # The exact unit of work this event belongs to. The ONLY unit attribution
+    # — tags are free-form analytics labels and never silently become a
+    # limited thing (no tag-fallback inference).
+    task = models.ForeignKey(
+        "tasks.Task", on_delete=models.CASCADE, related_name="usage_events",
         null=True, blank=True,
     )
     # When the usage economically HAPPENED (caller-suppliable, bounded by
@@ -136,7 +139,7 @@ class RawIngestEvent(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE)
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE)
     billing_owner_id = models.UUIDField(db_index=True)
-    run_id = models.UUIDField(null=True, blank=True)
+    task_id = models.UUIDField(null=True, blank=True)
     # 500, matching IngestEventIn/RecordUsageRequest's schema max_length and
     # UsageEvent.idempotency_key: a 256-500 char caller key must not DataError
     # the whole batch's bulk_create (which the endpoint's failure path retries

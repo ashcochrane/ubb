@@ -6,11 +6,11 @@ import httpx
 
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
-    UBBHardStopError, UBBRunNotActiveError, UBBCustomerStoppedError,
+    UBBStoppedError,
 )
 from ubb.retry import request_with_retry
 from ubb.types import (
-    RecordUsageResult, CloseRunResult, UsageEvent, PaginatedResponse,
+    RecordUsageResult, CloseTaskResult, UsageEvent, PaginatedResponse,
     BatchItemResult, BatchResult,
     CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
     RateCard, TenantMarkup,
@@ -102,11 +102,17 @@ class MeteringClient:
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      product_id: str = "", metadata: dict | None = None,
-                     run_id: str | None = None,
+                     task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
                      raise_on_stop: bool = False) -> RecordUsageResult:
         """Record a usage event via POST /api/v1/metering/usage.
+
+        One-rule contract: every event that reaches UBB is priced, recorded,
+        and billed with an HTTP 200 — check ``result.stop`` on every ack and
+        stop sending work for the named scope (``result.stop_scope``: the
+        task, or the whole customer). A non-200 always means "this was not
+        recorded".
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
         datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
@@ -115,11 +121,10 @@ class MeteringClient:
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
 
-        ``raise_on_stop`` (Tier-2): when True, raise UBBCustomerStoppedError if
-        the response carries a customer-wide stop verdict (result.stop). The
-        event is still recorded+charged either way; this is purely an
-        ergonomic choice between checking result.stop and catching an exception.
-        A per-run/task hard cap always raises UBBHardStopError (429) regardless.
+        ``raise_on_stop``: when True, raise UBBStoppedError if the response
+        carries a stop verdict (result.stop). The event is still
+        recorded+charged either way; this is purely an ergonomic choice
+        between checking result.stop and catching an exception.
         """
         body: dict = {
             "customer_id": customer_id,
@@ -147,15 +152,15 @@ class MeteringClient:
             body["event_type"] = event_type
         if provider:
             body["provider"] = provider
-        if run_id is not None:
-            body["run_id"] = run_id
-        r = self._request_usage("post", "/api/v1/metering/usage", json=body)
+        if task_id is not None:
+            body["task_id"] = task_id
+        r = self._request("post", "/api/v1/metering/usage", json=body)
         data = r.json()
         result = RecordUsageResult(**{k: v for k, v in data.items()
                                       if k in RecordUsageResult.__dataclass_fields__})
         if raise_on_stop and result.stop:
-            raise UBBCustomerStoppedError(
-                reason=result.stop_reason, scope=result.stop_scope, run_id=result.run_id)
+            raise UBBStoppedError(
+                reason=result.stop_reason, scope=result.stop_scope, task_id=result.task_id)
         return result
 
     def record_batch(self, events: list[dict]) -> BatchResult:
@@ -194,64 +199,10 @@ class MeteringClient:
         return BatchResult(results=results, succeeded=body.get("succeeded", 0),
                            failed=body.get("failed", 0))
 
-    def _request_usage_once(self, method: str, path: str, **kwargs) -> httpx.Response:
-        """Like _request_once but handles run-specific error codes."""
-        try:
-            response = getattr(self._http, method)(path, **kwargs)
-        except httpx.TimeoutException as e:
-            raise UBBConnectionError("Request timed out", original=e) from e
-        except httpx.ConnectError as e:
-            raise UBBConnectionError("Could not connect to UBB API", original=e) from e
-        if response.status_code == 401:
-            raise UBBAuthError("Invalid or revoked API key")
-        if response.status_code == 429:
-            body = response.json()
-            if body.get("hard_stop"):
-                raise UBBHardStopError(
-                    run_id=body.get("run_id", ""),
-                    reason=body.get("reason", ""),
-                    total_cost_micros=body.get("total_cost_micros", 0),
-                )
-            # Regular 429 (rate limited)
-            detail = self._extract_error_detail(response)
-            err = UBBAPIError(429, detail)
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    err.retry_after = float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            raise err
-        if response.status_code == 409:
-            body = response.json()
-            if body.get("error") == "run_not_active":
-                raise UBBRunNotActiveError(
-                    run_id=body.get("run_id", ""),
-                    status=body.get("status", ""),
-                )
-            raise UBBConflictError(self._extract_error_detail(response))
-        detail = self._extract_error_detail(response)
-        if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail)
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    err.retry_after = float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            raise err
-        return response
-
-    def _request_usage(self, method: str, path: str, **kwargs) -> httpx.Response:
-        return request_with_retry(
-            self._request_usage_once, max_retries=self._max_retries,
-            method=method, path=path, **kwargs,
-        )
-
-    def close_run(self, run_id: str) -> CloseRunResult:
-        """Close (complete) a run via POST /api/v1/metering/runs/{run_id}/close."""
-        r = self._request("post", f"/api/v1/metering/runs/{run_id}/close")
-        return CloseRunResult(**r.json())
+    def close_task(self, task_id: str) -> CloseTaskResult:
+        """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close."""
+        r = self._request("post", f"/api/v1/metering/tasks/{task_id}/close")
+        return CloseTaskResult(**r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   tag_key: str | None = None, tag_value: str | None = None) -> PaginatedResponse[UsageEvent]:
