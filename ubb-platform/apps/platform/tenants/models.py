@@ -52,8 +52,6 @@ class Tenant(BaseModel):
     # stripe_customer_id = tenant as UBB's customer (for platform fee billing)
     stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
     min_balance_micros = models.BigIntegerField(default=0)
-    run_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
-    hard_stop_balance_micros = models.BigIntegerField(null=True, blank=True)
     platform_fee_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=1.00
     )
@@ -80,13 +78,13 @@ class Tenant(BaseModel):
     enforcement_mode = models.CharField(
         max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
     )
-    # Tier-2 P5: how long an ENFORCING run may go without a metered event
+    # Tier-2 P5: how long an ENFORCING task may go without a metered event
     # (heartbeat, stamped by accumulate_cost) before the reaper kills it as
     # stale. On Tenant (not RiskConfig) so the platform reaper can read it
     # without importing billing. Widen it for workloads with long uninstrumented
     # steps. 0 = disable the heartbeat reaper (the 6h max-age ceiling still
     # applies). Lives here next to enforcement_mode.
-    run_stale_seconds = models.PositiveIntegerField(default=900)
+    task_stale_seconds = models.PositiveIntegerField(default=900)
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile

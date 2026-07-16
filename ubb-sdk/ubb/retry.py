@@ -11,9 +11,7 @@ import logging
 import random
 import time
 
-from ubb.exceptions import (
-    UBBConnectionError, UBBAPIError, UBBHardStopError, UBBRunNotActiveError,
-)
+from ubb.exceptions import UBBConnectionError, UBBAPIError
 
 logger = logging.getLogger("ubb.retry")
 
@@ -23,11 +21,10 @@ _RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 def is_retryable(error: Exception) -> bool:
     """Check whether an error should be retried.
 
-    Domain errors (UBBHardStopError, UBBRunNotActiveError) are never retried,
-    even though their status codes (429, 409) overlap with retryable codes.
+    One-rule contract: usage reports never answer 429/409 — a 429 here is
+    plain rate limiting and a retry is always safe (idempotency keys make a
+    replay return the original event).
     """
-    if isinstance(error, (UBBHardStopError, UBBRunNotActiveError)):
-        return False
     if isinstance(error, UBBConnectionError):
         return True
     if isinstance(error, UBBAPIError):

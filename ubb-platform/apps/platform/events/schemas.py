@@ -24,7 +24,11 @@ class UsageRecorded:
     event_type: str = ""
     provider: str = ""
     auto_topup_attempt_id: str | None = None
-    run_id: str | None = None
+    # The clean cut (#37) renamed this field in place rather than minting a
+    # new class: no consumer read the pre-rename name, and payload
+    # construction filters unknown keys, so a legacy queued payload still
+    # constructs (task_id defaults to None).
+    task_id: str | None = None
     billing_owner_id: str = ""
     # ISO-8601 timestamp of when the usage economically happened (caller
     # timestamps / backfill). Default "" keeps legacy queued payloads valid;
@@ -289,29 +293,32 @@ class CreditGrantExpired:
 
 
 @dataclass(frozen=True)
-class RunLimitExceeded:
-    """Tier-2 spend-control fan-out event (D6). The SINGLE canonical class —
+class TaskLimitExceeded:
+    """One-rule task-kill fan-out event (#37). The SINGLE canonical class —
     no other module may redefine it.
 
-    customer_id      = the SEAT that owns the run.
+    Emitted exactly once per winning active->killed transition — by the
+    verdict-driven kill flow (sync record, batch items, async settle) and the
+    stale-task reaper — so sibling/idle workers tear the task down. The task
+    is a signal point, not a wall: events arriving after this still land,
+    bill, and count into both totals.
+
+    customer_id      = the SEAT that owns the task.
     billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
-    scope            = "run"  -> a single run hit its per-run/per-task cap or
-                                  was reaped (run_id is set);
-                       "customer" -> a customer-wide spend stop; consumers fan
-                                  the kill to every run they hold for the owner.
-    reason           = one of apps.platform.runs.reasons (closed set).
+    reason           = one of apps.platform.tasks.reasons (closed set).
+    Both running totals are carried, denominationally explicit; only the
+    provider (COGS) total races provider_cost_limit_micros.
     """
-    EVENT_TYPE = "run.limit_exceeded"
+    EVENT_TYPE = "task.limit_exceeded"
     tenant_id: str
     customer_id: str = ""
     billing_owner_id: str = ""
-    run_id: str = ""
-    external_run_id: str = ""
     task_id: str = ""
+    external_task_id: str = ""
     reason: str = ""
-    scope: str = "run"
-    total_cost_micros: int = 0
-    limit_micros: int = 0
+    total_billed_cost_micros: int = 0
+    total_provider_cost_micros: int = 0
+    provider_cost_limit_micros: int = 0
 
 
 @dataclass(frozen=True)
@@ -326,8 +333,8 @@ class StopFired:
     event (see the SET NX transition detector in _set_stop).
 
     owner_id = the billing owner the stop flag is keyed on (resolve_billing_owner).
-    scope    = "customer" — the whole owner is stopped (mirrors
-               RunLimitExceeded's scope="customer" fan-out semantics).
+    scope    = "customer" — the whole owner is stopped (consumers fan the
+               stop to every task they hold for the owner).
 
     Delivery is best-effort, not exactly-once: ``_set_stop`` writes this event
     inside a SAVEPOINT nested in the CALLER's outer transaction (record_usage

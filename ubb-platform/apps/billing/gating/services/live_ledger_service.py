@@ -113,22 +113,6 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 return v
 """
 
-# Per-task cost cap (P4): atomic check-then-increment. If adding this event's
-# billed cost would push the task over the cap, the event is REJECTED and NOT
-# counted (returns -would_be_total < 0), so the task can keep spending up to the
-# cap with smaller events — exact "$N max per task" semantics, no over-count.
-# Otherwise it counts and returns the new month-to-date task spend.
-# KEYS[1]=taskcost; ARGV[1]=billed; ARGV[2]=cap; ARGV[3]=ttl.
-_TASK_CHECK_INCR = """
-local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
-local new = cur + tonumber(ARGV[1])
-if new > tonumber(ARGV[2]) then
-    return -new
-end
-redis.call('SET', KEYS[1], new, 'EX', ARGV[3])
-return new
-"""
-
 # Postpaid reconcile MAX-merge: only RAISES toward the durable owner-aggregated
 # month total (catches the first-use under-count). Mirror of the budget
 # reconcile in budget_service. KEYS[1]=livespend; ARGV[1]=durable_total; ARGV[2]=ttl.
@@ -165,12 +149,6 @@ def _stop_key(owner_id) -> str:
     # Customer-wide cooperative stop flag. Owner-keyed (NOT month-scoped), so a
     # pooled business stops all its seats and an allocated seat stops itself.
     return f"ubb:stop:{owner_id}"
-
-
-def _taskcost_key(tenant_id, owner_id, task_id, label) -> str:
-    # Per-task month-to-date billed spend, summed across all runs sharing the
-    # task_id. Month-scoped so it resets each calendar month.
-    return f"ubb:taskcost:{tenant_id}:{owner_id}:{task_id}:{label}"
 
 
 def _month_label_bounds(now):
@@ -242,7 +220,7 @@ class LiveLedgerService:
             # non-crossing event must not clear a flag a sibling run set — the
             # flag lifts only on recovery (credit / reconcile).
             if LiveLedgerService._crossed(mode, v, owner_id, tenant):
-                from apps.platform.runs.reasons import CUSTOMER_WIDE_STOP
+                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
                 LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
             base.update(LiveLedgerService.read_stop(owner_id, tenant))
             return base
@@ -404,42 +382,6 @@ class LiveLedgerService:
         reason = v.decode() if isinstance(v, bytes) else str(v)
         return {"stop": True, "stop_reason": reason, "stop_scope": "customer"}
 
-    # ---- per-task cost cap (P4) ----
-    @staticmethod
-    def check_task_cost(owner_id, tenant, task_id, billed_cost_micros, *, run_id=None, now=None):
-        """Per-task cost cap (D12). ENFORCING-ONLY hard stop: if this event would
-        push the task's month-to-date billed spend (across all runs sharing
-        task_id) over RiskConfig.max_cost_per_task_micros, RAISE HardStopExceeded
-        (reason=task_limit_exceeded) so the endpoint rejects the event (429) and
-        kills the run (if any). The rejected event is NOT counted, so the task
-        may keep spending up to the cap with smaller events.
-
-        No-op unless enforcing(tenant), a task_id is present, a positive cap is
-        configured, and billed > 0. Redis errors fail OPEN (the per-run cap +
-        wallet floor are the backstops) — but a genuine cap breach is raised."""
-        if not enforcing(tenant) or not task_id or billed_cost_micros <= 0:
-            return
-        from apps.billing.gating.models import RiskConfig
-        rc = RiskConfig.objects.filter(tenant_id=tenant.id).first()
-        cap = rc.max_cost_per_task_micros if rc else None
-        if not cap or cap <= 0:
-            return
-        from django.utils import timezone
-        label, _, _ = _month_label_bounds(now or timezone.now())
-        key = _taskcost_key(tenant.id, owner_id, task_id, label)
-        try:
-            v = int(_client().eval(_TASK_CHECK_INCR, 1, key,
-                                   int(billed_cost_micros), int(cap), LEDGER_TTL_SECONDS))
-        except Exception:
-            logger.warning("live_ledger.task_cost_failed",
-                           extra={"data": {"owner_id": str(owner_id), "task_id": task_id}})
-            return
-        if v < 0:  # would exceed the cap; -v is the would-be total
-            from apps.platform.runs.services import HardStopExceeded
-            from apps.platform.runs.reasons import TASK_LIMIT_EXCEEDED
-            raise HardStopExceeded(run_id=run_id or "", reason=TASK_LIMIT_EXCEEDED,
-                                   total_cost_micros=-v, estimated_balance=None)
-
     # ---- prepaid credit hook (top-up / refund-reversal / manual credit) ----
     @staticmethod
     def credit(owner_id, tenant, amount_micros):
@@ -454,7 +396,7 @@ class LiveLedgerService:
                                int(amount_micros), LEDGER_TTL_SECONDS)
             # Recovery (P3): a positive credit that lifts the balance back to/
             # above the floor clears the cooperative stop flag so the customer's
-            # runs may resume. (A negative credit / grant-expiry never clears.)
+            # tasks may resume. (A negative credit / grant-expiry never clears.)
             if v is not None and amount_micros > 0:
                 from apps.billing.queries import get_customer_min_balance, get_customer_balance
                 floor = get_customer_min_balance(owner_id, tenant.id)
@@ -552,9 +494,9 @@ class LiveLedgerService:
         for every owner of a tenant (D17). Call on an enforcement_mode
         TRANSITION so a re-enable / mode change never reads a STALE stop flag
         (which could wrongly durably-suspend) or a stale prepaid balance (62-day
-        TTL). The month-scoped counters (livespend/taskcost) self-reset monthly,
-        are reconcile-corrected, and are short-circuited while mode==off, so
-        they need no explicit cleanup. Best-effort."""
+        TTL). The month-scoped livespend counter self-resets monthly, is
+        reconcile-corrected, and is short-circuited while mode==off, so it
+        needs no explicit cleanup. Best-effort."""
         from apps.platform.customers.models import Customer
         try:
             client = _client()

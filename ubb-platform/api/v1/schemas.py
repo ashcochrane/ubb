@@ -8,18 +8,26 @@ from pydantic import field_validator
 
 class PreCheckRequest(Schema):
     customer_id: UUID
-    start_run: bool = False
-    run_metadata: Optional[dict] = None
-    external_run_id: str = ""
+    start_task: bool = False
+    task_metadata: Optional[dict] = None
+    external_task_id: str = ""
+    # COGS-denominated task limit (what the job burns). Omitted/null = the
+    # tenant default (RiskConfig.default_task_provider_cost_limit_micros);
+    # absent both, the task is uncapped and no signal ever fires.
+    provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
 
 
 class PreCheckResponse(Schema):
     allowed: bool
+    # reason vocabulary: insufficient_funds | account_closed |
+    # customer_stopped | rate_limit_exceeded | budget-cap reasons |
+    # concurrency_limit | cost_coverage_required (a resolved COGS limit
+    # requires Tenant.require_cost_card_coverage).
     reason: Optional[str] = None
     balance_micros: Optional[int] = None
-    run_id: Optional[str] = None
-    cost_limit_micros: Optional[int] = None
-    hard_stop_balance_micros: Optional[int] = None
+    task_id: Optional[str] = None
+    provider_cost_limit_micros: Optional[int] = None
+    floor_snapshot_micros: Optional[int] = None
 
 
 class RecordUsageRequest(Schema):
@@ -43,8 +51,10 @@ class RecordUsageRequest(Schema):
                 f"usage_metrics values must be >= 0; negative metrics: {negative}")
         return v
     currency: Optional[str] = Field(default=None, max_length=3)
+    # Free-form analytics labels — never unit attribution (task_id below is
+    # the only one; there is no tag-fallback inference).
     tags: Optional[dict[str, str]] = None
-    run_id: Optional[UUID] = None
+    task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
     product_id: Optional[str] = Field(default=None, max_length=100)
@@ -95,13 +105,21 @@ class RecordUsageResponse(Schema):
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
     units: Optional[int] = None
-    run_id: Optional[str] = None
-    run_total_cost_micros: Optional[int] = None
-    hard_stop: bool = False
-    # Tier-2 (D14): customer-wide cooperative spend stop on a 200 body. `stop`
-    # means "halt this customer's runs at the next safe boundary" (the event
-    # was still recorded + charged). Distinct from `hard_stop` (per-run/task
-    # 429, run already killed) and `suspended` (durable owner status).
+    task_id: Optional[str] = None
+    # Null until the subtask ticket lands (carried so the wire shape is final).
+    parent_task_id: Optional[str] = None
+    # The named task's running totals, denominationally explicit — billed
+    # (what you charge) and provider (what the job burns; only this one races
+    # the COGS limit).
+    task_total_billed_cost_micros: Optional[int] = None
+    task_total_provider_cost_micros: Optional[int] = None
+    # One-rule stop verdict on a 200 body — the event was ALWAYS recorded +
+    # charged; `stop` means "stop sending work for the named scope". The
+    # scalar slot carries the most specific verdict (a task-scoped crossing
+    # wins over a simultaneous customer-wide stop; the latter surfaces on the
+    # next ack and via stop.fired). stop_reason ∈ task_limit | customer_floor
+    # | task_not_active | customer_wide_stop; stop_scope ∈ task | customer.
+    # `suspended` stays the durable owner status.
     stop: bool = False
     stop_reason: Optional[str] = None
     stop_scope: Optional[str] = None
@@ -154,7 +172,7 @@ class UsageEventDetailOut(Schema):
     pricing_provenance: dict = {}
     tags: Optional[dict] = None
     metadata: dict = {}
-    run_id: Optional[str] = None
+    task_id: Optional[str] = None
     effective_at: str
     created_at: str
 
@@ -317,10 +335,11 @@ class TenantMarkupOut(Schema):
     fixed_uplift_micros: int
 
 
-class CloseRunResponse(Schema):
-    run_id: str
+class CloseTaskResponse(Schema):
+    task_id: str
     status: str
-    total_cost_micros: int
+    total_billed_cost_micros: int
+    total_provider_cost_micros: int
     event_count: int
 
 
@@ -506,14 +525,16 @@ class TenantConfigOut(Schema):
     automatic_tax_enabled: bool
     # Tier-2 spend-control mode (read-only here; off|advisory|enforcing).
     enforcement_mode: str = "off"
-    # Spend-safety caps (tenant defaults). min_balance_micros is the allowed
-    # OVERDRAFT magnitude (balance may go to -min_balance before blocking), not
-    # a positive floor. run_cost_limit/hard_stop_balance are null = no cap.
+    # Spend-safety defaults. min_balance_micros is the allowed OVERDRAFT
+    # magnitude (balance may go to -min_balance before blocking), not a
+    # positive floor.
     min_balance_micros: int = 0
-    run_cost_limit_micros: Optional[int] = None
-    hard_stop_balance_micros: Optional[int] = None
-    # Per-task cost ceiling (lives on RiskConfig); null = no cap.
-    max_cost_per_task_micros: Optional[int] = None
+    # Default COGS limit for new tasks (RiskConfig); null = no default —
+    # absent an explicit start-call limit too, the task is uncapped.
+    default_task_provider_cost_limit_micros: Optional[int] = None
+    # Default wallet-floor snapshot for new tasks (BillingTenantConfig, a
+    # balance line, e.g. -5_000_000); null = no per-task floor snapshot.
+    default_task_floor_snapshot_micros: Optional[int] = None
 
 
 class TenantConfigIn(Schema):
@@ -526,15 +547,18 @@ class TenantConfigIn(Schema):
     # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
-    # Spend-safety caps. Omitting a key leaves it unchanged. min_balance_micros
-    # is the allowed overdraft magnitude (>= 0; cannot be null). For the two
-    # nullable caps, sending an explicit null CLEARS the cap (distinguished from
-    # "omitted" via model_fields_set in the endpoint); a positive value sets it.
+    # Spend-safety defaults. Omitting a key leaves it unchanged.
+    # min_balance_micros is the allowed overdraft magnitude (>= 0; cannot be
+    # null). For the two nullable defaults, sending an explicit null CLEARS
+    # the default (distinguished from "omitted" via model_fields_set in the
+    # endpoint); a value sets it.
     min_balance_micros: Optional[int] = None
-    run_cost_limit_micros: Optional[int] = None
-    hard_stop_balance_micros: Optional[int] = None
-    # Per-task cost ceiling (RiskConfig). Omit = unchanged; null = no cap.
-    max_cost_per_task_micros: Optional[int] = None
+    # Default COGS limit for new tasks (RiskConfig). Omit = unchanged;
+    # null = no default.
+    default_task_provider_cost_limit_micros: Optional[int] = None
+    # Default wallet-floor snapshot for new tasks (BillingTenantConfig; may
+    # be negative — it is a balance line). Omit = unchanged; null = none.
+    default_task_floor_snapshot_micros: Optional[int] = None
 
 
 class PlanIn(Schema):

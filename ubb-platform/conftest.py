@@ -16,13 +16,15 @@ from django.conf import settings
 
 
 def pytest_configure(config):
-    # Derive the test Redis URL by replacing the DB index with /15.
-    # The env-provided REDIS_URL may use any index; we want a dedicated slot.
+    # Derive the test Redis URL by replacing the DB index with a dedicated
+    # slot (default /15). UBB_TEST_REDIS_DB lets parallel local pytest
+    # processes pick disjoint slots — cache.clear() is a FLUSHDB, so two
+    # concurrent runs sharing one index would wipe each other's keys mid-test.
     import re
 
     base_url = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
-    # Replace the trailing /N (db index) with /15
-    test_url = re.sub(r"/\d+$", "/15", base_url)
+    test_db = os.environ.get("UBB_TEST_REDIS_DB", "15")
+    test_url = re.sub(r"/\d+$", f"/{test_db}", base_url)
 
     # Only override if Django settings haven't been configured yet to avoid
     # interfering with a pre-configured test settings module.

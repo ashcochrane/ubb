@@ -31,9 +31,9 @@ WEBHOOK_EVENT_TYPES = (
     "billing.credit_grant_expiring",
     "billing.credit_grant_expired",
     "auto_topup.requires_action",
-    # budgets / runs
+    # budgets / tasks
     "budget.threshold_reached",
-    "run.limit_exceeded",
+    "task.limit_exceeded",
     "stop.fired",
     # margins / economics
     "margin.customer_unprofitable",

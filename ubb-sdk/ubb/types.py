@@ -10,9 +10,9 @@ class PreCheckResult:
     reason: str | None = None
     can_proceed: bool | None = None
     balance_micros: int | None = None
-    run_id: str | None = None
-    cost_limit_micros: int | None = None
-    hard_stop_balance_micros: int | None = None
+    task_id: str | None = None
+    provider_cost_limit_micros: int | None = None
+    floor_snapshot_micros: int | None = None
 
 @dataclass(frozen=True)
 class RecordUsageResult:
@@ -23,13 +23,15 @@ class RecordUsageResult:
     billed_cost_micros: int | None = None
     units: int | None = None
     balance_after_micros: int | None = None
-    run_id: str | None = None
-    run_total_cost_micros: int | None = None
-    hard_stop: bool = False
-    # Tier-2: customer-wide cooperative spend stop (on a 200 — the event WAS
-    # recorded + charged). `stop` means "halt this customer's runs at the next
-    # safe boundary". Distinct from `hard_stop` (per-run/task 429, run already
-    # killed) and `suspended` (the owner's durable status).
+    task_id: str | None = None
+    parent_task_id: str | None = None
+    # The named task's running totals, denominationally explicit — only the
+    # provider (COGS) total races the task's limit.
+    task_total_billed_cost_micros: int | None = None
+    task_total_provider_cost_micros: int | None = None
+    # One-rule stop verdict (on a 200 — the event WAS recorded + charged).
+    # `stop` means "stop sending work for the named scope" (stop_scope: task
+    # | customer). `suspended` is the owner's durable status.
     stop: bool = False
     stop_reason: str | None = None
     stop_scope: str | None = None
@@ -57,10 +59,11 @@ class BatchResult:
     failed: int
 
 @dataclass(frozen=True)
-class CloseRunResult:
-    run_id: str
+class CloseTaskResult:
+    task_id: str
     status: str
-    total_cost_micros: int
+    total_billed_cost_micros: int
+    total_provider_cost_micros: int
     event_count: int
 
 @dataclass(frozen=True)

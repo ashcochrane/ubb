@@ -1,6 +1,6 @@
 # Platform Kernel
 
-The shared kernel every product builds on: tenancy, customers, runs, the event outbox, and the
+The shared kernel every product builds on: tenancy, customers, tasks, the event outbox, and the
 cross-cutting money and identity primitives. Anything may depend on it; it never depends on a
 product. Code anchors are relative to `ubb-platform/`.
 
@@ -48,7 +48,7 @@ What a customer represents — `individual`, `business`, or `seat` (a member of 
 
 **Billing owner**:
 The customer whose wallet/card actually funds a given customer — the parent business for a pooled
-seat, otherwise the customer itself; pinned at run creation and never re-resolved.
+seat, otherwise the customer itself; pinned at task creation and never re-resolved.
 (`apps/platform/customers/models.py:Customer.resolve_billing_owner`)
 _Avoid_: "payer", "account holder".
 
@@ -64,26 +64,39 @@ synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
 `active`, `suspended`, or `closed`. Only a monetary suspension auto-clears on recovery — a top-up
 never silently un-suspends an admin/fraud suspension.
 
-## Runs
+## Tasks
 
-**Run**:
-A tenant+customer-scoped grouping of many usage events into one logical workflow execution; lives
-in the kernel so metering and billing can both reference it without crossing a product boundary.
-Status `active | completed | failed | killed`. (`apps/platform/runs/models.py:Run`)
+**Task**:
+The registered unit of agent work — a tenant+customer-scoped grouping of many usage events into
+one logical workflow execution, registered at the start-gate; lives in the kernel so metering and
+billing can both reference it without crossing a product boundary. Carries both running totals
+(billed + provider, denominationally explicit) and its signal points. Status
+`active | completed | failed | killed`. (`apps/platform/tasks/models.py:Task`)
+_Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `tags` value) —
+tags are analytics-only and never attach a limit.
 
-**Hard stop**:
-A per-run spend ceiling — the per-run cost limit or the wallet balance floor — snapshotted from
-tenant config at run creation, so config changes never affect an in-flight run.
-(`apps/platform/runs/services.py:HardStopExceeded`)
+**Task limit (provider-cost limit)**:
+A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
+passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
+races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a billing wall.
+(`apps/platform/tasks/models.py:Task.provider_cost_limit_micros`)
+_Avoid_: "hard stop" — that vocabulary retired with the 429.
+
+**Killed (task)**:
+The stop signal fired for this task — its limit or floor snapshot was crossed, or the reaper
+terminated it. Late events still land, bill, and count into the killed task's totals; the flip is
+the durable record that the signal fired, not a wall.
+(`apps/platform/tasks/services.py:TaskService.kill_task`)
 
 **Heartbeat**:
-A run's most-recent-event timestamp; its absence past the stale window is what the reaper kills on.
-(`apps/platform/runs/models.py:Run.last_event_at`)
+A task's most-recent-event timestamp; its absence past the stale window is what the reaper kills
+on. (`apps/platform/tasks/models.py:Task.last_event_at`)
 
 **Stop reason**:
-The closed vocabulary of why a run stopped — `cost_limit_exceeded`, `task_limit_exceeded`,
-`balance_floor_exceeded`, `customer_wide_stop`, `stale`, `stale_max_age`. One source of truth for
-every producer and consumer. (`apps/platform/runs/reasons.py`)
+The closed vocabulary of why a stop signal fired — `task_limit`, `customer_floor`,
+`task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`. One source of truth for every
+producer and consumer; rides the ack's `stop_reason`, never an HTTP error.
+(`apps/platform/tasks/reasons.py`)
 
 ## Events
 
@@ -121,4 +134,4 @@ unsupported. (`core/soft_delete.py`)
 
 **Lock ordering**:
 The canonical global lock-acquisition order no code path may violate:
-Run → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent. (`core/locking.py`)
+Task → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent. (`core/locking.py`)

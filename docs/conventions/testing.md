@@ -23,7 +23,8 @@ LocMemCache — gating/budget tests need cross-process cache semantics). Run eve
 
 ## Two non-obvious guards (in the root `conftest.py`)
 
-1. **Redis DB 15.** The suite is moved onto Redis DB index 15 so `cache.clear()` / `FLUSHDB` in
+1. **Redis DB 15.** The suite is moved onto Redis DB index 15 (override with `UBB_TEST_REDIS_DB`
+   for parallel local runs) so `cache.clear()` / `FLUSHDB` in
    gating/budget tests never touches app or Celery-broker data (DB 1). Don't hardcode a different
    index in a test.
 2. **Stripe network guard (autouse).** A sentinel key is forced and **any un-mocked Stripe network
@@ -64,7 +65,7 @@ rule needs judgment; the legitimate shapes are:
   `UsageService.record_usage`, then run the billing handler, then assert the wallet ledger — the way
   `apps/billing/gating/tests/test_budget_e2e.py` does.
 - **Assert invariants**, since so much of this domain is money and idempotency: a redelivered event
-  debits exactly once, accept-hold plus settle-delta nets to the exact price, a stale run gets
+  debits exactly once, accept-hold plus settle-delta nets to the exact price, a stale task gets
   reaped. Prefer an invariant assertion over a single golden value.
 - **Money in micros**, as integers, everywhere in fixtures and assertions.
 

@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('customers', '0013_remove_customer_min_balance_micros'),
-        ('runs', '0001_initial'),
+        ('tasks', '0001_initial'),
         ('tenants', '0016_tenant_enforcement_mode'),
     ]
 

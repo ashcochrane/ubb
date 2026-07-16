@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('customers', '0009_rename_arrears_to_min_balance'),
-        ('runs', '0001_initial'),
+        ('tasks', '0001_initial'),
         ('tenants', '0007_rename_arrears_to_min_balance'),
         ('usage', '0014_add_run_fk'),
     ]

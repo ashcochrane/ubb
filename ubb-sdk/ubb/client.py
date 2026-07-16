@@ -6,7 +6,7 @@ from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
 from ubb.types import (
-    PreCheckResult, RecordUsageResult, CloseRunResult, CustomerResult,
+    PreCheckResult, RecordUsageResult, CloseTaskResult, CustomerResult,
     BalanceResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
     RefundResult, WalletTransaction, PaginatedResponse,
     CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
@@ -110,49 +110,59 @@ class UBBClient:
 
     # ---- orchestrated methods ----
 
-    def pre_check(self, customer_id: str, start_run: bool = False,
-                  run_metadata: dict | None = None,
-                  external_run_id: str = "") -> PreCheckResult:
+    def pre_check(self, customer_id: str, start_task: bool = False,
+                  task_metadata: dict | None = None,
+                  external_task_id: str = "",
+                  provider_cost_limit_micros: int | None = None) -> PreCheckResult:
         """Pre-check whether a request should proceed.
 
         If billing is enabled, delegates to billing pre-check which checks
         customer status, rate limits, and wallet balance vs arrears threshold.
         If billing is not enabled, returns trivially allowed.
 
-        If start_run=True and the check passes, a Run is created server-side
-        and its ID is returned in the result.
+        If start_task=True and the check passes, a Task is created
+        server-side and its ID is returned in the result.
+        ``provider_cost_limit_micros`` is the task's COGS limit (what the job
+        burns); omitted, the tenant default applies — absent both, the task
+        is uncapped and no stop signal ever fires. A resolved limit requires
+        cost-card coverage on the tenant (refused ``cost_coverage_required``
+        otherwise).
         """
         if self.billing:
             check = self.billing.pre_check(
                 customer_id,
-                start_run=start_run,
-                run_metadata=run_metadata,
-                external_run_id=external_run_id,
+                start_task=start_task,
+                task_metadata=task_metadata,
+                external_task_id=external_task_id,
+                provider_cost_limit_micros=provider_cost_limit_micros,
             )
             return PreCheckResult(
                 allowed=check.get("allowed", check.get("can_proceed", True)),
                 can_proceed=check.get("can_proceed", check.get("allowed", True)),
+                reason=check.get("reason"),
                 balance_micros=check.get("balance_micros"),
-                run_id=check.get("run_id"),
-                cost_limit_micros=check.get("cost_limit_micros"),
-                hard_stop_balance_micros=check.get("hard_stop_balance_micros"),
+                task_id=check.get("task_id"),
+                provider_cost_limit_micros=check.get("provider_cost_limit_micros"),
+                floor_snapshot_micros=check.get("floor_snapshot_micros"),
             )
 
         return PreCheckResult(allowed=True, can_proceed=True)
 
-    def start_run(self, customer_id: str, metadata: dict | None = None,
-                  external_run_id: str = "") -> PreCheckResult:
-        """Start a run: pre-check + create a Run if allowed.
+    def start_task(self, customer_id: str, metadata: dict | None = None,
+                   external_task_id: str = "",
+                   provider_cost_limit_micros: int | None = None) -> PreCheckResult:
+        """Start a task: pre-check + create a Task if allowed.
 
-        Convenience wrapper around pre_check(start_run=True).
+        Convenience wrapper around pre_check(start_task=True).
         Requires billing product.
         """
         self._require_billing()
         return self.pre_check(
             customer_id,
-            start_run=True,
-            run_metadata=metadata,
-            external_run_id=external_run_id,
+            start_task=True,
+            task_metadata=metadata,
+            external_task_id=external_task_id,
+            provider_cost_limit_micros=provider_cost_limit_micros,
         )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
@@ -160,7 +170,7 @@ class UBBClient:
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      product_id: str = "", metadata: dict | None = None,
-                     run_id: str | None = None,
+                     task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
                      raise_on_stop: bool = False) -> RecordUsageResult:
@@ -168,20 +178,24 @@ class UBBClient:
         ``MeteringClient.record_usage()`` (kept in signature parity by
         test_sdk_delegation.TestRecordUsageSignatureParity).
 
+        One-rule contract: every event is recorded and billed with an HTTP
+        200 — check ``result.stop`` on every ack and stop sending work for
+        the named scope (``result.stop_scope``). ``raise_on_stop`` raises
+        UBBStoppedError instead, for exception-driven loops.
+
         Pricing: supply ``provider_cost_micros`` (explicit cost) and/or
         ``usage_metrics`` (named metrics priced server-side by the rate card);
         both are optional here and the server enforces its pricing rules.
         ``recorded_at`` backdates the event (tz-aware datetime or ISO-8601
-        string, bounded by the tenant's backfill window). ``raise_on_stop``
-        raises UBBCustomerStoppedError on a customer-wide stop verdict.
+        string, bounded by the tenant's backfill window).
 
         Wallet deduction is handled server-side via the billing outbox handler
         — the SDK does NOT call billing.debit() to avoid double-debit.
 
-        If run_id is provided, the event is associated with the run and the
-        run's hard stop limits are checked. Raises UBBHardStopError if the run
-        exceeds its limits (the run is automatically killed). Raises
-        UBBRunNotActiveError if the run is already killed/completed.
+        If task_id is provided, the event is attributed to that task and its
+        running totals (billed + provider) ride the response; a limit
+        crossing kills the task server-side and the ack carries the stop
+        verdict — the event still landed and billed.
         """
         metering = self._require_metering()
         return metering.record_usage(
@@ -197,15 +211,15 @@ class UBBClient:
             tags=tags,
             product_id=product_id,
             metadata=metadata,
-            run_id=run_id,
+            task_id=task_id,
             usage_metrics=usage_metrics,
             recorded_at=recorded_at,
             raise_on_stop=raise_on_stop,
         )
 
-    def close_run(self, run_id: str) -> CloseRunResult:
-        """Close (complete) a run. Requires metering product."""
-        return self._require_metering().close_run(run_id)
+    def close_task(self, task_id: str) -> CloseTaskResult:
+        """Close (complete) a task. Requires metering product."""
+        return self._require_metering().close_task(task_id)
 
     # ---- platform-level methods (use metering's HTTP client) ----
 

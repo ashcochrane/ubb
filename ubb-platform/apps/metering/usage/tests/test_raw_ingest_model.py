@@ -30,7 +30,7 @@ def test_raw_ingest_defaults(tenant, customer):
     assert raw.attempts == 0
     assert raw.held is True
     assert raw.estimate_exact is False
-    assert raw.run_id is None
+    assert raw.task_id is None
 
 
 def test_duplicate_idempotency_keys_allowed(tenant, customer):

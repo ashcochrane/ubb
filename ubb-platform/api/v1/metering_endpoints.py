@@ -20,7 +20,7 @@ from api.v1.schemas import (
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
-    CloseRunResponse,
+    CloseTaskResponse,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
@@ -31,7 +31,7 @@ from apps.metering.pricing.models import (
 )
 from api.v1.pagination import encode_cursor, apply_cursor_filter
 from apps.platform.customers.models import Customer
-from apps.platform.runs.models import Run
+from apps.platform.tasks.models import Task
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
 
@@ -42,17 +42,38 @@ metering_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_metering_v1")
 _product_check = ProductAccess("metering")
 
 
+def _apply_task_kill(tenant, customer, task_id, result):
+    """One-rule (#37): a task-scoped crossing verdict on the result drives the
+    idempotent kill flow (active->killed flip + task.limit_exceeded on the
+    winning transition). The event is ALREADY recorded and billed — the kill
+    is a signal, never a wall, so this runs after record_usage returned, in
+    its own transaction, and never raises (a kill failure must not turn a
+    recorded event into a non-200)."""
+    from apps.platform.tasks import reasons
+    from apps.platform.tasks.services import TaskService
+    if (task_id is not None and result.get("stop_scope") == "task"
+            and result.get("stop_reason") in reasons.CROSSING_REASONS):
+        TaskService.kill_and_announce(
+            task_id, result["stop_reason"],
+            tenant_id=tenant.id, customer_id=customer.id)
+
+
 @metering_api.post("/usage", response={200: RecordUsageResponse})
 def record_usage(request, payload: RecordUsageRequest):
+    """Record one usage event. One-rule contract: every event that reaches
+    UBB is priced, recorded, and billed with an HTTP 200 — including the
+    tipping event that crosses a limit and everything arriving after a kill.
+    The stop instruction rides the response fields (stop / stop_reason /
+    stop_scope); a non-200 always means "this was not recorded" (auth,
+    malformed payload, unknown customer/task, pricing/validation errors)."""
     _product_check(request)
 
-    from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
     from apps.metering.pricing.services.pricing_service import PricingError
     from apps.metering.usage.services.usage_service import EffectiveAtError
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    if payload.run_id is not None:
-        get_object_or_404(Run, id=payload.run_id, tenant=request.auth.tenant, customer=customer)
+    if payload.task_id is not None:
+        get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
     try:
         result = UsageService.record_usage(
             tenant=request.auth.tenant,
@@ -68,43 +89,10 @@ def record_usage(request, payload: RecordUsageRequest):
             event_type=payload.event_type,
             provider=payload.provider,
             tags=payload.tags,
-            run_id=payload.run_id,
+            task_id=payload.task_id,
             usage_metrics=payload.usage_metrics,
             effective_at=payload.effective_at,
         )
-    except HardStopExceeded as e:
-        from django.db import transaction
-        # A per-task cost-cap breach (P4) can fire with no run — guard kill_run.
-        if payload.run_id is not None:
-            from apps.platform.events.outbox import write_event
-            from apps.platform.events.schemas import RunLimitExceeded
-            with transaction.atomic():
-                killed, transitioned = RunService.kill_run(
-                    payload.run_id, reason=e.reason,
-                    tenant_id=request.auth.tenant.id, customer_id=customer.id)
-                # P6 fan-out: notify sibling/idle workers of THIS run (the
-                # posting worker already gets the 429). scope="run".
-                if transitioned:
-                    write_event(RunLimitExceeded(
-                        tenant_id=str(request.auth.tenant.id), customer_id=str(customer.id),
-                        billing_owner_id=str(killed.billing_owner_id or ""),
-                        run_id=str(killed.id), external_run_id=killed.external_run_id,
-                        task_id=killed.task_id, reason=e.reason, scope="run",
-                        total_cost_micros=e.total_cost_micros,
-                        limit_micros=killed.cost_limit_micros or 0))
-        return metering_api.create_response(request, {
-            "error": "hard_stop_exceeded",
-            "reason": e.reason,
-            "run_id": e.run_id,
-            "total_cost_micros": e.total_cost_micros,
-            "hard_stop": True,
-        }, status=429)
-    except RunNotActive as e:
-        return metering_api.create_response(request, {
-            "error": "run_not_active",
-            "run_id": e.run_id,
-            "status": e.status,
-        }, status=409)
     except PricingError as e:
         return metering_api.create_response(
             request, {"error": "pricing_error", "detail": str(e)}, status=422)
@@ -116,22 +104,24 @@ def record_usage(request, payload: RecordUsageRequest):
     except ValueError as e:
         from ninja.errors import HttpError
         raise HttpError(422, str(e))
+    _apply_task_kill(request.auth.tenant, customer, payload.task_id, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return result
 
 
-def _record_batch_item(request, tenant, item, customers, run_exists):
+def _record_batch_item(request, tenant, item, customers, task_exists):
     """One batch item == one independent POST /usage, error mapping included.
 
-    Mirrors the single endpoint's except branches byte-for-byte as per-item
-    result dicts ({"ok": false, "error": <same code>, ...same fields...}); a
-    success mirrors the single-call success body plus {"ok": true}. 404s
-    become per-item {"error": "not_found"}; the generic ValueError branch
-    becomes {"error": "validation_error"}.
+    Mirrors the single endpoint's contract byte-for-byte as per-item result
+    dicts: a success mirrors the single-call success body (stop-verdict
+    fields included) plus {"ok": true}. 404s become per-item
+    {"error": "not_found"}; the generic ValueError branch becomes
+    {"error": "validation_error"}. One-rule parity: a crossing verdict runs
+    the same kill flow and the batch CONTINUES — later items on the killed
+    task still land, bill, and carry the task_not_active stop verdict,
+    identical to firing the same items as sequential singles.
     """
-    from django.db import transaction
-    from apps.platform.runs.services import HardStopExceeded, RunNotActive, RunService
     from apps.metering.pricing.services.pricing_service import PricingError
     from apps.metering.usage.services.usage_service import EffectiveAtError
 
@@ -141,13 +131,13 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
     customer = customers[cid]
     if customer is None:
         return {"ok": False, "error": "not_found", "detail": "Customer not found"}
-    if item.run_id is not None:
-        run_key = (cid, str(item.run_id))
-        if run_key not in run_exists:
-            run_exists[run_key] = Run.objects.filter(
-                id=item.run_id, tenant=tenant, customer=customer).exists()
-        if not run_exists[run_key]:
-            return {"ok": False, "error": "not_found", "detail": "Run not found"}
+    if item.task_id is not None:
+        task_key = (cid, str(item.task_id))
+        if task_key not in task_exists:
+            task_exists[task_key] = Task.objects.filter(
+                id=item.task_id, tenant=tenant, customer=customer).exists()
+        if not task_exists[task_key]:
+            return {"ok": False, "error": "not_found", "detail": "Task not found"}
     try:
         result = UsageService.record_usage(
             tenant=tenant,
@@ -163,50 +153,17 @@ def _record_batch_item(request, tenant, item, customers, run_exists):
             event_type=item.event_type,
             provider=item.provider,
             tags=item.tags,
-            run_id=item.run_id,
+            task_id=item.task_id,
             usage_metrics=item.usage_metrics,
             effective_at=item.effective_at,
         )
-    except HardStopExceeded as e:
-        # Same side effect as the single endpoint: kill the run, then the
-        # batch CONTINUES — later items on this run get run_not_active,
-        # identical to firing the same items as sequential singles. A per-task
-        # cost-cap breach (P4) can fire with no run — guard kill_run.
-        try:
-            if item.run_id is not None:
-                from apps.platform.events.outbox import write_event
-                from apps.platform.events.schemas import RunLimitExceeded
-                with transaction.atomic():
-                    killed, transitioned = RunService.kill_run(
-                        item.run_id, reason=e.reason,
-                        tenant_id=tenant.id, customer_id=customer.id)
-                    if transitioned:
-                        write_event(RunLimitExceeded(  # P6 fan-out (scope="run")
-                            tenant_id=str(tenant.id), customer_id=str(customer.id),
-                            billing_owner_id=str(killed.billing_owner_id or ""),
-                            run_id=str(killed.id), external_run_id=killed.external_run_id,
-                            task_id=killed.task_id, reason=e.reason, scope="run",
-                            total_cost_micros=e.total_cost_micros,
-                            limit_micros=killed.cost_limit_micros or 0))
-        except Exception:
-            # A kill failure must never 500 the whole batch. NOTE: the run is
-            # left ACTIVE, so later items on it may SUCCEED instead of getting
-            # run_not_active — the loud log is the operator signal.
-            logger.exception("run.kill_failed", extra={"data": {
-                "run_id": str(item.run_id), "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id), "reason": e.reason}})
-        return {"ok": False, "error": "hard_stop_exceeded", "reason": e.reason,
-                "run_id": e.run_id, "total_cost_micros": e.total_cost_micros,
-                "hard_stop": True}
-    except RunNotActive as e:
-        return {"ok": False, "error": "run_not_active",
-                "run_id": e.run_id, "status": e.status}
     except PricingError as e:
         return {"ok": False, "error": "pricing_error", "detail": str(e)}
     except EffectiveAtError as e:
         return {"ok": False, "error": e.code, "detail": str(e)}
     except ValueError as e:
         return {"ok": False, "error": "validation_error", "detail": str(e)}
+    _apply_task_kill(tenant, customer, item.task_id, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return {"ok": True, **result}
@@ -217,7 +174,7 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     """Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 → 422).
 
     Each item runs the same per-item record_usage in its own atomic commit —
-    deliberately NOT one mega-transaction, which would hold Run/counter locks
+    deliberately NOT one mega-transaction, which would hold Task/counter locks
     for the whole batch, delay outbox dispatch, and diverge from the semantics
     of N sequential singles. Always HTTP 200 with positionally-aligned
     results[] + succeeded/failed counts; per-item idempotency makes a
@@ -228,8 +185,8 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     _product_check(request)
     tenant = request.auth.tenant
     customers: dict = {}
-    run_exists: dict = {}
-    results = [_record_batch_item(request, tenant, item, customers, run_exists)
+    task_exists: dict = {}
+    results = [_record_batch_item(request, tenant, item, customers, task_exists)
                for item in payload.events]
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"results": results, "succeeded": succeeded,
@@ -238,91 +195,54 @@ def record_usage_batch(request, payload: UsageBatchRequest):
 
 # --- Async ingest (estimate -> atomic hold -> durable append) ---
 
-# Task 5 (30s L1 cache): {run_id: (cost_limit_micros, total_cost_micros,
-# status, customer_id, expires_monotonic)} — ONE batched Run.objects.values()
-# read per ingest call for any run_ids not already cached/fresh, instead of a
-# query per event. Clear-on-full bound mirrors CardCache._l1 (not an LRU).
-_RUN_META_CACHE: dict = {}
-_RUN_META_TTL_SECONDS = 30
-_RUN_META_MAX = 4096
+# 30s L1 cache: {task_id: (customer_id_str_or_None, expires_monotonic)} — ONE
+# batched Task.objects.values() read per ingest call for any task_ids not
+# already cached/fresh, instead of a query per event. Existence/ownership
+# ONLY (one-rule #37): a task's STATUS never gates acceptance — events for a
+# non-active task are accepted, held, and get their task_not_active verdict
+# at settle. customer_id None = no such task (sentinel for retry storms).
+# Clear-on-full bound mirrors CardCache._l1 (not an LRU).
+_TASK_META_CACHE: dict = {}
+_TASK_META_TTL_SECONDS = 30
+_TASK_META_MAX = 4096
 
 
-def _run_meta_for(tenant, run_ids):
+def _task_meta_for(tenant, task_ids):
     import time
-    if not run_ids:
+    if not task_ids:
         return {}
     now_mono = time.monotonic()
     # The return dict is built from LOCAL captures only — never by re-reading
     # the module cache at the end. The clear-on-full below wipes entries that
     # are fresh for THIS call, so a final read-back would KeyError whenever a
-    # batch mixes a cached run with an uncached one at the size bound.
+    # batch mixes a cached task with an uncached one at the size bound.
     out = {}
     missing = []
-    for rid in run_ids:
-        hit = _RUN_META_CACHE.get(rid)
-        if hit is not None and hit[4] > now_mono:
-            out[rid] = hit  # captured before any clear-on-full can wipe it
+    for tid in task_ids:
+        hit = _TASK_META_CACHE.get(tid)
+        if hit is not None and hit[1] > now_mono:
+            out[tid] = hit  # captured before any clear-on-full can wipe it
         else:
-            missing.append(rid)
+            missing.append(tid)
     if missing:
-        rows = Run.objects.filter(tenant=tenant, id__in=missing).values(
-            "id", "cost_limit_micros", "total_cost_micros", "status", "customer_id")
-        if len(_RUN_META_CACHE) >= _RUN_META_MAX:
-            _RUN_META_CACHE.clear()  # crude bound; `out` already holds this call's hits
+        rows = Task.objects.filter(tenant=tenant, id__in=missing).values(
+            "id", "customer_id")
+        if len(_TASK_META_CACHE) >= _TASK_META_MAX:
+            _TASK_META_CACHE.clear()  # crude bound; `out` already holds this call's hits
         for row in rows:
-            rid = str(row["id"])
-            entry = (row["cost_limit_micros"], row["total_cost_micros"],
-                     row["status"], str(row["customer_id"]),
-                     now_mono + _RUN_META_TTL_SECONDS)
-            _RUN_META_CACHE[rid] = entry
-            out[rid] = entry
-        for rid in missing:
-            if rid not in out:
-                # No such run (wrong tenant / never existed) — cache a
-                # sentinel so a hot retry-storm of a bad run_id still costs
+            tid = str(row["id"])
+            entry = (str(row["customer_id"]), now_mono + _TASK_META_TTL_SECONDS)
+            _TASK_META_CACHE[tid] = entry
+            out[tid] = entry
+        for tid in missing:
+            if tid not in out:
+                # No such task (wrong tenant / never existed) — cache a
+                # sentinel so a hot retry-storm of a bad task_id still costs
                 # one query per TTL window, not one per event.
-                entry = (None, 0, None, None, now_mono + _RUN_META_TTL_SECONDS)
-                _RUN_META_CACHE[rid] = entry
-                out[rid] = entry
+                entry = (None, now_mono + _TASK_META_TTL_SECONDS)
+                _TASK_META_CACHE[tid] = entry
+                out[tid] = entry
     return out
-
-
-def _kill_capped_run(tenant, run_id, customer):
-    """Kill a run whose per-run cap rejected async items — parity with the
-    sync path's HardStopExceeded handler (kill + RunLimitExceeded fan-out,
-    one atomic). Emits the event ONLY when this call performed the
-    active->killed transition, so batches racing a stale _RUN_META_CACHE
-    entry can never double-emit. A kill failure must never 500 the batch
-    (the verdicts are already correct) — loud log, same contract as
-    _record_batch_item's kill."""
-    from apps.platform.events.outbox import write_event
-    from apps.platform.events.schemas import RunLimitExceeded
-    from apps.platform.runs import reasons
-    from apps.platform.runs.services import RunService
-    try:
-        with transaction.atomic():
-            killed, transitioned = RunService.kill_run(
-                run_id, reason=reasons.COST_LIMIT_EXCEEDED,
-                tenant_id=tenant.id, customer_id=customer.id)
-            if transitioned:
-                write_event(RunLimitExceeded(
-                    tenant_id=str(tenant.id), customer_id=str(customer.id),
-                    billing_owner_id=str(killed.billing_owner_id or ""),
-                    run_id=str(killed.id), external_run_id=killed.external_run_id,
-                    task_id=killed.task_id, reason=reasons.COST_LIMIT_EXCEEDED,
-                    scope="run",
-                    # Durable total as read under the row lock; the live Redis
-                    # counter may be slightly ahead (estimate holds).
-                    total_cost_micros=killed.total_cost_micros,
-                    limit_micros=killed.cost_limit_micros or 0))
-        # Local-process cache: next batch rejects run_not_active immediately.
-        # Other processes converge within _RUN_META_TTL_SECONDS.
-        _RUN_META_CACHE.pop(run_id, None)
-    except Exception:
-        logger.exception("run.kill_failed", extra={"data": {
-            "run_id": run_id, "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "reason": reasons.COST_LIMIT_EXCEEDED}})
 
 
 def _idem_key(tenant_id, customer_id, idempotency_key):
@@ -362,12 +282,12 @@ def _ingest_idem_prefilter(tenant_id, keys):
 
 def _ingest_idem_present(tenant_id, keys):
     """Read-only presence probe (pipelined EXISTS — never writes) for the
-    replay-wins path: an item whose run is no longer active is treated as an
+    replay-wins path: an effective_at-rejected item is treated as an
     idempotent REPLAY (accepted, duplicate_suspect, no hold) if its key is
     already present, mirroring the sync path's replay-before-validation
     contract in UsageService.record_usage. Fails CLOSED to "absent" — the
-    caller then rejects run_not_active rather than accepting unheld spend on
-    an unverifiable replay claim.
+    caller then rejects with the validation code rather than accepting
+    unheld spend on an unverifiable replay claim.
     """
     if not keys:
         return []
@@ -460,7 +380,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     results: list = [None] * n
     customers: dict = {}
     owners: dict = {}
-    run_exists: dict = {}  # threaded into _record_batch_item for the sync-fallback route
+    task_exists: dict = {}  # threaded into _record_batch_item for the sync-fallback route
     item_customer: list = [None] * n
     eff_rejected: dict = {}   # i -> EffectiveAtError code, pending the replay probe
     forced_replay: set = set()  # replay-wins winners (probed idem key present)
@@ -504,8 +424,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         item_customer[i] = customer
 
     # ---- replay-wins for effective_at-rejected items (mirrors the sync
-    # path's replay-before-validation contract in record_usage AND the
-    # dead-run probe below): a replayed key whose FIRST accept already passed
+    # path's replay-before-validation contract in record_usage): a replayed
+    # key whose FIRST accept already passed
     # validation must be accepted as a duplicate suspect (held=False append,
     # no hold) even if the backfill window has since aged past the timestamp
     # or the billing period closed — a whole-batch retry must not flip an
@@ -523,54 +443,38 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 results[i] = _ingest_verdict(accepted=False, rejected=True,
                                              reason=eff_rejected[i], mode="async")
 
-    # ---- run metadata (30s L1 cache) + run-active check. Runs BEFORE the
-    # idempotency SETNX: a locally-rejected item must NOT burn its idem key,
-    # or the client's legitimate retry (after fixing the problem / against an
-    # active run) would misread as an idem-hit and be appended held=False —
-    # accepted spend with NO hold ever taken, a one-event enforcement bypass
-    # on the retry path. Same reason customer/currency/effective_at
-    # validation above precedes the SETNX. ----
-    run_cap_seed: dict = {}  # i -> (run_cap_micros | None, run_seed_micros)
-    dead_run_idx: list = []  # replay-wins candidates (run no longer active)
-    run_ids_needed = {str(items[i].run_id) for i in range(n)
-                      if results[i] is None and i not in forced_replay
-                      and items[i].run_id is not None}
-    run_meta = _run_meta_for(tenant, run_ids_needed)
+    # ---- task existence/ownership check (30s L1 cache). One-rule (#37): a
+    # task's STATUS never gates acceptance — the accept-time dead-unit reject
+    # is retired, and events for a non-active task are accepted, held, and
+    # get their task_not_active verdict at settle (accept now matches
+    # settle). Only a task that does not exist for this tenant+customer is
+    # rejected — like an unknown customer, that request genuinely cannot be
+    # recorded. Runs BEFORE the idempotency SETNX: a locally-rejected item
+    # must NOT burn its idem key, or the client's legitimate retry (after
+    # fixing the bogus task_id) would misread as an idem-hit and be appended
+    # held=False — accepted spend with NO hold ever taken. A task is never
+    # hard-deleted, so an unknown task can never be a replay of an
+    # already-accepted item — no replay-wins probe needed here. ----
+    task_ids_needed = {str(items[i].task_id) for i in range(n)
+                       if results[i] is None and i not in forced_replay
+                       and items[i].task_id is not None}
+    task_meta = _task_meta_for(tenant, task_ids_needed)
     for i in range(n):
-        # forced_replay items (effective_at replay-wins above) take no hold,
-        # so the run-cap/dead-run machinery is moot for them — and replay
-        # must win over run_not_active too, matching the sync path.
+        # forced_replay items (effective_at replay-wins above) are already
+        # known replays of accepted items — their task passed this check at
+        # first accept.
         if results[i] is not None or i in forced_replay:
             continue
         item = items[i]
-        if item.run_id is not None:
-            meta = run_meta.get(str(item.run_id))
-            if meta is None or meta[2] != "active" or meta[3] != str(item_customer[i].id):
-                dead_run_idx.append(i)
-                continue
-            run_cap_seed[i] = (meta[0], meta[1])
-        else:
-            run_cap_seed[i] = (None, 0)
-
-    # ---- replay-wins for dead-run items (mirrors the sync path: record_usage
-    # returns the existing event BEFORE any validation). A read-only EXISTS
-    # probe — never SETNX — decides: key present => this is a replay of an
-    # already-accepted item, so it is accepted as a duplicate suspect (no
-    # hold, held=False append) instead of rejected; absent => genuinely new
-    # spend on a dead run, rejected run_not_active WITHOUT writing the key. ----
-    if dead_run_idx:
-        probe_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
-                      for i in dead_run_idx]
-        for i, present in zip(dead_run_idx, _ingest_idem_present(tenant.id, probe_keys)):
-            if present:
-                forced_replay.add(i)
-            else:
+        if item.task_id is not None:
+            meta = task_meta.get(str(item.task_id))
+            if meta is None or meta[0] != str(item_customer[i].id):
                 results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason="run_not_active", mode="async")
+                                             reason="not_found", mode="async")
 
     # ---- idempotency pre-filter: one pipelined redis round trip for the
     # whole batch, only for items still viable after EVERY local rejection
-    # above (customer/currency/effective_at validation, run_not_active).
+    # above (customer/currency/effective_at validation, unknown task).
     # forced_replay items are already known replays — no SETNX needed. ----
     pending_idx = [i for i in range(n) if results[i] is None and i not in forced_replay]
     idem_keys = [_idem_key(tenant.id, items[i].customer_id, items[i].idempotency_key)
@@ -612,7 +516,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 caller_provider_cost=item.provider_cost_micros,
                 units=item.units)
         except Unpriceable:
-            sync_result = _record_batch_item(request, tenant, item, customers, run_exists)
+            sync_result = _record_batch_item(request, tenant, item, customers, task_exists)
             results[i] = _sync_fallback_verdict(sync_result)
             if not sync_result.get("ok"):
                 # This item's idem key was already SET by the prefilter above
@@ -634,14 +538,19 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     acquire_by_owner: dict = {}
     for i, item, customer, owner_id, est in hold_candidates:
-        cap, seed = run_cap_seed[i]
-        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est, cap, seed))
+        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est))
 
-    # ---- acquire holds (one pipelined redis round trip per owner) ----
+    # ---- acquire holds (one pipelined redis round trip per owner). One-rule
+    # (#37): the acquire ALWAYS holds, against the wallet only — the
+    # accept-time unit-cap lane is retired unreplaced (task limits are
+    # COGS-denominated and exact provider cost exists only at settle; an
+    # accept-time compare of a billed estimate against a COGS limit would be
+    # denominationally dishonest). No item is ever rejected for limit
+    # reasons; the wallet-floor crossing detection stays cooperative. ----
     raw_objs: list = []
-    # (owner_id, run_id_str_or_None, estimate_micros, effective_at) for held
-    # rows -- effective_at threads the I9 prior-month guard through release
-    # (see HoldService.settle) so undoing a hold here mirrors exactly what
+    # (owner_id, estimate_micros, effective_at) for held rows -- effective_at
+    # threads the I9 prior-month guard through release (see
+    # HoldService.settle) so undoing a hold here mirrors exactly what
     # acquire() did (a skipped-livespend hold must be released as a skipped-
     # livespend release, not a full current-month credit-back).
     release_list: list = []
@@ -649,33 +558,25 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     for i, item, customer, owner_id in append_only:
         raw_objs.append(RawIngestEvent(
             tenant=tenant, customer=customer, billing_owner_id=owner_id,
-            run_id=item.run_id, idempotency_key=item.idempotency_key,
+            task_id=item.task_id, idempotency_key=item.idempotency_key,
             payload=item.model_dump(mode="json"), estimate_micros=0,
             estimate_exact=False, held=False))
 
     for owner_id, entries in acquire_by_owner.items():
         acquire_payload = [{"estimate_micros": est.micros,
-                            "run_id": str(item.run_id) if item.run_id else None,
-                            "run_cap_micros": cap, "run_seed_micros": seed,
                             "effective_at": item.effective_at}
-                           for (_, item, _, est, cap, seed) in entries]
+                           for (_, item, _, est) in entries]
         verdicts = acquire_ingest_holds(owner_id, tenant, acquire_payload)
-        for (i, item, customer, est, cap, seed), v in zip(entries, verdicts):
-            if v["rejected"]:
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason=v["reason"],
-                                             estimated_cost_micros=est.micros, mode="async")
-                continue
+        for (i, item, customer, est), v in zip(entries, verdicts):
             results[i] = _ingest_verdict(accepted=True, estimated_cost_micros=est.micros,
                                          mode="async", stop=v["stop"],
                                          stop_reason=v["stop_reason"], stop_scope=v["stop_scope"])
             raw_objs.append(RawIngestEvent(
                 tenant=tenant, customer=customer, billing_owner_id=owner_id,
-                run_id=item.run_id, idempotency_key=item.idempotency_key,
+                task_id=item.task_id, idempotency_key=item.idempotency_key,
                 payload=item.model_dump(mode="json"), estimate_micros=est.micros,
                 estimate_exact=est.exact, held=True))
-            release_list.append((owner_id, str(item.run_id) if item.run_id else None,
-                                 est.micros, item.effective_at))
+            release_list.append((owner_id, est.micros, item.effective_at))
 
     # ---- durability boundary: the raw append. On failure, undo every hold
     # taken above (never leave money reserved for a batch that never landed)
@@ -689,8 +590,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         except Exception:
             logger.exception("ingest.append_failed", extra={"data": {
                 "tenant_id": str(tenant.id), "count": len(raw_objs)}})
-            for owner_id, run_id, estimate_micros, effective_at in release_list:
-                release_ingest_hold(owner_id, tenant, run_id, estimate_micros,
+            for owner_id, estimate_micros, effective_at in release_list:
+                release_ingest_hold(owner_id, tenant, estimate_micros,
                                     effective_at=effective_at)
             _ingest_idem_unwind(tenant.id, fresh_idem_keys)
             raise HttpError(503, "raw ingest append failed")
@@ -701,21 +602,9 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         from apps.metering.usage.tasks import settle_raw_events
         transaction.on_commit(lambda: settle_raw_events.delay())
 
-    # ---- run-kill parity (spec §1). A cost_limit_exceeded verdict means the
-    # run's cap is provably hit — kill it so sibling workers stop, exactly
-    # like the sync path's HardStopExceeded handler. Placed AFTER the append
-    # boundary: the 503 path above raises first, so kills only happen for
-    # batches that landed (the client's retry re-derives the same rejections
-    # and kills then). A fully-rejected batch has no raws and reaches here
-    # directly. ----
-    capped = {}
-    for i in range(n):
-        r = results[i]
-        if (r is not None and r.get("reason") == "cost_limit_exceeded"
-                and items[i].run_id is not None):
-            capped[str(items[i].run_id)] = item_customer[i]
-    for rid, run_customer in capped.items():
-        _kill_capped_run(tenant, rid, run_customer)
+    # One-rule (#37): no accept-time kill parity remains — task-limit
+    # detection (and the kill flow + task.limit_exceeded) moved to settle,
+    # where exact provider costs exist (see UsageService.settle_raw).
 
     accepted = sum(1 for r in results if r["accepted"])
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
@@ -837,27 +726,27 @@ def get_usage_event(request, event_id: UUID):
         "pricing_provenance": e.pricing_provenance or {},
         "tags": e.tags,
         "metadata": e.metadata,
-        "run_id": str(e.run_id) if e.run_id else None,
+        "task_id": str(e.task_id) if e.task_id else None,
         "effective_at": e.effective_at.isoformat(),
         "created_at": e.created_at.isoformat(),
     }
 
 
-# --- Run lifecycle ---
+# --- Task lifecycle ---
 
 
-@metering_api.post("/runs/{run_id}/close", response=CloseRunResponse)
-def close_run(request, run_id: UUID):
+@metering_api.post("/tasks/{task_id}/close", response=CloseTaskResponse)
+def close_task(request, task_id: UUID):
     _product_check(request)
-    from apps.platform.runs.services import RunService
-    from apps.platform.runs.models import Run
+    from apps.platform.tasks.services import TaskService
 
-    run = get_object_or_404(Run, id=run_id, tenant=request.auth.tenant)
-    completed = RunService.complete_run(run.id)
+    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    completed = TaskService.complete_task(task.id)
     return {
-        "run_id": str(completed.id),
+        "task_id": str(completed.id),
         "status": completed.status,
-        "total_cost_micros": completed.total_cost_micros,
+        "total_billed_cost_micros": completed.total_billed_cost_micros,
+        "total_provider_cost_micros": completed.total_provider_cost_micros,
         "event_count": completed.event_count,
     }
 
