@@ -94,29 +94,46 @@ def validate_tags(tags):
             raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
+_UNRESOLVED = object()  # sentinel: _result should look the parent up itself
+
+
 def _result(event, *, task_total_billed=None, task_total_provider=None,
             stop=False, stop_reason=None, stop_scope=None,
-            suspended=False, new_balance_micros=None):
+            suspended=False, new_balance_micros=None,
+            parent_task_id=_UNRESOLVED, kills=None):
     """Build the record_usage response.
 
     One-rule (#37): every recorded event answers success; the stop
-    instruction rides these fields. The named task's BOTH running totals
-    travel, denominationally explicit. parent_task_id is always null until
-    the subtask ticket lands.
+    instruction rides these fields. The named unit's BOTH running totals
+    travel, denominationally explicit; ``parent_task_id`` names the unit's
+    parent when the unit is a subtask (#38) — the happy path passes it from
+    the accumulated row, replay paths leave it to the fallback lookup here
+    (parent is immutable, so a replay can never read it stale).
+
+    ``kills`` (internal, never serialized): the reasons.kill_plan directives
+    THIS record demands — carried privately as ``_kills`` for the endpoint
+    layer to pop and execute after the record commits (the kill is a
+    separate, replayable transaction; see _apply_task_kill).
 
     Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
     return path of record_usage — the happy path AND both idempotent-replay
     returns — so a replayed event for an already-stopped owner never reports
     "all clear".
     """
-    return {
+    if parent_task_id is _UNRESOLVED:
+        parent_task_id = None
+        if event.task_id:
+            from apps.platform.tasks.models import Task
+            parent_task_id = Task.objects.filter(
+                id=event.task_id).values_list("parent_id", flat=True).first()
+    result = {
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
         "billed_cost_micros": event.billed_cost_micros,
         "units": event.units,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
         "task_id": str(event.task_id) if event.task_id else None,
-        "parent_task_id": None,
+        "parent_task_id": str(parent_task_id) if parent_task_id else None,
         "task_total_billed_cost_micros": task_total_billed,
         "task_total_provider_cost_micros": task_total_provider,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
@@ -125,6 +142,9 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "service_id": event.service_id,
         "agent_id": event.agent_id,
     }
+    if kills:
+        result["_kills"] = kills
+    return result
 
 
 def _parse_effective_at(payload):
@@ -278,23 +298,29 @@ class UsageService:
             # Normalized to UTC: the instance attribute keeps the caller's
             # original offset, but consumers bucket by UTC calendar month.
             effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
-        # Stop-verdict fields: a task-scoped verdict (the most specific scope)
-        # wins the scalar slot; the customer-wide verdict fills it otherwise.
-        # A simultaneous customer-wide stop still surfaces on the next ack
-        # (and via stop.fired); the itemized multi-limit story is the
-        # past-limit ticket's stop_context array.
+        # Stop-verdict fields: a task/subtask-scoped verdict wins the scalar
+        # slot over the customer-wide verdict (which still surfaces on the
+        # next ack and via stop.fired); among unit verdicts the WIDEST
+        # tripped scope wins — reasons.stop_fields owns that priority. The
+        # itemized multi-limit story is the past-limit ticket's stop_context
+        # array.
         stop = live.get("stop", False)
         stop_reason = live.get("stop_reason")
         stop_scope = live.get("stop_scope")
+        kills = None
         if verdicts is not None:
             from apps.platform.tasks import reasons
-            task_reason = reasons.stop_reason(verdicts)
-            if task_reason is not None:
-                stop, stop_reason, stop_scope = True, task_reason, "task"
+            unit_reason, unit_scope = reasons.stop_fields(
+                verdicts, is_subtask=task.parent_id is not None)
+            if unit_reason is not None:
+                stop, stop_reason, stop_scope = True, unit_reason, unit_scope
+            kills = reasons.kill_plan(task.id, task.parent_id, verdicts)
         return _result(event,
                        task_total_billed=task.total_billed_cost_micros if task else None,
                        task_total_provider=task.total_provider_cost_micros if task else None,
-                       stop=stop, stop_reason=stop_reason, stop_scope=stop_scope)
+                       parent_task_id=task.parent_id if task else None,
+                       stop=stop, stop_reason=stop_reason, stop_scope=stop_scope,
+                       kills=kills)
 
     @staticmethod
     def settle_raw(raw):
@@ -321,7 +347,7 @@ class UsageService:
         from apps.platform.tasks.services import TaskService
 
         tenant, customer = raw.tenant, raw.customer
-        verdicts = None
+        unit, verdicts = None, None
         try:
             with transaction.atomic():
                 # settle_raw_events's batch claim only SELECTs (it never marks
@@ -372,7 +398,7 @@ class UsageService:
                     # costs against both totals (task_not_active is a
                     # verdict, never a refusal); a crossing verdict drives
                     # the kill flow after this transaction commits.
-                    _, verdicts = TaskService.accumulate_cost(
+                    unit, verdicts = TaskService.accumulate_cost(
                         raw.task_id, billed_cost_micros=billed_cost_micros,
                         provider_cost_micros=provider_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
@@ -421,14 +447,15 @@ class UsageService:
                                     locked.estimate_micros, effective_at=effective_at)
             return "duplicate"
         # One-rule (#37): the async kill parity — a crossing verdict at settle
-        # drives the SAME idempotent kill flow + task.limit_exceeded event as
-        # the sync path, in its own transaction, after the settle committed.
+        # drives the SAME idempotent kill flow + task.limit_exceeded /
+        # subtask.limit_exceeded events as the sync path (reasons.kill_plan is
+        # the shared map), in its own transaction, after the settle committed.
         if verdicts is not None:
             from apps.platform.tasks import reasons
-            crossing = reasons.crossing_reason(verdicts)
-            if crossing is not None:
+            for target_id, reason in reasons.kill_plan(
+                    unit.id, unit.parent_id, verdicts):
                 TaskService.kill_and_announce(
-                    raw.task_id, crossing,
+                    target_id, reason,
                     tenant_id=tenant.id, customer_id=customer.id)
         if raw.held:
             settle_ingest_hold(raw.billing_owner_id, tenant,

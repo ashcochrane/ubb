@@ -322,6 +322,35 @@ class TaskLimitExceeded:
 
 
 @dataclass(frozen=True)
+class SubtaskLimitExceeded:
+    """Subtask-kill fan-out event (#38) — the subtask sibling of
+    TaskLimitExceeded, emitted exactly once per winning active->killed
+    transition of a SUBTASK (its own limit/floor crossing, or the reaper).
+    The subtask is killed ALONE: the parent keeps running and counting, so
+    consumers tear down only the named child. A parent's own crossing emits
+    task.limit_exceeded instead and cascades its kill downward silently —
+    cascaded children never emit this event (they crossed nothing).
+
+    Ids are explicit (spec §B — the run-era scope field died with the
+    split): subtask_id = the killed child unit, parent_task_id = the parent
+    whose totals its spend rolls up into. Totals and limit are the
+    SUBTASK's own, denominationally explicit; only the provider (COGS)
+    total races the limit.
+    """
+    EVENT_TYPE = "subtask.limit_exceeded"
+    tenant_id: str
+    customer_id: str = ""
+    billing_owner_id: str = ""
+    subtask_id: str = ""
+    parent_task_id: str = ""
+    external_task_id: str = ""
+    reason: str = ""
+    total_billed_cost_micros: int = 0
+    total_provider_cost_micros: int = 0
+    provider_cost_limit_micros: int = 0
+
+
+@dataclass(frozen=True)
 class StopFired:
     """Customer-wide cooperative stop flag TRANSITION (unset -> set) — Task 7.
 

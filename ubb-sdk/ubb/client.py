@@ -113,7 +113,8 @@ class UBBClient:
     def pre_check(self, customer_id: str, start_task: bool = False,
                   task_metadata: dict | None = None,
                   external_task_id: str = "",
-                  provider_cost_limit_micros: int | None = None) -> PreCheckResult:
+                  provider_cost_limit_micros: int | None = None,
+                  parent_task_id: str | None = None) -> PreCheckResult:
         """Pre-check whether a request should proceed.
 
         If billing is enabled, delegates to billing pre-check which checks
@@ -121,12 +122,17 @@ class UBBClient:
         If billing is not enabled, returns trivially allowed.
 
         If start_task=True and the check passes, a Task is created
-        server-side and its ID is returned in the result.
-        ``provider_cost_limit_micros`` is the task's COGS limit (what the job
-        burns); omitted, the tenant default applies — absent both, the task
-        is uncapped and no stop signal ever fires. A resolved limit requires
-        cost-card coverage on the tenant (refused ``cost_coverage_required``
-        otherwise).
+        server-side and its ID is returned in the result. Passing
+        ``parent_task_id`` registers a SUBTASK under that active top-level
+        task instead — a child unit with its own limit whose spend rolls up
+        into the parent's totals; refused ``parent_task_not_active`` /
+        ``subtask_depth_exceeded`` when the parent is not an active
+        top-level task.
+        ``provider_cost_limit_micros`` is the unit's COGS limit (what the job
+        burns); omitted, the tenant default applies (the subtask default for
+        a subtask) — absent both, the unit is uncapped and no stop signal
+        ever fires. A resolved limit requires cost-card coverage on the
+        tenant (refused ``cost_coverage_required`` otherwise).
         """
         if self.billing:
             check = self.billing.pre_check(
@@ -135,6 +141,7 @@ class UBBClient:
                 task_metadata=task_metadata,
                 external_task_id=external_task_id,
                 provider_cost_limit_micros=provider_cost_limit_micros,
+                parent_task_id=parent_task_id,
             )
             return PreCheckResult(
                 allowed=check.get("allowed", check.get("can_proceed", True)),
@@ -142,6 +149,7 @@ class UBBClient:
                 reason=check.get("reason"),
                 balance_micros=check.get("balance_micros"),
                 task_id=check.get("task_id"),
+                parent_task_id=check.get("parent_task_id"),
                 provider_cost_limit_micros=check.get("provider_cost_limit_micros"),
                 floor_snapshot_micros=check.get("floor_snapshot_micros"),
             )
@@ -150,8 +158,14 @@ class UBBClient:
 
     def start_task(self, customer_id: str, metadata: dict | None = None,
                    external_task_id: str = "",
-                   provider_cost_limit_micros: int | None = None) -> PreCheckResult:
+                   provider_cost_limit_micros: int | None = None,
+                   parent_task_id: str | None = None) -> PreCheckResult:
         """Start a task: pre-check + create a Task if allowed.
+
+        Passing ``parent_task_id`` registers a subtask under that active
+        task: its own COGS limit races only its own spend (crossing kills it
+        ALONE — the parent keeps running), while everything it spends also
+        rolls up into the parent's totals and races the parent's limit.
 
         Convenience wrapper around pre_check(start_task=True).
         Requires billing product.
@@ -163,6 +177,7 @@ class UBBClient:
             task_metadata=metadata,
             external_task_id=external_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
+            parent_task_id=parent_task_id,
         )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,

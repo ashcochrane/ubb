@@ -3,6 +3,10 @@ Canonical lock ordering for the UBB platform.
 
 Lock order: Task -> Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
 
+Within Task (#38): a PARENT task before its subtasks. Rollup accumulate,
+the cascade kill/close, and subtask registration all lock parent-first
+(Task.parent is immutable, so accumulate may pre-read it without a lock).
+
 Product-specific lock helpers live in their respective apps:
 - apps/billing/locking.py: lock_for_billing, lock_top_up_attempt, lock_invoice
 - apps/metering/locking.py: lock_usage_event

@@ -48,7 +48,7 @@ class UBBClientTest(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.client.billing.pre_check.assert_called_once_with(
             "cust_123", start_task=False, task_metadata=None, external_task_id="",
-            provider_cost_limit_micros=None,
+            provider_cost_limit_micros=None, parent_task_id=None,
         )
 
     # --- record_usage (delegates to metering) ---

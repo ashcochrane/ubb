@@ -99,7 +99,7 @@ class TestMeteringDelegationRequiresMetering:
         assert result.allowed is True
         self.client.billing.pre_check.assert_called_once_with(
             "cust1", start_task=False, task_metadata=None, external_task_id="",
-            provider_cost_limit_micros=None,
+            provider_cost_limit_micros=None, parent_task_id=None,
         )
 
     def test_get_usage_requires_metering(self):
@@ -303,7 +303,7 @@ class TestPreCheckWithoutEventType:
         result = client.pre_check(customer_id="cust1")
         client.billing.pre_check.assert_called_once_with(
             "cust1", start_task=False, task_metadata=None, external_task_id="",
-            provider_cost_limit_micros=None,
+            provider_cost_limit_micros=None, parent_task_id=None,
         )
         assert result.allowed is True
         assert result.balance_micros == 5_000_000

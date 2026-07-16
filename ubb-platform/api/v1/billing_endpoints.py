@@ -299,6 +299,7 @@ def pre_check(request, payload: PreCheckRequest):
         task_metadata=payload.task_metadata,
         external_task_id=payload.external_task_id,
         provider_cost_limit_micros=payload.provider_cost_limit_micros,
+        parent_task_id=payload.parent_task_id,
     )
     return result
 

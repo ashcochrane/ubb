@@ -80,6 +80,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertEqual(result.event_count, 1)
         self.assertIsNotNone(result.last_event_at)
         self.assertEqual(verdicts, {"crossed_task_limit": False,
+                                    "crossed_subtask_limit": False,
                                     "crossed_floor_snapshot": False,
                                     "task_not_active": False})
 
@@ -248,7 +249,8 @@ class TaskServiceCompleteTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        completed = TaskService.complete_task(task.id)
+        completed, transitioned = TaskService.complete_task(task.id)
+        self.assertTrue(transitioned)
         self.assertEqual(completed.status, "completed")
         self.assertIsNotNone(completed.completed_at)
 
@@ -257,7 +259,8 @@ class TaskServiceCompleteTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         TaskService.complete_task(task.id)
-        completed = TaskService.complete_task(task.id)
+        completed, transitioned = TaskService.complete_task(task.id)
+        self.assertFalse(transitioned)
         self.assertEqual(completed.status, "completed")
 
     def test_complete_task_noop_on_killed(self):
@@ -265,7 +268,8 @@ class TaskServiceCompleteTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         TaskService.kill_task(task.id)
-        result = TaskService.complete_task(task.id)
+        result, transitioned = TaskService.complete_task(task.id)
+        self.assertFalse(transitioned)
         self.assertEqual(result.status, "killed")  # not changed to completed
 
 
