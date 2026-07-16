@@ -34,7 +34,9 @@ class RecordUsageResult:
     # One-rule stop verdict (on a 200 — the event WAS recorded + charged).
     # `stop` means "stop sending work for the named scope" (stop_scope: task
     # | subtask | customer — scope `subtask` kills the child alone, the
-    # parent keeps running). `suspended` is the owner's durable status.
+    # parent keeps running; scope `task` on a subtask's ack names the PARENT,
+    # see parent_task_id — stop the whole tree). `suspended` is the owner's
+    # durable status.
     stop: bool = False
     stop_reason: str | None = None
     stop_scope: str | None = None

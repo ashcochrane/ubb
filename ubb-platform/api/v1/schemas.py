@@ -131,7 +131,9 @@ class RecordUsageResponse(Schema):
     # tree); the losers surface on the next ack and via the pushed events.
     # stop_reason ∈ task_limit | subtask_limit | customer_floor |
     # task_not_active | customer_wide_stop; stop_scope ∈ task | subtask |
-    # customer. `suspended` stays the durable owner status.
+    # customer. On a subtask's ack, scope `task` names the PARENT
+    # (parent_task_id above) — the whole tree is stopped, not just the named
+    # unit. `suspended` stays the durable owner status.
     stop: bool = False
     stop_reason: Optional[str] = None
     stop_scope: Optional[str] = None
