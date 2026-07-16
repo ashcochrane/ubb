@@ -58,6 +58,9 @@ def _seq_ids():
 class TestPostpaidReconcile:
     PS = datetime.date(2026, 6, 1)
     PE = datetime.date(2026, 7, 1)
+    # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
+    # to "now", which is only inside a hardcoded window until the calendar rolls past it.
+    MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
     def _tenant_customer(self):
         t = Tenant.objects.create(name="PP", products=["metering", "billing"],
@@ -71,7 +74,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=1, billed_cost_micros=1_000_000)
+            provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="pushing", total_billed_micros=1_000_000)
         stale = timezone.now() - datetime.timedelta(minutes=45)
@@ -112,7 +115,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=1, billed_cost_micros=1_000_000)
+            provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="failed", total_billed_micros=0)
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call",
@@ -133,7 +136,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=1, billed_cost_micros=1_000_000)
+            provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="pending", total_billed_micros=1_000_000)
         recent = timezone.now() - datetime.timedelta(hours=2)

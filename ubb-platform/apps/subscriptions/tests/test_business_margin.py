@@ -10,6 +10,9 @@ from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.economics.services import MarginService
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
+# Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
+# to "now", which is only inside a hardcoded window until the calendar rolls past it.
+MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 @pytest.mark.django_db
@@ -20,9 +23,11 @@ def test_compute_business_sums_seats():
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
     UsageEvent.objects.create(tenant=t, customer=s1, request_id="r1", idempotency_key="i1",
-                              provider_cost_micros=200_000, billed_cost_micros=500_000)
+                              provider_cost_micros=200_000, billed_cost_micros=500_000,
+                              effective_at=MID)
     UsageEvent.objects.create(tenant=t, customer=s2, request_id="r2", idempotency_key="i2",
-                              provider_cost_micros=100_000, billed_cost_micros=300_000)
+                              provider_cost_micros=100_000, billed_cost_micros=300_000,
+                              effective_at=MID)
     d = MarginService.compute_business(t.id, biz, PS, PE)
     assert d["totals"]["gross_margin_micros"] == 500_000  # (500k+300k) billed − (200k+100k) provider
     assert len(d["seats"]) == 2
@@ -43,9 +48,11 @@ def test_compute_business_includes_business_own_subscription():
         currency="usd", interval="month", current_period_start=now, current_period_end=now,
         last_synced_at=now)
     UsageEvent.objects.create(tenant=t, customer=s1, request_id="r1", idempotency_key="i1",
-                              provider_cost_micros=200_000, billed_cost_micros=500_000)
+                              provider_cost_micros=200_000, billed_cost_micros=500_000,
+                              effective_at=MID)
     UsageEvent.objects.create(tenant=t, customer=s2, request_id="r2", idempotency_key="i2",
-                              provider_cost_micros=100_000, billed_cost_micros=300_000)
+                              provider_cost_micros=100_000, billed_cost_micros=300_000,
+                              effective_at=MID)
     d = MarginService.compute_business(t.id, biz, PS, PE)
     assert d["totals"]["subscription_revenue_micros"] == 130_000_000
 
