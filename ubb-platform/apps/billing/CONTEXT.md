@@ -46,6 +46,14 @@ showing reality.
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
 not the floor's meaning.
 
+**Negative since (aged negatives)**:
+`Wallet.negative_since` — when the balance last crossed ≥0 → <0; null whenever the balance is ≥ 0.
+Maintained as a sign-consistency invariant by the wallet's own save (every mutation path keeps it
+true), surfaced on the balance API and as the ops aged-negatives metric (count + max age on
+ingest-health). Purely observational: no reminder events, no auto-close — collections stay between
+the tenant, their customer, and Stripe. (`apps/billing/wallets/models.py:Wallet`)
+_Avoid_: wiring any automatic reaction to it.
+
 **Soft floor**:
 The second, higher line of the two-floor pair — a tenant-chosen wind-down line per end customer
 (customer override → tenant default; null = no soft floor; always resolving at or above the hard

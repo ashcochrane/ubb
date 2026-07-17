@@ -102,6 +102,41 @@ def read_live_stop(owner_id, tenant) -> dict:
     return LiveLedgerService.read_stop(owner_id, tenant)
 
 
+def get_negative_balance_stats(tenant_id=None):
+    """Aged-negatives ops metric (#41, pin 10) — the cross-product read for
+    the ops/ingest-health surface. Counts wallets currently below zero and
+    the age of the oldest, from Wallet.negative_since (the ≥0 → <0 transition
+    stamp; soft-deleted wallets excluded by the default manager). Visibility
+    only: no reminder events, no auto-close — collections stay between the
+    tenant, their customer, and Stripe."""
+    from django.db.models import Min
+    from django.utils import timezone
+    from apps.billing.wallets.models import Wallet
+    qs = Wallet.objects.filter(negative_since__isnull=False)
+    if tenant_id is not None:
+        qs = qs.filter(customer__tenant_id=tenant_id)
+    oldest = qs.aggregate(oldest=Min("negative_since"))["oldest"]
+    return {
+        "negative_balance_count": qs.count(),
+        "oldest_negative_age_seconds": (
+            (timezone.now() - oldest).total_seconds() if oldest else 0.0),
+    }
+
+
+def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):
+    """Plain-data snapshot of the owner's DURABLE stop-signal ledger row for
+    one family (#41 stop-context tagging) — the cross-product read for the
+    metering record/settle paths. Returns
+    {state, episode_seq, reason, transitioned_at} or None when the family has
+    never transitioned for this owner. One indexed point read (unique on
+    (owner, family)); the caller decides what an open episode means."""
+    from apps.billing.gating.models import StopSignalState
+    return (StopSignalState.objects
+            .filter(owner_id=owner_id, tenant_id=tenant_id, family=family)
+            .values("state", "episode_seq", "reason", "transitioned_at")
+            .first())
+
+
 def acquire_ingest_holds(owner_id, tenant, items):
     """Accept-time atomic estimate-hold for the async ingest path (Task 4) —
     the cross-product PORT for the metering ingest choke point.

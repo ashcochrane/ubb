@@ -139,6 +139,13 @@ class RecordUsageResponse(Schema):
     stop: bool = False
     stop_reason: Optional[str] = None
     stop_scope: Optional[str] = None
+    # The itemized past-limit story (#41, spec §H): null when the event
+    # landed past nothing, else the event's immutable stop-context ARRAY —
+    # one entry per limit it landed past (a simultaneous task-limit +
+    # customer-floor crossing carries both, nothing lost). Each entry:
+    # {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
+    # arrived_after} — arrived_after=false marks the tipping event.
+    stop_context: Optional[list] = None
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
@@ -154,6 +161,11 @@ class BalanceResponse(Schema):
     promo_micros: Optional[int] = None
     expiring_micros: Optional[int] = None
     next_expiry_at: Optional[str] = None
+    # Negative-balance visibility (#41, pin 10): when the balance last
+    # crossed ≥0 → <0; null whenever the balance is ≥ 0. Observational only —
+    # UBB never acts on it (no reminders, no auto-close; collections stay
+    # between the tenant, their customer, and Stripe).
+    negative_since: Optional[str] = None
 
 
 class UsageEventOut(Schema):
@@ -166,6 +178,8 @@ class UsageEventOut(Schema):
     units: Optional[int] = None
     metadata: dict
     effective_at: str
+    # #41: the immutable past-limit context array (see RecordUsageResponse).
+    stop_context: Optional[list] = None
 
 
 class UsageEventDetailOut(Schema):
@@ -191,6 +205,28 @@ class UsageEventDetailOut(Schema):
     task_id: Optional[str] = None
     effective_at: str
     created_at: str
+    # #41: the immutable past-limit context array (see RecordUsageResponse).
+    stop_context: Optional[list] = None
+
+
+class PastLimitReportResponse(Schema):
+    # #41 (spec §I): "exactly what was spent past the limit and why" in one
+    # call. episodes[] entries (kept as dict, the list[dict] precedent):
+    # {family: floor_stop|task|soft_floor, limit, stop_scope, episode_seq,
+    #  task_id, subtask_id, provider_cost_limit_micros, tripped_at,
+    #  resumed_at, events: [{event_id, effective_at, billed_cost_micros,
+    #  provider_cost_micros, arrived_after}], event_count,
+    #  total_billed_cost_micros, total_provider_cost_micros}.
+    # Soft-floor entries are crossed/cleared MARKER rows: events always [].
+    # totals_per_limit: {limit: {billed_cost_micros, provider_cost_micros,
+    #  event_count}} — both denominations, per tripping limit, covering
+    # exactly the itemized events of the episodes shown.
+    customer_id: str
+    billing_owner_id: str
+    since: Optional[str] = None
+    until: Optional[str] = None
+    episodes: list[dict]
+    totals_per_limit: dict
 
 
 class ConfigureAutoTopUpRequest(Schema):

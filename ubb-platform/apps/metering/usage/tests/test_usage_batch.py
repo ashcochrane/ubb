@@ -253,6 +253,16 @@ class TestBatchOneRuleParity:
                 d["task_id"] = "TASK"
             if d.get("event_id"):
                 d["event_id"] = "EVT"
+            if d.get("stop_context"):
+                # Same volatile-field masking as above: ids and trip times
+                # naturally differ between the two runs; limit/scope/
+                # episode_seq/arrived_after must still match byte-for-byte.
+                d["stop_context"] = [
+                    {**ctx,
+                     "task_id": "TASK" if ctx.get("task_id") else None,
+                     "subtask_id": "SUB" if ctx.get("subtask_id") else None,
+                     "tripped_at": "T" if ctx.get("tripped_at") else None}
+                    for ctx in d["stop_context"]]
             return d
 
         for batch_item, single_body in zip(batch["results"], single_bodies):

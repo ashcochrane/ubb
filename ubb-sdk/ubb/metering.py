@@ -208,8 +208,15 @@ class MeteringClient:
         return CloseTaskResult(**r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
-                  tag_key: str | None = None, tag_value: str | None = None) -> PaginatedResponse[UsageEvent]:
-        """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage."""
+                  tag_key: str | None = None, tag_value: str | None = None,
+                  past_limit: bool | None = None, stop_scope: str | None = None,
+                  episode_seq: int | None = None) -> PaginatedResponse[UsageEvent]:
+        """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage.
+
+        The #41 past-limit filters: ``past_limit=True`` returns only events
+        that landed past a stop (each carries ``stop_context``);
+        ``stop_scope`` / ``episode_seq`` narrow to a scope or one
+        customer-wide stop episode."""
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
@@ -217,10 +224,29 @@ class MeteringClient:
             params["tag_key"] = tag_key
         if tag_value is not None:
             params["tag_value"] = tag_value
+        if past_limit is not None:
+            params["past_limit"] = past_limit
+        if stop_scope is not None:
+            params["stop_scope"] = stop_scope
+        if episode_seq is not None:
+            params["episode_seq"] = episode_seq
         r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
         body = r.json()
         events = [UsageEvent(**item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+
+    def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
+        """The past-limit report (#41) via
+        GET /api/v1/customers/{customer_id}/past-limit-report — "exactly what
+        was spent past the limit and why" in one call: episodes (the tripping
+        limit, tripped_at, resume time, itemized events) plus
+        ``totals_per_limit`` in both denominations. Soft-floor episodes are
+        crossed/cleared marker rows with no itemized events. ``since`` /
+        ``until`` (ISO datetimes) window episodes and itemized events."""
+        params = {k: v for k, v in {"since": since, "until": until}.items() if v}
+        r = self._request("get", f"/api/v1/customers/{customer_id}/past-limit-report",
+                          params=params)
+        return r.json()
 
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
@@ -356,19 +382,31 @@ class MeteringClient:
         return r.json()
 
     def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None,
-                        tag_key=None, dimensions=None):
+                        tag_key=None, dimensions=None, past_limit=None,
+                        stop_scope=None, episode_seq=None):
         """Cost + margin analytics with customer/product/tag breakdowns via
         GET /api/v1/metering/analytics/usage.
 
         Pass ``dimensions`` as a list of strings (e.g. ``["product_id", "tag:region"]``)
         to receive a ``breakdowns`` dict in the response.  httpx encodes a list as
         repeated query parameters, matching what django-ninja expects.
+
+        The #41 past-limit filters (``past_limit`` / ``stop_scope`` /
+        ``episode_seq``) compose with every breakdown — e.g.
+        ``past_limit=True`` totals exactly what was spent past a stop, in
+        both denominations.
         """
         params = {k: v for k, v in {
             "start_date": start_date, "end_date": end_date,
             "customer_id": customer_id, "tag_key": tag_key}.items() if v}
         if dimensions is not None:
             params["dimensions"] = dimensions
+        if past_limit is not None:
+            params["past_limit"] = past_limit
+        if stop_scope is not None:
+            params["stop_scope"] = stop_scope
+        if episode_seq is not None:
+            params["episode_seq"] = episode_seq
         r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
         return r.json()
 

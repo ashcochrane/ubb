@@ -523,6 +523,12 @@ class UBBClient:
         """Get usage history. Requires metering product."""
         return self._require_metering().get_usage(customer_id, cursor=cursor, limit=limit)
 
+    def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
+        """The past-limit report (#41): episodes + itemized events + totals
+        per limit in both denominations, one call. Requires metering product."""
+        return self._require_metering().get_past_limit_report(
+            customer_id, since=since, until=until)
+
     def create_top_up(self, customer_id: str, amount_micros: int, *,
                       success_url: str, cancel_url: str) -> TopUpResult:
         """Create a top-up checkout session. Requires billing product."""

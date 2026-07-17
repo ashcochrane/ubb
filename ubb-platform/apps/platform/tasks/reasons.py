@@ -50,6 +50,19 @@ ALL_REASONS = frozenset({
 CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT, CUSTOMER_FLOOR})
 
 
+def kill_scope(reason, *, is_subtask):
+    """The ``stop_scope`` a limit-kill reason names (#41 stop-context and the
+    past-limit report share this map): a task-limit kill is always scope
+    ``task`` (the parent, on a subtask event), a subtask-limit kill always
+    ``subtask``; the unit-scoped reasons (floor snapshot, not-active) name
+    the unit itself."""
+    if reason == TASK_LIMIT:
+        return "task"
+    if reason == SUBTASK_LIMIT:
+        return "subtask"
+    return "subtask" if is_subtask else "task"
+
+
 def kill_plan(unit_id, parent_id, verdicts):
     """The ordered ``[(task_id, reason), ...]`` kills an accumulate verdict
     dict demands — the single verdicts→kills map every ingest path shares

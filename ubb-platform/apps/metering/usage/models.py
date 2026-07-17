@@ -1,3 +1,4 @@
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.utils import timezone
 
@@ -44,6 +45,21 @@ class UsageEvent(BaseModel):
     # arrival-basis consumers (drawdown repair, platform fee) window on that.
     effective_at = models.DateTimeField(default=timezone.now, db_index=True)
     billing_owner_id = models.UUIDField(null=True, blank=True, db_index=True)
+    # Past-limit stop context (#41, spec §H). SYSTEM-owned — never set from
+    # tenant tags or request metadata; written once at record (sync) / settle
+    # (async) inside the recording transaction, immutable with the event.
+    # Null = the event landed past nothing. Non-null = a JSON ARRAY of
+    # contexts (an event crossing several limits simultaneously carries one
+    # entry per limit), each:
+    #   {"limit": task_limit|subtask_limit|customer_floor|suspended|
+    #             task_not_active,
+    #    "stop_scope": task|subtask|customer,
+    #    "tripped_at": ISO8601|null, "episode_seq": int|null (customer only),
+    #    "task_id": uuid|null, "subtask_id": uuid|null,
+    #    "arrived_after": bool — false on the tipping event only}
+    # Built by services/stop_context.py; queried by JSONB containment (the
+    # partial GIN index below carries the past-limit report + filters).
+    stop_context = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_usage_event"
@@ -60,6 +76,12 @@ class UsageEvent(BaseModel):
                          name="idx_usage_attribution"),
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
             models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
+            # Past-limit report + query filters (#41): JSONB containment on
+            # the stop-context array. Partial — tagged events are the rare
+            # exception, so the index stays tiny and untagged inserts pay
+            # nothing.
+            GinIndex(fields=["stop_context"], name="idx_usage_stop_context",
+                     condition=models.Q(stop_context__isnull=False)),
         ]
         ordering = ["-effective_at"]
 
