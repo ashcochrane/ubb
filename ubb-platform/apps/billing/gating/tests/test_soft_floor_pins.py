@@ -167,11 +167,6 @@ class TestPin12StartGate:
         assert out["allowed"] is False
         assert out["reason"] == "soft_floor_reached"
 
-    def test_advisory_never_refuses(self):
-        t = _tenant(enf="advisory")
-        c = _customer(t, balance_micros=-3_000_000)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
-
     def test_enforcement_off_never_refuses(self):
         t = _tenant(enf="off")
         c = _customer(t, balance_micros=-3_000_000)
@@ -303,13 +298,6 @@ class TestPin12PairExactlyOnce:
         _drain(t, c, 3_000_000)                      # crossed, episode 2
         assert [e.payload["episode_seq"] for e in _crossed()] == [1, 2]
         assert [e.payload["episode_seq"] for e in _cleared()] == [1]
-
-    def test_advisory_emits_the_pair_without_gating(self):
-        t = _tenant(enf="advisory")
-        c = _customer(t)
-        _drain(t, c, 3_000_000)
-        assert _crossed().count() == 1               # signals: yes
-        assert RiskService.check(c, create_task=True)["allowed"] is True  # gate: no
 
     def test_enforcement_off_emits_nothing(self):
         t = _tenant(enf="off")

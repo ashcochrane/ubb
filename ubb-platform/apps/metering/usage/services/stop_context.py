@@ -112,8 +112,8 @@ def _unit_contexts(task, verdicts, now):
 
 
 def _customer_contexts(owner, tenant, opened_episode_seq, task_id, subtask_id):
-    from apps.platform.tenants.flags import enforcement_on
-    if owner is None or not enforcement_on(tenant):
+    from apps.platform.tenants.flags import enforcing
+    if owner is None or not enforcing(tenant):
         return []
     from apps.billing.queries import get_stop_signal_state
     state = get_stop_signal_state(owner.id, tenant.id)

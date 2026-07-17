@@ -30,7 +30,7 @@ def close_abandoned_tasks():
     hard_age_cutoff = now - timedelta(hours=6)
     # Tier-2 (D10): a task that emitted an event recently is still ALIVE — do
     # not complete it just for being >1h old. BUT keep an absolute 6h ceiling
-    # so no tenant (incl. off/advisory, which have no reaper) ever gets an
+    # so no tenant (incl. off, which has no reaper) ever gets an
     # immortal task. And CEDE an enforcing tenant's EMITTED tasks to
     # reap_stale_tasks so their terminal state is deterministically 'killed'
     # (+ task.limit_exceeded), never silently 'completed' when this beat wins
@@ -80,7 +80,7 @@ def reap_stale_tasks():
     parent whose subtasks are still emitting is never heartbeat-stale, since
     rollup stamps the parent's heartbeat too.
 
-    Enforcing-only: off/advisory tenants keep only the baseline
+    Enforcing-only: off tenants keep only the baseline
     close_abandoned_tasks (graceful >1h complete). Tasks that NEVER emitted
     are left to close_abandoned_tasks (no premature 15-min kill of a
     slow-to-start task). The winning active->killed transition (inside

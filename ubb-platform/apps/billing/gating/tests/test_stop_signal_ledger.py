@@ -116,16 +116,6 @@ class TestSuspensionFold:
         assert suspended.count() == 1
         assert suspended.get().payload["balance_micros"] == -6_000_000
 
-    def test_prepaid_advisory_still_suspends_tier1_baseline(self):
-        # Prepaid suspension pre-dates Tier-2 modes: it is the Tier-1 baseline
-        # reaction to the floor and is NOT gated on enforcing (unchanged).
-        t = _tenant(enf="advisory")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        c.refresh_from_db()
-        assert c.status == "suspended"
-        assert c.suspension_reason == "min_balance_exceeded"
-
     def test_postpaid_enforcing_suspends_budget_exceeded(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
@@ -133,15 +123,6 @@ class TestSuspensionFold:
         c.refresh_from_db()
         assert c.status == "suspended"
         assert c.suspension_reason == "budget_exceeded"
-
-    def test_postpaid_advisory_emits_stop_but_never_suspends(self):
-        t = _tenant(mode="postpaid", enf="advisory")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") == 1
-        c.refresh_from_db()
-        assert c.status == "active"
-        assert _events("stop.fired", owner_id=c.id).count() == 1
-        assert _events("billing.customer_suspended", "customer_id", c.id).count() == 0
 
     def test_non_active_owner_gets_the_signal_but_no_status_flip(self):
         # An admin/fraud suspension is never overwritten by the money path —

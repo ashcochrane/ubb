@@ -70,8 +70,10 @@ class StopSignalService:
         1. flips the ledger row to ``stopped`` and increments ``episode_seq``;
         2. emits ``stop.fired`` carrying the episode id;
         3. durably suspends the owner (active->suspended winning flip +
-           ``CustomerSuspended``) — the suspension fold; postpaid only when
-           ``enforcing`` (advisory computes+emits, never suspends).
+           ``CustomerSuspended``) — the suspension fold. Every caller is
+           mode-gated (#42: two positions, signals exist only in enforcing);
+           the postpaid ``enforcing`` re-check is defense against a mode
+           flip racing an in-flight drive.
 
         ``balance_micros`` rides CustomerSuspended (the balance at the
         crossing, best available to the detecting lane; postpaid passes 0).

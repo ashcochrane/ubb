@@ -49,7 +49,7 @@ start-gate remains the backstop").
 """
 import logging
 
-from apps.platform.tenants.flags import enforcement_on
+from apps.platform.tenants.flags import enforcing
 from apps.billing.gating.services.live_ledger_service import (
     LiveLedgerService,
     LEDGER_TTL_SECONDS,
@@ -133,7 +133,7 @@ class HoldService:
         item is held, unstopped — identical fail-open contract to
         LiveLedgerService.record_usage_debit.
         """
-        if not enforcement_on(tenant):
+        if not enforcing(tenant):
             return [_held_verdict() for _ in items]
 
         from django.utils import timezone
@@ -244,7 +244,7 @@ class HoldService:
         delta_micros = int(delta_micros)
         if delta_micros:
             if tenant.billing_mode == "postpaid":
-                if enforcement_on(tenant):
+                if enforcing(tenant):
                     from django.utils import timezone
                     now = timezone.now()
                     if _same_month(effective_at, now):

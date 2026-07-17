@@ -91,8 +91,8 @@ def handle_usage_recorded_billing(event_id, payload):
                                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                                 balance_micros=new_balance, overage_limit_micros=limit,
                                 overage_micros=-new_balance))
-                        from apps.platform.tenants.flags import enforcement_on
-                        if enforcement_on(tenant):
+                        from apps.platform.tenants.flags import enforcing
+                        if enforcing(tenant):
                             # #39 §D — the DURABLE lane of the stop signal: a
                             # crossing of the CONFIGURED floor drives the
                             # transition guard, independent of Redis health (a

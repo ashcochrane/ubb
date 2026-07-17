@@ -103,14 +103,6 @@ class TestStartGateHonorsStopFlag:
         assert res["reason"] == "customer_stopped"
         assert res["task_id"] is None
 
-    def test_advisory_flag_does_not_block_start_gate(self):
-        t = _tenant(enf="advisory")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())  # flag set (advisory)
-        res = RiskService.check(c, create_task=True)
-        assert res["allowed"] is True  # advisory never blocks at the gate
-
     def test_allowed_again_after_flag_cleared(self):
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")

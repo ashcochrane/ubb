@@ -66,15 +66,6 @@ class TestPostpaidDurableSuspend:
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
         assert _suspend_events(c.id).count() == 1  # winning transition only
 
-    def test_no_durable_suspend_in_advisory(self):
-        t = _tenant(enf="advisory")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())  # flag set (advisory)
-        handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 12_000_000))
-        c.refresh_from_db()
-        assert c.status == "active"  # advisory never durably suspends
-
 
 @pytest.mark.django_db
 class TestPrepaidSuspendReason:

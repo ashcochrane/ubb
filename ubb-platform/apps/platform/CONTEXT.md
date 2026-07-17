@@ -24,9 +24,11 @@ A tenant's revenue posture — `meter_only` (default), `prepaid`, or `postpaid`;
 require the billing product. (`apps/platform/tenants/models.py:BILLING_MODE_CHOICES`)
 
 **enforcement_mode**:
-The single Tier-2 spend-control switch on a tenant — `off`, `advisory` (compute + emit, never
-block), or `enforcing` (block live). (`apps/platform/tenants/flags.py`)
-_Avoid_: adding a second flag or reading `metadata` — this is the one switch.
+The single Tier-2 spend-control switch on a tenant — two positions: `off` (byte-for-byte
+pre-enforcement behavior) or `enforcing` (the full signal suite + state changes).
+(`apps/platform/tenants/flags.py`)
+_Avoid_: adding a second flag or reading `metadata` — this is the one switch; a middle
+"compute but never act" mode — the one honest question is whether the signal suite is on.
 
 **API key**:
 A hashed, prefixed tenant credential; `ubb_live_` on live tenants, `ubb_test_` routed to the

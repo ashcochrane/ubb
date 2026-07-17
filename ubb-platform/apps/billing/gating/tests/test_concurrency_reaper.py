@@ -149,7 +149,7 @@ class TestCloseAbandonedHeartbeatSkip:
 
     def test_completes_alive_task_past_absolute_6h_ceiling(self):
         # Even a still-emitting task is completed once past the 6h ceiling, so no
-        # off/advisory tenant (no reaper) gets an immortal task.
+        # off tenant (no reaper) gets an immortal task.
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")
         task = _task(t, c, c.id)

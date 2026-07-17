@@ -29,18 +29,18 @@ BILLING_MODE_CHOICES = [
     ("postpaid", "Postpaid"),
 ]
 
-# Tier-2 real-time spend control (D1): the SINGLE program kill switch.
-#   off       — byte-for-byte unchanged; the live ledger / stop flag / per-task
+# Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
+# positions (#42, spec §G; `advisory` retired, mapped to `off` by migration
+# 0019).
+#   off       — byte-for-byte pre-enforcement behavior: no counters, no
+#               signals, no tagging — the live ledger / stop flag / per-task
 #               cap / concurrency cap are never touched.
-#   advisory  — counters are maintained and stop/limit events are emitted, but
-#               UBB never itself blocks/kills/suspends (canary mode).
-#   enforcing — block/kill/suspend paths are live.
-# Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcement_on/
-# enforcing); no other flag exists. See
-# docs/plans/2026-06-19-tier2-realtime-spend-control-design.md.
+#   enforcing — the full signal suite + state changes (task flips, start-gate
+#               refusals, soft-floor gate, suspension, reapers).
+# Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcing); no
+# other flag exists. See docs/plans/2026-07-15-one-rule-enforcement-spec.md §G.
 ENFORCEMENT_MODE_CHOICES = [
     ("off", "Off"),
-    ("advisory", "Advisory"),
     ("enforcing", "Enforcing"),
 ]
 
