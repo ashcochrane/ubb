@@ -586,7 +586,7 @@ class TenantConfigOut(Schema):
     stripe_connected_account_id: str
     is_active: bool
     automatic_tax_enabled: bool
-    # Tier-2 spend-control mode (read-only here; off|advisory|enforcing).
+    # Tier-2 spend-control mode (read-only here; two positions: off|enforcing).
     enforcement_mode: str = "off"
     # Spend-safety defaults. min_balance_micros is the allowed OVERDRAFT
     # magnitude (balance may go to -min_balance before blocking), not a
@@ -608,7 +608,7 @@ class TenantConfigIn(Schema):
     products: Optional[list[str]] = None
     require_cost_card_coverage: Optional[bool] = None
     automatic_tax_enabled: Optional[bool] = None
-    # Tier-2 spend-control mode: off | advisory | enforcing.
+    # Tier-2 spend-control mode: two positions, off | enforcing (#42).
     enforcement_mode: Optional[str] = None
     # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.

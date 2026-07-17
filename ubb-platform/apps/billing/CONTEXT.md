@@ -100,8 +100,10 @@ the ledger is the truth.
 (`apps/billing/gating/services/stop_signal_service.py`)
 
 **Enforcement mode**:
-`off` / `advisory` / `enforcing` — when `off`, spend control is a no-op and behavior is unchanged.
-_Avoid_: a second enable flag — this is the single switch (mirrors the tenant's `enforcement_mode`).
+Two positions — `off` / `enforcing`. When `off`, spend control is byte-for-byte a no-op (no
+counters, no signals, no tagging); `enforcing` runs the full signal suite + state changes.
+_Avoid_: a second enable flag — this is the single switch (mirrors the tenant's `enforcement_mode`);
+a middle "compute but never act" mode — the one honest question is whether the signal suite is on.
 
 **Budget**:
 A per-tenant (optionally per-customer) monthly spend cap with alert levels.

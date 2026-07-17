@@ -79,11 +79,11 @@ class TestEnforcementModeFlip:
     def test_patch_sets_mode(self):
         t = _tenant(enf="off")
         _k, raw = TenantApiKey.create_key(t, label="t")
-        resp = self._patch(raw, {"enforcement_mode": "advisory"})
+        resp = self._patch(raw, {"enforcement_mode": "enforcing"})
         assert resp.status_code == 200
-        assert resp.json()["enforcement_mode"] == "advisory"
+        assert resp.json()["enforcement_mode"] == "enforcing"
         t.refresh_from_db()
-        assert t.enforcement_mode == "advisory"
+        assert t.enforcement_mode == "enforcing"
 
     def test_patch_invalid_mode_422(self):
         t = _tenant(enf="off")

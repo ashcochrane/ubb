@@ -19,11 +19,12 @@ never has to handle a refusal of work that already happened.
 
 Flip via `PATCH /api/v1/tenant/config` `{"enforcement_mode": "..."}`:
 
+Two positions — one honest question: is the signal suite on?
+
 | Mode | Behavior |
 |---|---|
-| `off` (default) | Unchanged — no spend control. |
-| `advisory` | UBB **computes and signals** (the customer stop verdict + webhooks fire) but **never blocks/kills/suspends**. Use as a canary: watch the signals without enforcing. |
-| `enforcing` | UBB refuses new task starts, returns stop verdicts, kills limit-exceeded tasks, and durably suspends over-limit customers. |
+| `off` (default) | Unchanged — no spend control: no counters, no signals, no tagging. |
+| `enforcing` | The full signal suite + state changes: UBB refuses new task starts, returns stop verdicts, kills limit-exceeded tasks, and durably suspends over-limit customers. |
 
 Back-out is instant (set `off`).
 

@@ -30,7 +30,7 @@ def reconcile_budget_counters():
 @shared_task(queue="ubb_billing")
 def reconcile_live_ledgers():
     """Tier-2 (P2/WS1): MIN/MAX-merge the synchronous live counters toward the
-    durable ledger for every enforcement-enabled tenant (enforcement_mode != off).
+    durable ledger for every enforcing tenant.
 
     Prepaid: per-wallet ``livebal`` MIN-merge toward the durable wallet balance
     (only lowers — credits are applied via the credit() hooks, so reconcile
@@ -46,7 +46,7 @@ def reconcile_live_ledgers():
     from apps.billing.gating.services.budget_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
 
-    for tenant in Tenant.objects.exclude(enforcement_mode="off"):
+    for tenant in Tenant.objects.filter(enforcement_mode="enforcing"):
         try:
             if tenant.billing_mode == "postpaid":
                 _label, start, end = _period()

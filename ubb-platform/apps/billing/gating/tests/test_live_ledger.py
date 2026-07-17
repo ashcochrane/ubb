@@ -181,13 +181,6 @@ class TestStopFlag:
         LiveLedgerService.credit(c.id, t, 10_000_000)  # live -1M -> 9M >= floor -> clear
         assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
 
-    def test_advisory_mode_still_sets_flag(self):
-        t = _tenant(enf="advisory")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
-        assert out["stop"] is True  # advisory computes+emits; UBB itself never blocks
-
     def test_off_sets_no_flag_and_reads_clear(self):
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")

@@ -16,9 +16,9 @@ class RiskService:
             if who.status == "closed":
                 return {"allowed": False, "reason": "account_closed", "balance_micros": None, "task_id": None}
         # Tier-2 P6: honor the synchronous customer-wide stop flag at the
-        # start-gate (ENFORCING only) so a flag-stopped owner's NEW tasks are
-        # blocked even before the durable suspend lands, and for postpaid
-        # owner-aggregate stops. Advisory sets the flag but UBB never blocks.
+        # start-gate (enforcing only — the flag cannot exist for an off
+        # tenant) so a flag-stopped owner's NEW tasks are blocked even before
+        # the durable suspend lands, and for postpaid owner-aggregate stops.
         from apps.platform.tenants.flags import enforcing
         if enforcing(customer.tenant):
             from apps.billing.gating.services.live_ledger_service import LiveLedgerService

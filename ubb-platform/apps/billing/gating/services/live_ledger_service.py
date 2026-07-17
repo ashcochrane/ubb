@@ -2,7 +2,7 @@
 
 The SHARED, owner-keyed Redis counter that ``record_usage`` decrements
 synchronously so the 200 response can express a real wallet/budget stop verdict
-(P3 reads it; P2 only maintains it). Gated by ``enforcement_on(tenant)`` — when
+(P3 reads it; P2 only maintains it). Gated by ``enforcing(tenant)`` — when
 the tenant's ``enforcement_mode`` is ``off`` every method is a cheap no-op and
 behavior is byte-for-byte unchanged.
 
@@ -45,7 +45,7 @@ import logging
 
 from django.conf import settings
 
-from apps.platform.tenants.flags import enforcement_on, enforcing
+from apps.platform.tenants.flags import enforcing
 
 logger = logging.getLogger("ubb.billing")
 
@@ -169,15 +169,6 @@ def _same_month(effective_at, now) -> bool:
 
 
 class LiveLedgerService:
-    # ---- flag delegation ----
-    @staticmethod
-    def enabled(tenant) -> bool:
-        return enforcement_on(tenant)
-
-    @staticmethod
-    def hard(tenant) -> bool:
-        return enforcing(tenant)
-
     # ---- synchronous usage hook (called from record_usage) ----
     @staticmethod
     def record_usage_debit(owner_id, tenant, billed_cost_micros, *, effective_at=None, now=None):
@@ -195,7 +186,7 @@ class LiveLedgerService:
         zero-cost / (postpaid) backdated to a prior month. NEVER raises — a
         Redis failure logs and returns None (fail-open; the durable start-gate
         remains the backstop)."""
-        if not enforcement_on(tenant) or billed_cost_micros <= 0:
+        if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
         try:
             if tenant.billing_mode == "postpaid":
@@ -397,7 +388,7 @@ class LiveLedgerService:
         """Current customer-wide stop verdict. Short-circuits to not-stopped
         when enforcement is off — BEFORE touching Redis (D17)."""
         off = {"stop": False, "stop_reason": None, "stop_scope": None}
-        if not enforcement_on(tenant):
+        if not enforcing(tenant):
             return off
         try:
             v = _client().get(_stop_key(owner_id))
@@ -426,7 +417,7 @@ class LiveLedgerService:
         re-crosses the floor during a Redis blind window still resumes now,
         not an hour later at reconcile. (A negative credit / grant-expiry
         never clears.)"""
-        if not enforcement_on(tenant) or tenant.billing_mode == "postpaid" or amount_micros == 0:
+        if not enforcing(tenant) or tenant.billing_mode == "postpaid" or amount_micros == 0:
             return
         v = None
         try:
@@ -526,7 +517,7 @@ class LiveLedgerService:
         transitions run inside the billing lock, serializing against the
         credit/drawdown paths so a concurrent re-cross cannot interleave a
         stale transition."""
-        if not enforcement_on(tenant):
+        if not enforcing(tenant):
             return
         from django.db import transaction
         from apps.billing.locking import lock_for_billing
@@ -578,7 +569,7 @@ class LiveLedgerService:
         and a stale one (incl. MONTH ROLLOVER: the new month's livespend is
         low, and the stop flag is NOT month-scoped) is cleared within one
         cycle."""
-        if not enforcement_on(tenant):
+        if not enforcing(tenant):
             return
         from django.utils import timezone
         from apps.metering.queries import get_billing_owner_billed_total

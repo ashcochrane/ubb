@@ -182,8 +182,8 @@ def _replay_stop(customer, tenant):
     """Customer-wide stop verdict for the idempotent-replay return paths.
     Skips the owner resolve + Redis read entirely when enforcement is off, so
     the common replay path stays fast for un-enrolled tenants."""
-    from apps.platform.tenants.flags import enforcement_on
-    if not enforcement_on(tenant):
+    from apps.platform.tenants.flags import enforcing
+    if not enforcing(tenant):
         return {}
     from apps.billing.queries import read_live_stop
     return read_live_stop(customer.resolve_billing_owner().id, tenant)
@@ -437,9 +437,9 @@ class UsageService:
                 # drawdown time between events). Owner row fetched only when
                 # enforcement is on — the only mode whose durable ledger can
                 # have state.
-                from apps.platform.tenants.flags import enforcement_on
+                from apps.platform.tenants.flags import enforcing
                 owner_row = None
-                if enforcement_on(tenant):
+                if enforcing(tenant):
                     from apps.platform.customers.models import Customer
                     owner_row = Customer.objects.filter(
                         id=raw.billing_owner_id).only("id", "status").first()
