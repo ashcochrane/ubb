@@ -30,3 +30,19 @@ def enforcing(tenant) -> bool:
     reapers) all hang off this single answer. In off, every one of them is
     a no-op."""
     return enforcement_mode(tenant) == "enforcing"
+
+
+def arrival_signals_on(tenant) -> bool:
+    """Is the arrival-time fast lane on (#46, delivery spec §E)? True only
+    when the tenant is enforcing AND has not opted out of arrival signals —
+    the flag is a behavior posture within enforcing, meaningless outside it.
+
+    Governs the whole fast lane as ONE unit: the accept-time Redis hold +
+    arrival floor detection (HoldService.acquire), the sync-path live debit +
+    crossing check (record_usage_debit), the reconcile's counter jobs
+    (seed/MIN-merge) and the upward repair. The durable lane — settle-time
+    detection, the signal ledger, the patrol, webhook delivery, ack verdicts
+    read from the durable-maintained stop flag — hangs off ``enforcing`` and
+    NEVER reads this. Defaults True on a partially-constructed tenant (the
+    field's own default; posture, not access)."""
+    return enforcing(tenant) and getattr(tenant, "arrival_signals_enabled", True)

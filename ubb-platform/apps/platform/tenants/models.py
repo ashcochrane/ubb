@@ -78,6 +78,20 @@ class Tenant(BaseModel):
     enforcement_mode = models.CharField(
         max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
     )
+    # The arrival-signals switch (#46, delivery spec §E): governs the WHOLE
+    # arrival-time fast lane as one unit — accept-time holds, live counters,
+    # arrival-moment floor detection, and the upward repair. ON: crossings
+    # detected at arrival, stop latency bounded independent of settle-queue
+    # depth. OFF: the honest degraded posture — accept does no live-counter
+    # Redis work; detection happens at settle (durable lane), so latency
+    # degrades exactly when a runaway spender floods the queue. The durable
+    # lane (settle detection, signal ledger, patrol, webhook delivery, ack
+    # verdicts) NEVER switches off, and it maintains the ack-verdict cache in
+    # both postures — flipping this never changes the tenant-facing contract,
+    # only the latency profile. A behavior posture beside enforcement_mode
+    # (products gates ACCESS; this selects behavior), meaningful only when
+    # enforcing. Read ONLY via apps.platform.tenants.flags.arrival_signals_on.
+    arrival_signals_enabled = models.BooleanField(default=True)
     # Tier-2 P5: how long an ENFORCING task may go without a metered event
     # (heartbeat, stamped by accumulate_cost) before the reaper kills it as
     # stale. On Tenant (not RiskConfig) so the platform reaper can read it

@@ -49,7 +49,7 @@ start-gate remains the backstop").
 """
 import logging
 
-from apps.platform.tenants.flags import enforcing
+from apps.platform.tenants.flags import arrival_signals_on, enforcing
 from apps.billing.gating.services.live_ledger_service import (
     LiveLedgerService,
     LEDGER_TTL_SECONDS,
@@ -119,11 +119,20 @@ class HoldService:
         legitimately reduces the spendable balance.
 
         Returns one verdict dict per item, in the SAME order as `items`:
-        {"held": True, "stop": bool, "stop_reason": str|None,
+        {"held": bool, "stop": bool, "stop_reason": str|None,
          "stop_scope": str|None}. One-rule (#37): no item is ever rejected —
         the stop fields are the cooperative customer-wide verdict, and a
         crossing sets the stop flag without rolling back the hold that
-        crossed it.
+        crossed it. ``held`` reports whether a hold was actually reserved —
+        the caller records it on the RawIngestEvent row so settle only ever
+        trues up a hold that was really taken.
+
+        Arrival signals OFF (#46, §E — enforcing, switch off): the whole
+        fast lane is off as one unit — NO Redis write of any kind here (no
+        hold, no crossing check); every item is ``held: False``. The stop
+        fields still carry the verdict READ from the durable-maintained flag
+        (``read_stop``), so the ack schema is identical in both postures —
+        only the latency profile changes (detection happens at settle).
 
         Disabled (enforcement_mode == "off"): every item is held, unstopped
         — a cheap no-op passthrough, matching every other Tier-2 gate (the
@@ -135,6 +144,15 @@ class HoldService:
         """
         if not enforcing(tenant):
             return [_held_verdict() for _ in items]
+        if not arrival_signals_on(tenant):
+            verdict = LiveLedgerService.read_stop(owner_id, tenant)
+            out = []
+            for _ in items:
+                o = _held_verdict()
+                o["held"] = False
+                o.update(verdict)
+                out.append(o)
+            return out
 
         from django.utils import timezone
         from apps.billing.queries import get_customer_balance

@@ -38,7 +38,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.platform.tenants.flags import enforcing
+from apps.platform.tenants.flags import arrival_signals_on
 
 logger = logging.getLogger("ubb.billing")
 
@@ -76,7 +76,10 @@ def repair_live_balances(tenant):
               OUTCOME_REPAIR_LAPSED: 0}
     # The repair exists only where holds exist: the prepaid wallet lane.
     # Postpaid spend drift is owned by the MAX-merge + budget reconcile.
-    if not enforcing(tenant) or tenant.billing_mode == "postpaid":
+    # Part of the fast lane, so it switches off with it (#46, §E): with
+    # arrival signals off nothing holds and nothing reads the counter — a
+    # deficit is moot, and the repair is inert.
+    if not arrival_signals_on(tenant) or tenant.billing_mode == "postpaid":
         return counts
     for owner_id in Wallet.objects.filter(
             customer__tenant=tenant).values_list("customer_id", flat=True):

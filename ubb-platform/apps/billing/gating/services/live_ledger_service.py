@@ -45,7 +45,7 @@ import logging
 
 from django.conf import settings
 
-from apps.platform.tenants.flags import enforcing
+from apps.platform.tenants.flags import arrival_signals_on, enforcing
 
 logger = logging.getLogger("ubb.billing")
 
@@ -185,9 +185,17 @@ class LiveLedgerService:
         #41 tipping-event attribution. Returns None when disabled /
         zero-cost / (postpaid) backdated to a prior month. NEVER raises — a
         Redis failure logs and returns None (fail-open; the durable start-gate
-        remains the backstop)."""
+        remains the backstop).
+
+        Arrival signals OFF (#46, §E — enforcing, switch off): no counter
+        debit, no crossing check — the fast lane is off as one unit. Returns
+        the bare stop verdict READ from the durable-maintained flag so the
+        ack carries the identical fields in both postures; detection happens
+        at settle (the durable drawdown lane)."""
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
+        if not arrival_signals_on(tenant):
+            return LiveLedgerService.read_stop(owner_id, tenant)
         try:
             if tenant.billing_mode == "postpaid":
                 from django.utils import timezone
@@ -539,19 +547,26 @@ class LiveLedgerService:
         down (crashed drawdown handler, dropped savepoint) is re-driven here
         from the reconciled position, and a stale one is cleared. Returns
         ``{"flag_realigned": bool}`` (the §C.2 patrol outcome) on a completed
-        pass, None on failure."""
+        pass, None on failure.
+
+        Arrival signals OFF (#46, §E): the COUNTER jobs (drift read,
+        MIN-merge/seed) are part of the fast lane and skip; the signal
+        catch-up + flag re-alignment below are the durable lane — they never
+        switch off, and run on the durable balance as their basis."""
         if not enforcing(tenant):
             return None
+        lane_on = arrival_signals_on(tenant)
         from django.db import transaction
         from apps.billing.locking import lock_for_billing
         from apps.billing.queries import (get_customer_balance,
                                           get_customer_soft_min_balance)
         try:
             before = None
-            try:
-                before = LiveLedgerService.read_prepaid(owner_id)
-            except Exception:
-                pass  # Redis blind — the durable bottom line below still runs
+            if lane_on:
+                try:
+                    before = LiveLedgerService.read_prepaid(owner_id)
+                except Exception:
+                    pass  # Redis blind — the durable bottom line below still runs
             with transaction.atomic():
                 lock_for_billing(owner_id)  # serialize vs credit/drawdown
                 durable = int(get_customer_balance(owner_id))
@@ -560,13 +575,14 @@ class LiveLedgerService:
                         "owner_id": str(owner_id), "mode": "prepaid",
                         "live_micros": before, "durable_micros": durable}})
                 v = None
-                try:
-                    v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
-                                           durable, LEDGER_TTL_SECONDS))
-                except Exception:
-                    logger.warning("live_ledger.reconcile_redis_blind",
-                                   extra={"data": {"owner_id": str(owner_id),
-                                                   "mode": "prepaid"}})
+                if lane_on:
+                    try:
+                        v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
+                                               durable, LEDGER_TTL_SECONDS))
+                    except Exception:
+                        logger.warning("live_ledger.reconcile_redis_blind",
+                                       extra={"data": {"owner_id": str(owner_id),
+                                                       "mode": "prepaid"}})
                 basis = v if v is not None else durable
                 realigned = LiveLedgerService._reconcile_transitions(
                     owner_id, tenant,
@@ -601,9 +617,14 @@ class LiveLedgerService:
         low, and the stop flag is NOT month-scoped) is cleared within one
         cycle. Returns ``{"flag_realigned": bool}`` on a completed pass
         (#44 §C.2), None on failure. No soft-family leg: the soft floor is a
-        wallet line, prepaid-only."""
+        wallet line, prepaid-only.
+
+        Arrival signals OFF (#46, §E): the counter jobs (drift read,
+        MAX-merge) skip with the fast lane; the durable-basis signal
+        catch-up + flag re-alignment below never switch off."""
         if not enforcing(tenant):
             return None
+        lane_on = arrival_signals_on(tenant)
         from django.utils import timezone
         from apps.metering.queries import get_billing_owner_billed_total
         now = now or timezone.now()
@@ -611,22 +632,24 @@ class LiveLedgerService:
         try:
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
             before = None
-            try:
-                before = LiveLedgerService.read_postpaid(owner_id, now=now)
-            except Exception:
-                pass  # Redis blind — the durable bottom line below still runs
+            if lane_on:
+                try:
+                    before = LiveLedgerService.read_postpaid(owner_id, now=now)
+                except Exception:
+                    pass  # Redis blind — the durable bottom line below still runs
             if before is not None and abs(before - durable) > DRIFT_ALERT_MICROS:
                 logger.error("live_ledger.drift_spike", extra={"data": {
                     "owner_id": str(owner_id), "mode": "postpaid",
                     "live_micros": before, "durable_micros": durable}})
             v = None
-            try:
-                v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
-                                       durable, LEDGER_TTL_SECONDS))
-            except Exception:
-                logger.warning("live_ledger.reconcile_redis_blind",
-                               extra={"data": {"owner_id": str(owner_id),
-                                               "mode": "postpaid"}})
+            if lane_on:
+                try:
+                    v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
+                                           durable, LEDGER_TTL_SECONDS))
+                except Exception:
+                    logger.warning("live_ledger.reconcile_redis_blind",
+                                   extra={"data": {"owner_id": str(owner_id),
+                                                   "mode": "postpaid"}})
             basis = v if v is not None else durable
             realigned = LiveLedgerService._reconcile_transitions(
                 owner_id, tenant,
