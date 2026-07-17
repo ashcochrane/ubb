@@ -65,9 +65,10 @@ class RiskService:
         if (parent_task_id is None and enforcing(customer.tenant)
                 and owner.tenant.billing_mode != "postpaid"):
             from apps.billing.queries import get_customer_soft_min_balance
+            from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
             soft = get_customer_soft_min_balance(owner.id, owner.tenant_id)
             if soft is not None and balance < -soft:
-                return {"allowed": False, "reason": "soft_floor_reached",
+                return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
                         "balance_micros": balance, "task_id": None}
 
         # Budget cap: checked per-seat (customer, not owner)

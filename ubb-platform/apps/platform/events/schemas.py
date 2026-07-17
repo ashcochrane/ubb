@@ -448,5 +448,5 @@ class SoftFloorCleared:
     owner_id: str
     reason: str
     balance_micros: int = 0
-    soft_min_balance_micros: int | None = 0
+    soft_min_balance_micros: int | None = None
     episode_seq: int = 0

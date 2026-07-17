@@ -448,19 +448,30 @@ class LiveLedgerService:
                     LiveLedgerService._maybe_unsuspend(owner_id)
             # #40 §F — the soft floor's credit-side clearing, independent of
             # the hard pair (an owner can be past the soft line without ever
-            # having stopped). A re-cross of the resolved soft line — or a
-            # soft floor UNCONFIGURED mid-episode (no line left to be past)
-            # — drives the soft clearing transition; only the winner emits.
-            from apps.billing.queries import get_customer_soft_min_balance
-            soft = get_customer_soft_min_balance(owner_id, tenant.id)
-            if soft is None or clearance_balance >= -soft:
-                StopSignalService.drive_soft_cleared(
-                    owner_id, tenant, reason=CLEAR_BALANCE_RECOVERED,
-                    balance_micros=clearance_balance,
-                    soft_min_balance_micros=soft)
+            # having stopped).
+            LiveLedgerService._drive_soft_clear_if_recovered(
+                owner_id, tenant, clearance_balance, CLEAR_BALANCE_RECOVERED)
         except Exception:
             logger.warning("live_ledger.credit_recovery_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+
+    @staticmethod
+    def _drive_soft_clear_if_recovered(owner_id, tenant, balance_micros, reason):
+        """#40 §F — drive the soft_floor clearing transition when the given
+        balance sits at/above the resolved soft line, or the soft floor was
+        UNCONFIGURED mid-episode (no line left to be past). Only the winning
+        transition emits soft_floor.cleared. A below-line balance is a no-op
+        both ways: the clearing paths deliberately have no SET power for the
+        soft family — re-detection of a missed soft_floor.crossed is the
+        delivery patrol's job (#44), and the durable drawdown lane is the
+        only crossing detector."""
+        from apps.billing.queries import get_customer_soft_min_balance
+        from apps.billing.gating.services.stop_signal_service import StopSignalService
+        soft = get_customer_soft_min_balance(owner_id, tenant.id)
+        if soft is None or balance_micros >= -soft:
+            StopSignalService.drive_soft_cleared(
+                owner_id, tenant, reason=reason,
+                balance_micros=balance_micros, soft_min_balance_micros=soft)
 
     # ---- reconcile (hourly beat) ----
     @staticmethod
@@ -531,19 +542,12 @@ class LiveLedgerService:
                     owner_id, tenant,
                     LiveLedgerService._crossed("prepaid", basis, owner_id, tenant),
                     basis)
-                # #40 §F — reconcile CLEARS a stale soft crossing (the
-                # reconciled position is back at/above the resolved soft
-                # line, or the line was unconfigured); it deliberately does
-                # NOT set a missed one — re-detection of a lost
-                # soft_floor.crossed is the delivery patrol's job (#44).
-                from apps.billing.queries import get_customer_soft_min_balance
+                # #40 §F — reconcile CLEARS a stale soft crossing; it
+                # deliberately does NOT set a missed one (see the helper).
                 from apps.billing.gating.services.stop_signal_service import (
-                    CLEAR_RECONCILED, StopSignalService)
-                soft = get_customer_soft_min_balance(owner_id, tenant.id)
-                if soft is None or basis >= -soft:
-                    StopSignalService.drive_soft_cleared(
-                        owner_id, tenant, reason=CLEAR_RECONCILED,
-                        balance_micros=basis, soft_min_balance_micros=soft)
+                    CLEAR_RECONCILED)
+                LiveLedgerService._drive_soft_clear_if_recovered(
+                    owner_id, tenant, basis, CLEAR_RECONCILED)
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
