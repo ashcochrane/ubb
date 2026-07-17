@@ -70,6 +70,27 @@ class OpsIngestHealthEndpointTest(TestCase):
         self.assertEqual(resp.json()["pending_count"], 2)
 
     @override_settings(UBB_OPS_TOKEN="s3cret")
+    def test_patrol_counters_ride_the_surface(self):
+        # #44 §F: patrol outcomes join this surface, composed from billing's
+        # read contract, with the same optional tenant filter.
+        from django.utils import timezone
+        from apps.billing.gating.models import PatrolOutcome
+        other_t = Tenant.objects.create(name="OpsOther")
+        today = timezone.now().date()
+        PatrolOutcome.objects.create(tenant=self.tenant, day=today,
+                                     outcome="reminted", count=3)
+        PatrolOutcome.objects.create(tenant=other_t, day=today,
+                                     outcome="sweep_killed", count=2)
+        body = self._get(token="s3cret").json()
+        self.assertEqual(body["patrol_reminted_7d"], 3)
+        self.assertEqual(body["patrol_sweep_killed_7d"], 2)
+        self.assertEqual(body["patrol_flag_realigned_7d"], 0)
+        scoped = self._get(
+            token="s3cret", query=f"?tenant_id={self.tenant.id}").json()
+        self.assertEqual(scoped["patrol_reminted_7d"], 3)
+        self.assertEqual(scoped["patrol_sweep_killed_7d"], 0)
+
+    @override_settings(UBB_OPS_TOKEN="s3cret")
     def test_correct_token_malformed_tenant_id_422s(self):
         # Signature stays `tenant_id: str` so ninja can't 422 this BEFORE the
         # token gate runs (that would re-open the fingerprinting hole) — the

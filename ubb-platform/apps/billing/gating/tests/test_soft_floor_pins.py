@@ -10,9 +10,10 @@ Plus the resolution rule: the soft line resolves customer override → tenant
 default → None (no soft floor), and always sits AT OR ABOVE the hard floor's
 line (the resolver clamps a misconfigured lower line up to the hard floor).
 
-Deliberately NOT here: reconcile SET power for a missed soft crossing — the
-soft family's re-detection is the guaranteed-delivery patrol's job (#44);
-this file pins that reconcile only CLEARS.
+Since #44 the hourly patrol (the reconcile pass) also holds soft-family SET
+power: a missed soft crossing is re-detected from durable truth within one
+interval — late, never lost. Its re-mint rails are pinned in
+test_patrol_pins.py.
 """
 import uuid
 
@@ -279,15 +280,18 @@ class TestPin12PairExactlyOnce:
         LiveLedgerService.reconcile_prepaid(c.id, t)  # same position -> loses
         assert _cleared().count() == 1
 
-    def test_reconcile_does_not_set_a_missed_soft_crossing(self):
-        # Deliberate scope line (#44): re-detection of a missed soft crossing
-        # is the guaranteed-delivery patrol's job, not reconcile's — reconcile
-        # only CLEARS the soft family.
+    def test_reconcile_sets_a_missed_soft_crossing(self):
+        # #44 (delivery spec §C.1): the patrol — the hourly reconcile pass —
+        # gained soft-family SET power. A crossing whose detection was torn
+        # down is re-driven from durable truth within one interval.
         t = _tenant()
         c = _customer(t, balance_micros=-3_000_000)  # past soft, never signaled
         LiveLedgerService.reconcile_prepaid(c.id, t)
-        assert _crossed().count() == 0
+        assert _crossed().count() == 1
+        assert _crossed().get().payload["episode_seq"] == 1
         assert _cleared().count() == 0
+        LiveLedgerService.reconcile_prepaid(c.id, t)  # same position -> loses
+        assert _crossed().count() == 1
 
     def test_episodes_pair_up_across_a_full_cycle(self):
         t = _tenant()

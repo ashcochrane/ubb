@@ -82,6 +82,40 @@ class StopSignalState(BaseModel):
         return f"StopSignalState({self.owner_id}/{self.family}: {self.state} ep{self.episode_seq})"
 
 
+PATROL_OUTCOMES = [
+    ("reminted", "Re-minted announcement"),
+    ("flag_realigned", "Stop flag re-aligned"),
+    ("sweep_killed", "Task swept into the kill flow"),
+]
+
+
+class PatrolOutcome(BaseModel):
+    """Day-bucketed counters of what the hourly patrol repaired (#44, delivery
+    spec §F): re-minted announcements, fast-flag re-alignments, task-sweep
+    kills. Written by the patrol leg of ``reconcile_live_ledgers``; read by
+    the ops/ingest-health surface (``apps.billing.queries.get_patrol_stats``).
+    Visibility only — a nonzero count means a crash/blind-window corner was
+    actually healed, and a persistent spike means a lane is unhealthy. The
+    upward-repair outcomes (#45) will join this vocabulary.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="patrol_outcomes")
+    day = models.DateField()
+    outcome = models.CharField(max_length=20, choices=PATROL_OUTCOMES)
+    count = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "ubb_patrol_outcome"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "day", "outcome"],
+                                    name="uq_patrol_outcome_tenant_day"),
+        ]
+
+    def __str__(self):
+        return f"PatrolOutcome({self.tenant_id} {self.day} {self.outcome}: {self.count})"
+
+
 class BudgetConfig(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="budget_configs")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,

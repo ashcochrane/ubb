@@ -110,6 +110,19 @@ episode. IN-FLIGHT (`pending`/`processing`) is left alone: at most one live anno
 _Avoid_: replaying the original failed event — a re-mint announces the CURRENT state, bottom-line
 only. (`apps/platform/events/announcements.py`)
 
+**Patrol**:
+The hourly traffic-independent backstop that makes every signal "late, never lost" — the #44 leg
+of the reconcile beat (no scheduled task of its own; enforcing tenants only). Per pass: drives
+missed signal transitions in both directions for both families, re-aligns the fast stop flag to
+durable truth, re-mints unannounced signal rows and killed tasks as fresh current-state events
+(`re_announcement: true`, bottom line only), and sweeps active tasks at-or-past their
+provider-cost limit into the idempotent kill flow. Outcomes land as day-bucketed counters on the
+ops/ingest-health surface. Worst-case emission latency after a crash: one patrol interval plus
+the delivery retry schedule.
+_Avoid_: a separate patrol schedule — the reconcile pass IS the patrol; touching the shared
+outbox retry/dead-letter policy — the patrol re-mints around a dead-lettered row, never mutates it.
+(`apps/billing/gating/patrol.py`)
+
 **Enforcement mode**:
 Two positions — `off` / `enforcing`. When `off`, spend control is byte-for-byte a no-op (no
 counters, no signals, no tagging); `enforcing` runs the full signal suite + state changes.

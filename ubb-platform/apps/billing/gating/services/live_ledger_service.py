@@ -338,26 +338,40 @@ class LiveLedgerService:
     def ensure_stop_flag(owner_id, reason):
         """Best-effort: make the fast-lane flag reflect a stop the DURABLE
         lane (drawdown handler / reconcile) signaled, so ack verdicts show it
-        without waiting for the next fast-lane crossing. Plain SET (no NX
-        transition semantics — the ledger guard owns emission dedup); a Redis
-        failure only delays flag visibility, never the signal."""
+        without waiting for the next fast-lane crossing. NX detects only
+        whether the flag was ABSENT (the #44 re-alignment counter) — never
+        emission semantics, which the ledger guard owns; an existing flag
+        keeps its reason and gets a TTL refresh (every path writes the same
+        customer-wide constant, so this is byte-equivalent to the old plain
+        SET). Returns True when a missing flag was re-set — the patrol's
+        flag-realignment outcome; a Redis failure only delays flag
+        visibility, never the signal."""
         try:
-            _client().set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS)
+            client = _client()
+            was_absent = client.set(_stop_key(owner_id), reason,
+                                    ex=LEDGER_TTL_SECONDS, nx=True)
+            if not was_absent:
+                client.expire(_stop_key(owner_id), LEDGER_TTL_SECONDS)
+            return bool(was_absent)
         except Exception:
             logger.warning("live_ledger.ensure_stop_flag_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+            return False
 
     @staticmethod
     def _clear_stop(owner_id):
         """Delete the fast-lane stop flag. Best-effort: a Redis failure must
         not abort the caller's clearing sequence (the ledger clear already
         committed durably); the stale flag is re-deleted by the next
-        clearing path or reconcile cycle."""
+        clearing path or reconcile cycle. Returns True when a flag actually
+        existed and was deleted — an orphaned flag re-aligned to durable
+        truth (the #44 patrol counter)."""
         try:
-            _client().delete(_stop_key(owner_id))
+            return bool(_client().delete(_stop_key(owner_id)))
         except Exception:
             logger.warning("live_ledger.clear_stop_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+            return False
 
     # Monetary suspension reasons that may be auto-cleared on recovery (D15).
     _MONEY_SUSPEND_REASONS = ("min_balance_exceeded", "budget_exceeded")
@@ -467,10 +481,10 @@ class LiveLedgerService:
         balance sits at/above the resolved soft line, or the soft floor was
         UNCONFIGURED mid-episode (no line left to be past). Only the winning
         transition emits soft_floor.cleared. A below-line balance is a no-op
-        both ways: the clearing paths deliberately have no SET power for the
-        soft family — re-detection of a missed soft_floor.crossed is the
-        delivery patrol's job (#44), and the durable drawdown lane is the
-        only crossing detector."""
+        both ways: the CREDIT path (this helper's only caller) deliberately
+        has no SET power for the soft family — crossings are detected by the
+        durable drawdown lane, backstopped by the hourly patrol's soft-SET
+        leg in ``reconcile_prepaid`` (#44 §C.1)."""
         from apps.billing.queries import get_customer_soft_min_balance
         from apps.billing.gating.services.stop_signal_service import StopSignalService
         soft = get_customer_soft_min_balance(owner_id, tenant.id)
@@ -488,19 +502,21 @@ class LiveLedgerService:
         transition emits (a position the lanes already signaled is a silent
         no-op). SET power: a crossing the fast lane missed (Redis blind
         window, dropped savepoint) is signaled here — late, never lost. The
-        fast-lane flag is re-aligned best-effort either way."""
+        fast-lane flag is re-aligned best-effort either way (patrol job
+        §C.2: durable truth owns the verdict cache); returns True when the
+        flag actually changed — the #44 flag-realignment outcome."""
         from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService)
         if crossed:
             StopSignalService.drive_stop(owner_id, tenant, reason=CUSTOMER_WIDE_STOP,
                                          balance_micros=basis_micros)
-            LiveLedgerService.ensure_stop_flag(owner_id, CUSTOMER_WIDE_STOP)
-        else:
-            StopSignalService.drive_clear(owner_id, tenant, reason=CLEAR_RECONCILED,
-                                          balance_micros=basis_micros)
-            LiveLedgerService._clear_stop(owner_id)
-            LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 backstop
+            return LiveLedgerService.ensure_stop_flag(owner_id, CUSTOMER_WIDE_STOP)
+        StopSignalService.drive_clear(owner_id, tenant, reason=CLEAR_RECONCILED,
+                                      balance_micros=basis_micros)
+        realigned = LiveLedgerService._clear_stop(owner_id)
+        LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 backstop
+        return realigned
 
     @staticmethod
     def reconcile_prepaid(owner_id, tenant):
@@ -516,12 +532,20 @@ class LiveLedgerService:
         blind, so the bottom-line signal never depends on Redis health. The
         transitions run inside the billing lock, serializing against the
         credit/drawdown paths so a concurrent re-cross cannot interleave a
-        stale transition."""
+        stale transition.
+
+        #44 (delivery spec §C.1): the soft family gets the SAME bottom-line
+        power, both directions — a soft crossing whose detection was torn
+        down (crashed drawdown handler, dropped savepoint) is re-driven here
+        from the reconciled position, and a stale one is cleared. Returns
+        ``{"flag_realigned": bool}`` (the §C.2 patrol outcome) on a completed
+        pass, None on failure."""
         if not enforcing(tenant):
-            return
+            return None
         from django.db import transaction
         from apps.billing.locking import lock_for_billing
-        from apps.billing.queries import get_customer_balance
+        from apps.billing.queries import (get_customer_balance,
+                                          get_customer_soft_min_balance)
         try:
             before = None
             try:
@@ -544,19 +568,26 @@ class LiveLedgerService:
                                    extra={"data": {"owner_id": str(owner_id),
                                                    "mode": "prepaid"}})
                 basis = v if v is not None else durable
-                LiveLedgerService._reconcile_transitions(
+                realigned = LiveLedgerService._reconcile_transitions(
                     owner_id, tenant,
                     LiveLedgerService._crossed("prepaid", basis, owner_id, tenant),
                     basis)
-                # #40 §F — reconcile CLEARS a stale soft crossing; it
-                # deliberately does NOT set a missed one (see the helper).
                 from apps.billing.gating.services.stop_signal_service import (
-                    CLEAR_RECONCILED)
-                LiveLedgerService._drive_soft_clear_if_recovered(
-                    owner_id, tenant, basis, CLEAR_RECONCILED)
+                    CLEAR_RECONCILED, StopSignalService)
+                soft = get_customer_soft_min_balance(owner_id, tenant.id)
+                if soft is not None and basis < -soft:
+                    StopSignalService.drive_soft_crossed(
+                        owner_id, tenant, balance_micros=basis,
+                        soft_min_balance_micros=soft)
+                else:
+                    StopSignalService.drive_soft_cleared(
+                        owner_id, tenant, reason=CLEAR_RECONCILED,
+                        balance_micros=basis, soft_min_balance_micros=soft)
+                return {"flag_realigned": realigned}
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+            return None
 
     @staticmethod
     def reconcile_postpaid(owner_id, tenant, now=None):
@@ -568,9 +599,11 @@ class LiveLedgerService:
         both ways, so a budget-cap stop missed by the fast lane is SET here
         and a stale one (incl. MONTH ROLLOVER: the new month's livespend is
         low, and the stop flag is NOT month-scoped) is cleared within one
-        cycle."""
+        cycle. Returns ``{"flag_realigned": bool}`` on a completed pass
+        (#44 §C.2), None on failure. No soft-family leg: the soft floor is a
+        wallet line, prepaid-only."""
         if not enforcing(tenant):
-            return
+            return None
         from django.utils import timezone
         from apps.metering.queries import get_billing_owner_billed_total
         now = now or timezone.now()
@@ -595,13 +628,15 @@ class LiveLedgerService:
                                extra={"data": {"owner_id": str(owner_id),
                                                "mode": "postpaid"}})
             basis = v if v is not None else durable
-            LiveLedgerService._reconcile_transitions(
+            realigned = LiveLedgerService._reconcile_transitions(
                 owner_id, tenant,
                 LiveLedgerService._crossed("postpaid", basis, owner_id, tenant),
                 0)  # postpaid has no balance; spend never rides balance fields
+            return {"flag_realigned": realigned}
         except Exception:
             logger.warning("live_ledger.reconcile_postpaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+            return None
 
     # ---- read helpers (used by P3 / tests) ----
     @staticmethod
