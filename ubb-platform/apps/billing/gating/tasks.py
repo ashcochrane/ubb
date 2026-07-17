@@ -27,7 +27,7 @@ def reconcile_budget_counters():
             logger.exception("budget.reconcile_failed", extra={"data": {"customer_id": str(customer.id)}})
 
 
-def _reconcile_tenant_counters(tenant):
+def _per_owner_reconcile(tenant):
     """One tenant's per-owner reconcile loop — the shared body of the hourly
     beat and the arrival-signals toggle choreography (#46, §E). Drives the
     MIN/MAX counter merges (fast lane on) and the durable-basis signal
@@ -98,7 +98,7 @@ def reconcile_live_ledgers():
     from apps.billing.gating import patrol
 
     for tenant in Tenant.objects.filter(enforcement_mode="enforcing"):
-        flag_realigned = _reconcile_tenant_counters(tenant)
+        flag_realigned = _per_owner_reconcile(tenant)
         try:
             patrol.run_patrol(tenant, flag_realigned=flag_realigned)
         except Exception:
@@ -124,7 +124,7 @@ def reconcile_tenant_live_counters(tenant_id):
     tenant = Tenant.objects.filter(id=tenant_id).first()
     if tenant is None or not enforcing(tenant):
         return
-    flag_realigned = _reconcile_tenant_counters(tenant)
+    flag_realigned = _per_owner_reconcile(tenant)
     if flag_realigned:
         try:
             patrol.record_outcomes(

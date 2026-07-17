@@ -502,25 +502,41 @@ class UsageService:
                     target_id, reason,
                     tenant_id=tenant.id, customer_id=customer.id)
         if raw.held:
+            # A hold that was really taken ALWAYS trues up — including after
+            # an ON→OFF arrival-signals flip (#46 §E: "outstanding holds
+            # drain at settle"), so the counter converges instead of being
+            # wedged low until the TTL.
             settle_ingest_hold(raw.billing_owner_id, tenant,
                                raw.estimate_micros - billed_cost_micros,
                                effective_at=effective_at)
         else:
-            # idem-hit at accept took NO hold (held=False). If the first
-            # append had already settled, THIS attempt hits IntegrityError
-            # above and returns "duplicate" without reaching here. If the
-            # first append was LOST (crash between hold and append), this row
-            # is the only survivor and the orphaned hold already decremented
-            # the live counter once — this full debit double-counts against
-            # that orphan. Documented, NOT fixed here (spec invariant 7 —
-            # corrected wording): the hourly reconcile_prepaid MIN-merge does
-            # NOT correct this — it only ever LOWERS toward the durable
-            # balance, and the orphan has already made the live counter LOWER
-            # than durable, so reconcile finds it already at (or below) target
-            # and leaves it untouched (a fixed point, not a correction). The
-            # drift persists (bounded, over-restrictive, DRIFT_ALERT_MICROS-
-            # visible) until a credit/top-up, cleanup_keys, or the 62-day TTL
-            # heals it; see test_settlement.py's orphan-hold pin.
-            settle_ingest_hold(raw.billing_owner_id, tenant,
-                               -billed_cost_micros, effective_at=effective_at)
+            from apps.platform.tenants.flags import arrival_signals_on
+            if arrival_signals_on(tenant):
+                # idem-hit at accept took NO hold (held=False). If the first
+                # append had already settled, THIS attempt hits IntegrityError
+                # above and returns "duplicate" without reaching here. If the
+                # first append was LOST (crash between hold and append), this
+                # row is the only survivor and the orphaned hold already
+                # decremented the live counter once — this full debit
+                # double-counts against that orphan. Documented, NOT fixed
+                # here (spec invariant 7 — corrected wording): the hourly
+                # reconcile_prepaid MIN-merge does NOT correct this — it only
+                # ever LOWERS toward the durable balance, and the orphan has
+                # already made the live counter LOWER than durable, so
+                # reconcile finds it already at (or below) target and leaves
+                # it untouched (a fixed point, not a correction). The drift
+                # persists (bounded, over-restrictive, DRIFT_ALERT_MICROS-
+                # visible) until a credit/top-up, cleanup_keys, or the 62-day
+                # TTL heals it; see test_settlement.py's orphan-hold pin.
+                # Rows accepted while arrival signals were OFF land here too
+                # once the lane is back ON: the full debit keeps the freshly
+                # re-seeded counter honest for spend the seed missed.
+                settle_ingest_hold(raw.billing_owner_id, tenant,
+                                   -billed_cost_micros, effective_at=effective_at)
+            # Arrival signals OFF (#46 §E): no debit — the fast lane is off
+            # as one unit, and this write would otherwise CREATE the postpaid
+            # livespend key (INCRBY) and quietly maintain a fast-lane counter
+            # whose MAX-merge is switched off. Nothing reads the counter in
+            # the OFF posture; the OFF→ON reconcile re-seeds it from durable
+            # truth.
         return "settled"

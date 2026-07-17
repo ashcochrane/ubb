@@ -356,6 +356,46 @@ class TestOnToOffHoldsDrainAtSettle:
         assert LiveLedgerService.read_prepaid(c.id) == 19_000_000
 
 
+@pytest.mark.django_db
+class TestSettleWritesNothingWithLaneOff:
+    """Off as one unit, at settle too: a row accepted with the lane off
+    (held=False) must not have its full-debit true-up create or move a
+    fast-lane counter while the lane is still off — for postpaid that INCRBY
+    would BIRTH the livespend key and quietly maintain a counter whose
+    MAX-merge is switched off. (A genuinely held row still drains — see
+    TestOnToOffHoldsDrainAtSettle.)"""
+
+    def setup_method(self):
+        cache.clear()
+
+    def test_postpaid_settle_births_no_livespend(self):
+        from django.utils import timezone
+        from apps.metering.usage.services.usage_service import UsageService
+        t = _tenant(mode="postpaid", arrival=False)
+        c = _customer(t)
+        assert _ingest(Client(), _auth(t),
+                       [_event(c, billed=5_000_000)]).status_code == 200
+        raw = RawIngestEvent.objects.get()
+        assert raw.held is False
+        assert UsageService.settle_raw(raw) == "settled"
+        label, _, _ = _month_label_bounds(timezone.now())
+        assert _client().get(_livespend_key(c.id, label)) is None
+
+    def test_prepaid_settle_leaves_a_present_counter_untouched(self):
+        from apps.metering.usage.services.usage_service import UsageService
+        t = _tenant(arrival=False)
+        c = _customer(t, balance_micros=20_000_000)
+        assert _ingest(Client(), _auth(t),
+                       [_event(c, billed=1_500_000)]).status_code == 200
+        # A leftover counter from before the ON→OFF flip: the lane-off
+        # settle must not debit it (that would be fast-lane maintenance).
+        _client().set(_livebal_key(c.id), 10_000_000, ex=LEDGER_TTL_SECONDS)
+        raw = RawIngestEvent.objects.get()
+        assert raw.held is False
+        assert UsageService.settle_raw(raw) == "settled"
+        assert LiveLedgerService.read_prepaid(c.id) == 10_000_000
+
+
 PLATFORM_ROOT = Path(__file__).resolve().parents[4]
 
 # The ONLY sanctioned attribute-access sites for the column outside the flags
