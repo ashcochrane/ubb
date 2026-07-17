@@ -410,7 +410,10 @@ class TestPatrolBeatAndCounters:
         stats = get_patrol_stats(tenant_id=t.id)
         assert stats == {"patrol_reminted_7d": 1,
                          "patrol_flag_realigned_7d": 1,
-                         "patrol_sweep_killed_7d": 1}
+                         "patrol_sweep_killed_7d": 1,
+                         "patrol_repaired_7d": 0,
+                         "patrol_repaired_micros_7d": 0,
+                         "patrol_repair_lapsed_7d": 0}
         assert PatrolOutcome.objects.filter(tenant=t).count() == 3
         # Global (no tenant filter) sums the same rows.
         assert get_patrol_stats()["patrol_reminted_7d"] == 1
@@ -427,4 +430,7 @@ class TestPatrolBeatAndCounters:
     def test_stats_shape_is_zeroed_when_quiet(self):
         assert get_patrol_stats() == {"patrol_reminted_7d": 0,
                                       "patrol_flag_realigned_7d": 0,
-                                      "patrol_sweep_killed_7d": 0}
+                                      "patrol_sweep_killed_7d": 0,
+                                      "patrol_repaired_7d": 0,
+                                      "patrol_repaired_micros_7d": 0,
+                                      "patrol_repair_lapsed_7d": 0}
