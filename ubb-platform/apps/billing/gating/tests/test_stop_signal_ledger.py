@@ -138,6 +138,48 @@ class TestSuspensionFold:
 
 
 @pytest.mark.django_db
+class TestEmissionAtomicity:
+    """#43 §A at the service seam: every family rides the same savepoint
+    contract pinned for stop.fired in test_live_ledger.py's pin 2 — a failed
+    event INSERT takes the transition down with it (never "transitioned but
+    unqueued") and leaves the ambient transaction usable for the money path.
+    """
+
+    @staticmethod
+    def _fail_insert_of(monkeypatch, event_type):
+        """Make the outbox INSERT for event_type fail with a REAL SQL error
+        (SELECT 1/0 -> DataError) — only a genuine DB error aborts the
+        ambient transaction, so only this shape catches a missing savepoint."""
+        from django.db import connection
+        from apps.platform.events.models import OutboxEvent
+
+        orig_create = OutboxEvent.objects.create
+
+        def _create(**kwargs):
+            if kwargs.get("event_type") == event_type:
+                with connection.cursor() as cur:
+                    cur.execute("SELECT 1/0")
+            return orig_create(**kwargs)
+
+        monkeypatch.setattr(OutboxEvent.objects, "create", _create)
+
+    def test_failed_soft_crossed_insert_rolls_the_soft_transition_back(self, monkeypatch):
+        from django.db import transaction
+
+        self._fail_insert_of(monkeypatch, "soft_floor.crossed")
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        with transaction.atomic():
+            with pytest.raises(Exception):
+                StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
+            # The ambient transaction survived the savepoint rollback — the
+            # caller's next statement will not hit "transaction is aborted".
+            assert Customer.objects.filter(id=c.id).exists()
+        assert not StopSignalState.objects.filter(owner=c).exists()
+        assert _events("soft_floor.crossed", owner_id=c.id).count() == 0
+
+
+@pytest.mark.django_db
 class TestAnnouncementStamps:
     """#43 §B — every winning transition stamps ``announce_outbox_id`` with
     the outbox id of the event it emitted, inside the same atomic unit; a

@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import patch
 
 from django.db import transaction
 from django.test import TestCase
@@ -398,6 +399,38 @@ class KillAndAnnounceTest(TestCase):
         # The parent keeps running, unstamped — nothing was announced for it.
         self.assertEqual(parent.status, "active")
         self.assertIsNone(parent.announce_outbox_id)
+
+    def test_failed_event_insert_rolls_the_kill_flip_back(self):
+        """#43 §A — the kill-flip sibling of delivery pin 2: the flip and its
+        event are one transaction, so a failed task.limit_exceeded INSERT
+        (real SQL error — only a genuine DB error aborts the transaction)
+        takes the active->killed flip down with it. kill_and_announce
+        swallows the failure (never a 5xx for recorded money) and the next
+        event's verdict retries the kill."""
+        from django.db import connection
+
+        orig_create = OutboxEvent.objects.create
+
+        def _create(**kwargs):
+            if kwargs.get("event_type") == "task.limit_exceeded":
+                with connection.cursor() as cur:
+                    cur.execute("SELECT 1/0")
+            return orig_create(**kwargs)
+
+        task = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            provider_cost_limit_micros=10_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        with patch.object(OutboxEvent.objects, "create", _create):
+            transitioned = TaskService.kill_and_announce(
+                task.id, TASK_LIMIT,
+                tenant_id=self.tenant.id, customer_id=self.customer.id)
+        self.assertFalse(transitioned)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "active")  # flip rolled back with the event
+        self.assertIsNone(task.announce_outbox_id)
+        self.assertEqual(self._events().count(), 0)
 
     def test_cascaded_children_stay_unstamped(self):
         """A cascaded child's flip is a silent state change (the parent's

@@ -11,38 +11,14 @@ import json
 import uuid
 from unittest.mock import patch
 
-from django.core.cache import cache
-from django.test import TestCase, Client
-
-from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.customers.models import Customer
+from api.v1.tests.test_ingest_endpoint import IngestEndpointTestBase
 from apps.platform.events.models import OutboxEvent
-from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import RawIngestEvent, UsageEvent
 
 
-class BrokerDownAtAcceptTest(TestCase):
-    """Same fixture idiom as test_ingest_endpoint.py: prepaid + enforcing
-    tenant, funded wallet, Redis DB-15 wiped via cache.clear()."""
-
-    def setUp(self):
-        cache.clear()
-        from api.v1 import metering_endpoints
-        metering_endpoints._TASK_META_CACHE.clear()
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(
-            name="BrokerDown", products=["metering", "billing", "metering_async"],
-            billing_mode="prepaid", enforcement_mode="enforcing",
-        )
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="cust1")
-        self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-
-    def tearDown(self):
-        cache.clear()
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+class BrokerDownAtAcceptTest(IngestEndpointTestBase):
+    """Rides the shared ingest fixture (prepaid + enforcing tenant with
+    metering_async, funded wallet, Redis DB-15 wiped)."""
 
     def test_sync_record_with_broker_down_is_200_and_sweep_delivers(self):
         """The outbox doorbell leg: the UsageRecorded row is durably written,
@@ -83,19 +59,8 @@ class BrokerDownAtAcceptTest(TestCase):
         with patch("apps.metering.usage.tasks.settle_raw_events") as mock_settle:
             mock_settle.delay.side_effect = ConnectionError("broker down")
             with self.captureOnCommitCallbacks(execute=True):
-                resp = self.http_client.post(
-                    "/api/v1/metering/usage/ingest",
-                    data=json.dumps({"events": [{
-                        "customer_id": str(self.customer.id),
-                        "request_id": f"req-{uuid.uuid4()}",
-                        "idempotency_key": f"idem-{uuid.uuid4()}",
-                        "billed_cost_micros": 1_000_000,
-                    }]}),
-                    content_type="application/json",
-                    **self._auth(),
-                )
+                resp = self._post([self._event()])
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["accepted"], 1)
+        self.assertEqual(resp.json()["accepted"], 1)
         raw = RawIngestEvent.objects.get()
         self.assertEqual(raw.status, "pending")
