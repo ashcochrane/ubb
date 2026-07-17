@@ -237,7 +237,7 @@ class TestStopFlag:
         lands, bills, and the response still carries the flag verdict. What
         remains is a clean "not yet signalled" state, re-detected by the
         durable lane on the next landing event or by the patrol within the
-        hour (the patrol leg lands with #44).
+        hour (pinned in test_patrol_pins.py, #44).
 
         The failure is simulated with a REAL failed SQL statement (SELECT 1/0
         -> DataError, a DatabaseError subclass), not a pure-Python raise —

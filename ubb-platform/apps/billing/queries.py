@@ -133,17 +133,17 @@ def get_patrol_stats(tenant_id=None):
     from datetime import timedelta
     from django.db.models import Sum
     from django.utils import timezone
+    from apps.billing.gating import patrol
     from apps.billing.gating.models import PatrolOutcome
     since = timezone.now().date() - timedelta(days=7)
     qs = PatrolOutcome.objects.filter(day__gte=since)
     if tenant_id is not None:
         qs = qs.filter(tenant_id=tenant_id)
     agg = dict(qs.values_list("outcome").annotate(n=Sum("count")))
-    return {
-        "patrol_reminted_7d": int(agg.get("reminted", 0)),
-        "patrol_flag_realigned_7d": int(agg.get("flag_realigned", 0)),
-        "patrol_sweep_killed_7d": int(agg.get("sweep_killed", 0)),
-    }
+    return {f"patrol_{outcome}_7d": int(agg.get(outcome, 0))
+            for outcome in (patrol.OUTCOME_REMINTED,
+                            patrol.OUTCOME_FLAG_REALIGNED,
+                            patrol.OUTCOME_SWEEP_KILLED)}
 
 
 def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):

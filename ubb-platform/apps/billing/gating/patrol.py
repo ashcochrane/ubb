@@ -48,9 +48,11 @@ def run_patrol(tenant, *, flag_realigned=0):
     leg never blocks the others. Returns the outcome counts."""
     counts = {OUTCOME_FLAG_REALIGNED: flag_realigned,
               OUTCOME_REMINTED: 0, OUTCOME_SWEEP_KILLED: 0}
-    for job in (_remint_signals_job, _sweep_job, _remint_kills_job):
+    for outcome, job in ((OUTCOME_REMINTED, remint_unannounced_signals),
+                         (OUTCOME_SWEEP_KILLED, sweep_over_limit_tasks),
+                         (OUTCOME_REMINTED, remint_unannounced_kills)):
         try:
-            job(tenant, counts)
+            counts[outcome] += job(tenant)
         except Exception:
             logger.exception("patrol.job_failed", extra={"data": {
                 "tenant_id": str(tenant.id), "job": job.__name__}})
@@ -64,18 +66,6 @@ def run_patrol(tenant, *, flag_realigned=0):
         logger.info("patrol.outcomes", extra={"data": {
             "tenant_id": str(tenant.id), **counts}})
     return counts
-
-
-def _remint_signals_job(tenant, counts):
-    counts[OUTCOME_REMINTED] += remint_unannounced_signals(tenant)
-
-
-def _sweep_job(tenant, counts):
-    counts[OUTCOME_SWEEP_KILLED] += sweep_over_limit_tasks(tenant)
-
-
-def _remint_kills_job(tenant, counts):
-    counts[OUTCOME_REMINTED] += remint_unannounced_kills(tenant)
 
 
 def remint_unannounced_signals(tenant):
@@ -123,7 +113,7 @@ def _remint_signal_row(row, tenant):
     type — current ``episode_seq``, ``re_announcement: true`` — and stamp it,
     inside the caller's transaction (the §B atomic unit)."""
     from apps.billing.gating.services.stop_signal_service import (
-        FAMILY_FLOOR_STOP, STATE_STOPPED, _emit_stamped)
+        FAMILY_FLOOR_STOP, STATE_STOPPED, emit_stamped)
     from apps.billing.queries import get_customer_soft_min_balance
     from apps.platform.events.schemas import (
         SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
@@ -155,7 +145,7 @@ def _remint_signal_row(row, tenant):
                 reason=row.reason, balance_micros=balance,
                 soft_min_balance_micros=soft,
                 episode_seq=row.episode_seq, re_announcement=True)
-    _emit_stamped(row, schema)
+    emit_stamped(row, schema)
 
 
 def _owner_balance(owner_id, tenant):

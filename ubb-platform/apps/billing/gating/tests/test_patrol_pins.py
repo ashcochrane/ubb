@@ -212,6 +212,23 @@ class TestPin3RemintUnannounced:
         _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "processed")
         assert patrol.remint_unannounced_signals(t) == 0
 
+    def test_administrative_close_never_rides_the_wire(self):
+        # A row silently closed by an enforcement-mode transition (#39: a
+        # config flip is not a re-cross) has nothing to announce — even when
+        # its last real announcement dead-lettered, the patrol skips it
+        # rather than put the administrative reason on a StopCleared.
+        from apps.billing.gating.services.stop_signal_service import (
+            CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED)
+        t = _tenant()
+        c = _customer(t, balance_micros=-1_000_000)
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
+        StopSignalState.objects.filter(owner=c).update(
+            state=STATE_CLEARED, reason=CLEAR_ENFORCEMENT_MODE_TRANSITION)
+        assert patrol.remint_unannounced_signals(t) == 0
+        assert not _events("stop.cleared").exists()
+        assert _events("stop.fired").count() == 1
+
 
 @pytest.mark.django_db
 class TestPin4BottomLineOnly:

@@ -86,7 +86,8 @@ The cooperative, owner-keyed Redis flag set when the live counter crosses the wa
 budget cap; it blocks new task starts until recovery — usage reports keep landing and billing.
 Paired with resume: the moment the balance re-crosses the floor, the flag lifts and `stop.cleared`
 fires, closing the stop episode. The flag is the fast READ surface (ack verdicts) only — emission
-dedup lives on the signal ledger.
+dedup lives on the signal ledger. Durable truth owns it: the hourly patrol re-aligns an orphaned
+or missing flag to the `floor_stop` family's durable state within one interval.
 
 **Signal ledger (`StopSignalState`)**:
 The durable per-owner-per-family state row every stop/resume emission routes through; only the
