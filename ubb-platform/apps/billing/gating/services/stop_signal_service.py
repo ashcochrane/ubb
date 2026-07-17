@@ -50,6 +50,10 @@ STATE_CLEARED = "cleared"
 # balance_recovered; the hourly bottom-line catch-up says reconciled.
 CLEAR_BALANCE_RECOVERED = "balance_recovered"
 CLEAR_RECONCILED = "reconciled"
+# The upward live-balance repair (#45): the counter was dishonest — a repair,
+# not a credit, lifted it back over the floor (the wedge lifted with no
+# balance change; see apps/billing/gating/repair.py).
+CLEAR_BALANCE_REPAIRED = "balance_repaired"
 # The soft_floor family's stop-side reason (ledger row + the start-gate
 # refusal share the string; the crossed event itself carries no reason).
 SOFT_FLOOR_REACHED = "soft_floor_reached"

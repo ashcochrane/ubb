@@ -86,17 +86,21 @@ PATROL_OUTCOMES = [
     ("reminted", "Re-minted announcement"),
     ("flag_realigned", "Stop flag re-aligned"),
     ("sweep_killed", "Task swept into the kill flow"),
+    ("repaired", "Live balance repaired upward"),
+    ("repaired_micros", "Micros applied by upward repairs"),
+    ("repair_lapsed", "Repair candidate lapsed"),
 ]
 
 
 class PatrolOutcome(BaseModel):
     """Day-bucketed counters of what the hourly patrol repaired (#44, delivery
     spec §F): re-minted announcements, fast-flag re-alignments, task-sweep
-    kills. Written by the patrol leg of ``reconcile_live_ledgers``; read by
+    kills, and the upward live-balance repairs (#45 — count, micros applied,
+    and lapsed candidates; the ``repaired_micros`` bucket's ``count`` IS the
+    amount). Written by the patrol leg of ``reconcile_live_ledgers``; read by
     the ops/ingest-health surface (``apps.billing.queries.get_patrol_stats``).
     Visibility only — a nonzero count means a crash/blind-window corner was
-    actually healed, and a persistent spike means a lane is unhealthy. The
-    upward-repair outcomes (#45) will join this vocabulary.
+    actually healed, and a persistent spike means a lane is unhealthy.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -114,6 +118,59 @@ class PatrolOutcome(BaseModel):
 
     def __str__(self):
         return f"PatrolOutcome({self.tenant_id} {self.day} {self.outcome}: {self.count})"
+
+
+LIVE_BALANCE_REPAIR_STATUS = [
+    ("candidate", "Candidate"),
+    ("repaired", "Repaired"),
+    ("lapsed", "Lapsed"),
+]
+
+
+class LiveBalanceRepair(BaseModel):
+    """Audit trail of the upward live-balance repair (#45, delivery spec §D)
+    — one row per grace-gated observation of a prepaid live-counter deficit
+    (expected = durable − Σ pending holds; deficit = expected − live).
+
+    Lifecycle: the first patrol pass measuring a past-de-minimis deficit
+    writes a ``candidate`` (first measurement + snapshot; nothing applied).
+    The immediately-next pass resolves it: still deficient → ``repaired``
+    (min of the two measurements applied as a relative increment; the row
+    gains the second measurement, the amount, live before/after, and the
+    resolving snapshot) — vanished, or too stale to prove hour-stability →
+    ``lapsed`` (``second_deficit_micros`` stays null on a stale lapse: the
+    in-window second measurement never happened). ``durable_balance_micros``
+    and ``pending_hold_micros`` always describe the row's LATEST recorded
+    measurement. At most one open candidate per owner (partial unique);
+    passes serialize on ``lock_for_billing``, so a repair applies once.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="live_balance_repairs")
+    owner = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
+                              related_name="live_balance_repairs")
+    status = models.CharField(max_length=10, choices=LIVE_BALANCE_REPAIR_STATUS,
+                              default="candidate")
+    first_deficit_micros = models.BigIntegerField()
+    second_deficit_micros = models.BigIntegerField(null=True, blank=True)
+    applied_micros = models.BigIntegerField(null=True, blank=True)
+    live_before_micros = models.BigIntegerField(null=True, blank=True)
+    live_after_micros = models.BigIntegerField(null=True, blank=True)
+    durable_balance_micros = models.BigIntegerField()
+    pending_hold_micros = models.BigIntegerField()
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_live_balance_repair"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner"], condition=models.Q(status="candidate"),
+                name="uq_live_balance_repair_open_candidate"),
+        ]
+
+    def __str__(self):
+        return (f"LiveBalanceRepair({self.owner_id}: {self.status} "
+                f"d1={self.first_deficit_micros} applied={self.applied_micros})")
 
 
 class BudgetConfig(BaseModel):

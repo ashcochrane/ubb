@@ -116,10 +116,10 @@ The hourly traffic-independent backstop that makes every signal "late, never los
 of the reconcile beat (no scheduled task of its own; enforcing tenants only). Per pass: drives
 missed signal transitions in both directions for both families, re-aligns the fast stop flag to
 durable truth, re-mints unannounced signal rows and killed tasks as fresh current-state events
-(`re_announcement: true`, bottom line only), and sweeps active tasks at-or-past their
-provider-cost limit into the idempotent kill flow. Outcomes land as day-bucketed counters on the
-ops/ingest-health surface. Worst-case emission latency after a crash: one patrol interval plus
-the delivery retry schedule.
+(`re_announcement: true`, bottom line only), sweeps active tasks at-or-past their
+provider-cost limit into the idempotent kill flow, and runs the upward live-balance repair.
+Outcomes land as day-bucketed counters on the ops/ingest-health surface. Worst-case emission
+latency after a crash: one patrol interval plus the delivery retry schedule.
 _Avoid_: a separate patrol schedule — the reconcile pass IS the patrol; touching the shared
 outbox retry/dead-letter policy — the patrol re-mints around a dead-lettered row, never mutates it.
 (`apps/billing/gating/patrol.py`)
@@ -148,7 +148,20 @@ budget cap), setting the stop flag. Cooperative: the crossing event itself still
 **Orphan hold**:
 A hold whose event never durably landed (crash between the hold and the append); the live balance
 reads *lower* than reality — the safe direction — until credited, repaired, or expired. The
-MIN-merge reconcile cannot heal it (it only ever lowers).
+MIN-merge reconcile cannot heal it (it only ever lowers); the upward repair is what heals it.
+
+**Upward repair**:
+The patrol's honesty repair of the prepaid live counter (#45): a deficit against the expected
+balance (durable − genuinely pending holds, one locked snapshot) past the $1 de-minimis writes a
+candidate on one hourly pass and, if the immediately-next pass still measures one, applies
+min(first, second) — the amount proven stable across the hour — as a relative increment. A repair
+that lifts a wedged stop drives the clearing transition (`stop.cleared`, reason
+`balance_repaired`); candidate/repaired/lapsed live on the `LiveBalanceRepair` audit trail, and a
+repair-rate spike per tenant per 24h alerts CRITICAL — an epidemic is a bug, never silent
+self-healing.
+_Avoid_: an absolute SET on the counter — unsafe under concurrent traffic; touching the postpaid
+spend counter — its drift lane is the MAX-merge + budget reconcile.
+(`apps/billing/gating/repair.py`)
 
 **Safe direction (over-restrictive)**:
 The invariant that every accidental fast-lane failure makes the live view stingier — balance lower,

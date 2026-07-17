@@ -19,8 +19,10 @@ down. The jobs here join the existing hourly reconcile pass
 3. ``sweep_over_limit_tasks`` + ``remint_unannounced_kills`` (§C.4) — active
    tasks sitting at-or-past their provider-cost limit are swept into the
    idempotent kill flow; killed-but-unannounced tasks are re-minted.
-4. Upward live-balance repair (§D) — its own ticket (#45); slot reserved
-   in ``run_patrol``.
+4. Upward live-balance repair (§D, #45) — ``apps.billing.gating.repair``:
+   the grace-gated honesty repair of the prepaid live counter (candidate on
+   one pass, min-of-two-measurements relative increment on the next), with
+   its repaired/amount/lapsed outcomes folded into the same record.
 
 Outcomes are recorded as day-bucketed ``PatrolOutcome`` counters for the
 ops/ingest-health surface (§F). The shared outbox retry policy and the
@@ -39,6 +41,11 @@ logger = logging.getLogger("ubb.billing")
 OUTCOME_REMINTED = "reminted"
 OUTCOME_FLAG_REALIGNED = "flag_realigned"
 OUTCOME_SWEEP_KILLED = "sweep_killed"
+# Upward live-balance repair (§D, #45): repairs applied, micros applied (the
+# repaired_micros bucket's count IS the amount), and lapsed candidates.
+OUTCOME_REPAIRED = "repaired"
+OUTCOME_REPAIRED_MICROS = "repaired_micros"
+OUTCOME_REPAIR_LAPSED = "repair_lapsed"
 
 
 def run_patrol(tenant, *, flag_realigned=0):
@@ -46,8 +53,12 @@ def run_patrol(tenant, *, flag_realigned=0):
     and record every outcome. ``flag_realigned`` is the count the per-owner
     reconcile passes already collected. Each job is isolated — one failing
     leg never blocks the others. Returns the outcome counts."""
+    from apps.billing.gating import repair
+
     counts = {OUTCOME_FLAG_REALIGNED: flag_realigned,
-              OUTCOME_REMINTED: 0, OUTCOME_SWEEP_KILLED: 0}
+              OUTCOME_REMINTED: 0, OUTCOME_SWEEP_KILLED: 0,
+              OUTCOME_REPAIRED: 0, OUTCOME_REPAIRED_MICROS: 0,
+              OUTCOME_REPAIR_LAPSED: 0}
     for outcome, job in ((OUTCOME_REMINTED, remint_unannounced_signals),
                          (OUTCOME_SWEEP_KILLED, sweep_over_limit_tasks),
                          (OUTCOME_REMINTED, remint_unannounced_kills)):
@@ -56,7 +67,13 @@ def run_patrol(tenant, *, flag_realigned=0):
         except Exception:
             logger.exception("patrol.job_failed", extra={"data": {
                 "tenant_id": str(tenant.id), "job": job.__name__}})
-    # #45 slot: upward live-balance repair (§D) joins here.
+    # Job 5 — upward live-balance repair (§D, #45); multi-outcome record.
+    try:
+        for outcome, n in repair.repair_live_balances(tenant).items():
+            counts[outcome] += n
+    except Exception:
+        logger.exception("patrol.job_failed", extra={"data": {
+            "tenant_id": str(tenant.id), "job": "repair_live_balances"}})
     try:
         record_outcomes(tenant, counts)
     except Exception:

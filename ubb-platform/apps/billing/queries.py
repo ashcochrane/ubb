@@ -128,7 +128,8 @@ def get_patrol_stats(tenant_id=None):
     delivery spec §F) — trailing 7 days of day-bucketed ``PatrolOutcome``
     rows, summed per outcome. Visibility only: a nonzero count means the
     patrol actually healed a crash/blind-window corner (re-minted a lost
-    announcement, re-aligned an orphaned stop flag, swept a crashed kill);
+    announcement, re-aligned an orphaned stop flag, swept a crashed kill,
+    repaired a wedged live balance — count, micros, lapsed candidates; #45);
     a persistent spike means a lane is unhealthy."""
     from datetime import timedelta
     from django.db.models import Sum
@@ -143,7 +144,10 @@ def get_patrol_stats(tenant_id=None):
     return {f"patrol_{outcome}_7d": int(agg.get(outcome, 0))
             for outcome in (patrol.OUTCOME_REMINTED,
                             patrol.OUTCOME_FLAG_REALIGNED,
-                            patrol.OUTCOME_SWEEP_KILLED)}
+                            patrol.OUTCOME_SWEEP_KILLED,
+                            patrol.OUTCOME_REPAIRED,
+                            patrol.OUTCOME_REPAIRED_MICROS,
+                            patrol.OUTCOME_REPAIR_LAPSED)}
 
 
 def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):

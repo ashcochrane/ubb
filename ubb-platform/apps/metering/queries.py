@@ -506,3 +506,24 @@ def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
         tenant_id=tenant_id, billed_cost_micros__gt=0,
         **{f"{field}__gte": since, f"{field}__lt": before},
     ).values("id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()
+
+
+def get_pending_held_estimate_total(tenant_id, billing_owner_id) -> int:
+    """Σ ``estimate_micros`` of the owner's genuinely-pending held ingest rows
+    (``RawIngestEvent`` with status="pending", held=True) — the holds
+    legitimately still out against the live balance.
+
+    Read by billing's upward live-balance repair (#45, delivery spec §D) to
+    compute the expected live balance (durable − this sum) inside the same
+    locked DB snapshot as the durable balance read. Post ADR-0003 these
+    estimates are exact prices (``estimate_exact`` always true), so the
+    expectation carries no estimation slop.
+    """
+    from django.db.models import Sum
+    from apps.metering.usage.models import RawIngestEvent
+
+    total = RawIngestEvent.objects.filter(
+        tenant_id=tenant_id, billing_owner_id=billing_owner_id,
+        status="pending", held=True,
+    ).aggregate(total=Sum("estimate_micros"))["total"]
+    return int(total or 0)
