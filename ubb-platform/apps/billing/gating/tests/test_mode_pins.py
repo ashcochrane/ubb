@@ -51,7 +51,8 @@ class TestAdvisoryRetired:
         mig = import_module(
             "apps.platform.tenants.migrations.0019_two_position_enforcement_mode")
         mig.advisory_to_off(live_apps, None)
-        on.refresh_from_db(), off.refresh_from_db()
+        on.refresh_from_db()
+        off.refresh_from_db()
         assert on.enforcement_mode == "enforcing"
         assert off.enforcement_mode == "off"
 
