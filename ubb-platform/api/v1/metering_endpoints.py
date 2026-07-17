@@ -356,6 +356,20 @@ def _sync_fallback_verdict(sync_result):
     }
 
 
+def _kick_settle(tenant_id):
+    """Post-commit settle doorbell — broker errors are swallowed + logged
+    (delivery spec §A, #43). The durable raw rows are the queue and the 10s
+    beat sweep re-dispatches them; a dead broker at accept costs seconds of
+    settle latency, never a 5xx for money that durably landed."""
+    from apps.metering.usage.tasks import settle_raw_events
+
+    try:
+        settle_raw_events.delay()
+    except Exception:
+        logger.warning("ingest.settle_dispatch_failed",
+                       extra={"data": {"tenant_id": tenant_id}})
+
+
 @metering_api.post("/usage/ingest", response={200: IngestBatchResponse})
 def ingest_usage_batch(request, payload: IngestBatchRequest):
     """Async accept path: estimate -> atomic hold -> durable raw append -> 202-style
@@ -602,9 +616,10 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         # Kick the settle workers once the raws are durably committed — the
         # 10s beat sweep (settle-raw-events) is the backstop for a lost
         # dispatch, so this on_commit hook is a fast-path nicety, not a
-        # durability requirement.
-        from apps.metering.usage.tasks import settle_raw_events
-        transaction.on_commit(lambda: settle_raw_events.delay())
+        # durability requirement. Broker errors are swallowed + logged
+        # (delivery spec §A, #43): the raws are durably accepted, and a
+        # post-commit raise would 5xx a response whose money already landed.
+        transaction.on_commit(lambda: _kick_settle(str(tenant.id)))
 
     # One-rule (#37): no accept-time kill parity remains — task-limit
     # detection (and the kill flow + task.limit_exceeded) moved to settle,

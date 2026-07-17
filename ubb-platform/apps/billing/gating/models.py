@@ -63,6 +63,13 @@ class StopSignalState(BaseModel):
     episode_seq = models.BigIntegerField(default=0)
     reason = models.CharField(max_length=64, blank=True, default="")
     transitioned_at = models.DateTimeField()
+    # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
+    # this row's LAST announcement, stamped inside the same atomic unit as the
+    # transition/re-mint that emitted it — stamp and event commit or vanish
+    # together. Deliberately a plain UUID, not an FK: outbox cleanup deletes
+    # terminally-successful rows after 30/90 days, and the stamp must keep
+    # meaning "announced" then (see apps.platform.events.announcements).
+    announce_outbox_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_stop_signal_state"

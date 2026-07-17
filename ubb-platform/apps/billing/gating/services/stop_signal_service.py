@@ -99,9 +99,13 @@ class StopSignalService:
                 row.transitioned_at = now
                 row.save(update_fields=["state", "episode_seq", "reason",
                                         "transitioned_at", "updated_at"])
-            write_event(StopFired(tenant_id=str(tenant.id), owner_id=str(owner.id),
-                                  reason=reason, scope="customer",
-                                  episode_seq=row.episode_seq))
+            outbox = write_event(StopFired(tenant_id=str(tenant.id), owner_id=str(owner.id),
+                                           reason=reason, scope="customer",
+                                           episode_seq=row.episode_seq))
+            # §B (#43): stamp the announcement inside the same savepoint —
+            # stamp and event commit or vanish together.
+            row.announce_outbox_id = outbox.id
+            row.save(update_fields=["announce_outbox_id", "updated_at"])
             postpaid = tenant.billing_mode == "postpaid"
             if (not postpaid or enforcing(tenant)) and owner.status == "active":
                 owner.status = "suspended"
@@ -136,9 +140,11 @@ class StopSignalService:
             row.reason = reason
             row.transitioned_at = timezone.now()
             row.save(update_fields=["state", "reason", "transitioned_at", "updated_at"])
-            write_event(StopCleared(tenant_id=str(tenant.id), owner_id=str(owner_id),
-                                    reason=reason, episode_seq=row.episode_seq,
-                                    balance_micros=int(balance_micros)))
+            outbox = write_event(StopCleared(tenant_id=str(tenant.id), owner_id=str(owner_id),
+                                             reason=reason, episode_seq=row.episode_seq,
+                                             balance_micros=int(balance_micros)))
+            row.announce_outbox_id = outbox.id
+            row.save(update_fields=["announce_outbox_id", "updated_at"])
             return row.episode_seq
 
     @staticmethod
@@ -175,11 +181,13 @@ class StopSignalService:
                 row.transitioned_at = now
                 row.save(update_fields=["state", "episode_seq", "reason",
                                         "transitioned_at", "updated_at"])
-            write_event(SoftFloorCrossed(
+            outbox = write_event(SoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=int(soft_min_balance_micros),
                 episode_seq=row.episode_seq))
+            row.announce_outbox_id = outbox.id
+            row.save(update_fields=["announce_outbox_id", "updated_at"])
             return row.episode_seq
 
     @staticmethod
@@ -208,10 +216,12 @@ class StopSignalService:
             row.reason = reason
             row.transitioned_at = timezone.now()
             row.save(update_fields=["state", "reason", "transitioned_at", "updated_at"])
-            write_event(SoftFloorCleared(
+            outbox = write_event(SoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id), reason=reason,
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=(None if soft_min_balance_micros is None
                                          else int(soft_min_balance_micros)),
                 episode_seq=row.episode_seq))
+            row.announce_outbox_id = outbox.id
+            row.save(update_fields=["announce_outbox_id", "updated_at"])
             return row.episode_seq

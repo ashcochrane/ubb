@@ -135,3 +135,62 @@ class TestSuspensionFold:
         assert c.suspension_reason == "fraud"
         assert _events("stop.fired", owner_id=c.id).count() == 1
         assert _events("billing.customer_suspended", "customer_id", c.id).count() == 0
+
+
+@pytest.mark.django_db
+class TestAnnouncementStamps:
+    """#43 §B — every winning transition stamps ``announce_outbox_id`` with
+    the outbox id of the event it emitted, inside the same atomic unit; a
+    losing transition never touches the stamp. Fresh crossings go out with
+    ``re_announcement: false`` (true is reserved for the patrol's re-mints,
+    #44)."""
+
+    def test_winning_stop_stamps_the_stop_fired_event(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        row = StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP)
+        fired = _events("stop.fired", owner_id=c.id).get()
+        assert row.announce_outbox_id == fired.id
+        assert fired.payload["re_announcement"] is False
+
+    def test_losing_stop_leaves_the_stamp_alone(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        stamp = StopSignalState.objects.get(
+            owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id
+        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") is None
+        assert StopSignalState.objects.get(
+            owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id == stamp
+
+    def test_clear_moves_the_stamp_to_the_cleared_event(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        fired_id = _events("stop.fired", owner_id=c.id).get().id
+        StopSignalService.drive_clear(c.id, t, reason=CLEAR_BALANCE_RECOVERED)
+        row = StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP)
+        cleared = _events("stop.cleared", owner_id=c.id).get()
+        assert row.announce_outbox_id == cleared.id
+        assert row.announce_outbox_id != fired_id
+        assert cleared.payload["re_announcement"] is False
+
+    def test_soft_pair_stamps_its_own_family_row(self):
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        hard_stamp = StopSignalState.objects.get(
+            owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id
+        StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
+        soft = StopSignalState.objects.get(owner=c, family="soft_floor")
+        crossed = _events("soft_floor.crossed", owner_id=c.id).get()
+        assert soft.announce_outbox_id == crossed.id
+        assert crossed.payload["re_announcement"] is False
+        StopSignalService.drive_soft_cleared(c.id, t, reason=CLEAR_RECONCILED)
+        soft.refresh_from_db()
+        assert soft.announce_outbox_id == _events(
+            "soft_floor.cleared", owner_id=c.id).get().id
+        # The hard family's stamp never moved.
+        assert StopSignalState.objects.get(
+            owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id == hard_stamp

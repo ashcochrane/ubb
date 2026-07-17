@@ -94,10 +94,21 @@ winning transition emits (atomically with the row), so a crossing observed by th
 the durable drawdown handler, and reconcile signals exactly once. Its `episode_seq` is the STOP
 EPISODE id — a stop opens episode N, the paired clear closes it — which stop-context tagging and
 the past-limit report key on. Suspension rides the same winning stop transition, so floor-stop and
-suspension can never disagree or double-fire.
+suspension can never disagree or double-fire. Each winning transition also stamps
+`announce_outbox_id` (the row's last announcement) inside the same atomic unit — see Announcement.
 _Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
 the ledger is the truth.
 (`apps/billing/gating/services/stop_signal_service.py`)
+
+**Announcement**:
+What a signal-bearing row (a ledger row, a killed task) last told the world: the stamped
+`announce_outbox_id`. ANNOUNCED = the stamped event reached terminal success (`processed`, or
+`skipped` — a tenant with no webhook config chose no push channel: vacuous success, never
+re-minted). UNANNOUNCED = no stamp while signal-bearing, or the stamped row dead-lettered — the
+patrol re-mints a fresh current-state event carrying `re_announcement: true` and the current
+episode. IN-FLIGHT (`pending`/`processing`) is left alone: at most one live announcement per row.
+_Avoid_: replaying the original failed event — a re-mint announces the CURRENT state, bottom-line
+only. (`apps/platform/events/announcements.py`)
 
 **Enforcement mode**:
 Two positions — `off` / `enforcing`. When `off`, spend control is byte-for-byte a no-op (no

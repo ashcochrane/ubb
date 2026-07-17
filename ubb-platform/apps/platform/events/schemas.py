@@ -319,6 +319,10 @@ class TaskLimitExceeded:
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     provider_cost_limit_micros: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint — a repaired
+    # delivery of the CURRENT state, never a fresh crossing. Consumers dedup
+    # on the episode/unit id as ever.
+    re_announcement: bool = False
 
 
 @dataclass(frozen=True)
@@ -348,6 +352,9 @@ class SubtaskLimitExceeded:
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     provider_cost_limit_micros: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint (see
+    # TaskLimitExceeded.re_announcement).
+    re_announcement: bool = False
 
 
 @dataclass(frozen=True)
@@ -378,6 +385,11 @@ class StopFired:
     reason: str
     scope: str = "customer"
     episode_seq: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint — an ordinary
+    # event of this same type carrying the CURRENT state and episode, minted
+    # because the last announcement never terminally succeeded. Consumers
+    # dedup on episode_seq as ever.
+    re_announcement: bool = False
 
 
 @dataclass(frozen=True)
@@ -404,6 +416,9 @@ class StopCleared:
     scope: str = "customer"
     episode_seq: int = 0
     balance_micros: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint (see
+    # StopFired.re_announcement).
+    re_announcement: bool = False
 
 
 @dataclass(frozen=True)
@@ -430,6 +445,9 @@ class SoftFloorCrossed:
     balance_micros: int = 0
     soft_min_balance_micros: int = 0
     episode_seq: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint (see
+    # StopFired.re_announcement).
+    re_announcement: bool = False
 
 
 @dataclass(frozen=True)
@@ -450,3 +468,6 @@ class SoftFloorCleared:
     balance_micros: int = 0
     soft_min_balance_micros: int | None = None
     episode_seq: int = 0
+    # Delivery spec §B (#43): True only on a patrol re-mint (see
+    # StopFired.re_announcement).
+    re_announcement: bool = False

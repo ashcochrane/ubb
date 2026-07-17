@@ -47,6 +47,29 @@ class TestWriteEvent:
 
         mock_task.delay.assert_called_once()
 
+    @pytest.mark.django_db(transaction=True)
+    def test_broker_down_dispatch_is_swallowed_and_row_stays_pending(self):
+        """Delivery spec §A (#43): the post-commit dispatch is a doorbell,
+        not the queue. A dead broker at dispatch time must never raise out
+        of the on_commit chain — the durable pending row is picked up by the
+        minutely sweep."""
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.outbox import write_event
+
+        schema = UsageRecorded(
+            tenant_id=TENANT_UUID,
+            customer_id="c1",
+            event_id="e1",
+            cost_micros=5000,
+        )
+
+        with patch("apps.platform.events.tasks.process_single_event") as mock_task:
+            mock_task.delay.side_effect = ConnectionError("broker down")
+            write_event(schema)  # must not raise
+
+        event = OutboxEvent.objects.get()
+        assert event.status == "pending"
+
 
 @pytest.mark.django_db
 class TestRegistry:
