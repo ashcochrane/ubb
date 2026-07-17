@@ -75,6 +75,15 @@ class Task(BaseModel):
     # Tier-2 (D10): heartbeat for the stale-task reaper. Stamped on every
     # accumulate_cost. Null until the first metered event.
     last_event_at = models.DateTimeField(null=True, blank=True)
+    # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
+    # this unit's kill announcement (task.limit_exceeded /
+    # subtask.limit_exceeded), stamped by kill_and_announce inside the same
+    # transaction as the winning flip + emission. Stays null on silent
+    # cascaded kills (the parent's event is the one signal) and on
+    # completed/failed units (nothing to announce). Plain UUID, not an FK —
+    # outbox cleanup deletes terminally-successful rows and the stamp must
+    # keep meaning "announced" (see apps.platform.events.announcements).
+    announce_outbox_id = models.UUIDField(null=True, blank=True)
 
     metadata = models.JSONField(default=dict)
     external_task_id = models.CharField(max_length=255, blank=True, default="")

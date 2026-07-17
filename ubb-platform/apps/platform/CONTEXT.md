@@ -115,8 +115,11 @@ for every producer and consumer; rides the ack's `stop_reason`, never an HTTP er
 **Outbox event**:
 A domain event written in the same atomic transaction as the change that produced it — if the
 transaction commits the event is guaranteed, if it rolls back it vanishes. The default cross-product
-channel. (`apps/platform/events/models.py:OutboxEvent`, `apps/platform/events/outbox.py:write_event`)
-_Avoid_: "message", "signal".
+channel. The post-commit Celery dispatch is a DOORBELL, not the queue: the durable row is the
+queue, the minutely sweep re-dispatches lost doorbells, and a dead broker at dispatch is swallowed
++ logged (never an error for an event that durably landed).
+(`apps/platform/events/models.py:OutboxEvent`, `apps/platform/events/outbox.py:write_event`)
+_Avoid_: "message", "signal"; treating a `.delay()` failure as a delivery failure.
 
 **Handler**:
 A product's subscriber to an event type, registered in `AppConfig.ready()`, optionally gated by

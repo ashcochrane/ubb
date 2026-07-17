@@ -228,21 +228,23 @@ class TestStopFlag:
         assert replay["stop"] is True
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_stop_fired_db_failure_cannot_poison_record_usage_transaction(self, _m, monkeypatch):
-        """Task 7 regression: _set_stop's StopFired outbox INSERT runs INSIDE
-        record_usage's outer @transaction.atomic on the sync path. If that
-        INSERT fails at the DB level, a bare try/except swallows the Python
-        exception but leaves the ambient Postgres transaction ABORTED — the
-        very next statement (write_event(UsageRecorded)) would raise
-        "current transaction is aborted", 500ing the money path. _set_stop's
-        savepoint (transaction.atomic inside the try/except) must roll the
-        failed INSERT back cleanly.
+    def test_pin2_failed_event_insert_rolls_the_transition_back(self, _m, monkeypatch):
+        """Delivery pin 2 (#43, spec §A): the signal transition and its
+        outbox write are ONE savepoint. A failed stop.fired INSERT rolls the
+        StopSignalState transition (and the folded suspension) back with it —
+        "signalled internally but never queued" is impossible by construction
+        — while the ambient money path commits untouched: the usage event
+        lands, bills, and the response still carries the flag verdict. What
+        remains is a clean "not yet signalled" state, re-detected by the
+        durable lane on the next landing event or by the patrol within the
+        hour (the patrol leg lands with #44).
 
         The failure is simulated with a REAL failed SQL statement (SELECT 1/0
         -> DataError, a DatabaseError subclass), not a pure-Python raise —
         only a genuine DB error aborts the transaction, so only this shape of
         test can catch a missing savepoint."""
         from django.db import connection
+        from apps.billing.gating.models import StopSignalState
         from apps.platform.events.models import OutboxEvent
 
         orig_create = OutboxEvent.objects.create
@@ -261,15 +263,21 @@ class TestStopFlag:
         res = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
             billed_cost_micros=6_000_000)  # crosses the floor -> _set_stop fires
-        # record_usage returned normally, with the stop verdict.
+        # The one rule: record_usage returned normally; the tipping event
+        # landed and billed.
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
-        assert UsageEvent.objects.filter(id=res["event_id"]).exists()
-        # The UsageRecorded outbox row (written AFTER the failed StopFired
-        # insert, in the same outer transaction) still landed...
+        assert UsageEvent.objects.get(id=res["event_id"]).billed_cost_micros == 6_000_000
+        # The ambient transaction stayed usable: the UsageRecorded outbox row
+        # (written AFTER the failed StopFired insert) still landed.
         assert OutboxEvent.objects.filter(
             event_type="usage.recorded", payload__event_id=str(res["event_id"])).exists()
-        # ...and the StopFired emission was dropped (best-effort), not retried.
+        # The savepoint took the transition down WITH the failed insert: no
+        # ledger row, no stop.fired, no folded suspension — cleanly
+        # un-signalled, never "transitioned but unqueued".
+        assert not StopSignalState.objects.filter(owner=c).exists()
         assert not OutboxEvent.objects.filter(event_type="stop.fired").exists()
+        c.refresh_from_db()
+        assert c.status == "active"
 
 
 @pytest.mark.django_db

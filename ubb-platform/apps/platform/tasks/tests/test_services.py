@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import patch
 
 from django.db import transaction
 from django.test import TestCase
@@ -7,7 +8,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tasks.models import Task
-from apps.platform.tasks.reasons import TASK_LIMIT
+from apps.platform.tasks.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
 from apps.platform.tasks.services import TaskService
 
 
@@ -355,3 +356,102 @@ class KillAndAnnounceTest(TestCase):
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertFalse(transitioned)
         self.assertEqual(self._events().count(), 0)
+
+    def test_winning_kill_stamps_the_announcement(self):
+        """#43 §B: the kill flip, its event, and the announce_outbox_id stamp
+        are one atomic unit — the stamped id IS the emitted event's row."""
+        task = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            provider_cost_limit_micros=10_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        TaskService.kill_and_announce(
+            task.id, TASK_LIMIT,
+            tenant_id=self.tenant.id, customer_id=self.customer.id)
+        task.refresh_from_db()
+        event = self._events().get()
+        self.assertEqual(task.announce_outbox_id, event.id)
+        self.assertIs(event.payload["re_announcement"], False)
+        # The losing replay never touches the stamp.
+        TaskService.kill_and_announce(
+            task.id, TASK_LIMIT,
+            tenant_id=self.tenant.id, customer_id=self.customer.id)
+        task.refresh_from_db()
+        self.assertEqual(task.announce_outbox_id, event.id)
+
+    def test_subtask_kill_stamps_the_subtask_event(self):
+        parent = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            billing_owner_id=self.customer.id,
+        )
+        sub = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            provider_cost_limit_micros=1_000_000,
+            billing_owner_id=self.customer.id, parent=parent,
+        )
+        TaskService.kill_and_announce(
+            sub.id, SUBTASK_LIMIT,
+            tenant_id=self.tenant.id, customer_id=self.customer.id)
+        sub.refresh_from_db()
+        parent.refresh_from_db()
+        event = OutboxEvent.objects.get(event_type="subtask.limit_exceeded")
+        self.assertEqual(sub.announce_outbox_id, event.id)
+        # The parent keeps running, unstamped — nothing was announced for it.
+        self.assertEqual(parent.status, "active")
+        self.assertIsNone(parent.announce_outbox_id)
+
+    def test_failed_event_insert_rolls_the_kill_flip_back(self):
+        """#43 §A — the kill-flip sibling of delivery pin 2: the flip and its
+        event are one transaction, so a failed task.limit_exceeded INSERT
+        (real SQL error — only a genuine DB error aborts the transaction)
+        takes the active->killed flip down with it. kill_and_announce
+        swallows the failure (never a 5xx for recorded money) and the next
+        event's verdict retries the kill."""
+        from django.db import connection
+
+        orig_create = OutboxEvent.objects.create
+
+        def _create(**kwargs):
+            if kwargs.get("event_type") == "task.limit_exceeded":
+                with connection.cursor() as cur:
+                    cur.execute("SELECT 1/0")
+            return orig_create(**kwargs)
+
+        task = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            provider_cost_limit_micros=10_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        with patch.object(OutboxEvent.objects, "create", _create):
+            transitioned = TaskService.kill_and_announce(
+                task.id, TASK_LIMIT,
+                tenant_id=self.tenant.id, customer_id=self.customer.id)
+        self.assertFalse(transitioned)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "active")  # flip rolled back with the event
+        self.assertIsNone(task.announce_outbox_id)
+        self.assertEqual(self._events().count(), 0)
+
+    def test_cascaded_children_stay_unstamped(self):
+        """A cascaded child's flip is a silent state change (the parent's
+        event is the one signal) — it must never look unannounced to the
+        patrol, which is what a stamp of its own would fix; instead the null
+        stamp + kill_reason=parent_killed marks it as nothing-to-announce."""
+        parent = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            provider_cost_limit_micros=10_000_000,
+            billing_owner_id=self.customer.id,
+        )
+        child = TaskService.create_task(
+            self.tenant, self.customer, balance_snapshot_micros=0,
+            billing_owner_id=self.customer.id, parent=parent,
+        )
+        TaskService.kill_and_announce(
+            parent.id, TASK_LIMIT,
+            tenant_id=self.tenant.id, customer_id=self.customer.id)
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(parent.announce_outbox_id, self._events().get().id)
+        self.assertEqual(child.status, "killed")
+        self.assertIsNone(child.announce_outbox_id)
+        self.assertEqual(child.metadata["kill_reason"], PARENT_KILLED)

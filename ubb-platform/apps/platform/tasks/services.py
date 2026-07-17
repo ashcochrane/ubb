@@ -245,12 +245,18 @@ class TaskService:
                         total_provider_cost_micros=killed.total_provider_cost_micros,
                         provider_cost_limit_micros=killed.provider_cost_limit_micros or 0)
                     if killed.parent_id is not None:
-                        write_event(SubtaskLimitExceeded(
+                        outbox = write_event(SubtaskLimitExceeded(
                             subtask_id=str(killed.id),
                             parent_task_id=str(killed.parent_id), **common))
                     else:
-                        write_event(TaskLimitExceeded(
+                        outbox = write_event(TaskLimitExceeded(
                             task_id=str(killed.id), **common))
+                    # Announcement bookkeeping (delivery spec §B, #43):
+                    # stamp inside the same transaction as the flip + event —
+                    # all three commit or vanish together.
+                    killed.announce_outbox_id = outbox.id
+                    killed.save(update_fields=["announce_outbox_id",
+                                               "updated_at"])
             return transitioned
         except Exception:
             logger.exception("task.kill_failed", extra={"data": {
