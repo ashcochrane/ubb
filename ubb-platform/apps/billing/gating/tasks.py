@@ -38,15 +38,28 @@ def reconcile_live_ledgers():
     credit). Postpaid: per-OWNER ``livespend`` MAX-merge toward the
     owner-aggregated month-to-date billed total (raises to catch the first-use
     under-count). Iterates Wallet rows for prepaid (a wallet => a billing
-    owner, so allocated seats are covered, not just account_type in/business)."""
+    owner, so allocated seats are covered, not just account_type in/business).
+
+    This pass IS the hourly patrol (#44, delivery spec §C — no new scheduled
+    task): the per-owner reconcile drives missed signal transitions for both
+    families and re-aligns the fast stop flag to durable truth; the
+    tenant-level ``run_patrol`` leg then re-mints unannounced announcements,
+    sweeps over-limit tasks into the kill flow, and records the outcome
+    counters for the ops surface."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from apps.billing.wallets.models import Wallet
+    from apps.billing.gating import patrol
     from apps.billing.gating.services.live_ledger_service import LiveLedgerService
     from apps.billing.gating.services.budget_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
 
     for tenant in Tenant.objects.filter(enforcement_mode="enforcing"):
+        flag_realigned = 0
+
+        def _count(outcome):
+            return 1 if outcome and outcome.get("flag_realigned") else 0
+
         try:
             if tenant.billing_mode == "postpaid":
                 _label, start, end = _period()
@@ -63,11 +76,18 @@ def reconcile_live_ledgers():
                     tenant=tenant, status="suspended", suspension_reason="budget_exceeded"
                 ).values_list("id", flat=True))
                 for owner_id in owners:
-                    LiveLedgerService.reconcile_postpaid(owner_id, tenant)
+                    flag_realigned += _count(
+                        LiveLedgerService.reconcile_postpaid(owner_id, tenant))
             else:
                 for owner_id in Wallet.objects.filter(
                         customer__tenant=tenant).values_list("customer_id", flat=True):
-                    LiveLedgerService.reconcile_prepaid(owner_id, tenant)
+                    flag_realigned += _count(
+                        LiveLedgerService.reconcile_prepaid(owner_id, tenant))
         except Exception:
             logger.exception("live_ledger.reconcile_tenant_failed",
+                             extra={"data": {"tenant_id": str(tenant.id)}})
+        try:
+            patrol.run_patrol(tenant, flag_realigned=flag_realigned)
+        except Exception:
+            logger.exception("patrol.tenant_failed",
                              extra={"data": {"tenant_id": str(tenant.id)}})

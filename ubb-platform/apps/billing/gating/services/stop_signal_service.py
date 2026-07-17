@@ -58,7 +58,7 @@ SOFT_FLOOR_REACHED = "soft_floor_reached"
 CLEAR_ENFORCEMENT_MODE_TRANSITION = "enforcement_mode_transition"
 
 
-def _emit_stamped(row, schema_instance):
+def emit_stamped(row, schema_instance):
     """Emit the signal event and stamp the ledger row's announcement in one
     §B unit (#43), inside the caller's savepoint — the stamp, the event, and
     the transition commit or vanish together, so the row can always prove
@@ -111,7 +111,7 @@ class StopSignalService:
                 row.transitioned_at = now
                 row.save(update_fields=["state", "episode_seq", "reason",
                                         "transitioned_at", "updated_at"])
-            _emit_stamped(row, StopFired(tenant_id=str(tenant.id), owner_id=str(owner.id),
+            emit_stamped(row, StopFired(tenant_id=str(tenant.id), owner_id=str(owner.id),
                                          reason=reason, scope="customer",
                                          episode_seq=row.episode_seq))
             postpaid = tenant.billing_mode == "postpaid"
@@ -148,7 +148,7 @@ class StopSignalService:
             row.reason = reason
             row.transitioned_at = timezone.now()
             row.save(update_fields=["state", "reason", "transitioned_at", "updated_at"])
-            _emit_stamped(row, StopCleared(tenant_id=str(tenant.id), owner_id=str(owner_id),
+            emit_stamped(row, StopCleared(tenant_id=str(tenant.id), owner_id=str(owner_id),
                                            reason=reason, episode_seq=row.episode_seq,
                                            balance_micros=int(balance_micros)))
             return row.episode_seq
@@ -187,7 +187,7 @@ class StopSignalService:
                 row.transitioned_at = now
                 row.save(update_fields=["state", "episode_seq", "reason",
                                         "transitioned_at", "updated_at"])
-            _emit_stamped(row, SoftFloorCrossed(
+            emit_stamped(row, SoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=int(soft_min_balance_micros),
@@ -220,7 +220,7 @@ class StopSignalService:
             row.reason = reason
             row.transitioned_at = timezone.now()
             row.save(update_fields=["state", "reason", "transitioned_at", "updated_at"])
-            _emit_stamped(row, SoftFloorCleared(
+            emit_stamped(row, SoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id), reason=reason,
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=(None if soft_min_balance_micros is None

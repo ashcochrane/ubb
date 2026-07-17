@@ -663,12 +663,13 @@ def ops_ingest_health(request, tenant_id: str = None):
             return metering_api.create_response(
                 request, {"error": "invalid_tenant_id"}, status=422)
     from apps.metering.usage.services.ingest_health import ingest_health
-    from apps.billing.queries import get_negative_balance_stats
-    # #41 pin 10: the aged-negatives metric rides the existing ops surface —
-    # composed HERE (the api layer may import both products; the metering
-    # service must not reach into billing).
+    from apps.billing.queries import get_negative_balance_stats, get_patrol_stats
+    # #41 pin 10 / #44 §F: the aged-negatives and patrol-outcome metrics ride
+    # the existing ops surface — composed HERE (the api layer may import both
+    # products; the metering service must not reach into billing).
     return {**ingest_health(tenant_id=parsed_tenant_id),
-            **get_negative_balance_stats(tenant_id=parsed_tenant_id)}
+            **get_negative_balance_stats(tenant_id=parsed_tenant_id),
+            **get_patrol_stats(tenant_id=parsed_tenant_id)}
 
 
 def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):

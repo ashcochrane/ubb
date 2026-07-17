@@ -123,6 +123,29 @@ def get_negative_balance_stats(tenant_id=None):
     }
 
 
+def get_patrol_stats(tenant_id=None):
+    """Patrol-outcome counters for the ops/ingest-health surface (#44,
+    delivery spec §F) — trailing 7 days of day-bucketed ``PatrolOutcome``
+    rows, summed per outcome. Visibility only: a nonzero count means the
+    patrol actually healed a crash/blind-window corner (re-minted a lost
+    announcement, re-aligned an orphaned stop flag, swept a crashed kill);
+    a persistent spike means a lane is unhealthy."""
+    from datetime import timedelta
+    from django.db.models import Sum
+    from django.utils import timezone
+    from apps.billing.gating import patrol
+    from apps.billing.gating.models import PatrolOutcome
+    since = timezone.now().date() - timedelta(days=7)
+    qs = PatrolOutcome.objects.filter(day__gte=since)
+    if tenant_id is not None:
+        qs = qs.filter(tenant_id=tenant_id)
+    agg = dict(qs.values_list("outcome").annotate(n=Sum("count")))
+    return {f"patrol_{outcome}_7d": int(agg.get(outcome, 0))
+            for outcome in (patrol.OUTCOME_REMINTED,
+                            patrol.OUTCOME_FLAG_REALIGNED,
+                            patrol.OUTCOME_SWEEP_KILLED)}
+
+
 def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):
     """Plain-data snapshot of the owner's DURABLE stop-signal ledger row for
     one family (#41 stop-context tagging) — the cross-product read for the

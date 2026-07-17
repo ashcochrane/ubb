@@ -110,6 +110,16 @@ class Task(BaseModel):
                 fields=["billing_owner_id", "status"],
                 name="idx_task_owner_status",
             ),
+            # #44 (delivery spec §C.4): the patrol's task sweep scans active
+            # LIMITED tasks per tenant every hour — the partial index keeps
+            # that scan proportional to the small set of tasks that can still
+            # cross, never to tenant history.
+            models.Index(
+                fields=["tenant"],
+                condition=models.Q(status="active",
+                                   provider_cost_limit_micros__isnull=False),
+                name="idx_task_active_limited",
+            ),
         ]
 
     def __str__(self):
