@@ -117,6 +117,27 @@ def handle_usage_recorded_billing(event_id, payload):
                                     logger.warning("billing.floor_stop_transition_failed",
                                                    extra={"data": {"owner_id": str(owner.id)}})
                                 LiveLedgerService.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
+                            # #40 §F — the soft floor's ONLY crossing detector
+                            # (no fast lane, no Redis threshold: signal
+                            # latency is outbox latency). Crossing the
+                            # resolved soft line drives the soft_floor family
+                            # of the same guard — the winner emits
+                            # soft_floor.crossed. Never an ack change, never
+                            # a suspension; a drive lost here is re-announced
+                            # by the delivery patrol (#44), not by reconcile.
+                            from apps.billing.queries import get_customer_soft_min_balance
+                            soft = get_customer_soft_min_balance(owner.id, tenant.id)
+                            if (soft is not None
+                                    and old_balance >= -soft and new_balance < -soft):
+                                from apps.billing.gating.services.stop_signal_service import (
+                                    StopSignalService)
+                                try:
+                                    StopSignalService.drive_soft_crossed(
+                                        owner.id, tenant, balance_micros=new_balance,
+                                        soft_min_balance_micros=soft)
+                                except Exception:
+                                    logger.warning("billing.soft_floor_transition_failed",
+                                                   extra={"data": {"owner_id": str(owner.id)}})
                         elif new_balance < -limit and owner.status == "active":
                             # enforcement off: Tier-1 baseline suspension,
                             # byte-for-byte (no signal suite, no ledger).

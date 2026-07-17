@@ -236,6 +236,64 @@ class TenantConfigEndpointTest(TestCase):
         self.assertIsNone(bc.default_task_floor_snapshot_micros)
         self.assertIsNone(response.json()["default_task_floor_snapshot_micros"])
 
+    def test_get_config_includes_null_soft_floor_default(self):
+        body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
+        self.assertIsNone(body["soft_min_balance_micros"])
+
+    def test_patch_soft_floor_lands_on_billing_config(self):
+        # Negative is allowed (a wind-down line above zero); the value lands
+        # on BillingTenantConfig — the row get_customer_soft_min_balance reads.
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"soft_min_balance_micros": -2_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        from apps.billing.tenant_billing.models import BillingTenantConfig
+        bc = BillingTenantConfig.objects.get(tenant=self.tenant)
+        self.assertEqual(bc.soft_min_balance_micros, -2_000_000)
+        self.assertEqual(response.json()["soft_min_balance_micros"], -2_000_000)
+
+    def test_patch_soft_line_below_the_hard_floor_returns_422(self):
+        # The tenant-default hard floor lives on BillingTenantConfig (default
+        # 0): a soft value above it puts the wind-down line below the stop line.
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"soft_min_balance_micros": 1_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json().get("code"), "invalid_config")
+
+    def test_patch_null_clears_soft_floor(self):
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(self.tenant.id)
+        bc.soft_min_balance_micros = -2_000_000
+        bc.save(update_fields=["soft_min_balance_micros"])
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"soft_min_balance_micros": None}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        bc.refresh_from_db()
+        self.assertIsNone(bc.soft_min_balance_micros)
+        self.assertIsNone(response.json()["soft_min_balance_micros"])
+
+    def test_patch_omitting_soft_floor_leaves_it_unchanged(self):
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(self.tenant.id)
+        bc.soft_min_balance_micros = -2_000_000
+        bc.save(update_fields=["soft_min_balance_micros"])
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"billing_mode": "meter_only"}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        bc.refresh_from_db()
+        self.assertEqual(bc.soft_min_balance_micros, -2_000_000)
+
     def test_patch_omitting_knobs_leaves_them_unchanged(self):
         from apps.billing.gating.models import RiskConfig
         from apps.billing.queries import get_billing_config

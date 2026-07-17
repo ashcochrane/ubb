@@ -13,7 +13,6 @@ from apps.billing.gating.services.stop_signal_service import (
     CLEAR_BALANCE_RECOVERED,
     CLEAR_RECONCILED,
     FAMILY_FLOOR_STOP,
-    FAMILY_SOFT_FLOOR,
     StopSignalService,
 )
 from apps.platform.customers.models import Customer
@@ -93,14 +92,13 @@ class TestStopTransition:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        # soft_floor is model support only at this ticket (#40 exercises it) —
-        # its transitions must not share state with floor_stop.
-        won = StopSignalService.drive_stop(c.id, t, reason="soft", family=FAMILY_SOFT_FLOOR)
+        # soft_floor (#40) has its own transitions — they must not share
+        # state or episode sequence with floor_stop.
+        won = StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
         assert won == 1
         states = {r.family: r.state for r in StopSignalState.objects.filter(owner=c)}
         assert states == {"floor_stop": "stopped", "soft_floor": "stopped"}
-        assert StopSignalService.drive_clear(c.id, t, reason=CLEAR_RECONCILED,
-                                             family=FAMILY_SOFT_FLOOR) == 1
+        assert StopSignalService.drive_soft_cleared(c.id, t, reason=CLEAR_RECONCILED) == 1
         assert StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP).state == "stopped"
 
 

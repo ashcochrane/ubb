@@ -72,3 +72,64 @@ class CustomerBillingProfileEndpointTest(TestCase):
             data=json.dumps({"min_balance_micros": 1_000_000}),
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 404)
+
+    # --- Soft floor (#40, spec §F) ---
+
+    def test_get_defaults_include_null_soft_floor(self):
+        b = self.http.get(self._url(), **self._auth()).json()
+        self.assertIsNone(b["soft_min_balance_micros"])
+
+    def test_put_soft_floor_roundtrip(self):
+        r = self.http.put(
+            self._url(),
+            data=json.dumps({"min_balance_micros": 5_000_000,
+                             "soft_min_balance_micros": 2_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = self.http.get(self._url(), **self._auth()).json()
+        self.assertEqual(b["soft_min_balance_micros"], 2_000_000)
+
+    def test_put_negative_soft_floor_is_a_line_above_zero(self):
+        # Unlike min_balance_micros, negative is allowed: soft=-2M places the
+        # wind-down line at +2M (refuse new starts while money remains).
+        r = self.http.put(
+            self._url(),
+            data=json.dumps({"soft_min_balance_micros": -2_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["soft_min_balance_micros"], -2_000_000)
+
+    def test_put_soft_line_below_the_hard_floor_returns_422(self):
+        # soft=8M would put the wind-down line (-8M) BELOW the stop line (-5M).
+        r = self.http.put(
+            self._url(),
+            data=json.dumps({"min_balance_micros": 5_000_000,
+                             "soft_min_balance_micros": 8_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json().get("code"), "invalid_config")
+
+    def test_put_soft_floor_validates_against_the_tenant_default_hard_floor(self):
+        # No profile min_balance in the payload: the effective hard floor is
+        # the tenant default (0 here), so any soft value > 0 is below it.
+        r = self.http.put(
+            self._url(),
+            data=json.dumps({"soft_min_balance_micros": 1}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json().get("code"), "invalid_config")
+
+    def test_put_omitting_soft_floor_clears_it(self):
+        # PUT is a full replace: absent/null soft_min_balance_micros clears
+        # the override (mirrors min_balance_micros).
+        self.http.put(
+            self._url(),
+            data=json.dumps({"min_balance_micros": 5_000_000,
+                             "soft_min_balance_micros": 2_000_000}),
+            content_type="application/json", **self._auth())
+        r = self.http.put(
+            self._url(),
+            data=json.dumps({"min_balance_micros": 5_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.json()["soft_min_balance_micros"])

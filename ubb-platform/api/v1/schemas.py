@@ -25,7 +25,9 @@ class PreCheckRequest(Schema):
 class PreCheckResponse(Schema):
     allowed: bool
     # reason vocabulary: insufficient_funds | account_closed |
-    # customer_stopped | rate_limit_exceeded | budget-cap reasons |
+    # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
+    # NEW top-level starts refuse; subtask starts under an active parent
+    # pass) | rate_limit_exceeded | budget-cap reasons |
     # concurrency_limit | cost_coverage_required (a resolved COGS limit
     # requires Tenant.require_cost_card_coverage) | parent_task_not_active |
     # subtask_depth_exceeded (subtask registration refusals, #38 — refusing
@@ -403,16 +405,24 @@ class BudgetConfigOut(Schema):
 
 
 class CustomerBillingProfileIn(Schema):
-    # Both are null-able overrides (PUT = full replace, so null clears the
+    # All are null-able overrides (PUT = full replace, so null clears the
     # override): null min_balance_micros = inherit the tenant default; null
-    # topup_grant_expiry_days = top-ups never expire.
+    # topup_grant_expiry_days = top-ups never expire; null
+    # soft_min_balance_micros = inherit the tenant's soft-floor default.
     min_balance_micros: Optional[int] = None
     topup_grant_expiry_days: Optional[int] = None
+    # Soft floor (#40): the wind-down line, same orientation as
+    # min_balance_micros (the line is -value) but may be NEGATIVE — that
+    # places the line above zero (refuse new starts while money remains).
+    # Must keep the soft line at or above the hard floor's (value <= the
+    # effective min_balance).
+    soft_min_balance_micros: Optional[int] = None
 
 
 class CustomerBillingProfileOut(Schema):
     min_balance_micros: Optional[int] = None
     topup_grant_expiry_days: Optional[int] = None
+    soft_min_balance_micros: Optional[int] = None
 
 
 class BudgetStatusOut(Schema):
@@ -552,6 +562,9 @@ class TenantConfigOut(Schema):
     # Default wallet-floor snapshot for new tasks (BillingTenantConfig, a
     # balance line, e.g. -5_000_000); null = no per-task floor snapshot.
     default_task_floor_snapshot_micros: Optional[int] = None
+    # Soft floor tenant default (#40, BillingTenantConfig): the wind-down
+    # line (-value; negative places it above zero); null = no soft floor.
+    soft_min_balance_micros: Optional[int] = None
 
 
 class TenantConfigIn(Schema):
@@ -576,6 +589,10 @@ class TenantConfigIn(Schema):
     # Default wallet-floor snapshot for new tasks (BillingTenantConfig; may
     # be negative — it is a balance line). Omit = unchanged; null = none.
     default_task_floor_snapshot_micros: Optional[int] = None
+    # Soft floor tenant default (#40, BillingTenantConfig): may be negative
+    # (a wind-down line above zero); must keep the soft line at or above the
+    # hard floor's. Omit = unchanged; null = no soft floor.
+    soft_min_balance_micros: Optional[int] = None
 
 
 class PlanIn(Schema):

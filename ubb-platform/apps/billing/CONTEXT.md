@@ -40,18 +40,32 @@ remainders.
 **Min balance (wallet floor)**:
 The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
 signal (`stop.fired`) — and whose re-crossing fires the paired resume (`stop.cleared`), the moment
-the balance recovers, from any clearing path. The HARD floor of the two-floor pair (the soft floor
-arrives with its own ticket). A signal point, not a wall — events past it still land and bill, and
-the balance keeps showing reality.
+the balance recovers, from any clearing path. The HARD floor of the two-floor pair (see **Soft
+floor**). A signal point, not a wall — events past it still land and bill, and the balance keeps
+showing reality.
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
 not the floor's meaning.
+
+**Soft floor**:
+The second, higher line of the two-floor pair — a tenant-chosen wind-down line per end customer
+(customer override → tenant default; null = no soft floor; always resolving at or above the hard
+floor): past it, NEW top-level task starts are refused at the start-gate (`soft_floor_reached`)
+while running tasks — and subtask starts under a still-active parent — complete. Crossing and
+re-crossing fire the `soft_floor.crossed`/`soft_floor.cleared` webhook pair through the signal
+ledger's `soft_floor` family (durable lane only — no Redis threshold; signal latency is outbox
+latency). Never a billing wall and never an ack change: acks never change on a soft-floor
+crossing, events are never tagged, and work slipping past the gate lands and bills.
+(`apps/billing/queries.py:get_customer_soft_min_balance`)
+_Avoid_: treating it as a stop signal — `stop=true` keeps meaning exactly one thing (hard-floor
+family only).
 
 ## Spend control
 
 **Start-gate (spend gate)**:
-The durable pre-start check — suspension, stop flag, rate/concurrency limits, affordability,
-budget, cost-card coverage — run before a Task is created. Refusing a start is legitimate under
-the one-rule model: it refuses work that hasn't happened, never a usage report.
+The durable pre-start check — suspension, stop flag, rate/concurrency limits, affordability, the
+soft floor (top-level starts only), budget, cost-card coverage — run before a Task is created.
+Refusing a start is legitimate under the one-rule model: it refuses work that hasn't happened,
+never a usage report.
 (`apps/billing/gating/services/risk_service.py`)
 
 **Live ledger (Tier-2 counter)**:

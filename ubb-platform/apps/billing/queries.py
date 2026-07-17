@@ -40,6 +40,31 @@ def get_customer_min_balance(customer_id, tenant_id):
     return config.min_balance_micros
 
 
+def get_customer_soft_min_balance(customer_id, tenant_id):
+    """Returns the effective SOFT floor value (#40, spec §F), or None = no
+    soft floor. Same orientation as get_customer_min_balance: the wind-down
+    line is -value (negative values place it above zero). Resolution mirrors
+    the hard floor's — customer override -> tenant default -> None — then
+    clamps so the soft line sits AT OR ABOVE the hard floor's line
+    (value <= the hard's value): the set-time API validation can go stale
+    across levels (a customer override vs a later-changed tenant hard
+    default), so the resolver, not the writer, guarantees the invariant.
+    """
+    from apps.billing.wallets.models import CustomerBillingProfile
+
+    soft = None
+    try:
+        profile = CustomerBillingProfile.objects.get(customer_id=customer_id)
+        soft = profile.soft_min_balance_micros
+    except CustomerBillingProfile.DoesNotExist:
+        pass
+    if soft is None:
+        soft = get_billing_config(tenant_id).soft_min_balance_micros
+    if soft is None:
+        return None
+    return min(soft, get_customer_min_balance(customer_id, tenant_id))
+
+
 def get_customer_balance(customer_id):
     """Returns wallet balance, or 0 if no wallet exists."""
     from apps.billing.wallets.models import Wallet

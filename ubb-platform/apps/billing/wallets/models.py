@@ -79,6 +79,11 @@ class CustomerBillingProfile(BaseModel):
         related_name="billing_profile"
     )
     min_balance_micros = models.BigIntegerField(null=True, blank=True)
+    # Soft floor (#40, spec §F): per-customer override for the wind-down line
+    # — same orientation as min_balance_micros (the line is -value; negative
+    # values place it above zero). NULL = inherit the tenant default. Must
+    # resolve to a line at or above the hard floor's (the resolver clamps).
+    soft_min_balance_micros = models.BigIntegerField(null=True, blank=True)
     # F4.3: when set, paid top-up credits (auto-topup + checkout) become a PAID
     # grant expiring this many days after the credit lands. NULL = top-ups
     # never expire (legacy behavior, the default).

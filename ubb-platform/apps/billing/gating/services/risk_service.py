@@ -55,6 +55,22 @@ class RiskService:
         if owner.tenant.billing_mode != "postpaid" and balance < -threshold:
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "task_id": None}
 
+        # Soft floor (#40, spec §F): past the resolved wind-down line, NEW
+        # TOP-LEVEL task starts are refused — running tasks may complete, so
+        # a subtask start under a parent passes (a contained child of running
+        # work is running work completing; the parent's own liveness is
+        # validated by the registration block below). enforcing-only, like
+        # every state change; the hard-floor refusal above wins below both
+        # lines. Wallet-based, so postpaid has no soft floor.
+        if (parent_task_id is None and enforcing(customer.tenant)
+                and owner.tenant.billing_mode != "postpaid"):
+            from apps.billing.queries import get_customer_soft_min_balance
+            from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
+            soft = get_customer_soft_min_balance(owner.id, owner.tenant_id)
+            if soft is not None and balance < -soft:
+                return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
+                        "balance_micros": balance, "task_id": None}
+
         # Budget cap: checked per-seat (customer, not owner)
         from apps.billing.gating.services.budget_service import BudgetService
         budget = BudgetService.check(customer)
