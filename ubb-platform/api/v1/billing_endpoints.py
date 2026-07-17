@@ -798,7 +798,8 @@ def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
 
 def _billing_profile_out(profile):
     return {"min_balance_micros": profile.min_balance_micros,
-            "topup_grant_expiry_days": profile.topup_grant_expiry_days}
+            "topup_grant_expiry_days": profile.topup_grant_expiry_days,
+            "soft_min_balance_micros": profile.soft_min_balance_micros}
 
 
 @billing_api.get("/customers/{customer_id}/billing-profile",
@@ -809,7 +810,8 @@ def get_customer_billing_profile(request, customer_id: UUID):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     profile = CustomerBillingProfile.objects.filter(customer=customer).first()
     if not profile:
-        return {"min_balance_micros": None, "topup_grant_expiry_days": None}
+        return {"min_balance_micros": None, "topup_grant_expiry_days": None,
+                "soft_min_balance_micros": None}
     return _billing_profile_out(profile)
 
 
@@ -826,10 +828,25 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
     if payload.topup_grant_expiry_days is not None and payload.topup_grant_expiry_days <= 0:
         return 422, {"error": "topup_grant_expiry_days must be > 0, or null for no expiry",
                      "code": "invalid_config"}
+    if payload.soft_min_balance_micros is not None:
+        # Soft floor (#40): the wind-down line (-soft) must sit at or above
+        # the hard floor's (-hard), i.e. soft <= hard. The hard floor this
+        # PUT leaves effective is the payload's own min_balance override, or
+        # the tenant default when the override is null (full replace).
+        from apps.billing.queries import get_billing_config
+        effective_hard = payload.min_balance_micros
+        if effective_hard is None:
+            effective_hard = get_billing_config(request.auth.tenant.id).min_balance_micros
+        if payload.soft_min_balance_micros > effective_hard:
+            return 422, {"error": "soft_min_balance_micros must keep the soft line at "
+                                  "or above the hard floor's — the value cannot exceed "
+                                  f"the effective min_balance_micros ({effective_hard})",
+                         "code": "invalid_config"}
     profile, _ = CustomerBillingProfile.objects.update_or_create(
         customer=customer,
         defaults={"min_balance_micros": payload.min_balance_micros,
-                  "topup_grant_expiry_days": payload.topup_grant_expiry_days})
+                  "topup_grant_expiry_days": payload.topup_grant_expiry_days,
+                  "soft_min_balance_micros": payload.soft_min_balance_micros})
     return 200, _billing_profile_out(profile)
 
 

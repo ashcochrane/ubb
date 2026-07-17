@@ -446,6 +446,18 @@ class LiveLedgerService:
                 # status active while the true balance is still below floor.
                 if get_customer_balance(owner_id) >= -floor:
                     LiveLedgerService._maybe_unsuspend(owner_id)
+            # #40 §F — the soft floor's credit-side clearing, independent of
+            # the hard pair (an owner can be past the soft line without ever
+            # having stopped). A re-cross of the resolved soft line — or a
+            # soft floor UNCONFIGURED mid-episode (no line left to be past)
+            # — drives the soft clearing transition; only the winner emits.
+            from apps.billing.queries import get_customer_soft_min_balance
+            soft = get_customer_soft_min_balance(owner_id, tenant.id)
+            if soft is None or clearance_balance >= -soft:
+                StopSignalService.drive_soft_cleared(
+                    owner_id, tenant, reason=CLEAR_BALANCE_RECOVERED,
+                    balance_micros=clearance_balance,
+                    soft_min_balance_micros=soft)
         except Exception:
             logger.warning("live_ledger.credit_recovery_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -519,6 +531,19 @@ class LiveLedgerService:
                     owner_id, tenant,
                     LiveLedgerService._crossed("prepaid", basis, owner_id, tenant),
                     basis)
+                # #40 §F — reconcile CLEARS a stale soft crossing (the
+                # reconciled position is back at/above the resolved soft
+                # line, or the line was unconfigured); it deliberately does
+                # NOT set a missed one — re-detection of a lost
+                # soft_floor.crossed is the delivery patrol's job (#44).
+                from apps.billing.queries import get_customer_soft_min_balance
+                from apps.billing.gating.services.stop_signal_service import (
+                    CLEAR_RECONCILED, StopSignalService)
+                soft = get_customer_soft_min_balance(owner_id, tenant.id)
+                if soft is None or basis >= -soft:
+                    StopSignalService.drive_soft_cleared(
+                        owner_id, tenant, reason=CLEAR_RECONCILED,
+                        balance_micros=basis, soft_min_balance_micros=soft)
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})

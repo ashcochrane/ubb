@@ -404,3 +404,49 @@ class StopCleared:
     scope: str = "customer"
     episode_seq: int = 0
     balance_micros: int = 0
+
+
+@dataclass(frozen=True)
+class SoftFloorCrossed:
+    """The soft floor's crossing half (#40, spec §F) — the wind-down line.
+
+    Emitted through the ``soft_floor`` family of the ``StopSignalState``
+    transition guard when the DURABLE drawdown lane sees the owner's wallet
+    cross the resolved soft line — there is no fast Redis lane for the soft
+    family (signal latency is outbox latency, accepted by #28). Never a stop:
+    acks don't change, events are never tagged, nothing is suspended — the
+    tenant's cue to refuse new top-level task starts while running work
+    completes (the start-gate enforces the same line server-side with reason
+    ``soft_floor_reached``).
+
+    owner_id = the billing owner (the end customer whose wallet crossed),
+    matching stop.fired. soft_min_balance_micros = the RESOLVED soft value
+    (the line is -value). episode_seq = the soft_floor family's own episode
+    sequence, independent of the hard floor's.
+    """
+    EVENT_TYPE = "soft_floor.crossed"
+    tenant_id: str
+    owner_id: str
+    balance_micros: int = 0
+    soft_min_balance_micros: int = 0
+    episode_seq: int = 0
+
+
+@dataclass(frozen=True)
+class SoftFloorCleared:
+    """The soft floor's clearing half (#40, spec §F).
+
+    Fires when the owner's balance re-crosses the resolved soft line — from
+    the credit hook (``balance_recovered``) or the hourly reconcile
+    (``reconciled``) — through the same transition guard, so the pair fires
+    exactly once per episode. soft_min_balance_micros is None when the soft
+    floor was UNCONFIGURED while an episode was open (removing the line
+    clears the state: there is no line left to be past).
+    """
+    EVENT_TYPE = "soft_floor.cleared"
+    tenant_id: str
+    owner_id: str
+    reason: str
+    balance_micros: int = 0
+    soft_min_balance_micros: int | None = 0
+    episode_seq: int = 0

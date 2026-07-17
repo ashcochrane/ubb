@@ -37,6 +37,8 @@ WEBHOOK_EVENT_TYPES = (
     "subtask.limit_exceeded",
     "stop.fired",
     "stop.cleared",
+    "soft_floor.crossed",
+    "soft_floor.cleared",
     # margins / economics
     "margin.customer_unprofitable",
     "margin.provider_cost_spike",

@@ -128,6 +128,10 @@ class BillingTenantConfig(BaseModel):
         max_digits=5, decimal_places=2, default=1.00
     )
     min_balance_micros = models.BigIntegerField(default=0)
+    # Soft floor (#40, spec §F): tenant default for the wind-down line — same
+    # orientation as min_balance_micros (the line is -value). NULL = no soft
+    # floor. Customer override: CustomerBillingProfile.soft_min_balance_micros.
+    soft_min_balance_micros = models.BigIntegerField(null=True, blank=True)
     # Tenant default for Task.floor_snapshot_micros, copied at task creation
     # (a wallet-balance line, e.g. -5_000_000; billed denomination). NULL = no
     # per-task floor snapshot.
