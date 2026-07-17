@@ -40,6 +40,11 @@ class RecordUsageResult:
     stop: bool = False
     stop_reason: str | None = None
     stop_scope: str | None = None
+    # The itemized past-limit story (#41): None when the event landed past
+    # nothing, else a list of context dicts — one per limit the event landed
+    # past: {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
+    # arrived_after}. arrived_after=False marks the tipping event.
+    stop_context: list | None = None
     usage_metrics: dict | None = None
     pricing_provenance: dict | None = None
     uncosted_metrics: list | None = None
@@ -89,6 +94,9 @@ class BalanceResult:
     promo_micros: int | None = None
     expiring_micros: int | None = None
     next_expiry_at: str | None = None
+    # #41: ISO timestamp of the last ≥0 → <0 crossing; None while the
+    # balance is ≥ 0. Purely observational — UBB never acts on it.
+    negative_since: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +127,9 @@ class UsageEvent:
     units: int | None = None
     metadata: dict | None = None
     effective_at: str | None = None
+    # #41: the event's immutable past-limit context array (see
+    # RecordUsageResult.stop_context); None for the common untagged event.
+    stop_context: list | None = None
 
 @dataclass(frozen=True)
 class TopUpResult:

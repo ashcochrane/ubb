@@ -27,9 +27,36 @@ class Wallet(SoftDeleteMixin, BaseModel):
     # CUR-1: lowercase everywhere; lock_for_billing sets the tenant currency
     # on lazy creation, this default only covers direct test/ORM creation.
     currency = models.CharField(max_length=3, default="usd")
+    # Negative-balance visibility (#41, pin 10): when the balance last crossed
+    # ≥0 → <0; null whenever the balance is ≥ 0. Maintained by save() below —
+    # a sign-consistency invariant, not a call-site contract — so every
+    # balance mutation path (drawdown handler, credits, grants, repairs,
+    # manual adjustments) keeps it true without knowing it exists. Purely
+    # observational: nothing automatic ever reacts to it — collections stay
+    # between the tenant, their customer, and Stripe.
+    negative_since = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "ubb_wallet"
+
+    def save(self, *args, **kwargs):
+        # Self-healing negative_since: stamp on entering negative territory,
+        # clear on recovery, preserve the original transition time while the
+        # balance stays negative. Runs on the instance about to be persisted,
+        # so it needs no old-balance read; callers passing update_fields get
+        # the field appended only when it actually changed.
+        from django.utils import timezone
+        changed = None
+        if self.balance_micros < 0 and self.negative_since is None:
+            self.negative_since = timezone.now()
+            changed = "negative_since"
+        elif self.balance_micros >= 0 and self.negative_since is not None:
+            self.negative_since = None
+            changed = "negative_since"
+        update_fields = kwargs.get("update_fields")
+        if changed and update_fields is not None and changed not in update_fields:
+            kwargs["update_fields"] = list(update_fields) + [changed]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Wallet({self.customer.external_id}: {self.balance_micros})"

@@ -137,6 +137,9 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "task_total_billed_cost_micros": task_total_billed,
         "task_total_provider_cost_micros": task_total_provider,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
+        # The itemized past-limit array (#41, spec §H) — read from the event
+        # row, so idempotent replays return the ORIGINAL context unchanged.
+        "stop_context": event.stop_context,
         "usage_metrics": event.usage_metrics,
         "pricing_provenance": event.pricing_provenance,
         "service_id": event.service_id,
@@ -190,8 +193,11 @@ class UsageService:
             return _result(existing, **_replay_stop(customer, tenant))
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
-        # pinned billing_owner_id both key on the same resolver result.
-        owner_id = customer.resolve_billing_owner().id
+        # pinned billing_owner_id both key on the same resolver result. The
+        # ROW is kept, not just the id — stop-context tagging reads its
+        # status without a second resolve.
+        owner = customer.resolve_billing_owner()
+        owner_id = owner.id
         if effective_at is not None:
             validate_effective_at(tenant, owner_id, effective_at, now)
         # CUR-1 choke point: every event is denominated in the tenant's single
@@ -275,6 +281,21 @@ class UsageService:
         from apps.billing.queries import record_live_usage_debit
         live = record_live_usage_debit(
             owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now) or {}
+        # Stop-context tagging (#41, spec §H): one builder turns the
+        # accumulate verdicts + the owner's durable stop state into the
+        # immutable past-limit array. Runs AFTER the live debit so a fresh
+        # fast-lane crossing (stop_episode_opened) marks THIS event as the
+        # episode's tipping event. The write is a queryset update — the model
+        # save() guard keeps the event immutable to everything else — inside
+        # record_usage's ambient transaction, so the row is never visible
+        # untagged ("set at record time").
+        from apps.metering.usage.services.stop_context import build_stop_context
+        ctx = build_stop_context(
+            task=task, verdicts=verdicts, now=now, owner=owner, tenant=tenant,
+            opened_episode_seq=live.get("stop_episode_opened"))
+        if ctx is not None:
+            UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
+            event.stop_context = ctx
         if effective_at is not None:
             eff_month_start = month_bounds(effective_at)[0]
             if eff_month_start < month_bounds(now)[0]:
@@ -402,6 +423,27 @@ class UsageService:
                         raw.task_id, billed_cost_micros=billed_cost_micros,
                         provider_cost_micros=provider_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
+                # Stop-context tagging (#41, spec §H): the async twin — the
+                # same ONE builder, at settle time with the exact-cost
+                # verdicts, inside the settle transaction ("set at settle").
+                # Durable owner state only: there is no fast lane at settle,
+                # so no async event ever claims a customer-floor tip (the
+                # crossing was detected at accept/drawdown time between
+                # events). Owner row fetched only when enforcement is on —
+                # the only mode whose durable ledger can have state.
+                from apps.metering.usage.services.stop_context import build_stop_context
+                from apps.platform.tenants.flags import enforcement_on
+                owner_row = None
+                if enforcement_on(tenant):
+                    from apps.platform.customers.models import Customer
+                    owner_row = Customer.objects.filter(
+                        id=raw.billing_owner_id).only("id", "status").first()
+                ctx = build_stop_context(
+                    task=unit, verdicts=verdicts, now=timezone.now(),
+                    owner=owner_row, tenant=tenant)
+                if ctx is not None:
+                    UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
+                    event.stop_context = ctx
                 if effective_at is not None:
                     eff_month_start = month_bounds(effective_at)[0]
                     if eff_month_start < month_bounds(timezone.now())[0]:

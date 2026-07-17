@@ -189,7 +189,9 @@ class LiveLedgerService:
         (cooperative — never rolls back this event; I3). The returned dict
         carries {mode, balance_micros|spend_micros, key, stop, stop_reason,
         stop_scope} (the stop fields reflect the flag AFTER this event, so a
-        flag a sibling run set is surfaced too). Returns None when disabled /
+        flag a sibling run set is surfaced too), plus ``stop_episode_opened``
+        (the new episode_seq) when THIS debit won the stop transition — the
+        #41 tipping-event attribution. Returns None when disabled /
         zero-cost / (postpaid) backdated to a prior month. NEVER raises — a
         Redis failure logs and returns None (fail-open; the durable start-gate
         remains the backstop)."""
@@ -221,8 +223,13 @@ class LiveLedgerService:
             # flag lifts only on recovery (credit / reconcile).
             if LiveLedgerService._crossed(mode, v, owner_id, tenant):
                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
-                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
-                                            balance_micros=v if mode == "prepaid" else 0)
+                opened = LiveLedgerService._set_stop(
+                    owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
+                    balance_micros=v if mode == "prepaid" else 0)
+                if opened is not None:
+                    # THIS debit won the stop transition — the caller's event
+                    # is the episode's tipping event (#41 stop-context).
+                    base["stop_episode_opened"] = opened
             base.update(LiveLedgerService.read_stop(owner_id, tenant))
             return base
         except Exception:
@@ -308,12 +315,15 @@ class LiveLedgerService:
         rather than crashing. balance_micros is the crossing balance the
         detecting lane saw (prepaid live value; postpaid passes 0) — it rides
         the folded suspension's CustomerSuspended event.
+
+        Returns the episode_seq drive_stop opened when THIS call won the
+        ledger transition (#41 tipping-event attribution), else None.
         """
         client = _client()
         was_new = client.set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS, nx=True)
         if not was_new:
             client.expire(_stop_key(owner_id), LEDGER_TTL_SECONDS)
-            return
+            return None
         try:
             client.publish(f"ubb:stopchan:{owner_id}", reason)
         except Exception:
@@ -322,11 +332,16 @@ class LiveLedgerService:
         if tenant is not None:
             try:
                 from apps.billing.gating.services.stop_signal_service import StopSignalService
-                StopSignalService.drive_stop(owner_id, tenant, reason=reason,
-                                             balance_micros=balance_micros)
+                # Returns the opened episode_seq when THIS call won the
+                # ledger transition (#41: the caller's event is the tipping
+                # event), else None — a crossing the durable lane already
+                # signaled loses silently.
+                return StopSignalService.drive_stop(owner_id, tenant, reason=reason,
+                                                    balance_micros=balance_micros)
             except Exception:
                 logger.warning("live_ledger.stop_event_failed",
                                extra={"data": {"owner_id": str(owner_id)}})
+        return None
 
     @staticmethod
     def ensure_stop_flag(owner_id, reason):

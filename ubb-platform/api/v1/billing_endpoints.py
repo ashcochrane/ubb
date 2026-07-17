@@ -46,12 +46,17 @@ def get_balance(request, customer_id: str):
     try:
         wallet = Wallet.objects.get(customer=customer)
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
+                # #41 pin 10: since when the balance has been negative
+                # (null when ≥ 0). Visibility only — nothing acts on it.
+                "negative_since": (wallet.negative_since.isoformat()
+                                   if wallet.negative_since else None),
                 **GrantLedger.balance_summary(wallet)}
     except Wallet.DoesNotExist:
         # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
         return {"balance_micros": 0,
                 "currency": (request.auth.tenant.default_currency or "usd").lower(),
-                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
+                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None,
+                "negative_since": None}
 
 
 @billing_api.post("/debit", response=DebitCreditResponse)

@@ -18,6 +18,23 @@ When the usage economically *happened* — caller-suppliable, bounded by the ten
 _Avoid_: conflating "effective" (when it happened) with "arrival"/"created" (when we received it);
 queries take an explicit `basis`.
 
+**Stop context**:
+The immutable, system-owned array a usage event carries when it landed past a stop — one entry per
+limit (`task_limit` / `subtask_limit` / `customer_floor` / `suspended` / `task_not_active`), each
+naming the scope, the trip time, the stop episode (customer scope), and whether the event *tipped*
+the limit (`arrived_after: false`) or arrived after it. Written once at record (sync) / settle
+(async) inside the recording transaction; never from tenant tags or metadata. Soft-floor crossings
+never tag events. (`apps/metering/usage/services/stop_context.py`)
+_Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row.
+
+**Past-limit report**:
+The per-customer answer to "exactly what was spent past the limit and why" in one call
+(`GET /api/v1/customers/{id}/past-limit-report`): episodes — customer-floor stops from the signal
+ledger's history, task/subtask limit kills, soft-floor crossed/cleared marker rows — each with the
+tripping limit, trip/resume times, itemized tagged events, and totals per limit in both
+denominations. (`api/v1/past_limit.py`)
+_Avoid_: itemizing events under a soft-floor row — nothing is "past limit" under a soft floor.
+
 **Backfill**:
 Recording usage with a past `effective_at` inside the tenant's backfill window. Reaching into an
 already-invoiced month is refused (`billing_period_closed`).

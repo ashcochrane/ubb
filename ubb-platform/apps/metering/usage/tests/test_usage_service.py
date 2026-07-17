@@ -26,7 +26,7 @@ _RESULT_KEYS = {
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
-    "stop", "stop_reason", "stop_scope",
+    "stop", "stop_reason", "stop_scope", "stop_context",
     "usage_metrics", "pricing_provenance", "service_id", "agent_id",
 }
 
@@ -46,7 +46,7 @@ class ResultSignatureTest(TestCase):
         event = MagicMock(
             id="e1", provider_cost_micros=1, billed_cost_micros=1, units=None,
             task_id=None, usage_metrics={}, pricing_provenance={},
-            service_id="", agent_id="",
+            service_id="", agent_id="", stop_context=None,
         )
         out = _result(event)
         # The EXACT new key set — retired keys (hard_stop,

@@ -648,12 +648,39 @@ def ops_ingest_health(request, tenant_id: str = None):
             return metering_api.create_response(
                 request, {"error": "invalid_tenant_id"}, status=422)
     from apps.metering.usage.services.ingest_health import ingest_health
-    return ingest_health(tenant_id=parsed_tenant_id)
+    from apps.billing.queries import get_negative_balance_stats
+    # #41 pin 10: the aged-negatives metric rides the existing ops surface —
+    # composed HERE (the api layer may import both products; the metering
+    # service must not reach into billing).
+    return {**ingest_health(tenant_id=parsed_tenant_id),
+            **get_negative_balance_stats(tenant_id=parsed_tenant_id)}
+
+
+def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
+    """The #41 past-limit query filters, shared by the events listing and the
+    analytics rollup so both surfaces compose identically:
+
+    - past_limit=true  → only events carrying a stop context (landed past
+      something); false → only untagged events.
+    - stop_scope=X     → events with at least one context entry of scope X.
+    - episode_seq=N    → events tagged into customer-wide episode N.
+
+    The array-containment filters ride the partial GIN index on
+    UsageEvent.stop_context (JSONB @>)."""
+    if past_limit is not None:
+        qs = qs.filter(stop_context__isnull=not past_limit)
+    if stop_scope is not None:
+        qs = qs.filter(stop_context__contains=[{"stop_scope": stop_scope}])
+    if episode_seq is not None:
+        qs = qs.filter(stop_context__contains=[{"episode_seq": episode_seq}])
+    return qs
 
 
 @metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
-              tag_key: str = None, tag_value: str = None):
+              tag_key: str = None, tag_value: str = None,
+              past_limit: bool = None, stop_scope: str = None,
+              episode_seq: int = None):
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -663,6 +690,7 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
 
     if tag_key and tag_value:
         qs = qs.filter(tags__contains={tag_key: tag_value})
+    qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
 
     if cursor:
         try:
@@ -692,6 +720,7 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
                 "units": e.units,
                 "metadata": e.metadata,
                 "effective_at": e.effective_at.isoformat(),
+                "stop_context": e.stop_context,
             }
             for e in events
         ],
@@ -733,6 +762,7 @@ def get_usage_event(request, event_id: UUID):
         "task_id": str(e.task_id) if e.task_id else None,
         "effective_at": e.effective_at.isoformat(),
         "created_at": e.created_at.isoformat(),
+        "stop_context": e.stop_context,
     }
 
 
@@ -847,8 +877,14 @@ _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "
 @metering_api.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: dict})
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: str = None, tag_key: str = None,
-                    dimensions: list[str] = Query(None)):
-    """Usage analytics with markup margin and customer/product/tag breakdowns."""
+                    dimensions: list[str] = Query(None),
+                    past_limit: bool = None, stop_scope: str = None,
+                    episode_seq: int = None):
+    """Usage analytics with markup margin and customer/product/tag breakdowns.
+
+    The #41 past-limit filters (past_limit / stop_scope / episode_seq)
+    compose with every breakdown — e.g. past_limit=true totals exactly what
+    was spent past a stop, in both denominations."""
     _product_check(request)
     tenant = request.auth.tenant
     qs = UsageEvent.objects.filter(tenant=tenant)
@@ -860,6 +896,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
+    qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
 
     totals = qs.aggregate(
         total_events=Count("id"),
