@@ -64,18 +64,33 @@ class TestEnforcementSeam:
         assert r2["stop_reason"] == "customer_wide_stop"
         assert UsageEvent.objects.filter(tenant=t, customer=c, idempotency_key="k2").exists()
 
-        # 4. Start-gate now BLOCKS a new task (the flag is honored at the gate).
+        # 4. Start-gate now BLOCKS a new task. #39: the winning stop transition
+        #    durably suspends AT the crossing (the suspension fold), so the
+        #    gate's status check answers first — the suspension-shaped refusal,
+        #    not the flag-shaped customer_stopped (which now only surfaces when
+        #    the flag exists without the suspension, e.g. a stale flag).
         p2 = pre_check()
         assert p2.json()["allowed"] is False
-        assert p2.json()["reason"] == "customer_stopped"
+        assert p2.json()["reason"] == "insufficient_funds"
+        c.refresh_from_db()
+        assert c.status == "suspended"  # the fold landed synchronously
 
-        # 5. Top-up recovers -> the credit hook (on_commit) clears the flag.
-        with django_capture_on_commit_callbacks(execute=True):
-            cr = client.post("/api/v1/billing/credit", data=json.dumps({
-                "customer_id": "jim", "amount_micros": 20_000_000,
-                "source": "topup", "reference": "tp1",
-                "idempotency_key": "idem_tp1"}), **hdr)
+        # 5. Top-up recovers -> the credit hook (on_commit) clears the flag,
+        #    un-suspends, and (#39) emits stop.cleared through the guard. The
+        #    guard's write_event runs post-commit here, so its own dispatch
+        #    on_commit fires immediately — patch the Celery task away.
+        from unittest.mock import patch as _patch
+        with _patch("apps.platform.events.tasks.process_single_event"):
+            with django_capture_on_commit_callbacks(execute=True):
+                cr = client.post("/api/v1/billing/credit", data=json.dumps({
+                    "customer_id": "jim", "amount_micros": 20_000_000,
+                    "source": "topup", "reference": "tp1",
+                    "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200
+        from apps.platform.events.models import OutboxEvent
+        cleared = OutboxEvent.objects.filter(event_type="stop.cleared")
+        assert cleared.count() == 1  # the resume signal, once, episode 1
+        assert cleared.get().payload["episode_seq"] == 1
 
         # 6. Start-gate ALLOWS again (recovery — the seam closes the loop).
         p3 = pre_check()

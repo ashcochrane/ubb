@@ -31,6 +31,50 @@ def default_alert_levels():
 BUDGET_ENFORCE_MODES = [("advisory", "Advisory"), ("enforcing", "Enforcing")]
 
 
+STOP_SIGNAL_FAMILIES = [("floor_stop", "Floor stop"), ("soft_floor", "Soft floor")]
+STOP_SIGNAL_STATES = [("stopped", "Stopped"), ("cleared", "Cleared")]
+
+
+class StopSignalState(BaseModel):
+    """The durable per-owner-per-family signal ledger (#39, spec §D).
+
+    One row per (billing owner, signal family) holding the current stop/clear
+    state and the per-family episode sequence. Every stop/resume emission —
+    fast Redis lane, durable drawdown handler, hourly reconcile — routes
+    through a winning transition on this row (see
+    services/stop_signal_service.py); only the winner emits the outbox event,
+    so a crossing observed by several lanes signals exactly once per episode.
+    ``episode_seq`` is the stop-episode id the stop-context tagging and the
+    past-limit report (#41) key on; it only ever increments (a stop opens
+    episode N, the paired clear closes it), so episode ids never collide
+    across the owner's history.
+
+    Families at launch: ``floor_stop`` (the customer-wide hard stop — wallet
+    floor / budget cap) and ``soft_floor`` (model support here; exercised by
+    the soft-floor ticket, #40).
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="stop_signal_states")
+    owner = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
+                              related_name="stop_signal_states")
+    family = models.CharField(max_length=20, choices=STOP_SIGNAL_FAMILIES)
+    state = models.CharField(max_length=10, choices=STOP_SIGNAL_STATES)
+    episode_seq = models.BigIntegerField(default=0)
+    reason = models.CharField(max_length=64, blank=True, default="")
+    transitioned_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "ubb_stop_signal_state"
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "family"],
+                                    name="uq_stop_signal_owner_family"),
+        ]
+
+    def __str__(self):
+        return f"StopSignalState({self.owner_id}/{self.family}: {self.state} ep{self.episode_seq})"
+
+
 class BudgetConfig(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="budget_configs")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,

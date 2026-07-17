@@ -169,17 +169,21 @@ class HoldService:
             threshold = LiveLedgerService._threshold(mode, owner_id, tenant)
             out = []
             crossed = False
+            crossing_value = 0
             for post in raw_results:
                 value = int(post)
                 if threshold is not None:
                     over = value >= threshold if mode == "postpaid" else value < threshold
-                    if over:
+                    if over and not crossed:
                         crossed = True
+                        crossing_value = value
                 out.append(_held_verdict())
 
             if crossed:
                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
-                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
+                LiveLedgerService._set_stop(
+                    owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
+                    balance_micros=crossing_value if mode == "prepaid" else 0)
             verdict = LiveLedgerService.read_stop(owner_id, tenant)
             for o in out:
                 o.update(verdict)

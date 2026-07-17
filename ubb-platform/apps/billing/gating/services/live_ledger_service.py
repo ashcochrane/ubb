@@ -221,7 +221,8 @@ class LiveLedgerService:
             # flag lifts only on recovery (credit / reconcile).
             if LiveLedgerService._crossed(mode, v, owner_id, tenant):
                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
-                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant_id=tenant.id)
+                LiveLedgerService._set_stop(owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
+                                            balance_micros=v if mode == "prepaid" else 0)
             base.update(LiveLedgerService.read_stop(owner_id, tenant))
             return base
         except Exception:
@@ -269,52 +270,44 @@ class LiveLedgerService:
         return value < threshold
 
     @staticmethod
-    def _set_stop(owner_id, reason, tenant_id=None):
+    def _set_stop(owner_id, reason, tenant=None, balance_micros=0):
         """Set the customer-wide cooperative stop flag, and on the unset->set
         TRANSITION only (SET ... NX on the flag key itself is the transition
         detector — no companion key needed) fan out two best-effort side
         effects: a ``ubb:stopchan:{owner_id}`` Redis pub/sub publish (Plan 2's
-        future SSE endpoint) and a ``StopFired`` outbox event (so the existing
-        outgoing-webhook system delivers ``stop.fired``).
+        future SSE endpoint) and the ``StopSignalService.drive_stop``
+        transition — the #39 signal ledger, which on its WINNING transition
+        emits ``stop.fired`` (atomically with the ledger row) and performs the
+        folded durable suspension. A crossing the durable lane already
+        signaled loses the ledger transition here and emits nothing, so the
+        two lanes together fire exactly one stop per episode.
 
         A repeat crossing while the flag is already set (was_new falsy) only
-        refreshes the TTL — no re-publish/re-emit (no spam). ``_clear_stop``
+        refreshes the TTL — no re-publish/re-drive (no spam). ``_clear_stop``
         deletes the key outright, so the NEXT ``_set_stop`` naturally re-arms
-        the transition (no separate "already notified" bookkeeping to keep in
-        sync).
+        the fast lane's transition detector; the ledger guard, not the flag,
+        is what dedups emission (a re-set after a Redis flush or blind window
+        drives the ledger again and simply loses).
 
         NEVER raises into the caller — this runs on the accept-time money
         path (record_usage_debit / HoldService.acquire). The pub/sub publish
-        is guarded by try/except (not a DB statement, so that suffices). The
-        outbox write is additionally SAVEPOINT-isolated (``transaction.atomic``
-        inside the try/except — the budget_service.check_thresholds pattern):
-        on the sync path _set_stop runs inside record_usage's outer atomic
-        block, and a DB-level INSERT failure (deadlock, timeout) aborts the
-        ambient Postgres transaction — a bare try/except would swallow the
-        Python exception but leave every subsequent statement in the caller
-        raising "current transaction is aborted". The savepoint rolls the
-        failed INSERT back cleanly so the ambient transaction stays usable.
-        (Called in autocommit from the async ingest path, atomic() just opens
-        its own short transaction — equally safe.)
+        is guarded by try/except (not a DB statement, so that suffices).
+        drive_stop opens its own ``transaction.atomic`` — a SAVEPOINT inside
+        the sync path's ambient transaction (the budget_service
+        .check_thresholds pattern): a DB-level failure inside it (deadlock,
+        timeout) rolls back to the savepoint cleanly, so the ambient Postgres
+        transaction stays usable and the caller's money-path statements are
+        never collaterally rolled back by stop-signal bookkeeping. (The
+        savepoint cannot survive a DEAD CONNECTION — but then the whole outer
+        transaction is doomed regardless; that is not a gap specific to this
+        call.) A transition lost to the rollback is re-driven by the durable
+        lane / reconcile — late, never lost.
 
-        Guarantee scope: the savepoint isolates STATEMENT-level DB errors
-        (deadlock, timeout, constraint violation) on the INSERT itself — it
-        does NOT cover a DEAD CONNECTION. If the DB connection drops out from
-        under the ambient transaction (network partition, server restart)
-        while inside this savepoint, Django/psycopg2 cannot roll back to a
-        savepoint over a severed connection — the whole OUTER transaction is
-        doomed regardless, and the caller's subsequent statements will raise
-        on that same dead connection. This is not a gap specific to
-        _set_stop: any statement in the ambient transaction would doom it the
-        same way. The savepoint's job is narrower and still holds: recover
-        the ambient transaction from an INSERT-specific DB error so the
-        caller's money-path statements (which ran BEFORE this call, e.g. the
-        live-counter debit's outbox write) are not collaterally rolled back
-        by a stop-flag bookkeeping failure.
-
-        tenant_id is optional: a call site without tenant context (there is
+        tenant is optional: a call site without tenant context (there is
         none today, but keeping this defensive) degrades to pub/sub-only
-        rather than crashing.
+        rather than crashing. balance_micros is the crossing balance the
+        detecting lane saw (prepaid live value; postpaid passes 0) — it rides
+        the folded suspension's CustomerSuspended event.
         """
         client = _client()
         was_new = client.set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS, nx=True)
@@ -326,21 +319,39 @@ class LiveLedgerService:
         except Exception:
             logger.warning("live_ledger.stop_publish_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
-        if tenant_id:
+        if tenant is not None:
             try:
-                from django.db import transaction
-                from apps.platform.events.outbox import write_event
-                from apps.platform.events.schemas import StopFired
-                with transaction.atomic():
-                    write_event(StopFired(tenant_id=str(tenant_id), owner_id=str(owner_id),
-                                          reason=reason, scope="customer"))
+                from apps.billing.gating.services.stop_signal_service import StopSignalService
+                StopSignalService.drive_stop(owner_id, tenant, reason=reason,
+                                             balance_micros=balance_micros)
             except Exception:
                 logger.warning("live_ledger.stop_event_failed",
                                extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
+    def ensure_stop_flag(owner_id, reason):
+        """Best-effort: make the fast-lane flag reflect a stop the DURABLE
+        lane (drawdown handler / reconcile) signaled, so ack verdicts show it
+        without waiting for the next fast-lane crossing. Plain SET (no NX
+        transition semantics — the ledger guard owns emission dedup); a Redis
+        failure only delays flag visibility, never the signal."""
+        try:
+            _client().set(_stop_key(owner_id), reason, ex=LEDGER_TTL_SECONDS)
+        except Exception:
+            logger.warning("live_ledger.ensure_stop_flag_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
+
+    @staticmethod
     def _clear_stop(owner_id):
-        _client().delete(_stop_key(owner_id))
+        """Delete the fast-lane stop flag. Best-effort: a Redis failure must
+        not abort the caller's clearing sequence (the ledger clear already
+        committed durably); the stale flag is re-deleted by the next
+        clearing path or reconcile cycle."""
+        try:
+            _client().delete(_stop_key(owner_id))
+        except Exception:
+            logger.warning("live_ledger.clear_stop_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
 
     # Monetary suspension reasons that may be auto-cleared on recovery (D15).
     _MONEY_SUSPEND_REASONS = ("min_balance_exceeded", "budget_exceeded")
@@ -388,44 +399,106 @@ class LiveLedgerService:
         """INCRBY the prepaid live balance by amount_micros (may be negative).
         No-op for postpaid (no spendable balance) and when disabled. Best-effort
         — but note a DROPPED credit fails over-restrictive (MIN-merge cannot
-        re-raise it), so this is called from EVERY credit site."""
+        re-raise it), so this is called from EVERY credit site.
+
+        Recovery (P3 + #39 §E): a positive credit that lifts the balance back
+        to/above the floor is the RESUME fast lane — it drives the clearing
+        transition on the signal ledger (the winner emits ``stop.cleared``
+        with the episode it closes) and deletes the cooperative stop flag.
+        The live counter decides the re-cross when Redis answered; when the
+        fast INCRBY failed or found no seeded key, the DURABLE balance decides
+        instead — every durable credit site calls this hook, so a top-up that
+        re-crosses the floor during a Redis blind window still resumes now,
+        not an hour later at reconcile. (A negative credit / grant-expiry
+        never clears.)"""
         if not enforcement_on(tenant) or tenant.billing_mode == "postpaid" or amount_micros == 0:
             return
+        v = None
         try:
             v = _client().eval(_CREDIT_IF_PRESENT, 1, _livebal_key(owner_id),
                                int(amount_micros), LEDGER_TTL_SECONDS)
-            # Recovery (P3): a positive credit that lifts the balance back to/
-            # above the floor clears the cooperative stop flag so the customer's
-            # tasks may resume. (A negative credit / grant-expiry never clears.)
-            if v is not None and amount_micros > 0:
-                from apps.billing.queries import get_customer_min_balance, get_customer_balance
-                floor = get_customer_min_balance(owner_id, tenant.id)
-                if int(v) >= -floor:
-                    LiveLedgerService._clear_stop(owner_id)
-                    # P6b/D15: un-suspend on the DURABLE wallet, NOT the live
-                    # counter — a dispute/refund debit is not mirrored to the
-                    # live counter, so v can over-state and would otherwise flip
-                    # status active while the true balance is still below floor.
-                    if get_customer_balance(owner_id) >= -floor:
-                        LiveLedgerService._maybe_unsuspend(owner_id)
         except Exception:
             logger.warning("live_ledger.credit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+        if amount_micros <= 0:
+            return
+        try:
+            from apps.billing.queries import get_customer_min_balance, get_customer_balance
+            from apps.billing.gating.services.stop_signal_service import (
+                CLEAR_BALANCE_RECOVERED, StopSignalService)
+            floor = get_customer_min_balance(owner_id, tenant.id)
+            if v is not None:
+                recovered = int(v) >= -floor
+                clearance_balance = int(v)
+            else:
+                # Redis blind or unseeded counter: the durable balance is the
+                # guaranteed lane's view of the re-cross.
+                clearance_balance = int(get_customer_balance(owner_id))
+                recovered = clearance_balance >= -floor
+            if recovered:
+                StopSignalService.drive_clear(owner_id, tenant,
+                                              reason=CLEAR_BALANCE_RECOVERED,
+                                              balance_micros=clearance_balance)
+                LiveLedgerService._clear_stop(owner_id)
+                # P6b/D15: un-suspend on the DURABLE wallet, NOT the live
+                # counter — a dispute/refund debit is not mirrored to the
+                # live counter, so v can over-state and would otherwise flip
+                # status active while the true balance is still below floor.
+                if get_customer_balance(owner_id) >= -floor:
+                    LiveLedgerService._maybe_unsuspend(owner_id)
+        except Exception:
+            logger.warning("live_ledger.credit_recovery_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
 
     # ---- reconcile (hourly beat) ----
+    @staticmethod
+    def _reconcile_transitions(owner_id, tenant, crossed, basis_micros):
+        """The bottom-line catch-up both reconcile paths share (#39 §D/§E):
+        drive the signal-ledger transition the reconciled position demands —
+        at most one net stop/resume per owner per run, and only a WINNING
+        transition emits (a position the lanes already signaled is a silent
+        no-op). SET power: a crossing the fast lane missed (Redis blind
+        window, dropped savepoint) is signaled here — late, never lost. The
+        fast-lane flag is re-aligned best-effort either way."""
+        from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+        from apps.billing.gating.services.stop_signal_service import (
+            CLEAR_RECONCILED, StopSignalService)
+        if crossed:
+            StopSignalService.drive_stop(owner_id, tenant, reason=CUSTOMER_WIDE_STOP,
+                                         balance_micros=basis_micros)
+            LiveLedgerService.ensure_stop_flag(owner_id, CUSTOMER_WIDE_STOP)
+        else:
+            StopSignalService.drive_clear(owner_id, tenant, reason=CLEAR_RECONCILED,
+                                          balance_micros=basis_micros)
+            LiveLedgerService._clear_stop(owner_id)
+            LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 backstop
+
     @staticmethod
     def reconcile_prepaid(owner_id, tenant):
         """MIN-merge the prepaid live balance toward the durable wallet balance.
         Holds lock_for_billing(owner) so a concurrent credit() cannot be erased
         by the read→merge (D8): the durable balance is read under the lock the
-        credit/drawdown paths also take."""
+        credit/drawdown paths also take.
+
+        Signal catch-up (#39): the reconciled position drives the ledger both
+        ways — a missed stop is SET, a stale stop is cleared. The decision
+        basis is the merged live value when Redis answered (the conservative
+        view, matching the fast lane) and the DURABLE balance when Redis is
+        blind, so the bottom-line signal never depends on Redis health. The
+        transitions run inside the billing lock, serializing against the
+        credit/drawdown paths so a concurrent re-cross cannot interleave a
+        stale transition."""
         if not enforcement_on(tenant):
             return
         from django.db import transaction
         from apps.billing.locking import lock_for_billing
         from apps.billing.queries import get_customer_balance
         try:
-            before = LiveLedgerService.read_prepaid(owner_id)
+            before = None
+            try:
+                before = LiveLedgerService.read_prepaid(owner_id)
+            except Exception:
+                pass  # Redis blind — the durable bottom line below still runs
             with transaction.atomic():
                 lock_for_billing(owner_id)  # serialize vs credit/drawdown
                 durable = int(get_customer_balance(owner_id))
@@ -433,14 +506,19 @@ class LiveLedgerService:
                     logger.error("live_ledger.drift_spike", extra={"data": {
                         "owner_id": str(owner_id), "mode": "prepaid",
                         "live_micros": before, "durable_micros": durable}})
-                v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
-                                       durable, LEDGER_TTL_SECONDS))
-            # Recovery backstop: clear the stop flag if drift-correction shows
-            # the balance is back above the floor (e.g. a credit() clear that
-            # never fired due to a transient Redis error).
-            if not LiveLedgerService._crossed("prepaid", v, owner_id, tenant):
-                LiveLedgerService._clear_stop(owner_id)
-                LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 backstop
+                v = None
+                try:
+                    v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
+                                           durable, LEDGER_TTL_SECONDS))
+                except Exception:
+                    logger.warning("live_ledger.reconcile_redis_blind",
+                                   extra={"data": {"owner_id": str(owner_id),
+                                                   "mode": "prepaid"}})
+                basis = v if v is not None else durable
+                LiveLedgerService._reconcile_transitions(
+                    owner_id, tenant,
+                    LiveLedgerService._crossed("prepaid", basis, owner_id, tenant),
+                    basis)
         except Exception:
             logger.warning("live_ledger.reconcile_prepaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -448,7 +526,14 @@ class LiveLedgerService:
     @staticmethod
     def reconcile_postpaid(owner_id, tenant, now=None):
         """MAX-merge the postpaid live spend toward the durable owner-aggregated
-        month-to-date billed total."""
+        month-to-date billed total.
+
+        Signal catch-up (#39): mirrors reconcile_prepaid — the merged spend
+        (or the durable month total when Redis is blind) drives the ledger
+        both ways, so a budget-cap stop missed by the fast lane is SET here
+        and a stale one (incl. MONTH ROLLOVER: the new month's livespend is
+        low, and the stop flag is NOT month-scoped) is cleared within one
+        cycle."""
         if not enforcement_on(tenant):
             return
         from django.utils import timezone
@@ -456,21 +541,29 @@ class LiveLedgerService:
         now = now or timezone.now()
         label, start, end = _month_label_bounds(now)
         try:
-            before = LiveLedgerService.read_postpaid(owner_id, now=now)
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
+            before = None
+            try:
+                before = LiveLedgerService.read_postpaid(owner_id, now=now)
+            except Exception:
+                pass  # Redis blind — the durable bottom line below still runs
             if before is not None and abs(before - durable) > DRIFT_ALERT_MICROS:
                 logger.error("live_ledger.drift_spike", extra={"data": {
                     "owner_id": str(owner_id), "mode": "postpaid",
                     "live_micros": before, "durable_micros": durable}})
-            v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
-                                   durable, LEDGER_TTL_SECONDS))
-            # Recovery backstop incl. MONTH ROLLOVER: the new month's livespend
-            # is low, so once spend is back under the cap the stale stop flag
-            # (which is NOT month-scoped) is cleared. Bounds the cross-month
-            # stale-flag window to one reconcile cycle.
-            if not LiveLedgerService._crossed("postpaid", v, owner_id, tenant):
-                LiveLedgerService._clear_stop(owner_id)
-                LiveLedgerService._maybe_unsuspend(owner_id)  # P6b/D15 (month rollover)
+            v = None
+            try:
+                v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
+                                       durable, LEDGER_TTL_SECONDS))
+            except Exception:
+                logger.warning("live_ledger.reconcile_redis_blind",
+                               extra={"data": {"owner_id": str(owner_id),
+                                               "mode": "postpaid"}})
+            basis = v if v is not None else durable
+            LiveLedgerService._reconcile_transitions(
+                owner_id, tenant,
+                LiveLedgerService._crossed("postpaid", basis, owner_id, tenant),
+                0)  # postpaid has no balance; spend never rides balance fields
         except Exception:
             logger.warning("live_ledger.reconcile_postpaid_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -504,4 +597,21 @@ class LiveLedgerService:
                 client.delete(_livebal_key(oid), _stop_key(oid))
         except Exception:
             logger.warning("live_ledger.cleanup_failed",
+                           extra={"data": {"tenant_id": str(tenant.id)}})
+        # #39: the durable signal ledger must not carry a stale OPEN episode
+        # across an enforcement_mode transition — a stale 'stopped' row would
+        # swallow the first real crossing's emission after re-enable. Silent
+        # bulk close (no stop.cleared: the flip is config, not a re-cross);
+        # episode_seq is preserved so episode ids never restart or collide.
+        try:
+            from django.utils import timezone
+            from apps.billing.gating.models import StopSignalState
+            from apps.billing.gating.services.stop_signal_service import (
+                CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED, STATE_STOPPED)
+            now = timezone.now()
+            StopSignalState.objects.filter(tenant_id=tenant.id, state=STATE_STOPPED).update(
+                state=STATE_CLEARED, reason=CLEAR_ENFORCEMENT_MODE_TRANSITION,
+                transitioned_at=now, updated_at=now)
+        except Exception:
+            logger.warning("live_ledger.cleanup_ledger_failed",
                            extra={"data": {"tenant_id": str(tenant.id)}})

@@ -39,9 +39,10 @@ remainders.
 
 **Min balance (wallet floor)**:
 The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
-signal. A signal point, not a wall — events past it still land and bill, and the balance keeps
-showing reality. (The paired resume signal and the second, soft floor arrive with the
-signal-ledger and soft-floor tickets.)
+signal (`stop.fired`) — and whose re-crossing fires the paired resume (`stop.cleared`), the moment
+the balance recovers, from any clearing path. The HARD floor of the two-floor pair (the soft floor
+arrives with its own ticket). A signal point, not a wall — events past it still land and bill, and
+the balance keeps showing reality.
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
 not the floor's meaning.
 
@@ -59,8 +60,22 @@ can carry a real stop verdict; reconciled against the durable ledger.
 (`apps/billing/gating/services/live_ledger_service.py`)
 
 **Customer-wide stop flag**:
-The cooperative, owner-keyed flag set when the live counter crosses the wallet floor or budget cap;
-it blocks new task starts until recovery — usage reports keep landing and billing.
+The cooperative, owner-keyed Redis flag set when the live counter crosses the wallet floor or
+budget cap; it blocks new task starts until recovery — usage reports keep landing and billing.
+Paired with resume: the moment the balance re-crosses the floor, the flag lifts and `stop.cleared`
+fires, closing the stop episode. The flag is the fast READ surface (ack verdicts) only — emission
+dedup lives on the signal ledger.
+
+**Signal ledger (`StopSignalState`)**:
+The durable per-owner-per-family state row every stop/resume emission routes through; only the
+winning transition emits (atomically with the row), so a crossing observed by the fast Redis lane,
+the durable drawdown handler, and reconcile signals exactly once. Its `episode_seq` is the STOP
+EPISODE id — a stop opens episode N, the paired clear closes it — which stop-context tagging and
+the past-limit report key on. Suspension rides the same winning stop transition, so floor-stop and
+suspension can never disagree or double-fire.
+_Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
+the ledger is the truth.
+(`apps/billing/gating/services/stop_signal_service.py`)
 
 **Enforcement mode**:
 `off` / `advisory` / `enforcing` — when `off`, spend control is a no-op and behavior is unchanged.
