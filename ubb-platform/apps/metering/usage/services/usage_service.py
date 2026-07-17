@@ -150,6 +150,20 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
     return result
 
 
+def _tag_stop_context(event, **builder_kwargs):
+    """Stop-context tagging (#41, spec §H), shared by record and settle: run
+    the ONE builder and persist a non-empty array onto the just-created
+    event. The write is a queryset update — the model save() guard keeps the
+    event immutable to everything else — inside the caller's recording
+    transaction, so the row is never visible untagged ("set at record/settle
+    time")."""
+    from apps.metering.usage.services.stop_context import build_stop_context
+    ctx = build_stop_context(**builder_kwargs)
+    if ctx is not None:
+        UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
+        event.stop_context = ctx
+
+
 def _parse_effective_at(payload):
     """Parse the ISO-8601 ``effective_at`` string a RawIngestEvent's payload
     carries (written by ``item.model_dump(mode="json")`` at accept time) back
@@ -281,21 +295,13 @@ class UsageService:
         from apps.billing.queries import record_live_usage_debit
         live = record_live_usage_debit(
             owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now) or {}
-        # Stop-context tagging (#41, spec §H): one builder turns the
-        # accumulate verdicts + the owner's durable stop state into the
-        # immutable past-limit array. Runs AFTER the live debit so a fresh
+        # Stop-context tagging (#41): runs AFTER the live debit so a fresh
         # fast-lane crossing (stop_episode_opened) marks THIS event as the
-        # episode's tipping event. The write is a queryset update — the model
-        # save() guard keeps the event immutable to everything else — inside
-        # record_usage's ambient transaction, so the row is never visible
-        # untagged ("set at record time").
-        from apps.metering.usage.services.stop_context import build_stop_context
-        ctx = build_stop_context(
-            task=task, verdicts=verdicts, now=now, owner=owner, tenant=tenant,
-            opened_episode_seq=live.get("stop_episode_opened"))
-        if ctx is not None:
-            UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
-            event.stop_context = ctx
+        # episode's tipping event; still inside record_usage's ambient
+        # transaction.
+        _tag_stop_context(
+            event, task=task, verdicts=verdicts, now=now, owner=owner,
+            tenant=tenant, opened_episode_seq=live.get("stop_episode_opened"))
         if effective_at is not None:
             eff_month_start = month_bounds(effective_at)[0]
             if eff_month_start < month_bounds(now)[0]:
@@ -423,27 +429,23 @@ class UsageService:
                         raw.task_id, billed_cost_micros=billed_cost_micros,
                         provider_cost_micros=provider_cost_micros,
                         tenant_id=tenant.id, customer_id=customer.id)
-                # Stop-context tagging (#41, spec §H): the async twin — the
-                # same ONE builder, at settle time with the exact-cost
-                # verdicts, inside the settle transaction ("set at settle").
-                # Durable owner state only: there is no fast lane at settle,
-                # so no async event ever claims a customer-floor tip (the
-                # crossing was detected at accept/drawdown time between
-                # events). Owner row fetched only when enforcement is on —
-                # the only mode whose durable ledger can have state.
-                from apps.metering.usage.services.stop_context import build_stop_context
+                # Stop-context tagging (#41): the async twin, at settle time
+                # with the exact-cost verdicts, inside the settle
+                # transaction. Durable owner state only: there is no fast
+                # lane at settle, so no async event ever claims a
+                # customer-floor tip (the crossing was detected at accept/
+                # drawdown time between events). Owner row fetched only when
+                # enforcement is on — the only mode whose durable ledger can
+                # have state.
                 from apps.platform.tenants.flags import enforcement_on
                 owner_row = None
                 if enforcement_on(tenant):
                     from apps.platform.customers.models import Customer
                     owner_row = Customer.objects.filter(
                         id=raw.billing_owner_id).only("id", "status").first()
-                ctx = build_stop_context(
-                    task=unit, verdicts=verdicts, now=timezone.now(),
-                    owner=owner_row, tenant=tenant)
-                if ctx is not None:
-                    UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
-                    event.stop_context = ctx
+                _tag_stop_context(event, task=unit, verdicts=verdicts,
+                                  now=timezone.now(), owner=owner_row,
+                                  tenant=tenant)
                 if effective_at is not None:
                     eff_month_start = month_bounds(effective_at)[0]
                     if eff_month_start < month_bounds(timezone.now())[0]:

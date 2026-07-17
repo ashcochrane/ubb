@@ -30,10 +30,12 @@ class Wallet(SoftDeleteMixin, BaseModel):
     # Negative-balance visibility (#41, pin 10): when the balance last crossed
     # ≥0 → <0; null whenever the balance is ≥ 0. Maintained by save() below —
     # a sign-consistency invariant, not a call-site contract — so every
-    # balance mutation path (drawdown handler, credits, grants, repairs,
-    # manual adjustments) keeps it true without knowing it exists. Purely
-    # observational: nothing automatic ever reacts to it — collections stay
-    # between the tenant, their customer, and Stripe.
+    # SAVE-based balance mutation (drawdown handler, credits, grants,
+    # repairs, manual adjustments — all production paths today) keeps it
+    # true without knowing it exists. A queryset .update(balance_micros=…)
+    # bypasses save() and therefore this stamp. Purely observational:
+    # nothing automatic ever reacts to it — collections stay between the
+    # tenant, their customer, and Stripe.
     negative_since = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:

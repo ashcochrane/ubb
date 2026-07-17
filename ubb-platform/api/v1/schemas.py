@@ -219,7 +219,8 @@ class PastLimitReportResponse(Schema):
     #  total_billed_cost_micros, total_provider_cost_micros}.
     # Soft-floor entries are crossed/cleared MARKER rows: events always [].
     # totals_per_limit: {limit: {billed_cost_micros, provider_cost_micros,
-    #  event_count}} — both denominations, per tripping limit.
+    #  event_count}} — both denominations, per tripping limit, covering
+    # exactly the itemized events of the episodes shown.
     customer_id: str
     billing_owner_id: str
     since: Optional[str] = None

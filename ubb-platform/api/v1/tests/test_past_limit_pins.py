@@ -279,10 +279,13 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
                      billed_cost_micros=1_000_000)
-        report = self._report("?since=2099-01-01T00:00:00Z")
-        self.assertEqual(report["episodes"], [])
-        report = self._report("?until=2000-01-01T00:00:00Z")
-        self.assertEqual(report["episodes"], [])
+        for query in ("?since=2099-01-01T00:00:00Z",
+                      "?until=2000-01-01T00:00:00Z"):
+            report = self._report(query)
+            self.assertEqual(report["episodes"], [])
+            # Window coherence: totals cover exactly the episodes shown —
+            # an empty window can never report orphaned totals.
+            self.assertEqual(report["totals_per_limit"], {})
 
     def test_unknown_customer_404s(self, _mock):
         resp = self.http_client.get(

@@ -97,9 +97,7 @@ def _unit_contexts(task, verdicts, now):
                     arrived_after=True))
                 return out
         if kill_reason in _EPISODE_KILL_REASONS:
-            scope = ("task" if kill_reason == reasons.TASK_LIMIT
-                     else "subtask" if kill_reason == reasons.SUBTASK_LIMIT
-                     else unit_scope)
+            scope = reasons.kill_scope(kill_reason, is_subtask=is_subtask)
             out.append(_entry(limit=kill_reason, stop_scope=scope,
                               tripped_at=_iso(task.completed_at),
                               episode_seq=None, task_id=top_id,

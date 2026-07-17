@@ -18,10 +18,11 @@ the stop-context tags —
 
 Itemized events are fetched in ONE query (the customer's tagged events in
 the window — the partial GIN index's population) and bucketed per episode in
-Python; totals are per limit, in BOTH denominations. Episodes live on the
-billing OWNER (a pooled seat reports the owner's episodes with the SEAT's
-events tagged into them); the report is per-seat, matching the per-customer
-usage surfaces.
+Python; ``totals_per_limit`` (both denominations) covers exactly the
+itemized events of the episodes the report includes, so totals and episodes
+can never disagree under a window. Episodes live on the billing OWNER (a
+pooled seat reports the owner's episodes with the SEAT's events tagged into
+them); the report is per-seat, matching the per-customer usage surfaces.
 
 ``since``/``until`` window BOTH episode selection (tripped_at ≥ since,
 < until) and itemized events (effective_at, same bounds).
@@ -50,16 +51,16 @@ def _in_window(dt, since, until):
 
 def _bucket_events(customer, since, until):
     """One pass over the customer's tagged events: bucket the itemized rows
-    per episode key and accumulate the per-limit totals (deduped per
-    (event, limit) — one event crossing two limits counts once into each)."""
+    per episode key. Totals are NOT accumulated here — they are derived from
+    the episodes the report actually includes, so a window can never show
+    totals with no corresponding episode."""
     qs = UsageEvent.objects.filter(customer=customer, stop_context__isnull=False)
     if since is not None:
         qs = qs.filter(effective_at__gte=since)
     if until is not None:
         qs = qs.filter(effective_at__lt=until)
-    buckets, totals = {}, {}
+    buckets = {}
     for e in qs.order_by("effective_at", "created_at"):
-        counted = set()
         for ctx in e.stop_context or []:
             limit = ctx.get("limit")
             if ctx.get("stop_scope") == "customer":
@@ -85,15 +86,7 @@ def _bucket_events(customer, since, until):
             })
             if b["ctx_tripped_at"] is None and ctx.get("tripped_at"):
                 b["ctx_tripped_at"] = ctx["tripped_at"]
-            if limit not in counted:
-                counted.add(limit)
-                t = totals.setdefault(limit, {
-                    "billed_cost_micros": 0, "provider_cost_micros": 0,
-                    "event_count": 0})
-                t["billed_cost_micros"] += e.billed_cost_micros
-                t["provider_cost_micros"] += e.provider_cost_micros
-                t["event_count"] += 1
-    return buckets, totals
+    return buckets
 
 
 def _signal_episodes(tenant, owner, opened_type, closed_type, family):
@@ -148,8 +141,24 @@ def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
 
 def build_past_limit_report(tenant, customer, since=None, until=None):
     owner = customer.resolve_billing_owner()
-    buckets, totals = _bucket_events(customer, since, until)
+    buckets = _bucket_events(customer, since, until)
     episodes = []
+    totals, counted = {}, set()
+
+    def _count(limit, events):
+        # Per-limit totals over exactly the itemized events the report
+        # shows, deduped per (limit, event) — one event crossing two limits
+        # counts once into each.
+        for ev in events:
+            if (limit, ev["event_id"]) in counted:
+                continue
+            counted.add((limit, ev["event_id"]))
+            t = totals.setdefault(limit, {
+                "billed_cost_micros": 0, "provider_cost_micros": 0,
+                "event_count": 0})
+            t["billed_cost_micros"] += ev["billed_cost_micros"]
+            t["provider_cost_micros"] += ev["provider_cost_micros"]
+            t["event_count"] += 1
 
     # Customer-wide floor episodes: signal history ∪ tagged-event episodes.
     floor_eps = _signal_episodes(tenant, owner, "stop.fired", "stop.cleared",
@@ -163,12 +172,14 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             tripped_at = parse_datetime(bucket["ctx_tripped_at"])
         if not _in_window(tripped_at, since, until):
             continue
-        episodes.append(_episode_row(
+        row = _episode_row(
             family="floor_stop", limit=reasons.CUSTOMER_FLOOR,
             stop_scope="customer", episode_seq=seq,
             task_id=None, subtask_id=None, provider_cost_limit_micros=None,
             tripped_at=tripped_at, resumed_at=ep["resumed_at"],
-            bucket=bucket))
+            bucket=bucket)
+        _count(reasons.CUSTOMER_FLOOR, row["events"])
+        episodes.append(row)
 
     # Soft-floor marker rows — crossed/cleared only, never itemized (§F).
     for seq, ep in _signal_episodes(tenant, owner, "soft_floor.crossed",
@@ -195,17 +206,17 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
     for unit in unit_qs:
         limit = unit.metadata["kill_reason"]
         is_subtask = unit.parent_id is not None
-        scope = ("task" if limit == reasons.TASK_LIMIT
-                 else "subtask" if limit == reasons.SUBTASK_LIMIT
-                 else ("subtask" if is_subtask else "task"))
-        episodes.append(_episode_row(
+        scope = reasons.kill_scope(limit, is_subtask=is_subtask)
+        row = _episode_row(
             family="task", limit=limit, stop_scope=scope,
             episode_seq=None,
             task_id=str(unit.parent_id) if is_subtask else str(unit.id),
             subtask_id=str(unit.id) if is_subtask else None,
             provider_cost_limit_micros=unit.provider_cost_limit_micros,
             tripped_at=unit.completed_at, resumed_at=None,
-            bucket=buckets.get(("unit", str(unit.id)))))
+            bucket=buckets.get(("unit", str(unit.id))))
+        _count(limit, row["events"])
+        episodes.append(row)
 
     # Chronological narrative; UTC ISO strings sort correctly as text, and
     # an undatable episode (nothing survived to date it) sorts last.
