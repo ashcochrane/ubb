@@ -367,7 +367,7 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 6 | A crashed kill is swept and announced within one interval; a subtask alone | `test_patrol_pins.py::TestPin6TaskSweep` |
 | 7 | Two-pass repair: candidate on pass one, `min(d1,d2)` relative increment + full audit on pass two; a lifting repair fires `stop.cleared` once | `test_repair_pins.py::TestPin7TwoPassRepair` |
 | 8 | A transient deficit lapses; sub-de-minimis never candidates | `test_repair_pins.py::TestPin8TransientAndDeMinimis` |
-| 9 | Switch OFF: no Redis writes on accept, identical ack schema, verdicts from the durable flag, OFF→ON re-seeds, flag read only through `flags.py` | `apps/billing/gating/tests/test_switch_pins.py` (20 tests incl. the AST doctrine scan) |
+| 9 | Switch OFF: no Redis writes on accept, identical ack schema, verdicts from the durable flag, a floor crossing signals at settle latency, OFF→ON re-seeds, flag read only through `flags.py`, default ON | `apps/billing/gating/tests/test_switch_pins.py` (20 tests incl. the AST doctrine scan) |
 | 10 | MIN-merge downward behavior byte-identical; pending holds are never a deficit | `test_repair_pins.py::TestPin10DownwardNeighborsUntouched` |
 | 11 | The repair-rate spike alert fires past its threshold | `test_repair_pins.py::TestPin11RepairSpikeAlert` |
 | 12 | Broker down at accept: durable row written, response 200, delivery within a minute of recovery | `api/v1/tests/test_delivery_pins.py::BrokerDownAtAcceptTest` |
