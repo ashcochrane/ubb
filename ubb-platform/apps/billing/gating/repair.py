@@ -94,7 +94,7 @@ def repair_live_balances(tenant):
     return counts
 
 
-def _repair_owner(owner_id, tenant, now=None):
+def _repair_owner(owner_id, tenant):
     """One owner, one pass: measure, then advance the candidate lifecycle.
 
     Everything runs inside ``lock_for_billing`` — the durable balance and the
@@ -115,7 +115,7 @@ def _repair_owner(owner_id, tenant, now=None):
     from apps.billing.gating.services.live_ledger_service import LiveLedgerService
     from apps.metering.queries import get_pending_held_estimate_total
 
-    now = now or timezone.now()
+    now = timezone.now()
     counts = {}
     with transaction.atomic():
         lock_for_billing(owner_id)
@@ -137,12 +137,11 @@ def _repair_owner(owner_id, tenant, now=None):
         candidate = (LiveBalanceRepair.objects.select_for_update()
                      .filter(owner_id=owner_id, status=STATUS_CANDIDATE)
                      .first())
-        if candidate is not None and now - candidate.created_at > CANDIDATE_FRESH_WINDOW:
+        if candidate is not None and now - candidate.created_at >= CANDIDATE_FRESH_WINDOW:
             # Too stale to prove the deficit held for one full hour: lapse
-            # unconfirmed (second_deficit stays null) and start over below.
-            candidate.status = STATUS_LAPSED
-            candidate.resolved_at = now
-            candidate.save(update_fields=["status", "resolved_at", "updated_at"])
+            # unconfirmed (second_deficit stays null — the in-window second
+            # measurement never happened) and start over below.
+            _lapse(candidate, now)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             candidate = None
 
@@ -162,14 +161,8 @@ def _repair_owner(owner_id, tenant, now=None):
         if not qualifying:
             # The deficit drained between passes (settle backlog, credit) —
             # or the counter vanished. Lapse with the second bottom line.
-            candidate.status = STATUS_LAPSED
-            candidate.second_deficit_micros = deficit
-            candidate.durable_balance_micros = durable
-            candidate.pending_hold_micros = pending
-            candidate.resolved_at = now
-            candidate.save(update_fields=[
-                "status", "second_deficit_micros", "durable_balance_micros",
-                "pending_hold_micros", "resolved_at", "updated_at"])
+            _lapse(candidate, now, second_deficit=deficit,
+                   durable=durable, pending=pending)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -179,14 +172,8 @@ def _repair_owner(owner_id, tenant, now=None):
             # The key vanished between the read and the apply (or Redis went
             # blind): nothing was moved; the deficit is moot without a
             # counter. Lapse rather than claim a repair that never applied.
-            candidate.status = STATUS_LAPSED
-            candidate.second_deficit_micros = deficit
-            candidate.durable_balance_micros = durable
-            candidate.pending_hold_micros = pending
-            candidate.resolved_at = now
-            candidate.save(update_fields=[
-                "status", "second_deficit_micros", "durable_balance_micros",
-                "pending_hold_micros", "resolved_at", "updated_at"])
+            _lapse(candidate, now, second_deficit=deficit,
+                   durable=durable, pending=pending)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -214,6 +201,23 @@ def _repair_owner(owner_id, tenant, now=None):
         counts[OUTCOME_REPAIRED_MICROS] = amount
         _resume_if_wedge_lifted(owner_id, tenant, live_after, durable)
     return counts
+
+
+def _lapse(candidate, now, second_deficit=None, durable=None, pending=None):
+    """Close a candidate without repairing. With a second measurement
+    (vanished deficit / nothing to apply) the row gains the resolving bottom
+    line and snapshot; a stale lapse passes none — ``second_deficit_micros``
+    stays null, marking a confirmation window that never happened."""
+    candidate.status = STATUS_LAPSED
+    candidate.resolved_at = now
+    fields = ["status", "resolved_at", "updated_at"]
+    if second_deficit is not None or durable is not None:
+        candidate.second_deficit_micros = second_deficit
+        candidate.durable_balance_micros = durable
+        candidate.pending_hold_micros = pending
+        fields += ["second_deficit_micros", "durable_balance_micros",
+                   "pending_hold_micros"]
+    candidate.save(update_fields=fields)
 
 
 def _apply_increment(owner_id, amount):
@@ -263,14 +267,14 @@ def _resume_if_wedge_lifted(owner_id, tenant, live_after, durable):
                        extra={"data": {"owner_id": str(owner_id)}})
 
 
-def _alert_on_repair_spike(tenant, now=None):
+def _alert_on_repair_spike(tenant):
     """CRITICAL when the tenant's trailing-24h repairs cross either threshold
     (count or total amount). Checked on every pass that applied a repair, so
     the alert accompanies the epidemic and stops with it."""
     from django.db.models import Count, Sum
     from apps.billing.gating.models import LiveBalanceRepair
 
-    now = now or timezone.now()
+    now = timezone.now()
     agg = LiveBalanceRepair.objects.filter(
         tenant=tenant, status=STATUS_REPAIRED,
         resolved_at__gte=now - timedelta(hours=24),
