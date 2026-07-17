@@ -589,12 +589,18 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             results[i] = _ingest_verdict(accepted=True, estimated_cost_micros=est.micros,
                                          mode="async", stop=v["stop"],
                                          stop_reason=v["stop_reason"], stop_scope=v["stop_scope"])
+            # v["held"] is the hold service's own answer to "was money
+            # actually reserved" — False with arrival signals off (#46, §E:
+            # accept does no live-counter Redis work), so settle trues up
+            # only holds that were really taken and the append-failure
+            # unwind below releases nothing that was never reserved.
             raw_objs.append(RawIngestEvent(
                 tenant=tenant, customer=customer, billing_owner_id=owner_id,
                 task_id=item.task_id, idempotency_key=item.idempotency_key,
                 payload=item.model_dump(mode="json"), estimate_micros=est.micros,
-                estimate_exact=est.exact, held=True))
-            release_list.append((owner_id, est.micros, item.effective_at))
+                estimate_exact=est.exact, held=v["held"]))
+            if v["held"]:
+                release_list.append((owner_id, est.micros, item.effective_at))
 
     # ---- durability boundary: the raw append. On failure, undo every hold
     # taken above (never leave money reserved for a batch that never landed)

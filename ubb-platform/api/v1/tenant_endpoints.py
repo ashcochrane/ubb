@@ -338,6 +338,7 @@ def _config_out(t):
         "is_active": t.is_active,
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
+        "arrival_signals_enabled": t.arrival_signals_enabled,
         "min_balance_micros": t.min_balance_micros,
         "default_task_provider_cost_limit_micros":
             rc.default_task_provider_cost_limit_micros if rc else None,
@@ -486,6 +487,10 @@ def update_tenant_config(request, payload: TenantConfigIn):
                          "code": "invalid_config"}
         enforcement_changed = payload.enforcement_mode != t.enforcement_mode
         t.enforcement_mode = payload.enforcement_mode
+    arrival_flipped = False
+    if payload.arrival_signals_enabled is not None:
+        arrival_flipped = payload.arrival_signals_enabled != t.arrival_signals_enabled
+        t.arrival_signals_enabled = payload.arrival_signals_enabled
     try:
         t.save()
     except ValidationError as e:
@@ -539,4 +544,24 @@ def update_tenant_config(request, payload: TenantConfigIn):
         from django.db import transaction
         from apps.billing.gating.services.live_ledger_service import LiveLedgerService
         transaction.on_commit(lambda: LiveLedgerService.cleanup_keys(t))
+    if arrival_flipped:
+        # Toggle choreography (#46, delivery spec §E): flipping either way
+        # enqueues an immediate per-tenant reconcile — OFF→ON re-seeds honest
+        # counters from durable truth within minutes; ON→OFF needs nothing
+        # (outstanding holds drain at settle). Broker errors are swallowed:
+        # the flip itself is already committed, and the hourly reconcile beat
+        # is the guaranteed backstop for a lost enqueue.
+        from django.db import transaction
+
+        def _kick_reconcile(tenant_id=str(t.id)):
+            import logging
+            from apps.billing.gating.tasks import reconcile_tenant_live_counters
+            try:
+                reconcile_tenant_live_counters.delay(tenant_id)
+            except Exception:
+                logging.getLogger("ubb.billing").warning(
+                    "arrival_signals.toggle_reconcile_enqueue_failed",
+                    extra={"data": {"tenant_id": tenant_id}})
+
+        transaction.on_commit(_kick_reconcile)
     return 200, _config_out(t)

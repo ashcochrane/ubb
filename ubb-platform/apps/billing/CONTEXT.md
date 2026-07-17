@@ -78,8 +78,24 @@ never a usage report.
 
 **Live ledger (Tier-2 counter)**:
 The billing-owner-keyed Redis counter decremented synchronously at record time so the API response
-can carry a real stop verdict; reconciled against the durable ledger.
+can carry a real stop verdict; reconciled against the durable ledger. Part of the arrival-signals
+fast lane — unmaintained at accept when the switch is off.
 (`apps/billing/gating/services/live_ledger_service.py`)
+
+**Arrival signals (fast lane)**:
+The per-tenant posture (`Tenant.arrival_signals_enabled`, default ON, read only through
+`flags.arrival_signals_on`) governing the whole arrival-time fast lane as ONE unit — accept-time
+holds, live counters, arrival-moment floor detection, and the upward repair. Two honest latency
+profiles: ON detects crossings at arrival (stop latency bounded, independent of settle-queue
+depth — the ≤5s p99 presumes ON); OFF is the competitor-normal degraded posture — accept does no
+live-counter Redis work and detection happens at settle, so latency degrades exactly when a
+runaway spender floods the queue. The durable lane (settle-time detection, signal ledger, patrol,
+webhook delivery, ack verdicts) never switches off and maintains the ack-verdict flag in both
+postures, so flipping never changes the tenant-facing contract. Flipping either way enqueues an
+immediate per-tenant reconcile (OFF→ON re-seeds honest counters; ON→OFF drains at settle).
+_Avoid_: a `products` entry — products gate ACCESS (403s); this is a behavior posture, meaningful
+only when enforcing; reading the column anywhere but the flags module.
+(`apps/platform/tenants/flags.py:arrival_signals_on`)
 
 **Customer-wide stop flag**:
 The cooperative, owner-keyed Redis flag set when the live counter crosses the wallet floor or
@@ -137,7 +153,8 @@ A per-tenant (optionally per-customer) monthly spend cap with alert levels.
 **Hold**:
 The arrival-time reservation of one async event's estimated price on the live ledger, taken
 *before* the event is durably appended; trued up at settle. Always holds, against the wallet only
-— task limits are detected at settle with exact costs.
+— task limits are detected at settle with exact costs. With arrival signals off, nothing is held
+(`held: false` on the raw row) and settle trues up nothing.
 (`apps/billing/gating/services/hold_service.py`)
 _Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event from landing.
 
@@ -158,7 +175,7 @@ min(first, second) — the amount proven stable across the hour — as a relativ
 that lifts a wedged stop drives the clearing transition (`stop.cleared`, reason
 `balance_repaired`); candidate/repaired/lapsed live on the `LiveBalanceRepair` audit trail, and a
 repair-rate spike per tenant per 24h alerts CRITICAL — an epidemic is a bug, never silent
-self-healing.
+self-healing. Part of the fast lane: inert with arrival signals off.
 _Avoid_: an absolute SET on the counter — unsafe under concurrent traffic; touching the postpaid
 spend counter — its drift lane is the MAX-merge + budget reconcile.
 (`apps/billing/gating/repair.py`)
