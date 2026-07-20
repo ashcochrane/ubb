@@ -13,10 +13,11 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from ninja import NinjaAPI
+from ninja import Router
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
+from core.responses import json_response
 
 from core.pagination import apply_cursor_filter, encode_cursor
 from apps.platform.customers.models import Customer
@@ -29,7 +30,7 @@ from apps.subscriptions.api.schemas import (
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from core.auth import ApiKeyAuth, ProductAccess
 
-subscriptions_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_subscriptions_v1")
+subscriptions_router = Router(auth=ApiKeyAuth())
 
 _product_check = ProductAccess("subscriptions")
 
@@ -37,7 +38,7 @@ _product_check = ProductAccess("subscriptions")
 # ---------- Sync ----------
 
 
-@subscriptions_api.post("/sync", response=SyncResponse)
+@subscriptions_router.post("/sync", response=SyncResponse)
 def trigger_sync(request):
     _product_check(request)
     from apps.subscriptions.stripe.sync import sync_subscriptions
@@ -49,7 +50,7 @@ def trigger_sync(request):
 # ---------- Subscription Data (read-only) ----------
 
 
-@subscriptions_api.get("/customers/{customer_id}/subscription")
+@subscriptions_router.get("/customers/{customer_id}/subscription")
 def get_subscription(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -60,7 +61,7 @@ def get_subscription(request, customer_id: str):
     ).order_by("-created_at").first()
 
     if not sub:
-        return subscriptions_api.create_response(
+        return json_response(
             request, {"error": "No subscription found"}, status=404
         )
 
@@ -78,7 +79,7 @@ def get_subscription(request, customer_id: str):
     }
 
 
-@subscriptions_api.get("/customers/{customer_id}/invoices")
+@subscriptions_router.get("/customers/{customer_id}/invoices")
 def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant

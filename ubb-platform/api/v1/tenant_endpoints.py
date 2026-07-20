@@ -2,49 +2,26 @@ from typing import Optional
 from uuid import UUID
 
 from django.db import transaction
-from ninja import NinjaAPI, Schema
+from ninja import Router, Schema
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
-from api.v1.schemas import TenantConfigOut, TenantConfigIn
+from api.v1.schemas import (
+    TenantBillingPeriodListResponse,
+    TenantBillingPeriodOut,
+    TenantConfigIn,
+    TenantConfigOut,
+    TenantInvoiceListResponse,
+    TenantInvoiceOut,
+)
 from core.auth import ApiKeyAuth
+from core.responses import json_response
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
-tenant_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_tenant_v1")
+tenant_router = Router(auth=ApiKeyAuth())
 
 
-class TenantBillingPeriodOut(Schema):
-    id: str
-    period_start: str
-    period_end: str
-    status: str
-    total_usage_cost_micros: int
-    event_count: int
-    platform_fee_micros: int
-
-
-class TenantBillingPeriodListResponse(Schema):
-    data: list[TenantBillingPeriodOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
-
-
-class TenantInvoiceOut(Schema):
-    id: str
-    billing_period_id: str
-    stripe_invoice_id: str
-    total_amount_micros: int
-    status: str
-    created_at: str
-
-
-class TenantInvoiceListResponse(Schema):
-    data: list[TenantInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
-
-
-@tenant_api.get("/billing-periods", response=TenantBillingPeriodListResponse)
+@tenant_router.get("/billing-periods", response=TenantBillingPeriodListResponse)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
     limit = min(max(limit, 1), 100)
@@ -55,7 +32,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return tenant_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     periods = list(qs[:limit + 1])
     has_more = len(periods) > limit
@@ -84,7 +61,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
     }
 
 
-@tenant_api.get("/invoices", response=TenantInvoiceListResponse)
+@tenant_router.get("/invoices", response=TenantInvoiceListResponse)
 def list_invoices(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
     limit = min(max(limit, 1), 100)
@@ -95,7 +72,7 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return tenant_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit
@@ -168,7 +145,7 @@ def _api_key_out(k):
     }
 
 
-@tenant_api.get("/api-keys", response=ApiKeyListResponse)
+@tenant_router.get("/api-keys", response=ApiKeyListResponse)
 def list_api_keys(request):
     """All of THIS tenant's API keys (active and revoked), newest first.
 
@@ -180,7 +157,7 @@ def list_api_keys(request):
     return {"data": [_api_key_out(k) for k in keys]}
 
 
-@tenant_api.post("/api-keys", response={201: dict, 422: dict})
+@tenant_router.post("/api-keys", response={201: dict, 422: dict})
 def create_api_key(request, payload: ApiKeyCreateIn):
     """Mint a new API key. The RAW key is returned exactly once, here.
 
@@ -211,7 +188,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
     }
 
 
-@tenant_api.post("/api-keys/{key_id}/rotate", response={200: dict, 404: dict})
+@tenant_router.post("/api-keys/{key_id}/rotate", response={200: dict, 404: dict})
 def rotate_api_key(request, key_id: UUID):
     """Replace a key in one transaction: mint successor, deactivate old.
 
@@ -247,7 +224,7 @@ def rotate_api_key(request, key_id: UUID):
     }
 
 
-@tenant_api.delete("/api-keys/{key_id}", response={200: dict, 404: dict, 409: dict})
+@tenant_router.delete("/api-keys/{key_id}", response={200: dict, 404: dict, 409: dict})
 def revoke_api_key(request, key_id: UUID):
     """Soft-revoke a key (is_active=False). Idempotent on an inactive key.
 
@@ -285,7 +262,7 @@ def revoke_api_key(request, key_id: UUID):
 # ---- Sandbox self-serve (F4.4) ----
 
 
-@tenant_api.post("/sandbox", response={200: dict, 403: dict})
+@tenant_router.post("/sandbox", response={200: dict, 403: dict})
 def create_sandbox(request):
     """Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.
 
@@ -305,7 +282,7 @@ def create_sandbox(request):
     }
 
 
-@tenant_api.get("/sandbox", response={200: dict, 403: dict})
+@tenant_router.get("/sandbox", response={200: dict, 403: dict})
 def get_sandbox(request):
     """Sandbox status for the calling live tenant (exists, id, key prefixes)."""
     tenant = request.auth.tenant
@@ -383,12 +360,12 @@ def _currency_locked_reason(t):
     return None
 
 
-@tenant_api.get("/config", response=TenantConfigOut)
+@tenant_router.get("/config", response=TenantConfigOut)
 def get_tenant_config(request):
     return _config_out(request.auth.tenant)
 
 
-@tenant_api.patch("/config", response={200: TenantConfigOut, 409: dict, 422: dict})
+@tenant_router.patch("/config", response={200: TenantConfigOut, 409: dict, 422: dict})
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.metering.pricing.models import Rate

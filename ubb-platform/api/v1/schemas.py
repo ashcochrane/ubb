@@ -677,3 +677,40 @@ class SubscribeIn(Schema):
 
 class SeatsIn(Schema):
     seats: int = Field(ge=0)
+
+
+# Tenant billing periods / invoices — shared by the tenant mount and the
+# billing mount's duplicate routes (#77): one definition, one component name
+# in the merged OpenAPI document. Picking the canonical route home is a
+# Stage-5 final-sweep item, not this restructure's.
+
+
+class TenantBillingPeriodOut(Schema):
+    id: str
+    period_start: str
+    period_end: str
+    status: str
+    total_usage_cost_micros: int
+    event_count: int
+    platform_fee_micros: int
+
+
+class TenantBillingPeriodListResponse(Schema):
+    data: list[TenantBillingPeriodOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class TenantInvoiceOut(Schema):
+    id: str
+    billing_period_id: str
+    stripe_invoice_id: str
+    total_amount_micros: int
+    status: str
+    created_at: str
+
+
+class TenantInvoiceListResponse(Schema):
+    data: list[TenantInvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool

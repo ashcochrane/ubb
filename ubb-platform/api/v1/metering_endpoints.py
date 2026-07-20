@@ -7,9 +7,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum, Count, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
-from ninja import NinjaAPI, Query
+from ninja import Query, Router
 
 from core.auth import ApiKeyAuth, ProductAccess
+from core.responses import json_response
 from core.time_windows import utc_day_start, utc_next_day_start
 from django.utils import timezone
 
@@ -37,7 +38,7 @@ from apps.metering.usage.models import UsageEvent
 
 logger = logging.getLogger(__name__)
 
-metering_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_metering_v1")
+metering_router = Router(auth=ApiKeyAuth())
 
 _product_check = ProductAccess("metering")
 
@@ -62,7 +63,7 @@ def _apply_task_kill(tenant, customer, result):
             target_id, reason, tenant_id=tenant.id, customer_id=customer.id)
 
 
-@metering_api.post("/usage", response={200: RecordUsageResponse})
+@metering_router.post("/usage", response={200: RecordUsageResponse})
 def record_usage(request, payload: RecordUsageRequest):
     """Record one usage event. One-rule contract: every event that reaches
     UBB is priced, recorded, and billed with an HTTP 200 — including the
@@ -98,12 +99,12 @@ def record_usage(request, payload: RecordUsageRequest):
             effective_at=payload.effective_at,
         )
     except PricingError as e:
-        return metering_api.create_response(
+        return json_response(
             request, {"error": "pricing_error", "detail": str(e)}, status=422)
     except EffectiveAtError as e:
         # MUST precede the ValueError branch below (EffectiveAtError IS a
         # ValueError) so the typed code survives to the response body.
-        return metering_api.create_response(
+        return json_response(
             request, {"error": e.code, "detail": str(e)}, status=422)
     except ValueError as e:
         from ninja.errors import HttpError
@@ -173,7 +174,7 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
     return {"ok": True, **result}
 
 
-@metering_api.post("/usage/batch", response={200: UsageBatchResponse})
+@metering_router.post("/usage/batch", response={200: UsageBatchResponse})
 def record_usage_batch(request, payload: UsageBatchRequest):
     """Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 → 422).
 
@@ -370,7 +371,7 @@ def _kick_settle(tenant_id):
                        extra={"data": {"tenant_id": tenant_id}})
 
 
-@metering_api.post("/usage/ingest", response={200: IngestBatchResponse})
+@metering_router.post("/usage/ingest", response={200: IngestBatchResponse})
 def ingest_usage_batch(request, payload: IngestBatchRequest):
     """Async accept path: estimate -> atomic hold -> durable raw append -> 202-style
     verdicts. Exact pricing settles in workers (estimate-hold-settle; see
@@ -382,7 +383,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     _product_check(request)
     tenant = request.auth.tenant
     if "metering_async" not in (tenant.products or []):
-        return metering_api.create_response(
+        return json_response(
             request, {"error": "feature_not_enabled"}, status=403)
 
     from ninja.errors import HttpError
@@ -635,7 +636,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     return {"results": results, "accepted": accepted, "rejected": n - accepted}
 
 
-@metering_api.get("/ops/ingest-health", auth=None, include_in_schema=False)
+@metering_router.get("/ops/ingest-health", auth=None, include_in_schema=False)
 def ops_ingest_health(request, tenant_id: str = None):
     """Operator-facing pipeline health (spec §3) — deliberately NOT behind
     ApiKeyAuth: tenant keys must not grant ops visibility. Gated on the
@@ -655,7 +656,7 @@ def ops_ingest_health(request, tenant_id: str = None):
         return page_not_found(request, exception=None)
     supplied = request.headers.get("X-Ops-Token", "")
     if not hmac.compare_digest(supplied.encode(), token.encode()):
-        return metering_api.create_response(
+        return json_response(
             request, {"error": "unauthorized"}, status=401)
     # Manual parse, AFTER both token gates: keeping the param typed as `str`
     # (not `UUID`) means ninja never 422s a malformed tenant_id before the
@@ -666,7 +667,7 @@ def ops_ingest_health(request, tenant_id: str = None):
         try:
             parsed_tenant_id = UUID(tenant_id)
         except ValueError:
-            return metering_api.create_response(
+            return json_response(
                 request, {"error": "invalid_tenant_id"}, status=422)
     from apps.metering.usage.services.ingest_health import ingest_health
     from apps.billing.queries import get_negative_balance_stats, get_patrol_stats
@@ -698,7 +699,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
     return qs
 
 
-@metering_api.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
+@metering_router.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None,
               past_limit: bool = None, stop_scope: str = None,
@@ -751,7 +752,7 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
     }
 
 
-@metering_api.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: dict})
+@metering_router.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: dict})
 def get_usage_event(request, event_id: UUID):
     """Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
@@ -791,7 +792,7 @@ def get_usage_event(request, event_id: UUID):
 # --- Task lifecycle ---
 
 
-@metering_api.post("/tasks/{task_id}/close", response=CloseTaskResponse)
+@metering_router.post("/tasks/{task_id}/close", response=CloseTaskResponse)
 def close_task(request, task_id: UUID):
     """Close (complete) a task or subtask. Closing a PARENT auto-completes
     its active subtasks in the same transaction (#38) — cleanup is one call;
@@ -816,7 +817,7 @@ def close_task(request, task_id: UUID):
 # --- Pricing Markup ---
 
 
-@metering_api.get("/pricing/markup", response=TenantMarkupOut)
+@metering_router.get("/pricing/markup", response=TenantMarkupOut)
 def get_tenant_markup(request):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -827,7 +828,7 @@ def get_tenant_markup(request):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.put("/pricing/markup", response=TenantMarkupOut)
+@metering_router.put("/pricing/markup", response=TenantMarkupOut)
 def upsert_tenant_markup(request, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -843,7 +844,7 @@ def upsert_tenant_markup(request, payload: TenantMarkupIn):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.get("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+@metering_router.get("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
 def get_customer_markup(request, customer_id: UUID):
     _product_check(request)
     from apps.metering.pricing.services.markup_service import MarkupService
@@ -855,7 +856,7 @@ def get_customer_markup(request, customer_id: UUID):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+@metering_router.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
 def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -872,7 +873,7 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_api.delete("/pricing/customers/{customer_id}/markup")
+@metering_router.delete("/pricing/customers/{customer_id}/markup")
 def delete_customer_markup(request, customer_id: UUID):
     """Remove a customer's markup override so they revert to inheriting the
     tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
@@ -896,7 +897,7 @@ def delete_customer_markup(request, customer_id: UUID):
 _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "service_id", "agent_id"}
 
 
-@metering_api.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: dict})
+@metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: dict})
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: str = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
@@ -1044,7 +1045,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     }
 
 
-@metering_api.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: dict})
+@metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: dict})
 def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
                      customer_id: str = None, group_by: str = None):
     """Time-series spend rollup: daily or hourly COGS per tenant/customer.
@@ -1130,7 +1131,7 @@ def _resolve_card_currency(tenant, raw_currency):
     return card_currency
 
 
-@metering_api.get("/pricing/rate-cards", response=list[BookOut])
+@metering_router.get("/pricing/rate-cards", response=list[BookOut])
 def list_books(request, card_type: str = None):
     """List the tenant's rate-card BOOKS (containers). Rates live under a book
     and are read via GET /pricing/rate-cards/{book_id}/rates."""
@@ -1142,7 +1143,7 @@ def list_books(request, card_type: str = None):
         "card_type", "provider_key", "key", "id")]
 
 
-@metering_api.post("/pricing/rate-cards", response={200: BookOut, 422: dict})
+@metering_router.post("/pricing/rate-cards", response={200: BookOut, 422: dict})
 def create_book(request, payload: BookIn):
     """Create a rate-card BOOK. Rates are added under it (so every API-created
     rate is book-scoped and therefore resolvable)."""
@@ -1164,7 +1165,7 @@ def create_book(request, payload: BookIn):
     return 200, _book_to_out(book)
 
 
-@metering_api.get("/pricing/rate-cards/{book_id}/rates", response={200: list[RateOut], 404: dict})
+@metering_router.get("/pricing/rate-cards/{book_id}/rates", response={200: list[RateOut], 404: dict})
 def list_book_rates(request, book_id: UUID, include_history: bool = False,
                     as_of: datetime = None):
     """List the rates in a book. Active-only by default; ``include_history``
@@ -1182,7 +1183,7 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
         "provider", "event_type", "metric_name", "-valid_from", "id")]
 
 
-@metering_api.post("/pricing/rate-cards/{book_id}/rates", response={200: RateOut, 422: dict})
+@metering_router.post("/pricing/rate-cards/{book_id}/rates", response={200: RateOut, 422: dict})
 def add_rate(request, book_id: UUID, payload: RateIn):
     """Add a rate to a book. card_type and currency are inherited from the book
     (single source of truth); tier/enum validation mirrors the old flat create."""
@@ -1209,7 +1210,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
     return 200, _rate_to_out(rate)
 
 
-@metering_api.post("/pricing/rate-cards/{book_id}/publish", response={200: BookOut, 422: dict})
+@metering_router.post("/pricing/rate-cards/{book_id}/publish", response={200: BookOut, 422: dict})
 def publish_book(request, book_id: UUID, payload: PublishIn):
     """Atomically reprice a set of the book's rates: each change supersedes the
     matching active rate (same lineage, valid_to stamped) and opens a new
@@ -1226,7 +1227,7 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
     return 200, _book_to_out(book)
 
 
-@metering_api.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 422: dict})
+@metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 422: dict})
 def assign_book(request, customer_id: UUID, payload: AssignIn):
     """Assign a PRICE book to a customer (one per customer per currency).
     Resolution consults the assigned book before the per-provider default."""
@@ -1240,7 +1241,7 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
     return 200, {"assigned": str(book.id)}
 
 
-@metering_api.delete("/pricing/rate-cards/{card_id}")
+@metering_router.delete("/pricing/rate-cards/{card_id}")
 def delete_rate_card(request, card_id: UUID):
     _product_check(request)
     card = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)

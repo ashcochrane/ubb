@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import IntegrityError
-from ninja import NinjaAPI, Schema
+from ninja import Router, Schema
 
 from core.auth import ApiKeyAuth
 from apps.platform.customers.models import Customer
@@ -31,10 +31,10 @@ class CustomerResponse(Schema):
     status: str
 
 
-platform_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_platform_v1")
+platform_router = Router(auth=ApiKeyAuth())
 
 
-@platform_api.post("/customers", response={201: CustomerResponse, 409: dict, 422: dict})
+@platform_router.post("/customers", response={201: CustomerResponse, 409: dict, 422: dict})
 def create_customer(request, payload: CreateCustomerRequest):
     tenant = request.auth.tenant
     at = payload.account_type or "individual"
@@ -81,7 +81,7 @@ def create_customer(request, payload: CreateCustomerRequest):
         return 409, {"error": "Customer with this external_id already exists"}
 
 
-@platform_api.get("/accounts/business/{external_id}", response={200: dict, 404: dict})
+@platform_router.get("/accounts/business/{external_id}", response={200: dict, 404: dict})
 def get_business(request, external_id: str):
     from apps.billing.wallets.models import Wallet
 
@@ -118,7 +118,7 @@ def _plan_out(plan):
     }
 
 
-@platform_api.post("/plans", response={201: PlanOut, 422: dict})
+@platform_router.post("/plans", response={201: PlanOut, 422: dict})
 def create_plan(request, payload: PlanIn):
     from apps.subscriptions.models import TenantBillingPlan
 
@@ -136,7 +136,7 @@ def create_plan(request, payload: PlanIn):
     return 201, _plan_out(plan)
 
 
-@platform_api.patch("/plans/{key}", response={200: dict, 404: dict, 422: dict})
+@platform_router.patch("/plans/{key}", response={200: dict, 404: dict, 422: dict})
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;
     existing subscriptions are grandfathered on their old price unless
@@ -204,7 +204,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
     }
 
 
-@platform_api.post(
+@platform_router.post(
     "/customers/{external_id}/subscription/cancel",
     response={200: dict, 404: dict, 422: dict},
 )
@@ -218,7 +218,7 @@ def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn
                            {"verb": "cancel", "at_period_end": at_period_end})
 
 
-@platform_api.post(
+@platform_router.post(
     "/customers/{external_id}/subscription/pause",
     response={200: dict, 404: dict, 422: dict},
 )
@@ -230,7 +230,7 @@ def pause_subscription(request, external_id: str):
     return _lifecycle_call(request, external_id, {"verb": "pause"})
 
 
-@platform_api.post(
+@platform_router.post(
     "/customers/{external_id}/subscription/resume",
     response={200: dict, 404: dict, 422: dict},
 )
@@ -242,7 +242,7 @@ def resume_subscription(request, external_id: str):
     return _lifecycle_call(request, external_id, {"verb": "resume"})
 
 
-@platform_api.post("/customers/{external_id}/subscribe", response={200: dict, 404: dict, 422: dict})
+@platform_router.post("/customers/{external_id}/subscribe", response={200: dict, 404: dict, 422: dict})
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     from apps.subscriptions.models import TenantBillingPlan
     from apps.subscriptions.orchestration.service import (
@@ -277,7 +277,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     }
 
 
-@platform_api.post("/customers/{external_id}/seats", response={200: dict, 404: dict, 422: dict})
+@platform_router.post("/customers/{external_id}/seats", response={200: dict, 404: dict, 422: dict})
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
     from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.service import (

@@ -1,41 +1,24 @@
 from django.contrib import admin
 from django.urls import path
-from api.v1.endpoints import api
+
+from api.v1.api import api
+from api.v1.connect_endpoints import connect_callback
 from api.v1.webhooks import stripe_webhook, stripe_webhook_test
-from api.v1.me_endpoints import me_api
-from api.v1.tenant_endpoints import tenant_api
-from api.v1.sandbox_endpoints import sandbox_api
-from api.v1.metering_endpoints import metering_api
-from api.v1.billing_endpoints import billing_api
 from apps.subscriptions.api.endpoints import (
-    subscriptions_api,
     subscriptions_stripe_webhook,
     subscriptions_stripe_webhook_test,
 )
-from apps.subscriptions.api.margin_endpoints import margin_api
-from apps.referrals.api.endpoints import referrals_api
-from apps.platform.events.api.webhook_endpoints import webhook_api
-from api.v1.platform_endpoints import platform_api
-from api.v1.connect_endpoints import connect_api, connect_callback
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    # End-user routes BEFORE generic api/v1/ to avoid shadowing
-    path("api/v1/me/", me_api.urls),
-    path("api/v1/tenant/", tenant_api.urls),
-    path("api/v1/sandbox/", sandbox_api.urls),
-    path("api/v1/metering/", metering_api.urls),
-    path("api/v1/billing/", billing_api.urls),
+    # Machine-facing infrastructure stays out of the versioned contract
+    # (plain views, registered before the API mount): the four inbound
+    # Stripe receivers and the Connect browser callback.
     path("api/v1/subscriptions/webhooks/stripe", subscriptions_stripe_webhook),
     path("api/v1/subscriptions/webhooks/stripe/test", subscriptions_stripe_webhook_test),
-    path("api/v1/subscriptions/", subscriptions_api.urls),
-    path("api/v1/margin/", margin_api.urls),
-    path("api/v1/referrals/", referrals_api.urls),
-    path("api/v1/webhooks/config/", webhook_api.urls),
-    path("api/v1/platform/", platform_api.urls),
     path("api/v1/webhooks/stripe", stripe_webhook),
     path("api/v1/webhooks/stripe/test", stripe_webhook_test),
     path("api/v1/connect/callback", connect_callback),
-    path("api/v1/connect/", connect_api.urls),
+    # The one versioned API (#77): twelve routers on a single NinjaAPI.
     path("api/v1/", api.urls),
 ]

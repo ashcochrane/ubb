@@ -3,7 +3,7 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
-from ninja import NinjaAPI, Schema
+from ninja import Router
 
 from api.v1.pagination import apply_cursor_filter, encode_cursor
 from api.v1.schemas import (
@@ -19,8 +19,11 @@ from api.v1.schemas import (
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceOut, PostpaidConfigIn, PostpaidConfigOut,
+    TenantBillingPeriodOut, TenantBillingPeriodListResponse,
+    TenantInvoiceOut, TenantInvoiceListResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
+from core.responses import json_response
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
@@ -28,7 +31,7 @@ from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from django.shortcuts import get_object_or_404
 
-billing_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_billing_v1")
+billing_router = Router(auth=ApiKeyAuth())
 logger = logging.getLogger("ubb.billing")
 
 _product_check = ProductAccess("billing")
@@ -37,7 +40,7 @@ _product_check = ProductAccess("billing")
 # ---------- Customer billing endpoints ----------
 
 
-@billing_api.get("/customers/{customer_id}/balance", response=BalanceResponse)
+@billing_router.get("/customers/{customer_id}/balance", response=BalanceResponse)
 def get_balance(request, customer_id: str):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -59,7 +62,7 @@ def get_balance(request, customer_id: str):
                 "negative_since": None}
 
 
-@billing_api.post("/debit", response=DebitCreditResponse)
+@billing_router.post("/debit", response=DebitCreditResponse)
 def debit(request, payload: DebitRequest):
     _product_check(request)
     from django.db import transaction
@@ -91,7 +94,7 @@ def debit(request, payload: DebitRequest):
             floor = get_customer_min_balance(wallet.customer_id, request.auth.tenant.id)
             if new_balance < -floor:
                 if not payload.allow_negative:
-                    return billing_api.create_response(
+                    return json_response(
                         request,
                         {"error": "debit would breach the overdraft floor; "
                                   "pass allow_negative=true to force",
@@ -124,7 +127,7 @@ def debit(request, payload: DebitRequest):
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
-@billing_api.post("/credit", response=DebitCreditResponse)
+@billing_router.post("/credit", response=DebitCreditResponse)
 def credit(request, payload: CreditRequest):
     """Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).
 
@@ -176,7 +179,7 @@ def credit(request, payload: CreditRequest):
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
-@billing_api.put("/customers/{customer_id}/auto-top-up")
+@billing_router.put("/customers/{customer_id}/auto-top-up")
 def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -191,7 +194,7 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
     return {"status": "ok"}
 
 
-@billing_api.post("/customers/{customer_id}/top-up")
+@billing_router.post("/customers/{customer_id}/top-up")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     _product_check(request)
     from apps.billing.topups.models import TopUpAttempt
@@ -203,7 +206,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     if get_tenant_stripe_account(tenant.id):
         # Stripe connector is active — create checkout session
         if not get_customer_stripe_id(customer.id):
-            return billing_api.create_response(
+            return json_response(
                 request, {"error": "Customer has no stripe_customer_id"}, status=400
             )
 
@@ -233,14 +236,14 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
             success_url=getattr(payload, "success_url", "") or "",
             cancel_url=getattr(payload, "cancel_url", "") or "",
         ))
-        return billing_api.create_response(
+        return json_response(
             request,
             {"status": "topup_requested", "message": "Top-up request sent to tenant"},
             status=202,
         )
 
 
-@billing_api.post("/customers/{customer_id}/withdraw")
+@billing_router.post("/customers/{customer_id}/withdraw")
 def withdraw(request, customer_id: str, payload: WithdrawRequest):
     """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
     availability is balance minus active promo remainders."""
@@ -265,7 +268,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
             return {"transaction_id": str(existing.id), "balance_micros": wallet.balance_micros}
 
         if wallet.balance_micros - GrantLedger.promo_remaining(wallet) < payload.amount_micros:
-            return billing_api.create_response(
+            return json_response(
                 request, {"error": "Insufficient balance"}, status=400
             )
 
@@ -294,7 +297,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
     return {"transaction_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
-@billing_api.post("/pre-check", response=PreCheckResponse)
+@billing_router.post("/pre-check", response=PreCheckResponse)
 def pre_check(request, payload: PreCheckRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -309,7 +312,7 @@ def pre_check(request, payload: PreCheckRequest):
     return result
 
 
-@billing_api.post("/customers/{customer_id}/refund")
+@billing_router.post("/customers/{customer_id}/refund")
 def refund_usage(request, customer_id: str, payload: RefundRequest):
     """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
     USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
@@ -341,7 +344,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
         # Look up cost via metering query interface (tenant-scoped)
         cost = get_usage_event_cost(payload.usage_event_id, tenant_id=request.auth.tenant.id)
         if cost is None:
-            return billing_api.create_response(request, {"error": "Usage event not found"}, status=404)
+            return json_response(request, {"error": "Usage event not found"}, status=404)
 
         wallet.balance_micros += cost
         wallet.save(update_fields=["balance_micros", "updated_at"])
@@ -385,7 +388,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
     return {"refund_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
-@billing_api.get("/customers/{customer_id}/transactions")
+@billing_router.get("/customers/{customer_id}/transactions")
 def get_transactions(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -403,7 +406,7 @@ def get_transactions(request, customer_id: str, cursor: str = None, limit: int =
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return billing_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     txns = list(qs[:limit + 1])
     has_more = len(txns) > limit
@@ -454,7 +457,7 @@ def _grant_out(grant, *, balance_micros=None, transaction_id=None):
     }
 
 
-@billing_api.post("/customers/{customer_id}/grants", response=GrantOut)
+@billing_router.post("/customers/{customer_id}/grants", response=GrantOut)
 def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
     """Create an expiring (or non-expiring) credit grant lot on the billing
     owner's wallet. Exactly-once via grant:{idempotency_key} — the GRANT
@@ -469,14 +472,14 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if payload.expires_at is not None and payload.expires_in_days is not None:
-        return billing_api.create_response(
+        return json_response(
             request, {"error": "Pass expires_at OR expires_in_days, not both"}, status=400)
     if payload.expires_at is not None:
         if payload.expires_at.tzinfo is None:
-            return billing_api.create_response(
+            return json_response(
                 request, {"error": "expires_at must be timezone-aware"}, status=400)
         if payload.expires_at <= timezone.now():
-            return billing_api.create_response(
+            return json_response(
                 request, {"error": "expires_at must be in the future"}, status=400)
         expires_at = payload.expires_at
     elif payload.expires_in_days is not None:
@@ -523,14 +526,14 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
         # Idempotent replay: return the grant created with the original txn.
         grant = CreditGrant.objects.filter(source_transaction=existing).first()
         if grant is None:
-            return billing_api.create_response(
+            return json_response(
                 request, {"error": "idempotency_key already used by a non-grant transaction"},
                 status=409)
         return _grant_out(grant, balance_micros=wallet.balance_micros,
                           transaction_id=str(existing.id))
 
 
-@billing_api.get("/customers/{customer_id}/grants", response=PaginatedGrants)
+@billing_router.get("/customers/{customer_id}/grants", response=PaginatedGrants)
 def list_grants(request, customer_id: UUID, status: str = None,
                 cursor: str = None, limit: int = 50):
     """List the billing owner's grant lots (newest first), optional status filter."""
@@ -552,7 +555,7 @@ def list_grants(request, customer_id: UUID, status: str = None,
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return billing_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     grants = list(qs[:limit + 1])
     has_more = len(grants) > limit
@@ -567,7 +570,7 @@ def list_grants(request, customer_id: UUID, status: str = None,
             "next_cursor": next_cursor, "has_more": has_more}
 
 
-@billing_api.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
+@billing_router.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
 def void_grant(request, customer_id: UUID, grant_id: UUID):
     """Void a grant: debit its remaining (clamped so the balance never goes
     negative, like expiry) and retire the lot. Exactly-once via
@@ -618,40 +621,12 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
 
 
 # ---------- Tenant billing endpoints ----------
+# (TenantBillingPeriod*/TenantInvoice* schemas live in api.v1.schemas, shared
+# with the tenant mount's duplicate routes — one component name each in the
+# merged OpenAPI document.)
 
 
-class TenantBillingPeriodOut(Schema):
-    id: str
-    period_start: str
-    period_end: str
-    status: str
-    total_usage_cost_micros: int
-    event_count: int
-    platform_fee_micros: int
-
-
-class TenantBillingPeriodListResponse(Schema):
-    data: list[TenantBillingPeriodOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
-
-
-class TenantInvoiceOut(Schema):
-    id: str
-    billing_period_id: str
-    stripe_invoice_id: str
-    total_amount_micros: int
-    status: str
-    created_at: str
-
-
-class TenantInvoiceListResponse(Schema):
-    data: list[TenantInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
-
-
-@billing_api.get("/tenant/billing-periods", response=TenantBillingPeriodListResponse)
+@billing_router.get("/tenant/billing-periods", response=TenantBillingPeriodListResponse)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -663,7 +638,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return billing_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     periods = list(qs[:limit + 1])
     has_more = len(periods) > limit
@@ -692,7 +667,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
     }
 
 
-@billing_api.get("/tenant/invoices", response=TenantInvoiceListResponse)
+@billing_router.get("/tenant/invoices", response=TenantInvoiceListResponse)
 def list_invoices(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -704,7 +679,7 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
         try:
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return billing_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit
@@ -735,7 +710,7 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
 # ---------- Analytics ----------
 
 
-@billing_api.get("/analytics/revenue", response=RevenueAnalyticsResponse)
+@billing_router.get("/analytics/revenue", response=RevenueAnalyticsResponse)
 def revenue_analytics(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     from apps.metering.queries import get_revenue_analytics
@@ -762,7 +737,7 @@ def _upsert_budget(tenant, customer, payload):
     return cfg
 
 
-@billing_api.get("/budget", response=BudgetConfigOut)
+@billing_router.get("/budget", response=BudgetConfigOut)
 def get_tenant_budget(request):
     _product_check(request)
     from apps.billing.gating.models import BudgetConfig
@@ -773,13 +748,13 @@ def get_tenant_budget(request):
     return _budget_out(cfg)
 
 
-@billing_api.put("/budget", response=BudgetConfigOut)
+@billing_router.put("/budget", response=BudgetConfigOut)
 def put_tenant_budget(request, payload: BudgetConfigIn):
     _product_check(request)
     return _budget_out(_upsert_budget(request.auth.tenant, None, payload))
 
 
-@billing_api.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@billing_router.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
 def get_customer_budget(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.gating.models import BudgetConfig
@@ -791,7 +766,7 @@ def get_customer_budget(request, customer_id: UUID):
     return _budget_out(cfg)
 
 
-@billing_api.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@billing_router.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
 def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -807,7 +782,7 @@ def _billing_profile_out(profile):
             "soft_min_balance_micros": profile.soft_min_balance_micros}
 
 
-@billing_api.get("/customers/{customer_id}/billing-profile",
+@billing_router.get("/customers/{customer_id}/billing-profile",
                  response=CustomerBillingProfileOut)
 def get_customer_billing_profile(request, customer_id: UUID):
     _product_check(request)
@@ -820,7 +795,7 @@ def get_customer_billing_profile(request, customer_id: UUID):
     return _billing_profile_out(profile)
 
 
-@billing_api.put("/customers/{customer_id}/billing-profile",
+@billing_router.put("/customers/{customer_id}/billing-profile",
                  response={200: CustomerBillingProfileOut, 422: dict})
 def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
     _product_check(request)
@@ -855,7 +830,7 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
     return 200, _billing_profile_out(profile)
 
 
-@billing_api.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
+@billing_router.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
 def get_customer_budget_status(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.gating.services.budget_service import BudgetService, _period
@@ -875,7 +850,7 @@ def get_customer_budget_status(request, customer_id: UUID):
 # ---------- Postpaid usage-invoice + config ----------
 
 
-@billing_api.get("/customers/{customer_id}/usage-invoices", response=list[UsageInvoiceOut])
+@billing_router.get("/customers/{customer_id}/usage-invoices", response=list[UsageInvoiceOut])
 def list_customer_usage_invoices(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.invoicing.models import CustomerUsageInvoice
@@ -888,7 +863,7 @@ def list_customer_usage_invoices(request, customer_id: UUID):
             for r in rows]
 
 
-@billing_api.get("/tenant/usage-invoices")
+@billing_router.get("/tenant/usage-invoices")
 def list_tenant_usage_invoices(request, period: str = None):
     _product_check(request)
     from apps.billing.invoicing.models import CustomerUsageInvoice
@@ -911,7 +886,7 @@ def list_tenant_usage_invoices(request, period: str = None):
             for r in qs.order_by("-period_start")]}
 
 
-@billing_api.get("/postpaid-config", response=PostpaidConfigOut)
+@billing_router.get("/postpaid-config", response=PostpaidConfigOut)
 def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
@@ -920,7 +895,7 @@ def get_postpaid_config(request):
             "consolidate_with_subscription": cfg.consolidate_with_subscription if cfg else False}
 
 
-@billing_api.put("/postpaid-config", response=PostpaidConfigOut)
+@billing_router.put("/postpaid-config", response=PostpaidConfigOut)
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig

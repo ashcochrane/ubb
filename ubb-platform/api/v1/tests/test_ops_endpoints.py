@@ -119,9 +119,20 @@ class OpsIngestHealthEndpointTest(TestCase):
 class OpsIngestHealthSchemaDisclosureTest(TestCase):
     """The ops endpoint must not appear in the public, unauthenticated
     OpenAPI schema/docs — that alone would fingerprint its existence even
-    with UBB_OPS_TOKEN unset."""
+    with UBB_OPS_TOKEN unset.
 
-    def test_not_listed_in_openapi_schema(self):
-        resp = Client().get("/api/v1/metering/openapi.json")
+    #77 rewrote this pin against the ONE document (runtime and committed):
+    the per-mount fragment this used to probe died with the single-API
+    restructure."""
+
+    def test_not_listed_in_runtime_openapi_schema(self):
+        resp = Client().get("/api/v1/openapi.json")
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn("ops/ingest-health", resp.content.decode())
+
+    def test_not_listed_in_committed_document(self):
+        from pathlib import Path
+
+        committed = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
+        self.assertNotIn(
+            "ops/ingest-health", committed.read_text(encoding="utf-8"))
