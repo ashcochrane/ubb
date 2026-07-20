@@ -132,6 +132,15 @@ An event that has exhausted its retries and been marked `failed` — alerted, ne
 A tenant's subscribed HTTP delivery of events to their own endpoint, HMAC-signed and stamped with
 `livemode`. (`apps/platform/events/webhook_models.py:TenantWebhookConfig`)
 
+**Per-endpoint delivery checkpoint**:
+The successful `WebhookDeliveryAttempt` for an (event, endpoint) pair — a retry pass skips
+checkpointed endpoints and re-POSTs only the still-failing pairs, and a failing endpoint never
+aborts the pass for its neighbours (failures are collected, then raised as
+`WebhookDeliveryIncomplete` after every endpoint was attempted). Each pair succeeds, retries, or
+dead-letters independently. (`apps/platform/events/webhooks.py:deliver_webhook`)
+_Avoid_: treating the event-level `HandlerCheckpoint` as the delivery guarantee — it is per
+handler, not per endpoint.
+
 ## Cross-cutting primitives
 
 **micros**:
