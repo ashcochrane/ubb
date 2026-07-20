@@ -70,6 +70,36 @@ class TestDeliverWebhook:
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_customer_deleted_delivers_to_matching_config(self, mock_client_class, mock_validate):
+        """customer.deleted is delivered like any other catalog type (#75)."""
+        mock_response = MagicMock(status_code=200, text="OK")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        event = OutboxEvent.objects.create(
+            event_type="customer.deleted",
+            payload={"tenant_id": str(self.tenant.id), "customer_id": "c1"},
+            tenant_id=str(self.tenant.id),
+        )
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=["customer.deleted"],
+        )
+
+        deliver_webhook(event)
+
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is True
+        assert attempt.status_code == 200
+
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    @patch("apps.platform.events.webhooks.httpx.Client")
     def test_skips_non_matching_event_type(self, mock_client_class, mock_validate):
         TenantWebhookConfig.objects.create(
             tenant=self.tenant,
@@ -434,6 +464,25 @@ class TestWebhookConfigAPI:
         )
         assert resp.status_code == 400
         assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_accepts_customer_deleted(self):
+        """customer.deleted is a catalog type like any other (#75) — the
+        delivery path emitted it while the catalog silently hid it from
+        subscribers."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {
+                    "url": "https://example.com/hook",
+                    "secret": "a" * 32,
+                    "event_types": ["customer.deleted"],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 201
+        assert resp.json()["event_types"] == ["customer.deleted"]
 
     def test_create_accepts_wildcard(self):
         """["*"] is the explicit opt-in to all events."""

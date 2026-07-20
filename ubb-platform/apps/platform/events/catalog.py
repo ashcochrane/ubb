@@ -47,6 +47,8 @@ WEBHOOK_EVENT_TYPES = (
     "referral.reward_earned",
     "referral.expired",
     "referral.payout_due",
+    # customers / lifecycle
+    "customer.deleted",
     # platform / lifecycle
     "sandbox.reset_completed",
     "tenant.api_key_created",
