@@ -9,6 +9,7 @@ import httpx
 from httpcore._backends.sync import SyncBackend
 
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
+from core.exceptions import UBBError
 from core.url_validation import validate_webhook_url
 
 logger = logging.getLogger("ubb.webhooks")
@@ -16,7 +17,7 @@ logger = logging.getLogger("ubb.webhooks")
 WEBHOOK_TIMEOUT = 10  # seconds
 
 
-class WebhookDeliveryIncomplete(Exception):
+class WebhookDeliveryIncomplete(UBBError):
     """One or more endpoints failed retryably during a delivery pass.
 
     Raised at the END of the pass — never mid-loop — so one endpoint's failure
@@ -26,6 +27,19 @@ class WebhookDeliveryIncomplete(Exception):
     that already received the event, so only the still-failing
     (event, endpoint) pairs are re-POSTed.
     """
+
+
+class _RetryableHTTPStatus(UBBError):
+    """A response landed but with a retryable status (5xx / 429) — the
+    endpoint did not durably receive the event. Internal to this module:
+    raised by _deliver_to_config after recording the attempt, collected by
+    deliver_webhook exactly like a network failure."""
+
+
+# The single definition of "this delivery failure is retryable" — collected by
+# deliver_webhook into WebhookDeliveryIncomplete. Everything else (3xx/4xx
+# responses, non-network exceptions, blocked URLs) is permanent for the pair.
+RETRYABLE_DELIVERY_ERRORS = (httpx.HTTPError, OSError, _RetryableHTTPStatus)
 
 
 class _PinnedIPBackend(SyncBackend):
@@ -164,7 +178,7 @@ def deliver_webhook(event):
 
         try:
             _deliver_to_config(config, event, livemode=livemode)
-        except (httpx.HTTPError, OSError) as e:
+        except RETRYABLE_DELIVERY_ERRORS as e:
             # The failed attempt is already recorded by _deliver_to_config.
             retryable_failures.append((config, e))
 
@@ -264,11 +278,20 @@ def _deliver_to_config(config, event, *, livemode=True):
         )
         # Raise network errors so deliver_webhook collects them for the outbox
         # retry; swallow only non-network issues (no retry for this pair).
-        if isinstance(e, (httpx.HTTPError, OSError)):
+        if isinstance(e, RETRYABLE_DELIVERY_ERRORS):
             raise
         return
 
     attempt.save()
+
+    if not attempt.success and (attempt.status_code >= 500 or attempt.status_code == 429):
+        # The endpoint answered but didn't durably receive the event — a 5xx
+        # (or 429) is as transient as a network failure, so it retries per
+        # endpoint. 3xx/4xx stay permanent: a receiver rejecting the request
+        # will keep rejecting it.
+        raise _RetryableHTTPStatus(
+            f"HTTP {attempt.status_code} from config {config.id} for event {event.id}"
+        )
 
 
 def handle_webhook_delivery(event_id, payload):

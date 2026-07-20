@@ -224,7 +224,9 @@ class TestDeliverWebhook:
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_records_non_2xx_as_failure(self, mock_client_class, mock_validate):
+    def test_records_5xx_as_retryable_failure(self, mock_client_class, mock_validate):
+        """A 5xx response records a failed attempt AND raises for the outbox
+        retry — the endpoint answered but didn't durably receive the event."""
         mock_response = MagicMock(status_code=500, text="Internal Server Error")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -239,13 +241,41 @@ class TestDeliverWebhook:
             event_types=["*"],
         )
 
-        deliver_webhook(self.event)
+        with pytest.raises(WebhookDeliveryIncomplete):
+            deliver_webhook(self.event)
 
         assert WebhookDeliveryAttempt.objects.count() == 1
         attempt = WebhookDeliveryAttempt.objects.first()
         assert attempt.success is False
         assert attempt.status_code == 500
         assert "Internal Server Error" in attempt.error_message
+
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_records_4xx_as_permanent_failure(self, mock_client_class, mock_validate):
+        """A 4xx response is a permanent failure for the pair — recorded, not
+        retried: a receiver rejecting the request will keep rejecting it."""
+        mock_response = MagicMock(status_code=400, text="Bad Request")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=["*"],
+        )
+
+        deliver_webhook(self.event)  # no raise
+
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is False
+        assert attempt.status_code == 400
+        assert "Bad Request" in attempt.error_message
 
 
 @pytest.mark.django_db
@@ -328,6 +358,29 @@ class TestPerEndpointDeliveryCheckpointing:
 
         assert post_log.count(self.URL_A) == 1
         assert post_log.count(self.URL_B) == 2
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=True
+        ).count() == 1
+
+    def test_5xx_endpoint_retries_without_duplicates_to_healthy(self):
+        """A 5xx endpoint retries per pair like a network failure — the
+        healthy endpoint still sees exactly one POST across all passes."""
+
+        def _server_error():
+            return MagicMock(status_code=503, text="Service Unavailable")
+
+        post_log = []
+        for _ in range(2):
+            with pytest.raises(WebhookDeliveryIncomplete):
+                self._deliver({self.URL_A: _ok_response, self.URL_B: _server_error}, post_log)
+
+        self._deliver({self.URL_A: _ok_response, self.URL_B: _ok_response}, post_log)
+
+        assert post_log.count(self.URL_A) == 1
+        assert post_log.count(self.URL_B) == 3
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=False, status_code=503
+        ).count() == 2
         assert WebhookDeliveryAttempt.objects.filter(
             webhook_config=self.config_b, success=True
         ).count() == 1

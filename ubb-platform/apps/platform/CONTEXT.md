@@ -137,7 +137,9 @@ The successful `WebhookDeliveryAttempt` for an (event, endpoint) pair — a retr
 checkpointed endpoints and re-POSTs only the still-failing pairs, and a failing endpoint never
 aborts the pass for its neighbours (failures are collected, then raised as
 `WebhookDeliveryIncomplete` after every endpoint was attempted). Each pair succeeds, retries, or
-dead-letters independently. (`apps/platform/events/webhooks.py:deliver_webhook`)
+dead-letters independently. Retryable = network errors, timeouts, 5xx, 429; permanent for the
+pair = 3xx/4xx, blocked URLs, non-network errors.
+(`apps/platform/events/webhooks.py:deliver_webhook`)
 _Avoid_: treating the event-level `HandlerCheckpoint` as the delivery guarantee — it is per
 handler, not per endpoint.
 
