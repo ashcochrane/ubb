@@ -40,6 +40,7 @@ def test_catalog_is_set_equal_to_frozen_payload_schema_registry():
         obj.EVENT_TYPE
         for obj in vars(schemas).values()
         if inspect.isclass(obj)
+        and obj.__module__ == schemas.__name__  # defined there, not imported in
         and dataclasses.is_dataclass(obj)
         and isinstance(getattr(obj, "EVENT_TYPE", None), str)
     }
