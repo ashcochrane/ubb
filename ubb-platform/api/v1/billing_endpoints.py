@@ -1,6 +1,5 @@
 import logging
 from datetime import date
-from typing import Optional
 from uuid import UUID
 
 from ninja import Router

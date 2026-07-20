@@ -131,8 +131,8 @@ class OpsIngestHealthSchemaDisclosureTest(TestCase):
         self.assertNotIn("ops/ingest-health", resp.content.decode())
 
     def test_not_listed_in_committed_document(self):
-        from pathlib import Path
+        from api.v1.openapi_export import COMMITTED_SPEC_PATH
 
-        committed = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
         self.assertNotIn(
-            "ops/ingest-health", committed.read_text(encoding="utf-8"))
+            "ops/ingest-health",
+            COMMITTED_SPEC_PATH.read_text(encoding="utf-8"))

@@ -12,19 +12,13 @@ tenant surface. These pins hold the seam's core promises in the suite itself
 - the carve: ops route out, health/ready in and unauthenticated.
 """
 import json
-from pathlib import Path
 
 from django.test import Client, TestCase
 
-GIT_ROOT = Path(__file__).resolve().parents[4]
-COMMITTED = GIT_ROOT / "openapi" / "v1.json"
-
-
-def _generated_document_text() -> str:
-    from api.v1.api import api
-
-    schema = api.get_openapi_schema()
-    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
+from api.v1.openapi_export import (
+    COMMITTED_SPEC_PATH as COMMITTED,
+    generated_document_text,
+)
 
 
 class CommittedDocumentDriftTest(TestCase):
@@ -36,7 +30,7 @@ class CommittedDocumentDriftTest(TestCase):
         committed file was edited by hand (refused — it is generator-owned).
         """
         committed = COMMITTED.read_text(encoding="utf-8")
-        self.assertEqual(committed, _generated_document_text())
+        self.assertEqual(committed, generated_document_text())
 
     def test_runtime_document_matches_committed(self):
         resp = Client().get("/api/v1/openapi.json")
