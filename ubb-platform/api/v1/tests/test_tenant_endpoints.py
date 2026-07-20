@@ -235,6 +235,32 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(bc.min_balance_micros, 5_000_000)
         self.assertEqual(bc.soft_min_balance_micros, 2_000_000)
 
+    def test_patch_lowering_hard_below_stored_soft_allowed_resolver_clamps(self):
+        # Lowering the hard floor alone is NOT validated against a stored soft
+        # floor — write-time validation goes stale across levels by design, so
+        # the resolver, not the writer, guarantees soft <= hard (queries.py).
+        # This pins that posture: the write succeeds, the stored soft stays,
+        # and the effective soft clamps to the new hard.
+        from apps.billing.queries import (get_billing_config,
+                                          get_customer_soft_min_balance)
+        bc = get_billing_config(self.tenant.id)
+        bc.min_balance_micros = 10_000_000
+        bc.soft_min_balance_micros = 7_000_000
+        bc.save(update_fields=["min_balance_micros", "soft_min_balance_micros"])
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"min_balance_micros": 5_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        bc.refresh_from_db()
+        self.assertEqual(bc.min_balance_micros, 5_000_000)
+        self.assertEqual(bc.soft_min_balance_micros, 7_000_000)  # stored as-is
+        customer = Customer.objects.create(tenant=self.tenant, external_id="clamp-c1")
+        self.assertEqual(
+            get_customer_soft_min_balance(customer.id, self.tenant.id),
+            5_000_000)  # clamped to the new hard at read time
+
     def test_patch_both_floors_soft_exceeding_incoming_hard_returns_422(self):
         # Stored hard (10M) would allow soft 7M — but the PATCH lowers hard to
         # 5M in the same request, so soft must validate against the incoming

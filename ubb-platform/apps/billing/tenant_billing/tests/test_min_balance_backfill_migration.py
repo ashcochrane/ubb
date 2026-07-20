@@ -58,8 +58,10 @@ def test_conflict_keeps_the_config_value_and_logs_loudly(capsys):
 
 def test_copy_violating_soft_invariant_is_skipped_and_logged(capsys):
     # An existing soft floor above the incoming hard value would break
-    # soft <= hard if the copy went through. Only constructable outside the
-    # API (the writers validate), but the guard is deliberate: skip + log.
+    # soft <= hard if the copy went through. Such rows can exist — write-time
+    # validation goes stale (e.g. the hard floor lowered after the soft was
+    # set; the resolver clamps at read time) — and the guard is deliberate:
+    # the migration never changes two knobs to make one copy fit, so skip + log.
     t = Tenant.objects.create(name="soft-clash", products=["metering", "billing"])
     BillingTenantConfig.objects.create(tenant=t, soft_min_balance_micros=2_000_000)
     apply_backfill(BillingTenantConfig, _rows(t, 1_000_000))
