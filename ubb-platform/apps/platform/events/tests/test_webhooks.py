@@ -8,11 +8,41 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
 from apps.platform.events.webhooks import (
+    WebhookDeliveryIncomplete,
     compute_signature,
     deliver_webhook,
     _PinnedIPTransport,
     _PinnedIPBackend,
 )
+
+
+class _FakePerUrlClient:
+    """Stands in for httpx.Client: routes post() to a per-URL behavior callable
+    and logs every POSTed url, so tests can count deliveries per endpoint."""
+
+    def __init__(self, behaviors, post_log):
+        self._behaviors = behaviors
+        self._post_log = post_log
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def post(self, url, content=None, headers=None):
+        self._post_log.append(url)
+        return self._behaviors[url]()
+
+
+def _ok_response():
+    return MagicMock(status_code=200, text="OK")
+
+
+def _raise_timeout():
+    import httpx
+
+    raise httpx.ReadTimeout("timeout")
 
 
 @pytest.mark.django_db
@@ -224,7 +254,9 @@ class TestDeliverWebhook:
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
-    def test_records_non_2xx_as_failure(self, mock_client_class, mock_validate):
+    def test_records_5xx_as_retryable_failure(self, mock_client_class, mock_validate):
+        """A 5xx response records a failed attempt AND raises for the outbox
+        retry — the endpoint answered but didn't durably receive the event."""
         mock_response = MagicMock(status_code=500, text="Internal Server Error")
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -239,13 +271,194 @@ class TestDeliverWebhook:
             event_types=["*"],
         )
 
-        deliver_webhook(self.event)
+        with pytest.raises(WebhookDeliveryIncomplete):
+            deliver_webhook(self.event)
 
         assert WebhookDeliveryAttempt.objects.count() == 1
         attempt = WebhookDeliveryAttempt.objects.first()
         assert attempt.success is False
         assert attempt.status_code == 500
         assert "Internal Server Error" in attempt.error_message
+
+    @patch("apps.platform.events.webhooks.validate_webhook_url")
+    @patch("apps.platform.events.webhooks.httpx.Client")
+    def test_records_4xx_as_permanent_failure(self, mock_client_class, mock_validate):
+        """A 4xx response is a permanent failure for the pair — recorded, not
+        retried: a receiver rejecting the request will keep rejecting it."""
+        mock_response = MagicMock(status_code=400, text="Bad Request")
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.post.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        TenantWebhookConfig.objects.create(
+            tenant=self.tenant,
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=["*"],
+        )
+
+        deliver_webhook(self.event)  # no raise
+
+        assert WebhookDeliveryAttempt.objects.count() == 1
+        attempt = WebhookDeliveryAttempt.objects.first()
+        assert attempt.success is False
+        assert attempt.status_code == 400
+        assert "Bad Request" in attempt.error_message
+
+
+@pytest.mark.django_db
+class TestPerEndpointDeliveryCheckpointing:
+    """Issue #76: each (event, endpoint) pair succeeds, retries, or dead-letters
+    independently. Observed through delivery attempts per endpoint under
+    injected failure — never by inspecting task internals."""
+
+    URL_A = "https://a.example.com/hook"
+    URL_B = "https://b.example.com/hook"  # the failing endpoint in these tests
+    URL_C = "https://c.example.com/hook"
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="pe", products=["metering", "billing"])
+        self.event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload={"customer_id": "c1", "cost_micros": 1000},
+            tenant_id=str(self.tenant.id),
+        )
+        self.config_a = TenantWebhookConfig.objects.create(
+            tenant=self.tenant, url=self.URL_A, secret="s", event_types=["*"]
+        )
+        self.config_b = TenantWebhookConfig.objects.create(
+            tenant=self.tenant, url=self.URL_B, secret="s", event_types=["*"]
+        )
+
+    def _deliver(self, behaviors, post_log):
+        with patch("apps.platform.events.webhooks.validate_webhook_url"), \
+             patch(
+                 "apps.platform.events.webhooks.httpx.Client",
+                 side_effect=lambda **kw: _FakePerUrlClient(behaviors, post_log),
+             ):
+            deliver_webhook(self.event)
+
+    def test_failing_endpoint_does_not_starve_others_in_same_pass(self):
+        """A mid-pass failure must not abort delivery to the remaining endpoints."""
+        config_c = TenantWebhookConfig.objects.create(
+            tenant=self.tenant, url=self.URL_C, secret="s", event_types=["*"]
+        )
+        behaviors = {self.URL_A: _ok_response, self.URL_B: _raise_timeout, self.URL_C: _ok_response}
+        post_log = []
+
+        with pytest.raises(WebhookDeliveryIncomplete):
+            self._deliver(behaviors, post_log)
+
+        assert post_log.count(self.URL_A) == 1
+        assert post_log.count(self.URL_C) == 1
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_a, success=True
+        ).count() == 1
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=config_c, success=True
+        ).count() == 1
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=False
+        ).count() == 1
+
+    def test_retry_passes_send_zero_duplicates_to_healthy_endpoint(self):
+        """One endpoint failing across N retries -> zero duplicate POSTs to the
+        healthy endpoint; retries target only the failing (event, endpoint) pair."""
+        behaviors = {self.URL_A: _ok_response, self.URL_B: _raise_timeout}
+        post_log = []
+
+        for _ in range(3):
+            with pytest.raises(WebhookDeliveryIncomplete):
+                self._deliver(behaviors, post_log)
+
+        assert post_log.count(self.URL_A) == 1
+        assert post_log.count(self.URL_B) == 3
+
+    def test_recovered_endpoint_succeeds_without_resending_to_healthy(self):
+        """When the failing endpoint recovers, its pair completes and the pass
+        raises nothing — the healthy endpoint still sees exactly one POST."""
+        post_log = []
+
+        with pytest.raises(WebhookDeliveryIncomplete):
+            self._deliver({self.URL_A: _ok_response, self.URL_B: _raise_timeout}, post_log)
+
+        self._deliver({self.URL_A: _ok_response, self.URL_B: _ok_response}, post_log)
+
+        assert post_log.count(self.URL_A) == 1
+        assert post_log.count(self.URL_B) == 2
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=True
+        ).count() == 1
+
+    def test_5xx_endpoint_retries_without_duplicates_to_healthy(self):
+        """A 5xx endpoint retries per pair like a network failure — the
+        healthy endpoint still sees exactly one POST across all passes."""
+
+        def _server_error():
+            return MagicMock(status_code=503, text="Service Unavailable")
+
+        post_log = []
+        for _ in range(2):
+            with pytest.raises(WebhookDeliveryIncomplete):
+                self._deliver({self.URL_A: _ok_response, self.URL_B: _server_error}, post_log)
+
+        self._deliver({self.URL_A: _ok_response, self.URL_B: _ok_response}, post_log)
+
+        assert post_log.count(self.URL_A) == 1
+        assert post_log.count(self.URL_B) == 3
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=False, status_code=503
+        ).count() == 2
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=True
+        ).count() == 1
+
+    def test_dead_letter_is_per_endpoint_healthy_endpoint_still_served(self):
+        """One endpoint dead-lettering -> every other subscribed endpoint still
+        receives the event, exactly once. Driven through the outbox task seam."""
+        from apps.platform.events.registry import HandlerRegistry
+        from apps.platform.events.tasks import process_single_event
+        from apps.platform.events.webhooks import handle_webhook_delivery
+
+        registry = HandlerRegistry()
+        registry.register(
+            "usage.recorded",
+            "platform.webhook_delivery.usage.recorded",
+            handle_webhook_delivery,
+        )
+
+        behaviors = {self.URL_A: _ok_response, self.URL_B: _raise_timeout}
+        post_log = []
+        passes = 0
+
+        with patch("apps.platform.events.dispatch.handler_registry", registry), \
+             patch("apps.platform.events.webhooks.validate_webhook_url"), \
+             patch(
+                 "apps.platform.events.webhooks.httpx.Client",
+                 side_effect=lambda **kw: _FakePerUrlClient(behaviors, post_log),
+             ):
+            while True:
+                self.event.refresh_from_db()
+                if self.event.status != "pending":
+                    break
+                process_single_event(str(self.event.id))
+                passes += 1
+                assert passes <= 10, "outbox retry loop did not converge"
+
+        self.event.refresh_from_db()
+        assert self.event.status == "failed"  # B's pair exhausted the retries
+        assert post_log.count(self.URL_A) == 1  # healthy endpoint served exactly once
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_a, success=True
+        ).count() == 1
+        assert WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=False
+        ).count() == self.event.max_retries
+        assert not WebhookDeliveryAttempt.objects.filter(
+            webhook_config=self.config_b, success=True
+        ).exists()
 
 
 @pytest.mark.django_db
@@ -261,6 +474,8 @@ class TestWebhookTimeoutRetry:
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
     def test_timeout_raises_for_retry(self, mock_client_class, mock_validate):
+        """A timeout surfaces as WebhookDeliveryIncomplete at the end of the
+        pass, which the outbox retries."""
         import httpx
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -275,7 +490,7 @@ class TestWebhookTimeoutRetry:
             event_types=["*"],
         )
 
-        with pytest.raises(httpx.ReadTimeout):
+        with pytest.raises(WebhookDeliveryIncomplete):
             deliver_webhook(self.event)
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
@@ -295,7 +510,7 @@ class TestWebhookTimeoutRetry:
             event_types=["*"],
         )
 
-        with pytest.raises(httpx.ConnectTimeout):
+        with pytest.raises(WebhookDeliveryIncomplete):
             deliver_webhook(self.event)
 
         # Delivery attempt should have been saved before raising
@@ -318,7 +533,8 @@ class TestWebhookNetworkErrorRetry:
     @patch("apps.platform.events.webhooks.validate_webhook_url")
     @patch("apps.platform.events.webhooks.httpx.Client")
     def test_connection_error_raises_for_retry(self, mock_client_class, mock_validate):
-        """Non-timeout network errors (ConnectError) should re-raise for Celery retry."""
+        """Non-timeout network errors (ConnectError) surface as
+        WebhookDeliveryIncomplete for the outbox retry."""
         import httpx
 
         mock_client_instance = MagicMock()
@@ -334,7 +550,7 @@ class TestWebhookNetworkErrorRetry:
             event_types=["*"],
         )
 
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(WebhookDeliveryIncomplete):
             deliver_webhook(self.event)
 
         # Attempt should still be saved before re-raising

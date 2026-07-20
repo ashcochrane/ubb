@@ -9,11 +9,37 @@ import httpx
 from httpcore._backends.sync import SyncBackend
 
 from apps.platform.events.webhook_models import TenantWebhookConfig, WebhookDeliveryAttempt
+from core.exceptions import UBBError
 from core.url_validation import validate_webhook_url
 
 logger = logging.getLogger("ubb.webhooks")
 
 WEBHOOK_TIMEOUT = 10  # seconds
+
+
+class WebhookDeliveryIncomplete(UBBError):
+    """One or more endpoints failed retryably during a delivery pass.
+
+    Raised at the END of the pass — never mid-loop — so one endpoint's failure
+    can't stop its neighbours receiving the event. Bubbling up to the outbox
+    marks the event pending again; on the retry pass the per-endpoint
+    checkpoint (an existing successful WebhookDeliveryAttempt) skips endpoints
+    that already received the event, so only the still-failing
+    (event, endpoint) pairs are re-POSTed.
+    """
+
+
+class _RetryableHTTPStatus(UBBError):
+    """A response landed but with a retryable status (5xx / 429) — the
+    endpoint did not durably receive the event. Internal to this module:
+    raised by _deliver_to_config after recording the attempt, collected by
+    deliver_webhook exactly like a network failure."""
+
+
+# The single definition of "this delivery failure is retryable" — collected by
+# deliver_webhook into WebhookDeliveryIncomplete. Everything else (3xx/4xx
+# responses, non-network exceptions, blocked URLs) is permanent for the pair.
+RETRYABLE_DELIVERY_ERRORS = (httpx.HTTPError, OSError, _RetryableHTTPStatus)
 
 
 class _PinnedIPBackend(SyncBackend):
@@ -107,6 +133,12 @@ def deliver_webhook(event):
 
     This is called as an outbox handler. It finds all active webhook configs
     for the tenant that match the event type, and POSTs to each.
+
+    Delivery is checkpointed per (event, endpoint): a successful
+    WebhookDeliveryAttempt is the checkpoint, so a retry pass skips endpoints
+    that already received the event. A failing endpoint never aborts the pass
+    for its neighbours — retryable failures are collected and re-raised as
+    WebhookDeliveryIncomplete only after every endpoint has been attempted.
     """
     configs = TenantWebhookConfig.objects.filter(
         tenant_id=event.tenant_id,
@@ -124,6 +156,14 @@ def deliver_webhook(event):
     )
     livemode = not bool(is_sandbox)
 
+    delivered_config_ids = set(
+        WebhookDeliveryAttempt.objects.filter(
+            outbox_event=event,
+            success=True,
+        ).values_list("webhook_config_id", flat=True)
+    )
+
+    retryable_failures = []
     for config in configs:
         # Event-type filter (explicit opt-in; see catalog.py for the contract):
         #   ["*"]      -> all events
@@ -132,7 +172,25 @@ def deliver_webhook(event):
         if "*" not in config.event_types and event.event_type not in config.event_types:
             continue
 
-        _deliver_to_config(config, event, livemode=livemode)
+        # Per-endpoint checkpoint: this pair already succeeded on an earlier pass.
+        if config.id in delivered_config_ids:
+            continue
+
+        try:
+            _deliver_to_config(config, event, livemode=livemode)
+        except RETRYABLE_DELIVERY_ERRORS as e:
+            # The failed attempt is already recorded by _deliver_to_config.
+            retryable_failures.append((config, e))
+
+    if retryable_failures:
+        summary = "; ".join(
+            f"config={config.id}: {type(e).__name__}: {str(e)[:120]}"
+            for config, e in retryable_failures
+        )
+        raise WebhookDeliveryIncomplete(
+            f"{len(retryable_failures)} webhook endpoint(s) still failing for "
+            f"event {event.id}: {summary}"
+        ) from retryable_failures[-1][1]
 
 
 def _deliver_to_config(config, event, *, livemode=True):
@@ -203,7 +261,7 @@ def _deliver_to_config(config, event, *, livemode=True):
                 }
             },
         )
-        raise  # Re-raise for Celery retry
+        raise  # Collected by deliver_webhook -> WebhookDeliveryIncomplete -> outbox retry
     except Exception as e:
         attempt.success = False
         attempt.error_message = str(e)[:500]
@@ -218,12 +276,22 @@ def _deliver_to_config(config, event, *, livemode=True):
                 }
             },
         )
-        # Re-raise network errors for Celery retry; swallow only non-network issues
-        if isinstance(e, (httpx.HTTPError, OSError)):
+        # Raise network errors so deliver_webhook collects them for the outbox
+        # retry; swallow only non-network issues (no retry for this pair).
+        if isinstance(e, RETRYABLE_DELIVERY_ERRORS):
             raise
         return
 
     attempt.save()
+
+    if not attempt.success and (attempt.status_code >= 500 or attempt.status_code == 429):
+        # The endpoint answered but didn't durably receive the event — a 5xx
+        # (or 429) is as transient as a network failure, so it retries per
+        # endpoint. 3xx/4xx stay permanent: a receiver rejecting the request
+        # will keep rejecting it.
+        raise _RetryableHTTPStatus(
+            f"HTTP {attempt.status_code} from config {config.id} for event {event.id}"
+        )
 
 
 def handle_webhook_delivery(event_id, payload):
