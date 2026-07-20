@@ -36,14 +36,23 @@ def test_catalog_is_set_equal_to_frozen_payload_schema_registry():
     from apps.platform.events import schemas
     from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 
-    schema_event_types = {
-        obj.EVENT_TYPE
+    schema_classes = [
+        obj
         for obj in vars(schemas).values()
         if inspect.isclass(obj)
         and obj.__module__ == schemas.__name__  # defined there, not imported in
         and dataclasses.is_dataclass(obj)
-        and isinstance(getattr(obj, "EVENT_TYPE", None), str)
-    }
+    ]
+    # A schema class without an EVENT_TYPE would silently fall out of the
+    # registry side of the set comparison — make that a red test too.
+    missing_event_type = [
+        cls.__name__
+        for cls in schema_classes
+        if not isinstance(getattr(cls, "EVENT_TYPE", None), str)
+    ]
+    assert missing_event_type == []
+
+    schema_event_types = {cls.EVENT_TYPE for cls in schema_classes}
     assert schema_event_types == set(WEBHOOK_EVENT_TYPES)
 
 
