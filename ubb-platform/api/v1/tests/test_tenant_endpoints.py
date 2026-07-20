@@ -162,15 +162,16 @@ class TenantConfigEndpointTest(TestCase):
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
-        self.tenant.refresh_from_db()
-        self.assertEqual(self.tenant.min_balance_micros, 5_000_000)
         from apps.billing.gating.models import RiskConfig
         rc = RiskConfig.objects.get(tenant=self.tenant)  # created lazily
         self.assertEqual(rc.default_task_provider_cost_limit_micros, 50_000_000)
         from apps.billing.tenant_billing.models import BillingTenantConfig
         bc = BillingTenantConfig.objects.get(tenant=self.tenant)
+        # #52: the hard floor lands on BillingTenantConfig, like its siblings.
+        self.assertEqual(bc.min_balance_micros, 5_000_000)
         self.assertEqual(bc.default_task_floor_snapshot_micros, -5_000_000)
         body = response.json()
+        self.assertEqual(body["min_balance_micros"], 5_000_000)
         self.assertEqual(body["default_task_provider_cost_limit_micros"], 50_000_000)
         self.assertEqual(body["default_task_floor_snapshot_micros"], -5_000_000)
 
@@ -192,6 +193,67 @@ class TenantConfigEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json().get("code"), "invalid_config")
+
+    def test_patch_min_balance_drives_floor_resolution(self):
+        # #52 acceptance: the hard floor set through tenant-config must be the
+        # one get_customer_min_balance resolves for a customer with no
+        # per-customer override — i.e. the floor enforcement actually uses.
+        from apps.billing.queries import get_customer_min_balance
+        customer = Customer.objects.create(tenant=self.tenant, external_id="floor-c1")
+        self.assertEqual(get_customer_min_balance(customer.id, self.tenant.id), 0)
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"min_balance_micros": 5_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            get_customer_min_balance(customer.id, self.tenant.id), 5_000_000)
+
+    def test_get_config_min_balance_reads_billing_config_row(self):
+        # #52: the GET echoes the row resolution reads, not a dead column.
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(self.tenant.id)
+        bc.min_balance_micros = 9_000_000
+        bc.save(update_fields=["min_balance_micros"])
+        body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
+        self.assertEqual(body["min_balance_micros"], 9_000_000)
+
+    def test_patch_both_floors_validates_soft_against_incoming_hard(self):
+        # Stored hard is 0, which would reject a positive soft; the INCOMING
+        # hard (5M) allows it — one PATCH must validate against the value it
+        # is itself setting (mirrors the billing-profile PUT's effective_hard).
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"min_balance_micros": 5_000_000,
+                             "soft_min_balance_micros": 2_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        from apps.billing.tenant_billing.models import BillingTenantConfig
+        bc = BillingTenantConfig.objects.get(tenant=self.tenant)
+        self.assertEqual(bc.min_balance_micros, 5_000_000)
+        self.assertEqual(bc.soft_min_balance_micros, 2_000_000)
+
+    def test_patch_both_floors_soft_exceeding_incoming_hard_returns_422(self):
+        # Stored hard (10M) would allow soft 7M — but the PATCH lowers hard to
+        # 5M in the same request, so soft must validate against the incoming
+        # value. Nothing may be partially applied on the 422.
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(self.tenant.id)
+        bc.min_balance_micros = 10_000_000
+        bc.save(update_fields=["min_balance_micros"])
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"min_balance_micros": 5_000_000,
+                             "soft_min_balance_micros": 7_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json().get("code"), "invalid_config")
+        bc.refresh_from_db()
+        self.assertEqual(bc.min_balance_micros, 10_000_000)
+        self.assertIsNone(bc.soft_min_balance_micros)
 
     def test_patch_null_clears_task_default_limit(self):
         from apps.billing.gating.models import RiskConfig
@@ -300,21 +362,20 @@ class TenantConfigEndpointTest(TestCase):
         RiskConfig.objects.create(
             tenant=self.tenant, default_task_provider_cost_limit_micros=42_000_000)
         bc = get_billing_config(self.tenant.id)
+        bc.min_balance_micros = 7_000_000
         bc.default_task_floor_snapshot_micros = -3_000_000
-        bc.save(update_fields=["default_task_floor_snapshot_micros"])
-        self.tenant.min_balance_micros = 7_000_000
-        self.tenant.save()
+        bc.save(update_fields=["min_balance_micros",
+                               "default_task_floor_snapshot_micros"])
         response = self.http_client.patch(
             "/api/v1/tenant/config",
             data=json.dumps({"billing_mode": "meter_only"}),
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
-        self.tenant.refresh_from_db()
-        self.assertEqual(self.tenant.min_balance_micros, 7_000_000)
         rc = RiskConfig.objects.get(tenant=self.tenant)
         self.assertEqual(rc.default_task_provider_cost_limit_micros, 42_000_000)
         bc.refresh_from_db()
+        self.assertEqual(bc.min_balance_micros, 7_000_000)
         self.assertEqual(bc.default_task_floor_snapshot_micros, -3_000_000)
 
 

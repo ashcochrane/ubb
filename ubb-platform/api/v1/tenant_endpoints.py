@@ -339,9 +339,9 @@ def _config_out(t):
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
         "arrival_signals_enabled": t.arrival_signals_enabled,
-        "min_balance_micros": t.min_balance_micros,
         "default_task_provider_cost_limit_micros":
             rc.default_task_provider_cost_limit_micros if rc else None,
+        "min_balance_micros": bc.min_balance_micros,
         "default_task_floor_snapshot_micros":
             bc.default_task_floor_snapshot_micros,
         "soft_min_balance_micros": bc.soft_min_balance_micros,
@@ -466,12 +466,29 @@ def update_tenant_config(request, payload: TenantConfigIn):
     # Spend-safety caps. model_fields_set distinguishes an omitted key (leave
     # alone) from an explicit null (clear the cap) for the two nullable fields.
     fields_set = payload.model_fields_set
-    if payload.min_balance_micros is not None:
-        if payload.min_balance_micros < 0:
-            return 422, {"error": "min_balance_micros must be >= 0 (it is the "
-                                  "allowed overdraft magnitude, not a floor)",
+    if payload.min_balance_micros is not None and payload.min_balance_micros < 0:
+        return 422, {"error": "min_balance_micros must be >= 0 (it is the "
+                              "allowed overdraft magnitude, not a floor)",
+                     "code": "invalid_config"}
+    # Soft floor tenant default (#40, spec §F): negative is allowed (a
+    # wind-down line above zero); the value may not exceed the tenant-default
+    # hard floor's (that would put the wind-down line below the stop line).
+    # When one PATCH sets both floors, the soft value validates against the
+    # INCOMING hard, not the stored one (#52 — mirrors the billing-profile
+    # PUT's effective_hard). Validated here, before any write, so a 422
+    # leaves nothing partially applied.
+    if ("soft_min_balance_micros" in fields_set
+            and payload.soft_min_balance_micros is not None):
+        from apps.billing.queries import get_billing_config
+        effective_hard = payload.min_balance_micros
+        if effective_hard is None:
+            effective_hard = get_billing_config(t.id).min_balance_micros
+        if payload.soft_min_balance_micros > effective_hard:
+            return 422, {"error": "soft_min_balance_micros must keep the soft line "
+                                  "at or above the hard floor's — the value cannot "
+                                  "exceed the effective tenant-default "
+                                  f"min_balance_micros ({effective_hard})",
                          "code": "invalid_config"}
-        t.min_balance_micros = payload.min_balance_micros
     if ("default_task_provider_cost_limit_micros" in fields_set
             and payload.default_task_provider_cost_limit_micros is not None
             and payload.default_task_provider_cost_limit_micros <= 0):
@@ -510,6 +527,16 @@ def update_tenant_config(request, payload: TenantConfigIn):
                 payload.default_task_provider_cost_limit_micros)
             rc.save(update_fields=["default_task_provider_cost_limit_micros",
                                    "updated_at"])
+    # The tenant-default hard floor lives on BillingTenantConfig (#52) — the
+    # row get_customer_min_balance reads, like its two siblings below. No
+    # reconcile is kicked on change: floors are read fresh at detection time
+    # and the hourly patrol re-aligns (same posture as the billing-profile PUT).
+    if payload.min_balance_micros is not None:
+        from apps.billing.queries import get_billing_config
+        bc = get_billing_config(t.id)
+        if bc.min_balance_micros != payload.min_balance_micros:
+            bc.min_balance_micros = payload.min_balance_micros
+            bc.save(update_fields=["min_balance_micros", "updated_at"])
     # The task-default floor snapshot lives on BillingTenantConfig (the row
     # RiskService reads at task creation).
     if "default_task_floor_snapshot_micros" in fields_set:
@@ -522,19 +549,11 @@ def update_tenant_config(request, payload: TenantConfigIn):
             bc.save(update_fields=["default_task_floor_snapshot_micros",
                                    "updated_at"])
     # Soft floor tenant default (#40, spec §F) — lands on BillingTenantConfig
-    # (the row get_customer_soft_min_balance reads). Negative is allowed (a
-    # wind-down line above zero); the value may not exceed the tenant-default
-    # hard floor's (that would put the wind-down line below the stop line).
+    # (the row get_customer_soft_min_balance reads). Validated against the
+    # effective hard floor above, before any write.
     if "soft_min_balance_micros" in fields_set:
         from apps.billing.queries import get_billing_config
         bc = get_billing_config(t.id)
-        if (payload.soft_min_balance_micros is not None
-                and payload.soft_min_balance_micros > bc.min_balance_micros):
-            return 422, {"error": "soft_min_balance_micros must keep the soft line "
-                                  "at or above the hard floor's — the value cannot "
-                                  "exceed the tenant-default min_balance_micros "
-                                  f"({bc.min_balance_micros})",
-                         "code": "invalid_config"}
         if bc.soft_min_balance_micros != payload.soft_min_balance_micros:
             bc.soft_min_balance_micros = payload.soft_min_balance_micros
             bc.save(update_fields=["soft_min_balance_micros", "updated_at"])

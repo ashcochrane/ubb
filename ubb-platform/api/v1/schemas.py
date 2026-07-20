@@ -595,7 +595,8 @@ class TenantConfigOut(Schema):
     arrival_signals_enabled: bool = True
     # Spend-safety defaults. min_balance_micros is the allowed OVERDRAFT
     # magnitude (balance may go to -min_balance before blocking), not a
-    # positive floor.
+    # positive floor. BillingTenantConfig-backed (#52) — the row
+    # get_customer_min_balance reads.
     min_balance_micros: int = 0
     # Default COGS limit for new tasks (RiskConfig); null = no default —
     # absent an explicit start-call limit too, the task is uncapped.

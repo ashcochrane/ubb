@@ -221,11 +221,10 @@ class TestBillingOutboxHandler:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            min_balance_micros=1_000_000,  # $1 threshold
         )
         BillingTenantConfig.objects.create(
             tenant=tenant,
-            min_balance_micros=1_000_000,
+            min_balance_micros=1_000_000,  # $1 threshold
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -254,11 +253,10 @@ class TestBillingOutboxHandler:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            min_balance_micros=5_000_000,  # $5 threshold
         )
         BillingTenantConfig.objects.create(
             tenant=tenant,
-            min_balance_micros=5_000_000,
+            min_balance_micros=5_000_000,  # $5 threshold
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         wallet = Wallet.objects.create(customer=customer)
@@ -500,7 +498,6 @@ class TestBillingHandlerEmitsCustomerSuspended:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            min_balance_micros=1_000_000,
         )
         BillingTenantConfig.objects.create(
             tenant=tenant,
@@ -538,7 +535,6 @@ class TestBillingHandlerEmitsCustomerSuspended:
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
-            min_balance_micros=5_000_000,
         )
         BillingTenantConfig.objects.create(
             tenant=tenant,

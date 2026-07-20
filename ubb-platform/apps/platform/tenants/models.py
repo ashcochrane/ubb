@@ -51,7 +51,6 @@ class Tenant(BaseModel):
     # stripe_connected_account_id = tenant's own Stripe account (for end-user charges)
     # stripe_customer_id = tenant as UBB's customer (for platform fee billing)
     stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
-    min_balance_micros = models.BigIntegerField(default=0)
     platform_fee_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=1.00
     )
