@@ -5,12 +5,18 @@ from datetime import datetime
 from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
+from ubb._models import from_wire
 from ubb.types import (
-    PreCheckResult, RecordUsageResult, CloseTaskResult, CustomerResult,
-    BalanceResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
+    PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult,
     RefundResult, WalletTransaction, PaginatedResponse,
-    CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
 )
+# Generated DTOs (the wrap, #84): the facade returns the same generated models
+# its sub-clients do.
+from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.customer_response import CustomerResponse
+from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.usage_event_out import UsageEventOut
 
 
 def _check_micros(value: int, name: str) -> None:
@@ -188,7 +194,7 @@ class UBBClient:
                      task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = False) -> RecordUsageResult:
+                     raise_on_stop: bool = False) -> RecordUsageResponse:
         """Record a usage event via metering — a full passthrough to
         ``MeteringClient.record_usage()`` (kept in signature parity by
         test_sdk_delegation.TestRecordUsageSignatureParity).
@@ -232,7 +238,7 @@ class UBBClient:
             raise_on_stop=raise_on_stop,
         )
 
-    def close_task(self, task_id: str) -> CloseTaskResult:
+    def close_task(self, task_id: str) -> CloseTaskResponse:
         """Close (complete) a task. Requires metering product."""
         return self._require_metering().close_task(task_id)
 
@@ -242,7 +248,7 @@ class UBBClient:
                         metadata: dict | None = None,
                         account_type: str = "individual",
                         parent_external_id: str = "",
-                        billing_topology: str = "") -> CustomerResult:
+                        billing_topology: str = "") -> CustomerResponse:
         """Create a new customer via the platform API.
 
         Uses metering's HTTP client (metering is always present) to call
@@ -257,7 +263,7 @@ class UBBClient:
             "parent_external_id": parent_external_id,
             "billing_topology": billing_topology,
         })
-        return CustomerResult(**r.json())
+        return from_wire(CustomerResponse, r.json())
 
     def get_business(self, external_id: str) -> dict:
         """Get a business account view via the platform API.
@@ -514,12 +520,12 @@ class UBBClient:
 
     # ---- billing delegates ----
 
-    def get_balance(self, customer_id: str) -> BalanceResult:
+    def get_balance(self, customer_id: str) -> BalanceResponse:
         """Get customer wallet balance. Requires billing product."""
         return self._require_billing().get_balance(customer_id)
 
     def get_usage(self, customer_id: str, cursor: str | None = None,
-                  limit: int = 50) -> PaginatedResponse[UsageEvent]:
+                  limit: int = 50) -> PaginatedResponse[UsageEventOut]:
         """Get usage history. Requires metering product."""
         return self._require_metering().get_usage(customer_id, cursor=cursor, limit=limit)
 

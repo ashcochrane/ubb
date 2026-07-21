@@ -17,41 +17,6 @@ class PreCheckResult:
     floor_snapshot_micros: int | None = None
 
 @dataclass(frozen=True)
-class RecordUsageResult:
-    event_id: str
-    new_balance_micros: int | None = None
-    suspended: bool = False
-    provider_cost_micros: int | None = None
-    billed_cost_micros: int | None = None
-    units: int | None = None
-    balance_after_micros: int | None = None
-    task_id: str | None = None
-    parent_task_id: str | None = None
-    # The named task's running totals, denominationally explicit — only the
-    # provider (COGS) total races the task's limit.
-    task_total_billed_cost_micros: int | None = None
-    task_total_provider_cost_micros: int | None = None
-    # One-rule stop verdict (on a 200 — the event WAS recorded + charged).
-    # `stop` means "stop sending work for the named scope" (stop_scope: task
-    # | subtask | customer — scope `subtask` kills the child alone, the
-    # parent keeps running; scope `task` on a subtask's ack names the PARENT,
-    # see parent_task_id — stop the whole tree). `suspended` is the owner's
-    # durable status.
-    stop: bool = False
-    stop_reason: str | None = None
-    stop_scope: str | None = None
-    # The itemized past-limit story (#41): None when the event landed past
-    # nothing, else a list of context dicts — one per limit the event landed
-    # past: {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
-    # arrived_after}. arrived_after=False marks the tipping event.
-    stop_context: list | None = None
-    usage_metrics: dict | None = None
-    pricing_provenance: dict | None = None
-    uncosted_metrics: list | None = None
-    service_id: str = ""
-    agent_id: str = ""
-
-@dataclass(frozen=True)
 class BatchItemResult:
     """One item's VERDICT from record_batch (#78: one verdict field set with
     async ingest). ``data`` is the full raw per-item body (accepted: the same
@@ -69,69 +34,6 @@ class BatchResult:
     results: list[BatchItemResult]
     accepted: int
     rejected: int
-
-@dataclass(frozen=True)
-class CloseTaskResult:
-    task_id: str
-    status: str
-    total_billed_cost_micros: int
-    total_provider_cost_micros: int
-    event_count: int
-    # Set when the closed unit is a subtask. Closing a PARENT auto-completes
-    # its active subtasks server-side; closing a subtask closes it alone.
-    parent_task_id: str | None = None
-
-@dataclass(frozen=True)
-class CustomerResult:
-    id: str
-    external_id: str
-    status: str
-
-@dataclass(frozen=True)
-class BalanceResult:
-    balance_micros: int
-    currency: str
-    # F4.3 (additive): promo credit (not withdrawable), total credit that can
-    # expire, and the soonest expiry — None on servers without grant support.
-    promo_micros: int | None = None
-    expiring_micros: int | None = None
-    next_expiry_at: str | None = None
-    # #41: ISO timestamp of the last ≥0 → <0 crossing; None while the
-    # balance is ≥ 0. Purely observational — UBB never acts on it.
-    negative_since: str | None = None
-
-
-@dataclass(frozen=True)
-class CreditGrant:
-    id: str
-    kind: str
-    granted_micros: int | None = None
-    remaining_micros: int | None = None
-    expired_micros: int | None = None
-    voided_micros: int | None = None
-    currency: str | None = None
-    status: str | None = None
-    source: str | None = None
-    expires_at: str | None = None
-    warning_sent_at: str | None = None
-    created_at: str | None = None
-    balance_micros: int | None = None
-    transaction_id: str | None = None
-
-@dataclass(frozen=True)
-class UsageEvent:
-    id: str
-    request_id: str
-    event_type: str | None = None
-    provider: str | None = None
-    provider_cost_micros: int | None = None
-    billed_cost_micros: int | None = None
-    units: int | None = None
-    metadata: dict | None = None
-    effective_at: str | None = None
-    # #41: the event's immutable past-limit context array (see
-    # RecordUsageResult.stop_context); None for the common untagged event.
-    stop_context: list | None = None
 
 @dataclass(frozen=True)
 class TopUpResult:
@@ -187,40 +89,6 @@ class MarginTrendPoint:
     gross_margin_micros: int | None = None
     margin_percentage: float | None = None
 
-@dataclass(frozen=True)
-class CustomerRevenue:
-    recurring_amount_micros: int | None = None
-    interval: str | None = None
-    currency: str | None = None
-    effective_from: str | None = None
-    effective_to: str | None = None
-
-@dataclass(frozen=True)
-class BudgetConfig:
-    cap_micros: int | None = None
-    enforce_mode: str | None = None
-    hard_stop_pct: int | None = None
-    alert_levels: list | None = None
-    fail_closed: bool | None = None
-
-@dataclass(frozen=True)
-class BudgetStatus:
-    period: str | None = None
-    spend_micros: int | None = None
-    cap_micros: int | None = None
-    pct: float | None = None
-    enforce_mode: str | None = None
-
-@dataclass(frozen=True)
-class UsageInvoice:
-    period_start: str | None = None
-    period_end: str | None = None
-    total_billed_micros: int | None = None
-    currency: str | None = None
-    status: str | None = None
-    stripe_invoice_id: str | None = None
-    skip_reason: str | None = None
-
 T = TypeVar("T")
 
 @dataclass(frozen=True)
@@ -228,11 +96,6 @@ class PaginatedResponse(Generic[T]):
     data: list[T]
     next_cursor: str | None
     has_more: bool
-
-@dataclass(frozen=True)
-class TenantMarkup:
-    markup_percentage_micros: int | None = None
-    fixed_uplift_micros: int | None = None
 
 @dataclass(frozen=True)
 class RateCard:

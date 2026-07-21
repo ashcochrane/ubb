@@ -249,7 +249,7 @@ class TestClientRetryIntegration(unittest.TestCase):
             resp_fail.json.return_value = {"error": "rate limited"}
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
-            resp_ok.json.return_value = {"event_id": "evt_1"}
+            resp_ok.json.return_value = {"event_id": "evt_1", "suspended": False}
             mock_post.side_effect = [resp_fail, resp_ok]
             r = client._request("post", "/api/v1/metering/usage", json={})
             self.assertEqual(mock_post.call_count, 2)
@@ -343,7 +343,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {
-                "id": "cust_1", "external_id": "ext_1", "status": "active",
+                "id": "cust_1", "external_id": "ext_1", "status": "active", "stripe_customer_id": "",
             }
             mock_post.side_effect = [resp_fail, resp_ok]
             result = client.create_customer("ext_1")
@@ -360,7 +360,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_fail.json.return_value = {"error": "rate limited"}
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
-            resp_ok.json.return_value = {"event_id": "evt_1",
+            resp_ok.json.return_value = {"event_id": "evt_1", "suspended": False,
                                          "new_balance_micros": 100}
             mock_post.side_effect = [resp_fail, resp_ok]
             result = client.record_usage(customer_id="c1", request_id="r1",

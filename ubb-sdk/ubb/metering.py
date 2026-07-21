@@ -4,17 +4,23 @@ from datetime import datetime
 
 import httpx
 
-from ubb.exceptions import (
-    UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
-    UBBStoppedError,
-)
+from ubb.exceptions import UBBConnectionError, UBBStoppedError
+from ubb._http import raise_for_status
+from ubb._models import from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
-    RecordUsageResult, CloseTaskResult, UsageEvent, PaginatedResponse,
+    PaginatedResponse,
     BatchItemResult, BatchResult,
-    CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue,
-    RateCard, TenantMarkup,
+    CustomerMargin, DimensionMargin, MarginTrendPoint,
+    RateCard,
 )
+# Generated DTOs (the wrap, #84): response types come from the committed core,
+# never hand-typed again.
+from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.tenant_markup_out import TenantMarkupOut
+from ubb._core.models.revenue_profile_out import RevenueProfileOut
+from ubb._core.models.usage_event_out import UsageEventOut
 
 
 def _serialize_recorded_at(value):
@@ -60,20 +66,7 @@ class MeteringClient:
             raise UBBConnectionError("Request timed out", original=e) from e
         except httpx.ConnectError as e:
             raise UBBConnectionError("Could not connect to UBB API", original=e) from e
-        if response.status_code == 401:
-            raise UBBAuthError("Invalid or revoked API key")
-        code, detail = self._extract_error(response)
-        if response.status_code == 409:
-            raise UBBConflictError(detail, code=code)
-        if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail, code=code)
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    err.retry_after = float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            raise err
+        raise_for_status(response)
         return response
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -81,19 +74,6 @@ class MeteringClient:
             self._request_once, max_retries=self._max_retries,
             method=method, path=path, **kwargs,
         )
-
-    @staticmethod
-    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
-        """(code, detail) from an RFC 9457 problem+json body (#78); falls
-        back to (None, raw text) for anything non-problem."""
-        try:
-            body = response.json()
-            if isinstance(body, dict):
-                detail = body.get("detail") or body.get("title") or response.text
-                return body.get("code"), detail
-        except Exception:
-            pass
-        return None, response.text
 
     # ---- public API ----
 
@@ -105,7 +85,7 @@ class MeteringClient:
                      task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = False) -> RecordUsageResult:
+                     raise_on_stop: bool = False) -> RecordUsageResponse:
         """Record a usage event via POST /api/v1/metering/usage.
 
         One-rule contract: every event that reaches UBB is priced, recorded,
@@ -155,9 +135,7 @@ class MeteringClient:
         if task_id is not None:
             body["task_id"] = task_id
         r = self._request("post", "/api/v1/metering/usage", json=body)
-        data = r.json()
-        result = RecordUsageResult(**{k: v for k, v in data.items()
-                                      if k in RecordUsageResult.__dataclass_fields__})
+        result = from_wire(RecordUsageResponse, r.json())
         if raise_on_stop and result.stop:
             raise UBBStoppedError(
                 reason=result.stop_reason, scope=result.stop_scope, task_id=result.task_id)
@@ -199,18 +177,18 @@ class MeteringClient:
         return BatchResult(results=results, accepted=body.get("accepted", 0),
                            rejected=body.get("rejected", 0))
 
-    def close_task(self, task_id: str) -> CloseTaskResult:
+    def close_task(self, task_id: str) -> CloseTaskResponse:
         """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close.
 
         Closing a parent auto-completes its active subtasks server-side —
         cleanup is one call. Closing a subtask closes it alone."""
         r = self._request("post", f"/api/v1/metering/tasks/{task_id}/close")
-        return CloseTaskResult(**r.json())
+        return from_wire(CloseTaskResponse, r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   tag_key: str | None = None, tag_value: str | None = None,
                   past_limit: bool | None = None, stop_scope: str | None = None,
-                  episode_seq: int | None = None) -> PaginatedResponse[UsageEvent]:
+                  episode_seq: int | None = None) -> PaginatedResponse[UsageEventOut]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage.
 
         The #41 past-limit filters: ``past_limit=True`` returns only events
@@ -232,7 +210,7 @@ class MeteringClient:
             params["episode_seq"] = episode_seq
         r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
         body = r.json()
-        events = [UsageEvent(**item) for item in body["data"]]
+        events = [from_wire(UsageEventOut, item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
 
     def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
@@ -288,11 +266,11 @@ class MeteringClient:
         if effective_to:
             body["effective_to"] = effective_to
         r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue", json=body)
-        return CustomerRevenue(**r.json())
+        return from_wire(RevenueProfileOut, r.json())
 
     def get_customer_revenue(self, customer_id):
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
-        return CustomerRevenue(**r.json())
+        return from_wire(RevenueProfileOut, r.json())
 
     def get_business_margin(self, external_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
@@ -412,27 +390,27 @@ class MeteringClient:
 
     # ---- markup methods ----
 
-    def get_markup(self) -> TenantMarkup:
+    def get_markup(self) -> TenantMarkupOut:
         r = self._request("get", "/api/v1/metering/pricing/markup")
         return self._to_markup(r.json())
 
-    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkup:
+    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
         r = self._request("put", "/api/v1/metering/pricing/markup", json={
             "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
         return self._to_markup(r.json())
 
-    def get_customer_markup(self, customer_id) -> TenantMarkup:
+    def get_customer_markup(self, customer_id) -> TenantMarkupOut:
         r = self._request("get", f"/api/v1/metering/pricing/customers/{customer_id}/markup")
         return self._to_markup(r.json())
 
-    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkup:
+    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
         r = self._request("put", f"/api/v1/metering/pricing/customers/{customer_id}/markup", json={
             "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
         return self._to_markup(r.json())
 
     @staticmethod
     def _to_markup(d):
-        return TenantMarkup(**{k: v for k, v in d.items() if k in TenantMarkup.__dataclass_fields__})
+        return from_wire(TenantMarkupOut, d)
 
     def close(self) -> None:
         self._http.close()

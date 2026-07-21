@@ -11,7 +11,7 @@ SECRET = "whsec_test_secret"
 PAYLOAD = json.dumps(
     {
         "data": {"cost_micros": 1000, "customer_id": "c1"},
-        "event_id": "11111111-1111-1111-1111-111111111111",
+        "event_id": "11111111-1111-1111-1111-111111111111", "suspended": False,
         "event_type": "usage.recorded",
         "livemode": True,
         "tenant_id": "22222222-2222-2222-2222-222222222222",

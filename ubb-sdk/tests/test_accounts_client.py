@@ -2,11 +2,11 @@ import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
 from ubb.client import UBBClient
-from ubb.types import CustomerResult
+from ubb._core.models.customer_response import CustomerResponse
 
 
 CUSTOMER_FIXTURE = {
-    "id": "biz1", "external_id": "biz", "status": "active",
+    "id": "biz1", "external_id": "biz", "status": "active", "stripe_customer_id": "",
 }
 
 BUSINESS_FIXTURE = {
@@ -53,7 +53,7 @@ class AccountsClientTest(unittest.TestCase):
                 "billing_topology": "pooled",
             }
         )
-        self.assertIsInstance(result, CustomerResult)
+        self.assertIsInstance(result, CustomerResponse)
         self.assertEqual(result.external_id, "biz")
         ubb.close()
 

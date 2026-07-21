@@ -13,11 +13,12 @@ from ubb.exceptions import (
 )
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import (
-    PreCheckResult, RecordUsageResult, CustomerResult, BalanceResult,
-    UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult,
-    WalletTransaction, PaginatedResponse,
-)
+from ubb.types import PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult, WalletTransaction, PaginatedResponse
+from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._models import from_wire
+from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.customer_response import CustomerResponse
+from ubb._core.models.balance_response import BalanceResponse
 
 
 class UBBClientTest(unittest.TestCase):
@@ -71,7 +72,7 @@ class UBBClientTest(unittest.TestCase):
     def test_create_customer(self):
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "id": "c1", "external_id": "u42", "status": "active",
+            "id": "c1", "external_id": "u42", "status": "active", "stripe_customer_id": "cus_abc",
         }
         self.client.metering._request = MagicMock(return_value=mock_response)
         result = self.client.create_customer(external_id="u42",
@@ -91,7 +92,7 @@ class UBBClientTest(unittest.TestCase):
     # --- get_balance (delegates to billing) ---
 
     def test_get_balance(self):
-        expected = BalanceResult(balance_micros=10000000, currency="USD")
+        expected = BalanceResponse(balance_micros=10000000, currency="USD")
         self.client.billing.get_balance = MagicMock(return_value=expected)
         result = self.client.get_balance(customer_id="c1")
         self.assertEqual(result.balance_micros, 10000000)
@@ -127,8 +128,7 @@ class UBBClientTest(unittest.TestCase):
 
     def test_get_usage(self):
         expected = PaginatedResponse(
-            data=[UsageEvent(id="e1", request_id="r1", billed_cost_micros=10000,
-                             metadata={}, effective_at="2025-01-01T00:00:00Z")],
+            data=[from_wire(UsageEventOut, {"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1", "billed_cost_micros": 10000, "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,
         )
         self.client.metering.get_usage = MagicMock(return_value=expected)

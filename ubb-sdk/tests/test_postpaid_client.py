@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from ubb.billing import BillingClient
-from ubb.types import UsageInvoice
+from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 
 
 class PostpaidClientTest(unittest.TestCase):
@@ -18,7 +18,7 @@ class PostpaidClientTest(unittest.TestCase):
              "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_1", "skip_reason": ""}],
             "next_cursor": None, "has_more": False})
         rows = self.client.get_usage_invoices("c1")
-        self.assertIsInstance(rows[0], UsageInvoice)
+        self.assertIsInstance(rows[0], UsageInvoiceOut)
         self.assertEqual(rows[0].total_billed_micros, 1000)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/billing/customers/c1/usage-invoices")
 

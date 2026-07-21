@@ -30,11 +30,6 @@ class UBBConnectionError(UBBError):
         self.original = original
         super().__init__(message)
 
-class UBBConflictError(UBBAPIError):
-    """409 Conflict (e.g., duplicate external_id on create_customer)."""
-    def __init__(self, detail: str = "", code: str | None = None):
-        super().__init__(409, detail, code=code)
-
 class UBBStoppedError(UBBError):
     """A stop verdict rode a success response (one-rule contract).
 
@@ -62,3 +57,17 @@ class UBBWebhookVerificationError(UBBError):
     signature header. Treat the delivery as untrusted and respond non-2xx.
     """
     pass
+
+
+# The per-code API exception hierarchy is GENERATED from openapi/error-codes.json
+# (ubb/codegen/generate_exceptions.py) and committed under the ratchet. Importing
+# it here re-exports every status-family parent (ConflictError, …) and per-code
+# leaf (InsufficientBalanceError, …) from ``ubb.exceptions``. The import sits at
+# the bottom so UBBAPIError is already defined when the generated module (which
+# subclasses it) imports back — a benign, resolved circular import.
+from ubb._exceptions_generated import *  # noqa: E402,F401,F403
+from ubb._exceptions_generated import ConflictError  # noqa: E402
+
+# Backwards-compatible alias: 409 Conflict was ``UBBConflictError`` before the
+# registry-derived hierarchy landed; it is now exactly ``ConflictError``.
+UBBConflictError = ConflictError

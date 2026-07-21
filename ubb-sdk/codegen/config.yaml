@@ -1,0 +1,28 @@
+# openapi-python-client configuration for the UBB SDK generated core.
+#
+# The generated core (ubb/_core) is committed in-repo under the same ratchet as
+# openapi/v1.json (ADR-002): CI regenerates and diffs it, so hand edits are
+# refused. See codegen/generate_core.py and codegen/README.md.
+#
+# Pinned generator: openapi-python-client==0.29.0 (see ubb-sdk/pyproject.toml
+# [project.optional-dependencies] codegen). It is 0.x with breaking minors, so
+# bumping it is a deliberate, reviewed PR.
+
+# The core is imported as ``ubb._core``; --meta none writes the package body
+# straight into ubb/_core, and every internal import is relative, so this name
+# only labels the package.
+package_name_override: _core
+
+# Prefix inline object titles with their owning schema's name. Several response
+# bodies carry an inline ``metadata`` object titled "Metadata"; without the
+# prefix the generator collides them and silently drops UsageEventOut /
+# PaginatedUsageResponse. The prefix (UsageEventOutMetadata, ...) keeps every
+# model.
+use_path_prefixes_for_title_model_names: true
+
+# No post-generation formatter. Running ruff (or any formatter) would make the
+# committed bytes depend on that tool's version being identical everywhere the
+# ratchet runs; disabling it makes the pinned generator the ONLY input, so
+# regeneration is byte-deterministic. generate_core.py normalizes newlines to
+# LF so Windows and the Linux CI runner produce identical output.
+post_hooks: []

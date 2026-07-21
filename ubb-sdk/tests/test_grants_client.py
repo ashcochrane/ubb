@@ -2,7 +2,9 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from ubb.billing import BillingClient
-from ubb.types import BalanceResult, CreditGrant, PaginatedResponse
+from ubb.types import PaginatedResponse
+from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.grant_out import GrantOut
 
 
 def _grant_body(**overrides):
@@ -33,7 +35,7 @@ class GrantsClientTest(unittest.TestCase):
             customer_id="cust_1", kind="promo", amount_micros=10_000_000,
             idempotency_key="welcome-1", expires_in_days=30,
             description="Welcome bonus")
-        self.assertIsInstance(result, CreditGrant)
+        self.assertIsInstance(result, GrantOut)
         self.assertEqual(result.id, "g_1")
         self.assertEqual(result.remaining_micros, 10_000_000)
         self.assertEqual(result.status, "active")
@@ -67,7 +69,7 @@ class GrantsClientTest(unittest.TestCase):
         result = self.client.list_grants(customer_id="cust_1", status="active")
         self.assertIsInstance(result, PaginatedResponse)
         self.assertEqual(len(result.data), 1)
-        self.assertIsInstance(result.data[0], CreditGrant)
+        self.assertIsInstance(result.data[0], GrantOut)
         self.assertFalse(result.has_more)
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/grants")
@@ -93,7 +95,7 @@ class GrantsClientTest(unittest.TestCase):
             "next_expiry_at": "2026-07-12T00:00:00+00:00",
         })
         result = self.client.get_balance(customer_id="cust_1")
-        self.assertIsInstance(result, BalanceResult)
+        self.assertIsInstance(result, BalanceResponse)
         self.assertEqual(result.promo_micros, 6_000_000)
         self.assertEqual(result.expiring_micros, 10_000_000)
         self.assertEqual(result.next_expiry_at, "2026-07-12T00:00:00+00:00")

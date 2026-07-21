@@ -15,7 +15,8 @@ from unittest.mock import MagicMock, patch
 from ubb import UBBClient, SubscriptionsClient
 from ubb.exceptions import UBBError
 from ubb.metering import MeteringClient
-from ubb.types import BalanceResult, TopUpResult, PaginatedResponse, WalletTransaction
+from ubb.types import TopUpResult, PaginatedResponse, WalletTransaction
+from ubb._core.models.balance_response import BalanceResponse
 
 
 class TestLegacyHTTPRemoved:
@@ -122,7 +123,7 @@ class TestBillingDelegation:
         self.client.close()
 
     def test_get_balance_delegates(self):
-        expected = BalanceResult(balance_micros=5_000_000, currency="USD")
+        expected = BalanceResponse(balance_micros=5_000_000, currency="USD")
         self.client.billing.get_balance = MagicMock(return_value=expected)
         result = self.client.get_balance("cust1")
         self.client.billing.get_balance.assert_called_once_with("cust1")
@@ -231,7 +232,7 @@ class TestCreateCustomerDelegation:
         client = UBBClient(api_key="test", metering=True)
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "id": "c1", "external_id": "ext1", "status": "active",
+            "id": "c1", "external_id": "ext1", "status": "active", "stripe_customer_id": "cus_123",
         }
         client.metering._request = MagicMock(return_value=mock_response)
 

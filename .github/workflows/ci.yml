@@ -142,6 +142,26 @@ jobs:
           python scripts/export_openapi.py
           git -C .. diff --exit-code -- openapi/v1.json
 
+      # The SDK's generated transport+DTO core (ubb/_core) rides the SAME
+      # ratchet as the spec (issue #84, ADR-002): the committed core must be
+      # exactly what the pinned generator produces from the committed spec, so
+      # hand edits and stale-spec cores turn CI red. The generator version is
+      # the only input (ruff post-hook disabled, newlines LF-normalized), so
+      # this Linux runner reproduces the bytes committed from any OS.
+      - name: SDK core regeneration gate — zero diff
+        run: |
+          pip install "openapi-python-client==0.29.0"
+          python ubb-sdk/codegen/generate_core.py
+          git diff --exit-code -- ubb-sdk/ubb/_core ubb-sdk/ubb/_spec_revision.py
+
+      # The registry-derived exception hierarchy rides the ratchet too: the
+      # committed ubb/_exceptions_generated.py must be exactly what the
+      # generator produces from openapi/error-codes.json (issue #84).
+      - name: SDK exception hierarchy regeneration gate — zero diff
+        run: |
+          python ubb-sdk/codegen/generate_exceptions.py
+          git diff --exit-code -- ubb-sdk/ubb/_exceptions_generated.py
+
       - name: Install oasdiff (pinned)
         run: |
           curl -sSfL -o /tmp/oasdiff.tar.gz \
