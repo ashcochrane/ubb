@@ -171,7 +171,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
                 metadata={
                     "label": key_obj.label,
                     "key_prefix": key_obj.key_prefix,
-                    "mode": "test" if key_obj.key_prefix.startswith("ubb_test_") else "live",
+                    "mode": "test" if key_obj.tenant.is_sandbox else "live",
                     "landed_tenant_id": str(key_obj.tenant_id),
                 },
             )

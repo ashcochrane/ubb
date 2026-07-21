@@ -4,6 +4,11 @@ from django.core.cache import cache
 from django.utils import timezone
 from ninja.security import HttpBearer
 
+from apps.platform.audit.actors import (
+    api_key_actor,
+    member_actor,
+    set_current_actor,
+)
 # Re-exported so composition-layer routers — including the product-owned
 # apps/<product>/api modules, which may NOT import api.* (ADR-001) — reach the
 # floor helper and the role vocabulary from one place: `from core.auth import
@@ -14,11 +19,6 @@ from apps.platform.membership.roles import (  # noqa: F401
     VALID_ROLES,
     WRITE,
     role_satisfies,
-)
-from apps.platform.audit.actors import (
-    api_key_actor,
-    member_actor,
-    set_current_actor,
 )
 from apps.platform.membership.services import resolve_member_for_claims
 from apps.platform.tenants.models import TenantApiKey

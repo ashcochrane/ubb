@@ -16,6 +16,20 @@ correlation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "correlation_id", default=""
 )
 
+
+def get_correlation_id():
+    """The current request's correlation id, or "" outside a request context.
+
+    The one read used by every write path that stamps the correlation id onto a
+    durable row (the events outbox, the audit ledger). Defensive by design — a
+    missing contextvar or a teardown race yields "" rather than raising into a
+    write path that must not fail for what is only a trace aid.
+    """
+    try:
+        return correlation_id_var.get("")
+    except Exception:
+        return ""
+
 REDACT_KEYS = {
     "email", "phone", "name", "payment_method", "card",
     "ip_address", "address",

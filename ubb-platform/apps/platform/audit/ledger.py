@@ -12,6 +12,7 @@ import logging
 from apps.platform.audit.actions import is_registered_action
 from apps.platform.audit.actors import SYSTEM, get_current_actor
 from apps.platform.audit.models import AuditRecord
+from core.logging import get_correlation_id
 
 logger = logging.getLogger("ubb.audit")
 
@@ -42,14 +43,6 @@ def record(*, action, tenant_id, resource_type, resource_id="",
             extra={"data": {"action": action, "resource_type": resource_type}},
         )
 
-    # Correlation id links this entry to any outbox events the same request
-    # emitted (ADR-004 §4). Read defensively, exactly as write_event does.
-    try:
-        from core.logging import correlation_id_var
-        correlation_id = correlation_id_var.get("")
-    except Exception:
-        correlation_id = ""
-
     return AuditRecord.objects.create(
         tenant_id=tenant_id,
         action=action,
@@ -58,6 +51,7 @@ def record(*, action, tenant_id, resource_type, resource_id="",
         actor_display=actor.display if actor is not None else "",
         resource_type=resource_type,
         resource_id=str(resource_id or ""),
-        correlation_id=correlation_id,
+        # Links the entry to any outbox events the same request emitted (§4).
+        correlation_id=get_correlation_id(),
         metadata=metadata or {},
     )

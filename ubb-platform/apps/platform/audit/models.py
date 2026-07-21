@@ -19,6 +19,11 @@ from core.models import BaseModel
 
 
 class AuditRecord(BaseModel):
+    # Inherits id (UUID pk) + created_at + updated_at from BaseModel, for
+    # uniformity with every other kernel model. ``created_at`` IS the action
+    # timestamp; ``updated_at`` is inert here — the append-only save() guard means
+    # a row is never updated, so it always equals ``created_at``.
+
     # The tenant whose account this action is on — every row is tenant-scoped,
     # the axis the feed (#82) reads and paginates by. For a tenant principal this
     # is the tenant it authenticated against (the account being administered),
