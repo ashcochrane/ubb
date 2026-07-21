@@ -487,7 +487,10 @@ class UsageInvoiceOut(Schema):
     last_attempt_error: Optional[str] = None
 
 
-class PaginatedUsageInvoices(Schema):
+class UsageInvoiceListResponse(Schema):
+    # NOT "PaginatedUsageInvoices" — the /me surface already owns that
+    # component name (me_endpoints.py) and ninja silently overwrites
+    # duplicate schema names in the one document (#77's hazard).
     data: list[UsageInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool

@@ -1830,7 +1830,7 @@
         "properties": {
           "data": {
             "items": {
-              "$ref": "#/components/schemas/UsageInvoiceOut"
+              "$ref": "#/components/schemas/MeUsageInvoiceOut"
             },
             "title": "Data",
             "type": "array"
@@ -4527,6 +4527,38 @@
         "title": "UsageEventOut",
         "type": "object"
       },
+      "UsageInvoiceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UsageInvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "UsageInvoiceListResponse",
+        "type": "object"
+      },
       "UsageInvoiceOut": {
         "properties": {
           "currency": {
@@ -5601,7 +5633,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedUsageInvoices"
+                  "$ref": "#/components/schemas/UsageInvoiceListResponse"
                 }
               }
             },

@@ -17,7 +17,7 @@ from api.v1.schemas import (
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
-    PaginatedUsageInvoices, PostpaidConfigIn, PostpaidConfigOut,
+    UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
     TenantBillingPeriodOut, TenantBillingPeriodListResponse,
     TenantInvoiceOut, TenantInvoiceListResponse,
     TenantUsageInvoiceListResponse,
@@ -827,7 +827,7 @@ def get_customer_budget_status(request, customer_id: UUID):
 # ---------- Postpaid usage-invoice + config ----------
 
 
-@billing_router.get("/customers/{customer_id}/usage-invoices", response=PaginatedUsageInvoices)
+@billing_router.get("/customers/{customer_id}/usage-invoices", response=UsageInvoiceListResponse)
 def list_customer_usage_invoices(request, customer_id: UUID,
                                  cursor: str = None, limit: int = 50):
     _product_check(request)
