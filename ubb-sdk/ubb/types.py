@@ -53,11 +53,13 @@ class RecordUsageResult:
 
 @dataclass(frozen=True)
 class BatchItemResult:
-    """One item's outcome from record_batch. ``data`` is the full raw per-item
-    body (success: the same fields as RecordUsageResult; error: the same error
-    body the single-call endpoint would have returned)."""
-    ok: bool
-    error: str | None = None
+    """One item's VERDICT from record_batch (#78: one verdict field set with
+    async ingest). ``data`` is the full raw per-item body (accepted: the same
+    fields as RecordUsageResult; rejected: {accepted, code, detail} plus null
+    stop fields). ``code`` words come from the platform's error-code
+    registry."""
+    accepted: bool
+    code: str | None = None
     detail: str | None = None
     event_id: str | None = None
     data: dict | None = None
@@ -65,8 +67,8 @@ class BatchItemResult:
 @dataclass(frozen=True)
 class BatchResult:
     results: list[BatchItemResult]
-    succeeded: int
-    failed: int
+    accepted: int
+    rejected: int
 
 @dataclass(frozen=True)
 class CloseTaskResult:

@@ -240,7 +240,8 @@ class TestBatchOneRuleParity:
 
     def test_byte_equivalent_to_sequential_singles(self):
         """The batch per-item bodies equal the single endpoint's bodies for the
-        identical scenario (modulo the 'ok' marker and the task/event ids)."""
+        identical scenario (modulo the 'accepted' marker and the task/event
+        ids)."""
         t, c, http, auth = _setup()
         c2 = Customer.objects.create(tenant=t, external_id="cust2")
         task_b = self._task(t, c)
@@ -253,7 +254,7 @@ class TestBatchOneRuleParity:
             single_bodies.append(_post(http, auth, SINGLE_URL, item).json())
 
         def normalize(d):
-            d = {k: v for k, v in d.items() if k not in ("ok",)}
+            d = {k: v for k, v in d.items() if k not in ("accepted",)}
             if d.get("task_id"):
                 d["task_id"] = "TASK"
             if d.get("event_id"):

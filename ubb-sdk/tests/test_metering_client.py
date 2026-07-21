@@ -126,10 +126,12 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_batch_maps_recorded_at_and_parses_results(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "results": [
-                {"ok": True, "event_id": "evt_1", "billed_cost_micros": 5},
-                {"ok": False, "error": "effective_at_too_old", "detail": "too old"},
+                {"accepted": True, "event_id": "evt_1", "billed_cost_micros": 5},
+                {"accepted": False, "code": "effective_at_too_old",
+                 "detail": "too old", "stop": False, "stop_reason": None,
+                 "stop_scope": None},
             ],
-            "succeeded": 1, "failed": 1,
+            "accepted": 1, "rejected": 1,
         })
         result = self.client.record_batch([
             {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
@@ -144,16 +146,16 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(wire[1]["effective_at"], "2026-01-01T00:00:00+00:00")
         self.assertNotIn("recorded_at", wire[0])
         self.assertNotIn("recorded_at", wire[1])
-        # Result parsing
+        # Result parsing (#78: one verdict field set)
         self.assertIsInstance(result, BatchResult)
-        self.assertEqual(result.succeeded, 1)
-        self.assertEqual(result.failed, 1)
+        self.assertEqual(result.accepted, 1)
+        self.assertEqual(result.rejected, 1)
         self.assertIsInstance(result.results[0], BatchItemResult)
-        self.assertTrue(result.results[0].ok)
+        self.assertTrue(result.results[0].accepted)
         self.assertEqual(result.results[0].event_id, "evt_1")
         self.assertEqual(result.results[0].data["billed_cost_micros"], 5)
-        self.assertFalse(result.results[1].ok)
-        self.assertEqual(result.results[1].error, "effective_at_too_old")
+        self.assertFalse(result.results[1].accepted)
+        self.assertEqual(result.results[1].code, "effective_at_too_old")
         self.assertEqual(result.results[1].detail, "too old")
 
     @patch("ubb.metering.httpx.Client.post")
@@ -407,7 +409,8 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_url(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "data": [], "next_cursor": None, "has_more": False})
         self.client.list_rate_cards()
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")

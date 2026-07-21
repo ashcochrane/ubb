@@ -530,10 +530,13 @@ class UBBClient:
             customer_id, since=since, until=until)
 
     def create_top_up(self, customer_id: str, amount_micros: int, *,
-                      success_url: str, cancel_url: str) -> TopUpResult:
-        """Create a top-up checkout session. Requires billing product."""
+                      success_url: str, cancel_url: str,
+                      idempotency_key: str) -> TopUpResult:
+        """Create a top-up checkout session. Requires billing product.
+        idempotency_key is REQUIRED (#78) — replays never double-charge."""
         return self._require_billing().create_top_up(
             customer_id, amount_micros, success_url, cancel_url,
+            idempotency_key,
         )
 
     def configure_auto_top_up(self, customer_id: str, threshold: int,

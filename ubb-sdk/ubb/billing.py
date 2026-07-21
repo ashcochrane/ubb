@@ -42,11 +42,11 @@ class BillingClient:
             raise UBBConnectionError("Could not connect to UBB API", original=e) from e
         if response.status_code == 401:
             raise UBBAuthError("Invalid or revoked API key")
-        detail = self._extract_error_detail(response)
+        code, detail = self._extract_error(response)
         if response.status_code == 409:
-            raise UBBConflictError(detail)
+            raise UBBConflictError(detail, code=code)
         if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail)
+            err = UBBAPIError(response.status_code, detail, code=code)
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
@@ -63,17 +63,17 @@ class BillingClient:
         )
 
     @staticmethod
-    def _extract_error_detail(response: httpx.Response) -> str:
-        """Parse JSON error body if available, fallback to raw text."""
+    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
+        """(code, detail) from an RFC 9457 problem+json body (#78); falls
+        back to (None, raw text) for anything non-problem."""
         try:
             body = response.json()
-            if isinstance(body, dict) and "error" in body:
-                return body["error"]
-            if isinstance(body, dict) and "detail" in body:
-                return body["detail"]
+            if isinstance(body, dict):
+                detail = body.get("detail") or body.get("title") or response.text
+                return body.get("code"), detail
         except Exception:
             pass
-        return response.text
+        return None, response.text
 
     # ---- public API ----
 
@@ -173,12 +173,18 @@ class BillingClient:
         return r.json()
 
     def create_top_up(self, customer_id: str, amount_micros: int,
-                      success_url: str, cancel_url: str) -> TopUpResult:
-        """Create a top-up checkout session via POST /api/v1/billing/customers/{customer_id}/top-up."""
+                      success_url: str, cancel_url: str,
+                      idempotency_key: str) -> TopUpResult:
+        """Create a top-up checkout session via POST
+        /api/v1/billing/customers/{customer_id}/top-up.
+
+        idempotency_key is REQUIRED (#78): a retried call re-uses the original
+        attempt server-side — a replay can never start a second charge."""
         r = self._request("post", f"/api/v1/billing/customers/{customer_id}/top-up", json={
             "amount_micros": amount_micros,
             "success_url": success_url,
             "cancel_url": cancel_url,
+            "idempotency_key": idempotency_key,
         })
         return TopUpResult(**r.json())
 
@@ -224,7 +230,7 @@ class BillingClient:
 
     def get_usage_invoices(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
-        return [UsageInvoice(**row) for row in r.json()]
+        return [UsageInvoice(**row) for row in r.json()["data"]]
 
     def create_grant(self, customer_id: str, kind: str, amount_micros: int,
                      idempotency_key: str, expires_at: str | None = None,

@@ -58,7 +58,8 @@ class TestBillingDelegationRequiresBilling:
     def test_create_top_up_requires_billing(self):
         with pytest.raises(UBBError, match="billing"):
             self.client.create_top_up("cust1", 100_000,
-                                      success_url="http://ok", cancel_url="http://no")
+                                      success_url="http://ok", cancel_url="http://no",
+                                      idempotency_key="tp_k")
 
     def test_configure_auto_top_up_requires_billing(self):
         with pytest.raises(UBBError, match="billing"):
@@ -132,9 +133,10 @@ class TestBillingDelegation:
         self.client.billing.create_top_up = MagicMock(return_value=expected)
         result = self.client.create_top_up("cust1", 100_000,
                                            success_url="http://ok",
-                                           cancel_url="http://no")
+                                           cancel_url="http://no",
+                                           idempotency_key="tp_k")
         self.client.billing.create_top_up.assert_called_once_with(
-            "cust1", 100_000, "http://ok", "http://no",
+            "cust1", 100_000, "http://ok", "http://no", "tp_k",
         )
         assert result is expected
 
