@@ -241,7 +241,7 @@ def business_margin(request, external_id: str, start_date: date = None, end_date
     return MarginService.compute_business(request.auth.tenant.id, biz, s, e)
 
 
-@margin_router.get("/{customer_id}/trend")
+@margin_router.get("/customers/{customer_id}/trend")
 @role_floor(READ)
 def margin_trend(request, customer_id: UUID, periods: int = 6):
     _product_check(request)
@@ -258,7 +258,7 @@ def margin_trend(request, customer_id: UUID, periods: int = 6):
     } for r in reversed(list(rows))]}
 
 
-@margin_router.get("/{customer_id}")
+@margin_router.get("/customers/{customer_id}")
 @role_floor(READ)
 def customer_margin(request, customer_id: UUID, start_date: date = None, end_date: date = None):
     _product_check(request)
@@ -270,7 +270,7 @@ def customer_margin(request, customer_id: UUID, start_date: date = None, end_dat
     return data
 
 
-@margin_router.get("")
+@margin_router.get("/customers")
 @role_floor(READ)
 def list_margin(request, start_date: date = None, end_date: date = None):
     _product_check(request)

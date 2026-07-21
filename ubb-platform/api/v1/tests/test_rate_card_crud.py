@@ -60,9 +60,10 @@ class RateCardCRUDTest(TestCase):
         return self._post(
             f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {"changes": changes})
 
-    def _delete_rate(self, rate_id):
+    def _delete_rate(self, book_id, rate_id):
         return self.http_client.delete(
-            f"/api/v1/metering/pricing/rate-cards/{rate_id}", **self._auth())
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}",
+            **self._auth())
 
     def test_create_book_and_rate_return_ids(self):
         book_resp = self._create_book()
@@ -113,7 +114,7 @@ class RateCardCRUDTest(TestCase):
         book_id = self._create_book().json()["id"]
         rate_id = self._add_rate(book_id).json()["id"]
 
-        del_resp = self._delete_rate(rate_id)
+        del_resp = self._delete_rate(book_id, rate_id)
         self.assertEqual(del_resp.status_code, 200, del_resp.content)
         self.assertEqual(del_resp.json()["status"], "deleted")
 
@@ -139,7 +140,7 @@ class RateCardCRUDTest(TestCase):
         self.assertNotEqual(original_id, new_id)
         self.assertEqual(items[0]["rate_per_unit_micros"], 7777)
 
-        self.assertEqual(self._delete_rate(new_id).status_code, 200)
+        self.assertEqual(self._delete_rate(book_id, new_id).status_code, 200)
         self.assertEqual(len(self._list_rates(book_id).json()["data"]), 0)
 
 

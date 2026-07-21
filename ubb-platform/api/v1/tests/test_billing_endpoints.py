@@ -86,39 +86,10 @@ class BillingProductGatingTest(TestCase):
         self.assertIn("data", body)
         self.assertIn("has_more", body)
 
-    def test_tenant_without_billing_gets_403_on_billing_periods(self):
-        response = self.http_client.get(
-            "/api/v1/billing/tenant/billing-periods",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
-        )
-        self.assertEqual(response.status_code, 403)
-
-    def test_tenant_with_billing_can_list_billing_periods(self):
-        response = self.http_client.get(
-            "/api/v1/billing/tenant/billing-periods",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("data", body)
-        self.assertIn("has_more", body)
-
-    def test_tenant_without_billing_gets_403_on_invoices(self):
-        response = self.http_client.get(
-            "/api/v1/billing/tenant/invoices",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
-        )
-        self.assertEqual(response.status_code, 403)
-
-    def test_tenant_with_billing_can_list_invoices(self):
-        response = self.http_client.get(
-            "/api/v1/billing/tenant/invoices",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIn("data", body)
-        self.assertIn("has_more", body)
+    # The billing-mount duplicates of tenant billing-periods/invoices were
+    # removed in the Stage-5 final sweep (#86); the canonical routes on the
+    # tenant mount (which do not gate on the billing product) are covered by
+    # test_tenant_endpoints.py.
 
 
 class BillingDebitEndpointTest(TestCase):

@@ -32,7 +32,7 @@ class TestWebhookConfigPatch:
 
     def _patch(self, body):
         return self.client.patch(
-            f"/api/v1/webhooks/config/configs/{self.config.id}",
+            f"/api/v1/webhooks/configs/{self.config.id}",
             data=json.dumps(body), content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
@@ -107,7 +107,7 @@ class TestWebhookConfigPatch:
             tenant=other, url="https://o.example.com/hook",
             secret=SECRET_A, event_types=["*"])
         resp = self.client.patch(
-            f"/api/v1/webhooks/config/configs/{cfg.id}",
+            f"/api/v1/webhooks/configs/{cfg.id}",
             data=json.dumps({"is_active": False}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
@@ -134,7 +134,7 @@ class TestWebhookSecretRotation:
 
     def _rotate(self, body):
         return self.client.post(
-            f"/api/v1/webhooks/config/configs/{self.config.id}/rotate-secret",
+            f"/api/v1/webhooks/configs/{self.config.id}/rotate-secret",
             data=json.dumps(body), content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
@@ -181,7 +181,7 @@ class TestWebhookSecretRotation:
         cfg = TenantWebhookConfig.objects.create(
             tenant=other, url="https://o.example.com/hook", secret=SECRET_A)
         resp = self.client.post(
-            f"/api/v1/webhooks/config/configs/{cfg.id}/rotate-secret",
+            f"/api/v1/webhooks/configs/{cfg.id}/rotate-secret",
             data=json.dumps({"new_secret": SECRET_B}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
@@ -221,7 +221,7 @@ class TestWebhookDeliveryHistory:
 
     def _get(self, qs=""):
         return self.client.get(
-            f"/api/v1/webhooks/config/configs/{self.config.id}/deliveries{qs}",
+            f"/api/v1/webhooks/configs/{self.config.id}/deliveries{qs}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def test_lists_attempts_in_the_cursor_envelope(self):
@@ -280,6 +280,6 @@ class TestWebhookDeliveryHistory:
         cfg = TenantWebhookConfig.objects.create(
             tenant=other, url="https://o.example.com/hook", secret=SECRET_A)
         resp = self.client.get(
-            f"/api/v1/webhooks/config/configs/{cfg.id}/deliveries",
+            f"/api/v1/webhooks/configs/{cfg.id}/deliveries",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 404

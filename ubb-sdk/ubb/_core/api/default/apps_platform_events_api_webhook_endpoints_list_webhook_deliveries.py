@@ -43,7 +43,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/webhooks/config/configs/{config_id}/deliveries".format(config_id=quote(str(config_id), safe=""),),
+        "url": "/api/v1/webhooks/configs/{config_id}/deliveries".format(config_id=quote(str(config_id), safe=""),),
         "params": params,
     }
 

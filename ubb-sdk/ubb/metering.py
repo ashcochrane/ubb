@@ -228,7 +228,7 @@ class MeteringClient:
 
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
-        r = self._request("get", f"/api/v1/margin/{customer_id}", params=params)
+        r = self._request("get", f"/api/v1/margin/customers/{customer_id}", params=params)
         return CustomerMargin(**{k: v for k, v in r.json().items()
                                  if k in CustomerMargin.__dataclass_fields__})
 
@@ -254,7 +254,7 @@ class MeteringClient:
         return r.json()["customers"]
 
     def get_margin_trend(self, customer_id, periods=6):
-        r = self._request("get", f"/api/v1/margin/{customer_id}/trend", params={"periods": periods})
+        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/trend", params={"periods": periods})
         return [MarginTrendPoint(**p) for p in r.json()["points"]]
 
     def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
@@ -337,8 +337,12 @@ class MeteringClient:
                           json={"cards": cards})
         return r.json()
 
-    def delete_rate_card(self, card_id):
-        self._request("delete", f"/api/v1/metering/pricing/rate-cards/{card_id}")
+    def delete_rate(self, book_id, rate_id):
+        """Retire (soft-expire) a single rate within its book. Addressed under
+        its book — the path noun (``rates``) matches the ``rate_id`` it takes
+        (#86 sweep; formerly ``delete_rate_card(card_id)``)."""
+        self._request(
+            "delete", f"/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}")
         return True
 
     def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,

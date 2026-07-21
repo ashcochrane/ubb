@@ -1363,21 +1363,27 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
     return 200, {"assigned": str(book.id)}
 
 
-@metering_router.delete("/pricing/rate-cards/{card_id}")
+@metering_router.delete("/pricing/rate-cards/{book_id}/rates/{rate_id}")
 @role_floor(ADMIN)
 @records_audit("rate.deleted")
-def delete_rate_card(request, card_id: UUID):
+def delete_rate(request, book_id: UUID, rate_id: UUID):
+    """Retire (soft-expire) a single rate within its book. Addressed under its
+    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
+    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path)."""
     _product_check(request)
-    card = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
+    rate = get_object_or_404(Rate, id=rate_id, rate_card_id=book_id,
+                             tenant=request.auth.tenant, valid_to__isnull=True)
     with transaction.atomic():
-        card.valid_to = timezone.now()
-        card.save(update_fields=["valid_to", "updated_at"])
+        rate.valid_to = timezone.now()
+        rate.save(update_fields=["valid_to", "updated_at"])
         audit_record(
             action="rate.deleted",
             tenant_id=request.auth.tenant.id,
             resource_type="rate",
-            resource_id=card.id,
-            metadata={"card_id": str(card.id),
-                      "valid_to": card.valid_to.isoformat()},
+            resource_id=rate.id,
+            metadata={"book_id": str(book_id),
+                      "rate_id": str(rate.id),
+                      "valid_to": rate.valid_to.isoformat()},
         )
     return {"status": "deleted"}

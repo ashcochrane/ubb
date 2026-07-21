@@ -19,8 +19,6 @@ from api.v1.schemas import (
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
-    TenantBillingPeriodOut, TenantBillingPeriodListResponse,
-    TenantInvoiceOut, TenantInvoiceListResponse,
     TenantUsageInvoiceListResponse,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
@@ -32,7 +30,6 @@ from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
-from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
@@ -643,62 +640,13 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
 
 
 # ---------- Tenant billing endpoints ----------
-# (TenantBillingPeriod*/TenantInvoice* schemas live in api.v1.schemas, shared
-# with the tenant mount's duplicate routes — one component name each in the
-# merged OpenAPI document.)
-
-
-@billing_router.get("/tenant/billing-periods", response=TenantBillingPeriodListResponse)
-@role_floor(READ)
-def list_billing_periods(request, cursor: str = None, limit: int = 50):
-    _product_check(request)
-    tenant = request.auth.tenant
-
-    periods, next_cursor, has_more = paginate(
-        TenantBillingPeriod.objects.filter(tenant=tenant), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(p.id),
-                "period_start": p.period_start.isoformat(),
-                "period_end": p.period_end.isoformat(),
-                "status": p.status,
-                "total_usage_cost_micros": p.total_usage_cost_micros,
-                "event_count": p.event_count,
-                "platform_fee_micros": p.platform_fee_micros,
-            }
-            for p in periods
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
-
-
-@billing_router.get("/tenant/invoices", response=TenantInvoiceListResponse)
-@role_floor(READ)
-def list_invoices(request, cursor: str = None, limit: int = 50):
-    _product_check(request)
-    tenant = request.auth.tenant
-
-    invoices, next_cursor, has_more = paginate(
-        TenantInvoice.objects.filter(tenant=tenant), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(inv.id),
-                "billing_period_id": str(inv.billing_period_id),
-                "stripe_invoice_id": inv.stripe_invoice_id,
-                "total_amount_micros": inv.total_amount_micros,
-                "status": inv.status,
-                "created_at": inv.created_at.isoformat(),
-            }
-            for inv in invoices
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+# The tenant's own platform-fee billing periods and invoices live on the
+# canonical `tenant/` mount (GET /api/v1/tenant/billing-periods, .../invoices).
+# The billing-mount duplicates that once shadowed them were removed in the
+# Stage-5 final sweep (#86): these resources exist for every tenant regardless
+# of billing_mode, so the tenant mount — which does not gate on the billing
+# product — is their one home. Only the customer-scoped usage invoices below
+# are billing-product surface.
 
 
 # ---------- Analytics ----------

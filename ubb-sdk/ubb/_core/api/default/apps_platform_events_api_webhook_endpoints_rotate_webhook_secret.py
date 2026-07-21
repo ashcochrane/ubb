@@ -30,7 +30,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/api/v1/webhooks/config/configs/{config_id}/rotate-secret".format(config_id=quote(str(config_id), safe=""),),
+        "url": "/api/v1/webhooks/configs/{config_id}/rotate-secret".format(config_id=quote(str(config_id), safe=""),),
     }
 
     _kwargs["json"] = body.to_dict()

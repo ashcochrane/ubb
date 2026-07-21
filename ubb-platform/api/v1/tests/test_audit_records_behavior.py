@@ -88,7 +88,7 @@ class WebhookSecretNeverAuditedTest(TestCase):
     def test_webhook_config_create_never_records_the_secret(self):
         secret = "s" * 40  # a signing secret that must never reach the ledger
         resp = self.http.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps({"url": "https://example.com/hook", "secret": secret,
                              "event_types": ["*"], "is_active": True}),
             content_type="application/json",

@@ -61,7 +61,10 @@ api.add_router("billing/", billing_router, url_name_prefix="billing")
 api.add_router("subscriptions/", subscriptions_router, url_name_prefix="subscriptions")
 api.add_router("margin/", margin_router, url_name_prefix="margin")
 api.add_router("referrals/", referrals_router, url_name_prefix="referrals")
-api.add_router("webhooks/config/", webhook_router, url_name_prefix="webhooks")
+# #86 sweep: de-stuttered from the legacy "webhooks/config/" mount (a pre-#77
+# separately-mounted API) — the router's own /configs collection made the old
+# external path /webhooks/config/configs. Now /api/v1/webhooks/configs.
+api.add_router("webhooks/", webhook_router, url_name_prefix="webhooks")
 api.add_router("platform/", platform_router, url_name_prefix="platform")
 api.add_router("connect/", connect_router, url_name_prefix="connect")
 api.add_router("audit/", audit_router, url_name_prefix="audit")
