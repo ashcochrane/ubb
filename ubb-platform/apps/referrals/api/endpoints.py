@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import NinjaAPI
+from ninja import Router
 from ninja.errors import HttpError
 
 from core.pagination import apply_cursor_filter, encode_cursor
@@ -29,7 +29,7 @@ from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
 from core.auth import ApiKeyAuth, ProductAccess
 
-referrals_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_referrals_v1")
+referrals_router = Router(auth=ApiKeyAuth())
 
 _product_check = ProductAccess("referrals")
 
@@ -60,7 +60,7 @@ def _program_to_dict(program):
 # ---------- Program Management ----------
 
 
-@referrals_api.post("/program", response=ProgramOut)
+@referrals_router.post("/program", response=ProgramOut)
 def create_program(request, payload: ProgramCreateRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -82,7 +82,7 @@ def create_program(request, payload: ProgramCreateRequest):
     return _program_to_dict(program)
 
 
-@referrals_api.get("/program", response=ProgramOut)
+@referrals_router.get("/program", response=ProgramOut)
 def get_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -97,7 +97,7 @@ def get_program(request):
     return _program_to_dict(program)
 
 
-@referrals_api.patch("/program", response=ProgramOut)
+@referrals_router.patch("/program", response=ProgramOut)
 def update_program(request, payload: ProgramUpdateRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -124,7 +124,7 @@ def update_program(request, payload: ProgramUpdateRequest):
     return _program_to_dict(program)
 
 
-@referrals_api.delete("/program")
+@referrals_router.delete("/program")
 def deactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -141,7 +141,7 @@ def deactivate_program(request):
     return {"status": "deactivated"}
 
 
-@referrals_api.post("/program/reactivate", response=ProgramOut)
+@referrals_router.post("/program/reactivate", response=ProgramOut)
 def reactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -161,7 +161,7 @@ def reactivate_program(request):
 # ---------- Referrer Management ----------
 
 
-@referrals_api.post("/referrers", response=ReferrerOut)
+@referrals_router.post("/referrers", response=ReferrerOut)
 def register_referrer(request, payload: RegisterReferrerRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -187,7 +187,7 @@ def register_referrer(request, payload: RegisterReferrerRequest):
     }
 
 
-@referrals_api.get("/referrers/{customer_id}", response=ReferrerOut)
+@referrals_router.get("/referrers/{customer_id}", response=ReferrerOut)
 def get_referrer(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -205,7 +205,7 @@ def get_referrer(request, customer_id: str):
     }
 
 
-@referrals_api.get("/referrers")
+@referrals_router.get("/referrers")
 def list_referrers(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -248,7 +248,7 @@ def list_referrers(request, cursor: str = None, limit: int = 50):
 # ---------- Attribution ----------
 
 
-@referrals_api.post("/attribute", response=AttributeResponse)
+@referrals_router.post("/attribute", response=AttributeResponse)
 def attribute_referral(request, payload: AttributeRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -354,7 +354,7 @@ def attribute_referral(request, payload: AttributeRequest):
 # ---------- Reward Data ----------
 
 
-@referrals_api.get("/referrers/{customer_id}/earnings", response=EarningsOut)
+@referrals_router.get("/referrers/{customer_id}/earnings", response=EarningsOut)
 def get_referrer_earnings(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -379,7 +379,7 @@ def get_referrer_earnings(request, customer_id: str):
     }
 
 
-@referrals_api.get("/referrers/{customer_id}/referrals")
+@referrals_router.get("/referrers/{customer_id}/referrals")
 def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -441,7 +441,7 @@ def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit:
     }
 
 
-@referrals_api.get("/referrals/{referral_id}/ledger")
+@referrals_router.get("/referrals/{referral_id}/ledger")
 def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -490,7 +490,7 @@ def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: in
 # ---------- Revocation ----------
 
 
-@referrals_api.delete("/referrals/{referral_id}")
+@referrals_router.delete("/referrals/{referral_id}")
 def revoke_referral(request, referral_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -508,7 +508,7 @@ def revoke_referral(request, referral_id: str):
 # ---------- Payout Export ----------
 
 
-@referrals_api.get("/payouts/export")
+@referrals_router.get("/payouts/export")
 def payout_export(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -554,7 +554,7 @@ def payout_export(request):
 # ---------- Analytics ----------
 
 
-@referrals_api.get("/analytics/summary", response=AnalyticsSummaryOut)
+@referrals_router.get("/analytics/summary", response=AnalyticsSummaryOut)
 def analytics_summary(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -580,7 +580,7 @@ def analytics_summary(request):
     }
 
 
-@referrals_api.get("/analytics/earnings")
+@referrals_router.get("/analytics/earnings")
 def analytics_earnings(request, period_start: str = None, period_end: str = None):
     _product_check(request)
     tenant = request.auth.tenant

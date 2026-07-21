@@ -36,6 +36,9 @@ From `ubb-platform/` (venv at `ubb-platform/.venv`):
 - Boundary check: `.venv/bin/python -m pytest apps/platform/tests/test_product_boundaries.py`
 - Migrations: `.venv/bin/python manage.py makemigrations` then `... migrate`
 - Sanity: `.venv/bin/python manage.py check`
+- Spec regen (after any API surface change): `.venv/bin/python scripts/export_openapi.py` —
+  refreshes the committed `openapi/v1.json`, the single source of truth for the tenant surface
+  (ADR-002; CI's drift/breaking/TS gates enforce it — see `openapi/README.md`)
 
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 

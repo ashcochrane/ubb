@@ -1,17 +1,17 @@
-from ninja import NinjaAPI, Schema
+from ninja import Router, Schema
 from django.http import HttpResponseRedirect, JsonResponse
 
 from core.auth import ApiKeyAuth
 from apps.billing.connectors.stripe import connect
 
-connect_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_connect_v1")
+connect_router = Router(auth=ApiKeyAuth())
 
 
 class ConnectStartIn(Schema):
     return_url: str = ""
 
 
-@connect_api.post("/start", response={200: dict, 400: dict})
+@connect_router.post("/start", response={200: dict, 400: dict})
 def connect_start(request, payload: ConnectStartIn):
     try:
         url = connect.build_authorize_url(request.auth.tenant, return_url=payload.return_url)
@@ -20,7 +20,7 @@ def connect_start(request, payload: ConnectStartIn):
     return 200, {"authorize_url": url}
 
 
-@connect_api.get("/status", response=dict)
+@connect_router.get("/status", response=dict)
 def connect_status(request):
     import stripe
     from apps.billing.stripe.services.stripe_service import api_key_for_tenant

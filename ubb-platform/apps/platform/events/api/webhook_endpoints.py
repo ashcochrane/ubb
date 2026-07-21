@@ -1,4 +1,4 @@
-from ninja import NinjaAPI, Schema, Field
+from ninja import Router, Schema, Field
 from ninja.errors import HttpError
 
 from core.auth import ApiKeyAuth
@@ -24,10 +24,10 @@ class WebhookConfigResponse(Schema):
     created_at: str
 
 
-webhook_api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_webhooks_v1")
+webhook_router = Router(auth=ApiKeyAuth())
 
 
-@webhook_api.post("/configs", response={201: WebhookConfigResponse})
+@webhook_router.post("/configs", response={201: WebhookConfigResponse})
 def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     try:
         validate_webhook_url(payload.url)
@@ -58,7 +58,7 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     }
 
 
-@webhook_api.get("/configs")
+@webhook_router.get("/configs")
 def list_webhook_configs(request):
     configs = TenantWebhookConfig.objects.filter(
         tenant=request.auth.tenant,
@@ -77,7 +77,7 @@ def list_webhook_configs(request):
     }
 
 
-@webhook_api.delete("/configs/{config_id}")
+@webhook_router.delete("/configs/{config_id}")
 def delete_webhook_config(request, config_id: str):
     from django.shortcuts import get_object_or_404
 

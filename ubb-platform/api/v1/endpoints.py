@@ -6,22 +6,23 @@ from django.conf import settings
 from django.db import connection
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import NinjaAPI
+from ninja import Router
 from core.auth import ApiKeyAuth, ProductAccess
+from core.responses import json_response
 
 from api.v1.schemas import PastLimitReportResponse
 
-api = NinjaAPI(auth=ApiKeyAuth(), urls_namespace="ubb_v1")
+root_router = Router(auth=ApiKeyAuth())
 
 _metering_check = ProductAccess("metering")
 
 
-@api.get("/health", auth=None)
+@root_router.get("/health", auth=None)
 def health(request):
     return {"status": "ok"}
 
 
-@api.get("/customers/{customer_id}/past-limit-report",
+@root_router.get("/customers/{customer_id}/past-limit-report",
          response=PastLimitReportResponse)
 def past_limit_report(request, customer_id: str,
                       since: datetime = None, until: datetime = None):
@@ -45,7 +46,7 @@ def past_limit_report(request, customer_id: str,
                                    since=since, until=until)
 
 
-@api.get("/ready", auth=None)
+@root_router.get("/ready", auth=None)
 def ready(request):
     checks = {}
     try:
@@ -63,7 +64,7 @@ def ready(request):
     except Exception:
         checks["redis"] = "error"
     all_ok = all(v == "ok" for v in checks.values())
-    return api.create_response(
+    return json_response(
         request,
         {"status": "ready" if all_ok else "not_ready", "checks": checks},
         status=200 if all_ok else 503,

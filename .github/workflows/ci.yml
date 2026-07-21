@@ -96,3 +96,81 @@ jobs:
       - name: SDK test suite
         working-directory: ubb-sdk
         run: python -m pytest
+
+  # The spec-as-truth ratchet (#77, ADR-002): the committed openapi/v1.json is
+  # the single source of truth for the tenant surface. Three gates:
+  #   drift    — offline regeneration must produce zero diff (code == document)
+  #   breaking — oasdiff against the base branch's spec; the committed
+  #              suppression files make accepting a break a visible, reviewed
+  #              change; severity-levels encodes the ADR-003 open-enum stance
+  #   TS smoke — the committed spec must generate clean TypeScript types
+  # The env block mirrors the test job's: settings import needs the vars, but
+  # nothing here touches Postgres/Redis, so no services are started.
+  contract:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgres://ubb:ubb@localhost:5432/ubb
+      REDIS_URL: redis://localhost:6379/1
+      SECRET_KEY: ci-only-dummy-secret-key
+      DEBUG: "True"
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_dummy
+      OASDIFF_VERSION: 1.23.0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the breaking gate compares against the base
+          # branch's (PR) or parent commit's (push) committed spec.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: ubb-platform/requirements.lock.txt
+
+      - name: Install dependencies (locked)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ubb-platform/requirements.lock.txt
+
+      - name: Drift gate — offline regeneration produces zero diff
+        working-directory: ubb-platform
+        run: |
+          python scripts/export_openapi.py
+          git -C .. diff --exit-code -- openapi/v1.json
+
+      - name: Install oasdiff (pinned)
+        run: |
+          curl -sSfL -o /tmp/oasdiff.tar.gz \
+            "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
+          sudo mv /tmp/oasdiff /usr/local/bin/oasdiff
+
+      - name: Breaking gate — oasdiff vs the base spec (open-enum config)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+          if git cat-file -e "$BASE_REF:openapi/v1.json" 2>/dev/null; then
+            git show "$BASE_REF:openapi/v1.json" > /tmp/base-v1.json
+            oasdiff breaking --fail-on WARN \
+              --severity-levels openapi/oasdiff-severity-levels.txt \
+              --err-ignore openapi/oasdiff-err-ignore.txt \
+              --warn-ignore openapi/oasdiff-warn-ignore.txt \
+              --format githubactions \
+              /tmp/base-v1.json openapi/v1.json
+          else
+            echo "No committed spec at $BASE_REF (first spec commit) — nothing to compare."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: TypeScript smoke gate — committed spec generates clean types
+        run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts

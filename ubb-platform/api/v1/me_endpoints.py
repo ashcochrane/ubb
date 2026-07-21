@@ -1,17 +1,18 @@
 from datetime import date, datetime, timedelta
-from ninja import NinjaAPI, Schema, Field
+from ninja import Router, Schema, Field
 from pydantic import field_validator
 from typing import Optional
 
 from django.utils import timezone
 
 from core.auth import ProductAccess
+from core.responses import json_response
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
 
-me_api = NinjaAPI(auth=WidgetJWTAuth(), urls_namespace="ubb_me_v1")
+me_router = Router(auth=WidgetJWTAuth())
 
 _billing_check = ProductAccess("billing")
 _metering_check = ProductAccess("metering")
@@ -29,7 +30,7 @@ def _check_metering_product(request):
     _metering_check(request)
 
 
-class BalanceResponse(Schema):
+class MeBalanceResponse(Schema):
     balance_micros: int
     currency: str
     # F4.3 (additive): grant visibility.
@@ -95,7 +96,7 @@ class PaginatedInvoices(Schema):
     has_more: bool
 
 
-class UsageInvoiceOut(Schema):
+class MeUsageInvoiceOut(Schema):
     id: str
     total_billed_micros: int
     payment_status: Optional[str] = None
@@ -108,12 +109,12 @@ class UsageInvoiceOut(Schema):
 
 
 class PaginatedUsageInvoices(Schema):
-    data: list[UsageInvoiceOut]
+    data: list[MeUsageInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
 
-class SubscriptionInvoiceOut(Schema):
+class MeSubscriptionInvoiceOut(Schema):
     id: str
     amount_paid_micros: int
     status: str
@@ -125,7 +126,7 @@ class SubscriptionInvoiceOut(Schema):
 
 
 class PaginatedSubscriptionInvoices(Schema):
-    data: list[SubscriptionInvoiceOut]
+    data: list[MeSubscriptionInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
 
@@ -146,7 +147,7 @@ class UsageSummaryResponse(Schema):
     metrics: list[UsageMetricOut]
 
 
-@me_api.get("/balance", response=BalanceResponse)
+@me_router.get("/balance", response=MeBalanceResponse)
 def get_balance(request):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -163,7 +164,7 @@ def get_balance(request):
                 "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
 
 
-@me_api.get("/grants", response=GrantListResponse)
+@me_router.get("/grants", response=GrantListResponse)
 def list_grants(request):
     """Active credit grant lots on the customer's own wallet (kind,
     remaining, expiry), soonest-expiring first. Hard-capped at the first 100
@@ -191,7 +192,7 @@ def list_grants(request):
     ]}
 
 
-@me_api.get("/transactions", response=PaginatedTransactions)
+@me_router.get("/transactions", response=PaginatedTransactions)
 def get_transactions(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -210,7 +211,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     txns = list(qs[:limit + 1])
     has_more = len(txns) > limit
@@ -239,7 +240,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     }
 
 
-@me_api.post("/top-up", response=TopUpResponse)
+@me_router.post("/top-up", response=TopUpResponse)
 def create_top_up(request, payload: TopUpRequest):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -248,7 +249,7 @@ def create_top_up(request, payload: TopUpRequest):
     from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
     if get_tenant_stripe_account(tenant.id):
         if not get_customer_stripe_id(customer.id):
-            return me_api.create_response(
+            return json_response(
                 request, {"error": "Customer has no stripe_customer_id"}, status=400
             )
 
@@ -277,14 +278,14 @@ def create_top_up(request, payload: TopUpRequest):
             success_url=getattr(payload, "success_url", "") or "",
             cancel_url=getattr(payload, "cancel_url", "") or "",
         ))
-        return me_api.create_response(
+        return json_response(
             request,
             {"status": "topup_requested", "message": "Top-up request sent to tenant"},
             status=202,
         )
 
 
-@me_api.get("/invoices", response=PaginatedInvoices)
+@me_router.get("/invoices", response=PaginatedInvoices)
 def get_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -297,7 +298,7 @@ def get_invoices(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit
@@ -325,7 +326,7 @@ def get_invoices(request, cursor: str = None, limit: int = 50):
     }
 
 
-@me_api.get("/usage-invoices", response=PaginatedUsageInvoices)
+@me_router.get("/usage-invoices", response=PaginatedUsageInvoices)
 def list_usage_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -347,7 +348,7 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit
@@ -379,7 +380,7 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
     }
 
 
-@me_api.get("/usage-summary", response=UsageSummaryResponse)
+@me_router.get("/usage-summary", response=UsageSummaryResponse)
 def get_usage_summary(request):
     """Month-to-date usage rollup for the calling end customer.
 
@@ -413,7 +414,7 @@ def get_usage_summary(request):
     }
 
 
-@me_api.get("/subscription-invoices", response=PaginatedSubscriptionInvoices)
+@me_router.get("/subscription-invoices", response=PaginatedSubscriptionInvoices)
 def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
@@ -434,7 +435,7 @@ def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
             from api.v1.pagination import apply_cursor_filter
             qs = apply_cursor_filter(qs, cursor, time_field="created_at")
         except ValueError:
-            return me_api.create_response(request, {"error": "Invalid cursor"}, status=400)
+            return json_response(request, {"error": "Invalid cursor"}, status=400)
 
     invoices = list(qs[:limit + 1])
     has_more = len(invoices) > limit
