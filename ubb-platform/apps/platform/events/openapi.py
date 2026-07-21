@@ -28,8 +28,8 @@ _HEADER_PARAMETERS = [
         "description": (
             "`t=<unix-seconds>,v1=<hex>` — HMAC-SHA256 over "
             "`\"{t}.{body}\"` with the endpoint secret. Verify this one; "
-            "during a future secret rotation window multiple `v1=` "
-            "candidates may be present."
+            "during a secret rotation window multiple `v1=` candidates may "
+            "be present — accept the delivery if any candidate matches."
         ),
     },
     {

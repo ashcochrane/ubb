@@ -205,10 +205,18 @@ def _deliver_to_config(config, event, *, livemode=True):
         "data": event.payload,
     }
     payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
+    # Legacy body-only header can't carry candidates, so it signs with the
+    # active secret only — a not-yet-migrated receiver follows the cutover.
     signature = compute_signature(payload_bytes, config.secret)
     # Same ts as payload["timestamp"]: signed at send time, parseable from the
-    # header alone (the receiver never needs to parse the body to verify).
-    signature_v2 = compute_signature_v2(payload_bytes, config.secret, ts)
+    # header alone (the receiver never needs to parse the body to verify). One
+    # v1= candidate per active signing secret — during a two-secret overlap
+    # rotation (#83) that is the new secret AND the retiring one, so a receiver
+    # on either verifies. config.signing_secrets() owns the window logic.
+    v2_candidates = ",".join(
+        f"v1={compute_signature_v2(payload_bytes, secret, ts)}"
+        for secret in config.signing_secrets()
+    )
 
     headers = {
         "Content-Type": "application/json",
@@ -217,7 +225,7 @@ def _deliver_to_config(config, event, *, livemode=True):
         # header: the legacy scheme has no timestamp binding and a captured
         # delivery replays forever.
         "X-UBB-Signature": signature,
-        "X-UBB-Signature-V2": f"t={ts},v1={signature_v2}",
+        "X-UBB-Signature-V2": f"t={ts},{v2_candidates}",
         "X-UBB-Event-Type": event.event_type,
     }
 

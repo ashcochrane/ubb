@@ -85,7 +85,9 @@ AUDIT_ACTIONS = (
     "referral.revoked",
     # webhook configuration
     "webhook_config.created",
+    "webhook_config.updated",
     "webhook_config.deleted",
+    "webhook_config.secret_rotated",
 )
 
 _AUDIT_ACTIONS_SET = frozenset(AUDIT_ACTIONS)

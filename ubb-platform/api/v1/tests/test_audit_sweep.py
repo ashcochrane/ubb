@@ -38,9 +38,10 @@ _EXEMPT = {
 _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Guards against a vacuous pass (path-resolution breakage seeing zero routes).
-# 52 recording routes + 6 exempt = the whole mutating surface today; a new
-# mutation moves one of these and forces a conscious update here.
-_EXPECTED_MUTATING = 58
+# 54 recording routes + 6 exempt = the whole mutating surface today (#83 added
+# webhook PATCH + secret-rotation, both recording); a new mutation moves one of
+# these and forces a conscious update here.
+_EXPECTED_MUTATING = 60
 _EXPECTED_EXEMPT = 6
 
 

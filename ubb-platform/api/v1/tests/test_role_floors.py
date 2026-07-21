@@ -63,8 +63,9 @@ _WRITE_ROUTES = {
 
 # Guard against a vacuous pass (path-resolution breakage seeing zero routes).
 # 108 pre-existing tenant routes + 2 member management routes (#80) + the #82
-# audit feed (GET /audit/records, Read floor).
-_EXPECTED_FLOORED = 111
+# audit feed (GET /audit/records, Read floor) + the 3 webhook lifecycle routes
+# (#83: PATCH edit, POST rotate-secret [Admin], GET deliveries [Read]).
+_EXPECTED_FLOORED = 114
 _EXPECTED_EXEMPT = 11
 
 
