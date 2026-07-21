@@ -7,7 +7,7 @@ from ubb.exceptions import (
 )
 from ubb._models import from_wire
 from ubb.types import (
-    PreCheckResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
+    PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult,
     RefundResult, WalletTransaction, PaginatedResponse,
 )
 # Generated DTOs (the wrap, #84): the facade returns the same generated models
@@ -16,6 +16,7 @@ from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.usage_event_out import UsageEventOut
 
 
 def _check_micros(value: int, name: str) -> None:
@@ -524,7 +525,7 @@ class UBBClient:
         return self._require_billing().get_balance(customer_id)
 
     def get_usage(self, customer_id: str, cursor: str | None = None,
-                  limit: int = 50) -> PaginatedResponse[UsageEvent]:
+                  limit: int = 50) -> PaginatedResponse[UsageEventOut]:
         """Get usage history. Requires metering product."""
         return self._require_metering().get_usage(customer_id, cursor=cursor, limit=limit)
 

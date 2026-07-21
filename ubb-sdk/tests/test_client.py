@@ -13,7 +13,9 @@ from ubb.exceptions import (
 )
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import PreCheckResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult, WalletTransaction, PaginatedResponse
+from ubb.types import PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult, WalletTransaction, PaginatedResponse
+from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._models import from_wire
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
@@ -126,8 +128,7 @@ class UBBClientTest(unittest.TestCase):
 
     def test_get_usage(self):
         expected = PaginatedResponse(
-            data=[UsageEvent(id="e1", request_id="r1", billed_cost_micros=10000,
-                             metadata={}, effective_at="2025-01-01T00:00:00Z")],
+            data=[from_wire(UsageEventOut, {"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1", "billed_cost_micros": 10000, "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,
         )
         self.client.metering.get_usage = MagicMock(return_value=expected)

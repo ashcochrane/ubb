@@ -3,17 +3,18 @@ from __future__ import annotations
 import httpx
 
 from ubb.exceptions import UBBConnectionError
-from ubb._http import extract_problem, raise_for_status
+from ubb._http import raise_for_status
 from ubb._models import from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
-    TopUpResult, WalletTransaction, PaginatedResponse, UsageInvoice,
+    TopUpResult, WalletTransaction, PaginatedResponse,
 )
 # Generated DTOs (the wrap, #84).
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.budget_config_out import BudgetConfigOut
 from ubb._core.models.budget_status_out import BudgetStatusOut
 from ubb._core.models.grant_out import GrantOut
+from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 
 
 class BillingClient:
@@ -52,12 +53,6 @@ class BillingClient:
             self._request_once, max_retries=self._max_retries,
             method=method, path=path, **kwargs,
         )
-
-    @staticmethod
-    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
-        """(code, detail) from an RFC 9457 problem+json body (#78); falls
-        back to (None, raw text) for anything non-problem."""
-        return extract_problem(response)
 
     # ---- public API ----
 
@@ -214,7 +209,7 @@ class BillingClient:
 
     def get_usage_invoices(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
-        return [UsageInvoice(**row) for row in r.json()["data"]]
+        return [from_wire(UsageInvoiceOut, row) for row in r.json()["data"]]
 
     def create_grant(self, customer_id: str, kind: str, amount_micros: int,
                      idempotency_key: str, expires_at: str | None = None,

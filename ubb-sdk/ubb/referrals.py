@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from ubb.exceptions import UBBConnectionError
-from ubb._http import extract_problem, raise_for_status
+from ubb._http import raise_for_status
 from ubb.retry import request_with_retry
 
 
@@ -43,12 +43,6 @@ class ReferralsClient:
             self._request_once, max_retries=self._max_retries,
             method=method, path=path, **kwargs,
         )
-
-    @staticmethod
-    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
-        """(code, detail) from an RFC 9457 problem+json body (#78); falls
-        back to (None, raw text) for anything non-problem."""
-        return extract_problem(response)
 
     # ---- Program Management ----
 

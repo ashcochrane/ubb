@@ -16,6 +16,8 @@ from ubb._core.models.budget_status_out import BudgetStatusOut
 from ubb._core.models.grant_out import GrantOut
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
+from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 
 # Shell-owned ergonomic types: the pagination container, the orchestration
 # pre-check result, the batch aggregate, and small results over responses the
@@ -23,7 +25,7 @@ from ubb._core.models.revenue_profile_out import RevenueProfileOut
 # transactions — tracked for platform typing, after which they move to the
 # generated core for free).
 from ubb.types import (
-    PreCheckResult, UsageEvent, TopUpResult, AutoTopUpResult, WithdrawResult,
+    PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult,
     RefundResult, WalletTransaction, PaginatedResponse,
     BatchItemResult, BatchResult,
 )
@@ -47,8 +49,9 @@ __all__ = [
     # generated DTOs
     "RecordUsageResponse", "CloseTaskResponse", "CustomerResponse", "BalanceResponse",
     "BudgetConfigOut", "BudgetStatusOut", "GrantOut", "TenantMarkupOut", "RevenueProfileOut",
+    "UsageEventOut", "UsageInvoiceOut",
     # shell-owned types
-    "PreCheckResult", "UsageEvent", "TopUpResult", "AutoTopUpResult", "WithdrawResult",
+    "PreCheckResult", "TopUpResult", "AutoTopUpResult", "WithdrawResult",
     "RefundResult", "WalletTransaction", "PaginatedResponse", "BatchItemResult", "BatchResult",
     # base exception surface
     "UBBError", "UBBAuthError", "UBBAPIError",

@@ -5,11 +5,11 @@ from datetime import datetime
 import httpx
 
 from ubb.exceptions import UBBConnectionError, UBBStoppedError
-from ubb._http import extract_problem, raise_for_status
+from ubb._http import raise_for_status
 from ubb._models import from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
-    UsageEvent, PaginatedResponse,
+    PaginatedResponse,
     BatchItemResult, BatchResult,
     CustomerMargin, DimensionMargin, MarginTrendPoint,
     RateCard,
@@ -20,6 +20,7 @@ from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
+from ubb._core.models.usage_event_out import UsageEventOut
 
 
 def _serialize_recorded_at(value):
@@ -73,12 +74,6 @@ class MeteringClient:
             self._request_once, max_retries=self._max_retries,
             method=method, path=path, **kwargs,
         )
-
-    @staticmethod
-    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
-        """(code, detail) from an RFC 9457 problem+json body (#78); falls
-        back to (None, raw text) for anything non-problem."""
-        return extract_problem(response)
 
     # ---- public API ----
 
@@ -193,7 +188,7 @@ class MeteringClient:
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
                   tag_key: str | None = None, tag_value: str | None = None,
                   past_limit: bool | None = None, stop_scope: str | None = None,
-                  episode_seq: int | None = None) -> PaginatedResponse[UsageEvent]:
+                  episode_seq: int | None = None) -> PaginatedResponse[UsageEventOut]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage.
 
         The #41 past-limit filters: ``past_limit=True`` returns only events
@@ -215,7 +210,7 @@ class MeteringClient:
             params["episode_seq"] = episode_seq
         r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
         body = r.json()
-        events = [UsageEvent(**item) for item in body["data"]]
+        events = [from_wire(UsageEventOut, item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
 
     def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:

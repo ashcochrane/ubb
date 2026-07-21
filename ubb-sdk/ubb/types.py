@@ -36,21 +36,6 @@ class BatchResult:
     rejected: int
 
 @dataclass(frozen=True)
-class UsageEvent:
-    id: str
-    request_id: str
-    event_type: str | None = None
-    provider: str | None = None
-    provider_cost_micros: int | None = None
-    billed_cost_micros: int | None = None
-    units: int | None = None
-    metadata: dict | None = None
-    effective_at: str | None = None
-    # #41: the event's immutable past-limit context array (see
-    # RecordUsageResult.stop_context); None for the common untagged event.
-    stop_context: list | None = None
-
-@dataclass(frozen=True)
 class TopUpResult:
     checkout_url: str
 
@@ -103,16 +88,6 @@ class MarginTrendPoint:
     subscription_revenue_micros: int | None = None
     gross_margin_micros: int | None = None
     margin_percentage: float | None = None
-
-@dataclass(frozen=True)
-class UsageInvoice:
-    period_start: str | None = None
-    period_end: str | None = None
-    total_billed_micros: int | None = None
-    currency: str | None = None
-    status: str | None = None
-    stripe_invoice_id: str | None = None
-    skip_reason: str | None = None
 
 T = TypeVar("T")
 

@@ -6,7 +6,8 @@ from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import UsageEvent, PaginatedResponse, BatchItemResult, BatchResult
+from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
+from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 
@@ -183,7 +184,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_get_usage(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
-                {"id": "e1", "request_id": "r1", "billed_cost_micros": 10000,
+                {"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1", "billed_cost_micros": 10000,
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],
             "next_cursor": "cur_abc",
@@ -192,7 +193,7 @@ class MeteringClientTest(unittest.TestCase):
         result = self.client.get_usage(customer_id="cust_1")
         self.assertIsInstance(result, PaginatedResponse)
         self.assertEqual(len(result.data), 1)
-        self.assertIsInstance(result.data[0], UsageEvent)
+        self.assertIsInstance(result.data[0], UsageEventOut)
         self.assertTrue(result.has_more)
         self.assertEqual(result.next_cursor, "cur_abc")
         # Verify endpoint

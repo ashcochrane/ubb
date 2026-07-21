@@ -49,7 +49,7 @@ class UsageFiltersTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.get")
     def test_get_usage_passes_filters_and_parses_stop_context(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "data": [{"id": "e1", "request_id": "r1", "stop_context": _CTX}],
+            "data": [{"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1", "metadata": {}, "effective_at": "2026-06-01T00:00:00Z", "stop_context": _CTX}],
             "next_cursor": None, "has_more": False})
         page = self.client.get_usage("c1", past_limit=True, stop_scope="task",
                                      episode_seq=3)
