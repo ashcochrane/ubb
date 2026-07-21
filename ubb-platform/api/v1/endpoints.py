@@ -9,6 +9,7 @@ from django.utils import timezone
 from ninja import Router
 from core.auth import ApiKeyAuth, ProductAccess
 from core.problems import Problem
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 
 from api.v1.schemas import PastLimitReportResponse
 
@@ -46,7 +47,7 @@ def past_limit_report(request, customer_id: str,
     if since is not None and until is not None:
         if until < since:
             raise Problem("validation_error", "until must not precede since")
-        if (until - since).days > 366:
+        if (until - since).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem("validation_error", "window must not exceed 366 days")
     return build_past_limit_report(request.auth.tenant, customer,
                                    since=since, until=until)

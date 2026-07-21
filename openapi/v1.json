@@ -5498,7 +5498,7 @@
     },
     "/api/v1/billing/customers/{customer_id}/top-up": {
       "post": {
-        "description": "Start a top-up. Replay-safe (#78): the required idempotency_key is\nunique per customer on TopUpAttempt, so a retried call re-uses the\noriginal attempt \u2014 the checkout branch re-renders its session (Stripe's\nown idempotency on checkout-{attempt.id} returns the same session) and\nthe event branch never re-emits.",
+        "description": "Start a top-up. Replay-safe: idempotency_key is required and unique\nper customer \u2014 a retried call re-uses the original attempt and never\nstarts a second charge.",
         "operationId": "api_v1_billing_endpoints_create_top_up",
         "parameters": [
           {
@@ -6964,7 +6964,7 @@
     },
     "/api/v1/me/top-up": {
       "post": {
-        "description": "Widget twin of the tenant top-up. Replay-safe (#78): the required\nidempotency_key is unique per customer on TopUpAttempt \u2014 a retried call\nre-uses the original attempt (Stripe's own idempotency on\ncheckout-{attempt.id} returns the same session) and the event branch\nnever re-emits.",
+        "description": "Widget twin of the tenant top-up. Replay-safe: idempotency_key is\nrequired and unique per customer \u2014 a retried call re-uses the original\nattempt and never starts a second charge.",
         "operationId": "api_v1_me_endpoints_create_top_up",
         "parameters": [],
         "requestBody": {

@@ -5,6 +5,7 @@ from uuid import UUID
 from ninja import Router
 
 from api.v1.pagination import paginate
+from api.v1.topups import start_top_up
 from api.v1.schemas import (
     PreCheckRequest, PreCheckResponse,
     BalanceResponse,
@@ -24,7 +25,7 @@ from api.v1.schemas import (
 )
 from core.auth import ApiKeyAuth, ProductAccess
 from core.problems import Problem, ProblemOut
-from core.responses import json_response
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
@@ -196,83 +197,13 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 
 @billing_router.post("/customers/{customer_id}/top-up")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
-    """Start a top-up. Replay-safe (#78): the required idempotency_key is
-    unique per customer on TopUpAttempt, so a retried call re-uses the
-    original attempt — the checkout branch re-renders its session (Stripe's
-    own idempotency on checkout-{attempt.id} returns the same session) and
-    the event branch never re-emits."""
+    """Start a top-up. Replay-safe: idempotency_key is required and unique
+    per customer — a retried call re-uses the original attempt and never
+    starts a second charge."""
     _product_check(request)
-    from django.db import IntegrityError
-    from apps.billing.topups.models import TopUpAttempt
-
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    tenant = request.auth.tenant
-
-    from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
-    if get_tenant_stripe_account(tenant.id):
-        # Stripe connector is active — create checkout session
-        if not get_customer_stripe_id(customer.id):
-            raise Problem("conflict", "customer has no stripe_customer_id")
-
-        attempt = TopUpAttempt.objects.filter(
-            customer=customer, idempotency_key=payload.idempotency_key,
-        ).first()
-        if attempt is None:
-            try:
-                attempt = TopUpAttempt.objects.create(
-                    customer=customer,
-                    amount_micros=payload.amount_micros,
-                    trigger="manual",
-                    status="pending",
-                    idempotency_key=payload.idempotency_key,
-                )
-            except IntegrityError:  # concurrent replay lost the race
-                attempt = TopUpAttempt.objects.get(
-                    customer=customer, idempotency_key=payload.idempotency_key)
-
-        checkout_url = create_checkout_session(
-            customer, attempt.amount_micros, attempt,
-            success_url=payload.success_url,
-            cancel_url=payload.cancel_url,
-        )
-        return {"checkout_url": checkout_url}
-    else:
-        # No connector — emit event for tenant to handle; the attempt row is
-        # the replay anchor (a replayed key answers 202 without a second
-        # event).
-        from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import TopUpRequested
-
-        from django.db import transaction
-
-        existing = TopUpAttempt.objects.filter(
-            customer=customer, idempotency_key=payload.idempotency_key,
-        ).first()
-        if existing is None:
-            try:
-                with transaction.atomic():  # attempt + event land together
-                    TopUpAttempt.objects.create(
-                        customer=customer,
-                        amount_micros=payload.amount_micros,
-                        trigger="manual",
-                        status="pending",
-                        idempotency_key=payload.idempotency_key,
-                    )
-                    write_event(TopUpRequested(
-                        tenant_id=str(tenant.id),
-                        customer_id=str(customer.id),
-                        amount_micros=payload.amount_micros,
-                        trigger="manual",
-                        success_url=getattr(payload, "success_url", "") or "",
-                        cancel_url=getattr(payload, "cancel_url", "") or "",
-                    ))
-            except IntegrityError:
-                pass  # concurrent replay already wrote the attempt + event
-        return json_response(
-            request,
-            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
-            status=202,
-        )
+    return start_top_up(request, customer, request.auth.tenant, payload,
+                        trigger="manual", checkout=create_checkout_session)
 
 
 @billing_router.post("/customers/{customer_id}/withdraw")
@@ -689,7 +620,7 @@ def revenue_analytics(request, start_date: date = None, end_date: date = None):
     if start_date and end_date:
         if end_date < start_date:
             raise Problem("validation_error", "end_date must not precede start_date")
-        if (end_date - start_date).days > 366:
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem("validation_error", "date window must not exceed 366 days")
     return get_revenue_analytics(request.auth.tenant.id, start_date, end_date)
 

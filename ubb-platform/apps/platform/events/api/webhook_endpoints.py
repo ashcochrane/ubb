@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Field
 
 from core.auth import ApiKeyAuth
-from core.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import paginate
 from core.problems import Problem, ProblemOut
 from core.url_validation import validate_webhook_url
 from apps.platform.events.webhook_models import TenantWebhookConfig
@@ -98,26 +98,9 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     response={200: WebhookConfigListResponse, 400: ProblemOut},
 )
 def list_webhook_configs(request, cursor: str = None, limit: int = 50):
-    limit = min(max(limit, 1), 100)
-
-    qs = TenantWebhookConfig.objects.filter(
-        tenant=request.auth.tenant,
-    ).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError as e:
-            raise Problem("invalid_cursor", str(e))
-
-    configs = list(qs[: limit + 1])
-    has_more = len(configs) > limit
-    configs = configs[:limit]
-
-    next_cursor = None
-    if has_more and configs:
-        last = configs[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    configs, next_cursor, has_more = paginate(
+        TenantWebhookConfig.objects.filter(tenant=request.auth.tenant),
+        cursor, limit)
 
     return {
         "data": [_serialize(c) for c in configs],

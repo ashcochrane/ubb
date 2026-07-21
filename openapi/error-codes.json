@@ -68,6 +68,10 @@
       "status": 409,
       "title": "Last active API key"
     },
+    "method_not_allowed": {
+      "status": 405,
+      "title": "Method not allowed"
+    },
     "no_cost_cards": {
       "status": 422,
       "title": "No cost rate cards"

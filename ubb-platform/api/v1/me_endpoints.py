@@ -6,11 +6,10 @@ from typing import Optional
 from django.utils import timezone
 
 from api.v1.pagination import paginate
+from api.v1.topups import start_top_up
 from core.auth import ProductAccess
 from core.problems import Problem
-from core.responses import json_response
 from core.widget_auth import WidgetJWTAuth
-from apps.billing.topups.models import TopUpAttempt
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
 
@@ -231,76 +230,13 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 @me_router.post("/top-up", response=TopUpResponse)
 def create_top_up(request, payload: TopUpRequest):
-    """Widget twin of the tenant top-up. Replay-safe (#78): the required
-    idempotency_key is unique per customer on TopUpAttempt — a retried call
-    re-uses the original attempt (Stripe's own idempotency on
-    checkout-{attempt.id} returns the same session) and the event branch
-    never re-emits."""
+    """Widget twin of the tenant top-up. Replay-safe: idempotency_key is
+    required and unique per customer — a retried call re-uses the original
+    attempt and never starts a second charge."""
     _check_billing_product(request)
-    from django.db import IntegrityError, transaction
-
     customer = request.widget_customer
-    tenant = customer.tenant
-
-    from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
-    if get_tenant_stripe_account(tenant.id):
-        if not get_customer_stripe_id(customer.id):
-            raise Problem("conflict", "customer has no stripe_customer_id")
-
-        attempt = TopUpAttempt.objects.filter(
-            customer=customer, idempotency_key=payload.idempotency_key,
-        ).first()
-        if attempt is None:
-            try:
-                attempt = TopUpAttempt.objects.create(
-                    customer=customer,
-                    amount_micros=payload.amount_micros,
-                    trigger="widget",
-                    status="pending",
-                    idempotency_key=payload.idempotency_key,
-                )
-            except IntegrityError:  # concurrent replay lost the race
-                attempt = TopUpAttempt.objects.get(
-                    customer=customer, idempotency_key=payload.idempotency_key)
-
-        checkout_url = create_checkout_session(
-            customer, attempt.amount_micros, attempt,
-            success_url=payload.success_url,
-            cancel_url=payload.cancel_url,
-        )
-        return {"checkout_url": checkout_url}
-    else:
-        from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import TopUpRequested
-
-        existing = TopUpAttempt.objects.filter(
-            customer=customer, idempotency_key=payload.idempotency_key,
-        ).first()
-        if existing is None:
-            try:
-                with transaction.atomic():  # attempt + event land together
-                    TopUpAttempt.objects.create(
-                        customer=customer,
-                        amount_micros=payload.amount_micros,
-                        trigger="widget",
-                        status="pending",
-                        idempotency_key=payload.idempotency_key,
-                    )
-                    write_event(TopUpRequested(
-                        tenant_id=str(tenant.id),
-                        customer_id=str(customer.id),
-                        amount_micros=payload.amount_micros,
-                        trigger="widget",
-                        success_url=getattr(payload, "success_url", "") or "",
-                        cancel_url=getattr(payload, "cancel_url", "") or "",
-                    ))
-            except IntegrityError:
-                pass  # concurrent replay already wrote the attempt + event
-        return json_response(
-            request,
-            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
-            status=202,
-        )
+    return start_top_up(request, customer, customer.tenant, payload,
+                        trigger="widget", checkout=create_checkout_session)
 
 
 @me_router.get("/invoices", response=PaginatedInvoices)

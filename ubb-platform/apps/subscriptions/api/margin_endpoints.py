@@ -7,6 +7,7 @@ from ninja import Router
 
 from core.auth import ApiKeyAuth, ProductAccess
 from core.problems import Problem, ProblemOut
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
 from apps.subscriptions.economics.models import (
     CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
@@ -27,15 +28,13 @@ def _current_month():
     return start, end
 
 
-# Computed margin reports are parameter-bounded (#78): an explicit window may
-# not exceed this many days (366 = one leap year). Defaults (month-to-date)
-# are unaffected.
-MAX_REPORT_WINDOW_DAYS = 366
-
-
 def _window(start_date, end_date):
     if start_date and end_date:
-        if (end_date - start_date).days > MAX_REPORT_WINDOW_DAYS:
+        if end_date < start_date:
+            raise Problem(
+                "validation_error", "end_date must not precede start_date"
+            )
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem(
                 "validation_error", "date window must not exceed 366 days"
             )

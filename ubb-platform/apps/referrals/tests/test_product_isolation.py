@@ -1,7 +1,7 @@
 from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.referrals.tests.problem_asserts import assert_problem
+from apps.referrals.tests._helpers import assert_problem
 
 
 class TestReferralsProductIsolation(TestCase):

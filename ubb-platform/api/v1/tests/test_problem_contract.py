@@ -24,8 +24,9 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 
 SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 # The status vocabulary #63 settled: 400 malformed/bad cursor, 401, 403,
-# 404, 409, 410, 422 semantic validation, 429, and problem-rendered 5xx.
-ALLOWED_STATUSES = {400, 401, 403, 404, 409, 410, 422, 429, 500, 503}
+# 404, 409, 410, 422 semantic validation, 429, problem-rendered 5xx — plus
+# 405 for the wrong-method lane the middleware rewrites onto the dialect.
+ALLOWED_STATUSES = {400, 401, 403, 404, 405, 409, 410, 422, 429, 500, 503}
 
 
 def assert_problem(testcase, response, code, status=None):
@@ -114,6 +115,16 @@ class CentralHandlerTest(TestCase):
         self.assertEqual(body["detail"], "nope")
         assert_problem(self, self._handle(HttpError(410, "over")), "gone")
 
+    def test_stray_429_always_carries_retry_after(self):
+        response = self._handle(HttpError(429, "slow down"))
+        assert_problem(self, response, "rate_limit_exceeded")
+        self.assertIn("Retry-After", response)
+
+    def test_unmapped_status_collapses_to_the_nearest_generic(self):
+        # The registry pins one status per code, so a foreign status can
+        # never be served — 402 has no code and lands as bad_request (400).
+        assert_problem(self, self._handle(HttpError(402, "pay up")), "bad_request")
+
     def test_authentication_error_is_unauthorized_without_detail(self):
         body = assert_problem(
             self, self._handle(NinjaAuthenticationError()), "unauthorized"
@@ -200,3 +211,11 @@ class LiveSurfaceTest(TestCase):
     def test_product_gate_is_a_403_feature_problem(self):
         response = self.http_client.get("/api/v1/referrals/program", **self.auth)
         assert_problem(self, response, "feature_not_enabled")
+
+    def test_wrong_method_is_a_405_problem_with_allow(self):
+        """The one error the handlers can't reach — ninja answers a wrong
+        method with a plain HttpResponseNotAllowed before any handler runs;
+        the middleware rewrites it onto the dialect, keeping Allow."""
+        response = self.http_client.delete("/api/v1/tenant/config", **self.auth)
+        assert_problem(self, response, "method_not_allowed")
+        self.assertIn("GET", response["Allow"])

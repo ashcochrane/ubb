@@ -25,12 +25,15 @@ logger = logging.getLogger(__name__)
 
 # Fallback mapping for HttpErrors that predate the conversion (and ninja's own
 # internals, e.g. the 400 "Cannot parse request body"). Converted code raises
-# Problem directly; this lane keeps any straggler on-dialect.
+# Problem directly; this lane keeps any straggler on-dialect. An unmapped
+# status collapses to the nearest generic (bad_request / internal_error) —
+# the registry pins one status per code, so a foreign status can't be served.
 _CODE_BY_STATUS = {
     400: "bad_request",
     401: "unauthorized",
     403: "forbidden",
     404: "not_found",
+    405: "method_not_allowed",
     409: "conflict",
     410: "gone",
     422: "validation_error",
@@ -72,11 +75,16 @@ def install_problem_handlers(api):
 
     @api.exception_handler(HttpError)
     def _http_error(request, exc):
-        code = _CODE_BY_STATUS.get(exc.status_code, "internal_error")
+        code = _CODE_BY_STATUS.get(
+            exc.status_code,
+            "bad_request" if exc.status_code < 500 else "internal_error",
+        )
         leak_safe = exc.status_code < 500 and not isinstance(
             exc, NinjaAuthenticationError
         )
-        return problem_response(code, str(exc) if leak_safe else None)
+        headers = {"Retry-After": "60"} if exc.status_code == 429 else None
+        return problem_response(
+            code, str(exc) if leak_safe else None, headers=headers)
 
     @api.exception_handler(NinjaValidationError)
     def _validation(request, exc):
@@ -100,3 +108,28 @@ def install_problem_handlers(api):
             "unhandled exception on %s %s", request.method, request.path
         )
         return problem_response("internal_error")
+
+
+class MethodNotAllowedProblemMiddleware:
+    """The one error the handlers cannot reach: a wrong-method request is
+    answered by ninja/Django with a plain ``HttpResponseNotAllowed`` before
+    any exception handler runs. Rewrite it onto the dialect (keeping the
+    ``Allow`` header) so the surface's zero-non-problem+json promise holds.
+    Registered in ``config/settings.py``; scoped to the versioned mount."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if (
+            response.status_code == 405
+            and request.path.startswith("/api/v1/")
+            and response.get("Content-Type") != "application/problem+json"
+        ):
+            allow = response.get("Allow", "")
+            return problem_response(
+                "method_not_allowed",
+                headers={"Allow": allow} if allow else None,
+            )
+        return response

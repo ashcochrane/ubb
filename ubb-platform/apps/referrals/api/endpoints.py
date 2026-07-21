@@ -7,7 +7,8 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 
-from core.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import paginate
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from core.problems import Problem
 from apps.platform.customers.models import Customer
 from apps.referrals.api.schemas import (
@@ -209,24 +210,9 @@ def get_referrer(request, customer_id: str):
 def list_referrers(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = Referrer.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            raise Problem("invalid_cursor", "Invalid cursor")
-
-    referrers = list(qs[: limit + 1])
-    has_more = len(referrers) > limit
-    referrers = referrers[:limit]
-
-    next_cursor = None
-    if has_more and referrers:
-        last = referrers[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    referrers, next_cursor, has_more = paginate(
+        Referrer.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -392,29 +378,14 @@ def get_referrer_earnings(request, customer_id: str):
 def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
     referrer = get_object_or_404(Referrer, customer=customer, tenant=tenant)
 
-    qs = Referral.objects.filter(
-        referrer=referrer,
-    ).select_related("referred_customer").order_by("-attributed_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="attributed_at")
-        except ValueError:
-            raise Problem("invalid_cursor", "Invalid cursor")
-
-    referrals = list(qs[: limit + 1])
-    has_more = len(referrals) > limit
-    referrals = referrals[:limit]
-
-    next_cursor = None
-    if has_more and referrals:
-        last = referrals[-1]
-        next_cursor = encode_cursor(last.attributed_at, last.id)
+    referrals, next_cursor, has_more = paginate(
+        Referral.objects.filter(
+            referrer=referrer).select_related("referred_customer"),
+        cursor, limit, time_field="attributed_at")
 
     data = []
     for ref in referrals:
@@ -454,28 +425,14 @@ def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit:
 def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
     referral = get_object_or_404(Referral, id=referral_id, tenant=tenant)
 
-    qs = ReferralRewardLedger.objects.filter(
-        referral=referral,
-    ).order_by("-period_start", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            raise Problem("invalid_cursor", "Invalid cursor")
-
-    entries = list(qs[: limit + 1])
-    has_more = len(entries) > limit
-    entries = entries[:limit]
-
-    next_cursor = None
-    if has_more and entries:
-        last = entries[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    # paginate() orders by the cursor's own keyset (-created_at, -id) — the
+    # old -period_start ordering filtered its cursor on created_at, a
+    # mismatched keyset that could skip rows across pages.
+    entries, next_cursor, has_more = paginate(
+        ReferralRewardLedger.objects.filter(referral=referral), cursor, limit)
 
     return {
         "data": [
@@ -615,7 +572,7 @@ def _parse_earnings_window(period_start, period_end):
         raise Problem(
             "validation_error", "period_start must be on or before period_end"
         )
-    if (end - start).days > 366:
+    if (end - start).days > REPORT_WINDOW_MAX_DAYS:
         raise Problem(
             "validation_error", "Earnings window must not exceed 366 days"
         )

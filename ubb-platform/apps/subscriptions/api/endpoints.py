@@ -19,7 +19,7 @@ from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
 from core.problems import Problem, ProblemOut
 
-from core.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import paginate
 from apps.platform.customers.models import Customer
 from apps.subscriptions.api.schemas import (
     SyncResponse,
@@ -87,29 +87,14 @@ def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50)
     _product_check(request)
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
-    limit = min(max(limit, 1), 100)
 
     # Only paid invoices surface here (this is the revenue listing). Since the AR
     # reconcile now also persists open/void/uncollectible rows with a NULL paid_at,
     # exclude them — they have no paid_at to order/serialize on.
-    qs = SubscriptionInvoice.objects.filter(
-        tenant=tenant, customer=customer, paid_at__isnull=False,
-    ).order_by("-paid_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="paid_at")
-        except ValueError as e:
-            raise Problem("invalid_cursor", str(e))
-
-    invoices = list(qs[: limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.paid_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        SubscriptionInvoice.objects.filter(
+            tenant=tenant, customer=customer, paid_at__isnull=False),
+        cursor, limit, time_field="paid_at")
 
     return {
         "data": [

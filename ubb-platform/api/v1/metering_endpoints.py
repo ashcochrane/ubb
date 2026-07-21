@@ -11,7 +11,8 @@ from ninja import Query, Router
 
 from core.auth import ApiKeyAuth, ProductAccess
 from core.problems import Problem, ProblemOut
-from core.time_windows import utc_day_start, utc_next_day_start
+from core.time_windows import (
+    REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
 from django.utils import timezone
 
 from api.v1.schemas import (
@@ -903,7 +904,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     if start_date and end_date:
         if end_date < start_date:
             raise Problem("validation_error", "end_date must not precede start_date")
-        if (end_date - start_date).days > 366:
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem("validation_error", "date window must not exceed 366 days")
     qs = UsageEvent.objects.filter(tenant=tenant)
 
@@ -1059,7 +1060,7 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
             raise Problem("validation_error", "end_date must not precede start_date")
         if granularity == "hour" and (end_date - start_date).days > 92:
             raise Problem("validation_error", "hourly window too large (max 92 days)")
-        if granularity == "day" and (end_date - start_date).days > 366:
+        if granularity == "day" and (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem("validation_error", "date window must not exceed 366 days")
     from apps.metering.queries import get_usage_timeseries
     series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,

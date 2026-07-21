@@ -8,7 +8,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator
-from apps.referrals.tests.problem_asserts import assert_problem
+from apps.referrals.tests._helpers import assert_problem
 
 
 @pytest.mark.django_db
