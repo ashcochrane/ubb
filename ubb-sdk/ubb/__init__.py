@@ -40,7 +40,15 @@ from ubb import _exceptions_generated as _exc
 from ubb._exceptions_generated import *  # noqa: F401,F403
 from ubb.webhooks import verify_webhook, verify_webhook_legacy
 
+# The SDK's own semver. v3.0 is the coordinated breaking cut (#85): the
+# generated core (#84) and the problem+json error model (#78) migrate the one
+# integrating tenant exactly once. Kept in lockstep with pyproject's version by
+# tests/test_release.py — bumping the release means bumping both.
+__version__ = "3.0.0"
+
 # The exact committed-spec revision this build was generated from (issue #84).
+# Paired with __version__, this makes the release self-describing: which SDK
+# build, cut against which committed contract (verifiable via the sha256).
 from ubb._spec_revision import SPEC_SHA256 as __spec_revision__
 from ubb._spec_revision import SPEC_VERSION as __spec_version__
 
@@ -57,7 +65,7 @@ __all__ = [
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
     "UBBStoppedError", "UBBWebhookVerificationError",
-    # webhooks + spec stamp
+    # webhooks + release identity (SDK version + spec stamp)
     "verify_webhook", "verify_webhook_legacy",
-    "__spec_revision__", "__spec_version__",
+    "__version__", "__spec_revision__", "__spec_version__",
 ] + list(_exc.__all__)
