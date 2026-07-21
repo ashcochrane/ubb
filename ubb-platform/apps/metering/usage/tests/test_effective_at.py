@@ -135,8 +135,9 @@ class TestEffectiveAtEndpoint:
                            "provider_cost_micros": 10,
                            "effective_at": "2026-06-01T12:00:00"})
         assert resp.status_code == 422
+        assert resp["Content-Type"] == "application/problem+json"
         body = resp.json()
-        assert body["error"] == "effective_at_naive"
+        assert body["code"] == "effective_at_naive"
         assert "detail" in body
 
     def test_in_future_422_with_typed_code(self):
@@ -144,14 +145,14 @@ class TestEffectiveAtEndpoint:
         resp = self._post({"request_id": "r1", "idempotency_key": "k1",
                            "provider_cost_micros": 10, "effective_at": eff})
         assert resp.status_code == 422
-        assert resp.json()["error"] == "effective_at_in_future"
+        assert resp.json()["code"] == "effective_at_in_future"
 
     def test_too_old_422_with_typed_code(self):
         eff = (timezone.now() - timedelta(days=40)).isoformat()
         resp = self._post({"request_id": "r1", "idempotency_key": "k1",
                            "provider_cost_micros": 10, "effective_at": eff})
         assert resp.status_code == 422
-        assert resp.json()["error"] == "effective_at_too_old"
+        assert resp.json()["code"] == "effective_at_too_old"
 
     def test_valid_effective_at_200(self):
         eff = (timezone.now() - timedelta(days=3)).isoformat()

@@ -4,7 +4,7 @@ from uuid import UUID
 from django.db import transaction
 from ninja import Router, Schema
 
-from api.v1.pagination import apply_cursor_filter, encode_cursor
+from api.v1.pagination import paginate
 from api.v1.schemas import (
     TenantBillingPeriodListResponse,
     TenantBillingPeriodOut,
@@ -14,7 +14,7 @@ from api.v1.schemas import (
     TenantInvoiceOut,
 )
 from core.auth import ApiKeyAuth
-from core.responses import json_response
+from core.problems import Problem, ProblemOut
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -24,24 +24,9 @@ tenant_router = Router(auth=ApiKeyAuth())
 @tenant_router.get("/billing-periods", response=TenantBillingPeriodListResponse)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = TenantBillingPeriod.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    periods = list(qs[:limit + 1])
-    has_more = len(periods) > limit
-    periods = periods[:limit]
-
-    next_cursor = None
-    if has_more and periods:
-        last = periods[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    periods, next_cursor, has_more = paginate(
+        TenantBillingPeriod.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -64,24 +49,9 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
 @tenant_router.get("/invoices", response=TenantInvoiceListResponse)
 def list_invoices(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = TenantInvoice.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    invoices = list(qs[:limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        TenantInvoice.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -126,6 +96,8 @@ class ApiKeyOut(Schema):
 
 class ApiKeyListResponse(Schema):
     data: list[ApiKeyOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class ApiKeyCreateIn(Schema):
@@ -146,18 +118,19 @@ def _api_key_out(k):
 
 
 @tenant_router.get("/api-keys", response=ApiKeyListResponse)
-def list_api_keys(request):
-    """All of THIS tenant's API keys (active and revoked), newest first.
+def list_api_keys(request, cursor: str = None, limit: int = 50):
+    """THIS tenant's API keys (active and revoked), newest first.
 
     last_used_at is buffered in Redis and flushed to the DB periodically, so
     it may lag a recently-used key by up to the flush interval.
     """
-    keys = TenantApiKey.objects.filter(
-        tenant=request.auth.tenant).order_by("-created_at")
-    return {"data": [_api_key_out(k) for k in keys]}
+    keys, next_cursor, has_more = paginate(
+        TenantApiKey.objects.filter(tenant=request.auth.tenant), cursor, limit)
+    return {"data": [_api_key_out(k) for k in keys],
+            "next_cursor": next_cursor, "has_more": has_more}
 
 
-@tenant_router.post("/api-keys", response={201: dict, 422: dict})
+@tenant_router.post("/api-keys", response={201: dict, 422: ProblemOut})
 def create_api_key(request, payload: ApiKeyCreateIn):
     """Mint a new API key. The RAW key is returned exactly once, here.
 
@@ -178,7 +151,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
                 tenant_id=str(key_obj.tenant_id), api_key_id=str(key_obj.id),
                 key_prefix=key_obj.key_prefix, label=key_obj.label))
     except ValueError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     return 201, {
         "id": str(key_obj.id),
         "key_prefix": key_obj.key_prefix,
@@ -188,7 +161,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
     }
 
 
-@tenant_router.post("/api-keys/{key_id}/rotate", response={200: dict, 404: dict})
+@tenant_router.post("/api-keys/{key_id}/rotate", response={200: dict, 404: ProblemOut})
 def rotate_api_key(request, key_id: UUID):
     """Replace a key in one transaction: mint successor, deactivate old.
 
@@ -205,7 +178,7 @@ def rotate_api_key(request, key_id: UUID):
         old = TenantApiKey.objects.select_for_update().filter(
             tenant=tenant, id=key_id).first()
         if old is None:
-            return 404, {"error": "API key not found"}
+            raise Problem("not_found", "API key not found")
         new_obj, raw_key = TenantApiKey.create_key(
             tenant, label=(old.label + " (rotated)").strip(),
             is_test=tenant.is_sandbox)
@@ -224,7 +197,7 @@ def rotate_api_key(request, key_id: UUID):
     }
 
 
-@tenant_router.delete("/api-keys/{key_id}", response={200: dict, 404: dict, 409: dict})
+@tenant_router.delete("/api-keys/{key_id}", response={200: dict, 404: ProblemOut, 409: ProblemOut})
 def revoke_api_key(request, key_id: UUID):
     """Soft-revoke a key (is_active=False). Idempotent on an inactive key.
 
@@ -243,14 +216,13 @@ def revoke_api_key(request, key_id: UUID):
             tenant=tenant).order_by("created_at", "id"))
         key = next((k for k in keys if k.id == key_id), None)
         if key is None:
-            return 404, {"error": "API key not found"}
+            raise Problem("not_found", "API key not found")
         if key.is_active:
             if sum(1 for k in keys if k.is_active) <= 1:
-                return 409, {
-                    "error": "cannot revoke the tenant's last active API key "
-                             "(mint or rotate a replacement first)",
-                    "code": "last_active_key",
-                }
+                raise Problem(
+                    "last_active_key",
+                    "cannot revoke the tenant's last active API key "
+                    "(mint or rotate a replacement first)")
             key.is_active = False
             key.save(update_fields=["is_active", "updated_at"])
             write_event(TenantApiKeyRevoked(
@@ -262,7 +234,7 @@ def revoke_api_key(request, key_id: UUID):
 # ---- Sandbox self-serve (F4.4) ----
 
 
-@tenant_router.post("/sandbox", response={200: dict, 403: dict})
+@tenant_router.post("/sandbox", response={200: dict, 403: ProblemOut})
 def create_sandbox(request):
     """Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.
 
@@ -272,7 +244,8 @@ def create_sandbox(request):
     """
     tenant = request.auth.tenant
     if tenant.is_sandbox:
-        return 403, {"error": "sandbox tenants cannot create sandboxes (use the live key)"}
+        raise Problem("forbidden",
+                      "sandbox tenants cannot create sandboxes (use the live key)")
     from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
     sandbox = get_or_create_sandbox(tenant)
     _key_obj, raw_key = TenantApiKey.create_key(sandbox, label="sandbox", is_test=True)
@@ -282,12 +255,12 @@ def create_sandbox(request):
     }
 
 
-@tenant_router.get("/sandbox", response={200: dict, 403: dict})
+@tenant_router.get("/sandbox", response={200: dict, 403: ProblemOut})
 def get_sandbox(request):
     """Sandbox status for the calling live tenant (exists, id, key prefixes)."""
     tenant = request.auth.tenant
     if tenant.is_sandbox:
-        return 403, {"error": "sandbox status is read with the live key"}
+        raise Problem("forbidden", "sandbox status is read with the live key")
     sandbox = Tenant.objects.filter(parent_tenant=tenant, is_sandbox=True).first()
     if sandbox is None:
         return 200, {"exists": False, "sandbox_tenant_id": None, "key_prefixes": []}
@@ -365,7 +338,7 @@ def get_tenant_config(request):
     return _config_out(request.auth.tenant)
 
 
-@tenant_router.patch("/config", response={200: TenantConfigOut, 409: dict, 422: dict})
+@tenant_router.patch("/config", response={200: TenantConfigOut, 409: ProblemOut, 422: ProblemOut})
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.metering.pricing.models import Rate
@@ -375,31 +348,29 @@ def update_tenant_config(request, payload: TenantConfigIn):
     if payload.default_currency is not None:
         new_currency = payload.default_currency.strip().lower()
         if new_currency not in SUPPORTED_CURRENCIES:
-            return 422, {
-                "error": f"unsupported currency {new_currency!r}: only "
-                         "2-decimal currencies are supported (zero-decimal "
-                         "currencies like jpy/krw are rejected until the "
-                         "minor-unit helper lands); allowed: "
-                         f"{', '.join(sorted(SUPPORTED_CURRENCIES))}",
-                "code": "unsupported_currency",
-            }
+            raise Problem(
+                "unsupported_currency",
+                f"unsupported currency {new_currency!r}: only "
+                "2-decimal currencies are supported (zero-decimal "
+                "currencies like jpy/krw are rejected until the "
+                "minor-unit helper lands); allowed: "
+                f"{', '.join(sorted(SUPPORTED_CURRENCIES))}")
         if new_currency != (t.default_currency or "usd").lower():
             reason = _currency_locked_reason(t)
             if reason is not None:
-                return 409, {
-                    "error": "default_currency cannot change once money "
-                             f"exists for this tenant ({reason}); existing "
-                             "wallets, Stripe Prices and invoices are "
-                             "denominated in the current currency and there "
-                             "is no FX/multi-currency support",
-                    "code": "currency_locked",
-                }
+                raise Problem(
+                    "currency_locked",
+                    "default_currency cannot change once money "
+                    f"exists for this tenant ({reason}); existing "
+                    "wallets, Stripe Prices and invoices are "
+                    "denominated in the current currency and there "
+                    "is no FX/multi-currency support")
     if payload.require_cost_card_coverage is True and not t.require_cost_card_coverage:
         if not Rate.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
-            return 422, {
-                "error": "require_cost_card_coverage cannot be enabled with zero active cost rate cards",
-                "code": "no_cost_cards",
-            }
+            raise Problem(
+                "no_cost_cards",
+                "require_cost_card_coverage cannot be enabled with zero "
+                "active cost rate cards")
     if payload.automatic_tax_enabled is True and not t.automatic_tax_enabled:
         # F5.3 preflight: only when the tenant is charge-ready can we ask
         # Stripe whether Tax is actually configured on the connected account.
@@ -419,17 +390,16 @@ def update_tenant_config(request, payload: TenantConfigIn):
                     stripe_account=t.stripe_connected_account_id,
                 )
             except StripeFatalError as e:
-                return 422, {"error": f"Stripe Tax is not available on the "
-                                      f"connected account: {e}",
-                             "code": "stripe_tax_not_active"}
+                raise Problem(
+                    "stripe_tax_not_active",
+                    f"Stripe Tax is not available on the connected account: {e}")
             status = getattr(tax_settings, "status", "")
             if status != "active":
-                return 422, {
-                    "error": "Stripe Tax is not active on the connected "
-                             f"account (status={status!r}); finish Stripe Tax "
-                             "setup in the Stripe dashboard first",
-                    "code": "stripe_tax_not_active",
-                }
+                raise Problem(
+                    "stripe_tax_not_active",
+                    "Stripe Tax is not active on the connected "
+                    f"account (status={status!r}); finish Stripe Tax "
+                    "setup in the Stripe dashboard first")
     if new_currency is not None:
         t.default_currency = new_currency
     if payload.automatic_tax_enabled is not None:
@@ -444,9 +414,9 @@ def update_tenant_config(request, payload: TenantConfigIn):
     # alone) from an explicit null (clear the cap) for the two nullable fields.
     fields_set = payload.model_fields_set
     if payload.min_balance_micros is not None and payload.min_balance_micros < 0:
-        return 422, {"error": "min_balance_micros must be >= 0 (it is the "
-                              "allowed overdraft magnitude, not a floor)",
-                     "code": "invalid_config"}
+        raise Problem("invalid_config",
+                      "min_balance_micros must be >= 0 (it is the "
+                      "allowed overdraft magnitude, not a floor)")
     # Soft floor tenant default (#40, spec §F): negative is allowed (a
     # wind-down line above zero); the value may not exceed the tenant-default
     # hard floor's (that would put the wind-down line below the stop line).
@@ -461,24 +431,24 @@ def update_tenant_config(request, payload: TenantConfigIn):
         if effective_hard is None:
             effective_hard = get_billing_config(t.id).min_balance_micros
         if payload.soft_min_balance_micros > effective_hard:
-            return 422, {"error": "soft_min_balance_micros must keep the soft line "
-                                  "at or above the hard floor's — the value cannot "
-                                  "exceed the effective tenant-default "
-                                  f"min_balance_micros ({effective_hard})",
-                         "code": "invalid_config"}
+            raise Problem("invalid_config",
+                          "soft_min_balance_micros must keep the soft line "
+                          "at or above the hard floor's — the value cannot "
+                          "exceed the effective tenant-default "
+                          f"min_balance_micros ({effective_hard})")
     if ("default_task_provider_cost_limit_micros" in fields_set
             and payload.default_task_provider_cost_limit_micros is not None
             and payload.default_task_provider_cost_limit_micros <= 0):
-        return 422, {"error": "default_task_provider_cost_limit_micros must be "
-                              "> 0, or null for no default",
-                     "code": "invalid_config"}
+        raise Problem("invalid_config",
+                      "default_task_provider_cost_limit_micros must be "
+                      "> 0, or null for no default")
     enforcement_changed = False
     if payload.enforcement_mode is not None:
         from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES
         valid_modes = {c[0] for c in ENFORCEMENT_MODE_CHOICES}
         if payload.enforcement_mode not in valid_modes:
-            return 422, {"error": f"enforcement_mode must be one of {sorted(valid_modes)}",
-                         "code": "invalid_config"}
+            raise Problem("invalid_config",
+                          f"enforcement_mode must be one of {sorted(valid_modes)}")
         enforcement_changed = payload.enforcement_mode != t.enforcement_mode
         t.enforcement_mode = payload.enforcement_mode
     arrival_flipped = False
@@ -491,7 +461,7 @@ def update_tenant_config(request, payload: TenantConfigIn):
         msg = "; ".join(
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
         )
-        return 422, {"error": msg, "code": "invalid_config"}
+        raise Problem("invalid_config", msg)
     # The task-default limit lives on RiskConfig; write it only after the
     # tenant save succeeds. Created lazily so a tenant that sets only this
     # field gets a row.

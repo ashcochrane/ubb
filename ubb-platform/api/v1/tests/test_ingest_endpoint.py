@@ -72,7 +72,9 @@ class HappyPathTest(IngestEndpointTestBase):
         self.assertEqual(body["rejected"], 0)
         r = body["results"][0]
         self.assertTrue(r["accepted"])
-        self.assertFalse(r["rejected"])
+        self.assertNotIn("rejected", r)  # #78: the per-item boolean is gone
+        self.assertIsNone(r["code"])
+        self.assertIsNone(r["detail"])
         self.assertFalse(r["stop"])
         self.assertEqual(r["mode"], "async")
         self.assertEqual(r["estimated_cost_micros"], 1_500_000)
@@ -126,8 +128,7 @@ class TaskLimitAcceptAlwaysTest(IngestEndpointTestBase):
         self.assertEqual(resp.status_code, 200)
         r = resp.json()["results"][0]
         self.assertTrue(r["accepted"])
-        self.assertFalse(r["rejected"])
-        self.assertIsNone(r["reason"])
+        self.assertIsNone(r["code"])
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
         self.assertEqual(raw.task_id, task.id)
@@ -193,9 +194,12 @@ class SyncFallbackRejectionIdemUnwindTest(IngestEndpointTestBase):
         resp = self._post([event])
         self.assertEqual(resp.status_code, 200)
         r = resp.json()["results"][0]
-        self.assertTrue(r["rejected"])
+        self.assertFalse(r["accepted"])
         self.assertEqual(r["mode"], "sync_fallback")
-        self.assertEqual(r["reason"], "pricing_error")
+        self.assertEqual(r["code"], "pricing_error")
+        # sync_fallback rejections are the one lane whose verdicts carry the
+        # sync error detail (#78).
+        self.assertIsNotNone(r["detail"])
         self.assertEqual(UsageEvent.objects.count(), 0)
         self.assertEqual(RawIngestEvent.objects.count(), 0)
 
@@ -210,9 +214,9 @@ class SyncFallbackRejectionIdemUnwindTest(IngestEndpointTestBase):
         self.assertEqual(retry.status_code, 200)
         r2 = retry.json()["results"][0]
         # A genuine first attempt -- same rejection again, NOT a replay.
-        self.assertTrue(r2["rejected"])
+        self.assertFalse(r2["accepted"])
         self.assertEqual(r2["mode"], "sync_fallback")
-        self.assertEqual(r2["reason"], "pricing_error")
+        self.assertEqual(r2["code"], "pricing_error")
         self.assertFalse(r2["duplicate_suspect"])
         self.assertEqual(UsageEvent.objects.count(), 0)
         self.assertEqual(RawIngestEvent.objects.count(), 0)
@@ -237,7 +241,8 @@ class MissingProductFlagTest(IngestEndpointTestBase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.json()["error"], "feature_not_enabled")
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        self.assertEqual(resp.json()["code"], "feature_not_enabled")
 
 
 class AppendFailureReleasesHoldsTest(IngestEndpointTestBase):
@@ -278,8 +283,8 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         first = self._post([event])
         self.assertEqual(first.status_code, 200)
         r1 = first.json()["results"][0]
-        self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "not_found")
+        self.assertFalse(r1["accepted"])
+        self.assertEqual(r1["code"], "not_found")
         self.assertEqual(RawIngestEvent.objects.count(), 0)
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
 
@@ -305,8 +310,8 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         first = self._post([event])
         self.assertEqual(first.status_code, 200)
         r1 = first.json()["results"][0]
-        self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "validation_error")
+        self.assertFalse(r1["accepted"])
+        self.assertEqual(r1["code"], "validation_error")
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
 
         del event["currency"]  # corrected; SAME idempotency_key
@@ -402,7 +407,6 @@ class KilledTaskAcceptedTest(IngestEndpointTestBase):
         self.assertEqual(body["rejected"], 0)
         for r in body["results"]:
             self.assertTrue(r["accepted"])
-            self.assertFalse(r["rejected"])
             self.assertFalse(r["duplicate_suspect"])
         rows = list(RawIngestEvent.objects.order_by("created_at"))
         self.assertEqual(len(rows), 2)
@@ -425,8 +429,8 @@ class EffectiveAtTest(IngestEndpointTestBase):
         resp = self._post([event])
         self.assertEqual(resp.status_code, 200)
         r = resp.json()["results"][0]
-        self.assertTrue(r["rejected"])
-        self.assertEqual(r["reason"], "effective_at_naive")
+        self.assertFalse(r["accepted"])
+        self.assertEqual(r["code"], "effective_at_naive")
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
         # Rejection precedes the SETNX: the corrected retry (same key) is a
         # genuine first accept with a real hold. The retry must stay inside the
@@ -446,8 +450,8 @@ class EffectiveAtTest(IngestEndpointTestBase):
         too_old = (timezone.now() - timedelta(days=60)).isoformat()  # window default 34d
         resp = self._post([self._event(billed_cost_micros=200_000, effective_at=too_old)])
         r = resp.json()["results"][0]
-        self.assertTrue(r["rejected"])
-        self.assertEqual(r["reason"], "effective_at_too_old")
+        self.assertFalse(r["accepted"])
+        self.assertEqual(r["code"], "effective_at_too_old")
         self.assertEqual(RawIngestEvent.objects.count(), 0)
 
     def test_valid_effective_at_accepted_and_preserved_in_payload(self):
@@ -492,7 +496,6 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         r2 = second.json()["results"][0]
         self.assertTrue(r2["accepted"])
         self.assertTrue(r2["duplicate_suspect"])
-        self.assertFalse(r2["rejected"])
         rows = list(RawIngestEvent.objects.order_by("created_at"))
         self.assertEqual(len(rows), 2)
         self.assertFalse(rows[1].held)
@@ -508,8 +511,8 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         with patch("apps.billing.queries.is_usage_period_closed", return_value=True):
             resp = self._post([event])
         r = resp.json()["results"][0]
-        self.assertTrue(r["rejected"])
-        self.assertEqual(r["reason"], "billing_period_closed")
+        self.assertFalse(r["accepted"])
+        self.assertEqual(r["code"], "billing_period_closed")
         self.assertEqual(RawIngestEvent.objects.count(), 0)
         self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
 
@@ -548,11 +551,11 @@ class MixedBatchTest(IngestEndpointTestBase):
         r0, r1, r2, r3 = body["results"]
         self.assertTrue(r0["accepted"] and not r0["duplicate_suspect"])
         self.assertEqual(r0["estimated_cost_micros"], 500_000)
-        self.assertTrue(r1["rejected"])
-        self.assertEqual(r1["reason"], "not_found")
+        self.assertFalse(r1["accepted"])
+        self.assertEqual(r1["code"], "not_found")
         self.assertTrue(r2["accepted"] and r2["duplicate_suspect"])
-        self.assertTrue(r3["rejected"])
-        self.assertEqual(r3["reason"], "validation_error")
+        self.assertFalse(r3["accepted"])
+        self.assertEqual(r3["code"], "validation_error")
         self.assertEqual(body["accepted"], 2)
         self.assertEqual(body["rejected"], 2)
         # Exactly one NEW hold (the valid item); replay + rejects take none.
@@ -646,7 +649,6 @@ class PostpaidPriorMonthGuardTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         r0 = resp.json()["results"][0]
         self.assertTrue(r0["accepted"])
-        self.assertFalse(r0["rejected"])
 
         # The backfilled (accepted) item never touched THIS month's livespend.
         self.assertIsNone(LiveLedgerService.read_postpaid(self.customer.id))

@@ -42,7 +42,8 @@ class AutomaticTaxConfigTest(TestCase):
         self.assertEqual(resp.status_code, 422)
         body = resp.json()
         self.assertEqual(body["code"], "stripe_tax_not_active")
-        self.assertIn("pending", body["error"])
+        self.assertEqual(body["code"], "stripe_tax_not_active")
+        self.assertIn("pending", body["detail"])
         retrieve.assert_called_once()
         self.tenant.refresh_from_db()
         self.assertFalse(self.tenant.automatic_tax_enabled)
@@ -56,7 +57,8 @@ class AutomaticTaxConfigTest(TestCase):
         self.assertEqual(resp.status_code, 422)
         body = resp.json()
         self.assertEqual(body["code"], "stripe_tax_not_active")
-        self.assertIn("You must enable Stripe Tax first", body["error"])
+        self.assertEqual(body["code"], "stripe_tax_not_active")
+        self.assertIn("You must enable Stripe Tax first", body["detail"])
         self.tenant.refresh_from_db()
         self.assertFalse(self.tenant.automatic_tax_enabled)
 
@@ -122,4 +124,4 @@ class SubscribeTaxErrorSurfacingTest(TestCase):
                 content_type="application/json",
                 HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         self.assertEqual(resp.status_code, 422)
-        self.assertIn("automatic_tax", resp.json()["error"])
+        self.assertIn("automatic_tax", resp.json()["detail"])

@@ -155,7 +155,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
                 "billed_cost_micros": 500_000,
             }]}), content_type="application/json", **self._auth())
         item = resp.json()["results"][0]
-        self.assertTrue(item["ok"])
+        self.assertTrue(item["accepted"])
         self.assertEqual(item["stop_context"][0]["limit"], "task_limit")
         self.assertTrue(item["stop_context"][0]["arrived_after"])
 

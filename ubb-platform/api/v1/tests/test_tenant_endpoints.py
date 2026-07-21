@@ -445,8 +445,9 @@ class TenantConfigCurrencyTest(TestCase):
         self.assertEqual(resp.status_code, 422)
         body = resp.json()
         self.assertEqual(body.get("code"), "unsupported_currency")
-        self.assertIn("2-decimal", body["error"])
-        self.assertIn("jpy", body["error"])
+        self.assertEqual(body["code"], "unsupported_currency")
+        self.assertIn("2-decimal", body["detail"])
+        self.assertIn("jpy", body["detail"])
 
     # --- 409 once money exists (each condition) ---
 
@@ -459,7 +460,8 @@ class TenantConfigCurrencyTest(TestCase):
         self.assertEqual(resp.status_code, 409, resp.content)
         body = resp.json()
         self.assertEqual(body.get("code"), "currency_locked")
-        self.assertIn("money", body["error"])
+        self.assertEqual(body["code"], "currency_locked")
+        self.assertIn("money", body["detail"])
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.default_currency, "usd")  # unchanged
 

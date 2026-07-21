@@ -111,6 +111,103 @@ class WidgetTopUpTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
         self.assertEqual(response.status_code, 422)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "validation_error")
+
+
+class WidgetTopUpReplayTest(TestCase):
+    """#78: widget top-up carries a required idempotency_key; a replay never
+    mints a second attempt or re-emits the event (connector-less branch)."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="No Stripe", stripe_connected_account_id="",
+            products=["metering", "billing"],
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_replay",
+        )
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
+        )
+
+    def _topup(self, key):
+        return self.http_client.post(
+            "/api/v1/me/top-up",
+            data=json.dumps({
+                "amount_micros": 10_000_000,
+                "success_url": "https://x.test/s",
+                "cancel_url": "https://x.test/c",
+                "idempotency_key": key,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+
+    def test_replay_answers_202_without_second_event_or_attempt(self):
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.platform.events.models import OutboxEvent
+
+        first = self._topup("w_dup")
+        replay = self._topup("w_dup")
+
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(replay.status_code, 202)
+        self.assertEqual(
+            TopUpAttempt.objects.filter(customer=self.customer).count(), 1)
+        self.assertEqual(
+            OutboxEvent.objects.filter(
+                event_type="billing.topup_requested").count(), 1)
+
+
+class WidgetGrantsEnvelopeTest(TestCase):
+    """#78: the /me grants list adopts the one cursor envelope."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Grants", products=["metering", "billing"],
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c_gr",
+        )
+        self.wallet = Wallet.objects.create(customer=self.customer)
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id)
+        )
+
+    def test_grants_list_speaks_the_envelope(self):
+        from apps.billing.wallets.models import CreditGrant
+
+        for i in range(3):
+            CreditGrant.objects.create(
+                tenant=self.tenant, wallet=self.wallet, kind="promo",
+                granted_micros=1_000_000, remaining_micros=1_000_000,
+                currency="usd", status="active", source="test")
+
+        first = self.http_client.get(
+            "/api/v1/me/grants?limit=2",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.assertEqual(first.status_code, 200)
+        body = first.json()
+        self.assertEqual(set(body), {"data", "next_cursor", "has_more"})
+        self.assertEqual(len(body["data"]), 2)
+        self.assertTrue(body["has_more"])
+
+        second = self.http_client.get(
+            f"/api/v1/me/grants?limit=2&cursor={body['next_cursor']}",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.assertEqual(len(second.json()["data"]), 1)
+        self.assertFalse(second.json()["has_more"])
+
+    def test_bad_cursor_is_a_400_problem(self):
+        response = self.http_client.get(
+            "/api/v1/me/grants?cursor=garbage",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "invalid_cursor")
 
 
 def _make_usage_invoice(tenant, customer):

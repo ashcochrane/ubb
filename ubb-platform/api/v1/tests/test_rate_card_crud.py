@@ -85,12 +85,12 @@ class RateCardCRUDTest(TestCase):
         self._add_rate(book_id)
         resp = self._list_rates(book_id)
         self.assertEqual(resp.status_code, 200, resp.content)
-        data = resp.json()
+        data = resp.json()["data"]
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["metric_name"], "input_tokens")
         # And exactly one book is listed.
         books = self.http_client.get("/api/v1/metering/pricing/rate-cards", **self._auth())
-        self.assertEqual(len(books.json()), 1)
+        self.assertEqual(len(books.json()["data"]), 1)
 
     def test_publish_soft_versions_old_and_active_reflects_new_price(self):
         book_id = self._create_book().json()["id"]
@@ -101,7 +101,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(pub.json()["version"], 2)  # book version bumped
 
         # Active list shows exactly one rate: the new 9999 version, new id.
-        items = self._list_rates(book_id).json()
+        items = self._list_rates(book_id).json()["data"]
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["rate_per_unit_micros"], 9999)
         self.assertNotEqual(items[0]["id"], original_id, "publish must open a NEW rate id")
@@ -118,7 +118,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(del_resp.json()["status"], "deleted")
 
         # Rate is soft-expired; the book's active rate list is empty.
-        self.assertEqual(len(self._list_rates(book_id).json()), 0)
+        self.assertEqual(len(self._list_rates(book_id).json()["data"]), 0)
 
         # DB record still exists but has valid_to.
         self.assertIsNotNone(Rate.objects.get(id=rate_id).valid_to)
@@ -128,19 +128,19 @@ class RateCardCRUDTest(TestCase):
         book_id = self._create_book().json()["id"]
         original_id = self._add_rate(book_id).json()["id"]
 
-        self.assertEqual(len(self._list_rates(book_id).json()), 1)
+        self.assertEqual(len(self._list_rates(book_id).json()["data"]), 1)
 
         pub = self._publish(book_id, [dict(_RATE_MATCH, rate_per_unit_micros=7777)])
         self.assertEqual(pub.status_code, 200, pub.content)
 
-        items = self._list_rates(book_id).json()
+        items = self._list_rates(book_id).json()["data"]
         self.assertEqual(len(items), 1)
         new_id = items[0]["id"]
         self.assertNotEqual(original_id, new_id)
         self.assertEqual(items[0]["rate_per_unit_micros"], 7777)
 
         self.assertEqual(self._delete_rate(new_id).status_code, 200)
-        self.assertEqual(len(self._list_rates(book_id).json()), 0)
+        self.assertEqual(len(self._list_rates(book_id).json()["data"]), 0)
 
 
 class RateCardPriceGatingTest(TestCase):
@@ -194,7 +194,8 @@ class RateCardCurrencyPinTest(TestCase):
     def test_create_book_with_mismatched_currency_returns_422(self):
         resp = self._post({**COST_BOOK, "currency": "eur"})
         self.assertEqual(resp.status_code, 422, resp.content)
-        self.assertIn("does not match tenant currency", resp.json()["error"])
+        self.assertEqual(resp.json()["code"], "validation_error")
+        self.assertIn("does not match tenant currency", resp.json()["detail"])
 
     def test_create_book_with_matching_currency_case_insensitive(self):
         resp = self._post({**COST_BOOK, "currency": "USD"})

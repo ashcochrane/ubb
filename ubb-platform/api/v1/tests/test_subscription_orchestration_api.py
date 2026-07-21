@@ -95,10 +95,12 @@ class TestSubscriptionOrchestrationAPI:
         assert data["per_seat_micros"] == 8_000_000
         assert TenantBillingPlan.objects.filter(tenant=self.tenant, key="pro").exists()
 
-    def test_create_plan_duplicate_key_returns_422(self):
+    def test_create_plan_duplicate_key_returns_409_conflict(self):
         assert self._make_plan().status_code == 201
         resp = self._make_plan()
-        assert resp.status_code == 422
+        assert resp.status_code == 409
+        assert resp["Content-Type"] == "application/problem+json"
+        assert resp.json()["code"] == "conflict"
 
     # ---- POST /customers/{external_id}/subscribe ----
 

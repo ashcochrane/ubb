@@ -243,7 +243,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
             content_type="application/json", **self._auth())
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["succeeded"], 2)
+        self.assertEqual(body["accepted"], 2)
         # Item 1 trips the subtask limit; item 2 lands on the killed subtask
         # — identical to firing the same items as sequential singles.
         self.assertEqual(body["results"][0]["stop_reason"], "subtask_limit")

@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 from core.auth import ApiKeyAuth, ProductAccess
-from core.responses import json_response
+from core.problems import Problem
 
 from api.v1.schemas import PastLimitReportResponse
 
@@ -42,6 +42,12 @@ def past_limit_report(request, customer_id: str,
         since = timezone.make_aware(since, dt_timezone.utc)
     if until is not None and timezone.is_naive(until):
         until = timezone.make_aware(until, dt_timezone.utc)
+    # #78: computed reports are cursor-exempt but parameter-bounded.
+    if since is not None and until is not None:
+        if until < since:
+            raise Problem("validation_error", "until must not precede since")
+        if (until - since).days > 366:
+            raise Problem("validation_error", "window must not exceed 366 days")
     return build_past_limit_report(request.auth.tenant, customer,
                                    since=since, until=until)
 
@@ -64,8 +70,9 @@ def ready(request):
     except Exception:
         checks["redis"] = "error"
     all_ok = all(v == "ok" for v in checks.values())
-    return json_response(
-        request,
-        {"status": "ready" if all_ok else "not_ready", "checks": checks},
-        status=200 if all_ok else 503,
-    )
+    if not all_ok:
+        # #78: the failing readiness answer is an error and speaks the one
+        # dialect; the per-dependency detail rides as an extension member.
+        raise Problem("service_unavailable", "one or more dependencies failing",
+                      extensions={"checks": checks})
+    return {"status": "ready", "checks": checks}
