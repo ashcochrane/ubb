@@ -69,8 +69,7 @@ class ApiKeyLifecycleTest(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(
             set(rows[0].keys()),
-            {"id", "key_prefix", "label", "is_active", "role",
-             "last_used_at", "created_at"})
+            {"id", "key_prefix", "label", "is_active", "last_used_at", "created_at"})
         text = resp.content.decode()
         self.assertNotIn(self.key_obj.key_hash, text)
         self.assertNotIn(self.raw_key, text)

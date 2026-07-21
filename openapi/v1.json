@@ -114,10 +114,6 @@
               }
             ],
             "title": "Last Used At"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
           }
         },
         "required": [
@@ -125,7 +121,6 @@
           "key_prefix",
           "label",
           "is_active",
-          "role",
           "created_at"
         ],
         "title": "ApiKeyOut",
@@ -1690,6 +1685,38 @@
         "title": "MeUsageInvoiceOut",
         "type": "object"
       },
+      "MemberListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MemberOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "MemberListResponse",
+        "type": "object"
+      },
       "MemberOut": {
         "properties": {
           "activated_at": {
@@ -1865,38 +1892,6 @@
           "has_more"
         ],
         "title": "PaginatedInvoicesResponse",
-        "type": "object"
-      },
-      "PaginatedMembers": {
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/MemberOut"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "has_more": {
-            "title": "Has More",
-            "type": "boolean"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "required": [
-          "data",
-          "has_more"
-        ],
-        "title": "PaginatedMembers",
         "type": "object"
       },
       "PaginatedRates": {
@@ -10376,7 +10371,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedMembers"
+                  "$ref": "#/components/schemas/MemberListResponse"
                 }
               }
             },

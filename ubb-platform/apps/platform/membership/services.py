@@ -96,6 +96,11 @@ def revoke_invitation(tenant, invitation_id):
         member = Member.objects.select_for_update().filter(
             invitation=invitation, status=PENDING).first()
         if member is not None:
+            # Hard delete is deliberate here (not a soft-delete policy break): a
+            # pending Member never activated, so it has no history worth keeping
+            # — the revoked Invitation IS the durable audit record — and the
+            # unconditional uq_one_member_per_tenant_email would otherwise let a
+            # tombstoned row block re-inviting the same address.
             member.delete()
         write_event(InvitationRevoked(
             tenant_id=str(tenant.id), invitation_id=str(invitation.id),
@@ -106,12 +111,16 @@ def revoke_invitation(tenant, invitation_id):
 def resolve_member_for_claims(claims):
     """Turn verified Clerk claims into the acting Member, or ``None``.
 
-    On first login this activates every pending Member matching the token's
-    email (matched by email, then bound to the Clerk ``sub``); on later logins
-    activation is a no-op and the member is selected by ``sub``. Returns a
-    single active Member, or ``None`` when the user is not a member, or when the
-    user has memberships in more than one tenant (tenant selection is identity
-    build 2 — refuse rather than guess). Never raises.
+    A returning member is selected by the Clerk ``sub`` it was bound to at
+    activation; a first login is activated by matching a pending Member on email.
+    Crucially, a member with a working membership is never disturbed — additional
+    memberships (a second tenant) are only activated once tenant selection lands
+    (identity build 2), so a later invite can never break an existing principal.
+
+    Returns a single active Member, or ``None`` when: the token has no subject,
+    the user is not a member, or resolution is ambiguous (memberships in more
+    than one tenant, or more than one pending invite for the email — refuse
+    rather than guess). Never raises.
     """
     try:
         sub = (claims.get("sub") or "").strip()
@@ -119,46 +128,64 @@ def resolve_member_for_claims(claims):
         if not sub:
             # Without a stable subject we cannot bind a principal safely.
             return None
-        if email:
-            _activate_pending_members(email, sub)
+        # Already joined: select by the cryptographic subject, and do NOT touch
+        # any pending membership — activating one here could turn a working
+        # single-tenant principal ambiguous (two actives) and lock the user out.
         actives = list(
             Member.objects.select_related("tenant").filter(
-                status=ACTIVE, clerk_user_id=sub)
-        )
+                status=ACTIVE, clerk_user_id=sub))
         if len(actives) == 1:
             return actives[0]
         if len(actives) > 1:
             logger.warning(
                 "membership.ambiguous_principal",
                 extra={"data": {"clerk_user_id": sub, "count": len(actives)}})
+            return None
+        # First login: activate the pending membership matched by email, but only
+        # when it is unambiguous. Multiple pending invites (different tenants)
+        # can't be resolved without a tenant selector, so they stay pending.
+        if not email:
+            return None
+        pendings = list(
+            Member.objects.select_related("tenant").filter(
+                status=PENDING, email=email))
+        if len(pendings) == 1:
+            return _activate_member(pendings[0], sub)
+        if len(pendings) > 1:
+            logger.warning(
+                "membership.ambiguous_pending",
+                extra={"data": {"clerk_user_id": sub, "count": len(pendings)}})
         return None
     except Exception:
         logger.warning("membership.resolve_failed", exc_info=True)
         return None
 
 
-def _activate_pending_members(email, sub):
-    """Flip every pending Member for ``email`` to active, binding it to ``sub``.
+def _activate_member(member, sub):
+    """Flip one pending Member to active, binding it to ``sub``. Returns the
+    active Member (or ``None`` if it turned out not to be activatable).
 
-    Idempotent: after the first login there are no pending rows left, so this is
-    a no-op (no writes, no events) on every subsequent request. ``select_for_update``
-    serialises concurrent first-login requests — the loser sees active rows and
-    does nothing.
+    ``select_for_update`` serialises concurrent first-login requests: the loser
+    re-reads an already-active row and returns it — one activation, one event.
     """
     with transaction.atomic():
-        pendings = list(
-            Member.objects.select_for_update().filter(email=email, status=PENDING))
-        for member in pendings:
-            member.status = ACTIVE
-            member.clerk_user_id = sub
-            member.activated_at = timezone.now()
-            member.save(update_fields=[
-                "status", "clerk_user_id", "activated_at", "updated_at"])
-            if member.invitation_id:
-                invitation = member.invitation
-                if invitation is not None and invitation.status == INV_PENDING:
-                    invitation.status = INV_ACCEPTED
-                    invitation.save(update_fields=["status", "updated_at"])
-            write_event(MemberActivated(
-                tenant_id=str(member.tenant_id), member_id=str(member.id),
-                email=member.email, role=member.role, clerk_user_id=sub))
+        locked = Member.objects.select_for_update().select_related(
+            "tenant").get(pk=member.pk)
+        if locked.status == ACTIVE:
+            return locked
+        if locked.status != PENDING:
+            return None
+        locked.status = ACTIVE
+        locked.clerk_user_id = sub
+        locked.activated_at = timezone.now()
+        locked.save(update_fields=[
+            "status", "clerk_user_id", "activated_at", "updated_at"])
+        if locked.invitation_id:
+            invitation = locked.invitation
+            if invitation is not None and invitation.status == INV_PENDING:
+                invitation.status = INV_ACCEPTED
+                invitation.save(update_fields=["status", "updated_at"])
+        write_event(MemberActivated(
+            tenant_id=str(locked.tenant_id), member_id=str(locked.id),
+            email=locked.email, role=locked.role, clerk_user_id=sub))
+        return locked

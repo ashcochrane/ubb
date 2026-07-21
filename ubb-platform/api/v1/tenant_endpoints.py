@@ -93,8 +93,6 @@ class ApiKeyOut(Schema):
     key_prefix: str
     label: str
     is_active: bool
-    # Tenant-principal role (identity build 1, #79). Every key is Admin today.
-    role: str
     last_used_at: Optional[str] = None
     created_at: str
 
@@ -117,7 +115,6 @@ def _api_key_out(k):
         "key_prefix": k.key_prefix,
         "label": k.label,
         "is_active": k.is_active,
-        "role": k.role,
         "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
         "created_at": k.created_at.isoformat(),
     }
@@ -278,7 +275,7 @@ class MemberOut(Schema):
     created_at: str
 
 
-class PaginatedMembers(Schema):
+class MemberListResponse(Schema):
     data: list[MemberOut]
     next_cursor: Optional[str] = None
     has_more: bool
@@ -351,7 +348,7 @@ def revoke_invitation(request, invitation_id: UUID):
     return 200, {"id": str(invitation.id), "status": invitation.status}
 
 
-@tenant_router.get("/members", response=PaginatedMembers)
+@tenant_router.get("/members", response=MemberListResponse)
 def list_members(request, cursor: str = None, limit: int = 50):
     """This tenant's members (pending and active), newest first. Read floor —
     any tenant principal may list the roster."""

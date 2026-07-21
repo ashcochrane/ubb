@@ -153,3 +153,13 @@ class MembershipEndpointsTest(TestCase):
     def test_no_auth_is_401(self):
         resp = self.http.get("/api/v1/tenant/members")
         self.assertEqual(resp.status_code, 401)
+
+    def test_member_token_authenticates_a_preexisting_tenant_route(self):
+        # "member_token accepted alongside tenant_api_key on every tenant route":
+        # the seam is the shared ApiKeyAuth, so a member token authenticates a
+        # route that predates membership (GET /tenant/config), not just the new
+        # identity routes.
+        self._invite("sam@example.com", WRITE)
+        token = _member_token("sam@example.com", "clerk_user_cfg")
+        resp = self.http.get("/api/v1/tenant/config", **self._hdr(token))
+        self.assertEqual(resp.status_code, 200)

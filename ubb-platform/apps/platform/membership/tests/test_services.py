@@ -153,15 +153,37 @@ class ResolveMemberTest(TestCase):
         self.assertIsNone(services.resolve_member_for_claims(
             {"email": "sam@example.com"}))
 
-    def test_multi_tenant_membership_is_ambiguous_none(self):
+    def test_multi_tenant_pending_is_ambiguous_and_left_pending(self):
         other = Tenant.objects.create(name="Beta")
         services.invite_member(self.tenant, "sam@example.com", READ)
         services.invite_member(other, "sam@example.com", ADMIN)
-        # First login activates BOTH pending memberships (same email); with two
-        # active memberships and no tenant selector, resolution refuses.
+        # Two pending invites for the same email, no tenant selector => refuse
+        # rather than guess, and leave BOTH pending for build 2 (never activate
+        # into an unusable two-active state).
         principal = services.resolve_member_for_claims(
             {"sub": "user_1", "email": "sam@example.com"})
         self.assertIsNone(principal)
-        # But both were activated (first-login side effect is per-membership).
         self.assertEqual(
-            Member.objects.filter(clerk_user_id="user_1", status=ACTIVE).count(), 2)
+            Member.objects.filter(email="sam@example.com", status=ACTIVE).count(), 0)
+        self.assertEqual(
+            Member.objects.filter(email="sam@example.com", status=PENDING).count(), 2)
+
+    def test_later_second_invite_never_breaks_a_working_principal(self):
+        # Reviewer's sharp edge: a member with a working single-tenant login must
+        # not be locked out when later invited to a second tenant.
+        other = Tenant.objects.create(name="Beta")
+        services.invite_member(self.tenant, "sam@example.com", READ)
+        first = services.resolve_member_for_claims(
+            {"sub": "user_1", "email": "sam@example.com"})
+        self.assertIsNotNone(first)
+        # Now invited to a second tenant.
+        services.invite_member(other, "sam@example.com", ADMIN)
+        # Next login still resolves to the original working membership.
+        again = services.resolve_member_for_claims(
+            {"sub": "user_1", "email": "sam@example.com"})
+        self.assertIsNotNone(again)
+        self.assertEqual(again.id, first.id)
+        self.assertEqual(again.tenant_id, self.tenant.id)
+        # The second-tenant membership stays pending (activates in build 2).
+        second = Member.objects.get(tenant=other, email="sam@example.com")
+        self.assertEqual(second.status, "pending")
