@@ -27,7 +27,7 @@ from apps.platform.membership.models import (
     Member,
     normalize_email,
 )
-from apps.platform.membership.roles import VALID_ROLES
+from apps.platform.membership.roles import ADMIN, VALID_ROLES
 from core.problems import Problem
 
 logger = logging.getLogger("ubb.auth")
@@ -106,6 +106,118 @@ def revoke_invitation(tenant, invitation_id):
             tenant_id=str(tenant.id), invitation_id=str(invitation.id),
             email=invitation.email))
     return invitation
+
+
+def _guard_last_active_admin(locked_members, member, *, new_role):
+    """Refuse an op that would leave the tenant with zero active Admins.
+
+    The last-Admin guard (identity build 2, #80): a tenant must always keep at
+    least one active Admin, so it can never lock itself out. ``locked_members``
+    are all the tenant's Member rows, already ``select_for_update``-locked in a
+    deterministic order by the caller — so two concurrent demote/remove requests
+    against two different Admins serialise and cannot both slip past the count.
+
+    The op is a demotion (``new_role`` is a non-Admin role) or a removal
+    (``new_role`` is ``None``). Only ACTIVE Admins count toward lock-out: a
+    pending Admin invitation is not yet holding the keys.
+    """
+    demote_or_remove = new_role != ADMIN  # a non-admin role, or None (removal)
+    if not (member.status == ACTIVE and member.role == ADMIN and demote_or_remove):
+        return
+    other_active_admins = sum(
+        1 for m in locked_members
+        if m.pk != member.pk and m.status == ACTIVE and m.role == ADMIN)
+    if other_active_admins == 0:
+        raise Problem(
+            "last_active_admin",
+            "cannot demote or remove the tenant's last active Admin — a tenant "
+            "must always keep at least one active Admin")
+
+
+def _lock_roster_find_member(tenant, member_id):
+    """Lock the tenant's whole member roster (deterministic order) and return
+    ``(roster, target)``. Locking every row in one ordered query gives
+    concurrent demote/remove requests a single lock order — no deadlock — and a
+    consistent snapshot for the last-Admin count. Must be called inside a
+    transaction (``select_for_update``). 404 if the target isn't in the roster.
+    """
+    roster = list(Member.objects.select_for_update().filter(
+        tenant=tenant).order_by("created_at", "id"))
+    member = next((m for m in roster if str(m.id) == str(member_id)), None)
+    if member is None:
+        raise Problem("not_found", "member not found")
+    return roster, member
+
+
+def change_member_role(tenant, member_id, new_role):
+    """Change a member's role (Admin-gated route). Returns the updated Member.
+
+    404 if unknown; 422 on an unknown role; 409 ``last_active_admin`` when the
+    change would demote the tenant's last active Admin. A no-op (same role)
+    returns the member untouched. For a still-pending member the linked
+    invitation's role is kept in step, so activation reflects the new role.
+    """
+    if new_role not in VALID_ROLES:
+        raise Problem("validation_error",
+                      f"role must be one of {sorted(VALID_ROLES)}")
+    with transaction.atomic():
+        members, member = _lock_roster_find_member(tenant, member_id)
+        if member.role == new_role:
+            return member
+        _guard_last_active_admin(members, member, new_role=new_role)
+        member.role = new_role
+        member.save(update_fields=["role", "updated_at"])
+        if member.status == PENDING and member.invitation_id:
+            invitation = member.invitation
+            if (invitation is not None and invitation.status == INV_PENDING
+                    and invitation.role != new_role):
+                invitation.role = new_role
+                invitation.save(update_fields=["role", "updated_at"])
+    return member
+
+
+def remove_member(tenant, member_id):
+    """Remove a member (Admin-gated route). 404 if unknown.
+
+    409 ``last_active_admin`` when removing the tenant's last active Admin. The
+    Member row is hard-deleted — the principal 401s on its next request and the
+    email is free to be re-invited (the unconditional
+    uq_one_member_per_tenant_email would otherwise let a tombstone block a
+    re-invite; same rationale as revoke_invitation's pending delete). Removing a
+    still-pending member also revokes its outstanding invitation so a later first
+    login can never resurrect it.
+    """
+    with transaction.atomic():
+        members, member = _lock_roster_find_member(tenant, member_id)
+        _guard_last_active_admin(members, member, new_role=None)
+        invitation = None
+        if member.invitation_id:
+            invitation = Invitation.objects.select_for_update().filter(
+                pk=member.invitation_id).first()
+        member.delete()
+        if invitation is not None and invitation.status == INV_PENDING:
+            invitation.status = INV_REVOKED
+            invitation.save(update_fields=["status", "updated_at"])
+
+
+def bootstrap_owner_admin(tenant, owner_email):
+    """Seed a fresh tenant's first Admin through the standard machinery (#80).
+
+    The operator names an owner email at tenant provisioning; this routes it
+    straight through ``invite_member`` with the Admin role — there is no bespoke
+    first-admin code path, so the owner joins exactly like any later teammate
+    (Clerk signup, activation on first login). Returns the created (or
+    pre-existing) Invitation, or ``None`` for a blank email. Tolerant of
+    re-provisioning: an email that is already a member or already has a pending
+    invite is left as-is rather than raising.
+    """
+    email = normalize_email(owner_email)
+    if not email:
+        return None
+    existing = Member.objects.filter(tenant=tenant, email=email).first()
+    if existing is not None:
+        return existing.invitation
+    return invite_member(tenant, email, ADMIN)
 
 
 def resolve_member_for_claims(claims):

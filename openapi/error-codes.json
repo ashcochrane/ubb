@@ -64,6 +64,10 @@
       "status": 422,
       "title": "Invalid tenant id"
     },
+    "last_active_admin": {
+      "status": 409,
+      "title": "Last active Admin"
+    },
     "last_active_key": {
       "status": 409,
       "title": "Last active API key"

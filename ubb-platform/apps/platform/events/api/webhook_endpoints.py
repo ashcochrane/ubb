@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Field
 
-from core.auth import ApiKeyAuth
+from core.auth import ADMIN, ApiKeyAuth, READ, role_floor
 from core.pagination import paginate
 from core.problems import Problem, ProblemOut
 from core.url_validation import validate_webhook_url
@@ -58,6 +58,7 @@ def _url_already_configured(tenant, url):
     "/configs",
     response={201: WebhookConfigResponse, 409: ProblemOut, 422: ProblemOut},
 )
+@role_floor(ADMIN)
 def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     try:
         validate_webhook_url(payload.url)
@@ -97,6 +98,7 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     "/configs",
     response={200: WebhookConfigListResponse, 400: ProblemOut},
 )
+@role_floor(READ)
 def list_webhook_configs(request, cursor: str = None, limit: int = 50):
     configs, next_cursor, has_more = paginate(
         TenantWebhookConfig.objects.filter(tenant=request.auth.tenant),
@@ -110,6 +112,7 @@ def list_webhook_configs(request, cursor: str = None, limit: int = 50):
 
 
 @webhook_router.delete("/configs/{config_id}")
+@role_floor(ADMIN)
 def delete_webhook_config(request, config_id: str):
     config = get_object_or_404(
         TenantWebhookConfig,

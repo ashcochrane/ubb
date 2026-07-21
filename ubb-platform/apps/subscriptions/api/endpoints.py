@@ -27,7 +27,7 @@ from apps.subscriptions.api.schemas import (
     PaginatedInvoicesResponse,
 )
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
-from core.auth import ApiKeyAuth, ProductAccess
+from core.auth import ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 
 subscriptions_router = Router(auth=ApiKeyAuth())
 
@@ -38,6 +38,7 @@ _product_check = ProductAccess("subscriptions")
 
 
 @subscriptions_router.post("/sync", response=SyncResponse)
+@role_floor(WRITE)
 def trigger_sync(request):
     _product_check(request)
     from apps.subscriptions.stripe.sync import sync_subscriptions
@@ -53,6 +54,7 @@ def trigger_sync(request):
     "/customers/{customer_id}/subscription",
     response={200: StripeSubscriptionOut, 404: ProblemOut},
 )
+@role_floor(READ)
 def get_subscription(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -83,6 +85,7 @@ def get_subscription(request, customer_id: str):
     "/customers/{customer_id}/invoices",
     response={200: PaginatedInvoicesResponse, 400: ProblemOut, 404: ProblemOut},
 )
+@role_floor(READ)
 def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant

@@ -1766,6 +1766,19 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "MemberRoleUpdateIn": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "MemberRoleUpdateIn",
+        "type": "object"
+      },
       "PaginatedBooks": {
         "properties": {
           "data": {
@@ -10102,7 +10115,7 @@
     },
     "/api/v1/tenant/invitations": {
       "get": {
-        "description": "This tenant's invitations (pending, accepted, and revoked), newest first\n(Admin only).",
+        "description": "This tenant's invitations (pending, accepted, and revoked), newest first.\n\nAdmin floor \u2014 the one deliberate exception to \"every GET floors at Read\"\n(#62's literal \"invitations create/list/revoke, Admin-gated\"; the members\nlist beside it stays Read). Flagged for review on #80; kept as specified.",
         "operationId": "api_v1_tenant_endpoints_list_invitations",
         "parameters": [
           {
@@ -10217,7 +10230,7 @@
     },
     "/api/v1/tenant/invitations/{invitation_id}": {
       "delete": {
-        "description": "Revoke a still-pending invitation (Admin only). Idempotent on an\nalready-revoked invite; 409 if it was already accepted (removing an active\nmember is identity build 2).",
+        "description": "Revoke a still-pending invitation (Admin only). Idempotent on an\nalready-revoked invite; 409 if it was already accepted (removing an active\nmember is member removal \u2014 DELETE /members/{id}).",
         "operationId": "api_v1_tenant_endpoints_revoke_invitation",
         "parameters": [
           {
@@ -10384,6 +10397,158 @@
           }
         ],
         "summary": "List Members"
+      }
+    },
+    "/api/v1/tenant/members/{member_id}": {
+      "delete": {
+        "description": "Remove a member (Admin only). 404 if unknown; 409 when removing the\ntenant's last active Admin (the last-Admin guard). The removed principal\n401s on its next request and its email is free to be re-invited.",
+        "operationId": "api_v1_tenant_endpoints_remove_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Remove Member"
+      },
+      "patch": {
+        "description": "Change a member's role (Admin only). 404 if unknown; 422 on an unknown\nrole; 409 when the change would demote the tenant's last active Admin (the\nlast-Admin guard \u2014 a tenant can never lock itself out).",
+        "operationId": "api_v1_tenant_endpoints_update_member_role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRoleUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Update Member Role"
       }
     },
     "/api/v1/tenant/sandbox": {

@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 
-from core.auth import ApiKeyAuth, ProductAccess
+from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
@@ -45,6 +45,7 @@ def _window(start_date, end_date):
 
 
 @margin_router.get("/summary")
+@role_floor(READ)
 def margin_summary(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     s, e = _window(start_date, end_date)
@@ -77,6 +78,7 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
 
 
 @margin_router.get("/by-dimension")
+@role_floor(READ)
 def margin_by_dimension(request, provider: int = None, product: int = None,
                         tag_key: str = None, start_date: date = None, end_date: date = None):
     _product_check(request)
@@ -92,6 +94,7 @@ def margin_by_dimension(request, provider: int = None, product: int = None,
 
 
 @margin_router.get("/unprofitable")
+@role_floor(READ)
 def margin_unprofitable(request, period_start: date = None):
     _product_check(request)
     ps = period_start or _current_month()[0]
@@ -106,6 +109,7 @@ def margin_unprofitable(request, period_start: date = None):
 
 
 @margin_router.get("/threshold", response=MarginThresholdOut)
+@role_floor(READ)
 def get_threshold(request):
     _product_check(request)
     cfg = MarginThresholdConfig.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
@@ -116,6 +120,7 @@ def get_threshold(request):
 
 
 @margin_router.put("/threshold", response=MarginThresholdOut)
+@role_floor(ADMIN)
 def put_threshold(request, payload: MarginThresholdIn):
     _product_check(request)
     cfg, _ = MarginThresholdConfig.objects.update_or_create(
@@ -128,6 +133,7 @@ def put_threshold(request, payload: MarginThresholdIn):
 
 
 @margin_router.get("/customers/{customer_id}/revenue", response=RevenueProfileOut)
+@role_floor(READ)
 def get_revenue(request, customer_id: UUID):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -144,6 +150,7 @@ def get_revenue(request, customer_id: UUID):
     "/customers/{customer_id}/revenue",
     response={200: RevenueProfileOut, 404: ProblemOut, 422: ProblemOut},
 )
+@role_floor(ADMIN)
 def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -166,6 +173,7 @@ _VALID_MODES = {"", "billed", "metered_only"}
 
 
 @margin_router.get("/customers/{customer_id}/revenue-mode", response=RevenueModeOut)
+@role_floor(READ)
 def get_revenue_mode(request, customer_id: UUID):
     _product_check(request)
     from apps.subscriptions.economics.revenue import RevenueService
@@ -178,6 +186,7 @@ def get_revenue_mode(request, customer_id: UUID):
     "/customers/{customer_id}/revenue-mode",
     response={200: RevenueModeOut, 404: ProblemOut, 422: ProblemOut},
 )
+@role_floor(ADMIN)
 def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
     _product_check(request)
     from apps.subscriptions.economics.revenue import RevenueService
@@ -195,6 +204,7 @@ def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
 
 
 @margin_router.get("/business/{external_id}")
+@role_floor(READ)
 def business_margin(request, external_id: str, start_date: date = None, end_date: date = None):
     _product_check(request)
     biz = get_object_or_404(Customer, tenant=request.auth.tenant,
@@ -204,6 +214,7 @@ def business_margin(request, external_id: str, start_date: date = None, end_date
 
 
 @margin_router.get("/{customer_id}/trend")
+@role_floor(READ)
 def margin_trend(request, customer_id: UUID, periods: int = 6):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -220,6 +231,7 @@ def margin_trend(request, customer_id: UUID, periods: int = 6):
 
 
 @margin_router.get("/{customer_id}")
+@role_floor(READ)
 def customer_margin(request, customer_id: UUID, start_date: date = None, end_date: date = None):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -231,6 +243,7 @@ def customer_margin(request, customer_id: UUID, start_date: date = None, end_dat
 
 
 @margin_router.get("")
+@role_floor(READ)
 def list_margin(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     s, e = _window(start_date, end_date)

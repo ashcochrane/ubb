@@ -45,6 +45,15 @@ class Command(BaseCommand):
             action="store_true",
             help="Also provision the tenant's sandbox sibling and mint a ubb_test_ key.",
         )
+        parser.add_argument(
+            "--owner-email",
+            default="",
+            help=(
+                "Owner email to seed as the tenant's first Admin (identity #80). "
+                "Routed through the standard invitation machinery — no special "
+                "code path; the owner activates on their first Clerk login."
+            ),
+        )
 
     def handle(self, *args, **options):
         billing_mode = options["billing_mode"]
@@ -91,6 +100,17 @@ class Command(BaseCommand):
         # Create API key
         key_obj, raw_key = TenantApiKey.create_key(tenant, label="dev-seed")
         self.stdout.write(f"Created API key: {raw_key}")
+
+        # Bootstrap the first Admin (identity #80). The operator names an owner
+        # email at provisioning; it becomes the first Admin invitation through
+        # the same invite_member machinery any teammate goes through.
+        if options["owner_email"]:
+            from apps.platform.membership.services import bootstrap_owner_admin
+            invitation = bootstrap_owner_admin(tenant, options["owner_email"])
+            if invitation is not None:
+                self.stdout.write(
+                    f"Owner Admin invitation: {invitation.email} "
+                    f"({invitation.status}) — activates on first Clerk login")
 
         # Optional sandbox sibling + test key (routed at mint time)
         if options["with_sandbox"]:

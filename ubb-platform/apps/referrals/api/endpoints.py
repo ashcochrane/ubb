@@ -28,7 +28,7 @@ from apps.referrals.api.schemas import (
 )
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
-from core.auth import ApiKeyAuth, ProductAccess
+from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 
 referrals_router = Router(auth=ApiKeyAuth())
 
@@ -62,6 +62,7 @@ def _program_to_dict(program):
 
 
 @referrals_router.post("/program", response=ProgramOut)
+@role_floor(ADMIN)
 def create_program(request, payload: ProgramCreateRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -84,6 +85,7 @@ def create_program(request, payload: ProgramCreateRequest):
 
 
 @referrals_router.get("/program", response=ProgramOut)
+@role_floor(READ)
 def get_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -99,6 +101,7 @@ def get_program(request):
 
 
 @referrals_router.patch("/program", response=ProgramOut)
+@role_floor(ADMIN)
 def update_program(request, payload: ProgramUpdateRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -126,6 +129,7 @@ def update_program(request, payload: ProgramUpdateRequest):
 
 
 @referrals_router.delete("/program")
+@role_floor(ADMIN)
 def deactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -143,6 +147,7 @@ def deactivate_program(request):
 
 
 @referrals_router.post("/program/reactivate", response=ProgramOut)
+@role_floor(ADMIN)
 def reactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -163,6 +168,7 @@ def reactivate_program(request):
 
 
 @referrals_router.post("/referrers", response=ReferrerOut)
+@role_floor(WRITE)
 def register_referrer(request, payload: RegisterReferrerRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -189,6 +195,7 @@ def register_referrer(request, payload: RegisterReferrerRequest):
 
 
 @referrals_router.get("/referrers/{customer_id}", response=ReferrerOut)
+@role_floor(READ)
 def get_referrer(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -207,6 +214,7 @@ def get_referrer(request, customer_id: str):
 
 
 @referrals_router.get("/referrers")
+@role_floor(READ)
 def list_referrers(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -235,6 +243,7 @@ def list_referrers(request, cursor: str = None, limit: int = 50):
 
 
 @referrals_router.post("/attribute", response=AttributeResponse)
+@role_floor(WRITE)
 def attribute_referral(request, payload: AttributeRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -350,6 +359,7 @@ def attribute_referral(request, payload: AttributeRequest):
 
 
 @referrals_router.get("/referrers/{customer_id}/earnings", response=EarningsOut)
+@role_floor(READ)
 def get_referrer_earnings(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -375,6 +385,7 @@ def get_referrer_earnings(request, customer_id: str):
 
 
 @referrals_router.get("/referrers/{customer_id}/referrals")
+@role_floor(READ)
 def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -422,6 +433,7 @@ def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit:
 
 
 @referrals_router.get("/referrals/{referral_id}/ledger")
+@role_floor(READ)
 def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -457,6 +469,7 @@ def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: in
 
 
 @referrals_router.delete("/referrals/{referral_id}")
+@role_floor(ADMIN)
 def revoke_referral(request, referral_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -475,6 +488,7 @@ def revoke_referral(request, referral_id: str):
 
 
 @referrals_router.get("/payouts/export")
+@role_floor(READ)
 def payout_export(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -521,6 +535,7 @@ def payout_export(request):
 
 
 @referrals_router.get("/analytics/summary", response=AnalyticsSummaryOut)
+@role_floor(READ)
 def analytics_summary(request):
     _product_check(request)
     tenant = request.auth.tenant
@@ -580,6 +595,7 @@ def _parse_earnings_window(period_start, period_end):
 
 
 @referrals_router.get("/analytics/earnings")
+@role_floor(READ)
 def analytics_earnings(request, period_start: str = None, period_end: str = None):
     _product_check(request)
     tenant = request.auth.tenant
