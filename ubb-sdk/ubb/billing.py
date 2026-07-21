@@ -4,11 +4,16 @@ import httpx
 
 from ubb.exceptions import UBBConnectionError
 from ubb._http import extract_problem, raise_for_status
+from ubb._models import from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
-    BalanceResult, TopUpResult, WalletTransaction, PaginatedResponse,
-    BudgetConfig, BudgetStatus, UsageInvoice, CreditGrant,
+    TopUpResult, WalletTransaction, PaginatedResponse, UsageInvoice,
 )
+# Generated DTOs (the wrap, #84).
+from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.budget_config_out import BudgetConfigOut
+from ubb._core.models.budget_status_out import BudgetStatusOut
+from ubb._core.models.grant_out import GrantOut
 
 
 class BillingClient:
@@ -124,10 +129,10 @@ class BillingClient:
             })
         return r.json()
 
-    def get_balance(self, customer_id: str) -> BalanceResult:
+    def get_balance(self, customer_id: str) -> BalanceResponse:
         """Get customer balance via GET /api/v1/billing/customers/{customer_id}/balance."""
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/balance")
-        return BalanceResult(**r.json())
+        return from_wire(BalanceResponse, r.json())
 
     def pre_check(self, customer_id: str, start_task: bool = False,
                   task_metadata: dict | None = None, external_task_id: str = "",
@@ -197,15 +202,15 @@ class BillingClient:
         if alert_levels is not None:
             body["alert_levels"] = alert_levels
         r = self._request("put", f"/api/v1/billing/customers/{customer_id}/budget", json=body)
-        return BudgetConfig(**r.json())
+        return from_wire(BudgetConfigOut, r.json())
 
     def get_budget(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/budget")
-        return BudgetConfig(**r.json())
+        return from_wire(BudgetConfigOut, r.json())
 
     def get_budget_status(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/budget/status")
-        return BudgetStatus(**r.json())
+        return from_wire(BudgetStatusOut, r.json())
 
     def get_usage_invoices(self, customer_id):
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
@@ -214,7 +219,7 @@ class BillingClient:
     def create_grant(self, customer_id: str, kind: str, amount_micros: int,
                      idempotency_key: str, expires_at: str | None = None,
                      expires_in_days: int | None = None,
-                     description: str = "") -> CreditGrant:
+                     description: str = "") -> GrantOut:
         """Create a credit grant lot via POST /api/v1/billing/customers/{customer_id}/grants.
 
         kind is "paid" or "promo". Pass expires_at (ISO-8601, tz-aware) OR
@@ -233,10 +238,10 @@ class BillingClient:
         if description:
             body["description"] = description
         r = self._request("post", f"/api/v1/billing/customers/{customer_id}/grants", json=body)
-        return CreditGrant(**r.json())
+        return from_wire(GrantOut, r.json())
 
     def list_grants(self, customer_id: str, status: str | None = None,
-                    cursor: str | None = None, limit: int = 50) -> PaginatedResponse[CreditGrant]:
+                    cursor: str | None = None, limit: int = 50) -> PaginatedResponse[GrantOut]:
         """List grant lots via GET /api/v1/billing/customers/{customer_id}/grants."""
         params: dict = {"limit": limit}
         if status is not None:
@@ -245,11 +250,11 @@ class BillingClient:
             params["cursor"] = cursor
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/grants", params=params)
         body = r.json()
-        grants = [CreditGrant(**item) for item in body["data"]]
+        grants = [from_wire(GrantOut, item) for item in body["data"]]
         return PaginatedResponse(data=grants, next_cursor=body.get("next_cursor"),
                                  has_more=body["has_more"])
 
-    def void_grant(self, customer_id: str, grant_id: str) -> CreditGrant:
+    def void_grant(self, customer_id: str, grant_id: str) -> GrantOut:
         """Void a grant via POST /api/v1/billing/customers/{customer_id}/grants/{grant_id}/void.
 
         Debits the lot's remaining (never below a zero balance) and retires it.
@@ -257,7 +262,7 @@ class BillingClient:
         """
         r = self._request(
             "post", f"/api/v1/billing/customers/{customer_id}/grants/{grant_id}/void")
-        return CreditGrant(**r.json())
+        return from_wire(GrantOut, r.json())
 
     def get_postpaid_config(self):
         """The tenant's postpaid config:

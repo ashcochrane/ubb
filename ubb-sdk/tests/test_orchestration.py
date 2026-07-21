@@ -9,7 +9,8 @@ from unittest.mock import patch, MagicMock
 from ubb.client import UBBClient
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import RecordUsageResult, PreCheckResult
+from ubb.types import PreCheckResult
+from ubb._core.models.record_usage_response import RecordUsageResponse
 
 
 class TestProductClientCreation(unittest.TestCase):
@@ -142,8 +143,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             provider_cost_micros=1_500_000,
         )
         self.assertEqual(result.event_id, "evt_2")
-        # balance_after_micros not set because no billing debit
-        self.assertIsNone(result.balance_after_micros)
+        # (balance_after_micros retired: not in the RecordUsageResponse contract.)
         mock_met_request.assert_called_once()
         client.close()
 
@@ -164,7 +164,6 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         self.assertEqual(result.event_id, "evt_3")
         # billing debit should NOT have been called
         mock_bill_request.assert_not_called()
-        self.assertIsNone(result.balance_after_micros)
 
     @patch.object(BillingClient, "_request")
     @patch.object(MeteringClient, "_request")
@@ -344,25 +343,11 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         client.close()
 
 
-class TestRecordUsageResultBalanceAfter(unittest.TestCase):
-    """Test that RecordUsageResult now supports optional balance_after_micros."""
-
-    def test_result_with_balance_after(self):
-        result = RecordUsageResult(
-            event_id="evt_1",
-            new_balance_micros=8_500_000,
-            suspended=False,
-            balance_after_micros=7_000_000,
-        )
-        self.assertEqual(result.balance_after_micros, 7_000_000)
-
-    def test_result_without_balance_after(self):
-        result = RecordUsageResult(
-            event_id="evt_1",
-            new_balance_micros=8_500_000,
-            suspended=False,
-        )
-        self.assertIsNone(result.balance_after_micros)
+# RETIRED (the wrap, #84): TestRecordUsageResultBalanceAfter pinned the hand
+# RecordUsageResult's ``balance_after_micros`` field. That field is not in the
+# committed RecordUsageResponse contract, so the generated model does not carry
+# it — the DTO's shape is now owned by the spec + the CI regeneration gate, not
+# a hand-written test. Nothing in the shell reads balance_after_micros.
 
 
 class TestPreCheckResultFields(unittest.TestCase):

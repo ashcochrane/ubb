@@ -1,3 +1,10 @@
 # The committed OpenAPI document is byte-compared by the drift gate and the
 # in-suite drift pin — keep it LF on every platform.
 openapi/v1.json text eol=lf
+
+# The generated SDK core and its siblings ride the same ratchet (issue #84):
+# CI regenerates and byte-compares them, so they must be LF in the working tree
+# on every platform, whatever a contributor's core.autocrlf is.
+ubb-sdk/ubb/_core/** text eol=lf
+ubb-sdk/ubb/_exceptions_generated.py text eol=lf
+ubb-sdk/ubb/_spec_revision.py text eol=lf

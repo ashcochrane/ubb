@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import httpx
 
-from ubb.exceptions import (
-    UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
-)
+from ubb.exceptions import UBBConnectionError
+from ubb._http import extract_problem, raise_for_status
 from ubb.retry import request_with_retry
 
 
@@ -36,20 +35,7 @@ class ReferralsClient:
             raise UBBConnectionError("Request timed out", original=e) from e
         except httpx.ConnectError as e:
             raise UBBConnectionError("Could not connect to UBB API", original=e) from e
-        if response.status_code == 401:
-            raise UBBAuthError("Invalid or revoked API key")
-        code, detail = self._extract_error(response)
-        if response.status_code == 409:
-            raise UBBConflictError(detail, code=code)
-        if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail, code=code)
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    err.retry_after = float(retry_after)
-                except (ValueError, TypeError):
-                    pass
-            raise err
+        raise_for_status(response)
         return response
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -62,14 +48,7 @@ class ReferralsClient:
     def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
         """(code, detail) from an RFC 9457 problem+json body (#78); falls
         back to (None, raw text) for anything non-problem."""
-        try:
-            body = response.json()
-            if isinstance(body, dict):
-                detail = body.get("detail") or body.get("title") or response.text
-                return body.get("code"), detail
-        except Exception:
-            pass
-        return None, response.text
+        return extract_problem(response)
 
     # ---- Program Management ----
 

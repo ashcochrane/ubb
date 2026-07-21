@@ -6,10 +6,9 @@ from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import (
-    RecordUsageResult, UsageEvent, PaginatedResponse, TenantMarkup,
-    BatchItemResult, BatchResult,
-)
+from ubb.types import UsageEvent, PaginatedResponse, BatchItemResult, BatchResult
+from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.tenant_markup_out import TenantMarkupOut
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -31,7 +30,7 @@ class MeteringClientTest(unittest.TestCase):
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
             provider_cost_micros=1_500_000,
         )
-        self.assertIsInstance(result, RecordUsageResult)
+        self.assertIsInstance(result, RecordUsageResponse)
         self.assertEqual(result.event_id, "evt_1")
         self.assertEqual(result.new_balance_micros, 8_500_000)
         self.assertFalse(result.suspended)
@@ -51,7 +50,7 @@ class MeteringClientTest(unittest.TestCase):
             provider_cost_micros=500_000, billed_cost_micros=1_000_000,
             event_type="chat_completion", provider="openai",
         )
-        self.assertIsInstance(result, RecordUsageResult)
+        self.assertIsInstance(result, RecordUsageResponse)
         self.assertEqual(result.billed_cost_micros, 1_000_000)
         self.assertEqual(result.provider_cost_micros, 500_000)
         body = mock_post.call_args.kwargs["json"]
@@ -126,7 +125,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_batch_maps_recorded_at_and_parses_results(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "results": [
-                {"accepted": True, "event_id": "evt_1", "billed_cost_micros": 5},
+                {"accepted": True, "event_id": "evt_1", "suspended": False, "billed_cost_micros": 5},
                 {"accepted": False, "code": "effective_at_too_old",
                  "detail": "too old", "stop": False, "stop_reason": None,
                  "stop_scope": None},
@@ -170,7 +169,7 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_batch_does_not_mutate_caller_events(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "results": [{"ok": True, "event_id": "e1"}], "succeeded": 1, "failed": 0,
+            "results": [{"ok": True, "event_id": "e1", "suspended": False}], "succeeded": 1, "failed": 0,
         })
         ev = {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
               "recorded_at": "2026-06-01T12:00:00+00:00"}
@@ -299,7 +298,7 @@ class MeteringClientTest(unittest.TestCase):
             customer_id="c", request_id="r", idempotency_key="i",
             usage_metrics={"input_tokens": 1000},
         )
-        self.assertIsInstance(result, RecordUsageResult)
+        self.assertIsInstance(result, RecordUsageResponse)
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
         self.assertNotIn("provider_cost_micros", body)
@@ -319,7 +318,7 @@ class MeteringClientTest(unittest.TestCase):
             customer_id="c", request_id="r", idempotency_key="i",
             usage_metrics={"input_tokens": 1000},
         )
-        self.assertIsInstance(res, RecordUsageResult)
+        self.assertIsInstance(res, RecordUsageResponse)
         self.assertEqual(res.provider_cost_micros, 2000)
         self.assertEqual(res.uncosted_metrics, ["foo"])
 
@@ -361,7 +360,7 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_close_task_url_and_result(self, mock_post):
-        from ubb.types import CloseTaskResult
+        from ubb._core.models.close_task_response import CloseTaskResponse
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "task_id": "task_1", "status": "completed",
             "total_billed_cost_micros": 2_500_000,
@@ -371,7 +370,7 @@ class MeteringClientTest(unittest.TestCase):
         result = self.client.close_task("task_1")
         self.assertEqual(mock_post.call_args.args[0],
                          "/api/v1/metering/tasks/task_1/close")
-        self.assertIsInstance(result, CloseTaskResult)
+        self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.task_id, "task_1")
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
@@ -381,7 +380,7 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_close_subtask_carries_parent_task_id(self, mock_post):
-        from ubb.types import CloseTaskResult
+        from ubb._core.models.close_task_response import CloseTaskResponse
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "task_id": "sub_1", "parent_task_id": "task_1",
             "status": "completed",
@@ -389,7 +388,7 @@ class MeteringClientTest(unittest.TestCase):
             "event_count": 1,
         })
         result = self.client.close_task("sub_1")
-        self.assertIsInstance(result, CloseTaskResult)
+        self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.parent_task_id, "task_1")
 
     # ---- rate-card URL correctness ----
@@ -530,7 +529,7 @@ class MeteringClientTest(unittest.TestCase):
             "markup_percentage_micros": 20_000_000, "fixed_uplift_micros": 0,
         })
         result = self.client.set_markup(markup_percentage_micros=20_000_000, fixed_uplift_micros=0)
-        self.assertIsInstance(result, TenantMarkup)
+        self.assertIsInstance(result, TenantMarkupOut)
         self.assertEqual(result.markup_percentage_micros, 20_000_000)
         self.assertEqual(result.fixed_uplift_micros, 0)
         call_args = mock_put.call_args
@@ -545,7 +544,7 @@ class MeteringClientTest(unittest.TestCase):
             "markup_percentage_micros": 10_000_000, "fixed_uplift_micros": 500_000,
         })
         result = self.client.get_markup()
-        self.assertIsInstance(result, TenantMarkup)
+        self.assertIsInstance(result, TenantMarkupOut)
         self.assertEqual(result.markup_percentage_micros, 10_000_000)
         self.assertEqual(result.fixed_uplift_micros, 500_000)
         call_args = mock_get.call_args
@@ -557,7 +556,7 @@ class MeteringClientTest(unittest.TestCase):
             "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
         })
         result = self.client.set_customer_markup("cust_1", markup_percentage_micros=5_000_000)
-        self.assertIsInstance(result, TenantMarkup)
+        self.assertIsInstance(result, TenantMarkupOut)
         self.assertEqual(result.markup_percentage_micros, 5_000_000)
         call_args = mock_put.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
@@ -570,7 +569,7 @@ class MeteringClientTest(unittest.TestCase):
             "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
         })
         result = self.client.get_customer_markup("cust_1")
-        self.assertIsInstance(result, TenantMarkup)
+        self.assertIsInstance(result, TenantMarkupOut)
         self.assertEqual(result.markup_percentage_micros, 5_000_000)
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")

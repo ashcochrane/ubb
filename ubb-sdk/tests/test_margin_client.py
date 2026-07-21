@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
-from ubb.types import CustomerMargin, DimensionMargin, MarginTrendPoint, CustomerRevenue
+from ubb.types import CustomerMargin, DimensionMargin, MarginTrendPoint
+from ubb._core.models.revenue_profile_out import RevenueProfileOut
 
 
 class MarginClientTest(unittest.TestCase):
@@ -51,7 +52,7 @@ class MarginClientTest(unittest.TestCase):
             "recurring_amount_micros": 500_000_000, "interval": "month", "currency": "usd",
             "effective_from": "2026-06-01", "effective_to": None})
         rev = self.client.set_customer_revenue("c1", 500_000_000)
-        self.assertIsInstance(rev, CustomerRevenue)
+        self.assertIsInstance(rev, RevenueProfileOut)
         self.assertEqual(rev.recurring_amount_micros, 500_000_000)
         body = mock_put.call_args.kwargs["json"]
         self.assertEqual(body["recurring_amount_micros"], 500_000_000)

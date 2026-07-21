@@ -23,7 +23,7 @@ class StopContextAckTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_carries_stop_context(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "stop": True, "stop_reason": "task_limit",
+            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "stop_context": _CTX})
         result = self.client.record_usage(customer_id="c1", request_id="r1",
                                           idempotency_key="i1", task_id="task_1")
@@ -32,7 +32,7 @@ class StopContextAckTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_stop_context_defaults_none(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"event_id": "e1"})
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"event_id": "e1", "suspended": False})
         result = self.client.record_usage(customer_id="c1", request_id="r1",
                                           idempotency_key="i1")
         self.assertIsNone(result.stop_context)

@@ -5,7 +5,8 @@ from ubb.billing import BillingClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import BalanceResult, TopUpResult, WalletTransaction, PaginatedResponse
+from ubb.types import TopUpResult, WalletTransaction, PaginatedResponse
+from ubb._core.models.balance_response import BalanceResponse
 
 
 class BillingClientTest(unittest.TestCase):
@@ -87,7 +88,7 @@ class BillingClientTest(unittest.TestCase):
             "balance_micros": 10_000_000, "currency": "USD",
         })
         result = self.client.get_balance(customer_id="cust_1")
-        self.assertIsInstance(result, BalanceResult)
+        self.assertIsInstance(result, BalanceResponse)
         self.assertEqual(result.balance_micros, 10_000_000)
         self.assertEqual(result.currency, "USD")
         call_args = mock_get.call_args
