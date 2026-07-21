@@ -5076,6 +5076,17 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "retiring_secret_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retiring Secret Expires At"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -5089,6 +5100,152 @@
           "created_at"
         ],
         "title": "WebhookConfigResponse",
+        "type": "object"
+      },
+      "WebhookConfigUpdateRequest": {
+        "properties": {
+          "event_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Types"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "WebhookConfigUpdateRequest",
+        "type": "object"
+      },
+      "WebhookDeliveryListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookDeliveryResponse"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "WebhookDeliveryListResponse",
+        "type": "object"
+      },
+      "WebhookDeliveryResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "event_type",
+          "success",
+          "error_message",
+          "created_at"
+        ],
+        "title": "WebhookDeliveryResponse",
+        "type": "object"
+      },
+      "WebhookSecretRotateRequest": {
+        "properties": {
+          "new_secret": {
+            "maxLength": 255,
+            "minLength": 32,
+            "title": "New Secret",
+            "type": "string"
+          },
+          "overlap_hours": {
+            "default": 24,
+            "maximum": 168,
+            "minimum": 1,
+            "title": "Overlap Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new_secret"
+        ],
+        "title": "WebhookSecretRotateRequest",
         "type": "object"
       },
       "WithdrawRequest": {
@@ -10952,6 +11109,225 @@
           }
         ],
         "summary": "Delete Webhook Config"
+      },
+      "patch": {
+        "description": "Edit url / event_types / pause-resume in place \u2014 no delete-and-recreate.\n\nThe secret is not a field here: it is untouchable via PATCH and moves only\nthrough the rotation endpoint (#83).",
+        "operationId": "apps_platform_events_api_webhook_endpoints_update_webhook_config",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Update Webhook Config"
+      }
+    },
+    "/api/v1/webhooks/config/configs/{config_id}/deliveries": {
+      "get": {
+        "description": "The self-serve debugging surface: per-endpoint delivery attempts \u2014\nsuccesses, retries, and dead-letters \u2014 newest first, in the house cursor\nenvelope, over the per-endpoint checkpointed records (#76).",
+        "operationId": "apps_platform_events_api_webhook_endpoints_list_webhook_deliveries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "title": "Config Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Webhook Deliveries"
+      }
+    },
+    "/api/v1/webhooks/config/configs/{config_id}/rotate-secret": {
+      "post": {
+        "description": "Two-secret overlap rotation: the current secret keeps signing a second\n`v1=` candidate for `overlap_hours` while the new one takes over, so a\nreceiver verifies with zero downtime. Rotating again mid-window replaces\nthe retiring secret (#83).",
+        "operationId": "apps_platform_events_api_webhook_endpoints_rotate_webhook_secret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookSecretRotateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Rotate Webhook Secret"
       }
     }
   },
@@ -10963,7 +11339,7 @@
         "operationId": "webhook_auto_topup_requires_action",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11076,7 +11452,7 @@
         "operationId": "webhook_billing_balance_critical",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11184,7 +11560,7 @@
         "operationId": "webhook_billing_balance_low",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11297,7 +11673,7 @@
         "operationId": "webhook_billing_balance_overage",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11410,7 +11786,7 @@
         "operationId": "webhook_billing_credit_grant_expired",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11528,7 +11904,7 @@
         "operationId": "webhook_billing_credit_grant_expiring",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11646,7 +12022,7 @@
         "operationId": "webhook_billing_customer_suspended",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11754,7 +12130,7 @@
         "operationId": "webhook_billing_topup_requested",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11872,7 +12248,7 @@
         "operationId": "webhook_billing_withdrawal_requested",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -11985,7 +12361,7 @@
         "operationId": "webhook_budget_threshold_reached",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12108,7 +12484,7 @@
         "operationId": "webhook_customer_deleted",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12206,7 +12582,7 @@
         "operationId": "webhook_invitation_created",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12320,7 +12696,7 @@
         "operationId": "webhook_invitation_revoked",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12424,7 +12800,7 @@
         "operationId": "webhook_margin_customer_unprofitable",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12542,7 +12918,7 @@
         "operationId": "webhook_margin_provider_cost_spike",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12665,7 +13041,7 @@
         "operationId": "webhook_member_activated",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12779,7 +13155,7 @@
         "operationId": "webhook_referral_created",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12887,7 +13263,7 @@
         "operationId": "webhook_referral_expired",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -12995,7 +13371,7 @@
         "operationId": "webhook_referral_payout_due",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13113,7 +13489,7 @@
         "operationId": "webhook_referral_reward_earned",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13226,7 +13602,7 @@
         "operationId": "webhook_refund_requested",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13344,7 +13720,7 @@
         "operationId": "webhook_sandbox_reset_completed",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13442,7 +13818,7 @@
         "operationId": "webhook_soft_floor_cleared",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13573,7 +13949,7 @@
         "operationId": "webhook_soft_floor_crossed",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13692,7 +14068,7 @@
         "operationId": "webhook_stop_cleared",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13816,7 +14192,7 @@
         "operationId": "webhook_stop_fired",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -13935,7 +14311,7 @@
         "operationId": "webhook_subtask_limit_exceeded",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14079,7 +14455,7 @@
         "operationId": "webhook_task_limit_exceeded",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14218,7 +14594,7 @@
         "operationId": "webhook_tenant_api_key_created",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14326,7 +14702,7 @@
         "operationId": "webhook_tenant_api_key_revoked",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14434,7 +14810,7 @@
         "operationId": "webhook_tenant_api_key_rotated",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14547,7 +14923,7 @@
         "operationId": "webhook_usage_invoice_push_failed_permanent",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14665,7 +15041,7 @@
         "operationId": "webhook_usage_invoice_pushed",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14788,7 +15164,7 @@
         "operationId": "webhook_usage_recorded",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
@@ -14964,7 +15340,7 @@
         "operationId": "webhook_usage_refunded",
         "parameters": [
           {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
             "in": "header",
             "name": "X-UBB-Signature-V2",
             "required": true,
