@@ -1,11 +1,14 @@
 import json
+from datetime import timedelta
 
 from django.test import TestCase, Client
+from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.referrals.models import ReferralProgram, Referrer, Referral
-from apps.referrals.rewards.models import ReferralRewardAccumulator
+from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
+from apps.referrals.tests.problem_asserts import assert_problem
 
 
 class ReferralsEndpointTestBase(TestCase):
@@ -50,7 +53,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
         resp = self.http_client.get(
             "/api/v1/referrals/program", **self.headers,
         )
-        self.assertEqual(resp.status_code, 404)
+        assert_problem(resp, "not_found", 404)
 
     def test_update_program(self):
         ReferralProgram.objects.create(
@@ -99,7 +102,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
             content_type="application/json",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 409)
+        assert_problem(resp, "conflict", 409)
 
 
 class TestReferrerEndpoints(ReferralsEndpointTestBase):
@@ -132,7 +135,24 @@ class TestReferrerEndpoints(ReferralsEndpointTestBase):
             content_type="application/json",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 409)
+        assert_problem(resp, "conflict", 409)
+
+    def test_register_without_program_422(self):
+        self.program.status = "deactivated"
+        self.program.save(update_fields=["status", "updated_at"])
+        resp = self.http_client.post(
+            "/api/v1/referrals/referrers",
+            data=json.dumps({"customer_id": str(self.customer.id)}),
+            content_type="application/json",
+            **self.headers,
+        )
+        assert_problem(resp, "validation_error", 422)
+
+    def test_list_referrers_invalid_cursor(self):
+        resp = self.http_client.get(
+            "/api/v1/referrals/referrers?cursor=not-a-cursor", **self.headers,
+        )
+        assert_problem(resp, "invalid_cursor", 400)
 
     def test_get_referrer(self):
         Referrer.objects.create(tenant=self.tenant, customer=self.customer)
@@ -205,7 +225,7 @@ class TestAttributionEndpoint(ReferralsEndpointTestBase):
             content_type="application/json",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 400)
+        assert_problem(resp, "validation_error", 422)
 
     def test_self_referral_rejected(self):
         resp = self.http_client.post(
@@ -217,7 +237,7 @@ class TestAttributionEndpoint(ReferralsEndpointTestBase):
             content_type="application/json",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 400)
+        assert_problem(resp, "validation_error", 422)
 
     def test_duplicate_referral_409(self):
         self.http_client.post(
@@ -238,7 +258,7 @@ class TestAttributionEndpoint(ReferralsEndpointTestBase):
             content_type="application/json",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 409)
+        assert_problem(resp, "conflict", 409)
 
 
 class TestRewardEndpoints(ReferralsEndpointTestBase):
@@ -298,6 +318,22 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["data"]), 0)
 
+    def test_get_referrals_invalid_cursor(self):
+        resp = self.http_client.get(
+            f"/api/v1/referrals/referrers/{self.referrer_customer.id}/referrals"
+            "?cursor=not-a-cursor",
+            **self.headers,
+        )
+        assert_problem(resp, "invalid_cursor", 400)
+
+    def test_get_ledger_invalid_cursor(self):
+        resp = self.http_client.get(
+            f"/api/v1/referrals/referrals/{self.referral.id}/ledger"
+            "?cursor=not-a-cursor",
+            **self.headers,
+        )
+        assert_problem(resp, "invalid_cursor", 400)
+
 
 class TestRevocationEndpoint(ReferralsEndpointTestBase):
     def test_revoke_referral(self):
@@ -329,7 +365,7 @@ class TestRevocationEndpoint(ReferralsEndpointTestBase):
             f"/api/v1/referrals/referrals/{referral.id}",
             **self.headers,
         )
-        self.assertEqual(resp.status_code, 409)
+        assert_problem(resp, "conflict", 409)
 
 
 class TestAnalyticsEndpoints(ReferralsEndpointTestBase):
@@ -348,3 +384,121 @@ class TestAnalyticsEndpoints(ReferralsEndpointTestBase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["referrers"]), 0)
+
+
+class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
+    """The period_start/period_end params are applied, not echoed: windowed
+    earnings come from the reconciliation ledger."""
+
+    def setUp(self):
+        super().setUp()
+        self.program = ReferralProgram.objects.create(
+            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+        )
+        referrer_cust = Customer.objects.create(
+            tenant=self.tenant, external_id="referrer",
+        )
+        self.referrer = Referrer.objects.create(
+            tenant=self.tenant, customer=referrer_cust,
+        )
+        referred = Customer.objects.create(
+            tenant=self.tenant, external_id="referred",
+        )
+        self.referral = Referral.objects.create(
+            tenant=self.tenant, referrer=self.referrer,
+            referred_customer=referred,
+            referral_code_used=self.referrer.referral_code,
+            snapshot_reward_type="revenue_share",
+            snapshot_reward_value=0.10,
+        )
+        # All-time accumulator total deliberately disagrees with every window
+        # to prove windowed earnings are ledger-sourced.
+        ReferralRewardAccumulator.objects.create(
+            referral=self.referral,
+            total_earned_micros=999_999_999,
+            total_referred_spend_micros=9_999_999_999,
+        )
+
+        self.today = timezone.now().date()
+        self.month_start = self.today.replace(day=1)
+        self.old_start = self.today - timedelta(days=200)
+        self.old_end = self.old_start + timedelta(days=27)
+
+        ReferralRewardLedger.objects.create(
+            referral=self.referral,
+            period_start=self.month_start,
+            period_end=self.today,
+            referred_spend_micros=3_000_000,
+            reward_micros=300_000,
+            calculation_method="actual_cost",
+        )
+        ReferralRewardLedger.objects.create(
+            referral=self.referral,
+            period_start=self.old_start,
+            period_end=self.old_end,
+            referred_spend_micros=7_000_000,
+            reward_micros=700_000,
+            calculation_method="actual_cost",
+        )
+
+    def _get(self, query=""):
+        return self.http_client.get(
+            f"/api/v1/referrals/analytics/earnings{query}", **self.headers,
+        )
+
+    def test_default_window_is_utc_month_to_date(self):
+        resp = self._get()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["period_start"], self.month_start.isoformat())
+        self.assertEqual(body["period_end"], self.today.isoformat())
+        self.assertEqual(body["total_earned_micros"], 300_000)
+        self.assertEqual(
+            body["referrers"][0]["total_earned_micros"], 300_000,
+        )
+
+    def test_explicit_window_filters_earnings(self):
+        resp = self._get(
+            f"?period_start={self.old_start.isoformat()}"
+            f"&period_end={self.old_end.isoformat()}"
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["period_start"], self.old_start.isoformat())
+        self.assertEqual(body["period_end"], self.old_end.isoformat())
+        self.assertEqual(body["total_earned_micros"], 700_000)
+
+    def test_window_covering_both_periods_sums_both(self):
+        resp = self._get(
+            f"?period_start={self.old_start.isoformat()}"
+            f"&period_end={self.today.isoformat()}"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["total_earned_micros"], 1_000_000)
+
+    def test_window_longer_than_366_days_refused(self):
+        start = self.today - timedelta(days=400)
+        resp = self._get(
+            f"?period_start={start.isoformat()}"
+            f"&period_end={self.today.isoformat()}"
+        )
+        assert_problem(resp, "validation_error", 422)
+
+    def test_window_of_exactly_366_days_allowed(self):
+        start = self.today - timedelta(days=366)
+        resp = self._get(
+            f"?period_start={start.isoformat()}"
+            f"&period_end={self.today.isoformat()}"
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_inverted_window_refused(self):
+        resp = self._get(
+            f"?period_start={self.today.isoformat()}"
+            f"&period_end={(self.today - timedelta(days=1)).isoformat()}"
+        )
+        assert_problem(resp, "validation_error", 422)
+
+    def test_malformed_date_is_a_400_problem(self):
+        resp = self._get("?period_start=not-a-date")
+        assert_problem(resp, "bad_request", 400)

@@ -20,6 +20,15 @@ class TenantWebhookConfig(BaseModel):
     class Meta:
         app_label = "events"
         db_table = "ubb_tenant_webhook_config"
+        constraints = [
+            # Natural identity (#63): one config per (tenant, url). Rows are
+            # hard-deleted (no core soft-delete on this model), so the
+            # constraint is unconditional — deleting a config frees its url.
+            models.UniqueConstraint(
+                fields=["tenant", "url"],
+                name="uq_webhook_config_tenant_url",
+            ),
+        ]
 
     def __str__(self):
         return f"WebhookConfig({self.tenant_id}: {self.url})"

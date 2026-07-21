@@ -1,7 +1,12 @@
+from typing import Optional
+
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Field
-from ninja.errors import HttpError
 
 from core.auth import ApiKeyAuth
+from core.pagination import apply_cursor_filter, encode_cursor
+from core.problems import Problem, ProblemOut
 from core.url_validation import validate_webhook_url
 from apps.platform.events.webhook_models import TenantWebhookConfig
 from apps.platform.events.catalog import is_valid_event_selector
@@ -24,32 +29,17 @@ class WebhookConfigResponse(Schema):
     created_at: str
 
 
+class WebhookConfigListResponse(Schema):
+    data: list[WebhookConfigResponse]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
 webhook_router = Router(auth=ApiKeyAuth())
 
 
-@webhook_router.post("/configs", response={201: WebhookConfigResponse})
-def create_webhook_config(request, payload: WebhookConfigCreateRequest):
-    try:
-        validate_webhook_url(payload.url)
-    except ValueError as e:
-        raise HttpError(400, str(e))
-
-    unknown = sorted({t for t in payload.event_types if not is_valid_event_selector(t)})
-    if unknown:
-        raise HttpError(
-            400,
-            f"Unknown event type(s): {', '.join(unknown)}. "
-            'Use "*" to subscribe to all events, or see the event catalog for valid types.',
-        )
-
-    config = TenantWebhookConfig.objects.create(
-        tenant=request.auth.tenant,
-        url=payload.url,
-        secret=payload.secret,
-        event_types=payload.event_types,
-        is_active=payload.is_active,
-    )
-    return 201, {
+def _serialize(config):
+    return {
         "id": str(config.id),
         "url": config.url,
         "event_types": config.event_types,
@@ -58,29 +48,86 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     }
 
 
-@webhook_router.get("/configs")
-def list_webhook_configs(request):
-    configs = TenantWebhookConfig.objects.filter(
+def _url_already_configured(tenant, url):
+    """Pre-check for the (tenant, url) natural identity — the DB constraint
+    uq_webhook_config_tenant_url is the race-safe authority."""
+    return TenantWebhookConfig.objects.filter(tenant=tenant, url=url).exists()
+
+
+@webhook_router.post(
+    "/configs",
+    response={201: WebhookConfigResponse, 409: ProblemOut, 422: ProblemOut},
+)
+def create_webhook_config(request, payload: WebhookConfigCreateRequest):
+    try:
+        validate_webhook_url(payload.url)
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+
+    unknown = sorted({t for t in payload.event_types if not is_valid_event_selector(t)})
+    if unknown:
+        raise Problem(
+            "validation_error",
+            f"Unknown event type(s): {', '.join(unknown)}. "
+            'Use "*" to subscribe to all events, or see the event catalog for valid types.',
+        )
+
+    tenant = request.auth.tenant
+    if _url_already_configured(tenant, payload.url):
+        raise Problem("conflict", "a webhook config for this url already exists")
+
+    try:
+        with transaction.atomic():
+            config = TenantWebhookConfig.objects.create(
+                tenant=tenant,
+                url=payload.url,
+                secret=payload.secret,
+                event_types=payload.event_types,
+                is_active=payload.is_active,
+            )
+    except IntegrityError:
+        # Race: a concurrent create won uq_webhook_config_tenant_url between
+        # the pre-check and the insert.
+        raise Problem("conflict", "a webhook config for this url already exists")
+
+    return 201, _serialize(config)
+
+
+@webhook_router.get(
+    "/configs",
+    response={200: WebhookConfigListResponse, 400: ProblemOut},
+)
+def list_webhook_configs(request, cursor: str = None, limit: int = 50):
+    limit = min(max(limit, 1), 100)
+
+    qs = TenantWebhookConfig.objects.filter(
         tenant=request.auth.tenant,
-    ).order_by("-created_at")
+    ).order_by("-created_at", "-id")
+
+    if cursor:
+        try:
+            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
+        except ValueError as e:
+            raise Problem("invalid_cursor", str(e))
+
+    configs = list(qs[: limit + 1])
+    has_more = len(configs) > limit
+    configs = configs[:limit]
+
+    next_cursor = None
+    if has_more and configs:
+        last = configs[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
     return {
-        "data": [
-            {
-                "id": str(c.id),
-                "url": c.url,
-                "event_types": c.event_types,
-                "is_active": c.is_active,
-                "created_at": c.created_at.isoformat(),
-            }
-            for c in configs
-        ],
+        "data": [_serialize(c) for c in configs],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
     }
 
 
 @webhook_router.delete("/configs/{config_id}")
 def delete_webhook_config(request, config_id: str):
-    from django.shortcuts import get_object_or_404
-
     config = get_object_or_404(
         TenantWebhookConfig,
         id=config_id,

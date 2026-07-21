@@ -60,3 +60,21 @@ class MarginEndpointsTest(TestCase):
     def test_unprofitable_empty(self):
         r = self.http.get("/api/v1/margin/unprofitable", **self._auth())
         assert r.status_code == 200 and r.json()["customers"] == []
+
+    def test_window_over_366_days_refused(self):
+        """An explicit report window longer than 366 days → 422 problem+json."""
+        r = self.http.get(
+            "/api/v1/margin/summary?start_date=2024-01-01&end_date=2025-06-01",
+            **self._auth())
+        assert r.status_code == 422, r.content
+        assert r["Content-Type"] == "application/problem+json"
+        body = r.json()
+        assert body["code"] == "validation_error", body
+        assert body["detail"] == "date window must not exceed 366 days", body
+
+    def test_window_exactly_366_days_allowed(self):
+        """The boundary itself (one leap year, 366 days) is accepted."""
+        r = self.http.get(
+            "/api/v1/margin/summary?start_date=2024-01-01&end_date=2025-01-01",
+            **self._auth())
+        assert r.status_code == 200, r.content

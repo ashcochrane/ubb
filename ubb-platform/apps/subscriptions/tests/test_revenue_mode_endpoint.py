@@ -38,7 +38,7 @@ class RevenueModeEndpointTest(TestCase):
         assert body2["revenue_mode"] == "metered_only", body2
 
     def test_put_invalid_mode_returns_422(self):
-        """PUT with an unrecognised revenue_mode → 422."""
+        """PUT with an unrecognised revenue_mode → 422 problem+json (#78 dialect)."""
         r = self.http.put(
             self._url(self.customer.id),
             data=json.dumps({"revenue_mode": "bogus"}),
@@ -46,6 +46,11 @@ class RevenueModeEndpointTest(TestCase):
             **self._auth(),
         )
         assert r.status_code == 422, r.content
+        assert r["Content-Type"] == "application/problem+json"
+        body = r.json()
+        assert body["code"] == "invalid_revenue_mode", body
+        assert body["status"] == 422, body
+        assert "bogus" in body["detail"], body
 
     def test_meter_only_tenant_default_derivation(self):
         """A meter_only tenant's customer with no override resolves to metered_only."""

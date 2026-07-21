@@ -246,6 +246,9 @@ class CreateTopUpRequest(Schema):
     amount_micros: int = Field(gt=0)
     success_url: str = Field(min_length=1)
     cancel_url: str = Field(min_length=1)
+    # #78: top-up creation moves money — replay must never mint a second
+    # attempt (backed by uq_topup_attempt_idempotency).
+    idempotency_key: str = Field(min_length=1, max_length=400)
 
     @field_validator("amount_micros")
     @classmethod
@@ -479,6 +482,30 @@ class UsageInvoiceOut(Schema):
     skip_reason: str = ""
     push_attempts: Optional[int] = None
     last_attempt_error: Optional[str] = None
+
+
+class PaginatedUsageInvoices(Schema):
+    data: list[UsageInvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class TenantUsageInvoiceOut(Schema):
+    customer_id: str
+    external_id: str
+    period_start: str
+    total_billed_micros: int
+    status: str
+    stripe_invoice_id: str = ""
+    skip_reason: str = ""
+    push_attempts: Optional[int] = None
+    last_attempt_error: Optional[str] = None
+
+
+class TenantUsageInvoiceListResponse(Schema):
+    data: list[TenantUsageInvoiceOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class PostpaidConfigIn(Schema):

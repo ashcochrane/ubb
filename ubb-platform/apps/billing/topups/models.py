@@ -52,6 +52,9 @@ class TopUpAttempt(BaseModel):
     stripe_checkout_session_id = models.CharField(max_length=255, blank=True, null=True)
     stripe_charge_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     failure_reason = models.JSONField(null=True, blank=True)
+    # #78: caller-supplied replay guard for the top-up create APIs (manual +
+    # widget). Null for attempts minted internally (auto top-up).
+    idempotency_key = models.CharField(max_length=400, blank=True, null=True)
 
     class Meta:
         db_table = "ubb_top_up_attempt"
@@ -60,6 +63,11 @@ class TopUpAttempt(BaseModel):
                 fields=["customer"],
                 condition=models.Q(status="pending", trigger="auto_topup"),
                 name="uq_one_pending_auto_topup_per_customer",
+            ),
+            models.UniqueConstraint(
+                fields=["customer", "idempotency_key"],
+                condition=models.Q(idempotency_key__isnull=False),
+                name="uq_topup_attempt_idempotency",
             ),
         ]
 

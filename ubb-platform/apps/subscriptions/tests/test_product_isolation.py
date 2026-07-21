@@ -28,6 +28,8 @@ class TestSubscriptionsProductIsolation(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "feature_not_enabled")
 
     def test_billing_tenant_gets_403_on_subscriptions(self):
         tenant = Tenant.objects.create(

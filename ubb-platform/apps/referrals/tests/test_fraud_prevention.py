@@ -8,6 +8,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator
+from apps.referrals.tests.problem_asserts import assert_problem
 
 
 @pytest.mark.django_db
@@ -58,7 +59,11 @@ class TestVelocityLimit:
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        assert resp.status_code == 429
+        assert_problem(resp, "rate_limit_exceeded", 429)
+        # A 429 must say when to come back: Retry-After, derived from the
+        # daily velocity window (never more than a day out).
+        assert resp.has_header("Retry-After")
+        assert 1 <= int(resp["Retry-After"]) <= 86400
 
 
 @pytest.mark.django_db
@@ -85,8 +90,10 @@ class TestCustomerAgeCheck:
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        assert resp.status_code == 400
-        assert "too new" in resp.json().get("detail", "")
+        # The point of this assertion is *which* gate fired — the age gate's
+        # message — not the prose contract.
+        body = assert_problem(resp, "validation_error", 422)
+        assert "too new" in body.get("detail", "")
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_allows_old_customer(self, mock_task):

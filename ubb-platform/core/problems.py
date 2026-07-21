@@ -18,6 +18,9 @@ it.
 """
 import json
 from pathlib import Path
+from typing import Optional
+
+from ninja import Schema
 
 # core/problems.py -> the git root (same derivation as api/v1/openapi_export.py)
 GIT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +32,18 @@ VERDICTS = _REGISTRY["verdicts"]
 
 # Non-contractual: exists only so `type` can one day resolve to docs.
 PROBLEM_TYPE_BASE = "https://ubb.dev/errors/"
+
+
+class ProblemOut(Schema):
+    """RFC 9457 problem+json, for ``response=`` documentation of error
+    statuses. Extension members (e.g. ``balance_micros``) are open-world and
+    deliberately unmodeled."""
+
+    type: str
+    title: str
+    status: int
+    code: str
+    detail: Optional[str] = None
 
 
 class Problem(Exception):

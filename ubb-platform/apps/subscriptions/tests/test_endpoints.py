@@ -35,3 +35,28 @@ class TestSubscriptionDataEndpoints(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_subscription_detail_no_subscription_is_not_found_problem(self):
+        """No subscription for the customer → 404 problem+json (#78 dialect)."""
+        response = self.http_client.get(
+            f"/api/v1/subscriptions/customers/{self.customer.id}/subscription",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        body = response.json()
+        self.assertEqual(body["code"], "not_found")
+        self.assertEqual(body["status"], 404)
+
+    def test_invoices_bad_cursor_is_invalid_cursor_problem(self):
+        """A malformed cursor → 400 invalid_cursor problem+json (#78 dialect)."""
+        response = self.http_client.get(
+            f"/api/v1/subscriptions/customers/{self.customer.id}/invoices",
+            {"cursor": "not-a-cursor"},
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        body = response.json()
+        self.assertEqual(body["code"], "invalid_cursor")
+        self.assertEqual(body["status"], 400)
