@@ -1336,6 +1336,89 @@
         "title": "IngestEventIn",
         "type": "object"
       },
+      "InvitationCreateIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "InvitationCreateIn",
+        "type": "object"
+      },
+      "InvitationListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/InvitationOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "InvitationListResponse",
+        "type": "object"
+      },
+      "InvitationOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "InvitationOut",
+        "type": "object"
+      },
       "InvoiceOut": {
         "properties": {
           "created_at": {
@@ -1600,6 +1683,87 @@
           "created_at"
         ],
         "title": "MeUsageInvoiceOut",
+        "type": "object"
+      },
+      "MemberListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MemberOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "MemberListResponse",
+        "type": "object"
+      },
+      "MemberOut": {
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "clerk_user_id": {
+            "default": "",
+            "title": "Clerk User Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "MemberOut",
         "type": "object"
       },
       "PaginatedBooks": {
@@ -9936,6 +10100,189 @@
         "summary": "Update Tenant Config"
       }
     },
+    "/api/v1/tenant/invitations": {
+      "get": {
+        "description": "This tenant's invitations (pending, accepted, and revoked), newest first\n(Admin only).",
+        "operationId": "api_v1_tenant_endpoints_list_invitations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Invitations"
+      },
+      "post": {
+        "description": "Invite a teammate by email with a role (Admin only).\n\nCreates a first-class Invitation and a pending Member; the invitee signs up\nthrough Clerk and activates on first login (matched by email). 409 if the\nemail is already a member or already has a pending invite; 422 on an unknown\nrole.",
+        "operationId": "api_v1_tenant_endpoints_create_invitation",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Create Invitation"
+      }
+    },
+    "/api/v1/tenant/invitations/{invitation_id}": {
+      "delete": {
+        "description": "Revoke a still-pending invitation (Admin only). Idempotent on an\nalready-revoked invite; 409 if it was already accepted (removing an active\nmember is identity build 2).",
+        "operationId": "api_v1_tenant_endpoints_revoke_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Revoke Invitation"
+      }
+    },
     "/api/v1/tenant/invoices": {
       "get": {
         "operationId": "api_v1_tenant_endpoints_list_invoices",
@@ -9985,6 +10332,58 @@
           }
         ],
         "summary": "List Invoices"
+      }
+    },
+    "/api/v1/tenant/members": {
+      "get": {
+        "description": "This tenant's members (pending and active), newest first. Read floor \u2014\nany tenant principal may list the roster.",
+        "operationId": "api_v1_tenant_endpoints_list_members",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Members"
       }
     },
     "/api/v1/tenant/sandbox": {
@@ -11445,6 +11844,224 @@
         "summary": "customer.deleted delivery"
       }
     },
+    "invitation.created": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_invitation_created",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "An Admin invited a teammate. A pending Member is created alongside; the\ninvitee activates it on their first Clerk-verified login (member.activated).",
+                    "properties": {
+                      "email": {
+                        "default": "",
+                        "title": "Email",
+                        "type": "string"
+                      },
+                      "invitation_id": {
+                        "title": "Invitation Id",
+                        "type": "string"
+                      },
+                      "member_id": {
+                        "title": "Member Id",
+                        "type": "string"
+                      },
+                      "role": {
+                        "default": "",
+                        "title": "Role",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "invitation_id",
+                      "member_id"
+                    ],
+                    "title": "InvitationCreated",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "invitation.created",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "invitation.created delivery"
+      }
+    },
+    "invitation.revoked": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_invitation_revoked",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "An Admin cancelled a still-pending invitation; its pending Member is\ndropped and can no longer activate.",
+                    "properties": {
+                      "email": {
+                        "default": "",
+                        "title": "Email",
+                        "type": "string"
+                      },
+                      "invitation_id": {
+                        "title": "Invitation Id",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "invitation_id"
+                    ],
+                    "title": "InvitationRevoked",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "invitation.revoked",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "invitation.revoked delivery"
+      }
+    },
     "margin.customer_unprofitable": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -11684,6 +12301,120 @@
           }
         },
         "summary": "margin.provider_cost_spike delivery"
+      }
+    },
+    "member.activated": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_member_activated",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a future secret rotation window multiple `v1=` candidates may be present.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "A pending Member joined \u2014 matched by email on first Clerk login and\nbound from then on to the Clerk user id.",
+                    "properties": {
+                      "clerk_user_id": {
+                        "default": "",
+                        "title": "Clerk User Id",
+                        "type": "string"
+                      },
+                      "email": {
+                        "default": "",
+                        "title": "Email",
+                        "type": "string"
+                      },
+                      "member_id": {
+                        "title": "Member Id",
+                        "type": "string"
+                      },
+                      "role": {
+                        "default": "",
+                        "title": "Role",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "member_id"
+                    ],
+                    "title": "MemberActivated",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "member.activated",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "member.activated delivery"
       }
     },
     "referral.created": {

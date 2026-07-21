@@ -13,9 +13,12 @@ from api.v1.schemas import (
     TenantInvoiceListResponse,
     TenantInvoiceOut,
 )
-from core.auth import ApiKeyAuth
+from core.auth import ApiKeyAuth, require_role
 from core.problems import Problem, ProblemOut
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.platform.membership import services as membership_services
+from apps.platform.membership.models import Invitation, Member
+from apps.platform.membership.roles import ADMIN, READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 tenant_router = Router(auth=ApiKeyAuth())
@@ -229,6 +232,131 @@ def revoke_api_key(request, key_id: UUID):
                 tenant_id=str(tenant.id), api_key_id=str(key.id),
                 key_prefix=key.key_prefix, label=key.label))
     return 200, {"id": str(key.id), "is_active": False}
+
+
+# ---- Members & invitations (identity build 1, #79) ----
+#
+# Two tenant-principal schemes reach every route here: a tenant API key (always
+# Admin today) or a Clerk member token. The role floor is bound per route — the
+# only floors that bind in this build:
+#   * invitations create/list/revoke — Admin (per the #74 carve),
+#   * members list — Read (any tenant principal).
+# Member role-change/removal is identity build 2 (it needs the last-Admin
+# guard), so there is no PATCH/DELETE on a member here.
+
+
+class InvitationCreateIn(Schema):
+    email: str
+    role: str
+
+
+class InvitationOut(Schema):
+    id: str
+    email: str
+    role: str
+    status: str
+    created_at: str
+
+
+class InvitationListResponse(Schema):
+    data: list[InvitationOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class MemberOut(Schema):
+    id: str
+    email: str
+    role: str
+    status: str
+    # Empty until the member activates on first Clerk login.
+    clerk_user_id: str = ""
+    activated_at: Optional[str] = None
+    created_at: str
+
+
+class MemberListResponse(Schema):
+    data: list[MemberOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+def _invitation_out(inv):
+    return {
+        "id": str(inv.id),
+        "email": inv.email,
+        "role": inv.role,
+        "status": inv.status,
+        "created_at": inv.created_at.isoformat(),
+    }
+
+
+def _member_out(m):
+    return {
+        "id": str(m.id),
+        "email": m.email,
+        "role": m.role,
+        "status": m.status,
+        "clerk_user_id": m.clerk_user_id,
+        "activated_at": m.activated_at.isoformat() if m.activated_at else None,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
+@tenant_router.post(
+    "/invitations",
+    response={201: InvitationOut, 403: ProblemOut, 409: ProblemOut, 422: ProblemOut},
+)
+def create_invitation(request, payload: InvitationCreateIn):
+    """Invite a teammate by email with a role (Admin only).
+
+    Creates a first-class Invitation and a pending Member; the invitee signs up
+    through Clerk and activates on first login (matched by email). 409 if the
+    email is already a member or already has a pending invite; 422 on an unknown
+    role.
+    """
+    require_role(request, ADMIN)
+    inviter = request.auth if isinstance(request.auth, Member) else None
+    invitation = membership_services.invite_member(
+        request.auth.tenant, payload.email, payload.role,
+        invited_by_member=inviter)
+    return 201, _invitation_out(invitation)
+
+
+@tenant_router.get("/invitations", response=InvitationListResponse)
+def list_invitations(request, cursor: str = None, limit: int = 50):
+    """This tenant's invitations (pending, accepted, and revoked), newest first
+    (Admin only)."""
+    require_role(request, ADMIN)
+    invitations, next_cursor, has_more = paginate(
+        Invitation.objects.filter(tenant=request.auth.tenant), cursor, limit)
+    return {"data": [_invitation_out(i) for i in invitations],
+            "next_cursor": next_cursor, "has_more": has_more}
+
+
+@tenant_router.delete(
+    "/invitations/{invitation_id}",
+    response={200: dict, 403: ProblemOut, 404: ProblemOut, 409: ProblemOut},
+)
+def revoke_invitation(request, invitation_id: UUID):
+    """Revoke a still-pending invitation (Admin only). Idempotent on an
+    already-revoked invite; 409 if it was already accepted (removing an active
+    member is identity build 2)."""
+    require_role(request, ADMIN)
+    invitation = membership_services.revoke_invitation(
+        request.auth.tenant, invitation_id)
+    return 200, {"id": str(invitation.id), "status": invitation.status}
+
+
+@tenant_router.get("/members", response=MemberListResponse)
+def list_members(request, cursor: str = None, limit: int = 50):
+    """This tenant's members (pending and active), newest first. Read floor —
+    any tenant principal may list the roster."""
+    require_role(request, READ)
+    members, next_cursor, has_more = paginate(
+        Member.objects.filter(tenant=request.auth.tenant), cursor, limit)
+    return {"data": [_member_out(m) for m in members],
+            "next_cursor": next_cursor, "has_more": has_more}
 
 
 # ---- Sandbox self-serve (F4.4) ----
