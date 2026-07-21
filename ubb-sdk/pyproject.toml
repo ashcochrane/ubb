@@ -7,7 +7,15 @@ name = "ubb-sdk"
 version = "2.0.0"
 description = "Python SDK for the Usage-Based Billing platform"
 requires-python = ">=3.10"
-dependencies = ["httpx>=0.28", "PyJWT>=2.8"]
+# attrs backs the generated transport+DTO core (ubb/_core); the pinned generator
+# emits attrs models. httpx is the transport for both the core and the shell.
+dependencies = ["httpx>=0.28", "PyJWT>=2.8", "attrs>=23.2.0"]
+
+[project.optional-dependencies]
+# The pinned code generator for the committed core. Not a runtime dependency —
+# needed only to run ubb-sdk/codegen/generate_core.py (and CI's ratchet gate).
+# Exact pin: it is 0.x with breaking minors, so a bump is a deliberate PR.
+codegen = ["openapi-python-client==0.29.0"]
 
 [tool.setuptools.packages.find]
 include = ["ubb*"]
