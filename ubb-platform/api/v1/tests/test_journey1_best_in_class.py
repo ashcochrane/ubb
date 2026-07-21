@@ -236,7 +236,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             if as_of is not None:
                 params["as_of"] = as_of
             rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-                        params=params or None)
+                        params=params or None)["data"]
             return [r for r in rows if r["dimensions"] == {"service": "alpha"}]
 
         history = _alpha_rows(include_history=True)

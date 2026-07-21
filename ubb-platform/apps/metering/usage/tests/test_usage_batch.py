@@ -47,12 +47,13 @@ class TestBatchBasics:
             _item(c, 1), _item(c, 2, effective_at=too_old), _item(c, 3)]})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["succeeded"] == 2 and body["failed"] == 1
-        assert body["results"][0]["ok"] is True
+        assert body["accepted"] == 2 and body["rejected"] == 1
+        assert body["results"][0]["accepted"] is True
         assert body["results"][1] == {
-            "ok": False, "error": "effective_at_too_old",
-            "detail": body["results"][1]["detail"]}
-        assert body["results"][2]["ok"] is True
+            "accepted": False, "code": "effective_at_too_old",
+            "detail": body["results"][1]["detail"],
+            "stop": False, "stop_reason": None, "stop_scope": None}
+        assert body["results"][2]["accepted"] is True
         # Items 1 + 3 are durably committed: event rows AND outbox rows exist.
         assert UsageEvent.objects.filter(tenant=t).count() == 2
         assert OutboxEvent.objects.filter(
@@ -65,7 +66,7 @@ class TestBatchBasics:
         ids = [r["event_id"] for r in first["results"]]
         assert UsageEvent.objects.filter(tenant=t).count() == 3
         replay = _post(http, auth, BATCH_URL, events).json()
-        assert replay["succeeded"] == 3 and replay["failed"] == 0
+        assert replay["accepted"] == 3 and replay["rejected"] == 0
         assert [r["event_id"] for r in replay["results"]] == ids
         assert UsageEvent.objects.filter(tenant=t).count() == 3
 
@@ -76,7 +77,7 @@ class TestBatchBasics:
             {"customer_id": str(c.id), "request_id": "r-other",
              "idempotency_key": "k1", "provider_cost_micros": 99},
         ]}).json()
-        assert resp["succeeded"] == 2
+        assert resp["accepted"] == 2
         assert resp["results"][1]["event_id"] == resp["results"][0]["event_id"]
         assert UsageEvent.objects.filter(tenant=t).count() == 1
 
@@ -97,7 +98,7 @@ class TestBatchBasics:
         resp = _post(http, auth, BATCH_URL,
                      {"events": [_item(c, n) for n in range(100)]})
         assert resp.status_code == 200
-        assert resp.json()["succeeded"] == 100
+        assert resp.json()["accepted"] == 100
 
     def test_unknown_customer_not_found_isolated(self):
         t, c, http, auth = _setup()
@@ -107,16 +108,20 @@ class TestBatchBasics:
              "provider_cost_micros": 10},
             _item(c, 2),
         ]}).json()
-        assert resp["results"][0] == {"ok": False, "error": "not_found",
-                                      "detail": "Customer not found"}
-        assert resp["results"][1]["ok"] is True
+        assert resp["results"][0] == {
+            "accepted": False, "code": "not_found",
+            "detail": "Customer not found",
+            "stop": False, "stop_reason": None, "stop_scope": None}
+        assert resp["results"][1]["accepted"] is True
 
     def test_unknown_task_not_found(self):
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
             _item(c, 1, task_id=str(uuid.uuid4()))]}).json()
-        assert resp["results"][0] == {"ok": False, "error": "not_found",
-                                      "detail": "Task not found"}
+        assert resp["results"][0] == {
+            "accepted": False, "code": "not_found",
+            "detail": "Task not found",
+            "stop": False, "stop_reason": None, "stop_scope": None}
 
     def test_mixed_effective_at_errors_isolated(self):
         t, c, http, auth = _setup()
@@ -125,36 +130,36 @@ class TestBatchBasics:
             _item(c, 2, effective_at="2026-06-01T12:00:00"),  # naive
             _item(c, 3, effective_at=(timezone.now() - timedelta(days=3)).isoformat()),
         ]}).json()
-        assert resp["results"][0]["error"] == "effective_at_in_future"
-        assert resp["results"][1]["error"] == "effective_at_naive"
-        assert resp["results"][2]["ok"] is True
-        assert resp["succeeded"] == 1 and resp["failed"] == 2
+        assert resp["results"][0]["code"] == "effective_at_in_future"
+        assert resp["results"][1]["code"] == "effective_at_naive"
+        assert resp["results"][2]["accepted"] is True
+        assert resp["accepted"] == 1 and resp["rejected"] == 2
 
     def test_validation_error_mapped(self):
         """The generic ValueError branch (e.g. bad tags) maps to validation_error."""
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
             _item(c, 1, tags={"BAD KEY": "x"})]}).json()
-        assert resp["results"][0]["error"] == "validation_error"
-        assert resp["failed"] == 1
+        assert resp["results"][0]["code"] == "validation_error"
+        assert resp["rejected"] == 1
 
     def test_success_body_mirrors_single_call(self):
-        """A batch success item carries the single-call success body + ok."""
+        """A batch success item carries the single-call success body + accepted."""
         t, c, http, auth = _setup()
         single = _post(http, auth, SINGLE_URL,
                        {"customer_id": str(c.id), "request_id": "s1",
                         "idempotency_key": "ks1", "provider_cost_micros": 10}).json()
         batch = _post(http, auth, BATCH_URL, {"events": [_item(c, 1)]}).json()
         item = dict(batch["results"][0])
-        assert item.pop("ok") is True
+        assert item.pop("accepted") is True
         # Same keys as the single-call response (values differ only where ids do).
         assert set(single.keys()) == set(item.keys())
 
 
 @pytest.mark.django_db
 class TestBatchOneRuleParity:
-    """One-rule (#37): items that once returned ok=False hard_stop /
-    run_not_active now return ok=True with the stop-verdict fields — the
+    """One-rule (#37): items that once came back as hard_stop / run_not_active
+    rejections now return accepted=True with the stop-verdict fields — the
     batch CONTINUES, and every item lands, bills, and counts."""
 
     def _task(self, t, c, limit=1_000):
@@ -181,20 +186,20 @@ class TestBatchOneRuleParity:
         task = self._task(t, c)
         resp = _post(http, auth, BATCH_URL, {"events": self._items(c, task)}).json()
         r1, r2, r3 = resp["results"]
-        assert r1["ok"] is True
+        assert r1["accepted"] is True
         assert r1["stop"] is False
-        # The tipping item answers ok=True with the stop verdict riding it.
-        assert r2["ok"] is True
+        # The tipping item answers accepted=True with the stop verdict riding it.
+        assert r2["accepted"] is True
         assert r2["stop"] is True
         assert r2["stop_reason"] == "task_limit"
         assert r2["stop_scope"] == "task"
         assert r2["task_total_provider_cost_micros"] == 1_200
         # A later item on the killed task still LANDS, with task_not_active.
-        assert r3["ok"] is True
+        assert r3["accepted"] is True
         assert r3["stop"] is True
         assert r3["stop_reason"] == "task_not_active"
         assert r3["stop_scope"] == "task"
-        assert resp["succeeded"] == 3 and resp["failed"] == 0
+        assert resp["accepted"] == 3 and resp["rejected"] == 0
 
         # Every item landed and counted into BOTH totals.
         assert UsageEvent.objects.filter(tenant=t).count() == 3
@@ -207,10 +212,10 @@ class TestBatchOneRuleParity:
 
     def test_kill_failure_does_not_500_batch(self):
         """A kill_task crash is contained by kill_and_announce (it swallows
-        and logs task.kill_failed) — the batch still answers 200 with ok=True
-        items and every event lands. The failed kill leaves the task ACTIVE,
-        so later items keep re-reporting the task_limit crossing (the next
-        event's verdict retries the kill)."""
+        and logs task.kill_failed) — the batch still answers 200 with
+        accepted=True items and every event lands. The failed kill leaves the
+        task ACTIVE, so later items keep re-reporting the task_limit crossing
+        (the next event's verdict retries the kill)."""
         from unittest import mock
         t, c, http, auth = _setup()
         task = self._task(t, c)
@@ -220,22 +225,23 @@ class TestBatchOneRuleParity:
         assert resp.status_code == 200  # never a 500
         body = resp.json()
         r1, r2, r3 = body["results"]
-        assert r1["ok"] is True and r1["stop"] is False
-        assert r2["ok"] is True
+        assert r1["accepted"] is True and r1["stop"] is False
+        assert r2["accepted"] is True
         assert r2["stop_reason"] == "task_limit"
         assert kill.called
         # The task was never killed -> item 3 still lands; its provider total
         # (1300) remains past the limit, so the crossing verdict repeats.
-        assert r3["ok"] is True
+        assert r3["accepted"] is True
         assert r3["stop_reason"] == "task_limit"
         task.refresh_from_db()
         assert task.status == "active"
         assert task.event_count == 3
-        assert body["succeeded"] == 3 and body["failed"] == 0
+        assert body["accepted"] == 3 and body["rejected"] == 0
 
     def test_byte_equivalent_to_sequential_singles(self):
         """The batch per-item bodies equal the single endpoint's bodies for the
-        identical scenario (modulo the 'ok' marker and the task/event ids)."""
+        identical scenario (modulo the 'accepted' marker and the task/event
+        ids)."""
         t, c, http, auth = _setup()
         c2 = Customer.objects.create(tenant=t, external_id="cust2")
         task_b = self._task(t, c)
@@ -248,7 +254,7 @@ class TestBatchOneRuleParity:
             single_bodies.append(_post(http, auth, SINGLE_URL, item).json())
 
         def normalize(d):
-            d = {k: v for k, v in d.items() if k not in ("ok",)}
+            d = {k: v for k, v in d.items() if k not in ("accepted",)}
             if d.get("task_id"):
                 d["task_id"] = "TASK"
             if d.get("event_id"):

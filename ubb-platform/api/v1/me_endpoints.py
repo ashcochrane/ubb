@@ -5,10 +5,11 @@ from typing import Optional
 
 from django.utils import timezone
 
+from api.v1.pagination import paginate
+from api.v1.topups import start_top_up
 from core.auth import ProductAccess
-from core.responses import json_response
+from core.problems import Problem
 from core.widget_auth import WidgetJWTAuth
-from apps.billing.topups.models import TopUpAttempt
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
 
@@ -48,12 +49,17 @@ class GrantSummaryOut(Schema):
 
 class GrantListResponse(Schema):
     data: list[GrantSummaryOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class TopUpRequest(Schema):
     amount_micros: int = Field(gt=0)
     success_url: str = Field(min_length=1)
     cancel_url: str = Field(min_length=1)
+    # #78: top-up creation moves money — replay must never mint a second
+    # attempt (backed by uq_topup_attempt_idempotency).
+    idempotency_key: str = Field(min_length=1, max_length=400)
 
     @field_validator("amount_micros")
     @classmethod
@@ -165,11 +171,12 @@ def get_balance(request):
 
 
 @me_router.get("/grants", response=GrantListResponse)
-def list_grants(request):
+def list_grants(request, cursor: str = None, limit: int = 50):
     """Active credit grant lots on the customer's own wallet (kind,
-    remaining, expiry), soonest-expiring first. Hard-capped at the first 100
-    by expiry — active lots beyond that are pathological; full pagination
-    lives on the tenant API (GET /billing/customers/{id}/grants).
+    remaining, expiry), newest first in the one cursor envelope (#78 — the
+    envelope-less capped list died with the contract big-bang; ordering moved
+    from soonest-expiring to the standard creation keyset so the cursor is
+    real).
 
     Seat-scoping decision: own-wallet basis, matching the /me/balance
     precedent — a pooled seat (whose money lives on the business owner's
@@ -178,25 +185,23 @@ def list_grants(request):
     """
     _check_billing_product(request)
     customer = request.widget_customer
-    from django.db.models import F
     from apps.billing.wallets.models import CreditGrant, Wallet
     wallet = Wallet.objects.filter(customer=customer).first()
     if wallet is None:
-        return {"data": []}
-    grants = CreditGrant.objects.filter(wallet=wallet, status="active").order_by(
-        F("expires_at").asc(nulls_last=True), "created_at")[:100]
+        return {"data": [], "next_cursor": None, "has_more": False}
+    grants, next_cursor, has_more = paginate(
+        CreditGrant.objects.filter(wallet=wallet, status="active"), cursor, limit)
     return {"data": [
         {"id": str(g.id), "kind": g.kind, "remaining_micros": g.remaining_micros,
          "expires_at": g.expires_at.isoformat() if g.expires_at else None}
-        for g in grants
-    ]}
+        for g in grants],
+        "next_cursor": next_cursor, "has_more": has_more}
 
 
 @me_router.get("/transactions", response=PaginatedTransactions)
 def get_transactions(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
-    limit = min(max(limit, 1), 100)
 
     from apps.billing.wallets.models import Wallet
     try:
@@ -204,24 +209,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     except Wallet.DoesNotExist:
         return {"data": [], "next_cursor": None, "has_more": False}
 
-    qs = wallet.transactions.all().order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            from api.v1.pagination import apply_cursor_filter
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    txns = list(qs[:limit + 1])
-    has_more = len(txns) > limit
-    txns = txns[:limit]
-
-    next_cursor = None
-    if has_more and txns:
-        from api.v1.pagination import encode_cursor
-        last = txns[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    txns, next_cursor, has_more = paginate(wallet.transactions.all(), cursor, limit)
 
     return {
         "data": [
@@ -242,73 +230,22 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 @me_router.post("/top-up", response=TopUpResponse)
 def create_top_up(request, payload: TopUpRequest):
+    """Widget twin of the tenant top-up. Replay-safe: idempotency_key is
+    required and unique per customer — a retried call re-uses the original
+    attempt and never starts a second charge."""
     _check_billing_product(request)
     customer = request.widget_customer
-    tenant = customer.tenant
-
-    from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
-    if get_tenant_stripe_account(tenant.id):
-        if not get_customer_stripe_id(customer.id):
-            return json_response(
-                request, {"error": "Customer has no stripe_customer_id"}, status=400
-            )
-
-        attempt = TopUpAttempt.objects.create(
-            customer=customer,
-            amount_micros=payload.amount_micros,
-            trigger="widget",
-            status="pending",
-        )
-
-        checkout_url = create_checkout_session(
-            customer, payload.amount_micros, attempt,
-            success_url=payload.success_url,
-            cancel_url=payload.cancel_url,
-        )
-        return {"checkout_url": checkout_url}
-    else:
-        from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import TopUpRequested
-
-        write_event(TopUpRequested(
-            tenant_id=str(tenant.id),
-            customer_id=str(customer.id),
-            amount_micros=payload.amount_micros,
-            trigger="widget",
-            success_url=getattr(payload, "success_url", "") or "",
-            cancel_url=getattr(payload, "cancel_url", "") or "",
-        ))
-        return json_response(
-            request,
-            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
-            status=202,
-        )
+    return start_top_up(request, customer, customer.tenant, payload,
+                        trigger="widget", checkout=create_checkout_session)
 
 
 @me_router.get("/invoices", response=PaginatedInvoices)
 def get_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
-    limit = min(max(limit, 1), 100)
 
-    qs = Invoice.objects.filter(customer=customer).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            from api.v1.pagination import apply_cursor_filter
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    invoices = list(qs[:limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        from api.v1.pagination import encode_cursor
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        Invoice.objects.filter(customer=customer), cursor, limit)
 
     return {
         "data": [
@@ -330,7 +267,6 @@ def get_invoices(request, cursor: str = None, limit: int = 50):
 def list_usage_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
-    limit = min(max(limit, 1), 100)
 
     # Billing-owner gate: a pooled seat's bill is the consolidated BUSINESS
     # invoice (which aggregates every sibling seat). Surfacing it to the seat
@@ -339,26 +275,8 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
         return {"data": [], "next_cursor": None, "has_more": False}
 
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    qs = CustomerUsageInvoice.objects.filter(
-        customer=customer
-    ).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            from api.v1.pagination import apply_cursor_filter
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    invoices = list(qs[:limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        from api.v1.pagination import encode_cursor
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        CustomerUsageInvoice.objects.filter(customer=customer), cursor, limit)
 
     return {
         "data": [
@@ -418,7 +336,6 @@ def get_usage_summary(request):
 def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
-    limit = min(max(limit, 1), 100)
 
     # Same billing-owner gate as usage invoices: a pooled seat does not own the
     # consolidated subscription bill and must not see it.
@@ -426,26 +343,8 @@ def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
         return {"data": [], "next_cursor": None, "has_more": False}
 
     from apps.subscriptions.models import SubscriptionInvoice
-    qs = SubscriptionInvoice.objects.filter(
-        customer=customer
-    ).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            from api.v1.pagination import apply_cursor_filter
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    invoices = list(qs[:limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        from api.v1.pagination import encode_cursor
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        SubscriptionInvoice.objects.filter(customer=customer), cursor, limit)
 
     return {
         "data": [

@@ -1,0 +1,11 @@
+# 78 contract big-bang (pre-launch lane; no external consumers — #63).
+# Money-moving top-ups gain a required idempotency_key body field:
+POST /api/v1/billing/customers/{customer_id}/top-up added the new required request property `idempotency_key`
+POST /api/v1/me/top-up added the new required request property `idempotency_key`
+# Bare-array entity lists adopt the one cursor envelope {data, next_cursor, has_more}:
+GET /api/v1/billing/customers/{customer_id}/usage-invoices the response's body `type` changed from `array<object>` to `object` for status `200`
+GET /api/v1/metering/pricing/rate-cards the response's body `type` changed from `array<object>` to `object` for status `200`
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates the response's body `type` changed from `array<object>` to `object` for status `200`
+# Batch + async ingest converge on one verdict field set (accepted/rejected counters):
+POST /api/v1/metering/usage/batch removed the required property `failed` from the response with the `200` status
+POST /api/v1/metering/usage/batch removed the required property `succeeded` from the response with the `200` status

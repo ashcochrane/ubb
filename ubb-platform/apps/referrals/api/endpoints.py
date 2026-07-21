@@ -1,14 +1,15 @@
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
-from ninja.errors import HttpError
 
-from core.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import paginate
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from core.problems import Problem
 from apps.platform.customers.models import Customer
 from apps.referrals.api.schemas import (
     ProgramCreateRequest,
@@ -66,7 +67,7 @@ def create_program(request, payload: ProgramCreateRequest):
     tenant = request.auth.tenant
 
     if ReferralProgram.objects.filter(tenant=tenant).exclude(status="deactivated").exists():
-        raise HttpError(409, "Tenant already has an active or paused referral program")
+        raise Problem("conflict", "Tenant already has an active or paused referral program")
 
     program = ReferralProgram.objects.create(
         tenant=tenant,
@@ -92,7 +93,7 @@ def get_program(request):
     ).exclude(status="deactivated").order_by("-created_at").first()
 
     if not program:
-        raise HttpError(404, "No active referral program found")
+        raise Problem("not_found", "No active referral program found")
 
     return _program_to_dict(program)
 
@@ -107,7 +108,7 @@ def update_program(request, payload: ProgramUpdateRequest):
     ).exclude(status="deactivated").order_by("-created_at").first()
 
     if not program:
-        raise HttpError(404, "No active referral program found")
+        raise Problem("not_found", "No active referral program found")
 
     update_fields = ["updated_at"]
     for field_name in [
@@ -134,7 +135,7 @@ def deactivate_program(request):
     ).exclude(status="deactivated").order_by("-created_at").first()
 
     if not program:
-        raise HttpError(404, "No active referral program found")
+        raise Problem("not_found", "No active referral program found")
 
     program.status = "deactivated"
     program.save(update_fields=["status", "updated_at"])
@@ -151,7 +152,7 @@ def reactivate_program(request):
     ).order_by("-created_at").first()
 
     if not program:
-        raise HttpError(404, "No deactivated referral program found")
+        raise Problem("not_found", "No deactivated referral program found")
 
     program.status = "active"
     program.save(update_fields=["status", "updated_at"])
@@ -169,11 +170,11 @@ def register_referrer(request, payload: RegisterReferrerRequest):
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
 
     if Referrer.objects.filter(customer=customer).exists():
-        raise HttpError(409, "Customer is already registered as a referrer")
+        raise Problem("conflict", "Customer is already registered as a referrer")
 
     # Check program exists
     if not ReferralProgram.objects.filter(tenant=tenant, status="active").exists():
-        raise HttpError(400, "No active referral program. Create a program first.")
+        raise Problem("validation_error", "No active referral program. Create a program first.")
 
     referrer = Referrer.objects.create(tenant=tenant, customer=customer)
 
@@ -209,24 +210,9 @@ def get_referrer(request, customer_id: str):
 def list_referrers(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = Referrer.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            raise HttpError(400, "Invalid cursor")
-
-    referrers = list(qs[: limit + 1])
-    has_more = len(referrers) > limit
-    referrers = referrers[:limit]
-
-    next_cursor = None
-    if has_more and referrers:
-        last = referrers[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    referrers, next_cursor, has_more = paginate(
+        Referrer.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -254,7 +240,7 @@ def attribute_referral(request, payload: AttributeRequest):
     tenant = request.auth.tenant
 
     if not payload.code and not payload.link_token:
-        raise HttpError(400, "Either code or link_token is required")
+        raise Problem("validation_error", "Either code or link_token is required")
 
     # Find the referrer
     if payload.code:
@@ -267,25 +253,25 @@ def attribute_referral(request, payload: AttributeRequest):
         ).first()
 
     if not referrer:
-        raise HttpError(404, "Referrer not found or inactive")
+        raise Problem("not_found", "Referrer not found or inactive")
 
     # Validate referred customer
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
 
     # Can't refer yourself
     if customer.id == referrer.customer_id:
-        raise HttpError(400, "A customer cannot refer themselves")
+        raise Problem("validation_error", "A customer cannot refer themselves")
 
     # Check not already referred
     if Referral.objects.filter(tenant=tenant, referred_customer=customer).exists():
-        raise HttpError(409, "Customer has already been referred")
+        raise Problem("conflict", "Customer has already been referred")
 
     # Get active program
     program = ReferralProgram.objects.filter(
         tenant=tenant, status="active",
     ).first()
     if not program:
-        raise HttpError(400, "No active referral program")
+        raise Problem("validation_error", "No active referral program")
 
     # Fraud prevention: velocity limit
     if program.max_referrals_per_day is not None:
@@ -295,20 +281,29 @@ def attribute_referral(request, payload: AttributeRequest):
             attributed_at__gte=today_start,
         ).count()
         if today_count >= program.max_referrals_per_day:
-            raise HttpError(429, "Referrer has reached the daily referral limit")
+            # The velocity window is per-day: it resets at the next midnight.
+            retry_after_seconds = max(
+                1,
+                int((today_start + timedelta(days=1) - timezone.now()).total_seconds()),
+            )
+            raise Problem(
+                "rate_limit_exceeded",
+                "Referrer has reached the daily referral limit",
+                headers={"Retry-After": str(retry_after_seconds)},
+            )
 
     # Fraud prevention: customer age check
     if program.min_customer_age_hours is not None:
         age_hours = (timezone.now() - customer.created_at).total_seconds() / 3600
         if age_hours < program.min_customer_age_hours:
-            raise HttpError(400, "Referred customer account is too new")
+            raise Problem("validation_error", "Referred customer account is too new")
 
     # For link attribution, check window
     if payload.link_token:
         # Link tokens are valid within attribution_window_days of referrer creation
         window_end = referrer.created_at + timedelta(days=program.attribution_window_days)
         if timezone.now() > window_end:
-            raise HttpError(410, "Attribution window has expired")
+            raise Problem("gone", "Attribution window has expired")
 
     # Calculate reward window end
     reward_window_ends_at = None
@@ -383,29 +378,14 @@ def get_referrer_earnings(request, customer_id: str):
 def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
     referrer = get_object_or_404(Referrer, customer=customer, tenant=tenant)
 
-    qs = Referral.objects.filter(
-        referrer=referrer,
-    ).select_related("referred_customer").order_by("-attributed_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="attributed_at")
-        except ValueError:
-            raise HttpError(400, "Invalid cursor")
-
-    referrals = list(qs[: limit + 1])
-    has_more = len(referrals) > limit
-    referrals = referrals[:limit]
-
-    next_cursor = None
-    if has_more and referrals:
-        last = referrals[-1]
-        next_cursor = encode_cursor(last.attributed_at, last.id)
+    referrals, next_cursor, has_more = paginate(
+        Referral.objects.filter(
+            referrer=referrer).select_related("referred_customer"),
+        cursor, limit, time_field="attributed_at")
 
     data = []
     for ref in referrals:
@@ -445,28 +425,14 @@ def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit:
 def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
     referral = get_object_or_404(Referral, id=referral_id, tenant=tenant)
 
-    qs = ReferralRewardLedger.objects.filter(
-        referral=referral,
-    ).order_by("-period_start", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            raise HttpError(400, "Invalid cursor")
-
-    entries = list(qs[: limit + 1])
-    has_more = len(entries) > limit
-    entries = entries[:limit]
-
-    next_cursor = None
-    if has_more and entries:
-        last = entries[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    # paginate() orders by the cursor's own keyset (-created_at, -id) — the
+    # old -period_start ordering filtered its cursor on created_at, a
+    # mismatched keyset that could skip rows across pages.
+    entries, next_cursor, has_more = paginate(
+        ReferralRewardLedger.objects.filter(referral=referral), cursor, limit)
 
     return {
         "data": [
@@ -498,7 +464,7 @@ def revoke_referral(request, referral_id: str):
     referral = get_object_or_404(Referral, id=referral_id, tenant=tenant)
 
     if referral.status == "revoked":
-        raise HttpError(409, "Referral is already revoked")
+        raise Problem("conflict", "Referral is already revoked")
 
     referral.status = "revoked"
     referral.save(update_fields=["status", "updated_at"])
@@ -580,10 +546,45 @@ def analytics_summary(request):
     }
 
 
+def _parse_earnings_window(period_start, period_end):
+    """Resolve the requested earnings window to a (start, end) date pair.
+
+    Defaults to UTC month-to-date. Unparseable dates are malformed syntax
+    (400); an inverted or over-long window is semantically invalid (422).
+    """
+    today = timezone.now().date()  # timezone.now() is UTC — UTC today.
+
+    def _parse(value, param_name):
+        if value is None:
+            return None
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            raise Problem(
+                "bad_request",
+                f"{param_name} must be an ISO 8601 date (YYYY-MM-DD)",
+            )
+
+    start = _parse(period_start, "period_start") or today.replace(day=1)
+    end = _parse(period_end, "period_end") or today
+
+    if start > end:
+        raise Problem(
+            "validation_error", "period_start must be on or before period_end"
+        )
+    if (end - start).days > REPORT_WINDOW_MAX_DAYS:
+        raise Problem(
+            "validation_error", "Earnings window must not exceed 366 days"
+        )
+    return start, end
+
+
 @referrals_router.get("/analytics/earnings")
 def analytics_earnings(request, period_start: str = None, period_end: str = None):
     _product_check(request)
     tenant = request.auth.tenant
+
+    window_start, window_end = _parse_earnings_window(period_start, period_end)
 
     referrers = Referrer.objects.filter(
         tenant=tenant,
@@ -593,12 +594,17 @@ def analytics_earnings(request, period_start: str = None, period_end: str = None
     total_earned = 0
 
     for referrer in referrers:
-        acc_totals = ReferralRewardAccumulator.objects.filter(
+        # Earnings within the window come from the reconciliation ledger
+        # (the accumulator is an all-time running total and cannot be
+        # windowed). A ledger period counts if it overlaps the window.
+        ledger_totals = ReferralRewardLedger.objects.filter(
             referral__referrer=referrer,
+            period_start__lte=window_end,
+            period_end__gte=window_start,
         ).aggregate(
-            earned=Sum("total_earned_micros"),
+            earned=Sum("reward_micros"),
         )
-        earned = acc_totals["earned"] or 0
+        earned = ledger_totals["earned"] or 0
         ref_count = Referral.objects.filter(referrer=referrer).count()
 
         if earned > 0 or ref_count > 0:
@@ -611,10 +617,9 @@ def analytics_earnings(request, period_start: str = None, period_end: str = None
             })
             total_earned += earned
 
-    today = timezone.now().date()
     return {
-        "period_start": period_start or today.replace(day=1).isoformat(),
-        "period_end": period_end or today.isoformat(),
+        "period_start": window_start.isoformat(),
+        "period_end": window_end.isoformat(),
         "referrers": referrer_data,
         "total_earned_micros": total_earned,
     }

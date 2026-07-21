@@ -1,8 +1,8 @@
 from django.test import TestCase, RequestFactory
-from ninja.errors import HttpError
 
 from apps.platform.tenants.models import Tenant
 from core.auth import ProductAccess
+from core.problems import Problem
 
 
 class ProductAccessTest(TestCase):
@@ -14,13 +14,14 @@ class ProductAccessTest(TestCase):
         request.tenant = tenant
         return request
 
-    def test_raises_403_when_tenant_lacks_product(self):
+    def test_raises_feature_not_enabled_when_tenant_lacks_product(self):
         tenant = Tenant.objects.create(name="Metering Only", products=["metering"])
         request = self._make_request(tenant)
         checker = ProductAccess("billing")
-        with self.assertRaises(HttpError) as ctx:
+        with self.assertRaises(Problem) as ctx:
             checker(request)
-        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.code, "feature_not_enabled")
+        self.assertEqual(ctx.exception.status, 403)
         self.assertIn("billing", str(ctx.exception))
 
     def test_passes_when_tenant_has_the_product(self):
@@ -41,12 +42,12 @@ class ProductAccessTest(TestCase):
         # Should not raise
         checker(request)
 
-    def test_raises_403_when_tenant_has_different_product(self):
+    def test_raises_feature_not_enabled_when_tenant_has_different_product(self):
         tenant = Tenant.objects.create(
             name="Metering Only", products=["metering"]
         )
         request = self._make_request(tenant)
         checker = ProductAccess("billing")
-        with self.assertRaises(HttpError) as ctx:
+        with self.assertRaises(Problem) as ctx:
             checker(request)
-        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.code, "feature_not_enabled")

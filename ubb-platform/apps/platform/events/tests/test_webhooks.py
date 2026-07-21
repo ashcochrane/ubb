@@ -649,6 +649,8 @@ class TestWebhookConfigAPI:
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 422
+        assert resp["Content-Type"] == "application/problem+json"
+        assert resp.json()["code"] == "validation_error"
         assert TenantWebhookConfig.objects.count() == 0
 
     def test_create_rejects_empty_event_types(self):
@@ -665,7 +667,9 @@ class TestWebhookConfigAPI:
         assert TenantWebhookConfig.objects.count() == 0
 
     def test_create_rejects_unknown_event_type(self):
-        """A typo'd event type is rejected loudly instead of matching nothing forever."""
+        """A typo'd event type is rejected loudly instead of matching nothing forever.
+
+        Semantic validation -> 422 validation_error problem+json (#78)."""
         resp = self.client.post(
             "/api/v1/webhooks/config/configs",
             data=json.dumps(
@@ -678,7 +682,30 @@ class TestWebhookConfigAPI:
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
+        assert resp["Content-Type"] == "application/problem+json"
+        body = resp.json()
+        assert body["code"] == "validation_error"
+        assert "usage.recieved" in body["detail"]
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_create_rejects_non_https_url(self):
+        """A non-https URL is semantic validation -> 422 validation_error."""
+        resp = self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {
+                    "url": "http://example.com/hook",
+                    "secret": "a" * 32,
+                    "event_types": ["usage.recorded"],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert resp["Content-Type"] == "application/problem+json"
+        assert resp.json()["code"] == "validation_error"
         assert TenantWebhookConfig.objects.count() == 0
 
     def test_create_accepts_customer_deleted(self):
@@ -714,6 +741,7 @@ class TestWebhookConfigAPI:
         assert resp.json()["event_types"] == ["*"]
 
     def test_list_webhook_configs(self):
+        """The list is the house cursor envelope: data / next_cursor / has_more."""
         TenantWebhookConfig.objects.create(
             tenant=self.tenant,
             url="https://a.com/hook",
@@ -724,7 +752,125 @@ class TestWebhookConfigAPI:
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 200
-        assert len(resp.json()["data"]) == 1
+        body = resp.json()
+        assert set(body.keys()) == {"data", "next_cursor", "has_more"}
+        assert len(body["data"]) == 1
+        assert body["has_more"] is False
+        assert body["next_cursor"] is None
+
+    def _create_configs_with_distinct_created_at(self, count):
+        """Create configs newest-last and spread created_at so the keyset
+        ordering is deterministic. Returns ids ordered newest-first (the
+        order the API serves)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        now = timezone.now()
+        ids_newest_first = []
+        for i in range(count):
+            config = TenantWebhookConfig.objects.create(
+                tenant=self.tenant,
+                url=f"https://example.com/hook/{i}",
+                secret="s" * 32,
+                event_types=["*"],
+            )
+            # auto_now_add ignores a passed value — set it after the fact.
+            TenantWebhookConfig.objects.filter(id=config.id).update(
+                created_at=now - timedelta(minutes=i)
+            )
+            ids_newest_first.append(str(config.id))
+        return ids_newest_first
+
+    def test_list_cursor_walk(self):
+        """3 configs, limit=2: page one fills the limit and hands out a
+        cursor; page two returns the remainder and closes the walk."""
+        ids_newest_first = self._create_configs_with_distinct_created_at(3)
+
+        page1 = self.client.get(
+            "/api/v1/webhooks/config/configs?limit=2",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert page1.status_code == 200
+        body1 = page1.json()
+        assert [c["id"] for c in body1["data"]] == ids_newest_first[:2]
+        assert body1["has_more"] is True
+        assert body1["next_cursor"]
+
+        page2 = self.client.get(
+            f"/api/v1/webhooks/config/configs?limit=2&cursor={body1['next_cursor']}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert page2.status_code == 200
+        body2 = page2.json()
+        assert [c["id"] for c in body2["data"]] == ids_newest_first[2:]
+        assert body2["has_more"] is False
+        assert body2["next_cursor"] is None
+
+    def test_list_invalid_cursor_is_problem(self):
+        resp = self.client.get(
+            "/api/v1/webhooks/config/configs?cursor=not-a-cursor",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 400
+        assert resp["Content-Type"] == "application/problem+json"
+        assert resp.json()["code"] == "invalid_cursor"
+
+    def _post_config(self, url="https://example.com/hook"):
+        return self.client.post(
+            "/api/v1/webhooks/config/configs",
+            data=json.dumps(
+                {"url": url, "secret": "a" * 32, "event_types": ["usage.recorded"]}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_create_duplicate_url_conflict(self):
+        """(tenant, url) is the natural identity (#63): a second create for
+        the same url is a 409 conflict problem."""
+        assert self._post_config().status_code == 201
+        resp = self._post_config()
+        assert resp.status_code == 409
+        assert resp["Content-Type"] == "application/problem+json"
+        body = resp.json()
+        assert body["code"] == "conflict"
+        assert "already exists" in body["detail"]
+        assert TenantWebhookConfig.objects.count() == 1
+
+    def test_create_duplicate_url_race_lands_on_db_constraint(self):
+        """If the pre-check misses (concurrent create), the DB constraint
+        still turns the insert into the same 409 conflict problem."""
+        assert self._post_config().status_code == 201
+        with patch(
+            "apps.platform.events.api.webhook_endpoints._url_already_configured",
+            return_value=False,
+        ):
+            resp = self._post_config()
+        assert resp.status_code == 409
+        assert resp["Content-Type"] == "application/problem+json"
+        assert resp.json()["code"] == "conflict"
+        assert TenantWebhookConfig.objects.count() == 1
+
+    def test_same_url_allowed_across_tenants(self):
+        """Uniqueness is per tenant — another tenant may use the same url."""
+        other = Tenant.objects.create(name="other-url", products=["metering"])
+        TenantWebhookConfig.objects.create(
+            tenant=other, url="https://example.com/hook", secret="s" * 32
+        )
+        assert self._post_config().status_code == 201
+
+    def test_delete_frees_url_for_recreate(self):
+        """Rows are hard-deleted, so deleting a config frees its url."""
+        create = self._post_config()
+        assert create.status_code == 201
+        config_id = create.json()["id"]
+        resp = self.client.delete(
+            f"/api/v1/webhooks/config/configs/{config_id}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 200
+        assert self._post_config().status_code == 201
 
     def test_delete_webhook_config(self):
         config = TenantWebhookConfig.objects.create(

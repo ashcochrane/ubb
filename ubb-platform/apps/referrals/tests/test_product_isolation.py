@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.referrals.tests._helpers import assert_problem
 
 
 class TestReferralsProductIsolation(TestCase):
@@ -17,7 +18,7 @@ class TestReferralsProductIsolation(TestCase):
             "/api/v1/referrals/program",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
-        self.assertEqual(response.status_code, 403)
+        assert_problem(response, "feature_not_enabled", 403)
 
     def test_billing_tenant_gets_403(self):
         tenant = Tenant.objects.create(
@@ -29,7 +30,7 @@ class TestReferralsProductIsolation(TestCase):
             "/api/v1/referrals/program",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
-        self.assertEqual(response.status_code, 403)
+        assert_problem(response, "feature_not_enabled", 403)
 
     def test_referrals_tenant_can_access(self):
         tenant = Tenant.objects.create(
@@ -42,7 +43,7 @@ class TestReferralsProductIsolation(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
         # Should be 404 (no program yet), not 403
-        self.assertEqual(response.status_code, 404)
+        assert_problem(response, "not_found", 404)
 
     def test_referrals_analytics_requires_product(self):
         tenant = Tenant.objects.create(
@@ -54,7 +55,7 @@ class TestReferralsProductIsolation(TestCase):
             "/api/v1/referrals/analytics/summary",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
-        self.assertEqual(response.status_code, 403)
+        assert_problem(response, "feature_not_enabled", 403)
 
     def test_referrals_analytics_allowed_with_product(self):
         tenant = Tenant.objects.create(

@@ -9,6 +9,12 @@ instead of casting every row.
 from datetime import date, datetime, time, timedelta, timezone
 
 
+# #78: computed reports are cursor-exempt but parameter-bounded — the one
+# ceiling an explicit report window may span (366 = one leap year; the
+# hourly timeseries keeps its own tighter 92).
+REPORT_WINDOW_MAX_DAYS = 366
+
+
 def utc_day_start(d: date) -> datetime:
     return datetime.combine(d, time.min, tzinfo=timezone.utc)
 

@@ -97,7 +97,8 @@ class OpsIngestHealthEndpointTest(TestCase):
         # view parses it manually AFTER both token checks pass.
         resp = self._get(token="s3cret", query="?tenant_id=not-a-uuid")
         self.assertEqual(resp.status_code, 422)
-        self.assertEqual(resp.json()["error"], "invalid_tenant_id")
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        self.assertEqual(resp.json()["code"], "invalid_tenant_id")
 
     def test_tenant_api_key_does_not_grant_access_unset_token(self):
         # A valid tenant Bearer key must never substitute for the ops token.

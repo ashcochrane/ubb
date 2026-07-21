@@ -257,8 +257,12 @@ class BillingDebitEndpointTest(TestCase):
         c = Customer.objects.create(tenant=self.tenant, external_id="od_1")
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
         resp = self._debit("od_1", 2_000_000, "od_k1")
-        self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.json().get("code"), "would_overdraw")
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        body = resp.json()
+        self.assertEqual(body["code"], "would_overdraw")
+        self.assertEqual(body["floor_micros"], 0)
+        self.assertEqual(body["balance_micros"], 1_000_000)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, 1_000_000)
 
     def test_debit_allow_negative_forces_overdraw(self):
@@ -663,7 +667,9 @@ class WithdrawOutboxEventTest(TestCase):
     def test_withdraw_insufficient_balance_no_event(self):
         from apps.platform.events.models import OutboxEvent
         response = self._withdraw(amount_micros=99_000_000)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "insufficient_balance")
 
         events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
         self.assertEqual(events.count(), 0)
@@ -777,19 +783,23 @@ class TopUpWithoutConnectorTest(TestCase):
             tenant=self.tenant, external_id="cust_no_stripe",
         )
 
-    def test_topup_emits_event_when_no_stripe_account(self):
-        from apps.platform.events.models import OutboxEvent
-
-        response = self.http_client.post(
+    def _topup(self, idempotency_key="tp_evt_1"):
+        return self.http_client.post(
             f"/api/v1/billing/customers/{self.customer.id}/top-up",
             data=json.dumps({
                 "amount_micros": 20_000_000,
                 "success_url": "https://example.com/success",
                 "cancel_url": "https://example.com/cancel",
+                "idempotency_key": idempotency_key,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
+
+    def test_topup_emits_event_when_no_stripe_account(self):
+        from apps.platform.events.models import OutboxEvent
+
+        response = self._topup()
 
         self.assertEqual(response.status_code, 202)
         body = response.json()
@@ -801,6 +811,34 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event.payload["amount_micros"], 20_000_000)
         self.assertEqual(event.payload["trigger"], "manual")
+
+    def test_topup_replay_answers_202_without_second_event(self):
+        from apps.platform.events.models import OutboxEvent
+
+        first = self._topup(idempotency_key="tp_evt_dup")
+        replay = self._topup(idempotency_key="tp_evt_dup")
+
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(replay.status_code, 202)
+        self.assertEqual(
+            OutboxEvent.objects.filter(
+                event_type="billing.topup_requested").count(),
+            1)
+
+    def test_topup_without_idempotency_key_is_a_422_problem(self):
+        response = self.http_client.post(
+            f"/api/v1/billing/customers/{self.customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 20_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "validation_error")
 
 
 class TopUpWithConnectorTest(TestCase):
@@ -818,43 +856,58 @@ class TopUpWithConnectorTest(TestCase):
             stripe_customer_id="cus_test",
         )
 
-    @patch("api.v1.billing_endpoints.create_checkout_session")
-    def test_topup_creates_checkout_session_when_stripe_active(self, mock_checkout):
-        mock_checkout.return_value = "https://checkout.stripe.com/test"
-
-        response = self.http_client.post(
-            f"/api/v1/billing/customers/{self.customer.id}/top-up",
+    def _topup(self, customer, idempotency_key="tp_chk_1"):
+        return self.http_client.post(
+            f"/api/v1/billing/customers/{customer.id}/top-up",
             data=json.dumps({
                 "amount_micros": 20_000_000,
                 "success_url": "https://example.com/success",
                 "cancel_url": "https://example.com/cancel",
+                "idempotency_key": idempotency_key,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
+
+    @patch("api.v1.billing_endpoints.create_checkout_session")
+    def test_topup_creates_checkout_session_when_stripe_active(self, mock_checkout):
+        mock_checkout.return_value = "https://checkout.stripe.com/test"
+
+        response = self._topup(self.customer)
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["checkout_url"], "https://checkout.stripe.com/test")
 
-    def test_topup_returns_400_when_no_stripe_customer_id(self):
+    @patch("api.v1.billing_endpoints.create_checkout_session")
+    def test_topup_replay_reuses_the_attempt(self, mock_checkout):
+        from apps.billing.topups.models import TopUpAttempt
+
+        mock_checkout.return_value = "https://checkout.stripe.com/test"
+
+        first = self._topup(self.customer, idempotency_key="tp_chk_dup")
+        replay = self._topup(self.customer, idempotency_key="tp_chk_dup")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(
+            TopUpAttempt.objects.filter(customer=self.customer).count(), 1)
+        # Both calls rendered a session off the SAME attempt (Stripe's own
+        # idempotency on checkout-{attempt.id} makes that the same session).
+        attempts = {call.args[2].id for call in mock_checkout.call_args_list}
+        self.assertEqual(len(attempts), 1)
+
+    def test_topup_is_a_409_problem_when_no_stripe_customer_id(self):
         # Customer without stripe_customer_id
         customer_no_stripe = Customer.objects.create(
             tenant=self.tenant, external_id="no_cus_id",
         )
 
-        response = self.http_client.post(
-            f"/api/v1/billing/customers/{customer_no_stripe.id}/top-up",
-            data=json.dumps({
-                "amount_micros": 20_000_000,
-                "success_url": "https://example.com/success",
-                "cancel_url": "https://example.com/cancel",
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
+        response = self._topup(customer_no_stripe)
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        self.assertEqual(response.json()["code"], "conflict")
 
 
 class TenantUsageInvoicePeriodValidationTest(TestCase):

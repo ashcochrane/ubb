@@ -38,11 +38,11 @@ class SubscriptionsClient:
             raise UBBConnectionError("Could not connect to UBB API", original=e) from e
         if response.status_code == 401:
             raise UBBAuthError("Invalid or revoked API key")
-        detail = self._extract_error_detail(response)
+        code, detail = self._extract_error(response)
         if response.status_code == 409:
-            raise UBBConflictError(detail)
+            raise UBBConflictError(detail, code=code)
         if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail)
+            err = UBBAPIError(response.status_code, detail, code=code)
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
@@ -59,17 +59,17 @@ class SubscriptionsClient:
         )
 
     @staticmethod
-    def _extract_error_detail(response: httpx.Response) -> str:
-        """Parse JSON error body if available, fallback to raw text."""
+    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
+        """(code, detail) from an RFC 9457 problem+json body (#78); falls
+        back to (None, raw text) for anything non-problem."""
         try:
             body = response.json()
-            if isinstance(body, dict) and "error" in body:
-                return body["error"]
-            if isinstance(body, dict) and "detail" in body:
-                return body["detail"]
+            if isinstance(body, dict):
+                detail = body.get("detail") or body.get("title") or response.text
+                return body.get("code"), detail
         except Exception:
             pass
-        return response.text
+        return None, response.text
 
     # ---- public API ----
 

@@ -13,9 +13,10 @@ class PostpaidClientTest(unittest.TestCase):
 
     @patch("ubb.billing.httpx.Client.get")
     def test_get_usage_invoices(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [
             {"period_start": "2026-06-01", "period_end": "2026-07-01", "total_billed_micros": 1000,
-             "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_1", "skip_reason": ""}])
+             "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_1", "skip_reason": ""}],
+            "next_cursor": None, "has_more": False})
         rows = self.client.get_usage_invoices("c1")
         self.assertIsInstance(rows[0], UsageInvoice)
         self.assertEqual(rows[0].total_billed_micros, 1000)
@@ -23,12 +24,12 @@ class PostpaidClientTest(unittest.TestCase):
 
     @patch("ubb.billing.httpx.Client.get")
     def test_get_usage_invoices_returns_list(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [
             {"period_start": "2026-05-01", "period_end": "2026-06-01", "total_billed_micros": 500,
              "currency": "usd", "status": "skipped", "stripe_invoice_id": None, "skip_reason": "below_threshold"},
             {"period_start": "2026-06-01", "period_end": "2026-07-01", "total_billed_micros": 2000,
              "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_2", "skip_reason": ""},
-        ])
+        ], "next_cursor": None, "has_more": False})
         rows = self.client.get_usage_invoices("c2")
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].status, "skipped")

@@ -164,11 +164,13 @@ class BillingClientTest(unittest.TestCase):
             customer_id="cust_1", amount_micros=50_000_000,
             success_url="https://app.example.com/success",
             cancel_url="https://app.example.com/cancel",
+            idempotency_key="topup_k1",
         )
         self.assertIsInstance(result, TopUpResult)
         self.assertEqual(result.checkout_url, "https://checkout.stripe.com/abc")
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/top-up")
+        self.assertEqual(call_args.kwargs["json"]["idempotency_key"], "topup_k1")
 
     # ---- configure_auto_topup ----
 

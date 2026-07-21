@@ -71,13 +71,16 @@ class GrantEndpointsTest(TestCase):
         resp = self._create_grant(
             expires_at=(timezone.now() + timedelta(days=5)).isoformat(),
             expires_in_days=5)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        self.assertEqual(resp.json()["code"], "validation_error")
 
     def test_create_grant_rejects_past_expires_at(self):
         resp = self._create_grant(
             expires_at=(timezone.now() - timedelta(days=1)).isoformat(),
             expires_in_days=None)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.json()["code"], "validation_error")
 
     def test_create_grant_rejects_bad_kind_and_uncented_amount(self):
         self.assertEqual(self._create_grant(kind="bonus").status_code, 422)
@@ -197,8 +200,9 @@ class WithdrawExcludesPromoTest(TestCase):
 
     def test_withdraw_more_than_non_promo_rejected(self):
         resp = self._withdraw(50_000_000, "wd1")
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn("Insufficient", resp.json()["error"])
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        self.assertEqual(resp.json()["code"], "insufficient_balance")
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 100_000_000)
 
@@ -286,8 +290,8 @@ class RefundLotAwareTest(TestCase):
         self.assertEqual(alloc.refunded_micros, 100_000_000)
         # The cash-out hole is closed: nothing withdrawable.
         resp = self._withdraw(100_000_000, "wd_rf1")
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn("Insufficient", resp.json()["error"])
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["code"], "insufficient_balance")
 
     def test_expired_lot_share_lands_as_base(self):
         """The lot expired between spend and refund: its remainder was already
@@ -331,7 +335,7 @@ class RefundLotAwareTest(TestCase):
         alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")
         self.assertEqual(alloc.refunded_micros, 30_000_000)
         # Withdrawable = base 50 only.
-        self.assertEqual(self._withdraw(60_000_000, "wd_rf3a").status_code, 400)
+        self.assertEqual(self._withdraw(60_000_000, "wd_rf3a").status_code, 409)
         self.assertEqual(self._withdraw(50_000_000, "wd_rf3b").status_code, 200)
 
     def test_double_refund_replay_and_new_key_capped(self):

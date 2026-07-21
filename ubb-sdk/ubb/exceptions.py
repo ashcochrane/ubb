@@ -8,11 +8,17 @@ class UBBAuthError(UBBError):
     pass
 
 class UBBAPIError(UBBError):
-    def __init__(self, status_code: int, detail: str = ""):
+    """An error response from the API (RFC 9457 problem+json, #78).
+
+    ``code`` is the stable snake_case registry code — the machine contract;
+    ``detail`` is prose and may change wording without notice."""
+    def __init__(self, status_code: int, detail: str = "", code: str | None = None):
         self.status_code = status_code
         self.detail = detail
+        self.code = code
         self.retry_after: float | None = None
-        super().__init__(f"API error {status_code}: {detail}")
+        super().__init__(f"API error {status_code}"
+                         + (f" [{code}]" if code else "") + f": {detail}")
 
 class UBBValidationError(UBBError):
     """Client-side input validation failure (e.g., micros not divisible by 10_000)."""
@@ -26,8 +32,8 @@ class UBBConnectionError(UBBError):
 
 class UBBConflictError(UBBAPIError):
     """409 Conflict (e.g., duplicate external_id on create_customer)."""
-    def __init__(self, detail: str = ""):
-        super().__init__(409, detail)
+    def __init__(self, detail: str = "", code: str | None = None):
+        super().__init__(409, detail, code=code)
 
 class UBBStoppedError(UBBError):
     """A stop verdict rode a success response (one-rule contract).

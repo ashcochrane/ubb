@@ -2,6 +2,7 @@ from ninja import Router, Schema
 from django.http import HttpResponseRedirect, JsonResponse
 
 from core.auth import ApiKeyAuth
+from core.problems import Problem, ProblemOut
 from apps.billing.connectors.stripe import connect
 
 connect_router = Router(auth=ApiKeyAuth())
@@ -11,12 +12,12 @@ class ConnectStartIn(Schema):
     return_url: str = ""
 
 
-@connect_router.post("/start", response={200: dict, 400: dict})
+@connect_router.post("/start", response={200: dict, 422: ProblemOut})
 def connect_start(request, payload: ConnectStartIn):
     try:
         url = connect.build_authorize_url(request.auth.tenant, return_url=payload.return_url)
     except connect.ConnectError as e:
-        return 400, {"error": str(e)}
+        raise Problem("invalid_config", str(e))
     return 200, {"authorize_url": url}
 
 

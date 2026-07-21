@@ -66,7 +66,7 @@ class TestStrictCoverageUnitsOnly:
         })
         assert resp.status_code == 422
         body = resp.json()
-        assert body["error"] == "pricing_error"
+        assert body["code"] == "pricing_error"
         assert "strict cost coverage" in body["detail"]
 
     def test_strict_off_units_no_metrics_returns_200_zero_cost(self):
@@ -118,7 +118,7 @@ class TestStrictCoverageUnitsOnly:
             "usage_metrics": {"uncovered_metric": 5},
         })
         assert resp.status_code == 422
-        assert resp.json()["error"] == "pricing_error"
+        assert resp.json()["code"] == "pricing_error"
 
     def test_strict_422_fires_before_usageevent_creation_idempotency_retry_succeeds(self):
         """F2.4 idempotency: strict 422 fires before UsageEvent row exists.

@@ -4,6 +4,7 @@ from django.db import IntegrityError
 from ninja import Router, Schema
 
 from core.auth import ApiKeyAuth
+from core.problems import Problem, ProblemOut
 from apps.platform.customers.models import Customer
 from api.v1.schemas import (
     PlanIn,
@@ -34,25 +35,26 @@ class CustomerResponse(Schema):
 platform_router = Router(auth=ApiKeyAuth())
 
 
-@platform_router.post("/customers", response={201: CustomerResponse, 409: dict, 422: dict})
+@platform_router.post("/customers", response={201: CustomerResponse, 409: ProblemOut, 422: ProblemOut})
 def create_customer(request, payload: CreateCustomerRequest):
     tenant = request.auth.tenant
     at = payload.account_type or "individual"
     if at not in ("individual", "business", "seat"):
-        return 422, {"error": f"invalid account_type {at}"}
+        raise Problem("validation_error", f"invalid account_type {at}")
     parent = None
     topology = ""
     if at == "seat":
         if not payload.parent_external_id:
-            return 422, {"error": "seat requires parent_external_id"}
+            raise Problem("validation_error", "seat requires parent_external_id")
         parent = Customer.objects.filter(
             tenant=tenant, external_id=payload.parent_external_id, account_type="business"
         ).first()
         if parent is None:
-            return 422, {"error": "parent business not found"}
+            raise Problem("validation_error", "parent business not found")
     elif at == "business":
         if payload.billing_topology not in ("pooled", "allocated"):
-            return 422, {"error": "business requires billing_topology pooled|allocated"}
+            raise Problem("validation_error",
+                          "business requires billing_topology pooled|allocated")
         topology = payload.billing_topology
     try:
         from django.db import transaction
@@ -78,10 +80,10 @@ def create_customer(request, payload: CreateCustomerRequest):
             "status": customer.status,
         }
     except IntegrityError:
-        return 409, {"error": "Customer with this external_id already exists"}
+        raise Problem("conflict", "customer with this external_id already exists")
 
 
-@platform_router.get("/accounts/business/{external_id}", response={200: dict, 404: dict})
+@platform_router.get("/accounts/business/{external_id}", response={200: dict, 404: ProblemOut})
 def get_business(request, external_id: str):
     from apps.billing.wallets.models import Wallet
 
@@ -89,7 +91,7 @@ def get_business(request, external_id: str):
         tenant=request.auth.tenant, external_id=external_id, account_type="business"
     ).first()
     if biz is None:
-        return 404, {"error": "business not found"}
+        raise Problem("not_found", "business not found")
     pooled_balance = None
     if biz.billing_topology == "pooled":
         w = Wallet.objects.filter(customer=biz).first()
@@ -118,7 +120,7 @@ def _plan_out(plan):
     }
 
 
-@platform_router.post("/plans", response={201: PlanOut, 422: dict})
+@platform_router.post("/plans", response={201: PlanOut, 409: ProblemOut})
 def create_plan(request, payload: PlanIn):
     from apps.subscriptions.models import TenantBillingPlan
 
@@ -132,11 +134,11 @@ def create_plan(request, payload: PlanIn):
             interval=payload.interval,
         )
     except IntegrityError:
-        return 422, {"error": f"plan with key '{payload.key}' already exists"}
+        raise Problem("conflict", f"plan with key '{payload.key}' already exists")
     return 201, _plan_out(plan)
 
 
-@platform_router.patch("/plans/{key}", response={200: dict, 404: dict, 422: dict})
+@platform_router.patch("/plans/{key}", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;
     existing subscriptions are grandfathered on their old price unless
@@ -153,7 +155,7 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
 
     tenant = request.auth.tenant
     if not TenantBillingPlan.objects.filter(tenant=tenant, key=key).exists():
-        return 404, {"error": f"plan with key '{key}' not found"}
+        raise Problem("not_found", f"plan with key '{key}' not found")
 
     try:
         plan = SubscriptionOrchestrator.update_plan_prices(
@@ -163,15 +165,15 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
             migrate_existing=payload.migrate_existing,
         )
     except OrchestrationError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     except StripeFatalError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
 
     return 200, {**_plan_out(plan), "pricing_version": plan.pricing_version}
 
 
 def _lifecycle_call(request, external_id, verb_kwargs):
-    """Shared 404/422 mapping for the subscription lifecycle verbs (F5.4)."""
+    """Shared problem mapping for the subscription lifecycle verbs (F5.4)."""
     from apps.subscriptions.orchestration.service import (
         SubscriptionOrchestrator,
         OrchestrationError,
@@ -182,7 +184,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
     tenant = request.auth.tenant
     customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
     if customer is None:
-        return 404, {"error": "customer not found"}
+        raise Problem("not_found", "customer not found")
 
     verb = verb_kwargs.pop("verb")
     try:
@@ -190,11 +192,11 @@ def _lifecycle_call(request, external_id, verb_kwargs):
             tenant, customer, change_event_id=str(uuid.uuid4()), **verb_kwargs
         )
     except NoActiveSubscription as e:
-        return 404, {"error": str(e)}
+        raise Problem("not_found", str(e))
     except OrchestrationError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     except StripeFatalError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
 
     return 200, {
         "subscription_id": mirror.stripe_subscription_id,
@@ -206,7 +208,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
 
 @platform_router.post(
     "/customers/{external_id}/subscription/cancel",
-    response={200: dict, 404: dict, 422: dict},
+    response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
     """Cancel the customer's subscription (default: at period end).
@@ -220,7 +222,7 @@ def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn
 
 @platform_router.post(
     "/customers/{external_id}/subscription/pause",
-    response={200: dict, 404: dict, 422: dict},
+    response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 def pause_subscription(request, external_id: str):
     """Pause collection (void) — the subscription stays active but stops billing.
@@ -232,7 +234,7 @@ def pause_subscription(request, external_id: str):
 
 @platform_router.post(
     "/customers/{external_id}/subscription/resume",
-    response={200: dict, 404: dict, 422: dict},
+    response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 def resume_subscription(request, external_id: str):
     """Resume billing: clears a pause AND any pending at-period-end cancel.
@@ -242,7 +244,7 @@ def resume_subscription(request, external_id: str):
     return _lifecycle_call(request, external_id, {"verb": "resume"})
 
 
-@platform_router.post("/customers/{external_id}/subscribe", response={200: dict, 404: dict, 422: dict})
+@platform_router.post("/customers/{external_id}/subscribe", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     from apps.subscriptions.models import TenantBillingPlan
     from apps.subscriptions.orchestration.service import (
@@ -253,22 +255,22 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     tenant = request.auth.tenant
     customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
     if customer is None:
-        return 404, {"error": "customer not found"}
+        raise Problem("not_found", "customer not found")
 
     plan = TenantBillingPlan.objects.filter(tenant=tenant, key=payload.plan_key).first()
     if plan is None:
-        return 404, {"error": f"plan with key '{payload.plan_key}' not found"}
+        raise Problem("not_found", f"plan with key '{payload.plan_key}' not found")
 
     from core.exceptions import StripeFatalError
     try:
         mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
     except OrchestrationError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     except StripeFatalError as e:
         # F5.3: a non-retryable Stripe rejection (e.g. automatic_tax enabled
         # but Stripe Tax not configured on the connected account) is a tenant
         # config problem — surface Stripe's message as 422, not a 500.
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
 
     return 200, {
         "subscription_id": mirror.stripe_subscription_id,
@@ -277,7 +279,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     }
 
 
-@platform_router.post("/customers/{external_id}/seats", response={200: dict, 404: dict, 422: dict})
+@platform_router.post("/customers/{external_id}/seats", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
     from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.service import (
@@ -288,7 +290,7 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
     tenant = request.auth.tenant
     customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
     if customer is None:
-        return 404, {"error": "customer not found"}
+        raise Problem("not_found", "customer not found")
 
     business = customer.resolve_billing_owner()
     seat_item = (
@@ -297,7 +299,7 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
         .first()
     )
     if seat_item is None or seat_item.plan is None:
-        return 404, {"error": "no seat subscription item for this customer"}
+        raise Problem("not_found", "no seat subscription item for this customer")
 
     change_event_id = str(uuid.uuid4())
     try:
@@ -305,6 +307,6 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
             business, seat_item.plan, payload.seats, change_event_id=change_event_id
         )
     except OrchestrationError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
 
     return 200, {"seats": payload.seats}

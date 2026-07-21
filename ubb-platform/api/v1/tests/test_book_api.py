@@ -67,7 +67,8 @@ class BookApiTest(TestCase):
         self.assertEqual(r.json()["version"], 2)
 
         # The active rate is now 12; the original (10) is closed (valid_to set).
-        active = self._get(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()
+        active = self._get(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0]["rate_per_unit_micros"], 12)
         self.assertNotEqual(active[0]["id"], original_rate_id)
@@ -116,11 +117,12 @@ class BookApiTest(TestCase):
             "metric_name": "output_tokens", "provider": "openai",
             "rate_per_unit_micros": 15})
 
-        books = self._get("/api/v1/metering/pricing/rate-cards").json()
+        books = self._get("/api/v1/metering/pricing/rate-cards").json()["data"]
         self.assertEqual(len(books), 1)
         self.assertEqual(books[0]["key"], "openai")
 
-        rates = self._get(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()
+        rates = self._get(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
         self.assertEqual({x["metric_name"] for x in rates},
                          {"input_tokens", "output_tokens"})
 
@@ -137,11 +139,11 @@ class BookApiTest(TestCase):
                          "rate_per_unit_micros": 12}]})
 
         active = self._get(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
         self.assertEqual(len(active), 1)   # only the open version
         hist = self._get(
             f"/api/v1/metering/pricing/rate-cards/{book_id}/rates"
-            "?include_history=true").json()
+            "?include_history=true").json()["data"]
         self.assertEqual(len(hist), 2)     # closed + open, both versions
         by_rate = {x["rate_per_unit_micros"] for x in hist}
         self.assertEqual(by_rate, {10, 12})

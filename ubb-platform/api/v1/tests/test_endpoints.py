@@ -42,7 +42,7 @@ class ReadyEndpointTest(TestCase):
             response = self.client.get("/api/v1/ready")
             body = response.json()
             self.assertEqual(body["checks"]["database"], "error")
-            self.assertEqual(body["status"], "not_ready")
+            self.assertEqual(body["code"], "service_unavailable")
             self.assertEqual(response.status_code, 503)
 
     def test_ready_returns_503_when_redis_fails(self):
@@ -52,5 +52,5 @@ class ReadyEndpointTest(TestCase):
             response = self.client.get("/api/v1/ready")
             body = response.json()
             self.assertEqual(body["checks"]["redis"], "error")
-            self.assertEqual(body["status"], "not_ready")
+            self.assertEqual(body["code"], "service_unavailable")
             self.assertEqual(response.status_code, 503)

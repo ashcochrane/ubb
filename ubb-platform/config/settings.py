@@ -55,6 +55,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # #78: wrong-method 405s bypass the API's exception handlers — this
+    # rewrites them onto the problem+json dialect (scoped to /api/v1/).
+    "api.v1.problems.MethodNotAllowedProblemMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

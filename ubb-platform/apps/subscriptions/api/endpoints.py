@@ -17,15 +17,14 @@ from ninja import Router
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
-from core.responses import json_response
+from core.problems import Problem, ProblemOut
 
-from core.pagination import apply_cursor_filter, encode_cursor
+from core.pagination import paginate
 from apps.platform.customers.models import Customer
 from apps.subscriptions.api.schemas import (
     SyncResponse,
     StripeSubscriptionOut,
     PaginatedInvoicesResponse,
-    SubscriptionInvoiceOut,
 )
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from core.auth import ApiKeyAuth, ProductAccess
@@ -50,7 +49,10 @@ def trigger_sync(request):
 # ---------- Subscription Data (read-only) ----------
 
 
-@subscriptions_router.get("/customers/{customer_id}/subscription")
+@subscriptions_router.get(
+    "/customers/{customer_id}/subscription",
+    response={200: StripeSubscriptionOut, 404: ProblemOut},
+)
 def get_subscription(request, customer_id: str):
     _product_check(request)
     tenant = request.auth.tenant
@@ -61,9 +63,7 @@ def get_subscription(request, customer_id: str):
     ).order_by("-created_at").first()
 
     if not sub:
-        return json_response(
-            request, {"error": "No subscription found"}, status=404
-        )
+        raise Problem("not_found", "No subscription for this customer")
 
     return {
         "id": str(sub.id),
@@ -79,36 +79,22 @@ def get_subscription(request, customer_id: str):
     }
 
 
-@subscriptions_router.get("/customers/{customer_id}/invoices")
+@subscriptions_router.get(
+    "/customers/{customer_id}/invoices",
+    response={200: PaginatedInvoicesResponse, 400: ProblemOut, 404: ProblemOut},
+)
 def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
-    limit = min(max(limit, 1), 100)
 
     # Only paid invoices surface here (this is the revenue listing). Since the AR
     # reconcile now also persists open/void/uncollectible rows with a NULL paid_at,
     # exclude them — they have no paid_at to order/serialize on.
-    qs = SubscriptionInvoice.objects.filter(
-        tenant=tenant, customer=customer, paid_at__isnull=False,
-    ).order_by("-paid_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="paid_at")
-        except ValueError:
-            from ninja.errors import HttpError
-
-            raise HttpError(400, "Invalid cursor")
-
-    invoices = list(qs[: limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.paid_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        SubscriptionInvoice.objects.filter(
+            tenant=tenant, customer=customer, paid_at__isnull=False),
+        cursor, limit, time_field="paid_at")
 
     return {
         "data": [

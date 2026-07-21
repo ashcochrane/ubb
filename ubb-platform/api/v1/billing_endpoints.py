@@ -4,7 +4,8 @@ from uuid import UUID
 
 from ninja import Router
 
-from api.v1.pagination import apply_cursor_filter, encode_cursor
+from api.v1.pagination import paginate
+from api.v1.topups import start_top_up
 from api.v1.schemas import (
     PreCheckRequest, PreCheckResponse,
     BalanceResponse,
@@ -17,12 +18,14 @@ from api.v1.schemas import (
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
-    UsageInvoiceOut, PostpaidConfigIn, PostpaidConfigOut,
+    UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
     TenantBillingPeriodOut, TenantBillingPeriodListResponse,
     TenantInvoiceOut, TenantInvoiceListResponse,
+    TenantUsageInvoiceListResponse,
 )
 from core.auth import ApiKeyAuth, ProductAccess
-from core.responses import json_response
+from core.problems import Problem, ProblemOut
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
@@ -93,13 +96,12 @@ def debit(request, payload: DebitRequest):
             floor = get_customer_min_balance(wallet.customer_id, request.auth.tenant.id)
             if new_balance < -floor:
                 if not payload.allow_negative:
-                    return json_response(
-                        request,
-                        {"error": "debit would breach the overdraft floor; "
-                                  "pass allow_negative=true to force",
-                         "code": "would_overdraw", "floor_micros": floor,
-                         "balance_micros": wallet.balance_micros},
-                        status=400)
+                    raise Problem(
+                        "would_overdraw",
+                        "debit would breach the overdraft floor; "
+                        "pass allow_negative=true to force",
+                        extensions={"floor_micros": floor,
+                                    "balance_micros": wallet.balance_micros})
                 logger.warning("billing.forced_overdraw", extra={"data": {
                     "customer_id": str(wallet.customer_id),
                     "amount_micros": payload.amount_micros,
@@ -195,51 +197,13 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 
 @billing_router.post("/customers/{customer_id}/top-up")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
+    """Start a top-up. Replay-safe: idempotency_key is required and unique
+    per customer — a retried call re-uses the original attempt and never
+    starts a second charge."""
     _product_check(request)
-    from apps.billing.topups.models import TopUpAttempt
-
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    tenant = request.auth.tenant
-
-    from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
-    if get_tenant_stripe_account(tenant.id):
-        # Stripe connector is active — create checkout session
-        if not get_customer_stripe_id(customer.id):
-            return json_response(
-                request, {"error": "Customer has no stripe_customer_id"}, status=400
-            )
-
-        attempt = TopUpAttempt.objects.create(
-            customer=customer,
-            amount_micros=payload.amount_micros,
-            trigger="manual",
-            status="pending",
-        )
-
-        checkout_url = create_checkout_session(
-            customer, payload.amount_micros, attempt,
-            success_url=payload.success_url,
-            cancel_url=payload.cancel_url,
-        )
-        return {"checkout_url": checkout_url}
-    else:
-        # No connector — emit event for tenant to handle
-        from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import TopUpRequested
-
-        write_event(TopUpRequested(
-            tenant_id=str(tenant.id),
-            customer_id=str(customer.id),
-            amount_micros=payload.amount_micros,
-            trigger="manual",
-            success_url=getattr(payload, "success_url", "") or "",
-            cancel_url=getattr(payload, "cancel_url", "") or "",
-        ))
-        return json_response(
-            request,
-            {"status": "topup_requested", "message": "Top-up request sent to tenant"},
-            status=202,
-        )
+    return start_top_up(request, customer, request.auth.tenant, payload,
+                        trigger="manual", checkout=create_checkout_session)
 
 
 @billing_router.post("/customers/{customer_id}/withdraw")
@@ -267,9 +231,11 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
             return {"transaction_id": str(existing.id), "balance_micros": wallet.balance_micros}
 
         if wallet.balance_micros - GrantLedger.promo_remaining(wallet) < payload.amount_micros:
-            return json_response(
-                request, {"error": "Insufficient balance"}, status=400
-            )
+            raise Problem(
+                "insufficient_balance",
+                "withdrawable balance (balance minus active promo credit) "
+                "is below the requested amount",
+                extensions={"balance_micros": wallet.balance_micros})
 
         wallet.balance_micros -= payload.amount_micros
         wallet.save(update_fields=["balance_micros", "updated_at"])
@@ -343,7 +309,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
         # Look up cost via metering query interface (tenant-scoped)
         cost = get_usage_event_cost(payload.usage_event_id, tenant_id=request.auth.tenant.id)
         if cost is None:
-            return json_response(request, {"error": "Usage event not found"}, status=404)
+            raise Problem("not_found", "usage event not found")
 
         wallet.balance_micros += cost
         wallet.save(update_fields=["balance_micros", "updated_at"])
@@ -391,7 +357,6 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
 def get_transactions(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    limit = min(max(limit, 1), 100)
 
     from apps.billing.wallets.models import Wallet
     try:
@@ -399,22 +364,7 @@ def get_transactions(request, customer_id: str, cursor: str = None, limit: int =
     except Wallet.DoesNotExist:
         return {"data": [], "next_cursor": None, "has_more": False}
 
-    qs = wallet.transactions.all().order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    txns = list(qs[:limit + 1])
-    has_more = len(txns) > limit
-    txns = txns[:limit]
-
-    next_cursor = None
-    if has_more and txns:
-        last = txns[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    txns, next_cursor, has_more = paginate(wallet.transactions.all(), cursor, limit)
 
     return {
         "data": [
@@ -471,15 +421,13 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if payload.expires_at is not None and payload.expires_in_days is not None:
-        return json_response(
-            request, {"error": "Pass expires_at OR expires_in_days, not both"}, status=400)
+        raise Problem(
+            "validation_error", "Pass expires_at OR expires_in_days, not both")
     if payload.expires_at is not None:
         if payload.expires_at.tzinfo is None:
-            return json_response(
-                request, {"error": "expires_at must be timezone-aware"}, status=400)
+            raise Problem("validation_error", "expires_at must be timezone-aware")
         if payload.expires_at <= timezone.now():
-            return json_response(
-                request, {"error": "expires_at must be in the future"}, status=400)
+            raise Problem("validation_error", "expires_at must be in the future")
         expires_at = payload.expires_at
     elif payload.expires_in_days is not None:
         expires_at = timezone.now() + timedelta(days=payload.expires_in_days)
@@ -525,9 +473,8 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
         # Idempotent replay: return the grant created with the original txn.
         grant = CreditGrant.objects.filter(source_transaction=existing).first()
         if grant is None:
-            return json_response(
-                request, {"error": "idempotency_key already used by a non-grant transaction"},
-                status=409)
+            raise Problem(
+                "conflict", "idempotency_key already used by a non-grant transaction")
         return _grant_out(grant, balance_micros=wallet.balance_micros,
                           transaction_id=str(existing.id))
 
@@ -540,30 +487,16 @@ def list_grants(request, customer_id: UUID, status: str = None,
     from apps.billing.wallets.models import CreditGrant, Wallet
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    limit = min(max(limit, 1), 100)
     owner = customer.resolve_billing_owner()
     wallet = Wallet.objects.filter(customer=owner).first()
     if wallet is None:
         return {"data": [], "next_cursor": None, "has_more": False}
 
-    qs = CreditGrant.objects.filter(wallet=wallet).order_by("-created_at", "-id")
+    qs = CreditGrant.objects.filter(wallet=wallet)
     if status:
         qs = qs.filter(status=status)
 
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    grants = list(qs[:limit + 1])
-    has_more = len(grants) > limit
-    grants = grants[:limit]
-
-    next_cursor = None
-    if has_more and grants:
-        last = grants[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    grants, next_cursor, has_more = paginate(qs, cursor, limit)
 
     return {"data": [_grant_out(g) for g in grants],
             "next_cursor": next_cursor, "has_more": has_more}
@@ -629,24 +562,9 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = TenantBillingPeriod.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    periods = list(qs[:limit + 1])
-    has_more = len(periods) > limit
-    periods = periods[:limit]
-
-    next_cursor = None
-    if has_more and periods:
-        last = periods[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    periods, next_cursor, has_more = paginate(
+        TenantBillingPeriod.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -670,24 +588,9 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
 def list_invoices(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
-    limit = min(max(limit, 1), 100)
 
-    qs = TenantInvoice.objects.filter(tenant=tenant).order_by("-created_at", "-id")
-
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor, time_field="created_at")
-        except ValueError:
-            return json_response(request, {"error": "Invalid cursor"}, status=400)
-
-    invoices = list(qs[:limit + 1])
-    has_more = len(invoices) > limit
-    invoices = invoices[:limit]
-
-    next_cursor = None
-    if has_more and invoices:
-        last = invoices[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+    invoices, next_cursor, has_more = paginate(
+        TenantInvoice.objects.filter(tenant=tenant), cursor, limit)
 
     return {
         "data": [
@@ -713,6 +616,12 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
 def revenue_analytics(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     from apps.metering.queries import get_revenue_analytics
+    # #78: computed reports are cursor-exempt but parameter-bounded.
+    if start_date and end_date:
+        if end_date < start_date:
+            raise Problem("validation_error", "end_date must not precede start_date")
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error", "date window must not exceed 366 days")
     return get_revenue_analytics(request.auth.tenant.id, start_date, end_date)
 
 
@@ -795,18 +704,18 @@ def get_customer_billing_profile(request, customer_id: UUID):
 
 
 @billing_router.put("/customers/{customer_id}/billing-profile",
-                 response={200: CustomerBillingProfileOut, 422: dict})
+                 response={200: CustomerBillingProfileOut, 422: ProblemOut})
 def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     if payload.min_balance_micros is not None and payload.min_balance_micros < 0:
-        return 422, {"error": "min_balance_micros must be >= 0 (allowed overdraft "
-                              "magnitude), or null to inherit the tenant default",
-                     "code": "invalid_config"}
+        raise Problem("invalid_config",
+                      "min_balance_micros must be >= 0 (allowed overdraft "
+                      "magnitude), or null to inherit the tenant default")
     if payload.topup_grant_expiry_days is not None and payload.topup_grant_expiry_days <= 0:
-        return 422, {"error": "topup_grant_expiry_days must be > 0, or null for no expiry",
-                     "code": "invalid_config"}
+        raise Problem("invalid_config",
+                      "topup_grant_expiry_days must be > 0, or null for no expiry")
     if payload.soft_min_balance_micros is not None:
         # Soft floor (#40): the wind-down line (-soft) must sit at or above
         # the hard floor's (-hard), i.e. soft <= hard. The hard floor this
@@ -817,10 +726,10 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
         if effective_hard is None:
             effective_hard = get_billing_config(request.auth.tenant.id).min_balance_micros
         if payload.soft_min_balance_micros > effective_hard:
-            return 422, {"error": "soft_min_balance_micros must keep the soft line at "
-                                  "or above the hard floor's — the value cannot exceed "
-                                  f"the effective min_balance_micros ({effective_hard})",
-                         "code": "invalid_config"}
+            raise Problem("invalid_config",
+                          "soft_min_balance_micros must keep the soft line at "
+                          "or above the hard floor's — the value cannot exceed "
+                          f"the effective min_balance_micros ({effective_hard})")
     profile, _ = CustomerBillingProfile.objects.update_or_create(
         customer=customer,
         defaults={"min_balance_micros": payload.min_balance_micros,
@@ -849,40 +758,49 @@ def get_customer_budget_status(request, customer_id: UUID):
 # ---------- Postpaid usage-invoice + config ----------
 
 
-@billing_router.get("/customers/{customer_id}/usage-invoices", response=list[UsageInvoiceOut])
-def list_customer_usage_invoices(request, customer_id: UUID):
+@billing_router.get("/customers/{customer_id}/usage-invoices", response=UsageInvoiceListResponse)
+def list_customer_usage_invoices(request, customer_id: UUID,
+                                 cursor: str = None, limit: int = 50):
     _product_check(request)
     from apps.billing.invoicing.models import CustomerUsageInvoice
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    rows = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant, customer=customer).order_by("-period_start")
-    return [{"period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat(),
-             "total_billed_micros": r.total_billed_micros, "currency": r.currency, "status": r.status,
-             "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
-             "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
-            for r in rows]
+    rows, next_cursor, has_more = paginate(
+        CustomerUsageInvoice.objects.filter(
+            tenant=request.auth.tenant, customer=customer),
+        cursor, limit)
+    return {"data": [
+        {"period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat(),
+         "total_billed_micros": r.total_billed_micros, "currency": r.currency, "status": r.status,
+         "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
+         "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
+        for r in rows],
+        "next_cursor": next_cursor, "has_more": has_more}
 
 
-@billing_router.get("/tenant/usage-invoices")
-def list_tenant_usage_invoices(request, period: str = None):
+@billing_router.get("/tenant/usage-invoices", response=TenantUsageInvoiceListResponse)
+def list_tenant_usage_invoices(request, period: str = None,
+                               cursor: str = None, limit: int = 50):
     _product_check(request)
     from apps.billing.invoicing.models import CustomerUsageInvoice
     qs = CustomerUsageInvoice.objects.filter(tenant=request.auth.tenant).select_related("customer")
     if period:
         import re
         from datetime import date
-        from ninja.errors import HttpError
         if not re.fullmatch(r"\d{4}-\d{2}", period):
-            raise HttpError(400, "period must be YYYY-MM")
+            raise Problem("bad_request", "period must be YYYY-MM")
         y_str, m_str = period.split("-")
         m_int = int(m_str)
         if not (1 <= m_int <= 12):
-            raise HttpError(400, "period month must be between 01 and 12")
+            raise Problem("bad_request", "period month must be between 01 and 12")
         qs = qs.filter(period_start=date(int(y_str), m_int, 1))
-    return {"invoices": [{"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
-             "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
-             "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
-             "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
-            for r in qs.order_by("-period_start")]}
+    rows, next_cursor, has_more = paginate(qs, cursor, limit)
+    return {"data": [
+        {"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
+         "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
+         "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
+         "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
+        for r in rows],
+        "next_cursor": next_cursor, "has_more": has_more}
 
 
 @billing_router.get("/postpaid-config", response=PostpaidConfigOut)

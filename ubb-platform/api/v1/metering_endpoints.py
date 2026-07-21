@@ -10,8 +10,9 @@ from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
 from core.auth import ApiKeyAuth, ProductAccess
-from core.responses import json_response
-from core.time_windows import utc_day_start, utc_next_day_start
+from core.problems import Problem, ProblemOut
+from core.time_windows import (
+    REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
 from django.utils import timezone
 
 from api.v1.schemas import (
@@ -25,12 +26,13 @@ from api.v1.schemas import (
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
+    PaginatedBooks, PaginatedRates,
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
     CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
 )
-from api.v1.pagination import encode_cursor, apply_cursor_filter
+from api.v1.pagination import paginate
 from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
 from apps.metering.usage.services.usage_service import UsageService
@@ -99,16 +101,13 @@ def record_usage(request, payload: RecordUsageRequest):
             effective_at=payload.effective_at,
         )
     except PricingError as e:
-        return json_response(
-            request, {"error": "pricing_error", "detail": str(e)}, status=422)
+        raise Problem("pricing_error", str(e))
     except EffectiveAtError as e:
         # MUST precede the ValueError branch below (EffectiveAtError IS a
         # ValueError) so the typed code survives to the response body.
-        return json_response(
-            request, {"error": e.code, "detail": str(e)}, status=422)
+        raise Problem(e.code, str(e))
     except ValueError as e:
-        from ninja.errors import HttpError
-        raise HttpError(422, str(e))
+        raise Problem("validation_error", str(e))
     _apply_task_kill(request.auth.tenant, customer, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
@@ -118,11 +117,12 @@ def record_usage(request, payload: RecordUsageRequest):
 def _record_batch_item(request, tenant, item, customers, task_exists):
     """One batch item == one independent POST /usage, error mapping included.
 
-    Mirrors the single endpoint's contract byte-for-byte as per-item result
-    dicts: a success mirrors the single-call success body (stop-verdict
-    fields included) plus {"ok": true}. 404s become per-item
-    {"error": "not_found"}; the generic ValueError branch becomes
-    {"error": "validation_error"}. One-rule parity: a crossing verdict runs
+    Mirrors the single endpoint's contract byte-for-byte as per-item VERDICT
+    dicts (#78: one verdict field set with async ingest): a success mirrors
+    the single-call success body (stop-verdict fields included) plus
+    {"accepted": true}. 404s become per-item {"code": "not_found"}; the
+    generic ValueError branch becomes {"code": "validation_error"} - every
+    code from the registry. One-rule parity: a crossing verdict runs
     the same kill flow and the batch CONTINUES — later items on the killed
     task still land, bill, and carry the task_not_active stop verdict,
     identical to firing the same items as sequential singles.
@@ -135,14 +135,18 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
         customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
     customer = customers[cid]
     if customer is None:
-        return {"ok": False, "error": "not_found", "detail": "Customer not found"}
+        return {"accepted": False, "code": "not_found",
+                "detail": "Customer not found",
+                "stop": False, "stop_reason": None, "stop_scope": None}
     if item.task_id is not None:
         task_key = (cid, str(item.task_id))
         if task_key not in task_exists:
             task_exists[task_key] = Task.objects.filter(
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
-            return {"ok": False, "error": "not_found", "detail": "Task not found"}
+            return {"accepted": False, "code": "not_found",
+                    "detail": "Task not found",
+                    "stop": False, "stop_reason": None, "stop_scope": None}
     try:
         result = UsageService.record_usage(
             tenant=tenant,
@@ -163,15 +167,18 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
             effective_at=item.effective_at,
         )
     except PricingError as e:
-        return {"ok": False, "error": "pricing_error", "detail": str(e)}
+        return {"accepted": False, "code": "pricing_error", "detail": str(e),
+                "stop": False, "stop_reason": None, "stop_scope": None}
     except EffectiveAtError as e:
-        return {"ok": False, "error": e.code, "detail": str(e)}
+        return {"accepted": False, "code": e.code, "detail": str(e),
+                "stop": False, "stop_reason": None, "stop_scope": None}
     except ValueError as e:
-        return {"ok": False, "error": "validation_error", "detail": str(e)}
+        return {"accepted": False, "code": "validation_error", "detail": str(e),
+                "stop": False, "stop_reason": None, "stop_scope": None}
     _apply_task_kill(tenant, customer, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
-    return {"ok": True, **result}
+    return {"accepted": True, **result}
 
 
 @metering_router.post("/usage/batch", response={200: UsageBatchResponse})
@@ -182,7 +189,7 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     deliberately NOT one mega-transaction, which would hold Task/counter locks
     for the whole batch, delay outbox dispatch, and diverge from the semantics
     of N sequential singles. Always HTTP 200 with positionally-aligned
-    results[] + succeeded/failed counts; per-item idempotency makes a
+    results[] + accepted/rejected counts; per-item idempotency makes a
     whole-batch replay return the original event ids with zero new rows, and
     a duplicate idempotency_key WITHIN one batch resolves to the first item's
     event id (the first item commits before the second runs).
@@ -193,9 +200,9 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     task_exists: dict = {}
     results = [_record_batch_item(request, tenant, item, customers, task_exists)
                for item in payload.events]
-    succeeded = sum(1 for r in results if r.get("ok"))
-    return {"results": results, "succeeded": succeeded,
-            "failed": len(results) - succeeded}
+    accepted = sum(1 for r in results if r.get("accepted"))
+    return {"results": results, "accepted": accepted,
+            "rejected": len(results) - accepted}
 
 
 # --- Async ingest (estimate -> atomic hold -> durable append) ---
@@ -327,33 +334,34 @@ def _ingest_idem_unwind(tenant_id, keys):
             "tenant_id": str(tenant_id), "stranded_keys": len(keys)}})
 
 
-def _ingest_verdict(*, accepted, mode, estimated_cost_micros=None, rejected=False,
-                    reason=None, stop=False, stop_reason=None, stop_scope=None,
-                    duplicate_suspect=False):
+def _ingest_verdict(*, accepted, mode, estimated_cost_micros=None,
+                    code=None, detail=None, stop=False, stop_reason=None,
+                    stop_scope=None, duplicate_suspect=False):
     return {
-        "accepted": accepted, "estimated_cost_micros": estimated_cost_micros,
+        "accepted": accepted, "code": code, "detail": detail,
+        "estimated_cost_micros": estimated_cost_micros,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
-        "rejected": rejected, "reason": reason, "mode": mode,
-        "duplicate_suspect": duplicate_suspect,
+        "mode": mode, "duplicate_suspect": duplicate_suspect,
     }
 
 
 def _sync_fallback_verdict(sync_result):
     """Translate a `_record_batch_item` result (Unpriceable route) into the
     ingest per-item verdict shape, mode='sync_fallback'."""
-    if sync_result.get("ok"):
+    if sync_result.get("accepted"):
         return {
-            "accepted": True, "estimated_cost_micros": sync_result.get("billed_cost_micros"),
+            "accepted": True, "code": None, "detail": None,
+            "estimated_cost_micros": sync_result.get("billed_cost_micros"),
             "stop": sync_result.get("stop", False), "stop_reason": sync_result.get("stop_reason"),
-            "stop_scope": sync_result.get("stop_scope"), "rejected": False, "reason": None,
+            "stop_scope": sync_result.get("stop_scope"),
             "mode": "sync_fallback", "duplicate_suspect": False,
             "event_id": sync_result.get("event_id"),
         }
     return {
-        "accepted": False, "estimated_cost_micros": None, "stop": False,
-        "stop_reason": None, "stop_scope": None, "rejected": True,
-        "reason": sync_result.get("error"), "mode": "sync_fallback",
-        "duplicate_suspect": False,
+        "accepted": False, "code": sync_result.get("code"),
+        "detail": sync_result.get("detail"), "estimated_cost_micros": None,
+        "stop": False, "stop_reason": None, "stop_scope": None,
+        "mode": "sync_fallback", "duplicate_suspect": False,
     }
 
 
@@ -383,10 +391,9 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     _product_check(request)
     tenant = request.auth.tenant
     if "metering_async" not in (tenant.products or []):
-        return json_response(
-            request, {"error": "feature_not_enabled"}, status=403)
+        raise Problem("feature_not_enabled",
+                      "metering_async is not enabled for this tenant")
 
-    from ninja.errors import HttpError
     from apps.metering.pricing.services.card_cache import CardCache
     from apps.metering.pricing.services.markup_cache import MarkupCache
     from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
@@ -421,14 +428,14 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
         customer = customers[cid]
         if customer is None:
-            results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                         reason="not_found", mode="async")
+            results[i] = _ingest_verdict(accepted=False, code="not_found",
+                                         mode="async")
             continue
         if cid not in owners:
             owners[cid] = customer.resolve_billing_owner().id
         if item.currency and str(item.currency).strip().lower() != tenant_currency:
-            results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                         reason="validation_error", mode="async")
+            results[i] = _ingest_verdict(accepted=False, code="validation_error",
+                                         mode="async")
             continue
         if item.effective_at is not None:
             try:
@@ -459,8 +466,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             if present:
                 forced_replay.add(i)
             else:
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason=eff_rejected[i], mode="async")
+                results[i] = _ingest_verdict(accepted=False, code=eff_rejected[i],
+                                             mode="async")
 
     # ---- task existence/ownership check (30s L1 cache). One-rule (#37): a
     # task's STATUS never gates acceptance — the accept-time dead-unit reject
@@ -488,8 +495,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         if item.task_id is not None:
             meta = task_meta.get(str(item.task_id))
             if meta is None or meta[0] != str(item_customer[i].id):
-                results[i] = _ingest_verdict(accepted=False, rejected=True,
-                                             reason="not_found", mode="async")
+                results[i] = _ingest_verdict(accepted=False, code="not_found",
+                                             mode="async")
 
     # ---- idempotency pre-filter: one pipelined redis round trip for the
     # whole batch, only for items still viable after EVERY local rejection
@@ -537,7 +544,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
         except Unpriceable:
             sync_result = _record_batch_item(request, tenant, item, customers, task_exists)
             results[i] = _sync_fallback_verdict(sync_result)
-            if not sync_result.get("ok"):
+            if not sync_result.get("accepted"):
                 # This item's idem key was already SET by the prefilter above
                 # (it was a pending_idx miss, not a forced_replay/idem-hit),
                 # but the inline sync fallback REJECTED it (e.g. a strict-
@@ -619,7 +626,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
                 release_ingest_hold(owner_id, tenant, estimate_micros,
                                     effective_at=effective_at)
             _ingest_idem_unwind(tenant.id, fresh_idem_keys)
-            raise HttpError(503, "raw ingest append failed")
+            raise Problem("service_unavailable", "raw ingest append failed")
         # Kick the settle workers once the raws are durably committed — the
         # 10s beat sweep (settle-raw-events) is the backstop for a lost
         # dispatch, so this on_commit hook is a fast-path nicety, not a
@@ -656,8 +663,7 @@ def ops_ingest_health(request, tenant_id: str = None):
         return page_not_found(request, exception=None)
     supplied = request.headers.get("X-Ops-Token", "")
     if not hmac.compare_digest(supplied.encode(), token.encode()):
-        return json_response(
-            request, {"error": "unauthorized"}, status=401)
+        raise Problem("unauthorized")
     # Manual parse, AFTER both token gates: keeping the param typed as `str`
     # (not `UUID`) means ninja never 422s a malformed tenant_id before the
     # token check runs — that would let an unauthenticated caller distinguish
@@ -667,8 +673,7 @@ def ops_ingest_health(request, tenant_id: str = None):
         try:
             parsed_tenant_id = UUID(tenant_id)
         except ValueError:
-            return json_response(
-                request, {"error": "invalid_tenant_id"}, status=422)
+            raise Problem("invalid_tenant_id", "tenant_id must be a UUID")
     from apps.metering.usage.services.ingest_health import ingest_health
     from apps.billing.queries import get_negative_balance_stats, get_patrol_stats
     # #41 pin 10 / #44 §F: the aged-negatives and patrol-outcome metrics ride
@@ -707,29 +712,14 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    limit = min(max(limit, 1), 100)  # Clamp between 1 and 100
 
-    qs = customer.usage_events.all().order_by("-effective_at", "-id")
-
+    qs = customer.usage_events.all()
     if tag_key and tag_value:
         qs = qs.filter(tags__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
 
-    if cursor:
-        try:
-            qs = apply_cursor_filter(qs, cursor)
-        except ValueError:
-            from ninja.errors import HttpError
-            raise HttpError(400, "Invalid cursor")
-
-    events = list(qs[:limit + 1])  # Fetch one extra to check has_more
-    has_more = len(events) > limit
-    events = events[:limit]
-
-    next_cursor = None
-    if has_more and events:
-        last = events[-1]
-        next_cursor = encode_cursor(last.effective_at, last.id)
+    events, next_cursor, has_more = paginate(
+        qs, cursor, limit, time_field="effective_at")
 
     return {
         "data": [
@@ -752,7 +742,7 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
     }
 
 
-@metering_router.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: dict})
+@metering_router.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: ProblemOut})
 def get_usage_event(request, event_id: UUID):
     """Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
@@ -897,7 +887,7 @@ def delete_customer_markup(request, customer_id: UUID):
 _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "service_id", "agent_id"}
 
 
-@metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: dict})
+@metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: str = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
@@ -910,6 +900,12 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     was spent past a stop, in both denominations."""
     _product_check(request)
     tenant = request.auth.tenant
+    # #78: computed reports are cursor-exempt but parameter-bounded.
+    if start_date and end_date:
+        if end_date < start_date:
+            raise Problem("validation_error", "end_date must not precede start_date")
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error", "date window must not exceed 366 days")
     qs = UsageEvent.objects.filter(tenant=tenant)
 
     if start_date:
@@ -975,12 +971,12 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     breakdowns: dict = {}
     if dimensions:
         if len(dimensions) > 6:
-            return 422, {"error": "at most 6 dimensions"}
+            raise Problem("validation_error", "at most 6 dimensions")
         for dim in dimensions:
             if dim.startswith("tag:"):
                 key = dim[4:]
                 if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", key):
-                    return 422, {"error": f"invalid tag dimension {dim}"}
+                    raise Problem("validation_error", f"invalid tag dimension {dim}")
                 # Events that have the key (non-NULL dimension value).
                 rows_with_key = list(
                     qs.filter(tags__has_key=key)
@@ -1028,7 +1024,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                         raw_val = "(unattributed)"
                     r["dimension"] = raw_val
             else:
-                return 422, {"error": f"unknown dimension {dim}"}
+                raise Problem("validation_error", f"unknown dimension {dim}")
             breakdowns[dim] = rows
 
     return 200, {
@@ -1045,7 +1041,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     }
 
 
-@metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: dict})
+@metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: ProblemOut})
 def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
                      customer_id: str = None, group_by: str = None):
     """Time-series spend rollup: daily or hourly COGS per tenant/customer.
@@ -1055,12 +1051,17 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
     """
     _product_check(request)
     if granularity not in ("hour", "day"):
-        return 422, {"error": "granularity must be hour or day"}
+        raise Problem("validation_error", "granularity must be hour or day")
     if group_by is not None and group_by not in ("provider", "event_type", "product_id", "service_id", "agent_id"):
-        return 422, {"error": "invalid group_by"}
-    # guardrail: cap hourly windows to ~92 days
-    if granularity == "hour" and start_date and end_date and (end_date - start_date).days > 92:
-        return 422, {"error": "hourly window too large (max 92 days)"}
+        raise Problem("validation_error", "invalid group_by")
+    # #78 bounds: hourly windows capped at ~92 days, daily at 366.
+    if start_date and end_date:
+        if end_date < start_date:
+            raise Problem("validation_error", "end_date must not precede start_date")
+        if granularity == "hour" and (end_date - start_date).days > 92:
+            raise Problem("validation_error", "hourly window too large (max 92 days)")
+        if granularity == "day" and (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error", "date window must not exceed 366 days")
     from apps.metering.queries import get_usage_timeseries
     series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
         customer_id=customer_id, group_by=group_by, start_date=start_date, end_date=end_date)
@@ -1131,46 +1132,52 @@ def _resolve_card_currency(tenant, raw_currency):
     return card_currency
 
 
-@metering_router.get("/pricing/rate-cards", response=list[BookOut])
-def list_books(request, card_type: str = None):
-    """List the tenant's rate-card BOOKS (containers). Rates live under a book
-    and are read via GET /pricing/rate-cards/{book_id}/rates."""
+@metering_router.get("/pricing/rate-cards", response=PaginatedBooks)
+def list_books(request, card_type: str = None, cursor: str = None, limit: int = 50):
+    """List the tenant's rate-card BOOKS (containers), newest first. Rates
+    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates."""
     _product_check(request)
     qs = RateCard.objects.filter(tenant=request.auth.tenant)
     if card_type:
         qs = qs.filter(card_type=card_type)
-    return [_book_to_out(b) for b in qs.order_by(
-        "card_type", "provider_key", "key", "id")]
+    books, next_cursor, has_more = paginate(qs, cursor, limit)
+    return {"data": [_book_to_out(b) for b in books],
+            "next_cursor": next_cursor, "has_more": has_more}
 
 
-@metering_router.post("/pricing/rate-cards", response={200: BookOut, 422: dict})
+@metering_router.post("/pricing/rate-cards",
+                      response={200: BookOut, 409: ProblemOut, 422: ProblemOut})
 def create_book(request, payload: BookIn):
     """Create a rate-card BOOK. Rates are added under it (so every API-created
-    rate is book-scoped and therefore resolvable)."""
+    rate is book-scoped and therefore resolvable). Creates dedupe on natural
+    identity (#78): a duplicate book answers 409."""
     _gate_card_type(request, payload.card_type)
     valid_types = {c[0] for c in CARD_TYPE_CHOICES}
     if payload.card_type not in valid_types:
-        return 422, {"error": f"card_type must be one of {sorted(valid_types)}"}
+        raise Problem("validation_error",
+                      f"card_type must be one of {sorted(valid_types)}")
     try:
         currency = _resolve_card_currency(request.auth.tenant, payload.currency)
     except ValueError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     try:
         book = RateCard.objects.create(
             tenant=request.auth.tenant, card_type=payload.card_type,
             provider_key=payload.provider_key, key=payload.key, name=payload.name,
             currency=currency, is_default=payload.is_default)
-    except IntegrityError as e:
-        return 422, {"error": f"rate-card book conflict: {e}"}
+    except IntegrityError:
+        raise Problem("conflict", "a rate-card book with this identity already exists")
     return 200, _book_to_out(book)
 
 
-@metering_router.get("/pricing/rate-cards/{book_id}/rates", response={200: list[RateOut], 404: dict})
+@metering_router.get("/pricing/rate-cards/{book_id}/rates",
+                     response={200: PaginatedRates, 404: ProblemOut})
 def list_book_rates(request, book_id: UUID, include_history: bool = False,
-                    as_of: datetime = None):
-    """List the rates in a book. Active-only by default; ``include_history``
-    returns every version (superseded rows carry a ``valid_to``), and ``as_of``
-    returns the version active at that instant (point-in-time)."""
+                    as_of: datetime = None, cursor: str = None, limit: int = 50):
+    """List the rates in a book, newest first. Active-only by default;
+    ``include_history`` returns every version (superseded rows carry a
+    ``valid_to``), and ``as_of`` returns the version active at that instant
+    (point-in-time)."""
     _product_check(request)
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     qs = Rate.objects.filter(tenant=request.auth.tenant, rate_card=book)
@@ -1179,22 +1186,28 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
-    return 200, [_rate_to_out(r) for r in qs.order_by(
-        "provider", "event_type", "metric_name", "-valid_from", "id")]
+    rates, next_cursor, has_more = paginate(qs, cursor, limit)
+    return 200, {"data": [_rate_to_out(r) for r in rates],
+                 "next_cursor": next_cursor, "has_more": has_more}
 
 
-@metering_router.post("/pricing/rate-cards/{book_id}/rates", response={200: RateOut, 422: dict})
+@metering_router.post("/pricing/rate-cards/{book_id}/rates",
+                      response={200: RateOut, 404: ProblemOut,
+                                409: ProblemOut, 422: ProblemOut})
 def add_rate(request, book_id: UUID, payload: RateIn):
     """Add a rate to a book. card_type and currency are inherited from the book
-    (single source of truth); tier/enum validation mirrors the old flat create."""
+    (single source of truth); tier/enum validation mirrors the old flat create.
+    Creates dedupe on natural identity (#78): a duplicate rate answers 409."""
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
     if book.is_default and payload.provider != book.provider_key:
-        return 422, {"error": (f"rate provider {payload.provider!r} must match the "
-                               f"default book's provider {book.provider_key!r}")}
+        raise Problem("validation_error",
+                      f"rate provider {payload.provider!r} must match the "
+                      f"default book's provider {book.provider_key!r}")
     valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
     if payload.pricing_model not in valid_models:
-        return 422, {"error": f"pricing_model must be one of {sorted(valid_models)}"}
+        raise Problem("validation_error",
+                      f"pricing_model must be one of {sorted(valid_models)}")
     try:
         rate = Rate.objects.create(
             tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
@@ -1205,12 +1218,13 @@ def add_rate(request, book_id: UUID, payload: RateIn):
             unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
             currency=book.currency, product_id=payload.product_id,
             book_version_from=book.version)
-    except IntegrityError as e:
-        return 422, {"error": f"rate conflict: {e}"}
+    except IntegrityError:
+        raise Problem("conflict", "a rate with this identity already exists")
     return 200, _rate_to_out(rate)
 
 
-@metering_router.post("/pricing/rate-cards/{book_id}/publish", response={200: BookOut, 422: dict})
+@metering_router.post("/pricing/rate-cards/{book_id}/publish",
+                      response={200: BookOut, 404: ProblemOut, 422: ProblemOut})
 def publish_book(request, book_id: UUID, payload: PublishIn):
     """Atomically reprice a set of the book's rates: each change supersedes the
     matching active rate (same lineage, valid_to stamped) and opens a new
@@ -1222,12 +1236,12 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
     try:
         BookService.publish(book, [c.dict(exclude_none=True) for c in payload.changes])
     except ValueError as e:
-        return 422, {"error": str(e)}
+        raise Problem("validation_error", str(e))
     book.refresh_from_db()
     return 200, _book_to_out(book)
 
 
-@metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 422: dict})
+@metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})
 def assign_book(request, customer_id: UUID, payload: AssignIn):
     """Assign a PRICE book to a customer (one per customer per currency).
     Resolution consults the assigned book before the per-provider default."""

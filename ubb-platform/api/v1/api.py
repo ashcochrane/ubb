@@ -27,6 +27,7 @@ from api.v1.sandbox_endpoints import sandbox_router
 from api.v1.tenant_endpoints import tenant_router
 from apps.platform.events.api.webhook_endpoints import webhook_router
 from apps.platform.events.openapi import build_webhooks_section
+from api.v1.problems import install_problem_handlers
 from apps.referrals.api.endpoints import referrals_router
 from apps.subscriptions.api.endpoints import subscriptions_router
 from apps.subscriptions.api.margin_endpoints import margin_router
@@ -44,6 +45,10 @@ api = NinjaAPI(
     auth=ApiKeyAuth(),
     openapi_extra={"webhooks": build_webhooks_section()},
 )
+
+# One error dialect (#78): every error from every route renders through the
+# central problem+json handlers; no endpoint builds an error body by hand.
+install_problem_handlers(api)
 
 # Mount order preserves the old config/urls.py registration order (the /me
 # widget surface before the generic mounts, the root router last).

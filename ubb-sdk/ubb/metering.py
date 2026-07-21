@@ -62,11 +62,11 @@ class MeteringClient:
             raise UBBConnectionError("Could not connect to UBB API", original=e) from e
         if response.status_code == 401:
             raise UBBAuthError("Invalid or revoked API key")
-        detail = self._extract_error_detail(response)
+        code, detail = self._extract_error(response)
         if response.status_code == 409:
-            raise UBBConflictError(detail)
+            raise UBBConflictError(detail, code=code)
         if response.status_code >= 400:
-            err = UBBAPIError(response.status_code, detail)
+            err = UBBAPIError(response.status_code, detail, code=code)
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
@@ -83,17 +83,17 @@ class MeteringClient:
         )
 
     @staticmethod
-    def _extract_error_detail(response: httpx.Response) -> str:
-        """Parse JSON error body if available, fallback to raw text."""
+    def _extract_error(response: httpx.Response) -> tuple[str | None, str]:
+        """(code, detail) from an RFC 9457 problem+json body (#78); falls
+        back to (None, raw text) for anything non-problem."""
         try:
             body = response.json()
-            if isinstance(body, dict) and "error" in body:
-                return body["error"]
-            if isinstance(body, dict) and "detail" in body:
-                return body["detail"]
+            if isinstance(body, dict):
+                detail = body.get("detail") or body.get("title") or response.text
+                return body.get("code"), detail
         except Exception:
             pass
-        return response.text
+        return None, response.text
 
     # ---- public API ----
 
@@ -188,16 +188,16 @@ class MeteringClient:
         body = r.json()
         results = [
             BatchItemResult(
-                ok=item.get("ok", False),
-                error=item.get("error"),
+                accepted=item.get("accepted", False),
+                code=item.get("code"),
                 detail=item.get("detail"),
                 event_id=item.get("event_id"),
                 data=item,
             )
             for item in body.get("results", [])
         ]
-        return BatchResult(results=results, succeeded=body.get("succeeded", 0),
-                           failed=body.get("failed", 0))
+        return BatchResult(results=results, accepted=body.get("accepted", 0),
+                           rejected=body.get("rejected", 0))
 
     def close_task(self, task_id: str) -> CloseTaskResult:
         """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close.
@@ -346,7 +346,7 @@ class MeteringClient:
         if as_of is not None:
             params["as_of"] = as_of
         r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params or None)
-        return [self._rate_card(row) for row in r.json()]
+        return [self._rate_card(row) for row in r.json()["data"]]
 
     def bulk_create_rate_cards(self, cards: list[dict]) -> dict:
         """Atomically create multiple rate cards via POST /api/v1/metering/pricing/rate-cards/batch.

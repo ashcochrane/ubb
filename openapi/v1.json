@@ -58,10 +58,26 @@
             },
             "title": "Data",
             "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
-          "data"
+          "data",
+          "has_more"
         ],
         "title": "ApiKeyListResponse",
         "type": "object"
@@ -649,6 +665,12 @@
             "title": "Cancel Url",
             "type": "string"
           },
+          "idempotency_key": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "success_url": {
             "minLength": 1,
             "title": "Success Url",
@@ -658,7 +680,8 @@
         "required": [
           "amount_micros",
           "success_url",
-          "cancel_url"
+          "cancel_url",
+          "idempotency_key"
         ],
         "title": "CreateTopUpRequest",
         "type": "object"
@@ -936,10 +959,26 @@
             },
             "title": "Data",
             "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
-          "data"
+          "data",
+          "has_more"
         ],
         "title": "GrantListResponse",
         "type": "object"
@@ -1563,6 +1602,38 @@
         "title": "MeUsageInvoiceOut",
         "type": "object"
       },
+      "PaginatedBooks": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/BookOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedBooks",
+        "type": "object"
+      },
       "PaginatedGrants": {
         "properties": {
           "data": {
@@ -1625,6 +1696,70 @@
           "has_more"
         ],
         "title": "PaginatedInvoices",
+        "type": "object"
+      },
+      "PaginatedInvoicesResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionInvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedInvoicesResponse",
+        "type": "object"
+      },
+      "PaginatedRates": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RateOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedRates",
         "type": "object"
       },
       "PaginatedSubscriptionInvoices": {
@@ -2105,6 +2240,46 @@
           "allowed"
         ],
         "title": "PreCheckResponse",
+        "type": "object"
+      },
+      "ProblemOut": {
+        "description": "RFC 9457 problem+json, for ``response=`` documentation of error\nstatuses. Extension members (e.g. ``balance_micros``) are open-world and\ndeliberately unmodeled.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "ProblemOut",
         "type": "object"
       },
       "ProgramCreateRequest": {
@@ -3256,6 +3431,64 @@
         "title": "SeatsIn",
         "type": "object"
       },
+      "StripeSubscriptionOut": {
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "current_period_end": {
+            "title": "Current Period End",
+            "type": "string"
+          },
+          "current_period_start": {
+            "title": "Current Period Start",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "title": "Last Synced At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stripe_product_name": {
+            "title": "Stripe Product Name",
+            "type": "string"
+          },
+          "stripe_subscription_id": {
+            "title": "Stripe Subscription Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stripe_subscription_id",
+          "stripe_product_name",
+          "status",
+          "amount_micros",
+          "currency",
+          "interval",
+          "current_period_start",
+          "current_period_end",
+          "last_synced_at"
+        ],
+        "title": "StripeSubscriptionOut",
+        "type": "object"
+      },
       "SubscribeIn": {
         "properties": {
           "plan_key": {
@@ -3286,6 +3519,49 @@
           }
         },
         "title": "SubscriptionCancelIn",
+        "type": "object"
+      },
+      "SubscriptionInvoiceOut": {
+        "properties": {
+          "amount_paid_micros": {
+            "title": "Amount Paid Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_at": {
+            "title": "Paid At",
+            "type": "string"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "stripe_invoice_id": {
+            "title": "Stripe Invoice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stripe_invoice_id",
+          "amount_paid_micros",
+          "currency",
+          "period_start",
+          "period_end",
+          "paid_at"
+        ],
+        "title": "SubscriptionInvoiceOut",
         "type": "object"
       },
       "SyncResponse": {
@@ -3723,6 +3999,103 @@
         "title": "TenantMarkupOut",
         "type": "object"
       },
+      "TenantUsageInvoiceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantUsageInvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "TenantUsageInvoiceListResponse",
+        "type": "object"
+      },
+      "TenantUsageInvoiceOut": {
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "last_attempt_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt Error"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "push_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Attempts"
+          },
+          "skip_reason": {
+            "default": "",
+            "title": "Skip Reason",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stripe_invoice_id": {
+            "default": "",
+            "title": "Stripe Invoice Id",
+            "type": "string"
+          },
+          "total_billed_micros": {
+            "title": "Total Billed Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "customer_id",
+          "external_id",
+          "period_start",
+          "total_billed_micros",
+          "status"
+        ],
+        "title": "TenantUsageInvoiceOut",
+        "type": "object"
+      },
       "TopUpRequest": {
         "properties": {
           "amount_micros": {
@@ -3735,6 +4108,12 @@
             "title": "Cancel Url",
             "type": "string"
           },
+          "idempotency_key": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "success_url": {
             "minLength": 1,
             "title": "Success Url",
@@ -3744,7 +4123,8 @@
         "required": [
           "amount_micros",
           "success_url",
-          "cancel_url"
+          "cancel_url",
+          "idempotency_key"
         ],
         "title": "TopUpRequest",
         "type": "object"
@@ -3899,8 +4279,12 @@
       },
       "UsageBatchResponse": {
         "properties": {
-          "failed": {
-            "title": "Failed",
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
             "type": "integer"
           },
           "results": {
@@ -3910,16 +4294,12 @@
             },
             "title": "Results",
             "type": "array"
-          },
-          "succeeded": {
-            "title": "Succeeded",
-            "type": "integer"
           }
         },
         "required": [
           "results",
-          "succeeded",
-          "failed"
+          "accepted",
+          "rejected"
         ],
         "title": "UsageBatchResponse",
         "type": "object"
@@ -4147,6 +4527,38 @@
         "title": "UsageEventOut",
         "type": "object"
       },
+      "UsageInvoiceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UsageInvoiceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "UsageInvoiceListResponse",
+        "type": "object"
+      },
       "UsageInvoiceOut": {
         "properties": {
           "currency": {
@@ -4341,6 +4753,38 @@
           "event_types"
         ],
         "title": "WebhookConfigCreateRequest",
+        "type": "object"
+      },
+      "WebhookConfigListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookConfigResponse"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "WebhookConfigListResponse",
         "type": "object"
       },
       "WebhookConfigResponse": {
@@ -4718,9 +5162,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -5056,6 +5498,7 @@
     },
     "/api/v1/billing/customers/{customer_id}/top-up": {
       "post": {
+        "description": "Start a top-up. Replay-safe: idempotency_key is required and unique\nper customer \u2014 a retried call re-uses the original attempt and never\nstarts a second charge.",
         "operationId": "api_v1_billing_endpoints_create_top_up",
         "parameters": [
           {
@@ -5157,6 +5600,32 @@
               "title": "Customer Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -5164,11 +5633,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/UsageInvoiceOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/UsageInvoiceListResponse"
                 }
               }
             },
@@ -5466,10 +5931,43 @@
               ],
               "title": "Period"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageInvoiceListResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -5508,17 +6006,15 @@
             },
             "description": "OK"
           },
-          "400": {
+          "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
-            "description": "Bad Request"
+            "description": "Unprocessable Content"
           }
         },
         "security": [
@@ -5917,6 +6413,26 @@
               }
             },
             "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [
@@ -5995,6 +6511,26 @@
               }
             },
             "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [
@@ -6274,9 +6810,36 @@
     },
     "/api/v1/me/grants": {
       "get": {
-        "description": "Active credit grant lots on the customer's own wallet (kind,\nremaining, expiry), soonest-expiring first. Hard-capped at the first 100\nby expiry \u2014 active lots beyond that are pathological; full pagination\nlives on the tenant API (GET /billing/customers/{id}/grants).\n\nSeat-scoping decision: own-wallet basis, matching the /me/balance\nprecedent \u2014 a pooled seat (whose money lives on the business owner's\nwallet) sees an empty list here rather than the shared business lots,\nexactly as /me/balance shows the seat's own (empty) wallet.",
+        "description": "Active credit grant lots on the customer's own wallet (kind,\nremaining, expiry), newest first in the one cursor envelope (#78 \u2014 the\nenvelope-less capped list died with the contract big-bang; ordering moved\nfrom soonest-expiring to the standard creation keyset so the cursor is\nreal).\n\nSeat-scoping decision: own-wallet basis, matching the /me/balance\nprecedent \u2014 a pooled seat (whose money lives on the business owner's\nwallet) sees an empty list here rather than the shared business lots,\nexactly as /me/balance shows the seat's own (empty) wallet.",
         "operationId": "api_v1_me_endpoints_list_grants",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6401,6 +6964,7 @@
     },
     "/api/v1/me/top-up": {
       "post": {
+        "description": "Widget twin of the tenant top-up. Replay-safe: idempotency_key is\nrequired and unique per customer \u2014 a retried call re-uses the original\nattempt and never starts a second charge.",
         "operationId": "api_v1_me_endpoints_create_top_up",
         "parameters": [],
         "requestBody": {
@@ -6707,9 +7271,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -6821,9 +7383,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7122,17 +7682,15 @@
             },
             "description": "OK"
           },
-          "422": {
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Not Found"
           }
         },
         "security": [
@@ -7201,7 +7759,7 @@
     },
     "/api/v1/metering/pricing/rate-cards": {
       "get": {
-        "description": "List the tenant's rate-card BOOKS (containers). Rates live under a book\nand are read via GET /pricing/rate-cards/{book_id}/rates.",
+        "description": "List the tenant's rate-card BOOKS (containers), newest first. Rates\nlive under a book and are read via GET /pricing/rate-cards/{book_id}/rates.",
         "operationId": "api_v1_metering_endpoints_list_books",
         "parameters": [
           {
@@ -7219,6 +7777,32 @@
               ],
               "title": "Card Type"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -7226,11 +7810,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BookOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/PaginatedBooks"
                 }
               }
             },
@@ -7245,7 +7825,7 @@
         "summary": "List Books"
       },
       "post": {
-        "description": "Create a rate-card BOOK. Rates are added under it (so every API-created\nrate is book-scoped and therefore resolvable).",
+        "description": "Create a rate-card BOOK. Rates are added under it (so every API-created\nrate is book-scoped and therefore resolvable). Creates dedupe on natural\nidentity (#78): a duplicate book answers 409.",
         "operationId": "api_v1_metering_endpoints_create_book",
         "parameters": [],
         "requestBody": {
@@ -7269,13 +7849,21 @@
             },
             "description": "OK"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7327,13 +7915,21 @@
             },
             "description": "OK"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7350,7 +7946,7 @@
     },
     "/api/v1/metering/pricing/rate-cards/{book_id}/rates": {
       "get": {
-        "description": "List the rates in a book. Active-only by default; ``include_history``\nreturns every version (superseded rows carry a ``valid_to``), and ``as_of``\nreturns the version active at that instant (point-in-time).",
+        "description": "List the rates in a book, newest first. Active-only by default;\n``include_history`` returns every version (superseded rows carry a\n``valid_to``), and ``as_of`` returns the version active at that instant\n(point-in-time).",
         "operationId": "api_v1_metering_endpoints_list_book_rates",
         "parameters": [
           {
@@ -7389,6 +7985,32 @@
               ],
               "title": "As Of"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -7396,11 +8018,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/RateOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/PaginatedRates"
                 }
               }
             },
@@ -7410,9 +8028,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7427,7 +8043,7 @@
         "summary": "List Book Rates"
       },
       "post": {
-        "description": "Add a rate to a book. card_type and currency are inherited from the book\n(single source of truth); tier/enum validation mirrors the old flat create.",
+        "description": "Add a rate to a book. card_type and currency are inherited from the book\n(single source of truth); tier/enum validation mirrors the old flat create.\nCreates dedupe on natural identity (#78): a duplicate rate answers 409.",
         "operationId": "api_v1_metering_endpoints_add_rate",
         "parameters": [
           {
@@ -7462,13 +8078,31 @@
             },
             "description": "OK"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7584,7 +8218,7 @@
     },
     "/api/v1/metering/usage/batch": {
       "post": {
-        "description": "Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 \u2192 422).\n\nEach item runs the same per-item record_usage in its own atomic commit \u2014\ndeliberately NOT one mega-transaction, which would hold Task/counter locks\nfor the whole batch, delay outbox dispatch, and diverge from the semantics\nof N sequential singles. Always HTTP 200 with positionally-aligned\nresults[] + succeeded/failed counts; per-item idempotency makes a\nwhole-batch replay return the original event ids with zero new rows, and\na duplicate idempotency_key WITHIN one batch resolves to the first item's\nevent id (the first item commits before the second runs).",
+        "description": "Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 \u2192 422).\n\nEach item runs the same per-item record_usage in its own atomic commit \u2014\ndeliberately NOT one mega-transaction, which would hold Task/counter locks\nfor the whole batch, delay outbox dispatch, and diverge from the semantics\nof N sequential singles. Always HTTP 200 with positionally-aligned\nresults[] + accepted/rejected counts; per-item idempotency makes a\nwhole-batch replay return the original event ids with zero new rows, and\na duplicate idempotency_key WITHIN one batch resolves to the first item's\nevent id (the first item commits before the second runs).",
         "operationId": "api_v1_metering_endpoints_record_usage_batch",
         "parameters": [],
         "requestBody": {
@@ -7683,9 +8317,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7731,9 +8363,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7777,9 +8407,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7789,9 +8417,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7847,9 +8473,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7859,9 +8483,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7917,9 +8539,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7929,9 +8549,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -7995,9 +8613,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8007,9 +8623,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8056,9 +8670,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8068,9 +8680,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8117,9 +8727,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8129,9 +8737,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8171,17 +8777,15 @@
             },
             "description": "Created"
           },
-          "422": {
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Conflict"
           }
         },
         "security": [
@@ -8234,9 +8838,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8246,9 +8848,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8843,9 +9443,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -8902,7 +9500,34 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInvoicesResponse"
+                }
+              }
+            },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
           }
         },
         "security": [
@@ -8929,7 +9554,24 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeSubscriptionOut"
+                }
+              }
+            },
             "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
           }
         },
         "security": [
@@ -8966,9 +9608,36 @@
     },
     "/api/v1/tenant/api-keys": {
       "get": {
-        "description": "All of THIS tenant's API keys (active and revoked), newest first.\n\nlast_used_at is buffered in Redis and flushed to the DB periodically, so\nit may lag a recently-used key by up to the flush interval.",
+        "description": "THIS tenant's API keys (active and revoked), newest first.\n\nlast_used_at is buffered in Redis and flushed to the DB periodically, so\nit may lag a recently-used key by up to the flush interval.",
         "operationId": "api_v1_tenant_endpoints_list_api_keys",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -9019,9 +9688,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9069,9 +9736,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9081,9 +9746,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9131,9 +9794,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9250,9 +9911,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9262,9 +9921,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9352,9 +10009,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9389,9 +10044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProblemOut"
                 }
               }
             },
@@ -9409,10 +10062,54 @@
     "/api/v1/webhooks/config/configs": {
       "get": {
         "operationId": "apps_platform_events_api_webhook_endpoints_list_webhook_configs",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfigListResponse"
+                }
+              }
+            },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Bad Request"
           }
         },
         "security": [
@@ -9445,6 +10142,26 @@
               }
             },
             "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [

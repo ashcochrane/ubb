@@ -6,7 +6,8 @@ from django.utils import timezone
 from ninja import Router
 
 from core.auth import ApiKeyAuth, ProductAccess
-from core.responses import json_response
+from core.problems import Problem, ProblemOut
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
 from apps.subscriptions.economics.models import (
     CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
@@ -29,6 +30,14 @@ def _current_month():
 
 def _window(start_date, end_date):
     if start_date and end_date:
+        if end_date < start_date:
+            raise Problem(
+                "validation_error", "end_date must not precede start_date"
+            )
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem(
+                "validation_error", "date window must not exceed 366 days"
+            )
         return start_date, end_date
     s, _ = _current_month()
     today = timezone.now().date()
@@ -131,12 +140,18 @@ def get_revenue(request, customer_id: UUID):
             "effective_to": p.effective_to.isoformat() if p.effective_to else None}
 
 
-@margin_router.put("/customers/{customer_id}/revenue", response=RevenueProfileOut)
+@margin_router.put(
+    "/customers/{customer_id}/revenue",
+    response={200: RevenueProfileOut, 404: ProblemOut, 422: ProblemOut},
+)
 def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    eff_from = date.fromisoformat(payload.effective_from) if payload.effective_from else timezone.now().date()
-    eff_to = date.fromisoformat(payload.effective_to) if payload.effective_to else None
+    try:
+        eff_from = date.fromisoformat(payload.effective_from) if payload.effective_from else timezone.now().date()
+        eff_to = date.fromisoformat(payload.effective_to) if payload.effective_to else None
+    except ValueError as e:
+        raise Problem("validation_error", f"invalid effective date: {e}")
     p, _ = CustomerRevenueProfile.objects.update_or_create(
         tenant=request.auth.tenant, customer=customer,
         defaults={"recurring_amount_micros": payload.recurring_amount_micros,
@@ -159,13 +174,19 @@ def get_revenue_mode(request, customer_id: UUID):
             "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
 
 
-@margin_router.put("/customers/{customer_id}/revenue-mode", response=RevenueModeOut)
+@margin_router.put(
+    "/customers/{customer_id}/revenue-mode",
+    response={200: RevenueModeOut, 404: ProblemOut, 422: ProblemOut},
+)
 def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
     _product_check(request)
     from apps.subscriptions.economics.revenue import RevenueService
     if payload.revenue_mode not in _VALID_MODES:
-        return json_response(
-            request, {"error": "invalid_revenue_mode", "detail": payload.revenue_mode}, status=422)
+        raise Problem(
+            "invalid_revenue_mode",
+            "revenue_mode must be one of '', 'billed', 'metered_only'; "
+            f"got '{payload.revenue_mode}'",
+        )
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     customer.revenue_mode = payload.revenue_mode
     customer.save(update_fields=["revenue_mode", "updated_at"])

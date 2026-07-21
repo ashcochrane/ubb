@@ -233,7 +233,8 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
             self.assertEqual(resp.status_code, 200)
             self.assertNotIn("hard_stop", resp.json())
 
-        # Batch parity: every item on the killed task still lands with ok=True.
+        # Batch parity: every item on the killed task still lands with
+        # accepted=True.
         events = [{
             "customer_id": str(self.customer.id),
             "request_id": f"rb{i}", "idempotency_key": f"ib{i}",
@@ -245,9 +246,9 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
             content_type="application/json", **self._auth())
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["succeeded"], 2)
+        self.assertEqual(body["accepted"], 2)
         for item in body["results"]:
-            self.assertTrue(item["ok"])
+            self.assertTrue(item["accepted"])
             self.assertEqual(item["stop_reason"], "task_not_active")
 
         # Every report recorded: 3 singles + 2 batch items.

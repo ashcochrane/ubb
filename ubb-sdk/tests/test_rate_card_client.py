@@ -50,7 +50,7 @@ class RateCardClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [RATE_CARD_FIXTURE])
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [RATE_CARD_FIXTURE], "next_cursor": None, "has_more": False})
         cards = self.client.list_rate_cards()
         self.assertEqual(len(cards), 1)
         self.assertIsInstance(cards[0], RateCard)
@@ -60,7 +60,7 @@ class RateCardClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_include_history_and_as_of(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [RATE_CARD_FIXTURE])
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [RATE_CARD_FIXTURE], "next_cursor": None, "has_more": False})
         self.client.list_rate_cards(include_history=True, as_of="2026-06-08T00:00:00")
         params = mock_get.call_args.kwargs.get("params") or {}
         self.assertEqual(params.get("include_history"), True)
@@ -101,14 +101,14 @@ class RateCardClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_with_card_type(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [RATE_CARD_FIXTURE])
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [RATE_CARD_FIXTURE], "next_cursor": None, "has_more": False})
         self.client.list_rate_cards(card_type="cost")
         params = mock_get.call_args.kwargs.get("params") or {}
         self.assertEqual(params.get("card_type"), "cost")
 
     @patch("ubb.metering.httpx.Client.get")
     def test_list_rate_cards_empty(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [], "next_cursor": None, "has_more": False})
         cards = self.client.list_rate_cards()
         self.assertEqual(cards, [])
 

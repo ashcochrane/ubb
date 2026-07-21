@@ -16,7 +16,8 @@ class PostpaidEndpointsTest(TestCase):
 
     def test_list_customer_usage_invoices_empty(self):
         r = self.http.get(f"/api/v1/billing/customers/{self.customer.id}/usage-invoices", **self._auth())
-        assert r.status_code == 200 and r.json() == []
+        assert r.status_code == 200
+        assert r.json() == {"data": [], "next_cursor": None, "has_more": False}
 
     def test_usage_invoice_listed_after_create(self):
         import datetime
@@ -27,11 +28,21 @@ class PostpaidEndpointsTest(TestCase):
         r = self.http.get(f"/api/v1/billing/customers/{self.customer.id}/usage-invoices", **self._auth())
         assert r.status_code == 200
         b = r.json()
-        assert len(b) == 1 and b[0]["total_billed_micros"] == 1_000_000 and b[0]["status"] == "pushed"
+        rows = b["data"]
+        assert b["has_more"] is False
+        assert len(rows) == 1 and rows[0]["total_billed_micros"] == 1_000_000 and rows[0]["status"] == "pushed"
 
     def test_tenant_usage_invoices(self):
         r = self.http.get("/api/v1/billing/tenant/usage-invoices?period=2026-06", **self._auth())
-        assert r.status_code == 200 and "invoices" in r.json()
+        assert r.status_code == 200
+        body = r.json()
+        assert set(body) == {"data", "next_cursor", "has_more"}
+
+    def test_tenant_usage_invoices_bad_period_is_a_400_problem(self):
+        r = self.http.get("/api/v1/billing/tenant/usage-invoices?period=junk", **self._auth())
+        assert r.status_code == 400
+        assert r["Content-Type"] == "application/problem+json"
+        assert r.json()["code"] == "bad_request"
 
     def test_postpaid_config_get_put(self):
         r = self.http.get("/api/v1/billing/postpaid-config", **self._auth())

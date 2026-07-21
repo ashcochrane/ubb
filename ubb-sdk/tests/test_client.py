@@ -152,7 +152,8 @@ class UBBClientTest(unittest.TestCase):
         expected = TopUpResult(checkout_url="https://checkout.example.com/abc")
         self.client.billing.create_top_up = MagicMock(return_value=expected)
         result = self.client.create_top_up(customer_id="c1", amount_micros=50_000,
-                                           success_url="http://ok", cancel_url="http://no")
+                                           success_url="http://ok", cancel_url="http://no",
+                                           idempotency_key="tp_k")
         self.assertIsInstance(result, TopUpResult)
         self.assertEqual(result.checkout_url, "https://checkout.example.com/abc")
 

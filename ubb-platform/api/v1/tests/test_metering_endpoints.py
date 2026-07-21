@@ -651,7 +651,7 @@ class RateCardValidationTest(TestCase):
         # history: both versions, newest first
         h = self.client.get(
             f"/api/v1/metering/pricing/rate-cards/{book_id}/rates?include_history=true",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()["data"]
         assert len(h) == 2
         assert h[0]["rate_per_unit_micros"] == 9 and h[1]["rate_per_unit_micros"] == 2
         assert h[0]["lineage_id"] == lineage and h[1]["lineage_id"] == lineage  # same lineage
@@ -880,8 +880,8 @@ class RecordUsageCurrencyTest(TestCase):
         )
         self.assertEqual(resp.status_code, 200, resp.content)
         body = resp.json()
-        self.assertEqual(body["succeeded"], 1)
-        self.assertEqual(body["failed"], 1)
-        self.assertTrue(body["results"][0]["ok"])
-        self.assertEqual(body["results"][1]["error"], "validation_error")
+        self.assertEqual(body["accepted"], 1)
+        self.assertEqual(body["rejected"], 1)
+        self.assertTrue(body["results"][0]["accepted"])
+        self.assertEqual(body["results"][1]["code"], "validation_error")
         self.assertIn("currency mismatch", body["results"][1]["detail"])
