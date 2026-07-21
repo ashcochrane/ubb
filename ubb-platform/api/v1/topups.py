@@ -13,8 +13,23 @@ one transaction).
 """
 from django.db import IntegrityError, transaction
 
+from apps.platform.audit.ledger import record as audit_record
 from core.problems import Problem
 from core.responses import json_response
+
+
+def _audit_top_up(customer, tenant, attempt, payload, trigger):
+    """Audit a newly-started top-up (ADR-004). Fires once per fresh attempt —
+    a replay re-uses the existing attempt and never reaches here. Actor is the
+    auth-seam principal: ``end_customer`` for the widget twin, the tenant
+    principal for the manual one."""
+    audit_record(
+        action="top_up.requested", tenant_id=tenant.id,
+        resource_type="wallet", resource_id=customer.id,
+        metadata={"customer_id": str(customer.id),
+                  "external_id": customer.external_id,
+                  "amount_micros": payload.amount_micros,
+                  "trigger": trigger, "attempt_id": str(attempt.id)})
 
 
 def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
@@ -31,13 +46,15 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
         ).first()
         if attempt is None:
             try:
-                attempt = TopUpAttempt.objects.create(
-                    customer=customer,
-                    amount_micros=payload.amount_micros,
-                    trigger=trigger,
-                    status="pending",
-                    idempotency_key=payload.idempotency_key,
-                )
+                with transaction.atomic():  # attempt + audit land together
+                    attempt = TopUpAttempt.objects.create(
+                        customer=customer,
+                        amount_micros=payload.amount_micros,
+                        trigger=trigger,
+                        status="pending",
+                        idempotency_key=payload.idempotency_key,
+                    )
+                    _audit_top_up(customer, tenant, attempt, payload, trigger)
             except IntegrityError:  # concurrent replay lost the race
                 attempt = TopUpAttempt.objects.get(
                     customer=customer, idempotency_key=payload.idempotency_key)
@@ -59,14 +76,15 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
     ).first()
     if existing is None:
         try:
-            with transaction.atomic():  # attempt + event land together
-                TopUpAttempt.objects.create(
+            with transaction.atomic():  # attempt + event + audit land together
+                attempt = TopUpAttempt.objects.create(
                     customer=customer,
                     amount_micros=payload.amount_micros,
                     trigger=trigger,
                     status="pending",
                     idempotency_key=payload.idempotency_key,
                 )
+                _audit_top_up(customer, tenant, attempt, payload, trigger)
                 write_event(TopUpRequested(
                     tenant_id=str(tenant.id),
                     customer_id=str(customer.id),

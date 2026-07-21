@@ -26,11 +26,14 @@ from api.v1.schemas import (
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 billing_router = Router(auth=ApiKeyAuth())
@@ -67,6 +70,7 @@ def get_balance(request, customer_id: str):
 
 @billing_router.post("/debit", response=DebitCreditResponse)
 @role_floor(ADMIN)
+@records_audit("wallet.debited")
 def debit(request, payload: DebitRequest):
     _product_check(request)
     from django.db import transaction
@@ -127,11 +131,23 @@ def debit(request, payload: DebitRequest):
         )
         GrantLedger.allocate(wallet, txn, payload.amount_micros)  # F4.3: usage order
 
+        # Audit the hand-moved debit in the same transaction (ADR-004); an
+        # idempotent replay returned above, so this fires once per real debit.
+        audit_record(
+            action="wallet.debited", tenant_id=request.auth.tenant.id,
+            resource_type="wallet", resource_id=wallet.customer_id,
+            metadata={"customer_id": payload.customer_id,
+                      "amount_micros": payload.amount_micros,
+                      "reason_code": payload.reason_code,
+                      "reference": payload.reference,
+                      "transaction_id": str(txn.id)})
+
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
 @billing_router.post("/credit", response=DebitCreditResponse)
 @role_floor(ADMIN)
+@records_audit("wallet.credited")
 def credit(request, payload: CreditRequest):
     """Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).
 
@@ -180,27 +196,47 @@ def credit(request, payload: CreditRequest):
             lambda oid=wallet.customer_id, t=request.auth.tenant, amt=payload.amount_micros:
             LiveLedgerService.credit(oid, t, amt))
 
+        # Audit the hand-moved credit (idempotent replay returned above).
+        audit_record(
+            action="wallet.credited", tenant_id=request.auth.tenant.id,
+            resource_type="wallet", resource_id=wallet.customer_id,
+            metadata={"customer_id": payload.customer_id,
+                      "amount_micros": payload.amount_micros,
+                      "source": payload.source,
+                      "reason_code": payload.reason_code,
+                      "transaction_id": str(txn.id)})
+
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
 @billing_router.put("/customers/{customer_id}/auto-top-up")
 @role_floor(ADMIN)
+@records_audit("auto_top_up.configured")
 def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    AutoTopUpConfig.objects.update_or_create(
-        customer=customer,
-        defaults={
-            "is_enabled": payload.is_enabled,
-            "trigger_threshold_micros": payload.trigger_threshold_micros,
-            "top_up_amount_micros": payload.top_up_amount_micros,
-        },
-    )
+    with transaction.atomic():
+        AutoTopUpConfig.objects.update_or_create(
+            customer=customer,
+            defaults={
+                "is_enabled": payload.is_enabled,
+                "trigger_threshold_micros": payload.trigger_threshold_micros,
+                "top_up_amount_micros": payload.top_up_amount_micros,
+            },
+        )
+        audit_record(
+            action="auto_top_up.configured", tenant_id=request.auth.tenant.id,
+            resource_type="auto_top_up", resource_id=customer.id,
+            metadata={"customer_id": str(customer.id),
+                      "is_enabled": payload.is_enabled,
+                      "trigger_threshold_micros": payload.trigger_threshold_micros,
+                      "top_up_amount_micros": payload.top_up_amount_micros})
     return {"status": "ok"}
 
 
 @billing_router.post("/customers/{customer_id}/top-up")
 @role_floor(WRITE)
+@records_audit("top_up.requested")
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     """Start a top-up. Replay-safe: idempotency_key is required and unique
     per customer — a retried call re-uses the original attempt and never
@@ -213,6 +249,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
 
 @billing_router.post("/customers/{customer_id}/withdraw")
 @role_floor(ADMIN)
+@records_audit("wallet.withdrawn")
 def withdraw(request, customer_id: str, payload: WithdrawRequest):
     """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
     availability is balance minus active promo remainders."""
@@ -265,6 +302,14 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
             idempotency_key=payload.idempotency_key,
         ))
 
+        # Audit the hand-moved withdrawal (idempotent replay returned above).
+        audit_record(
+            action="wallet.withdrawn", tenant_id=request.auth.tenant.id,
+            resource_type="wallet", resource_id=customer.id,
+            metadata={"customer_id": str(customer.id),
+                      "amount_micros": payload.amount_micros,
+                      "transaction_id": str(txn.id)})
+
     return {"transaction_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
@@ -286,6 +331,7 @@ def pre_check(request, payload: PreCheckRequest):
 
 @billing_router.post("/customers/{customer_id}/refund")
 @role_floor(ADMIN)
+@records_audit("usage.refunded")
 def refund_usage(request, customer_id: str, payload: RefundRequest):
     """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
     USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
@@ -358,6 +404,16 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
             idempotency_key=payload.idempotency_key,
         ))
 
+        # Audit the hand-moved refund (idempotent replay returned above).
+        audit_record(
+            action="usage.refunded", tenant_id=request.auth.tenant.id,
+            resource_type="wallet", resource_id=customer.id,
+            metadata={"customer_id": str(customer.id),
+                      "usage_event_id": str(payload.usage_event_id),
+                      "refund_amount_micros": cost,
+                      "reason": payload.reason,
+                      "transaction_id": str(txn.id)})
+
     return {"refund_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
@@ -417,6 +473,7 @@ def _grant_out(grant, *, balance_micros=None, transaction_id=None):
 
 @billing_router.post("/customers/{customer_id}/grants", response=GrantOut)
 @role_floor(ADMIN)
+@records_audit("grant.created")
 def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
     """Create an expiring (or non-expiring) credit grant lot on the billing
     owner's wallet. Exactly-once via grant:{idempotency_key} — the GRANT
@@ -478,6 +535,19 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
                 transaction.on_commit(
                     lambda oid=wallet.customer_id, t=request.auth.tenant, amt=payload.amount_micros:
                     LiveLedgerService.credit(oid, t, amt))
+                # Audit the new grant lot (idempotent replay falls through to
+                # the existing-txn branch below, which never records).
+                audit_record(
+                    action="grant.created", tenant_id=request.auth.tenant.id,
+                    resource_type="grant", resource_id=grant.id,
+                    metadata={"customer_id": str(customer.id),
+                              "owner_id": str(owner.id),
+                              "grant_id": str(grant.id),
+                              "amount_micros": payload.amount_micros,
+                              "kind": payload.kind,
+                              "expires_at": (expires_at.isoformat()
+                                             if expires_at else None),
+                              "transaction_id": str(txn.id)})
                 return _grant_out(grant, balance_micros=wallet.balance_micros,
                                   transaction_id=str(txn.id))
         # Idempotent replay: return the grant created with the original txn.
@@ -515,6 +585,7 @@ def list_grants(request, customer_id: UUID, status: str = None,
 
 @billing_router.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
 @role_floor(ADMIN)
+@records_audit("grant.voided")
 def void_grant(request, customer_id: UUID, grant_id: UUID):
     """Void a grant: debit its remaining (clamped so the balance never goes
     negative, like expiry) and retire the lot. Exactly-once via
@@ -560,6 +631,13 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
         grant.remaining_micros = 0
         grant.status = "voided"
         grant.save(update_fields=["voided_micros", "remaining_micros", "status", "updated_at"])
+        # Audit the real void — the already-voided / replay paths returned above.
+        audit_record(
+            action="grant.voided", tenant_id=request.auth.tenant.id,
+            resource_type="grant", resource_id=grant.id,
+            metadata={"customer_id": str(customer.id),
+                      "grant_id": str(grant.id), "kind": grant.kind,
+                      "debited_micros": debit, "transaction_id": str(txn.id)})
         return _grant_out(grant, balance_micros=wallet.balance_micros,
                           transaction_id=str(txn.id))
 
@@ -674,9 +752,18 @@ def get_tenant_budget(request):
 
 @billing_router.put("/budget", response=BudgetConfigOut)
 @role_floor(ADMIN)
+@records_audit("budget.set")
 def put_tenant_budget(request, payload: BudgetConfigIn):
     _product_check(request)
-    return _budget_out(_upsert_budget(request.auth.tenant, None, payload))
+    with transaction.atomic():
+        cfg = _upsert_budget(request.auth.tenant, None, payload)
+        audit_record(
+            action="budget.set", tenant_id=request.auth.tenant.id,
+            resource_type="budget", resource_id=request.auth.tenant.id,
+            metadata={"scope": "tenant", "cap_micros": cfg.cap_micros,
+                      "enforce_mode": cfg.enforce_mode,
+                      "hard_stop_pct": cfg.hard_stop_pct})
+    return _budget_out(cfg)
 
 
 @billing_router.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
@@ -694,10 +781,20 @@ def get_customer_budget(request, customer_id: UUID):
 
 @billing_router.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
 @role_floor(ADMIN)
+@records_audit("budget.set")
 def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    return _budget_out(_upsert_budget(request.auth.tenant, customer, payload))
+    with transaction.atomic():
+        cfg = _upsert_budget(request.auth.tenant, customer, payload)
+        audit_record(
+            action="budget.set", tenant_id=request.auth.tenant.id,
+            resource_type="budget", resource_id=customer.id,
+            metadata={"scope": "customer", "customer_id": str(customer.id),
+                      "cap_micros": cfg.cap_micros,
+                      "enforce_mode": cfg.enforce_mode,
+                      "hard_stop_pct": cfg.hard_stop_pct})
+    return _budget_out(cfg)
 
 
 # ---------- Per-customer billing profile (overdraft override + grant expiry) ----------
@@ -726,6 +823,7 @@ def get_customer_billing_profile(request, customer_id: UUID):
 @billing_router.put("/customers/{customer_id}/billing-profile",
                  response={200: CustomerBillingProfileOut, 422: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("billing_profile.set")
 def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
@@ -751,11 +849,19 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
                           "soft_min_balance_micros must keep the soft line at "
                           "or above the hard floor's — the value cannot exceed "
                           f"the effective min_balance_micros ({effective_hard})")
-    profile, _ = CustomerBillingProfile.objects.update_or_create(
-        customer=customer,
-        defaults={"min_balance_micros": payload.min_balance_micros,
-                  "topup_grant_expiry_days": payload.topup_grant_expiry_days,
-                  "soft_min_balance_micros": payload.soft_min_balance_micros})
+    with transaction.atomic():
+        profile, _ = CustomerBillingProfile.objects.update_or_create(
+            customer=customer,
+            defaults={"min_balance_micros": payload.min_balance_micros,
+                      "topup_grant_expiry_days": payload.topup_grant_expiry_days,
+                      "soft_min_balance_micros": payload.soft_min_balance_micros})
+        audit_record(
+            action="billing_profile.set", tenant_id=request.auth.tenant.id,
+            resource_type="billing_profile", resource_id=customer.id,
+            metadata={"customer_id": str(customer.id),
+                      "min_balance_micros": profile.min_balance_micros,
+                      "topup_grant_expiry_days": profile.topup_grant_expiry_days,
+                      "soft_min_balance_micros": profile.soft_min_balance_micros})
     return 200, _billing_profile_out(profile)
 
 
@@ -839,6 +945,7 @@ def get_postpaid_config(request):
 
 @billing_router.put("/postpaid-config", response=PostpaidConfigOut)
 @role_floor(ADMIN)
+@records_audit("postpaid_config.set")
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
@@ -849,7 +956,13 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
         defaults["usage_line_item_group_by"] = payload.usage_line_item_group_by
     if payload.consolidate_with_subscription is not None:
         defaults["consolidate_with_subscription"] = payload.consolidate_with_subscription
-    cfg, _ = PostpaidUsageConfig.objects.update_or_create(
-        tenant=request.auth.tenant, defaults=defaults)
+    with transaction.atomic():
+        cfg, _ = PostpaidUsageConfig.objects.update_or_create(
+            tenant=request.auth.tenant, defaults=defaults)
+        audit_record(
+            action="postpaid_config.set", tenant_id=request.auth.tenant.id,
+            resource_type="postpaid_config", resource_id=request.auth.tenant.id,
+            metadata={"usage_line_item_group_by": cfg.usage_line_item_group_by,
+                      "consolidate_with_subscription": cfg.consolidate_with_subscription})
     return {"usage_line_item_group_by": cfg.usage_line_item_group_by,
             "consolidate_with_subscription": cfg.consolidate_with_subscription}

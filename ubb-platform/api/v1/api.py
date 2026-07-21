@@ -17,6 +17,7 @@ in the committed document and the runtime ``/api/v1/openapi.json`` alike.
 """
 from ninja import NinjaAPI
 
+from api.v1.audit_endpoints import audit_router
 from api.v1.billing_endpoints import billing_router
 from api.v1.connect_endpoints import connect_router
 from api.v1.endpoints import root_router
@@ -63,4 +64,5 @@ api.add_router("referrals/", referrals_router, url_name_prefix="referrals")
 api.add_router("webhooks/config/", webhook_router, url_name_prefix="webhooks")
 api.add_router("platform/", platform_router, url_name_prefix="platform")
 api.add_router("connect/", connect_router, url_name_prefix="connect")
+api.add_router("audit/", audit_router, url_name_prefix="audit")
 api.add_router("", root_router)

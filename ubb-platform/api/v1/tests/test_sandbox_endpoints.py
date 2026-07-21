@@ -76,7 +76,8 @@ class SandboxResetEndpointTest(TestCase):
         self.live = Tenant.objects.create(name="Live Co", products=["metering"])
         _, self.live_key = TenantApiKey.create_key(self.live, label="t")
         self.sandbox = get_or_create_sandbox(self.live)
-        _, self.test_key = TenantApiKey.create_key(self.sandbox, label="t", is_test=True)
+        self.test_key_obj, self.test_key = TenantApiKey.create_key(
+            self.sandbox, label="t", is_test=True)
 
     def _auth(self, key):
         return {"HTTP_AUTHORIZATION": f"Bearer {key}"}
@@ -96,7 +97,11 @@ class SandboxResetEndpointTest(TestCase):
                 content_type="application/json", **self._auth(self.test_key))
         self.assertEqual(resp.status_code, 202)
         self.assertEqual(resp.json()["keep_config"], True)
-        mock_delay.assert_called_once_with(str(self.sandbox.id), True)
+        # The reset-initiating principal (this sandbox api_key) is threaded to
+        # the task by value so the async sandbox.reset entry is attributed (#82).
+        mock_delay.assert_called_once_with(
+            str(self.sandbox.id), True, actor_kind="api_key",
+            actor_id=str(self.test_key_obj.id), actor_display="t")
 
     def test_keep_config_false_is_threaded(self):
         with patch("apps.platform.tenants.tasks.reset_sandbox_tenant.delay") as mock_delay:
@@ -104,7 +109,9 @@ class SandboxResetEndpointTest(TestCase):
                 "/api/v1/sandbox/reset", data=json.dumps({"keep_config": False}),
                 content_type="application/json", **self._auth(self.test_key))
         self.assertEqual(resp.status_code, 202)
-        mock_delay.assert_called_once_with(str(self.sandbox.id), False)
+        mock_delay.assert_called_once_with(
+            str(self.sandbox.id), False, actor_kind="api_key",
+            actor_id=str(self.test_key_obj.id), actor_display="t")
 
     def test_unauthenticated_401(self):
         resp = self.http.post("/api/v1/sandbox/reset")

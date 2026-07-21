@@ -8,6 +8,8 @@ from core.auth import ADMIN, ApiKeyAuth, READ, role_floor
 from core.pagination import paginate
 from core.problems import Problem, ProblemOut
 from core.url_validation import validate_webhook_url
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.platform.events.webhook_models import TenantWebhookConfig
 from apps.platform.events.catalog import is_valid_event_selector
 
@@ -59,6 +61,7 @@ def _url_already_configured(tenant, url):
     response={201: WebhookConfigResponse, 409: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
+@records_audit("webhook_config.created")
 def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     try:
         validate_webhook_url(payload.url)
@@ -86,6 +89,13 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
                 event_types=payload.event_types,
                 is_active=payload.is_active,
             )
+            # Curated metadata only — never the signing secret.
+            audit_record(
+                action="webhook_config.created", tenant_id=tenant.id,
+                resource_type="webhook_config", resource_id=config.id,
+                metadata={"url": config.url,
+                          "event_types": config.event_types,
+                          "is_active": config.is_active})
     except IntegrityError:
         # Race: a concurrent create won uq_webhook_config_tenant_url between
         # the pre-check and the insert.
@@ -113,11 +123,21 @@ def list_webhook_configs(request, cursor: str = None, limit: int = 50):
 
 @webhook_router.delete("/configs/{config_id}")
 @role_floor(ADMIN)
+@records_audit("webhook_config.deleted")
 def delete_webhook_config(request, config_id: str):
     config = get_object_or_404(
         TenantWebhookConfig,
         id=config_id,
         tenant=request.auth.tenant,
     )
-    config.delete()
+    # Capture before delete() — Django nulls the instance pk on deletion; the
+    # signing secret is never captured.
+    deleted_id = config.id
+    deleted_url = config.url
+    with transaction.atomic():  # delete + audit land together (ADR-004)
+        config.delete()
+        audit_record(
+            action="webhook_config.deleted", tenant_id=request.auth.tenant.id,
+            resource_type="webhook_config", resource_id=deleted_id,
+            metadata={"config_id": str(config_id), "url": deleted_url})
     return {"status": "deleted"}
