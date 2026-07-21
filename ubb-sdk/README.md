@@ -1,5 +1,10 @@
 # ubb-sdk — Quick-start guide
 
+> **Upgrading from v2.x?** v3.0 is a single coordinated breaking release
+> (problem+json errors + a generated typed core). Read
+> **[MIGRATION.md](./MIGRATION.md)** for every breaking edge, and
+> **[CHANGELOG.md](./CHANGELOG.md)** for the release stamp.
+
 Two journeys covered here:
 - **Journey 1** — Cost attribution: get per-customer COGS in under 20 lines (metering only, no Stripe required).
 - **Journey 2** — Multi-axis billing: subscriptions + seats + usage, billed through Stripe Connect.
@@ -110,9 +115,9 @@ batch = client.record_batch([
      "usage_metrics": {"input_tokens": 800},
      "recorded_at": "2026-06-01T12:00:00+00:00"},
 ])
-print(batch.succeeded, batch.failed)
+print(batch.accepted, batch.rejected)
 for item in batch.results:
-    print(item.ok, item.event_id or item.error)
+    print(item.accepted, item.event_id if item.accepted else item.code)
 ```
 
 > **Retry guidance:** on a network failure, retry the **whole batch**. Per-item idempotency
@@ -240,9 +245,10 @@ rounding in billing math.
 All clients automatically retry transient failures: HTTP `429`, `502`, `503`, `504`,
 plus timeouts and connection errors — with jittered exponential backoff (0.5s base,
 doubling, ±25% jitter, capped at 10s). A server-supplied `Retry-After` header is
-honored, capped at 30s. Hard-stop 429s (`UBBHardStopError`), `UBBRunNotActiveError`,
-and all other 4xx errors are **never** retried. Pass `max_retries=0` to any client
-constructor to disable retries.
+honored, capped at 30s. Every other 4xx (`400`/`403`/`404`/`405`/`409`/`410`/`422`)
+is **never** retried. A spend stop rides a `200` (read `result.stop`), so it is
+never an error to retry. Pass `max_retries=0` to any client constructor to disable
+retries.
 
 ## Verifying webhooks
 
@@ -320,14 +326,14 @@ client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
     unit_quantity=1_000_000, fixed_micros=0, currency="usd",
     product_id="", customer_id=None)
 
-# record_usage  → RecordUsageResult
+# record_usage  → RecordUsageResponse
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider_cost_micros=None, billed_cost_micros=None, units=None,
     provider="", event_type="", currency=None, tags=None,
     product_id="", metadata=None, run_id=None, usage_metrics=None,
     recorded_at=None)
 
-# record_batch  → BatchResult  (results: list[BatchItemResult], succeeded, failed)
+# record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected)
 client.record_batch(events: list[dict])
 
 # usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
@@ -339,7 +345,7 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
     customer_id=None, group_by=None)
 ```
 
-## RecordUsageResult fields
+## RecordUsageResponse fields
 
 | Field | Meaning |
 |---|---|
@@ -347,7 +353,8 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
 | `provider_cost_micros` | COGS computed from rate cards |
 | `uncosted_metrics` | Metrics with no matching cost card |
 | `billed_cost_micros` | Amount charged to the customer wallet |
-| `balance_after_micros` | Customer wallet balance after this event |
+| `new_balance_micros` | Customer wallet balance after this event |
+| `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response) |
 
 ---
 
