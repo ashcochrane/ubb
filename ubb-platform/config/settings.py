@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.platform.customers",
     "apps.platform.membership",
     "apps.platform.events",
+    "apps.platform.audit",
     "apps.platform.tasks",
     "apps.metering.usage",
     "apps.metering.pricing",
@@ -49,6 +50,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "core.middleware.CorrelationIdMiddleware",
+    # Clears the request-scoped audit actor at request end (see core/auth.py +
+    # apps/platform/audit/actors.py). Wraps the view, so its reset runs after
+    # auth captured the actor — the mirror of the correlation-id reset above.
+    "core.middleware.RequestActorMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

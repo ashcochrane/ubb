@@ -197,6 +197,45 @@ pair = 3xx/4xx, blocked URLs, non-network errors.
 _Avoid_: treating the event-level `HandlerCheckpoint` as the delivery guarantee — it is per
 handler, not per endpoint.
 
+## Audit
+
+**Audit record**:
+A durable, append-only, tenant-scoped entry answering "who did what, when, to which resource" —
+actor snapshot + action name + target resource + timestamp + correlation id + curated metadata.
+Written in the same transaction as the change (a rolled-back mutation leaves no row) and never
+updated thereafter. A LEDGER, not a queue: rows are never processed, retried, swept, or aged out
+(retention floor ≥ 1 year, raisable never lowerable). Sibling to the outbox, deliberately NOT
+inside `events/` — queue and ledger stay separate concepts (ADR-004).
+(`apps/platform/audit/models.py:AuditRecord`)
+_Avoid_: "log"/"activity log"; riding the outbox; storing automatic before/after snapshots —
+only curated per-action metadata is kept, so secrets structurally cannot reach the table.
+
+**Audit action**:
+The named, `noun.verb` vocabulary of recordable actions (`api_key.created`, …) — a contractual
+registry: additive-only, a rename is breaking (ADR-003 algebra). Deliberately decoupled from
+routes (a route rename must never rewrite history's vocabulary) AND from the webhook catalog (an
+audit action and a webhook event are independent names in independent contracts). `record()`
+refuses an unregistered name. (`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
+_Avoid_: reusing a webhook `event_type` as the action name; renaming a shipped action.
+
+**record()**:
+The one surface for writing an audit entry — the `write_event` calling pattern: call it at the
+mutation site inside the change's `@transaction.atomic`; the actor is read from the request-scoped
+contextvar the auth seam captured, never passed by hand. No post-commit dispatch (a ledger has no
+doorbell). (`apps/platform/audit/ledger.py:record`)
+
+**Actor / actor kind**:
+Who performed a recorded action, captured once at the auth seam (`core/auth.py` for tenant
+principals, `core/widget_auth.py` for end customers) into a request-scoped contextvar. `actor_kind`
+is an OPEN enum — four live from day one (`member`, `api_key`, `operator`, `end_customer`) with
+`system` reserved for the deferred system-initiated actions. Every entry stores the actor id **plus
+a display snapshot taken at action time**, so a later rename or deletion never corrupts history; an
+`operator` always renders **"UBB operator"** (that staff acted, never which staffer). The
+`RequestActorMiddleware` resets the contextvar at request end so a pooled thread never leaks one
+request's principal into the next. (`apps/platform/audit/actors.py`)
+_Avoid_: passing "who" from the mutation site; storing a live FK to the principal instead of the
+snapshot; auditing reads or usage ingestion (telemetry, not governance).
+
 ## Cross-cutting primitives
 
 **micros**:

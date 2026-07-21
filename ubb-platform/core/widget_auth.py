@@ -78,4 +78,9 @@ class WidgetJWTAuth(HttpBearer):
 
         request.widget_customer = customer
         request.widget_tenant = customer.tenant
+        # Capture the end-customer principal for the audit ledger (ADR-004 §4):
+        # widget-initiated mutations (e.g. a self-serve top-up) record with actor
+        # kind ``end_customer``. Local import keeps this module dependency-light.
+        from apps.platform.audit.actors import end_customer_actor, set_current_actor
+        set_current_actor(end_customer_actor(customer.id, customer.external_id))
         return customer
