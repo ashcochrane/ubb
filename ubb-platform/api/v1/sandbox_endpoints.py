@@ -5,7 +5,7 @@ the reset wipes the calling tenant, so a live key must always 403.
 """
 from ninja import Router, Schema
 
-from core.auth import ApiKeyAuth
+from core.auth import ADMIN, ApiKeyAuth, role_floor
 from core.problems import Problem, ProblemOut
 
 sandbox_router = Router(auth=ApiKeyAuth())
@@ -16,6 +16,7 @@ class SandboxResetIn(Schema):
 
 
 @sandbox_router.post("/reset", response={202: dict, 403: ProblemOut})
+@role_floor(ADMIN)
 def reset_sandbox(request, payload: SandboxResetIn = None):
     """Asynchronously wipe the calling SANDBOX tenant's domain data.
 

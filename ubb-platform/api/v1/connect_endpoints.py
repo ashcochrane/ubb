@@ -1,7 +1,7 @@
 from ninja import Router, Schema
 from django.http import HttpResponseRedirect, JsonResponse
 
-from core.auth import ApiKeyAuth
+from core.auth import ADMIN, ApiKeyAuth, READ, role_floor
 from core.problems import Problem, ProblemOut
 from apps.billing.connectors.stripe import connect
 
@@ -13,6 +13,7 @@ class ConnectStartIn(Schema):
 
 
 @connect_router.post("/start", response={200: dict, 422: ProblemOut})
+@role_floor(ADMIN)
 def connect_start(request, payload: ConnectStartIn):
     try:
         url = connect.build_authorize_url(request.auth.tenant, return_url=payload.return_url)
@@ -22,6 +23,7 @@ def connect_start(request, payload: ConnectStartIn):
 
 
 @connect_router.get("/status", response=dict)
+@role_floor(READ)
 def connect_status(request):
     import stripe
     from apps.billing.stripe.services.stripe_service import api_key_for_tenant

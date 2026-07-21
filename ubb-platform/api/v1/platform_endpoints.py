@@ -3,7 +3,7 @@ import uuid
 from django.db import IntegrityError
 from ninja import Router, Schema
 
-from core.auth import ApiKeyAuth
+from core.auth import ADMIN, ApiKeyAuth, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
 from apps.platform.customers.models import Customer
 from api.v1.schemas import (
@@ -36,6 +36,7 @@ platform_router = Router(auth=ApiKeyAuth())
 
 
 @platform_router.post("/customers", response={201: CustomerResponse, 409: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
 def create_customer(request, payload: CreateCustomerRequest):
     tenant = request.auth.tenant
     at = payload.account_type or "individual"
@@ -84,6 +85,7 @@ def create_customer(request, payload: CreateCustomerRequest):
 
 
 @platform_router.get("/accounts/business/{external_id}", response={200: dict, 404: ProblemOut})
+@role_floor(READ)
 def get_business(request, external_id: str):
     from apps.billing.wallets.models import Wallet
 
@@ -121,6 +123,7 @@ def _plan_out(plan):
 
 
 @platform_router.post("/plans", response={201: PlanOut, 409: ProblemOut})
+@role_floor(ADMIN)
 def create_plan(request, payload: PlanIn):
     from apps.subscriptions.models import TenantBillingPlan
 
@@ -139,6 +142,7 @@ def create_plan(request, payload: PlanIn):
 
 
 @platform_router.patch("/plans/{key}", response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;
     existing subscriptions are grandfathered on their old price unless
@@ -210,6 +214,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
     "/customers/{external_id}/subscription/cancel",
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
+@role_floor(WRITE)
 def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
     """Cancel the customer's subscription (default: at period end).
 
@@ -224,6 +229,7 @@ def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn
     "/customers/{external_id}/subscription/pause",
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
+@role_floor(WRITE)
 def pause_subscription(request, external_id: str):
     """Pause collection (void) — the subscription stays active but stops billing.
 
@@ -236,6 +242,7 @@ def pause_subscription(request, external_id: str):
     "/customers/{external_id}/subscription/resume",
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
+@role_floor(WRITE)
 def resume_subscription(request, external_id: str):
     """Resume billing: clears a pause AND any pending at-period-end cancel.
 
@@ -245,6 +252,7 @@ def resume_subscription(request, external_id: str):
 
 
 @platform_router.post("/customers/{external_id}/subscribe", response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     from apps.subscriptions.models import TenantBillingPlan
     from apps.subscriptions.orchestration.service import (
@@ -280,6 +288,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
 
 
 @platform_router.post("/customers/{external_id}/seats", response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
     from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.service import (

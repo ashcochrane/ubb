@@ -13,7 +13,7 @@ from api.v1.schemas import (
     TenantInvoiceListResponse,
     TenantInvoiceOut,
 )
-from core.auth import ApiKeyAuth, require_role
+from core.auth import ApiKeyAuth, role_floor
 from core.problems import Problem, ProblemOut
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.platform.membership import services as membership_services
@@ -25,6 +25,7 @@ tenant_router = Router(auth=ApiKeyAuth())
 
 
 @tenant_router.get("/billing-periods", response=TenantBillingPeriodListResponse)
+@role_floor(READ)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
 
@@ -50,6 +51,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
 
 
 @tenant_router.get("/invoices", response=TenantInvoiceListResponse)
+@role_floor(READ)
 def list_invoices(request, cursor: str = None, limit: int = 50):
     tenant = request.auth.tenant
 
@@ -121,6 +123,7 @@ def _api_key_out(k):
 
 
 @tenant_router.get("/api-keys", response=ApiKeyListResponse)
+@role_floor(READ)
 def list_api_keys(request, cursor: str = None, limit: int = 50):
     """THIS tenant's API keys (active and revoked), newest first.
 
@@ -134,6 +137,7 @@ def list_api_keys(request, cursor: str = None, limit: int = 50):
 
 
 @tenant_router.post("/api-keys", response={201: dict, 422: ProblemOut})
+@role_floor(ADMIN)
 def create_api_key(request, payload: ApiKeyCreateIn):
     """Mint a new API key. The RAW key is returned exactly once, here.
 
@@ -165,6 +169,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
 
 
 @tenant_router.post("/api-keys/{key_id}/rotate", response={200: dict, 404: ProblemOut})
+@role_floor(ADMIN)
 def rotate_api_key(request, key_id: UUID):
     """Replace a key in one transaction: mint successor, deactivate old.
 
@@ -201,6 +206,7 @@ def rotate_api_key(request, key_id: UUID):
 
 
 @tenant_router.delete("/api-keys/{key_id}", response={200: dict, 404: ProblemOut, 409: ProblemOut})
+@role_floor(ADMIN)
 def revoke_api_key(request, key_id: UUID):
     """Soft-revoke a key (is_active=False). Idempotent on an inactive key.
 
@@ -281,6 +287,10 @@ class MemberListResponse(Schema):
     has_more: bool
 
 
+class MemberRoleUpdateIn(Schema):
+    role: str
+
+
 def _invitation_out(inv):
     return {
         "id": str(inv.id),
@@ -307,6 +317,7 @@ def _member_out(m):
     "/invitations",
     response={201: InvitationOut, 403: ProblemOut, 409: ProblemOut, 422: ProblemOut},
 )
+@role_floor(ADMIN)
 def create_invitation(request, payload: InvitationCreateIn):
     """Invite a teammate by email with a role (Admin only).
 
@@ -315,7 +326,6 @@ def create_invitation(request, payload: InvitationCreateIn):
     email is already a member or already has a pending invite; 422 on an unknown
     role.
     """
-    require_role(request, ADMIN)
     inviter = request.auth if isinstance(request.auth, Member) else None
     invitation = membership_services.invite_member(
         request.auth.tenant, payload.email, payload.role,
@@ -324,10 +334,13 @@ def create_invitation(request, payload: InvitationCreateIn):
 
 
 @tenant_router.get("/invitations", response=InvitationListResponse)
+@role_floor(ADMIN)
 def list_invitations(request, cursor: str = None, limit: int = 50):
-    """This tenant's invitations (pending, accepted, and revoked), newest first
-    (Admin only)."""
-    require_role(request, ADMIN)
+    """This tenant's invitations (pending, accepted, and revoked), newest first.
+
+    Admin floor — the one deliberate exception to "every GET floors at Read"
+    (#62's literal "invitations create/list/revoke, Admin-gated"; the members
+    list beside it stays Read). Flagged for review on #80; kept as specified."""
     invitations, next_cursor, has_more = paginate(
         Invitation.objects.filter(tenant=request.auth.tenant), cursor, limit)
     return {"data": [_invitation_out(i) for i in invitations],
@@ -338,31 +351,60 @@ def list_invitations(request, cursor: str = None, limit: int = 50):
     "/invitations/{invitation_id}",
     response={200: dict, 403: ProblemOut, 404: ProblemOut, 409: ProblemOut},
 )
+@role_floor(ADMIN)
 def revoke_invitation(request, invitation_id: UUID):
     """Revoke a still-pending invitation (Admin only). Idempotent on an
     already-revoked invite; 409 if it was already accepted (removing an active
-    member is identity build 2)."""
-    require_role(request, ADMIN)
+    member is member removal — DELETE /members/{id})."""
     invitation = membership_services.revoke_invitation(
         request.auth.tenant, invitation_id)
     return 200, {"id": str(invitation.id), "status": invitation.status}
 
 
 @tenant_router.get("/members", response=MemberListResponse)
+@role_floor(READ)
 def list_members(request, cursor: str = None, limit: int = 50):
     """This tenant's members (pending and active), newest first. Read floor —
     any tenant principal may list the roster."""
-    require_role(request, READ)
     members, next_cursor, has_more = paginate(
         Member.objects.filter(tenant=request.auth.tenant), cursor, limit)
     return {"data": [_member_out(m) for m in members],
             "next_cursor": next_cursor, "has_more": has_more}
 
 
+@tenant_router.patch(
+    "/members/{member_id}",
+    response={200: MemberOut, 403: ProblemOut, 404: ProblemOut,
+              409: ProblemOut, 422: ProblemOut},
+)
+@role_floor(ADMIN)
+def update_member_role(request, member_id: UUID, payload: MemberRoleUpdateIn):
+    """Change a member's role (Admin only). 404 if unknown; 422 on an unknown
+    role; 409 when the change would demote the tenant's last active Admin (the
+    last-Admin guard — a tenant can never lock itself out)."""
+    member = membership_services.change_member_role(
+        request.auth.tenant, member_id, payload.role)
+    return 200, _member_out(member)
+
+
+@tenant_router.delete(
+    "/members/{member_id}",
+    response={200: dict, 403: ProblemOut, 404: ProblemOut, 409: ProblemOut},
+)
+@role_floor(ADMIN)
+def remove_member(request, member_id: UUID):
+    """Remove a member (Admin only). 404 if unknown; 409 when removing the
+    tenant's last active Admin (the last-Admin guard). The removed principal
+    401s on its next request and its email is free to be re-invited."""
+    membership_services.remove_member(request.auth.tenant, member_id)
+    return 200, {"id": str(member_id), "status": "removed"}
+
+
 # ---- Sandbox self-serve (F4.4) ----
 
 
 @tenant_router.post("/sandbox", response={200: dict, 403: ProblemOut})
+@role_floor(ADMIN)
 def create_sandbox(request):
     """Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.
 
@@ -384,6 +426,7 @@ def create_sandbox(request):
 
 
 @tenant_router.get("/sandbox", response={200: dict, 403: ProblemOut})
+@role_floor(READ)
 def get_sandbox(request):
     """Sandbox status for the calling live tenant (exists, id, key prefixes)."""
     tenant = request.auth.tenant
@@ -462,11 +505,13 @@ def _currency_locked_reason(t):
 
 
 @tenant_router.get("/config", response=TenantConfigOut)
+@role_floor(READ)
 def get_tenant_config(request):
     return _config_out(request.auth.tenant)
 
 
 @tenant_router.patch("/config", response={200: TenantConfigOut, 409: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.metering.pricing.models import Rate

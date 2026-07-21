@@ -23,7 +23,7 @@ from api.v1.schemas import (
     TenantInvoiceOut, TenantInvoiceListResponse,
     TenantUsageInvoiceListResponse,
 )
-from core.auth import ApiKeyAuth, ProductAccess
+from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.customers.models import Customer
@@ -43,6 +43,7 @@ _product_check = ProductAccess("billing")
 
 
 @billing_router.get("/customers/{customer_id}/balance", response=BalanceResponse)
+@role_floor(READ)
 def get_balance(request, customer_id: str):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -65,6 +66,7 @@ def get_balance(request, customer_id: str):
 
 
 @billing_router.post("/debit", response=DebitCreditResponse)
+@role_floor(ADMIN)
 def debit(request, payload: DebitRequest):
     _product_check(request)
     from django.db import transaction
@@ -129,6 +131,7 @@ def debit(request, payload: DebitRequest):
 
 
 @billing_router.post("/credit", response=DebitCreditResponse)
+@role_floor(ADMIN)
 def credit(request, payload: CreditRequest):
     """Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).
 
@@ -181,6 +184,7 @@ def credit(request, payload: CreditRequest):
 
 
 @billing_router.put("/customers/{customer_id}/auto-top-up")
+@role_floor(ADMIN)
 def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -196,6 +200,7 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 
 
 @billing_router.post("/customers/{customer_id}/top-up")
+@role_floor(WRITE)
 def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
     """Start a top-up. Replay-safe: idempotency_key is required and unique
     per customer — a retried call re-uses the original attempt and never
@@ -207,6 +212,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
 
 
 @billing_router.post("/customers/{customer_id}/withdraw")
+@role_floor(ADMIN)
 def withdraw(request, customer_id: str, payload: WithdrawRequest):
     """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
     availability is balance minus active promo remainders."""
@@ -263,6 +269,7 @@ def withdraw(request, customer_id: str, payload: WithdrawRequest):
 
 
 @billing_router.post("/pre-check", response=PreCheckResponse)
+@role_floor(WRITE)
 def pre_check(request, payload: PreCheckRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -278,6 +285,7 @@ def pre_check(request, payload: PreCheckRequest):
 
 
 @billing_router.post("/customers/{customer_id}/refund")
+@role_floor(ADMIN)
 def refund_usage(request, customer_id: str, payload: RefundRequest):
     """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
     USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
@@ -354,6 +362,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
 
 
 @billing_router.get("/customers/{customer_id}/transactions")
+@role_floor(READ)
 def get_transactions(request, customer_id: str, cursor: str = None, limit: int = 50):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -407,6 +416,7 @@ def _grant_out(grant, *, balance_micros=None, transaction_id=None):
 
 
 @billing_router.post("/customers/{customer_id}/grants", response=GrantOut)
+@role_floor(ADMIN)
 def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
     """Create an expiring (or non-expiring) credit grant lot on the billing
     owner's wallet. Exactly-once via grant:{idempotency_key} — the GRANT
@@ -480,6 +490,7 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
 
 
 @billing_router.get("/customers/{customer_id}/grants", response=PaginatedGrants)
+@role_floor(READ)
 def list_grants(request, customer_id: UUID, status: str = None,
                 cursor: str = None, limit: int = 50):
     """List the billing owner's grant lots (newest first), optional status filter."""
@@ -503,6 +514,7 @@ def list_grants(request, customer_id: UUID, status: str = None,
 
 
 @billing_router.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
+@role_floor(ADMIN)
 def void_grant(request, customer_id: UUID, grant_id: UUID):
     """Void a grant: debit its remaining (clamped so the balance never goes
     negative, like expiry) and retire the lot. Exactly-once via
@@ -559,6 +571,7 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
 
 
 @billing_router.get("/tenant/billing-periods", response=TenantBillingPeriodListResponse)
+@role_floor(READ)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -585,6 +598,7 @@ def list_billing_periods(request, cursor: str = None, limit: int = 50):
 
 
 @billing_router.get("/tenant/invoices", response=TenantInvoiceListResponse)
+@role_floor(READ)
 def list_invoices(request, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
@@ -613,6 +627,7 @@ def list_invoices(request, cursor: str = None, limit: int = 50):
 
 
 @billing_router.get("/analytics/revenue", response=RevenueAnalyticsResponse)
+@role_floor(READ)
 def revenue_analytics(request, start_date: date = None, end_date: date = None):
     _product_check(request)
     from apps.metering.queries import get_revenue_analytics
@@ -646,6 +661,7 @@ def _upsert_budget(tenant, customer, payload):
 
 
 @billing_router.get("/budget", response=BudgetConfigOut)
+@role_floor(READ)
 def get_tenant_budget(request):
     _product_check(request)
     from apps.billing.gating.models import BudgetConfig
@@ -657,12 +673,14 @@ def get_tenant_budget(request):
 
 
 @billing_router.put("/budget", response=BudgetConfigOut)
+@role_floor(ADMIN)
 def put_tenant_budget(request, payload: BudgetConfigIn):
     _product_check(request)
     return _budget_out(_upsert_budget(request.auth.tenant, None, payload))
 
 
 @billing_router.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@role_floor(READ)
 def get_customer_budget(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.gating.models import BudgetConfig
@@ -675,6 +693,7 @@ def get_customer_budget(request, customer_id: UUID):
 
 
 @billing_router.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@role_floor(ADMIN)
 def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -692,6 +711,7 @@ def _billing_profile_out(profile):
 
 @billing_router.get("/customers/{customer_id}/billing-profile",
                  response=CustomerBillingProfileOut)
+@role_floor(READ)
 def get_customer_billing_profile(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
@@ -705,6 +725,7 @@ def get_customer_billing_profile(request, customer_id: UUID):
 
 @billing_router.put("/customers/{customer_id}/billing-profile",
                  response={200: CustomerBillingProfileOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
@@ -739,6 +760,7 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
 
 
 @billing_router.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
+@role_floor(READ)
 def get_customer_budget_status(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.gating.services.budget_service import BudgetService, _period
@@ -759,6 +781,7 @@ def get_customer_budget_status(request, customer_id: UUID):
 
 
 @billing_router.get("/customers/{customer_id}/usage-invoices", response=UsageInvoiceListResponse)
+@role_floor(READ)
 def list_customer_usage_invoices(request, customer_id: UUID,
                                  cursor: str = None, limit: int = 50):
     _product_check(request)
@@ -778,6 +801,7 @@ def list_customer_usage_invoices(request, customer_id: UUID,
 
 
 @billing_router.get("/tenant/usage-invoices", response=TenantUsageInvoiceListResponse)
+@role_floor(READ)
 def list_tenant_usage_invoices(request, period: str = None,
                                cursor: str = None, limit: int = 50):
     _product_check(request)
@@ -804,6 +828,7 @@ def list_tenant_usage_invoices(request, period: str = None,
 
 
 @billing_router.get("/postpaid-config", response=PostpaidConfigOut)
+@role_floor(READ)
 def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
@@ -813,6 +838,7 @@ def get_postpaid_config(request):
 
 
 @billing_router.put("/postpaid-config", response=PostpaidConfigOut)
+@role_floor(ADMIN)
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig

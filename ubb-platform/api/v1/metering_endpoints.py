@@ -9,7 +9,7 @@ from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
-from core.auth import ApiKeyAuth, ProductAccess
+from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
 from core.time_windows import (
     REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
@@ -66,6 +66,7 @@ def _apply_task_kill(tenant, customer, result):
 
 
 @metering_router.post("/usage", response={200: RecordUsageResponse})
+@role_floor(WRITE)
 def record_usage(request, payload: RecordUsageRequest):
     """Record one usage event. One-rule contract: every event that reaches
     UBB is priced, recorded, and billed with an HTTP 200 — including the
@@ -182,6 +183,7 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
 
 
 @metering_router.post("/usage/batch", response={200: UsageBatchResponse})
+@role_floor(WRITE)
 def record_usage_batch(request, payload: UsageBatchRequest):
     """Batch ingestion: 1..100 INDEPENDENT items (>100 or 0 → 422).
 
@@ -380,6 +382,7 @@ def _kick_settle(tenant_id):
 
 
 @metering_router.post("/usage/ingest", response={200: IngestBatchResponse})
+@role_floor(WRITE)
 def ingest_usage_batch(request, payload: IngestBatchRequest):
     """Async accept path: estimate -> atomic hold -> durable raw append -> 202-style
     verdicts. Exact pricing settles in workers (estimate-hold-settle; see
@@ -705,6 +708,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
 
 
 @metering_router.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
+@role_floor(READ)
 def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None,
               past_limit: bool = None, stop_scope: str = None,
@@ -743,6 +747,7 @@ def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
 
 
 @metering_router.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: ProblemOut})
+@role_floor(READ)
 def get_usage_event(request, event_id: UUID):
     """Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
@@ -783,6 +788,7 @@ def get_usage_event(request, event_id: UUID):
 
 
 @metering_router.post("/tasks/{task_id}/close", response=CloseTaskResponse)
+@role_floor(WRITE)
 def close_task(request, task_id: UUID):
     """Close (complete) a task or subtask. Closing a PARENT auto-completes
     its active subtasks in the same transaction (#38) — cleanup is one call;
@@ -808,6 +814,7 @@ def close_task(request, task_id: UUID):
 
 
 @metering_router.get("/pricing/markup", response=TenantMarkupOut)
+@role_floor(READ)
 def get_tenant_markup(request):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -819,6 +826,7 @@ def get_tenant_markup(request):
 
 
 @metering_router.put("/pricing/markup", response=TenantMarkupOut)
+@role_floor(ADMIN)
 def upsert_tenant_markup(request, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -835,6 +843,7 @@ def upsert_tenant_markup(request, payload: TenantMarkupIn):
 
 
 @metering_router.get("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+@role_floor(READ)
 def get_customer_markup(request, customer_id: UUID):
     _product_check(request)
     from apps.metering.pricing.services.markup_service import MarkupService
@@ -847,6 +856,7 @@ def get_customer_markup(request, customer_id: UUID):
 
 
 @metering_router.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
+@role_floor(ADMIN)
 def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
@@ -864,6 +874,7 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
 
 
 @metering_router.delete("/pricing/customers/{customer_id}/markup")
+@role_floor(ADMIN)
 def delete_customer_markup(request, customer_id: UUID):
     """Remove a customer's markup override so they revert to inheriting the
     tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
@@ -888,6 +899,7 @@ _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "
 
 
 @metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
+@role_floor(READ)
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: str = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
@@ -1042,6 +1054,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 
 
 @metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: ProblemOut})
+@role_floor(READ)
 def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
                      customer_id: str = None, group_by: str = None):
     """Time-series spend rollup: daily or hourly COGS per tenant/customer.
@@ -1133,6 +1146,7 @@ def _resolve_card_currency(tenant, raw_currency):
 
 
 @metering_router.get("/pricing/rate-cards", response=PaginatedBooks)
+@role_floor(READ)
 def list_books(request, card_type: str = None, cursor: str = None, limit: int = 50):
     """List the tenant's rate-card BOOKS (containers), newest first. Rates
     live under a book and are read via GET /pricing/rate-cards/{book_id}/rates."""
@@ -1147,6 +1161,7 @@ def list_books(request, card_type: str = None, cursor: str = None, limit: int = 
 
 @metering_router.post("/pricing/rate-cards",
                       response={200: BookOut, 409: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def create_book(request, payload: BookIn):
     """Create a rate-card BOOK. Rates are added under it (so every API-created
     rate is book-scoped and therefore resolvable). Creates dedupe on natural
@@ -1172,6 +1187,7 @@ def create_book(request, payload: BookIn):
 
 @metering_router.get("/pricing/rate-cards/{book_id}/rates",
                      response={200: PaginatedRates, 404: ProblemOut})
+@role_floor(READ)
 def list_book_rates(request, book_id: UUID, include_history: bool = False,
                     as_of: datetime = None, cursor: str = None, limit: int = 50):
     """List the rates in a book, newest first. Active-only by default;
@@ -1194,6 +1210,7 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
 @metering_router.post("/pricing/rate-cards/{book_id}/rates",
                       response={200: RateOut, 404: ProblemOut,
                                 409: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def add_rate(request, book_id: UUID, payload: RateIn):
     """Add a rate to a book. card_type and currency are inherited from the book
     (single source of truth); tier/enum validation mirrors the old flat create.
@@ -1225,6 +1242,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
 
 @metering_router.post("/pricing/rate-cards/{book_id}/publish",
                       response={200: BookOut, 404: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
 def publish_book(request, book_id: UUID, payload: PublishIn):
     """Atomically reprice a set of the book's rates: each change supersedes the
     matching active rate (same lineage, valid_to stamped) and opens a new
@@ -1242,6 +1260,7 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
 
 
 @metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})
+@role_floor(ADMIN)
 def assign_book(request, customer_id: UUID, payload: AssignIn):
     """Assign a PRICE book to a customer (one per customer per currency).
     Resolution consults the assigned book before the per-provider default."""
@@ -1256,6 +1275,7 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
 
 
 @metering_router.delete("/pricing/rate-cards/{card_id}")
+@role_floor(ADMIN)
 def delete_rate_card(request, card_id: UUID):
     _product_check(request)
     card = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)

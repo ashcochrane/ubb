@@ -87,7 +87,8 @@ Clerk being replaced. (`apps/platform/membership/models.py:Member`)
 The first-class, Admin-managed record of an outstanding invite by email + role —
 `pending`, then `accepted` when its Member activates or `revoked` by an Admin.
 Revoking a pending invite drops its pending Member; un-inviting an *active* member
-is member removal (identity build 2). (`apps/platform/membership/models.py:Invitation`)
+is member removal (`DELETE /tenant/members/{id}`, guarded — see Last-active-Admin
+guard). (`apps/platform/membership/models.py:Invitation`)
 
 **Role**:
 A tenant principal's authority — `admin`, `write`, or `read`. No owner tier, no
@@ -97,10 +98,21 @@ _Avoid_: "owner"; conflating the Member entity with the member *role*; Clerk
 organization roles.
 
 **Role floor**:
-The minimum role a route requires — Admin ≥ Write ≥ Read. Only the identity routes
-bind a floor in this build (invitations → Admin, members list → Read); binding
-floors across the wider tenant surface is identity build 2.
-(`core/auth.py:require_role`)
+The minimum role a route requires — Admin ≥ Write ≥ Read. Bound on **every**
+tenant route via `@role_floor(...)` in the composition layer (the #74 carve:
+every GET → Read *including money*, except the invitations list; Write = day-to-day
+data ops + customer top-ups; Admin = changes the rules or moves money). Enforcement
+lives in the composition layer's auth module so products never consume membership
+directly (ADR-001); the machine check that each route matches the carve is
+`api/v1/tests/test_role_floors.py`. (`core/auth.py:role_floor`)
+_Avoid_: putting a floor check inside a product handler; documenting floors in the
+OpenAPI security (they are runtime behaviour, spec-invisible).
+
+**Last-active-Admin guard**:
+A tenant must always keep ≥1 active Admin, so it can never lock itself out —
+demoting or removing the last active Admin (the member role, not an API key) is
+refused (`last_active_admin`, 409). Only *active* Admins count; a pending Admin
+invite does not. (`apps/platform/membership/services.py:_guard_last_active_admin`)
 
 **Member token**:
 A Clerk session JWT presented as a bearer token, verified server-side and offline
