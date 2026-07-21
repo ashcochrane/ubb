@@ -203,6 +203,97 @@
         "title": "AttributeResponse",
         "type": "object"
       },
+      "AuditRecordListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRecordOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "AuditRecordListResponse",
+        "type": "object"
+      },
+      "AuditRecordOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_display": {
+            "title": "Actor Display",
+            "type": "string"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_kind": {
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "action",
+          "actor_kind",
+          "actor_id",
+          "actor_display",
+          "resource_type",
+          "resource_id",
+          "correlation_id",
+          "metadata"
+        ],
+        "title": "AuditRecordOut",
+        "type": "object"
+      },
       "BalanceResponse": {
         "properties": {
           "balance_micros": {
@@ -5045,6 +5136,106 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/audit/records": {
+      "get": {
+        "description": "This account's audit entries, newest first (cursor-paginated, #78 envelope).\n\nOptional exact-match filters narrow the feed: ``action`` (e.g.\n``rate_card.published``), or ``resource_type`` + ``resource_id`` together to\nanswer \"who changed THIS rate card?\" \u2014 both served by the ledger's indexes.\nNot product-gated: the trail spans every product a tenant uses.",
+        "operationId": "api_v1_audit_endpoints_list_audit_records",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRecordListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Audit Records"
+      }
+    },
     "/api/v1/billing/analytics/revenue": {
       "get": {
         "operationId": "api_v1_billing_endpoints_revenue_analytics",
@@ -9583,7 +9774,7 @@
     },
     "/api/v1/sandbox/reset": {
       "post": {
-        "description": "Asynchronously wipe the calling SANDBOX tenant's domain data.\n\nkeep_config=true (default) preserves rate cards, markups, plans, budget /\nbilling / postpaid / webhook configs; the Tenant row and its API keys\nalways survive. Returns 202 \u2014 the wipe runs as a Celery task and the\nsandbox 401s (deactivated) until it completes.",
+        "description": "Asynchronously wipe the calling SANDBOX tenant's domain data.\n\nkeep_config=true (default) preserves rate cards, markups, plans, budget /\nbilling / postpaid / webhook configs; the Tenant row and its API keys\nalways survive. Returns 202 \u2014 the wipe runs as a Celery task and the\nsandbox 401s (deactivated) until it completes.\n\nThe wipe clears the sandbox's own audit entries and records this reset as\nthe first entry of the fresh history (ADR-004). The reset is async, so the\nacting principal \u2014 captured at the auth seam \u2014 is threaded to the task by\nvalue; ``record()`` in a worker has no request-scoped actor to read.",
         "operationId": "api_v1_sandbox_endpoints_reset_sandbox",
         "parameters": [],
         "requestBody": {

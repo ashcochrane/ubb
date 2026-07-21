@@ -35,6 +35,8 @@ from apps.metering.pricing.models import (
 from api.v1.pagination import paginate
 from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
 
@@ -827,18 +829,31 @@ def get_tenant_markup(request):
 
 @metering_router.put("/pricing/markup", response=TenantMarkupOut)
 @role_floor(ADMIN)
+@records_audit("markup.set")
 def upsert_tenant_markup(request, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
 
-    markup, _ = TenantMarkup.objects.update_or_create(
-        tenant=request.auth.tenant,
-        customer=None,
-        defaults={
-            "markup_percentage_micros": payload.markup_percentage_micros,
-            "fixed_uplift_micros": payload.fixed_uplift_micros,
-        },
-    )
+    with transaction.atomic():
+        markup, _ = TenantMarkup.objects.update_or_create(
+            tenant=request.auth.tenant,
+            customer=None,
+            defaults={
+                "markup_percentage_micros": payload.markup_percentage_micros,
+                "fixed_uplift_micros": payload.fixed_uplift_micros,
+            },
+        )
+        audit_record(
+            action="markup.set",
+            tenant_id=request.auth.tenant.id,
+            resource_type="markup",
+            resource_id=markup.id,
+            metadata={
+                "scope": "tenant",
+                "markup_percentage_micros": markup.markup_percentage_micros,
+                "fixed_uplift_micros": markup.fixed_uplift_micros,
+            },
+        )
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
@@ -857,24 +872,39 @@ def get_customer_markup(request, customer_id: UUID):
 
 @metering_router.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
 @role_floor(ADMIN)
+@records_audit("markup.set")
 def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     _product_check(request)
     from apps.metering.pricing.models import TenantMarkup
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    markup, _ = TenantMarkup.objects.update_or_create(
-        tenant=request.auth.tenant,
-        customer=customer,
-        defaults={
-            "markup_percentage_micros": payload.markup_percentage_micros,
-            "fixed_uplift_micros": payload.fixed_uplift_micros,
-        },
-    )
+    with transaction.atomic():
+        markup, _ = TenantMarkup.objects.update_or_create(
+            tenant=request.auth.tenant,
+            customer=customer,
+            defaults={
+                "markup_percentage_micros": payload.markup_percentage_micros,
+                "fixed_uplift_micros": payload.fixed_uplift_micros,
+            },
+        )
+        audit_record(
+            action="markup.set",
+            tenant_id=request.auth.tenant.id,
+            resource_type="markup",
+            resource_id=markup.id,
+            metadata={
+                "scope": "customer",
+                "customer_id": str(customer.id),
+                "markup_percentage_micros": markup.markup_percentage_micros,
+                "fixed_uplift_micros": markup.fixed_uplift_micros,
+            },
+        )
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
 @metering_router.delete("/pricing/customers/{customer_id}/markup")
 @role_floor(ADMIN)
+@records_audit("markup.deleted")
 def delete_customer_markup(request, customer_id: UUID):
     """Remove a customer's markup override so they revert to inheriting the
     tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
@@ -888,7 +918,15 @@ def delete_customer_markup(request, customer_id: UUID):
     markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer=customer).first()
     if markup is None:
         return {"status": "no_override"}
-    markup.delete()  # instance delete — the model layer bumps MarkupCache's version
+    with transaction.atomic():
+        markup.delete()  # instance delete — the model layer bumps MarkupCache's version
+        audit_record(
+            action="markup.deleted",
+            tenant_id=request.auth.tenant.id,
+            resource_type="markup",
+            resource_id=customer.id,
+            metadata={"scope": "customer", "customer_id": str(customer.id)},
+        )
     return {"status": "deleted"}
 
 
@@ -1162,6 +1200,7 @@ def list_books(request, card_type: str = None, cursor: str = None, limit: int = 
 @metering_router.post("/pricing/rate-cards",
                       response={200: BookOut, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("rate_card.created")
 def create_book(request, payload: BookIn):
     """Create a rate-card BOOK. Rates are added under it (so every API-created
     rate is book-scoped and therefore resolvable). Creates dedupe on natural
@@ -1176,10 +1215,25 @@ def create_book(request, payload: BookIn):
     except ValueError as e:
         raise Problem("validation_error", str(e))
     try:
-        book = RateCard.objects.create(
-            tenant=request.auth.tenant, card_type=payload.card_type,
-            provider_key=payload.provider_key, key=payload.key, name=payload.name,
-            currency=currency, is_default=payload.is_default)
+        with transaction.atomic():
+            book = RateCard.objects.create(
+                tenant=request.auth.tenant, card_type=payload.card_type,
+                provider_key=payload.provider_key, key=payload.key, name=payload.name,
+                currency=currency, is_default=payload.is_default)
+            audit_record(
+                action="rate_card.created",
+                tenant_id=request.auth.tenant.id,
+                resource_type="rate_card",
+                resource_id=book.id,
+                metadata={
+                    "card_type": book.card_type,
+                    "provider_key": book.provider_key,
+                    "key": book.key,
+                    "name": book.name,
+                    "currency": book.currency,
+                    "is_default": book.is_default,
+                },
+            )
     except IntegrityError:
         raise Problem("conflict", "a rate-card book with this identity already exists")
     return 200, _book_to_out(book)
@@ -1211,6 +1265,7 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
                       response={200: RateOut, 404: ProblemOut,
                                 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("rate.added")
 def add_rate(request, book_id: UUID, payload: RateIn):
     """Add a rate to a book. card_type and currency are inherited from the book
     (single source of truth); tier/enum validation mirrors the old flat create.
@@ -1226,15 +1281,29 @@ def add_rate(request, book_id: UUID, payload: RateIn):
         raise Problem("validation_error",
                       f"pricing_model must be one of {sorted(valid_models)}")
     try:
-        rate = Rate.objects.create(
-            tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
-            metric_name=payload.metric_name, provider=payload.provider,
-            event_type=payload.event_type, dimensions=payload.dimensions,
-            pricing_model=payload.pricing_model,
-            rate_per_unit_micros=payload.rate_per_unit_micros,
-            unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-            currency=book.currency, product_id=payload.product_id,
-            book_version_from=book.version)
+        with transaction.atomic():
+            rate = Rate.objects.create(
+                tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
+                metric_name=payload.metric_name, provider=payload.provider,
+                event_type=payload.event_type, dimensions=payload.dimensions,
+                pricing_model=payload.pricing_model,
+                rate_per_unit_micros=payload.rate_per_unit_micros,
+                unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
+                currency=book.currency, product_id=payload.product_id,
+                book_version_from=book.version)
+            audit_record(
+                action="rate.added",
+                tenant_id=request.auth.tenant.id,
+                resource_type="rate",
+                resource_id=rate.id,
+                metadata={
+                    "book_id": str(book.id),
+                    "metric_name": rate.metric_name,
+                    "pricing_model": rate.pricing_model,
+                    "rate_per_unit_micros": rate.rate_per_unit_micros,
+                    "currency": rate.currency,
+                },
+            )
     except IntegrityError:
         raise Problem("conflict", "a rate with this identity already exists")
     return 200, _rate_to_out(rate)
@@ -1243,6 +1312,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
 @metering_router.post("/pricing/rate-cards/{book_id}/publish",
                       response={200: BookOut, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("rate_card.published")
 def publish_book(request, book_id: UUID, payload: PublishIn):
     """Atomically reprice a set of the book's rates: each change supersedes the
     matching active rate (same lineage, valid_to stamped) and opens a new
@@ -1256,11 +1326,20 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
     except ValueError as e:
         raise Problem("validation_error", str(e))
     book.refresh_from_db()
+    audit_record(
+        action="rate_card.published",
+        tenant_id=request.auth.tenant.id,
+        resource_type="rate_card",
+        resource_id=book.id,
+        metadata={"version": book.version,
+                  "change_count": len(payload.changes)},
+    )
     return 200, _book_to_out(book)
 
 
 @metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("rate_card.assigned")
 def assign_book(request, customer_id: UUID, payload: AssignIn):
     """Assign a PRICE book to a customer (one per customer per currency).
     Resolution consults the assigned book before the per-provider default."""
@@ -1268,17 +1347,37 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     book = get_object_or_404(RateCard, id=payload.rate_card_id,
                              tenant=request.auth.tenant, card_type="price")
-    RateCardAssignment.objects.update_or_create(
-        tenant=request.auth.tenant, customer=customer, currency=book.currency,
-        defaults={"rate_card": book})
+    with transaction.atomic():
+        RateCardAssignment.objects.update_or_create(
+            tenant=request.auth.tenant, customer=customer, currency=book.currency,
+            defaults={"rate_card": book})
+        audit_record(
+            action="rate_card.assigned",
+            tenant_id=request.auth.tenant.id,
+            resource_type="rate_card",
+            resource_id=book.id,
+            metadata={"customer_id": str(customer.id),
+                      "rate_card_id": str(book.id),
+                      "currency": book.currency},
+        )
     return 200, {"assigned": str(book.id)}
 
 
 @metering_router.delete("/pricing/rate-cards/{card_id}")
 @role_floor(ADMIN)
+@records_audit("rate.deleted")
 def delete_rate_card(request, card_id: UUID):
     _product_check(request)
     card = get_object_or_404(Rate, id=card_id, tenant=request.auth.tenant, valid_to__isnull=True)
-    card.valid_to = timezone.now()
-    card.save(update_fields=["valid_to", "updated_at"])
+    with transaction.atomic():
+        card.valid_to = timezone.now()
+        card.save(update_fields=["valid_to", "updated_at"])
+        audit_record(
+            action="rate.deleted",
+            tenant_id=request.auth.tenant.id,
+            resource_type="rate",
+            resource_id=card.id,
+            metadata={"card_id": str(card.id),
+                      "valid_to": card.valid_to.isoformat()},
+        )
     return {"status": "deleted"}

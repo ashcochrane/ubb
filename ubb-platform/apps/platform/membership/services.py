@@ -11,6 +11,7 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+from apps.platform.audit.ledger import record as audit_record
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import (
     InvitationCreated,
@@ -67,6 +68,14 @@ def invite_member(tenant, email, role, invited_by_member=None):
         write_event(InvitationCreated(
             tenant_id=str(tenant.id), invitation_id=str(invitation.id),
             member_id=str(member.id), email=email, role=role))
+        # Audit the invite in the same transaction (ADR-004). Actor is the
+        # inviting principal captured at the auth seam; a bootstrap invite
+        # (no request) records honestly under the reserved system kind.
+        audit_record(
+            action="invitation.created", tenant_id=tenant.id,
+            resource_type="invitation", resource_id=invitation.id,
+            metadata={"email": email, "role": role,
+                      "member_id": str(member.id)})
     return invitation
 
 
@@ -105,6 +114,12 @@ def revoke_invitation(tenant, invitation_id):
         write_event(InvitationRevoked(
             tenant_id=str(tenant.id), invitation_id=str(invitation.id),
             email=invitation.email))
+        # Records only on the real pending -> revoked transition (the already
+        # revoked path returned above), so the feed shows one entry per revoke.
+        audit_record(
+            action="invitation.revoked", tenant_id=tenant.id,
+            resource_type="invitation", resource_id=invitation.id,
+            metadata={"email": invitation.email})
     return invitation
 
 
@@ -165,8 +180,15 @@ def change_member_role(tenant, member_id, new_role):
         if member.role == new_role:
             return member
         _guard_last_active_admin(members, member, new_role=new_role)
+        previous_role = member.role
         member.role = new_role
         member.save(update_fields=["role", "updated_at"])
+        # Records only on a real change (the same-role no-op returned above).
+        audit_record(
+            action="member.role_changed", tenant_id=tenant.id,
+            resource_type="member", resource_id=member.id,
+            metadata={"email": member.email, "from_role": previous_role,
+                      "to_role": new_role})
         if member.status == PENDING and member.invitation_id:
             invitation = member.invitation
             if (invitation is not None and invitation.status == INV_PENDING
@@ -194,10 +216,17 @@ def remove_member(tenant, member_id):
         if member.invitation_id:
             invitation = Invitation.objects.select_for_update().filter(
                 pk=member.invitation_id).first()
+        # Snapshot before the row is gone — the record must outlive it.
+        removed_email, removed_role, removed_id = (
+            member.email, member.role, member.id)
         member.delete()
         if invitation is not None and invitation.status == INV_PENDING:
             invitation.status = INV_REVOKED
             invitation.save(update_fields=["status", "updated_at"])
+        audit_record(
+            action="member.removed", tenant_id=tenant.id,
+            resource_type="member", resource_id=removed_id,
+            metadata={"email": removed_email, "role": removed_role})
 
 
 def bootstrap_owner_admin(tenant, owner_email):

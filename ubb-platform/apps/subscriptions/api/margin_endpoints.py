@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
@@ -8,6 +9,8 @@ from ninja import Router
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.subscriptions.economics.models import (
     CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
@@ -121,13 +124,21 @@ def get_threshold(request):
 
 @margin_router.put("/threshold", response=MarginThresholdOut)
 @role_floor(ADMIN)
+@records_audit("margin_threshold.set")
 def put_threshold(request, payload: MarginThresholdIn):
     _product_check(request)
-    cfg, _ = MarginThresholdConfig.objects.update_or_create(
-        tenant=request.auth.tenant, customer=None,
-        defaults={"min_margin_pct": payload.min_margin_pct,
-                  "consecutive_periods": payload.consecutive_periods,
-                  "provider_cost_spike_pct": payload.provider_cost_spike_pct})
+    with transaction.atomic():
+        cfg, _ = MarginThresholdConfig.objects.update_or_create(
+            tenant=request.auth.tenant, customer=None,
+            defaults={"min_margin_pct": payload.min_margin_pct,
+                      "consecutive_periods": payload.consecutive_periods,
+                      "provider_cost_spike_pct": payload.provider_cost_spike_pct})
+        audit_record(
+            action="margin_threshold.set", tenant_id=request.auth.tenant.id,
+            resource_type="margin_threshold", resource_id=cfg.id,
+            metadata={"min_margin_pct": float(cfg.min_margin_pct),
+                      "consecutive_periods": cfg.consecutive_periods,
+                      "provider_cost_spike_pct": float(cfg.provider_cost_spike_pct)})
     return {"min_margin_pct": float(cfg.min_margin_pct), "consecutive_periods": cfg.consecutive_periods,
             "provider_cost_spike_pct": float(cfg.provider_cost_spike_pct)}
 
@@ -151,6 +162,7 @@ def get_revenue(request, customer_id: UUID):
     response={200: RevenueProfileOut, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
+@records_audit("revenue_profile.set")
 def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -159,11 +171,20 @@ def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
         eff_to = date.fromisoformat(payload.effective_to) if payload.effective_to else None
     except ValueError as e:
         raise Problem("validation_error", f"invalid effective date: {e}")
-    p, _ = CustomerRevenueProfile.objects.update_or_create(
-        tenant=request.auth.tenant, customer=customer,
-        defaults={"recurring_amount_micros": payload.recurring_amount_micros,
-                  "interval": payload.interval, "currency": payload.currency,
-                  "effective_from": eff_from, "effective_to": eff_to})
+    with transaction.atomic():
+        p, _ = CustomerRevenueProfile.objects.update_or_create(
+            tenant=request.auth.tenant, customer=customer,
+            defaults={"recurring_amount_micros": payload.recurring_amount_micros,
+                      "interval": payload.interval, "currency": payload.currency,
+                      "effective_from": eff_from, "effective_to": eff_to})
+        audit_record(
+            action="revenue_profile.set", tenant_id=request.auth.tenant.id,
+            resource_type="revenue_profile", resource_id=p.id,
+            metadata={"customer_id": str(customer.id),
+                      "recurring_amount_micros": p.recurring_amount_micros,
+                      "interval": p.interval, "currency": p.currency,
+                      "effective_from": p.effective_from.isoformat(),
+                      "effective_to": p.effective_to.isoformat() if p.effective_to else None})
     return {"recurring_amount_micros": p.recurring_amount_micros, "interval": p.interval,
             "currency": p.currency, "effective_from": p.effective_from.isoformat(),
             "effective_to": p.effective_to.isoformat() if p.effective_to else None}
@@ -187,6 +208,7 @@ def get_revenue_mode(request, customer_id: UUID):
     response={200: RevenueModeOut, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
+@records_audit("revenue_mode.set")
 def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
     _product_check(request)
     from apps.subscriptions.economics.revenue import RevenueService
@@ -197,8 +219,14 @@ def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
             f"got '{payload.revenue_mode}'",
         )
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    customer.revenue_mode = payload.revenue_mode
-    customer.save(update_fields=["revenue_mode", "updated_at"])
+    with transaction.atomic():
+        customer.revenue_mode = payload.revenue_mode
+        customer.save(update_fields=["revenue_mode", "updated_at"])
+        audit_record(
+            action="revenue_mode.set", tenant_id=request.auth.tenant.id,
+            resource_type="customer", resource_id=customer.id,
+            metadata={"customer_id": str(customer.id),
+                      "revenue_mode": customer.revenue_mode})
     return {"revenue_mode": customer.revenue_mode,
             "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
 

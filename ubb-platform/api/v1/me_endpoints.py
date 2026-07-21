@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from api.v1.pagination import paginate
 from api.v1.topups import start_top_up
+from apps.platform.audit.marker import records_audit
 from core.auth import ProductAccess
 from core.problems import Problem
 from core.widget_auth import WidgetJWTAuth
@@ -229,6 +230,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 
 @me_router.post("/top-up", response=TopUpResponse)
+@records_audit("top_up.requested")
 def create_top_up(request, payload: TopUpRequest):
     """Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original

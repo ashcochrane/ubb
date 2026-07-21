@@ -1,10 +1,12 @@
 import uuid
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from ninja import Router, Schema
 
 from core.auth import ADMIN, ApiKeyAuth, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from api.v1.schemas import (
     PlanIn,
@@ -37,6 +39,7 @@ platform_router = Router(auth=ApiKeyAuth())
 
 @platform_router.post("/customers", response={201: CustomerResponse, 409: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
+@records_audit("customer.created")
 def create_customer(request, payload: CreateCustomerRequest):
     tenant = request.auth.tenant
     at = payload.account_type or "individual"
@@ -74,6 +77,14 @@ def create_customer(request, payload: CreateCustomerRequest):
             if at == "seat" and parent is not None:
                 from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
                 sync_seat_quantity_on_commit(parent)
+            # Audit the new customer in the same transaction (ADR-004).
+            audit_record(
+                action="customer.created", tenant_id=tenant.id,
+                resource_type="customer", resource_id=customer.id,
+                metadata={"external_id": customer.external_id,
+                          "account_type": at,
+                          "billing_topology": topology,
+                          "parent_external_id": payload.parent_external_id})
         return 201, {
             "id": str(customer.id),
             "external_id": customer.external_id,
@@ -124,18 +135,27 @@ def _plan_out(plan):
 
 @platform_router.post("/plans", response={201: PlanOut, 409: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("plan.created")
 def create_plan(request, payload: PlanIn):
     from apps.subscriptions.models import TenantBillingPlan
 
     try:
-        plan = TenantBillingPlan.objects.create(
-            tenant=request.auth.tenant,
-            key=payload.key,
-            name=payload.name,
-            access_fee_micros=payload.access_fee_micros,
-            per_seat_micros=payload.per_seat_micros,
-            interval=payload.interval,
-        )
+        with transaction.atomic():
+            plan = TenantBillingPlan.objects.create(
+                tenant=request.auth.tenant,
+                key=payload.key,
+                name=payload.name,
+                access_fee_micros=payload.access_fee_micros,
+                per_seat_micros=payload.per_seat_micros,
+                interval=payload.interval,
+            )
+            audit_record(
+                action="plan.created", tenant_id=request.auth.tenant.id,
+                resource_type="plan", resource_id=plan.key,
+                metadata={"key": plan.key, "name": plan.name,
+                          "access_fee_micros": plan.access_fee_micros,
+                          "per_seat_micros": plan.per_seat_micros,
+                          "interval": plan.interval})
     except IntegrityError:
         raise Problem("conflict", f"plan with key '{payload.key}' already exists")
     return 201, _plan_out(plan)
@@ -143,6 +163,7 @@ def create_plan(request, payload: PlanIn):
 
 @platform_router.patch("/plans/{key}", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
+@records_audit("plan.updated")
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;
     existing subscriptions are grandfathered on their old price unless
@@ -173,7 +194,24 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
     except StripeFatalError as e:
         raise Problem("validation_error", str(e))
 
+    # Recorded after the orchestrator commits (it mints versioned Stripe Prices —
+    # a DB transaction can't wrap that external call).
+    audit_record(
+        action="plan.updated", tenant_id=tenant.id,
+        resource_type="plan", resource_id=plan.key,
+        metadata={"key": plan.key, "pricing_version": plan.pricing_version,
+                  "access_fee_micros": payload.access_fee_micros,
+                  "per_seat_micros": payload.per_seat_micros,
+                  "migrate_existing": payload.migrate_existing})
     return 200, {**_plan_out(plan), "pricing_version": plan.pricing_version}
+
+
+# The subscription lifecycle verb -> the audit action it records.
+_LIFECYCLE_AUDIT_ACTION = {
+    "cancel": "subscription.canceled",
+    "pause": "subscription.paused",
+    "resume": "subscription.resumed",
+}
 
 
 def _lifecycle_call(request, external_id, verb_kwargs):
@@ -191,9 +229,10 @@ def _lifecycle_call(request, external_id, verb_kwargs):
         raise Problem("not_found", "customer not found")
 
     verb = verb_kwargs.pop("verb")
+    change_event_id = str(uuid.uuid4())
     try:
         mirror = getattr(SubscriptionOrchestrator, verb)(
-            tenant, customer, change_event_id=str(uuid.uuid4()), **verb_kwargs
+            tenant, customer, change_event_id=change_event_id, **verb_kwargs
         )
     except NoActiveSubscription as e:
         raise Problem("not_found", str(e))
@@ -202,6 +241,16 @@ def _lifecycle_call(request, external_id, verb_kwargs):
     except StripeFatalError as e:
         raise Problem("validation_error", str(e))
 
+    # Audit the lifecycle change (ADR-004). The orchestrator owns its own
+    # transaction and makes a Stripe call, so the record lands right after it
+    # commits — a DB transaction cannot be held across the external call; the
+    # change_event_id links this entry to the outbox change event it emitted.
+    audit_record(
+        action=_LIFECYCLE_AUDIT_ACTION[verb], tenant_id=tenant.id,
+        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        metadata={"external_id": customer.external_id, "status": mirror.status,
+                  "cancel_at_period_end": mirror.cancel_at_period_end,
+                  "paused": mirror.paused, "change_event_id": change_event_id})
     return 200, {
         "subscription_id": mirror.stripe_subscription_id,
         "status": mirror.status,
@@ -215,6 +264,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(WRITE)
+@records_audit("subscription.canceled")
 def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
     """Cancel the customer's subscription (default: at period end).
 
@@ -230,6 +280,7 @@ def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(WRITE)
+@records_audit("subscription.paused")
 def pause_subscription(request, external_id: str):
     """Pause collection (void) — the subscription stays active but stops billing.
 
@@ -243,6 +294,7 @@ def pause_subscription(request, external_id: str):
     response={200: dict, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(WRITE)
+@records_audit("subscription.resumed")
 def resume_subscription(request, external_id: str):
     """Resume billing: clears a pause AND any pending at-period-end cancel.
 
@@ -253,6 +305,7 @@ def resume_subscription(request, external_id: str):
 
 @platform_router.post("/customers/{external_id}/subscribe", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
+@records_audit("subscription.created")
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     from apps.subscriptions.models import TenantBillingPlan
     from apps.subscriptions.orchestration.service import (
@@ -280,6 +333,14 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
         # config problem — surface Stripe's message as 422, not a 500.
         raise Problem("validation_error", str(e))
 
+    # Recorded after the orchestrator commits (it owns its transaction + a
+    # Stripe call — a DB transaction can't wrap the external call).
+    audit_record(
+        action="subscription.created", tenant_id=tenant.id,
+        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        metadata={"external_id": customer.external_id, "plan_key": plan.key,
+                  "seats": payload.seats, "quantity": mirror.quantity,
+                  "amount_micros": mirror.amount_micros})
     return 200, {
         "subscription_id": mirror.stripe_subscription_id,
         "amount_micros": mirror.amount_micros,
@@ -289,6 +350,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
 
 @platform_router.post("/customers/{external_id}/seats", response={200: dict, 404: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
+@records_audit("subscription.seats_changed")
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
     from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.service import (
@@ -318,4 +380,10 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
     except OrchestrationError as e:
         raise Problem("validation_error", str(e))
 
+    # Recorded after the orchestrator commits (transaction + Stripe call).
+    audit_record(
+        action="subscription.seats_changed", tenant_id=tenant.id,
+        resource_type="subscription", resource_id=business.external_id,
+        metadata={"external_id": business.external_id, "seats": payload.seats,
+                  "change_event_id": change_event_id})
     return 200, {"seats": payload.seats}

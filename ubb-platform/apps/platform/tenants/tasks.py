@@ -60,8 +60,14 @@ def _wipe_manager(model):
     return getattr(model, "all_objects", model._base_manager)
 
 
-def reset_sandbox_tenant_sync(tenant_id, keep_config=True):
-    """Synchronous body of the reset (directly callable in tests)."""
+def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
+                              actor_kind="", actor_id="", actor_display=""):
+    """Synchronous body of the reset (directly callable in tests).
+
+    ``actor_*`` are the reset-initiating principal, threaded by value from the
+    request (a worker has no request-scoped actor). They attribute the
+    ``sandbox.reset`` audit entry; empty => the reserved ``system`` kind.
+    """
     tenant = Tenant.objects.filter(id=tenant_id, is_sandbox=True).first()
     if tenant is None:
         # Defense: a live tenant id (or unknown id) must no-op LOUDLY.
@@ -130,6 +136,9 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True):
             "tenant_id": str(tenant.id), "errors": errors}})
         raise RuntimeError(f"sandbox reset for {tenant.id} failed on: {errors}")
 
+    from apps.platform.audit.actors import Actor
+    from apps.platform.audit.ledger import record as audit_record
+    from apps.platform.audit.models import AuditRecord
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import SandboxResetCompleted
 
@@ -137,6 +146,18 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True):
         Tenant.objects.filter(id=tenant.id).update(is_active=True)
         write_event(SandboxResetCompleted(
             tenant_id=str(tenant.id), keep_config=keep_config))
+        # Audit-clear (ADR-004): the ledger has no FK to Tenant, so the generic
+        # sweep never reaches it — clear the sandbox's own entries here, then
+        # record THIS reset as the first entry of the fresh history (written
+        # after the clear so it survives it). Attributed to the threaded actor.
+        AuditRecord.objects.filter(tenant_id=tenant.id).delete()
+        actor = (Actor(kind=actor_kind, id=actor_id, display=actor_display)
+                 if actor_kind else None)
+        audit_record(
+            action="sandbox.reset", tenant_id=tenant.id,
+            resource_type="sandbox", resource_id=tenant.id, actor=actor,
+            metadata={"keep_config": keep_config,
+                      "deleted": {k: v for k, v in deleted.items() if v}})
 
     logger.info("sandbox.reset_completed", extra={"data": {
         "tenant_id": str(tenant.id), "keep_config": keep_config,
@@ -145,6 +166,9 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True):
 
 
 @shared_task(queue="ubb_events")
-def reset_sandbox_tenant(tenant_id, keep_config=True):
+def reset_sandbox_tenant(tenant_id, keep_config=True,
+                         actor_kind="", actor_id="", actor_display=""):
     """Celery entrypoint for POST /api/v1/sandbox/reset."""
-    return reset_sandbox_tenant_sync(tenant_id, keep_config=keep_config)
+    return reset_sandbox_tenant_sync(
+        tenant_id, keep_config=keep_config, actor_kind=actor_kind,
+        actor_id=actor_id, actor_display=actor_display)
