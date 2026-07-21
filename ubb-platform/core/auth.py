@@ -1,9 +1,9 @@
 from django.core.cache import cache
 from django.utils import timezone
-from ninja.errors import HttpError
 from ninja.security import HttpBearer
 
 from apps.platform.tenants.models import TenantApiKey
+from core.problems import Problem
 
 
 class ApiKeyAuth(HttpBearer):
@@ -28,7 +28,7 @@ class ProductAccess:
 
     def __call__(self, request):
         if self.required_product not in request.tenant.products:
-            raise HttpError(
-                403,
+            raise Problem(
+                "feature_not_enabled",
                 f"Tenant does not have access to {self.required_product}",
             )

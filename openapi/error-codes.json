@@ -1,0 +1,151 @@
+{
+  "problems": {
+    "bad_request": {
+      "status": 400,
+      "title": "Bad request"
+    },
+    "billing_period_closed": {
+      "status": 422,
+      "title": "Billing period closed"
+    },
+    "conflict": {
+      "status": 409,
+      "title": "Conflict"
+    },
+    "currency_locked": {
+      "status": 409,
+      "title": "Currency locked"
+    },
+    "effective_at_in_future": {
+      "status": 422,
+      "title": "effective_at is in the future"
+    },
+    "effective_at_naive": {
+      "status": 422,
+      "title": "effective_at must be timezone-aware"
+    },
+    "effective_at_too_old": {
+      "status": 422,
+      "title": "effective_at is outside the backfill window"
+    },
+    "feature_not_enabled": {
+      "status": 403,
+      "title": "Feature not enabled"
+    },
+    "forbidden": {
+      "status": 403,
+      "title": "Forbidden"
+    },
+    "gone": {
+      "status": 410,
+      "title": "Gone"
+    },
+    "insufficient_balance": {
+      "status": 409,
+      "title": "Insufficient balance"
+    },
+    "internal_error": {
+      "status": 500,
+      "title": "Internal error"
+    },
+    "invalid_config": {
+      "status": 422,
+      "title": "Invalid configuration"
+    },
+    "invalid_cursor": {
+      "status": 400,
+      "title": "Invalid cursor"
+    },
+    "invalid_revenue_mode": {
+      "status": 422,
+      "title": "Invalid revenue mode"
+    },
+    "invalid_tenant_id": {
+      "status": 422,
+      "title": "Invalid tenant id"
+    },
+    "last_active_key": {
+      "status": 409,
+      "title": "Last active API key"
+    },
+    "no_cost_cards": {
+      "status": 422,
+      "title": "No cost rate cards"
+    },
+    "not_found": {
+      "status": 404,
+      "title": "Not found"
+    },
+    "pricing_error": {
+      "status": 422,
+      "title": "Pricing error"
+    },
+    "rate_limit_exceeded": {
+      "status": 429,
+      "title": "Rate limit exceeded"
+    },
+    "service_unavailable": {
+      "status": 503,
+      "title": "Service unavailable"
+    },
+    "stripe_tax_not_active": {
+      "status": 422,
+      "title": "Stripe Tax not active"
+    },
+    "unauthorized": {
+      "status": 401,
+      "title": "Unauthorized"
+    },
+    "unsupported_currency": {
+      "status": 422,
+      "title": "Unsupported currency"
+    },
+    "validation_error": {
+      "status": 422,
+      "title": "Validation error"
+    },
+    "would_overdraw": {
+      "status": 409,
+      "title": "Would overdraw below the floor"
+    }
+  },
+  "verdicts": {
+    "ingest_rejections": [
+      "billing_period_closed",
+      "effective_at_in_future",
+      "effective_at_naive",
+      "effective_at_too_old",
+      "not_found",
+      "pricing_error",
+      "validation_error"
+    ],
+    "pre_check_reasons": [
+      "account_closed",
+      "budget_exceeded",
+      "budget_unavailable",
+      "concurrency_limit",
+      "cost_coverage_required",
+      "customer_stopped",
+      "insufficient_funds",
+      "parent_task_not_active",
+      "rate_limit_exceeded",
+      "soft_floor_reached",
+      "subtask_depth_exceeded"
+    ],
+    "stop_reasons": [
+      "customer_floor",
+      "customer_wide_stop",
+      "parent_killed",
+      "stale",
+      "stale_max_age",
+      "subtask_limit",
+      "task_limit",
+      "task_not_active"
+    ],
+    "stop_scopes": [
+      "customer",
+      "subtask",
+      "task"
+    ]
+  }
+}
