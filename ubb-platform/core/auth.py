@@ -4,6 +4,11 @@ from django.core.cache import cache
 from django.utils import timezone
 from ninja.security import HttpBearer
 
+from apps.platform.audit.actors import (
+    api_key_actor,
+    member_actor,
+    set_current_actor,
+)
 # Re-exported so composition-layer routers — including the product-owned
 # apps/<product>/api modules, which may NOT import api.* (ADR-001) — reach the
 # floor helper and the role vocabulary from one place: `from core.auth import
@@ -51,6 +56,9 @@ class ApiKeyAuth(HttpBearer):
             request.sandbox = key_obj.tenant.is_sandbox
             # Buffer last_used_at in Redis — flushed to DB by periodic task
             cache.set(f"apikey_used:{key_obj.pk}", timezone.now().isoformat(), timeout=3600)
+            # Capture the acting principal once, here, for the audit ledger
+            # (ADR-004 §4). record() reads it — mutation sites never pass "who".
+            set_current_actor(api_key_actor(key_obj.id, key_obj.label))
             return key_obj
 
         # Not an API key — try the Clerk member-token scheme. Inert (returns
@@ -61,6 +69,7 @@ class ApiKeyAuth(HttpBearer):
             if member is not None:
                 request.tenant = member.tenant
                 request.sandbox = member.tenant.is_sandbox
+                set_current_actor(member_actor(member.id, member.email))
                 return member
         return None
 

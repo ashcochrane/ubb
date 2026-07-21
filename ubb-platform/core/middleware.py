@@ -8,6 +8,7 @@ generates fresh UUID if missing/invalid, and sets it on the response.
 import uuid
 import re
 
+from apps.platform.audit.actors import clear_current_actor
 from core.logging import correlation_id_var
 
 UUID_PATTERN = re.compile(
@@ -34,3 +35,25 @@ class CorrelationIdMiddleware:
             return response
         finally:
             correlation_id_var.reset(token)
+
+
+class RequestActorMiddleware:
+    """Clear the request-scoped audit actor at request end.
+
+    The audit actor is captured mid-request at the auth seam (``core/auth.py`` for
+    tenant principals, ``core/widget_auth.py`` for end customers), not at request
+    start — so unlike the correlation id there is no token to reset. WSGI worker
+    threads are pooled and a ``ContextVar`` set on a thread outlives the request
+    that set it, so without this reset one request's principal could leak into the
+    next *unauthenticated* request on the same thread. Resetting to ``None`` in a
+    finally guarantees every request starts with a clean, unattributed actor.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            return self.get_response(request)
+        finally:
+            clear_current_actor()

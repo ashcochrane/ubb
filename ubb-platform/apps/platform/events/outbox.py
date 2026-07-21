@@ -42,17 +42,13 @@ def _dispatch(outbox_id):
 
 def write_event(schema_instance):
     """Write an event to the outbox. Must be called inside @transaction.atomic."""
-    try:
-        from core.logging import correlation_id_var
-        correlation_id = correlation_id_var.get("")
-    except Exception:
-        correlation_id = ""
+    from core.logging import get_correlation_id
 
     outbox = OutboxEvent.objects.create(
         event_type=schema_instance.EVENT_TYPE,
         payload=asdict(schema_instance),
         tenant_id=schema_instance.tenant_id,
-        correlation_id=correlation_id,
+        correlation_id=get_correlation_id(),
     )
 
     transaction.on_commit(lambda: _dispatch(str(outbox.id)))

@@ -147,6 +147,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
     """
+    from apps.platform.audit.ledger import record as audit_record
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import TenantApiKeyCreated
 
@@ -157,6 +158,23 @@ def create_api_key(request, payload: ApiKeyCreateIn):
             write_event(TenantApiKeyCreated(
                 tenant_id=str(key_obj.tenant_id), api_key_id=str(key_obj.id),
                 key_prefix=key_obj.key_prefix, label=key_obj.label))
+            # Audit the mint in the same transaction (ADR-004): the actor is the
+            # tenant principal captured at the auth seam (member or api_key).
+            # Scoped to the tenant the principal administers (request.auth.tenant),
+            # even when a test key routes onto its sandbox sibling. Curated
+            # metadata only — never the raw key or its hash (no secret snapshots).
+            audit_record(
+                action="api_key.created",
+                tenant_id=request.auth.tenant.id,
+                resource_type="api_key",
+                resource_id=key_obj.id,
+                metadata={
+                    "label": key_obj.label,
+                    "key_prefix": key_obj.key_prefix,
+                    "mode": "test" if key_obj.tenant.is_sandbox else "live",
+                    "landed_tenant_id": str(key_obj.tenant_id),
+                },
+            )
     except ValueError as e:
         raise Problem("validation_error", str(e))
     return 201, {
