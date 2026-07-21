@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     # UBB Apps
     "apps.platform.tenants",
     "apps.platform.customers",
+    "apps.platform.membership",
     "apps.platform.events",
     "apps.platform.tasks",
     "apps.metering.usage",
@@ -333,6 +334,24 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY", "")
 STRIPE_TEST_WEBHOOK_SECRET = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "")
 STRIPE_CONNECT_TEST_CLIENT_ID = os.environ.get("STRIPE_CONNECT_TEST_CLIENT_ID", "")
+
+# Clerk — tenant-member token verification (identity build 1, #79). All empty =>
+# member auth is OFF and the API is API-key-only, byte-for-byte as before. A
+# member token is verified SERVER-SIDE and offline (no Clerk call per request).
+# Two mutually-exclusive modes, selected by which key is set:
+#   * Production: CLERK_ISSUER + one RS256 key source — CLERK_JWKS_URL (fetched
+#     + cached) or CLERK_JWT_PUBLIC_KEY (a PEM pinned in config). RS256 needs the
+#     `cryptography` package (PyJWT's backend), installed at deploy time.
+#   * Local/dev/test: CLERK_ISSUER + CLERK_HS256_SECRET. Real Clerk tokens are
+#     never HS256, so this can never accept a live token; it exists only so dev
+#     and the test suite can mint member principals without a JWKS round-trip. It
+#     is ignored the moment an RS256 key is configured (RS256 wins).
+# The Clerk session JWT must carry an `email` claim (a JWT-template custom claim)
+# so a first login can be matched to a pending Member by email.
+CLERK_ISSUER = os.environ.get("CLERK_ISSUER", "")
+CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
+CLERK_JWT_PUBLIC_KEY = os.environ.get("CLERK_JWT_PUBLIC_KEY", "")
+CLERK_HS256_SECRET = os.environ.get("CLERK_HS256_SECRET", "")
 
 # CORS
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")

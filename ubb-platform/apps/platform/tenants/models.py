@@ -4,6 +4,7 @@ import secrets
 from django.core.cache import cache
 from django.db import models
 
+from apps.platform.membership.roles import ADMIN, ROLE_CHOICES
 from core.models import BaseModel
 
 
@@ -180,6 +181,14 @@ class TenantApiKey(BaseModel):
     label = models.CharField(max_length=255, blank=True, default="")
     is_active = models.BooleanField(default=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
+    # Tenant-principal role (identity build 1, #79). Both tenant-principal
+    # schemes carry the same vocabulary; a key is the Admin-tier principal by
+    # default and every pre-existing key migrates to "admin", so no key's reach
+    # changes until floors bind across the surface (identity build 2). Role is
+    # NOT selectable at mint time in this build.
+    role = models.CharField(
+        max_length=10, choices=ROLE_CHOICES, default=ADMIN
+    )
 
     class Meta:
         db_table = "ubb_tenant_api_key"

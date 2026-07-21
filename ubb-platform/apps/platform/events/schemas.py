@@ -471,3 +471,40 @@ class SoftFloorCleared:
     # Delivery spec §B (#43): True only on a patrol re-mint (see
     # StopFired.re_announcement).
     re_announcement: bool = False
+
+
+# --- Membership / identity (identity build 1, #79) ---
+
+
+@dataclass(frozen=True)
+class InvitationCreated:
+    """An Admin invited a teammate. A pending Member is created alongside; the
+    invitee activates it on their first Clerk-verified login (member.activated)."""
+    EVENT_TYPE = "invitation.created"
+    tenant_id: str
+    invitation_id: str
+    member_id: str
+    email: str = ""
+    role: str = ""
+
+
+@dataclass(frozen=True)
+class InvitationRevoked:
+    """An Admin cancelled a still-pending invitation; its pending Member is
+    dropped and can no longer activate."""
+    EVENT_TYPE = "invitation.revoked"
+    tenant_id: str
+    invitation_id: str
+    email: str = ""
+
+
+@dataclass(frozen=True)
+class MemberActivated:
+    """A pending Member joined — matched by email on first Clerk login and
+    bound from then on to the Clerk user id."""
+    EVENT_TYPE = "member.activated"
+    tenant_id: str
+    member_id: str
+    email: str = ""
+    role: str = ""
+    clerk_user_id: str = ""

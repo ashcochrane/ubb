@@ -66,6 +66,48 @@ synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
 `active`, `suspended`, or `closed`. Only a monetary suspension auto-clears on recovery — a top-up
 never silently un-suspends an admin/fraud suspension.
 
+## Membership & identity
+
+**Tenant principal**:
+The authenticated caller on a tenant route — a tenant API key or a Clerk-verified
+Member. Both carry a role and resolve to exactly one tenant, and both arrive as a
+single `Authorization: Bearer` token distinguished by its contents, not a second
+scheme. (`core/auth.py:ApiKeyAuth`)
+_Avoid_: treating an end-customer (widget) token as a tenant principal — it never
+reaches tenant management.
+
+**Member**:
+A person who administers a tenant — kernel identity beside tenants and customers,
+not a fifth product and never a stored password (Clerk owns credentials). Created
+`pending` at invite, flips to `active` on first Clerk login (matched by email,
+then bound to the Clerk user id). The Member table is ours, so identity survives
+Clerk being replaced. (`apps/platform/membership/models.py:Member`)
+
+**Invitation**:
+The first-class, Admin-managed record of an outstanding invite by email + role —
+`pending`, then `accepted` when its Member activates or `revoked` by an Admin.
+Revoking a pending invite drops its pending Member; un-inviting an *active* member
+is member removal (identity build 2). (`apps/platform/membership/models.py:Invitation`)
+
+**Role**:
+A tenant principal's authority — `admin`, `write`, or `read`. No owner tier, no
+fourth role (#62). Carried by both a Member and a `TenantApiKey`; every existing
+key migrated to `admin`. (`apps/platform/membership/roles.py`)
+_Avoid_: "owner"; conflating the Member entity with the member *role*; Clerk
+organization roles.
+
+**Role floor**:
+The minimum role a route requires — Admin ≥ Write ≥ Read. Only the identity routes
+bind a floor in this build (invitations → Admin, members list → Read); binding
+floors across the wider tenant surface is identity build 2.
+(`core/auth.py:require_role`)
+
+**Member token**:
+A Clerk session JWT presented as a bearer token, verified server-side and offline
+(no Clerk call per request); must carry an `email` claim so a first login matches
+a pending Member. Unconfigured Clerk => member auth is off and the API is
+API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
+
 ## Tasks
 
 **Task**:

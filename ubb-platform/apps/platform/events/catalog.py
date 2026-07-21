@@ -54,6 +54,10 @@ WEBHOOK_EVENT_TYPES = (
     "tenant.api_key_created",
     "tenant.api_key_rotated",
     "tenant.api_key_revoked",
+    # membership / identity
+    "invitation.created",
+    "invitation.revoked",
+    "member.activated",
 )
 
 _WEBHOOK_EVENT_TYPES_SET = frozenset(WEBHOOK_EVENT_TYPES)
