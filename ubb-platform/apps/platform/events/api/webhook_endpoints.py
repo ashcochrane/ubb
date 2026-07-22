@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Field
 
 from core.auth import ADMIN, ApiKeyAuth, READ, role_floor
+from core.identifiers import UUIDIdentifier
 from core.pagination import paginate
 from core.problems import Problem, ProblemOut
 from core.url_validation import validate_webhook_url
@@ -195,7 +196,7 @@ def list_webhook_configs(request, cursor: str = None, limit: int = 50):
 @webhook_router.delete("/configs/{config_id}")
 @role_floor(ADMIN)
 @records_audit("webhook_config.deleted")
-def delete_webhook_config(request, config_id: str):
+def delete_webhook_config(request, config_id: UUIDIdentifier):
     config = get_object_or_404(
         TenantWebhookConfig,
         id=config_id,
@@ -220,7 +221,7 @@ def delete_webhook_config(request, config_id: str):
 )
 @role_floor(ADMIN)
 @records_audit("webhook_config.updated")
-def update_webhook_config(request, config_id: str, payload: WebhookConfigUpdateRequest):
+def update_webhook_config(request, config_id: UUIDIdentifier, payload: WebhookConfigUpdateRequest):
     """Edit url / event_types / pause-resume in place — no delete-and-recreate.
 
     The secret is not a field here: it is untouchable via PATCH and moves only
@@ -274,7 +275,7 @@ def update_webhook_config(request, config_id: str, payload: WebhookConfigUpdateR
 )
 @role_floor(ADMIN)
 @records_audit("webhook_config.secret_rotated")
-def rotate_webhook_secret(request, config_id: str, payload: WebhookSecretRotateRequest):
+def rotate_webhook_secret(request, config_id: UUIDIdentifier, payload: WebhookSecretRotateRequest):
     """Two-secret overlap rotation: the current secret keeps signing a second
     `v1=` candidate for `overlap_hours` while the new one takes over, so a
     receiver verifies with zero downtime. Rotating again mid-window replaces
@@ -308,7 +309,7 @@ def rotate_webhook_secret(request, config_id: str, payload: WebhookSecretRotateR
     response={200: WebhookDeliveryListResponse, 400: ProblemOut, 404: ProblemOut},
 )
 @role_floor(READ)
-def list_webhook_deliveries(request, config_id: str, cursor: str = None, limit: int = 50):
+def list_webhook_deliveries(request, config_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     """The self-serve debugging surface: per-endpoint delivery attempts —
     successes, retries, and dead-letters — newest first, in the house cursor
     envelope, over the per-endpoint checkpointed records (#76)."""

@@ -40,6 +40,14 @@ widget surface — renders as `application/problem+json`:
   422 semantic validation · 429 always with `Retry-After` · 5xx as
   `internal_error`/`service_unavailable`, internals never leaked (tracebacks
   go to the server log, not the body).
+- **Malformed UUID identifiers** (#102): a UUID-backed identifier that does
+  not parse cannot name a resource — in a **path** it answers the same bare
+  404 as a nonexistent one; in a **query param or body field** it is a 422
+  `validation_error` like any other invalid input. Never a 5xx. Endpoints
+  annotate such identifiers with `core.identifiers.UUIDIdentifier` (validates
+  at the boundary, renders as a bare `string` in the document); the channel
+  mapping lives in the central validation handler. Pinned by
+  `api/v1/tests/test_uuid_identifier_pins.py`.
 
 Mechanics: endpoints `raise core.problems.Problem(code, detail, extensions=,
 headers=)` (products may raise it too — `core` is importable everywhere);

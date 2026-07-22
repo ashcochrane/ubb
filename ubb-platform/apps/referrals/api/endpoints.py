@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 
+from core.identifiers import UUIDIdentifier
 from core.pagination import paginate
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from core.problems import Problem
@@ -235,7 +236,7 @@ def register_referrer(request, payload: RegisterReferrerRequest):
 
 @referrals_router.get("/referrers/{customer_id}", response=ReferrerOut)
 @role_floor(READ)
-def get_referrer(request, customer_id: str):
+def get_referrer(request, customer_id: UUIDIdentifier):
     _product_check(request)
     tenant = request.auth.tenant
 
@@ -409,7 +410,7 @@ def attribute_referral(request, payload: AttributeRequest):
 
 @referrals_router.get("/referrers/{customer_id}/earnings", response=EarningsOut)
 @role_floor(READ)
-def get_referrer_earnings(request, customer_id: str):
+def get_referrer_earnings(request, customer_id: UUIDIdentifier):
     _product_check(request)
     tenant = request.auth.tenant
 
@@ -435,7 +436,7 @@ def get_referrer_earnings(request, customer_id: str):
 
 @referrals_router.get("/referrers/{customer_id}/referrals")
 @role_floor(READ)
-def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit: int = 50):
+def get_referrer_referrals(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
 
@@ -483,7 +484,7 @@ def get_referrer_referrals(request, customer_id: str, cursor: str = None, limit:
 
 @referrals_router.get("/referrals/{referral_id}/ledger")
 @role_floor(READ)
-def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: int = 50):
+def get_referral_ledger(request, referral_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
 
@@ -520,7 +521,7 @@ def get_referral_ledger(request, referral_id: str, cursor: str = None, limit: in
 @referrals_router.delete("/referrals/{referral_id}")
 @role_floor(ADMIN)
 @records_audit("referral.revoked")
-def revoke_referral(request, referral_id: str):
+def revoke_referral(request, referral_id: UUIDIdentifier):
     _product_check(request)
     tenant = request.auth.tenant
 

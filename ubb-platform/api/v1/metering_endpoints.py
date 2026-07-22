@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
+from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.time_windows import (
     REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
@@ -711,7 +712,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
 
 @metering_router.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 @role_floor(READ)
-def get_usage(request, customer_id: str, cursor: str = None, limit: int = 50,
+def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None,
               past_limit: bool = None, stop_scope: str = None,
               episode_seq: int = None):
@@ -939,7 +940,7 @@ _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "
 @metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
 @role_floor(READ)
 def usage_analytics(request, start_date: date = None, end_date: date = None,
-                    customer_id: str = None, tag_key: str = None,
+                    customer_id: UUIDIdentifier = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
                     past_limit: bool = None, stop_scope: str = None,
                     episode_seq: int = None):
@@ -1094,7 +1095,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 @metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: ProblemOut})
 @role_floor(READ)
 def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
-                     customer_id: str = None, group_by: str = None):
+                     customer_id: UUIDIdentifier = None, group_by: str = None):
     """Time-series spend rollup: daily or hourly COGS per tenant/customer.
 
     start_date and end_date are both INCLUSIVE calendar dates, matching the

@@ -2,6 +2,8 @@ from typing import Literal, Optional
 
 from ninja import Schema, Field
 
+from core.identifiers import UUIDIdentifier
+
 
 # ---- Program ----
 
@@ -45,7 +47,7 @@ class ProgramOut(Schema):
 # ---- Referrer ----
 
 class RegisterReferrerRequest(Schema):
-    customer_id: str
+    customer_id: UUIDIdentifier
 
 
 class ReferrerOut(Schema):
@@ -60,7 +62,7 @@ class ReferrerOut(Schema):
 # ---- Attribution ----
 
 class AttributeRequest(Schema):
-    customer_id: str  # The new customer being referred
+    customer_id: UUIDIdentifier  # The new customer being referred
     code: Optional[str] = None  # Referral code
     link_token: Optional[str] = None  # Referral link token
 
