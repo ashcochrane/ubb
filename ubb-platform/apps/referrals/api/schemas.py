@@ -97,6 +97,18 @@ class ReferralOut(Schema):
     reward_window_ends_at: Optional[str]
 
 
+class PaginatedReferrers(Schema):
+    data: list[ReferrerOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class PaginatedReferrals(Schema):
+    data: list[ReferralOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
 class LedgerEntryOut(Schema):
     id: str
     period_start: str
@@ -106,6 +118,33 @@ class LedgerEntryOut(Schema):
     reward_micros: int
     calculation_method: str
     created_at: str
+
+
+class PaginatedLedgerEntries(Schema):
+    data: list[LedgerEntryOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+# ---- Payouts ----
+
+class PayoutRow(Schema):
+    # One referrer with positive all-time earnings (zero-earning referrers
+    # are omitted from the export).
+    referrer_customer_id: str
+    external_id: str
+    referral_code: str
+    total_earned_micros: int
+    total_referred_spend_micros: int
+    referral_count: int
+    active_referral_count: int
+
+
+class PayoutExportOut(Schema):
+    data: list[PayoutRow]
+    total_payout_micros: int
+    referrer_count: int
+    exported_at: str
 
 
 # ---- Analytics ----

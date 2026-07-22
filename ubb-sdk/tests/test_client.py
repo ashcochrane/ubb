@@ -13,11 +13,16 @@ from ubb.exceptions import (
 )
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult, RefundResult, WalletTransaction, PaginatedResponse
+from ubb.types import PreCheckResult, PaginatedResponse
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._models import from_wire
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.customer_response import CustomerResponse
+from ubb._core.models.refund_response import RefundResponse
+from ubb._core.models.status_response import StatusResponse
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
+from ubb._core.models.wallet_transaction_out import WalletTransactionOut
+from ubb._core.models.withdraw_response import WithdrawResponse
 from ubb._core.models.balance_response import BalanceResponse
 
 
@@ -149,12 +154,12 @@ class UBBClientTest(unittest.TestCase):
     # --- create_top_up (delegates to billing) ---
 
     def test_create_top_up(self):
-        expected = TopUpResult(checkout_url="https://checkout.example.com/abc")
+        expected = TopUpCheckoutResponse(checkout_url="https://checkout.example.com/abc")
         self.client.billing.create_top_up = MagicMock(return_value=expected)
         result = self.client.create_top_up(customer_id="c1", amount_micros=50_000,
                                            success_url="http://ok", cancel_url="http://no",
                                            idempotency_key="tp_k")
-        self.assertIsInstance(result, TopUpResult)
+        self.assertIsInstance(result, TopUpCheckoutResponse)
         self.assertEqual(result.checkout_url, "https://checkout.example.com/abc")
 
     # --- configure_auto_top_up (delegates to billing) ---
@@ -165,7 +170,7 @@ class UBBClientTest(unittest.TestCase):
         )
         result = self.client.configure_auto_top_up(customer_id="c1", threshold=0,
                                                    amount=100_000)
-        self.assertIsInstance(result, AutoTopUpResult)
+        self.assertIsInstance(result, StatusResponse)
         self.assertEqual(result.status, "enabled")
 
     # --- withdraw (delegates to the guarded billing.withdraw) ---
@@ -176,7 +181,7 @@ class UBBClientTest(unittest.TestCase):
         )
         result = self.client.withdraw(customer_id="c1", amount_micros=10_000,
                                       idempotency_key="w1")
-        self.assertIsInstance(result, WithdrawResult)
+        self.assertIsInstance(result, WithdrawResponse)
         self.assertEqual(result.transaction_id, "txn_1")
         self.assertEqual(result.balance_micros, 5000000)
         # Routes to the guarded endpoint, NOT billing.debit.
@@ -191,7 +196,7 @@ class UBBClientTest(unittest.TestCase):
         result = self.client.refund_usage(
             customer_id="c1", usage_event_id="evt_1", idempotency_key="rf1", reason="mistake",
         )
-        self.assertIsInstance(result, RefundResult)
+        self.assertIsInstance(result, RefundResponse)
         self.assertEqual(result.refund_id, "evt_1")
         self.assertEqual(result.balance_micros, 11000000)
         self.client.billing.refund.assert_called_once_with("c1", "evt_1", "rf1", "mistake")
@@ -200,11 +205,12 @@ class UBBClientTest(unittest.TestCase):
 
     def test_get_transactions(self):
         expected = PaginatedResponse(
-            data=[WalletTransaction(
-                id="t1", transaction_type="top_up", amount_micros=100000,
-                balance_after_micros=200000, description="Top up",
-                reference_id="ref_1", created_at="2025-01-01T00:00:00Z",
-            )],
+            data=[from_wire(WalletTransactionOut, {
+                "id": "0b6f6ba0-98ab-44a5-a9a8-1f6c0c633d1e",
+                "transaction_type": "top_up", "amount_micros": 100000,
+                "balance_after_micros": 200000, "description": "Top up",
+                "reference_id": "ref_1", "created_at": "2025-01-01T00:00:00Z",
+            })],
             next_cursor=None, has_more=False,
         )
         self.client.billing.get_transactions = MagicMock(return_value=expected)

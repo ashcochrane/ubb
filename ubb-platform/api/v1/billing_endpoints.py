@@ -14,6 +14,8 @@ from api.v1.schemas import (
     WithdrawRequest,
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
+    TopUpCheckoutResponse, WithdrawResponse, RefundResponse,
+    WalletTransactionOut, PaginatedWalletTransactions,
     CreateGrantRequest, GrantOut, PaginatedGrants,
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
@@ -24,6 +26,7 @@ from api.v1.schemas import (
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
+from core.responses import StatusResponse
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
@@ -207,7 +210,7 @@ def credit(request, payload: CreditRequest):
     return {"new_balance_micros": wallet.balance_micros, "transaction_id": str(txn.id)}
 
 
-@billing_router.put("/customers/{customer_id}/auto-top-up")
+@billing_router.put("/customers/{customer_id}/auto-top-up", response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("auto_top_up.configured")
 def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: ConfigureAutoTopUpRequest):
@@ -232,7 +235,7 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
     return {"status": "ok"}
 
 
-@billing_router.post("/customers/{customer_id}/top-up")
+@billing_router.post("/customers/{customer_id}/top-up", response=TopUpCheckoutResponse)
 @role_floor(WRITE)
 @records_audit("top_up.requested")
 def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequest):
@@ -245,7 +248,7 @@ def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequ
                         trigger="manual", checkout=create_checkout_session)
 
 
-@billing_router.post("/customers/{customer_id}/withdraw")
+@billing_router.post("/customers/{customer_id}/withdraw", response=WithdrawResponse)
 @role_floor(ADMIN)
 @records_audit("wallet.withdrawn")
 def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
@@ -327,7 +330,7 @@ def pre_check(request, payload: PreCheckRequest):
     return result
 
 
-@billing_router.post("/customers/{customer_id}/refund")
+@billing_router.post("/customers/{customer_id}/refund", response=RefundResponse)
 @role_floor(ADMIN)
 @records_audit("usage.refunded")
 def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
@@ -415,7 +418,8 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
     return {"refund_id": str(txn.id), "balance_micros": wallet.balance_micros}
 
 
-@billing_router.get("/customers/{customer_id}/transactions")
+@billing_router.get("/customers/{customer_id}/transactions",
+                    response=PaginatedWalletTransactions)
 @role_floor(READ)
 def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)

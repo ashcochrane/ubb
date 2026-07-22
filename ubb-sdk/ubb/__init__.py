@@ -13,20 +13,26 @@ from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.budget_config_out import BudgetConfigOut
 from ubb._core.models.budget_status_out import BudgetStatusOut
+from ubb._core.models.customer_margin_out import CustomerMarginOut
+from ubb._core.models.dimension_margin_row import DimensionMarginRow
 from ubb._core.models.grant_out import GrantOut
+from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
+from ubb._core.models.refund_response import RefundResponse
+from ubb._core.models.status_response import StatusResponse
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
+from ubb._core.models.wallet_transaction_out import WalletTransactionOut
+from ubb._core.models.withdraw_response import WithdrawResponse
 
 # Shell-owned ergonomic types: the pagination container, the orchestration
-# pre-check result, the batch aggregate, and small results over responses the
-# committed contract still leaves untyped (top-up / withdraw / refund /
-# transactions — tracked for platform typing, after which they move to the
-# generated core for free).
+# pre-check result, and the batch aggregate. The small hand results that once
+# covered untyped 200s were retired by #98 — those DTOs now come from the
+# generated core above.
 from ubb.types import (
-    PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult,
-    RefundResult, WalletTransaction, PaginatedResponse,
+    PreCheckResult, PaginatedResponse,
     BatchItemResult, BatchResult,
 )
 from ubb.exceptions import (
@@ -56,11 +62,12 @@ __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     # generated DTOs
     "RecordUsageResponse", "CloseTaskResponse", "CustomerResponse", "BalanceResponse",
-    "BudgetConfigOut", "BudgetStatusOut", "GrantOut", "TenantMarkupOut", "RevenueProfileOut",
-    "UsageEventOut", "UsageInvoiceOut",
+    "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "DimensionMarginRow",
+    "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
+    "TenantMarkupOut", "TopUpCheckoutResponse", "RevenueProfileOut",
+    "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types
-    "PreCheckResult", "TopUpResult", "AutoTopUpResult", "WithdrawResult",
-    "RefundResult", "WalletTransaction", "PaginatedResponse", "BatchItemResult", "BatchResult",
+    "PreCheckResult", "PaginatedResponse", "BatchItemResult", "BatchResult",
     # base exception surface
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",

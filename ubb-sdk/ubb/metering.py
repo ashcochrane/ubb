@@ -6,18 +6,20 @@ import httpx
 
 from ubb.exceptions import UBBConnectionError, UBBStoppedError
 from ubb._http import raise_for_status
-from ubb._models import from_wire
+from ubb._models import from_wire, list_from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
     PaginatedResponse,
     BatchItemResult, BatchResult,
-    CustomerMargin, DimensionMargin, MarginTrendPoint,
     RateCard,
 )
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.customer_margin_out import CustomerMarginOut
+from ubb._core.models.dimension_margin_row import DimensionMarginRow
+from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
@@ -229,8 +231,7 @@ class MeteringClient:
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}", params=params)
-        return CustomerMargin(**{k: v for k, v in r.json().items()
-                                 if k in CustomerMargin.__dataclass_fields__})
+        return from_wire(CustomerMarginOut, r.json())
 
     def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
                                 start_date=None, end_date=None):
@@ -246,7 +247,7 @@ class MeteringClient:
         if end_date:
             params["end_date"] = end_date
         r = self._request("get", "/api/v1/margin/by-dimension", params=params)
-        return [DimensionMargin(**row) for row in r.json()["rows"]]
+        return list_from_wire(DimensionMarginRow, r.json()["rows"])
 
     def get_unprofitable_customers(self, period_start=None):
         params = {"period_start": period_start} if period_start else {}
@@ -255,7 +256,7 @@ class MeteringClient:
 
     def get_margin_trend(self, customer_id, periods=6):
         r = self._request("get", f"/api/v1/margin/customers/{customer_id}/trend", params={"periods": periods})
-        return [MarginTrendPoint(**p) for p in r.json()["points"]]
+        return list_from_wire(MarginTrendPointOut, r.json()["points"])
 
     def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
                              currency="usd", effective_from=None, effective_to=None):

@@ -5,8 +5,10 @@ from ubb.billing import BillingClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
-from ubb.types import TopUpResult, WalletTransaction, PaginatedResponse
+from ubb.types import PaginatedResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
+from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 
 
 class BillingClientTest(unittest.TestCase):
@@ -167,7 +169,7 @@ class BillingClientTest(unittest.TestCase):
             cancel_url="https://app.example.com/cancel",
             idempotency_key="topup_k1",
         )
-        self.assertIsInstance(result, TopUpResult)
+        self.assertIsInstance(result, TopUpCheckoutResponse)
         self.assertEqual(result.checkout_url, "https://checkout.stripe.com/abc")
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/top-up")
@@ -207,7 +209,8 @@ class BillingClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
                 {
-                    "id": "t1", "transaction_type": "DEBIT", "amount_micros": -100000,
+                    "id": "6f0f2a4e-3f09-4bb5-8f2e-2a1c07f13a90",
+                    "transaction_type": "DEBIT", "amount_micros": -100000,
                     "balance_after_micros": 9_900_000, "description": "Usage debit",
                     "reference_id": "evt_1", "created_at": "2025-01-01T00:00:00Z",
                 },
@@ -218,7 +221,7 @@ class BillingClientTest(unittest.TestCase):
         result = self.client.get_transactions(customer_id="cust_1")
         self.assertIsInstance(result, PaginatedResponse)
         self.assertEqual(len(result.data), 1)
-        self.assertIsInstance(result.data[0], WalletTransaction)
+        self.assertIsInstance(result.data[0], WalletTransactionOut)
         self.assertFalse(result.has_more)
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/transactions")

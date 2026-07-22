@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.analytics_earnings_out import AnalyticsEarningsOut
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -54,9 +55,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AnalyticsEarningsOut | None:
     if response.status_code == 200:
-        return None
+        response_200 = AnalyticsEarningsOut.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -64,7 +69,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AnalyticsEarningsOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -79,7 +84,7 @@ def sync_detailed(
     period_start: None | str | Unset = UNSET,
     period_end: None | str | Unset = UNSET,
 
-) -> Response[Any]:
+) -> Response[AnalyticsEarningsOut]:
     """ Analytics Earnings
 
     Args:
@@ -91,7 +96,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[AnalyticsEarningsOut]
      """
 
 
@@ -107,14 +112,13 @@ period_end=period_end,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     *,
     client: AuthenticatedClient,
     period_start: None | str | Unset = UNSET,
     period_end: None | str | Unset = UNSET,
 
-) -> Response[Any]:
+) -> AnalyticsEarningsOut | None:
     """ Analytics Earnings
 
     Args:
@@ -126,7 +130,36 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        AnalyticsEarningsOut
+     """
+
+
+    return sync_detailed(
+        client=client,
+period_start=period_start,
+period_end=period_end,
+
+    ).parsed
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    period_start: None | str | Unset = UNSET,
+    period_end: None | str | Unset = UNSET,
+
+) -> Response[AnalyticsEarningsOut]:
+    """ Analytics Earnings
+
+    Args:
+        period_start (None | str | Unset):
+        period_end (None | str | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[AnalyticsEarningsOut]
      """
 
 
@@ -142,3 +175,31 @@ period_end=period_end,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    period_start: None | str | Unset = UNSET,
+    period_end: None | str | Unset = UNSET,
+
+) -> AnalyticsEarningsOut | None:
+    """ Analytics Earnings
+
+    Args:
+        period_start (None | str | Unset):
+        period_end (None | str | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        AnalyticsEarningsOut
+     """
+
+
+    return (await asyncio_detailed(
+        client=client,
+period_start=period_start,
+period_end=period_end,
+
+    )).parsed

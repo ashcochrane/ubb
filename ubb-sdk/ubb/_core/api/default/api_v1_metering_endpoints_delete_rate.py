@@ -8,6 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.status_response import StatusResponse
+from typing import cast
 from uuid import UUID
 
 
@@ -33,9 +35,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> StatusResponse | None:
     if response.status_code == 200:
-        return None
+        response_200 = StatusResponse.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -43,7 +49,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[StatusResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -58,7 +64,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Response[StatusResponse]:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
@@ -75,7 +81,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[StatusResponse]
      """
 
 
@@ -91,14 +97,13 @@ rate_id=rate_id,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     book_id: UUID,
     rate_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> StatusResponse | None:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
@@ -115,7 +120,41 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        StatusResponse
+     """
+
+
+    return sync_detailed(
+        book_id=book_id,
+rate_id=rate_id,
+client=client,
+
+    ).parsed
+
+async def asyncio_detailed(
+    book_id: UUID,
+    rate_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[StatusResponse]:
+    """ Delete Rate
+
+     Retire (soft-expire) a single rate within its book. Addressed under its
+    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
+    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    Args:
+        book_id (UUID):
+        rate_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[StatusResponse]
      """
 
 
@@ -131,3 +170,36 @@ rate_id=rate_id,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    book_id: UUID,
+    rate_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> StatusResponse | None:
+    """ Delete Rate
+
+     Retire (soft-expire) a single rate within its book. Addressed under its
+    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
+    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    Args:
+        book_id (UUID):
+        rate_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        StatusResponse
+     """
+
+
+    return (await asyncio_detailed(
+        book_id=book_id,
+rate_id=rate_id,
+client=client,
+
+    )).parsed

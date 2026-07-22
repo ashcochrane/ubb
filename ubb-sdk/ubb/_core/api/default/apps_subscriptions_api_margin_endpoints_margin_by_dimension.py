@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.margin_by_dimension_out import MarginByDimensionOut
 from ...types import UNSET, Unset
 from typing import cast
 import datetime
@@ -83,9 +84,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> MarginByDimensionOut | None:
     if response.status_code == 200:
-        return None
+        response_200 = MarginByDimensionOut.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -93,7 +98,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[MarginByDimensionOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -111,7 +116,7 @@ def sync_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[Any]:
+) -> Response[MarginByDimensionOut]:
     """ Margin By Dimension
 
     Args:
@@ -126,7 +131,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[MarginByDimensionOut]
      """
 
 
@@ -145,8 +150,7 @@ end_date=end_date,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     *,
     client: AuthenticatedClient,
     provider: int | None | Unset = UNSET,
@@ -155,7 +159,7 @@ async def asyncio_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[Any]:
+) -> MarginByDimensionOut | None:
     """ Margin By Dimension
 
     Args:
@@ -170,7 +174,45 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        MarginByDimensionOut
+     """
+
+
+    return sync_detailed(
+        client=client,
+provider=provider,
+product=product,
+tag_key=tag_key,
+start_date=start_date,
+end_date=end_date,
+
+    ).parsed
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    provider: int | None | Unset = UNSET,
+    product: int | None | Unset = UNSET,
+    tag_key: None | str | Unset = UNSET,
+    start_date: datetime.date | None | Unset = UNSET,
+    end_date: datetime.date | None | Unset = UNSET,
+
+) -> Response[MarginByDimensionOut]:
+    """ Margin By Dimension
+
+    Args:
+        provider (int | None | Unset):
+        product (int | None | Unset):
+        tag_key (None | str | Unset):
+        start_date (datetime.date | None | Unset):
+        end_date (datetime.date | None | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[MarginByDimensionOut]
      """
 
 
@@ -189,3 +231,40 @@ end_date=end_date,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    provider: int | None | Unset = UNSET,
+    product: int | None | Unset = UNSET,
+    tag_key: None | str | Unset = UNSET,
+    start_date: datetime.date | None | Unset = UNSET,
+    end_date: datetime.date | None | Unset = UNSET,
+
+) -> MarginByDimensionOut | None:
+    """ Margin By Dimension
+
+    Args:
+        provider (int | None | Unset):
+        product (int | None | Unset):
+        tag_key (None | str | Unset):
+        start_date (datetime.date | None | Unset):
+        end_date (datetime.date | None | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        MarginByDimensionOut
+     """
+
+
+    return (await asyncio_detailed(
+        client=client,
+provider=provider,
+product=product,
+tag_key=tag_key,
+start_date=start_date,
+end_date=end_date,
+
+    )).parsed

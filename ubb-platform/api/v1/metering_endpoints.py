@@ -12,6 +12,7 @@ from ninja import Query, Router
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
+from core.responses import StatusResponse
 from core.time_windows import (
     REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
 from django.utils import timezone
@@ -903,7 +904,8 @@ def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
     return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
-@metering_router.delete("/pricing/customers/{customer_id}/markup")
+@metering_router.delete("/pricing/customers/{customer_id}/markup",
+                        response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("markup.deleted")
 def delete_customer_markup(request, customer_id: UUID):
@@ -1364,7 +1366,8 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
     return 200, {"assigned": str(book.id)}
 
 
-@metering_router.delete("/pricing/rate-cards/{book_id}/rates/{rate_id}")
+@metering_router.delete("/pricing/rate-cards/{book_id}/rates/{rate_id}",
+                        response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("rate.deleted")
 def delete_rate(request, book_id: UUID, rate_id: UUID):

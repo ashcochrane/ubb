@@ -15,8 +15,9 @@ from unittest.mock import MagicMock, patch
 from ubb import UBBClient, SubscriptionsClient
 from ubb.exceptions import UBBError
 from ubb.metering import MeteringClient
-from ubb.types import TopUpResult, PaginatedResponse, WalletTransaction
+from ubb.types import PaginatedResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 
 
 class TestLegacyHTTPRemoved:
@@ -130,7 +131,7 @@ class TestBillingDelegation:
         assert result is expected
 
     def test_create_top_up_delegates(self):
-        expected = TopUpResult(checkout_url="https://example.com/checkout")
+        expected = TopUpCheckoutResponse(checkout_url="https://example.com/checkout")
         self.client.billing.create_top_up = MagicMock(return_value=expected)
         result = self.client.create_top_up("cust1", 100_000,
                                            success_url="http://ok",

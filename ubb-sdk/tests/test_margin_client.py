@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
-from ubb.types import CustomerMargin, DimensionMargin, MarginTrendPoint
+from ubb._core.models.customer_margin_out import CustomerMarginOut
+from ubb._core.models.dimension_margin_row import DimensionMarginRow
+from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 
 
@@ -14,13 +16,16 @@ class MarginClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_get_customer_margin(self, mock_get):
+        # The full body the endpoint serves (CustomerMarginOut, #98).
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "customer_id": "c1", "external_id": "ext", "subscription_revenue_micros": 500_000_000,
-            "usage_billed_micros": 1_300_000, "provider_cost_micros": 1_000_000,
+            "customer_id": "c1", "external_id": "ext", "revenue_mode": "billed",
+            "subscription_revenue_micros": 500_000_000,
+            "usage_billed_micros": 1_300_000, "usage_revenue_micros": 1_300_000,
+            "provider_cost_micros": 1_000_000, "total_revenue_micros": 501_300_000,
             "gross_margin_micros": 500_300_000, "margin_percentage": 99.8,
             "event_count": 2, "period": {"start": "2026-06-01", "end": "2026-06-09"}})
         m = self.client.get_customer_margin("c1")
-        self.assertIsInstance(m, CustomerMargin)
+        self.assertIsInstance(m, CustomerMarginOut)
         self.assertEqual(m.gross_margin_micros, 500_300_000)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
 
@@ -31,7 +36,7 @@ class MarginClientTest(unittest.TestCase):
                 {"dimension": "openai", "provider_cost_micros": 1_000_000,
                  "billed_cost_micros": 1_300_000, "margin_micros": 300_000, "event_count": 2}]})
         rows = self.client.get_margin_by_dimension(provider=True)
-        self.assertIsInstance(rows[0], DimensionMargin)
+        self.assertIsInstance(rows[0], DimensionMarginRow)
         self.assertEqual(rows[0].margin_micros, 300_000)
         self.assertEqual(mock_get.call_args.kwargs["params"]["provider"], 1)
 
@@ -43,7 +48,7 @@ class MarginClientTest(unittest.TestCase):
                  "usage_billed_micros": 200, "subscription_revenue_micros": 0,
                  "gross_margin_micros": 100, "margin_percentage": 50.0}]})
         pts = self.client.get_margin_trend("c1", periods=3)
-        self.assertIsInstance(pts[0], MarginTrendPoint)
+        self.assertIsInstance(pts[0], MarginTrendPointOut)
         self.assertEqual(mock_get.call_args.kwargs["params"]["periods"], 3)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1/trend")
 

@@ -17,7 +17,9 @@ from apps.subscriptions.economics.models import (
 from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.api.margin_schemas import (
     RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut,
-    RevenueModeIn, RevenueModeOut)
+    RevenueModeIn, RevenueModeOut,
+    MarginSummaryOut, MarginByDimensionOut, UnprofitableOut, MarginListOut,
+    CustomerMarginOut, MarginTrendOut, BusinessMarginOut)
 
 margin_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
@@ -47,7 +49,7 @@ def _window(start_date, end_date):
     return s, today + timedelta(days=1)  # month-to-date (inclusive of today)
 
 
-@margin_router.get("/summary")
+@margin_router.get("/summary", response=MarginSummaryOut)
 @role_floor(READ)
 def margin_summary(request, start_date: date = None, end_date: date = None):
     _product_check(request)
@@ -80,7 +82,7 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     }
 
 
-@margin_router.get("/by-dimension")
+@margin_router.get("/by-dimension", response=MarginByDimensionOut)
 @role_floor(READ)
 def margin_by_dimension(request, provider: int = None, product: int = None,
                         tag_key: str = None, start_date: date = None, end_date: date = None):
@@ -96,7 +98,7 @@ def margin_by_dimension(request, provider: int = None, product: int = None,
     return {"period": {"start": s.isoformat(), "end": e.isoformat()}, "rows": rows}
 
 
-@margin_router.get("/unprofitable")
+@margin_router.get("/unprofitable", response=UnprofitableOut)
 @role_floor(READ)
 def margin_unprofitable(request, period_start: date = None):
     _product_check(request)
@@ -231,7 +233,7 @@ def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
             "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
 
 
-@margin_router.get("/business/{external_id}")
+@margin_router.get("/business/{external_id}", response=BusinessMarginOut)
 @role_floor(READ)
 def business_margin(request, external_id: str, start_date: date = None, end_date: date = None):
     _product_check(request)
@@ -241,7 +243,7 @@ def business_margin(request, external_id: str, start_date: date = None, end_date
     return MarginService.compute_business(request.auth.tenant.id, biz, s, e)
 
 
-@margin_router.get("/customers/{customer_id}/trend")
+@margin_router.get("/customers/{customer_id}/trend", response=MarginTrendOut)
 @role_floor(READ)
 def margin_trend(request, customer_id: UUID, periods: int = 6):
     _product_check(request)
@@ -258,7 +260,7 @@ def margin_trend(request, customer_id: UUID, periods: int = 6):
     } for r in reversed(list(rows))]}
 
 
-@margin_router.get("/customers/{customer_id}")
+@margin_router.get("/customers/{customer_id}", response=CustomerMarginOut)
 @role_floor(READ)
 def customer_margin(request, customer_id: UUID, start_date: date = None, end_date: date = None):
     _product_check(request)
@@ -270,7 +272,7 @@ def customer_margin(request, customer_id: UUID, start_date: date = None, end_dat
     return data
 
 
-@margin_router.get("/customers")
+@margin_router.get("/customers", response=MarginListOut)
 @role_floor(READ)
 def list_margin(request, start_date: date = None, end_date: date = None):
     _product_check(request)
