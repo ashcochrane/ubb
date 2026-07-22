@@ -16,6 +16,25 @@ An append-only row recording one balance movement (its signed amount and resulti
 exactly-once per idempotency key. (`apps/billing/wallets/models.py:WalletTransaction`)
 _Avoid_: mutating a balance without writing a ledger entry.
 
+**Wallet operation (wallet op)**:
+A named, exactly-once money movement on a wallet — debit, credit, withdraw, usage refund,
+drawdown, grant mint/void, top-up credit — applied through the single wallet-operations seam,
+answered with an outcome: applied, replayed, refused, or noop.
+(`apps/billing/wallets/operations.py` — decided in #109, lands with the Wallet module)
+_Avoid_: hand-rolling lock/expiry/idempotency at a call site — the seam owns that skeleton.
+
+**Refusal (refused outcome)**:
+A wallet op the module declined (overdraft floor, insufficient withdrawable, …) — returned as a
+result value carrying a refusal code, never raised, because a refusal still commits the lazy-expiry
+side effects it triggered.
+_Avoid_: "error" — infrastructure faults raise; refusals return.
+
+**Mirror invariant**:
+The rule that every credit-raising wallet mutation schedules a matching live-counter credit on
+commit — enforced structurally at the wallet-operations seam, since the MIN-merge reconcile can
+never re-raise a missed credit. The one sanctioned non-ledger credit site is estimate-hold-settle.
+_Avoid_: wiring `LiveLedgerService.credit` by hand at call sites.
+
 **Drawdown**:
 The wallet debit applied when a `usage.recorded` event is processed.
 _Avoid_: "charge" — a charge is a Stripe collection; a drawdown is a ledger debit.
