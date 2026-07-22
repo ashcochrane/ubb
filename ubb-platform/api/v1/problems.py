@@ -1,9 +1,10 @@
 """Central problem+json rendering (#78): the nine dialects die here.
 
 One handler layer on the one NinjaAPI turns every error — raised ``Problem``s,
-stray ``HttpError``s, request-validation failures, ``Http404``, auth failures,
-and unhandled exceptions — into RFC 9457 ``application/problem+json`` with a
-registry ``code`` (``core/problems.py``). Nothing below the API layer builds
+stray ``HttpError``s, request-validation failures, storage-constraint
+``DataError``s (#103), ``Http404``, auth failures, and unhandled exceptions —
+into RFC 9457 ``application/problem+json`` with a registry ``code``
+(``core/problems.py``). Nothing below the API layer builds
 an error body by hand; endpoints raise, this module renders.
 
 5xx bodies never leak internals: the unhandled-exception handler logs the
@@ -12,6 +13,7 @@ traceback server-side and serves a bare ``internal_error`` problem.
 import json
 import logging
 
+from django.db import DataError
 from django.http import Http404, HttpResponse
 from ninja.errors import (
     AuthenticationError as NinjaAuthenticationError,
@@ -41,6 +43,15 @@ _CODE_BY_STATUS = {
     429: "rate_limit_exceeded",
     503: "service_unavailable",
 }
+
+
+# The one wire detail for the DataError→422 lane (#103). The driver's own
+# message can name column types ("character varying(5)") or echo input, so
+# it goes to the server log, never the body.
+DATA_ERROR_DETAIL = (
+    "A value in the request cannot be stored: it is out of range, "
+    "too long, or contains unsupported characters."
+)
 
 
 def problem_response(code, detail=None, *, extensions=None, headers=None):
@@ -105,6 +116,21 @@ def install_problem_handlers(api):
             for error in exc.errors
         ]
         return problem_response("validation_error", extensions={"errors": errors})
+
+    @api.exception_handler(DataError)
+    def _data_error(request, exc):
+        # #103: the committed document types some fields loosely (unbounded
+        # integer, open string), so doc-legal values can still violate a
+        # storage constraint — NUL bytes in text, int4 overflow, varchar
+        # overflow — and surface as the driver's DataError. The value is
+        # the caller's problem, not a server fault: answer the validation
+        # lane. Only DataError takes this mapping (ninja resolves handlers
+        # by exception MRO) — every other DatabaseError stays a 500.
+        logger.warning(
+            "request value rejected by storage on %s %s: %s",
+            request.method, request.path, exc,
+        )
+        return problem_response("validation_error", DATA_ERROR_DETAIL)
 
     @api.exception_handler(Http404)
     def _not_found(request, exc):
