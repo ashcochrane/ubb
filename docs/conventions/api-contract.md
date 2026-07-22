@@ -109,3 +109,16 @@ plans, rate-card books, rates, webhook configs, referral attribution).
    has_more}` schema; reports get bounded parameters.
 3. Regenerate the spec (`python scripts/export_openapi.py`) — the diff is
    the API review; the drift/breaking gates hold the rest.
+
+## Conformance sweep (wanted, not gating — #87)
+
+`ubb-platform/conformance/` fuzzes every operation of the committed spec
+in-process (schemathesis over the WSGI app) and reports where the
+implementation contradicts the document: undocumented statuses, documented
+response-shape mismatches, and any error that breaks the problem+json
+envelope above. "Contract" here = the operation's `responses` map **plus**
+the registry's 4xx statuses, which are documented globally, not per-route;
+5xx is always a finding. Excluded from the default suite; run it with
+`python -m pytest conformance` (needs `pip install schemathesis`). CI runs
+it as the non-blocking `conformance` job — findings land in the job
+summary, never as a red X. Promoting it to a gate is a future decision.
