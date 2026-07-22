@@ -31,6 +31,7 @@ from django.core.cache import cache
 from django.test import Client
 
 from apps.billing.gating import repair
+from apps.billing.gating.crossing import month_label_bounds
 from apps.billing.gating.models import LiveBalanceRepair, StopSignalState
 from apps.billing.gating.services.live_ledger_service import (
     LEDGER_TTL_SECONDS,
@@ -38,7 +39,6 @@ from apps.billing.gating.services.live_ledger_service import (
     _client,
     _livebal_key,
     _livespend_key,
-    _month_label_bounds,
     _stop_key,
 )
 from apps.billing.gating.services.stop_signal_service import StopSignalService
@@ -147,7 +147,7 @@ class TestPin9AcceptWritesNoRedisKeys:
         c = _customer(t)
         r = _ingest(Client(), _auth(t), [_event(c, billed=5_000_000)])
         assert r.status_code == 200
-        label, _, _ = _month_label_bounds(timezone.now())
+        label, _, _ = month_label_bounds(timezone.now())
         assert _client().get(_livespend_key(c.id, label)) is None
 
     def test_sync_accept_no_counter_and_event_still_lands_and_bills(self):
@@ -378,7 +378,7 @@ class TestSettleWritesNothingWithLaneOff:
         raw = RawIngestEvent.objects.get()
         assert raw.held is False
         assert UsageService.settle_raw(raw) == "settled"
-        label, _, _ = _month_label_bounds(timezone.now())
+        label, _, _ = month_label_bounds(timezone.now())
         assert _client().get(_livespend_key(c.id, label)) is None
 
     def test_prepaid_settle_leaves_a_present_counter_untouched(self):

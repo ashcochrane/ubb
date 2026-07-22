@@ -191,15 +191,31 @@ class TestStopFlag:
     def test_postpaid_crossing_at_budget_cap(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000, hard_stop_pct=100)
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+                                    hard_stop_pct=100, enforce_mode="enforcing")
         out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000
         assert out["stop"] is True
 
+    def test_postpaid_advisory_budget_never_stops_the_live_lane(self):
+        """#110 drift resolution: enforce_mode is honored by EVERY lane via
+        crossing.budget_stop_threshold — an advisory budget (also the model
+        default) alerts but can never stop. Pre-#110 the live fast lane
+        ignored enforce_mode and would have stopped here."""
+        t = _tenant(mode="postpaid")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+                                    hard_stop_pct=100, enforce_mode="advisory")
+        out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        assert out["spend_micros"] == 12_000_000  # the counter still tracks
+        assert out["stop"] is False
+        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+
     def test_postpaid_reconcile_clears_stale_flag_next_month(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+                                    enforce_mode="enforcing")
         now = timezone.now()
         LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=now)  # flag set
         assert LiveLedgerService.read_stop(c.id, t)["stop"] is True

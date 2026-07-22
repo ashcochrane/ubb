@@ -1,5 +1,6 @@
 from django.core.cache import cache
 
+from apps.billing.gating.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
 
 
@@ -52,7 +53,7 @@ class RiskService:
 
         from apps.billing.queries import get_customer_min_balance
         threshold = get_customer_min_balance(owner.id, owner.tenant_id)
-        if owner.tenant.billing_mode != "postpaid" and balance < -threshold:
+        if owner.tenant.billing_mode != "postpaid" and past_floor(balance, threshold):
             return {"allowed": False, "reason": "insufficient_funds", "balance_micros": balance, "task_id": None}
 
         # Soft floor (#40, spec §F): past the resolved wind-down line, NEW
@@ -67,7 +68,7 @@ class RiskService:
             from apps.billing.queries import get_customer_soft_min_balance
             from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
             soft = get_customer_soft_min_balance(owner.id, owner.tenant_id)
-            if soft is not None and balance < -soft:
+            if past_floor(balance, soft):
                 return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
                         "balance_micros": balance, "task_id": None}
 

@@ -50,13 +50,13 @@ start-gate remains the backstop").
 import logging
 
 from apps.platform.tenants.flags import arrival_signals_on, enforcing
+from apps.billing.gating.crossing import (crossed_live, month_label_bounds,
+                                          same_month)
 from apps.billing.gating.services.live_ledger_service import (
     LiveLedgerService,
     LEDGER_TTL_SECONDS,
     _livebal_key,
     _livespend_key,
-    _month_label_bounds,
-    _same_month,
     _client,
 )
 
@@ -72,7 +72,7 @@ logger = logging.getLogger("ubb.billing")
 # ARGV[5] = '1' => skip the balance/spend move entirely (I9 parity: a
 #           postpaid item backdated to a PRIOR month must not inflate THIS
 #           month's live spend counter — mirrors record_usage_debit's
-#           _same_month guard). Prepaid callers always pass '0' here (livebal
+#           same_month guard). Prepaid callers always pass '0' here (livebal
 #           is not month-scoped — a backfill still legitimately reduces
 #           spendable balance). When skipped, returns the CURRENT (untouched)
 #           KEYS[1] value (0 if absent) so the caller's crossing check still
@@ -161,7 +161,7 @@ class HoldService:
         now = timezone.now()
         try:
             if postpaid:
-                label, _, _ = _month_label_bounds(now)
+                label, _, _ = month_label_bounds(now)
                 bal_key = _livespend_key(owner_id, label)
                 seed = 0
             else:
@@ -171,7 +171,7 @@ class HoldService:
             client = _client()
             pipe = client.pipeline()
             for it in items:
-                skip_balance = postpaid and not _same_month(it.get("effective_at"), now)
+                skip_balance = postpaid and not same_month(it.get("effective_at"), now)
                 pipe.eval(
                     _ACQUIRE, 1, bal_key,
                     seed, int(it["estimate_micros"]), LEDGER_TTL_SECONDS,
@@ -190,11 +190,12 @@ class HoldService:
             crossing_value = 0
             for post in raw_results:
                 value = int(post)
-                if threshold is not None:
-                    over = value >= threshold if mode == "postpaid" else value < threshold
-                    if over and not crossed:
-                        crossed = True
-                        crossing_value = value
+                # The crossing module owns both orientations (#110) — this is
+                # the same compare the fast lane's _crossed makes, against the
+                # once-per-batch threshold.
+                if crossed_live(mode, value, threshold) and not crossed:
+                    crossed = True
+                    crossing_value = value
                 out.append(_held_verdict())
 
             if crossed:
@@ -265,9 +266,9 @@ class HoldService:
                 if enforcing(tenant):
                     from django.utils import timezone
                     now = timezone.now()
-                    if _same_month(effective_at, now):
+                    if same_month(effective_at, now):
                         try:
-                            label, _, _ = _month_label_bounds(now)
+                            label, _, _ = month_label_bounds(now)
                             key = _livespend_key(owner_id, label)
                             pipe = _client().pipeline()
                             pipe.incrby(key, -delta_micros)

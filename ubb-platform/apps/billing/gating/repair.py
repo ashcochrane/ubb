@@ -251,19 +251,20 @@ def _resume_if_wedge_lifted(owner_id, tenant, live_after, durable):
     reconcile bottom line (late, never lost), never rolls back the repair's
     audit row."""
     from apps.billing.queries import get_customer_min_balance
+    from apps.billing.gating.crossing import past_floor, recovered_floor
     from apps.billing.gating.services.live_ledger_service import LiveLedgerService
     from apps.billing.gating.services.stop_signal_service import (
         CLEAR_BALANCE_REPAIRED, StopSignalService)
 
     try:
         floor = get_customer_min_balance(owner_id, tenant.id)
-        if live_after < -floor:
+        if past_floor(live_after, floor):
             return  # still past the floor: the stop stands
         StopSignalService.drive_clear(owner_id, tenant,
                                       reason=CLEAR_BALANCE_REPAIRED,
                                       balance_micros=live_after)
         LiveLedgerService._clear_stop(owner_id)
-        if durable >= -floor:
+        if recovered_floor(durable, floor):
             LiveLedgerService._maybe_unsuspend(owner_id)
     except Exception:
         logger.warning("live_balance.repair_resume_failed",

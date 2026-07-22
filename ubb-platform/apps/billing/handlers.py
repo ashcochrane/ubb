@@ -92,6 +92,8 @@ def handle_usage_recorded_billing(event_id, payload):
                                 balance_micros=new_balance, overage_limit_micros=limit,
                                 overage_micros=-new_balance))
                         from apps.platform.tenants.flags import enforcing
+                        from apps.billing.gating.crossing import (crossed_floor,
+                                                                  past_floor)
                         if enforcing(tenant):
                             # #39 §D — the DURABLE lane of the stop signal: a
                             # crossing of the CONFIGURED floor drives the
@@ -103,7 +105,7 @@ def handle_usage_recorded_billing(event_id, payload):
                             # Signal bookkeeping must never poison the debit:
                             # drive_stop is savepoint-isolated, and a failure
                             # here is re-driven by the hourly reconcile.
-                            if old_balance >= -limit and new_balance < -limit:
+                            if crossed_floor(old_balance, new_balance, limit):
                                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
                                 from apps.billing.gating.services.stop_signal_service import (
                                     StopSignalService)
@@ -127,8 +129,7 @@ def handle_usage_recorded_billing(event_id, payload):
                             # by the delivery patrol (#44), not by reconcile.
                             from apps.billing.queries import get_customer_soft_min_balance
                             soft = get_customer_soft_min_balance(owner.id, tenant.id)
-                            if (soft is not None
-                                    and old_balance >= -soft and new_balance < -soft):
+                            if crossed_floor(old_balance, new_balance, soft):
                                 from apps.billing.gating.services.stop_signal_service import (
                                     StopSignalService)
                                 try:
@@ -138,7 +139,7 @@ def handle_usage_recorded_billing(event_id, payload):
                                 except Exception:
                                     logger.warning("billing.soft_floor_transition_failed",
                                                    extra={"data": {"owner_id": str(owner.id)}})
-                        elif new_balance < -limit and owner.status == "active":
+                        elif past_floor(new_balance, limit) and owner.status == "active":
                             # enforcement off: Tier-1 baseline suspension,
                             # byte-for-byte (no signal suite, no ledger).
                             owner.status = "suspended"
@@ -171,18 +172,15 @@ def handle_usage_recorded_billing(event_id, payload):
         # usage into the prior month to evade the live cap. The exposure is
         # bounded by Tenant.backfill_window_days (0..60); tenants needing
         # airtight caps set it low — 0 disables backfill entirely.
-        import datetime as _dt
         from django.utils import timezone as _tz
         from django.utils.dateparse import parse_datetime
+        from apps.billing.gating.crossing import same_month
         count_in_live = True
         raw_eff = payload.get("effective_at")
         if raw_eff:
             eff = parse_datetime(raw_eff)
             if eff is not None:
-                if eff.tzinfo is not None:
-                    eff = eff.astimezone(_dt.timezone.utc)
-                now = _tz.now()
-                count_in_live = (eff.year, eff.month) == (now.year, now.month)
+                count_in_live = same_month(eff, _tz.now())
         if count_in_live:
             from apps.billing.gating.services.budget_service import BudgetService
             BudgetService.record_usage_spend(seat, billed_cost_micros)

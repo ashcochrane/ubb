@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from apps.billing.gating.crossing import (budget_stop_threshold,
+                                          month_label_bounds, past_budget_stop)
 from apps.metering.queries import get_customer_cost_totals
 
 logger = logging.getLogger("ubb.billing")
@@ -59,14 +61,9 @@ def _raw_redis():
 
 
 def _period():
-    """(label 'YYYY-MM', period_start date, period_end date exclusive) for the current calendar month."""
-    today = timezone.now().date()
-    start = today.replace(day=1)
-    if today.month == 12:
-        end = start.replace(year=start.year + 1, month=1, day=1)
-    else:
-        end = start.replace(month=start.month + 1, day=1)
-    return f"{start.year:04d}-{start.month:02d}", start, end
+    """(label 'YYYY-MM', period_start date, period_end date exclusive) for the
+    current calendar month — the crossing module's month math (#110)."""
+    return month_label_bounds(timezone.now())
 
 
 def _key(customer_id, label):
@@ -75,12 +72,19 @@ def _key(customer_id, label):
 
 class BudgetService:
     @staticmethod
-    def resolve_config(customer):
+    def resolve_config_for(tenant_id, customer_id):
+        """THE BudgetConfig resolution — customer-specific row first, tenant
+        default second. Every lane that needs a budget line resolves through
+        here (#110 retired ``LiveLedgerService._threshold``'s inline copy)."""
         from apps.billing.gating.models import BudgetConfig
-        cfg = BudgetConfig.objects.filter(tenant_id=customer.tenant_id, customer_id=customer.id).first()
+        cfg = BudgetConfig.objects.filter(tenant_id=tenant_id, customer_id=customer_id).first()
         if cfg:
             return cfg
-        return BudgetConfig.objects.filter(tenant_id=customer.tenant_id, customer__isnull=True).first()
+        return BudgetConfig.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
+
+    @staticmethod
+    def resolve_config(customer):
+        return BudgetService.resolve_config_for(customer.tenant_id, customer.id)
 
     @staticmethod
     def current_spend(tenant_id, customer_id):
@@ -129,8 +133,9 @@ class BudgetService:
                 return {"allowed": False, "reason": "budget_unavailable",
                         "spend_micros": None, "cap_micros": cfg.cap_micros}
             return {"allowed": True, "reason": None, "spend_micros": None, "cap_micros": cfg.cap_micros}
-        limit = cfg.cap_micros * cfg.hard_stop_pct // 100
-        if cfg.enforce_mode == "enforcing" and spend >= limit:
+        # The crossing module owns the stop line + enforce_mode semantics
+        # (#110): advisory -> None -> never past.
+        if past_budget_stop(spend, budget_stop_threshold(cfg)):
             return {"allowed": False, "reason": "budget_exceeded",
                     "spend_micros": spend, "cap_micros": cfg.cap_micros}
         return {"allowed": True, "reason": None, "spend_micros": spend, "cap_micros": cfg.cap_micros}
