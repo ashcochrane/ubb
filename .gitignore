@@ -210,6 +210,10 @@ __marimo__/
 dump.rdb
 *.rdb
 
+# JavaScript workspace artifacts
+node_modules/
+*.tsbuildinfo
+
 # Claude Code local state (worktrees, per-user settings, session artifacts).
 # If shared repo-level config is ever wanted, switch to `.claude/*` + negations
 # (e.g. `!.claude/settings.json`).

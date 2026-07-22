@@ -5,9 +5,7 @@ single API served at ``/api/v1/``. Products expose ``Router`` objects; this
 module (the composition layer) mounts them, so ADR-001's import matrix is
 respected, not amended. Per-router ``auth=`` preserves the pre-restructure
 split: tenant-key auth everywhere, widget JWT on ``/me``. Mount prefixes
-reproduce the old per-mount external URLs byte-for-byte; ``url_name_prefix``
-keeps Django URL names collision-free now that twelve URL namespaces have
-collapsed into one.
+reproduce the old per-mount external URLs byte-for-byte.
 
 ``openapi/v1.json`` at the git root is generated offline from this object
 (``scripts/export_openapi.py``) and checked in; CI's drift gate keeps code
@@ -63,19 +61,19 @@ install_problem_handlers(api)
 
 # Mount order preserves the old config/urls.py registration order (the /me
 # widget surface before the generic mounts, the root router last).
-api.add_router("me/", me_router, url_name_prefix="me")
-api.add_router("tenant/", tenant_router, url_name_prefix="tenant")
-api.add_router("sandbox/", sandbox_router, url_name_prefix="sandbox")
-api.add_router("metering/", metering_router, url_name_prefix="metering")
-api.add_router("billing/", billing_router, url_name_prefix="billing")
-api.add_router("subscriptions/", subscriptions_router, url_name_prefix="subscriptions")
-api.add_router("margin/", margin_router, url_name_prefix="margin")
-api.add_router("referrals/", referrals_router, url_name_prefix="referrals")
+api.add_router("me/", me_router)
+api.add_router("tenant/", tenant_router)
+api.add_router("sandbox/", sandbox_router)
+api.add_router("metering/", metering_router)
+api.add_router("billing/", billing_router)
+api.add_router("subscriptions/", subscriptions_router)
+api.add_router("margin/", margin_router)
+api.add_router("referrals/", referrals_router)
 # #86 sweep: de-stuttered from the legacy "webhooks/config/" mount (a pre-#77
 # separately-mounted API) — the router's own /configs collection made the old
 # external path /webhooks/config/configs. Now /api/v1/webhooks/configs.
-api.add_router("webhooks/", webhook_router, url_name_prefix="webhooks")
-api.add_router("platform/", platform_router, url_name_prefix="platform")
-api.add_router("connect/", connect_router, url_name_prefix="connect")
-api.add_router("audit/", audit_router, url_name_prefix="audit")
+api.add_router("webhooks/", webhook_router)
+api.add_router("platform/", platform_router)
+api.add_router("connect/", connect_router)
+api.add_router("audit/", audit_router)
 api.add_router("", root_router)

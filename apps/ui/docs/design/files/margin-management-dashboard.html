@@ -1,0 +1,320 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:16px">
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);line-height:1.7;padding:1.5rem;background:var(--bg)}
+:root{--text:#1a1a1a;--text2:#5F5E5A;--text3:#888780;--bg:#fff;--bg2:#F5F4F0;--border:rgba(0,0,0,0.1);--border2:rgba(0,0,0,0.2);--green:#639922;--green-bg:#E1F5EE;--green-t:#0F6E56;--blue-t:#185FA5;--blue-bg:#E6F1FB;--warn-bg:#FAEEDA;--warn-t:#854F0B;--danger-t:#A32D2D;--danger-bg:#FCEBEB;--purple:#534AB7;--purple-bg:#EEEDFE;--purple-t:#3C3489;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--radius:8px;--radius-lg:12px}
+@media(prefers-color-scheme:dark){:root{--text:#e8e6de;--text2:#9c9a92;--text3:#73726c;--bg:#1a1a1a;--bg2:#2C2C2A;--border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.2);--green:#97C459;--green-bg:rgba(29,158,117,0.15);--green-t:#5DCAA5;--blue-t:#85B7EB;--blue-bg:rgba(55,138,221,0.15);--warn-bg:rgba(186,117,23,0.15);--warn-t:#EF9F27;--danger-t:#F09595;--danger-bg:rgba(226,75,74,0.15);--purple:#AFA9EC;--purple-bg:rgba(127,119,221,0.2);--purple-t:#AFA9EC}}
+.pg{max-width:700px;margin:0 auto}
+.pg-t{font-size:22px;font-weight:500;margin-bottom:4px}
+.pg-s{font-size:13px;color:var(--text2);margin-bottom:1.25rem}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:1.25rem}
+.st{background:var(--bg2);border-radius:var(--radius);padding:10px 12px}
+.st-l{font-size:10px;color:var(--text2);margin-bottom:1px}
+.st-v{font-size:17px;font-weight:500}
+.st-s{font-size:9px;color:var(--text3);margin-top:1px}
+.st-v.grn{color:var(--green)}
+.sec{margin-bottom:1.5rem}
+.sec-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sec-t{font-size:16px;font-weight:500}
+.tree{border:0.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.tree-head{display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 90px 100px 60px;gap:0;padding:8px 14px;background:var(--bg2);font-size:10px;font-weight:500;color:var(--text2)}
+.tree-head span{padding:0 4px}
+.tr{display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 90px 100px 60px;gap:0;padding:0 14px;align-items:center;border-bottom:0.5px solid var(--border);min-height:44px;transition:background .1s}
+.tr:last-child{border:none}
+.tr:hover{background:var(--bg2)}
+.tr span{padding:4px;font-size:12px}
+.tr-default{background:var(--purple-bg)}
+.tr-product{padding-left:28px !important}
+.tr-card{padding-left:48px !important}
+.tr-name{font-weight:500;display:flex;align-items:center;gap:6px}
+.tr-name-sub{font-size:10px;color:var(--text3);font-weight:400}
+.tr-expand{width:16px;height:16px;border-radius:3px;border:0.5px solid var(--border2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;color:var(--text3);flex-shrink:0;background:transparent}
+.tr-expand:hover{background:var(--bg2)}
+.tr-margin{font-family:var(--mono);font-weight:500;text-align:right}
+.tr-eff{font-family:var(--mono);font-size:11px;color:var(--text2);text-align:right}
+.tr-source{font-size:10px;text-align:right}
+.tr-src-own{color:var(--purple);font-weight:500}
+.tr-src-inh{color:var(--text3)}
+.tr-impact{font-family:var(--mono);font-size:11px;text-align:right}
+.tr-edit{text-align:center}
+.tr-edit-btn{font-size:10px;color:var(--blue-t);cursor:pointer;border:none;background:none;padding:2px 6px}
+.tr-edit-btn:hover{text-decoration:underline}
+.pill-d{font-size:9px;padding:2px 6px;border-radius:8px;background:var(--purple-bg);color:var(--purple-t);font-weight:500}
+.pill-c{font-size:9px;padding:2px 6px;border-radius:8px;background:var(--bg2);color:var(--text2);font-weight:500}
+.edit-panel{border:2px solid var(--blue-t);border-radius:var(--radius-lg);padding:18px;margin-top:14px;display:none}
+.ep-t{font-size:15px;font-weight:500;margin-bottom:2px}
+.ep-s{font-size:12px;color:var(--text2);margin-bottom:14px}
+.ep-current{display:flex;gap:16px;align-items:center;padding:10px 14px;background:var(--bg2);border-radius:var(--radius);margin-bottom:14px}
+.ep-current-item{text-align:center}
+.ep-current-l{font-size:10px;color:var(--text3)}
+.ep-current-v{font-size:14px;font-weight:500;font-family:var(--mono)}
+.ep-arrow{color:var(--text3);font-size:16px}
+.ep-inherit{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--text2)}
+.ep-inherit-ck{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ep-inherit-ck.on{background:var(--blue-t);border-color:var(--blue-t)}
+.ep-inherit-ck.on::after{content:'';width:4px;height:7px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);margin-top:-1px}
+.ep-new{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+.ep-new label{font-size:12px;font-weight:500;white-space:nowrap}
+.ep-new input[type=range]{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:2px;outline:none}
+.ep-new input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--text);cursor:pointer}
+.ep-new-v{font-family:var(--mono);font-size:16px;font-weight:500;min-width:50px;text-align:right}
+.ep-when-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.ep-when-opts{display:flex;gap:6px;margin-bottom:6px}
+.ep-when-o{padding:6px 14px;font-size:11px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all .12s;background:transparent;color:var(--text2)}
+.ep-when-o:hover{border-color:var(--border2);background:var(--bg2)}
+.ep-when-o.sel{border-color:var(--text);border-width:2px;background:var(--text);color:var(--bg)}
+.ep-sched{display:none;margin-bottom:14px}
+.ep-sched input{font-size:12px;padding:6px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)}
+.impact{border:0.5px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+.impact-t{font-size:12px;font-weight:500;margin-bottom:8px}
+.impact-s{font-size:11px;color:var(--text2);margin-bottom:10px}
+.impact-grid{display:grid;grid-template-columns:1fr 32px 1fr 32px 1fr;gap:0;align-items:center;margin-bottom:10px}
+.impact-box{background:var(--bg2);border-radius:var(--radius);padding:10px;text-align:center}
+.impact-box-l{font-size:10px;color:var(--text2);margin-bottom:1px}
+.impact-box-v{font-size:15px;font-weight:500;font-family:var(--mono)}
+.impact-box-v.old{color:var(--text3);text-decoration:line-through}
+.impact-box-v.new{color:var(--text)}
+.impact-box-v.delta{color:var(--danger-t)}
+.impact-box-v.delta-neg{color:var(--green-t)}
+.impact-arrow{text-align:center;font-size:14px;color:var(--text3)}
+.impact-note{font-size:10px;color:var(--text3);text-align:center}
+.ep-reason{margin-bottom:14px}
+.ep-reason label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.ep-reason textarea{width:100%;font-size:12px;padding:7px 10px;min-height:50px;resize:vertical;font-family:inherit;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)}
+.ep-reason .ht{font-size:10px;color:var(--text3);margin-top:2px}
+.ep-actions{display:flex;justify-content:space-between;align-items:center}
+.btn-cancel{padding:7px 16px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:transparent;color:var(--text);cursor:pointer}
+.btn-cancel:hover{background:var(--bg2)}
+.btn-apply{padding:8px 20px;font-size:12px;font-weight:500;border:none;border-radius:var(--radius);background:var(--text);color:var(--bg);cursor:pointer}
+.btn-apply:hover{opacity:.9}
+.hist{border:0.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.hist-head{padding:10px 14px;border-bottom:0.5px solid var(--border)}
+.hist-t{font-size:13px;font-weight:500}
+.hist-row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:12px;align-items:start}
+.hist-row:last-child{border:none}
+.hist-badge{font-size:10px;padding:2px 8px;border-radius:10px;display:inline-block;margin-bottom:2px;font-weight:500}
+.hist-badge-d{background:var(--purple-bg);color:var(--purple-t)}
+.hist-badge-p{background:var(--blue-bg);color:var(--blue-t)}
+.hist-badge-c{background:var(--bg2);color:var(--text2)}
+.hist-desc{font-size:11px;color:var(--text2);margin-top:1px}
+.hist-meta{font-size:10px;color:var(--text3);margin-top:2px}
+.hist-delta{font-family:var(--mono);font-size:12px;text-align:right}
+.hist-delta-l{font-size:10px;color:var(--text3);text-align:right}
+</style>
+
+<div class="pg">
+<div class="pg-t">Billing margins</div>
+<div class="pg-s">Control how much margin is applied on top of API costs when billing your customers. Changes apply to future events only.</div>
+
+<div class="stats">
+<div class="st"><div class="st-l">Blended margin</div><div class="st-v grn">54.2%</div><div class="st-s">Weighted by cost volume</div></div>
+<div class="st"><div class="st-l">API costs (30d)</div><div class="st-v">$1,247</div><div class="st-s">Your expense</div></div>
+<div class="st"><div class="st-l">Customer billings (30d)</div><div class="st-v">$1,923</div><div class="st-s">Debited from balances</div></div>
+<div class="st"><div class="st-l">Margin earned (30d)</div><div class="st-v grn">$676</div><div class="st-s">Billings minus costs</div></div>
+</div>
+
+<div class="sec">
+<div class="sec-bar"><div class="sec-t">Margin hierarchy</div></div>
+<div style="font-size:11px;color:var(--text2);margin-bottom:8px">Margins cascade downward: cards inherit from their product, products inherit from the default. An override at any level replaces the inherited value for that item and everything below it.</div>
+
+<div class="tree">
+<div class="tree-head"><span>Name</span><span style="text-align:right">Margin</span><span style="text-align:right">Multiplier</span><span style="text-align:right">Source</span><span style="text-align:right">Billings (30d)</span><span style="text-align:center">Edit</span></div>
+
+<div class="tr tr-default">
+<span class="tr-name"><span class="pill-d">Default</span><span class="tr-name-sub">Applies to everything without an override</span></span>
+<span class="tr-margin">50%</span><span class="tr-eff">1.50x</span><span class="tr-source tr-src-own">Set</span><span class="tr-impact">$1,923</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('default','Default margin',50,'—',1923)">Edit</button></span>
+</div>
+<div class="tr" id="row-ps">
+<span class="tr-name tr-product"><span class="tr-expand" onclick="toggleProd('ps')">+</span><span>Property search</span></span>
+<span class="tr-margin">60%</span><span class="tr-eff">1.60x</span><span class="tr-source tr-src-own">Override</span><span class="tr-impact">$1,357</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('product','Property search',60,'Default: 50%',1357)">Edit</button></span>
+</div>
+<div class="tr" id="ps-c0" style="display:none">
+<span class="tr-name tr-card"><span class="pill-c">Card</span><span>Gemini 2.0 Flash</span></span>
+<span class="tr-margin" style="color:var(--text3)">60%</span><span class="tr-eff" style="color:var(--text3)">1.60x</span><span class="tr-source tr-src-inh">From product</span><span class="tr-impact">$1,098</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('card','Gemini 2.0 Flash',60,'Product: 60%',1098)">Edit</button></span>
+</div>
+<div class="tr" id="ps-c1" style="display:none">
+<span class="tr-name tr-card"><span class="pill-c">Card</span><span>Google Places</span></span>
+<span class="tr-margin" style="color:var(--text3)">60%</span><span class="tr-eff" style="color:var(--text3)">1.60x</span><span class="tr-source tr-src-inh">From product</span><span class="tr-impact">$99</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('card','Google Places',60,'Product: 60%',99)">Edit</button></span>
+</div>
+<div class="tr" id="ps-c2" style="display:none">
+<span class="tr-name tr-card"><span class="pill-c">Card</span><span>Serper</span></span>
+<span class="tr-margin">80%</span><span class="tr-eff">1.80x</span><span class="tr-source tr-src-own">Override</span><span class="tr-impact">$67</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('card','Serper',80,'Product: 60%',67)">Edit</button></span>
+</div>
+<div class="tr" id="row-ds">
+<span class="tr-name tr-product"><span class="tr-expand" onclick="toggleProd('ds')">+</span><span>Doc summariser</span></span>
+<span class="tr-margin" style="color:var(--text3)">50%</span><span class="tr-eff" style="color:var(--text3)">1.50x</span><span class="tr-source tr-src-inh">From default</span><span class="tr-impact">$411</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('product','Doc summariser',50,'Default: 50%',411)">Edit</button></span>
+</div>
+<div class="tr" id="ds-c0" style="display:none">
+<span class="tr-name tr-card"><span class="pill-c">Card</span><span>Claude 3.5 Sonnet</span></span>
+<span class="tr-margin" style="color:var(--text3)">50%</span><span class="tr-eff" style="color:var(--text3)">1.50x</span><span class="tr-source tr-src-inh">From default</span><span class="tr-impact">$411</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('card','Claude 3.5 Sonnet',50,'Default: 50%',411)">Edit</button></span>
+</div>
+<div class="tr" id="row-cg">
+<span class="tr-name tr-product"><span class="tr-expand" onclick="toggleProd('cg')">+</span><span>Content gen</span></span>
+<span class="tr-margin" style="color:var(--text3)">50%</span><span class="tr-eff" style="color:var(--text3)">1.50x</span><span class="tr-source tr-src-inh">From default</span><span class="tr-impact">$188</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('product','Content gen',50,'Default: 50%',188)">Edit</button></span>
+</div>
+<div class="tr" id="cg-c0" style="display:none">
+<span class="tr-name tr-card"><span class="pill-c">Card</span><span>GPT-4o</span></span>
+<span class="tr-margin" style="color:var(--text3)">50%</span><span class="tr-eff" style="color:var(--text3)">1.50x</span><span class="tr-source tr-src-inh">From default</span><span class="tr-impact">$188</span>
+<span class="tr-edit"><button class="tr-edit-btn" onclick="openEdit('card','GPT-4o',50,'Default: 50%',188)">Edit</button></span>
+</div>
+</div>
+</div>
+
+<div class="edit-panel" id="edit-panel">
+<div class="ep-t" id="ep-t">Edit margin</div>
+<div class="ep-s" id="ep-s"></div>
+<div class="ep-current">
+<div class="ep-current-item"><div class="ep-current-l">Current margin</div><div class="ep-current-v" id="ep-cur-v">60%</div></div>
+<div class="ep-arrow" id="ep-cur-arrow">from</div>
+<div class="ep-current-item" id="ep-cur-src"><div class="ep-current-l">Source</div><div class="ep-current-v" style="font-size:12px" id="ep-cur-src-v"></div></div>
+</div>
+<div class="ep-inherit" id="ep-inherit-row">
+<div class="ep-inherit-ck" id="ep-inh-ck" onclick="toggleInherit()"></div>
+<span>Revert to inherited value (<span id="ep-inh-val"></span>)</span>
+</div>
+<div id="ep-slider-area">
+<div class="ep-new"><label>New margin</label><input type="range" min="0" max="200" step="5" value="60" id="ep-slider" oninput="updateImpact()" /><span class="ep-new-v" id="ep-new-v">60%</span></div>
+</div>
+<div class="impact">
+<div class="impact-t">Impact estimate</div>
+<div class="impact-s">Based on the last 30 days of billing volume. Actual results depend on future usage.</div>
+<div class="impact-grid">
+<div class="impact-box"><div class="impact-box-l">Was billing (30d)</div><div class="impact-box-v old" id="imp-old">$1,357</div></div>
+<div class="impact-arrow">&rarr;</div>
+<div class="impact-box"><div class="impact-box-l">Would be billing</div><div class="impact-box-v new" id="imp-new">$1,357</div></div>
+<div class="impact-arrow">=</div>
+<div class="impact-box"><div class="impact-box-l">Difference</div><div class="impact-box-v" id="imp-delta">$0</div></div>
+</div>
+<div class="impact-note" id="imp-note">No change from current margin.</div>
+</div>
+<div style="margin-bottom:14px">
+<div class="ep-when-t">When should this take effect?</div>
+<div class="ep-when-opts">
+<div class="ep-when-o sel" id="ew-now" onclick="setWhen('now')">Immediately</div>
+<div class="ep-when-o" id="ew-sched" onclick="setWhen('sched')">Schedule for later</div>
+</div>
+<div class="ep-sched" id="ep-sched-area"><div style="margin-top:6px"><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Effective date and time</label><input type="datetime-local" value="2026-04-01T00:00" /></div><div style="font-size:10px;color:var(--text3);margin-top:3px">Current margin applies until this time. New margin applies to all events after.</div></div>
+</div>
+<div class="ep-reason"><label>Reason for change</label><textarea id="ep-reason" placeholder="e.g. Increasing margin to reflect higher value-add..."></textarea><div class="ht">Recorded in change history. Visible to your team.</div></div>
+<div class="ep-actions"><button class="btn-cancel" onclick="closeEdit()">Cancel</button><button class="btn-apply" id="ep-apply" onclick="applyChange()">Apply margin change</button></div>
+</div>
+
+<div class="sec" style="margin-top:1.5rem">
+<div class="sec-bar"><div class="sec-t">Change history</div></div>
+<div class="hist">
+<div class="hist-head"><div class="hist-t">All margin changes</div></div>
+<div class="hist-row">
+<div><span class="hist-badge hist-badge-c">Card: Serper</span><div style="font-size:11px;margin-top:2px">Margin changed from 60% to 80%</div><div class="hist-desc">Higher margin on search — Serper costs are low relative to value delivered.</div><div class="hist-meta">Applied immediately. 18 Mar 2026 by <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="573d79243a3e233f1736343a32343825277934383a">[email&#160;protected]</a></div></div>
+<div><div class="hist-delta" style="color:var(--danger-t)">+$8/mo</div><div class="hist-delta-l">est. impact</div></div>
+</div>
+<div class="hist-row">
+<div><span class="hist-badge hist-badge-p">Product: Property search</span><div style="font-size:11px;margin-top:2px">Margin changed from 50% to 60%</div><div class="hist-desc">Increasing markup on property search to reflect additional infrastructure costs.</div><div class="hist-meta">Applied immediately. 12 Feb 2026 by <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="066c28756b6f726e4667656b63656974762865696b">[email&#160;protected]</a></div></div>
+<div><div class="hist-delta" style="color:var(--danger-t)">+$85/mo</div><div class="hist-delta-l">est. impact</div></div>
+</div>
+<div class="hist-row">
+<div><span class="hist-badge hist-badge-d">Default</span><div style="font-size:11px;margin-top:2px">Default margin set to 50%</div><div class="hist-desc">Initial margin configured during onboarding.</div><div class="hist-meta">Onboarding. 12 Jan 2026 by <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="96fcb8e5fbffe2fed6f7f5fbf3f5f9e4e6b8f5f9fb">[email&#160;protected]</a></div></div>
+<div><div class="hist-delta" style="color:var(--text3)">—</div><div class="hist-delta-l">initial setup</div></div>
+</div>
+</div>
+</div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const prodChildren={ps:['ps-c0','ps-c1','ps-c2'],ds:['ds-c0'],cg:['cg-c0']};
+const prodOpen={ps:false,ds:false,cg:false};
+
+function toggleProd(p){
+  prodOpen[p]=!prodOpen[p];
+  document.querySelector('#row-'+p+' .tr-expand').textContent=prodOpen[p]?'\u2212':'+';
+  prodChildren[p].forEach(id=>{document.getElementById(id).style.display=prodOpen[p]?'grid':'none'});
+}
+
+let editCtx={};
+
+function openEdit(level,name,currentPct,parentLabel,billings30d){
+  editCtx={level,name,currentPct,parentLabel,billings30d};
+  document.getElementById('ep-t').textContent='Edit margin: '+name;
+  const ll=level==='default'?'all products and cards':level==='product'?'all cards within this product':'this pricing card only';
+  document.getElementById('ep-s').textContent='Changes apply to future API events billed through '+ll+'.';
+  document.getElementById('ep-cur-v').textContent=currentPct+'%';
+
+  if(level==='default'){
+    document.getElementById('ep-cur-arrow').textContent='';
+    document.getElementById('ep-cur-src').style.display='none';
+    document.getElementById('ep-inherit-row').style.display='none';
+  } else {
+    document.getElementById('ep-cur-arrow').textContent='from';
+    document.getElementById('ep-cur-src').style.display='block';
+    document.getElementById('ep-cur-src-v').textContent=parentLabel;
+    document.getElementById('ep-inherit-row').style.display='flex';
+    document.getElementById('ep-inh-val').textContent=parentLabel;
+    document.getElementById('ep-inh-ck').classList.remove('on');
+  }
+
+  document.getElementById('ep-slider').value=currentPct;
+  document.getElementById('ep-new-v').textContent=currentPct+'%';
+  document.getElementById('ep-slider-area').style.opacity='1';
+  document.getElementById('ep-slider-area').style.pointerEvents='auto';
+  document.getElementById('imp-old').textContent='$'+billings30d.toLocaleString();
+  document.getElementById('imp-new').textContent='$'+billings30d.toLocaleString();
+  document.getElementById('imp-delta').textContent='$0';
+  document.getElementById('imp-delta').className='impact-box-v';
+  document.getElementById('imp-note').textContent='No change from current margin.';
+  document.getElementById('ep-reason').value='';
+  setWhen('now');
+  document.getElementById('edit-panel').style.display='block';
+  document.getElementById('edit-panel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function closeEdit(){document.getElementById('edit-panel').style.display='none'}
+
+function toggleInherit(){
+  const ck=document.getElementById('ep-inh-ck');
+  ck.classList.toggle('on');
+  const isOn=ck.classList.contains('on');
+  document.getElementById('ep-slider-area').style.opacity=isOn?'.3':'1';
+  document.getElementById('ep-slider-area').style.pointerEvents=isOn?'none':'auto';
+  if(isOn){
+    const pp=parseInt(editCtx.parentLabel.match(/\d+/)?.[0]||50);
+    document.getElementById('ep-new-v').textContent=pp+'% (inherited)';
+    recalcImpact(pp);
+  } else {
+    const v=parseInt(document.getElementById('ep-slider').value);
+    document.getElementById('ep-new-v').textContent=v+'%';
+    recalcImpact(v);
+  }
+}
+
+function updateImpact(){
+  const v=parseInt(document.getElementById('ep-slider').value);
+  document.getElementById('ep-new-v').textContent=v+'%';
+  recalcImpact(v);
+}
+
+function recalcImpact(newPct){
+  const oldPct=editCtx.currentPct;
+  const cost30=Math.round(editCtx.billings30d/(1+oldPct/100));
+  const oldBill=editCtx.billings30d;
+  const newBill=Math.round(cost30*(1+newPct/100));
+  const delta=newBill-oldBill;
+  document.getElementById('imp-old').textContent='$'+oldBill.toLocaleString();
+  document.getElementById('imp-new').textContent='$'+newBill.toLocaleString();
+  const sign=delta>=0?'+':'-';
+  document.getElementById('imp-delta').textContent=sign+'$'+Math.abs(delta).toLocaleString();
+  document.getElementById('imp-delta').className='impact-box-v '+(delta>0?'delta':delta<0?'delta-neg':'');
+  if(delta===0)document.getElementById('imp-note').textContent='No change from current margin.';
+  else if(delta>0)document.getElementById('imp-note').textContent='Customers would be billed $'+Math.abs(delta)+'/mo more based on recent volume.';
+  else document.getElementById('imp-note').textContent='Customers would be billed $'+Math.abs(delta)+'/mo less based on recent volume.';
+}
+
+function setWhen(w){
+  document.getElementById('ew-now').classList.toggle('sel',w==='now');
+  document.getElementById('ew-sched').classList</body></html>

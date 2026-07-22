@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:620px;margin:0 auto}
+.logo{font-size:18px;font-weight:500;text-align:center;margin-bottom:1.5rem;color:var(--color-text-secondary)}
+.pg-t{font-size:22px;font-weight:500;text-align:center;margin-bottom:4px}
+.pg-s{font-size:13px;color:var(--color-text-secondary);text-align:center;margin-bottom:1.5rem;max-width:480px;margin-left:auto;margin-right:auto}
+.progress{display:flex;gap:4px;margin-bottom:1.5rem}
+.ps{flex:1;height:4px;border-radius:2px;background:var(--color-border-tertiary);transition:background .3s}
+.ps-done{background:var(--color-text-success)}.ps-act{background:var(--color-text-primary)}
+.step-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:20px;margin-bottom:12px;transition:border-color .2s}
+.step-card.complete{border-color:var(--color-border-success)}
+.step-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.step-label{display:flex;align-items:center;gap:8px}
+.step-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0;transition:all .2s}
+.step-num-pending{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.step-num-active{background:var(--color-text-primary);color:var(--color-background-primary)}
+.step-num-done{background:var(--color-background-success);color:var(--color-text-success)}
+.step-title{font-size:15px;font-weight:500}
+.step-status{font-size:11px;padding:3px 10px;border-radius:14px;font-weight:500}
+.status-pending{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.status-done{background:var(--color-background-success);color:var(--color-text-success)}
+.status-partial{background:var(--color-background-warning);color:var(--color-text-warning)}
+.step-desc{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px;margin-top:2px}
+.step-body{display:none}
+.step-body.show{display:block}
+.guide-box{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:14px 16px;margin-bottom:14px}
+.guide-step{display:flex;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.guide-step:last-child{border:none}
+.g-num{width:20px;height:20px;border-radius:50%;background:var(--color-background-info);color:var(--color-text-info);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;margin-top:1px}
+.g-text{font-size:12px;color:var(--color-text-secondary);flex:1;line-height:1.5}
+.g-text b{font-weight:500;color:var(--color-text-primary)}
+.g-link{color:var(--color-text-info);font-weight:500;cursor:pointer}
+.perm-tbl{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0 12px}
+.perm-tbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-tbl td{padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-tbl tr:last-child td{border:none}
+.perm-r{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--color-background-success);color:var(--color-text-success)}
+.perm-n{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.key-area{margin-top:4px}
+.key-label{font-size:12px;font-weight:500;margin-bottom:4px}
+.key-row{display:flex;gap:0}
+.key-row input{flex:1;font-family:var(--font-mono);font-size:12px;padding:10px 12px;border-radius:var(--border-radius-md) 0 0 var(--border-radius-md);letter-spacing:.3px}
+.key-row button{padding:0 18px;border:0.5px solid var(--color-border-secondary);border-left:none;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;background:var(--color-background-secondary);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;color:var(--color-text-primary);transition:all .12s}
+.key-row button:hover{background:var(--color-border-tertiary)}
+.val-msg{padding:10px 14px;border-radius:var(--border-radius-md);margin-top:10px;display:none}
+.val-ok{background:var(--color-background-success);border:0.5px solid var(--color-border-success)}
+.val-ok .vm-t{color:var(--color-text-success)}
+.val-err{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger)}
+.val-err .vm-t{color:var(--color-text-danger)}
+.vm-t{font-size:13px;font-weight:500;margin-bottom:2px}
+.vm-s{font-size:11px;color:var(--color-text-secondary)}
+.sync-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:14px 16px;margin-top:14px;display:none}
+.sync-t{font-size:13px;font-weight:500;margin-bottom:8px}
+.sync-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
+.sync-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px;text-align:center}
+.sync-v{font-size:20px;font-weight:500}
+.sync-l{font-size:10px;color:var(--color-text-tertiary);margin-top:1px}
+.sync-custs{margin-top:8px}
+.sync-cust{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px}
+.sync-cust:last-child{border:none}
+.sync-cust-name{font-weight:500}
+.sync-cust-meta{font-family:var(--font-mono);font-size:10px;color:var(--color-text-tertiary)}
+.sync-more{font-size:10px;color:var(--color-text-info);cursor:pointer;padding-top:4px}
+.sec-note{font-size:10px;color:var(--color-text-tertiary);text-align:center;margin-top:12px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.map-q{margin-bottom:14px}
+.map-q-t{font-size:13px;font-weight:500;margin-bottom:4px}
+.map-q-s{font-size:11px;color:var(--color-text-secondary);margin-bottom:8px;line-height:1.5}
+.map-opts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.map-opt{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer;transition:all .12s}
+.map-opt:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.map-opt.sel{border-color:var(--color-text-primary);border-width:2px}
+.map-opt-t{font-size:12px;font-weight:500;margin-bottom:2px}
+.map-opt-s{font-size:10px;color:var(--color-text-secondary);line-height:1.3}
+.meta-fld{margin:10px 0;display:none}
+.meta-fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.meta-fld input{width:100%;font-size:12px;padding:7px 10px}
+.meta-fld .ht{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.match-btn{width:100%;padding:9px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer;margin:10px 0}
+.match-btn:hover{opacity:.9}
+.match-btn:disabled{opacity:.4;cursor:not-allowed}
+.result-box{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:12px;display:none}
+.result-bar{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:var(--color-background-secondary)}
+.result-t{font-size:12px;font-weight:500}
+.result-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500}
+.rb-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.rb-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.ctbl{width:100%;border-collapse:collapse;font-size:11px}
+.ctbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:6px 10px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.ctbl td{padding:6px 10px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.ctbl tr:last-child td{border:none}
+.ctbl tr.manual{background:rgba(250,238,218,0.2)}
+.c-name{font-weight:500}.c-id{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary)}
+.c-match{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.c-rev{font-family:var(--font-mono);font-size:10px;text-align:right}
+.c-pill{font-size:9px;padding:2px 6px;border-radius:8px;font-weight:500}
+.c-pill-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.c-pill-man{background:var(--color-background-warning);color:var(--color-text-warning)}
+.c-input{font-family:var(--font-mono);font-size:10px;padding:4px 6px;width:100%;border:0.5px solid var(--color-border-secondary);border-radius:3px;background:var(--color-background-primary);color:var(--color-text-primary)}
+.show-all{padding:8px 14px;font-size:10px;color:var(--color-text-info);cursor:pointer;text-align:center;background:var(--color-background-secondary)}
+.show-all:hover{background:var(--color-border-tertiary)}
+.code-hint{font-size:11px;color:var(--color-text-secondary);margin-top:10px;padding:10px 14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);line-height:1.6;display:none}
+.code-hint b{font-weight:500;color:var(--color-text-primary)}
+.code-inline{font-family:var(--font-mono);font-size:10px;background:var(--color-background-primary);padding:1px 5px;border-radius:3px;border:0.5px solid var(--color-border-tertiary)}
+.done-banner{border:0.5px solid var(--color-border-success);border-radius:var(--border-radius-md);padding:12px 16px;background:var(--color-background-success);display:none;margin-bottom:12px}
+.done-t{font-size:14px;font-weight:500;color:var(--color-text-success);margin-bottom:2px}
+.done-s{font-size:12px;color:var(--color-text-secondary)}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-b{padding:8px 16px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-b:hover{background:var(--color-background-secondary)}
+.btn-n{padding:9px 24px;font-size:14px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer;transition:all .15s}
+.btn-n:hover{opacity:.9}
+.btn-n:disabled{opacity:.35;cursor:not-allowed}
+</style>
+
+<div class="pg">
+<div class="logo">Your Platform</div>
+<div class="pg-t">Connect your Stripe account</div>
+<div class="pg-s">Link your Stripe account so we can pull customer and revenue data. Read-only access, revocable anytime.</div>
+
+<div class="progress"><div class="ps ps-act" id="p0"></div><div class="ps" id="p1"></div><div class="ps" id="p2"></div></div>
+
+<div class="step-card" id="sc-0">
+<div class="step-head">
+<div class="step-label"><div class="step-num step-num-active" id="sn-0">1</div><div class="step-title">Create and paste a restricted API key</div></div>
+<span class="step-status status-pending" id="ss-0">Pending</span>
+</div>
+<div class="step-desc">Create a read-only key in your Stripe dashboard with exactly these permissions. Takes about 2 minutes.</div>
+
+<div class="step-body show" id="sb-0">
+<div class="guide-box">
+<div class="guide-step"><div class="g-num">1</div><div class="g-text">In Stripe, go to <b>Developers</b> then <b>API keys</b> then <b>Restricted keys</b>. <span class="g-link">Open Stripe directly</span></div></div>
+<div class="guide-step"><div class="g-num">2</div><div class="g-text">Click <b>Create restricted key</b>. Name it something recognisable like <b>"YourPlatform read-only"</b>.</div></div>
+<div class="guide-step" style="border:none"><div class="g-num">3</div><div class="g-text">Set these permissions. Leave everything else as "None":</div></div>
+</div>
+
+<table class="perm-tbl">
+<thead><tr><th>Resource</th><th>Permission</th><th style="color:var(--color-text-tertiary);font-weight:400">Why</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Customers</td><td><span class="perm-r">Read</span></td><td style="color:var(--color-text-tertiary)">Map to your SDK events</td></tr>
+<tr><td style="font-weight:500">Subscriptions</td><td><span class="perm-r">Read</span></td><td style="color:var(--color-text-tertiary)">Subscription revenue</td></tr>
+<tr><td style="font-weight:500">Invoices</td><td><span class="perm-r">Read</span></td><td style="color:var(--color-text-tertiary)">Payment amounts</td></tr>
+<tr><td style="font-weight:500">Charges</td><td><span class="perm-r">Read</span></td><td style="color:var(--color-text-tertiary)">One-off and usage payments</td></tr>
+<tr><td style="color:var(--color-text-tertiary)">Everything else</td><td><span class="perm-n">None</span></td><td></td></tr>
+</tbody>
+</table>
+
+<div class="key-area">
+<div class="key-label">Paste your restricted key</div>
+<div class="key-row">
+<input type="text" id="key-input" placeholder="rk_live_51Abc2De3Fg4Hi5Jk..." />
+<button id="val-btn" onclick="validateKey()">Validate key</button>
+</div>
+</div>
+
+<div class="val-msg val-ok" id="v-ok"><div class="vm-t">Key validated</div><div class="vm-s">Read-only access confirmed: Customers, Subscriptions, Invoices, Charges. No write permissions detected.</div></div>
+<div class="val-msg val-err" id="v-err"><div class="vm-t">Validation failed</div><div class="vm-s" id="v-err-msg"></div></div>
+
+<div class="sync-box" id="sync-box">
+<div class="sync-t">We found your data</div>
+<div class="sync-grid">
+<div class="sync-card"><div class="sync-v">21</div><div class="sync-l">Customers</div></div>
+<div class="sync-card"><div class="sync-v">18</div><div class="sync-l">Active subscriptions</div></div>
+<div class="sync-card"><div class="sync-v">$8,420</div><div class="sync-l">Revenue (last 30d)</div></div>
+</div>
+<div class="sync-custs">
+<div class="sync-cust"><span class="sync-cust-name">Acme Corp</span><span class="sync-cust-meta">$2,400/mo</span></div>
+<div class="sync-cust"><span class="sync-cust-name">BrightPath Ltd</span><span class="sync-cust-meta">$1,800/mo</span></div>
+<div class="sync-cust"><span class="sync-cust-name">NovaTech Inc</span><span class="sync-cust-meta">$950/mo</span></div>
+<div class="sync-more" id="sync-more" onclick="this.textContent='Helios Digital ($720), ClearView Analytics ($150), Eko Systems ($90), and 15 more...';this.style.cursor='default'">Show all 21 customers</div>
+</div>
+</div>
+
+<div class="sec-note">Your key is encrypted at rest. We never store card details, modify your data, or initiate charges.</div>
+</div>
+</div>
+
+<div class="step-card" id="sc-1">
+<div class="step-head">
+<div class="step-label"><div class="step-num step-num-pending" id="sn-1">2</div><div class="step-title">Tell us how you identify customers</div></div>
+<span class="step-status status-pending" id="ss-1">Pending</span>
+</div>
+<div class="step-desc">Your SDK sends a customer identifier with each event. We match this to Stripe customers so we know whose balance to debit. Getting this right is critical — a wrong mapping means billing the wrong account.</div>
+
+<div class="step-body" id="sb-1">
+<div class="map-q">
+<div class="map-q-t">What identifier does your app use for customers?</div>
+<div class="map-q-s">Think about how you currently identify the logged-in user or account when they make a request in your application. This is the value you'll pass as the <span class="code-inline">customer</span> field in the SDK.</div>
+<div class="map-opts">
+<div class="map-opt" id="mo-0" onclick="pickMode(0)"><div class="map-opt-t">Stripe customer ID</div><div class="map-opt-s">I already use cus_xxxxx in my code</div></div>
+<div class="map-opt" id="mo-1" onclick="pickMode(1)"><div class="map-opt-t">Email address</div><div class="map-opt-s">I identify users by their email</div></div>
+<div class="map-opt" id="mo-2" onclick="pickMode(2)"><div class="map-opt-t">Internal ID or slug</div><div class="map-opt-s">e.g. acme_corp, org_123, user_abc</div></div>
+<div class="map-opt" id="mo-3" onclick="pickMode(3)"><div class="map-opt-t">Stripe metadata field</div><div class="map-opt-s">I store my ID in customer metadata</div></div>
+</div>
+</div>
+
+<div class="meta-fld" id="meta-fld">
+<label>Which metadata key do you use?</label>
+<input type="text" id="meta-key" placeholder="e.g. internal_id, org_slug, platform_key" oninput="checkMetaReady()" />
+<div class="ht">We'll look in each Stripe customer's metadata object for this key.</div>
+</div>
+
+<button class="match-btn" id="match-btn" onclick="runMatch()" disabled>Match my customers</button>
+</div>
+</div>
+
+<div class="step-card" id="sc-2">
+<div class="step-head">
+<div class="step-label"><div class="step-num step-num-pending" id="sn-2">3</div><div class="step-title">Confirm customer mapping</div></div>
+<span class="step-status status-pending" id="ss-2">Pending</span>
+</div>
+<div class="step-desc">Review and fix any customers that couldn't be auto-matched. Every customer needs a mapping for accurate profitability tracking.</div>
+
+<div class="step-body" id="sb-2">
+<div class="result-box" id="result-box">
+<div class="result-bar"><div class="result-t" id="res-t">21 of 21 matched</div><span class="result-badge rb-ok" id="res-badge">All matched</span></div>
+<table class="ctbl" id="ctbl">
+<thead><tr><th>Stripe customer</th><th>Your identifier</th><th style="text-align:right">Revenue (30d)</th><th style="width:56px">Status</th></tr></thead>
+<tbody id="ctbl-body"></tbody>
+</table>
+<div class="show-all" id="show-all-row" onclick="showAllCusts()">Showing 6 of 21 customers. Click to show all.</div>
+</div>
+
+<div class="code-hint" id="code-hint">
+<b>Your SDK integration will look like this:</b><br>
+<span class="code-inline" id="code-example">meter.track({ customer: "cus_R4kB9xPm2nQ", ... })</span><br>
+Use the identifier from the "Your identifier" column above as the <span class="code-inline">customer</span> value in every <span class="code-inline">meter.track()</span> call.
+</div>
+</div>
+</div>
+
+<div class="done-banner" id="done-banner">
+<div class="done-t">Stripe integration complete</div>
+<div class="done-s">21 customers synced and mapped. Revenue data is now flowing into your account. You're ready to set up pricing cards and start tracking costs.</div>
+</div>
+
+<div class="nav">
+<button class="btn-b" onclick="sendPrompt('Go back to the tracking mode selection screen')">Back</button>
+<button class="btn-n" id="btn-go" onclick="sendPrompt('Take me to create my first pricing card')" disabled>Continue to pricing cards</button>
+</div>
+</div>
+
+<script>
+let mode=-1,keyDone=false,matchDone=false,allMapped=false;
+
+const CUSTS=[
+{name:'Acme Corp',id:'cus_R4kB9xPm2nQ',email:'admin@acmecorp.com',slug:'acme_corp',meta:'ac_001',rev:'$2,400'},
+{name:'BrightPath Ltd',id:'cus_Q7mN3vHj8wL',email:'team@brightpath.io',slug:'brightpath',meta:'bp_002',rev:'$1,800'},
+{name:'NovaTech Inc',id:'cus_S2pK5tRn7xY',email:'ops@novatech.co',slug:'novatech',meta:'nt_003',rev:'$950'},
+{name:'Helios Digital',id:'cus_U6nR2wKm9xQ',email:'hello@helios.dev',slug:'helios_digital',meta:'hd_004',rev:'$720'},
+{name:'Zenith Labs',id:'cus_T9wM1kJp4qB',email:null,slug:null,meta:null,rev:'$680'},
+{name:'ClearView Analytics',id:'cus_V3bP8sHn5mJ',email:'support@clearview.ai',slug:'clearview',meta:'cv_006',rev:'$150'},
+{name:'Eko Systems',id:'cus_W1cT4rFk7pN',email:'dev@ekosystems.io',slug:'eko',meta:'ek_007',rev:'$90'},
+{name:'Pinnacle AI',id:'cus_X5rW8nKp3mQ',email:null,slug:null,meta:null,rev:'$340'}
+];
+
+function validateKey(){
+  const k=document.getElementById('key-input').value.trim();
+  const ok=document.getElementById('v-ok'),err=document.getElementById('v-err');
+  ok.style.display='none';err.style.display='none';
+  document.getElementById('sync-box').style.display='none';
+
+  if(!k){show(err);document.getElementById('v-err-msg').textContent='Please paste your Stripe restricted API key.';return}
+  if(k.startsWith('sk_')){show(err);document.getElementById('v-err-msg').textContent='This is a secret key (sk_). For security, please create a restricted key instead \u2014 it starts with rk_live_ or rk_test_. Restricted keys let you grant only read permissions.';return}
+  if(!k.startsWith('rk_')){show(err);document.getElementById('v-err-msg').textContent='This doesn\'t look like a restricted key. It should start with rk_live_ (production) or rk_test_ (sandbox).';return}
+
+  const btn=document.getElementById('val-btn');
+  btn.textContent='Validating...';btn.style.opacity='.5';
+  setTimeout(()=>{
+    btn.textContent='Validate key';btn.style.opacity='1';
+    show(ok);
+    keyDone=true;
+    document.getElementById('sync-box').style.display='block';
+    completeStep(0);
+    openStep(1);
+  },1000);
+}
+
+function pickMode(m){
+  mode=m;
+  [0,1,2,3].forEach(i=>document.getElementById('mo-'+i).classList.toggle('sel',i===m));
+  document.getElementById('meta-fld').style.display=m===3?'block':'none';
+  document.getElementById('result-box').style.display='none';
+  document.getElementById('code-hint').style.display='none';
+  matchDone=false;allMapped=false;
+  updateStep2Status();
+  updateProgress();
+  if(m===3){document.getElementById('match-btn').disabled=true;checkMetaReady()}
+  else{document.getElementById('match-btn').disabled=false}
+}
+
+function checkMetaReady(){
+  const v=document.getElementById('meta-key').value.trim();
+  document.getElementById('match-btn').disabled=!v;
+}
+
+function runMatch(){
+  const btn=document.getElementById('match-btn');
+  btn.textContent='Matching...';btn.disabled=true;
+
+  setTimeout(()=>{
+    btn.textContent='Match my customers';btn.disabled=false;
+    matchDone=true;
+
+    const body=document.getElementById('ctbl-body');
+    body.innerHTML='';
+    let matched=0,total=CUSTS.length;
+
+    CUSTS.forEach((c,i)=>{
+      let yourId='',ok=false;
+      if(mode===0){yourId=c.id;ok=true}
+      else if(mode===1){if(c.email){yourId=c.email;ok=true}}
+      else if(mode===2){if(c.slug){yourId=c.slug;ok=true}}
+      else if(mode===3){if(c.meta){yourId=c.meta;ok=true}}
+
+      if(ok)matched++;
+
+      const tr=document.createElement('tr');
+      if(!ok)tr.className='manual';
+      tr.innerHTML='<td><div class="c-name">'+c.name+'</div><div class="c-id">'+c.id+'</div></td>'+
+        '<td>'+(ok?'<span class="c-match">'+yourId+'</span>':'<input class="c-input" data-idx="'+i+'" placeholder="Type your ID for '+c.name+'..." oninput="checkAllMapped()" />')+'</td>'+
+        '<td class="c-rev">'+c.rev+'</td>'+
+        '<td><span class="c-pill '+(ok?'c-pill-ok':'c-pill-man')+'" id="pill-'+i+'">'+(ok?'Matched':'Manual')+'</span></td>';
+      body.appendChild(tr);
+    });
+
+    const resT=document.getElementById('res-t');
+    const resBadge=document.getElementById('res-badge');
+    resT.textContent=matched+' of '+total+' matched';
+    if(matched===total){resBadge.textContent='All matched';resBadge.className='result-badge rb-ok';allMapped=true}
+    else{resBadge.textContent=(total-matched)+' need manual input';resBadge.className='result-badge rb-warn';allMapped=false}
+
+    document.getElementById('result-box').style.display='block';
+    document.getElementById('code-hint').style.display='block';
+
+    const exId=mode===0?CUSTS[0].id:mode===1?CUSTS[0].email:CUSTS[0].slug||'your_id_here';
+    document.getElementById('code-example').textContent='meter.track({ customer: "'+exId+'", pricing_card: "gemini_2_flash", ... })';
+
+    completeStep(1);
+    openStep(2);
+    updateStep2Status();
+    updateProgress();
+    checkFinal();
+  },800);
+}
+
+function checkAllMapped(){
+  const inputs=document.querySelectorAll('.c-input');
+  let allFilled=true;
+  inputs.forEach(i=>{
+    const idx=i.dataset.idx;
+    const pill=document.getElementById('pill-'+idx);
+    if(i.value.trim()){
+      if(pill){pill.textContent='Matched';pill.className='c-pill c-pill-ok'}
+      i.closest('tr').classList.remove('manual');
+    } else {
+      allFilled=false;
+      if(pill){pill.textContent='Manual';pill.className='c-pill c-pill-man'}
+      i.closest('tr').classList.add('manual');
+    }
+  });
+
+  if(allFilled&&inputs.length>0){
+    allMapped=true;
+    document.getElementById('res-t').textContent=CUSTS.length+' of '+CUSTS.length+' matched';
+    document.getElementById('res-badge').textContent='All matched';
+    document.getElementById('res-badge').className='result-badge rb-ok';
+  } else {
+    allMapped=false;
+    const filled=Array.from(inputs).filter(i=>i.value.trim()).length;
+    const autoMatched=CUSTS.length-inputs.length;
+    document.getElementById('res-t').textContent=(autoMatched+filled)+' of '+CUSTS.length+' matched';
+    document.getElementById('res-badge').textContent=(inputs.length-filled)+' need manual input';
+    document.getElementById('res-badge').className='result-badge rb-warn';
+  }
+  updateStep2Status();
+  checkFinal();
+}
+
+function showAllCusts(){document.getElementById('show-all-row').style.display='none'}
+
+function show(el){el.style.display='block'}
+
+function completeStep(n){
+  document.getElementById('sn-'+n).className='step-num step-num-done';
+  document.getElementById('sn-'+n).innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>';
+  document.getElementById('ss-'+n).textContent='Complete';
+  document.getElementById('ss-'+n).className='step-status status-done';
+  document.getElementById('sc-'+n).classList.add('complete');
+}
+
+function openStep(n){
+  document.getElementById('sn-'+n).className='step-num step-num-active';
+  document.getElementById('sb-'+n).classList.add('show');
+}
+
+function updateStep2Status(){
+  if(!matchDone)return;
+  if(allMapped){
+    document.getElementById('sn-2').className='step-num step-num-done';
+    document.getElementById('sn-2').innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="3" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>';
+    document.getElementById('ss-2').textContent='Complete';
+    document.getElementById('ss-2').className='step-status status-done';
+    document.getElementById('sc-2').classList.add('complete');
+  } else {
+    document.getElementById('sn-2').className='step-num step-num-active';
+    document.getElementById('ss-2').textContent='Needs attention';
+    document.getElementById('ss-2').className='step-status status-partial';
+    document.getElementById('sc-2').classList.remove('complete');
+  }
+}
+
+function updateProgress(){
+  document.getElementById('p0').className='ps '+(keyDone?'ps-done':'ps-act');
+  document.getElementById('p1').className='ps '+(matchDone?'ps-done':keyDone?'ps-act':'');
+  document.getElementById('p2').className='ps '+(allMapped?'ps-done':matchDone?'ps-act':'');
+}
+
+function checkFinal(){
+  const ready=keyDone&&matchDone&&allMapped;
+  document.getElementById('btn-go').disabled=!ready;
+  document.getElementById('done-banner').style.display=ready?'block':'none';
+}
+
+updateProgress();
+</script></body></html>

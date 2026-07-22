@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f0;
+  --color-background-tertiary: #eae9e5;
+  --color-background-info: #E6F1FB;
+  --color-background-danger: #FCEBEB;
+  --color-background-success: #EAF3DE;
+  --color-background-warning: #FAEEDA;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #5F5E5A;
+  --color-text-tertiary: #888780;
+  --color-text-info: #185FA5;
+  --color-text-danger: #A32D2D;
+  --color-text-success: #3B6D11;
+  --color-text-warning: #854F0B;
+  --color-border-primary: rgba(0,0,0,0.4);
+  --color-border-secondary: rgba(0,0,0,0.3);
+  --color-border-tertiary: rgba(0,0,0,0.15);
+  --color-border-info: #85B7EB;
+  --color-border-danger: #F09595;
+  --color-border-success: #C0DD97;
+  --color-border-warning: #FAC775;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+}
+body { font-family: var(--font-sans); color: var(--color-text-primary); background: #fff; margin: 0; padding: 16px; }
+input, select, textarea, button { font-family: var(--font-sans); }
+input, select, textarea {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-border-secondary); }
+button { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-primary: #1a1a1a;
+    --color-background-secondary: #2C2C2A;
+    --color-background-tertiary: #3a3a38;
+    --color-background-info: #042C53;
+    --color-background-danger: #501313;
+    --color-background-success: #173404;
+    --color-background-warning: #412402;
+    --color-text-primary: #e8e6de;
+    --color-text-secondary: #9c9a92;
+    --color-text-tertiary: #73726c;
+    --color-text-info: #85B7EB;
+    --color-text-danger: #F09595;
+    --color-text-success: #C0DD97;
+    --color-text-warning: #FAC775;
+    --color-border-primary: rgba(255,255,255,0.4);
+    --color-border-secondary: rgba(255,255,255,0.3);
+    --color-border-tertiary: rgba(255,255,255,0.15);
+    --color-border-info: #0C447C;
+    --color-border-danger: #791F1F;
+    --color-border-success: #27500A;
+    --color-border-warning: #633806;
+  }
+  body { background: #1a1a1a; }
+  input, select, textarea { background: #2C2C2A; color: #e8e6de; border-color: rgba(255,255,255,0.15); }
+  button { color: #e8e6de; }
+}
+</style>
+</head>
+<body>
+<style>
+*{box-sizing:border-box;margin:0}body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.7}
+.pg{padding:1.5rem 0;max-width:480px;margin:0 auto}
+.view{display:none}.view.show{display:block}
+.logo{font-size:18px;font-weight:500;text-align:center;margin-bottom:2rem;color:var(--color-text-secondary)}
+.hero-t{font-size:22px;font-weight:500;text-align:center;margin-bottom:4px}
+.hero-s{font-size:13px;color:var(--color-text-secondary);text-align:center;margin-bottom:1.5rem;max-width:400px;margin-left:auto;margin-right:auto}
+.card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:20px;margin-bottom:14px}
+.card-t{font-size:15px;font-weight:500;margin-bottom:4px}
+.card-s{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.fld input,.fld select{width:100%;font-size:13px;padding:8px 12px}
+.fld .ht{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-p{width:100%;padding:10px;font-size:14px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-p:hover{opacity:.9}
+.btn-o{padding:8px 16px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-primary);cursor:pointer}
+.btn-o:hover{background:var(--color-background-secondary)}
+.trust{display:flex;gap:12px;justify-content:center;margin-top:10px}
+.trust span{font-size:11px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:4px}
+.trust-d{width:6px;height:6px;border-radius:50%;background:var(--color-text-success)}
+.sub-icon{width:48px;height:48px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px}
+.sub-ok{background:var(--color-background-success)}
+.sub-ok svg{width:24px;height:24px}
+.path-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.path-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:20px;cursor:pointer;transition:all .15s;text-align:center}
+.path-card:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.path-card.rec{border:2px solid var(--color-border-info)}
+.path-icon{width:36px;height:36px;border-radius:var(--border-radius-md);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px}
+.path-t{font-size:14px;font-weight:500;margin-bottom:3px}
+.path-s{font-size:11px;color:var(--color-text-secondary);line-height:1.4}
+.path-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--color-background-info);color:var(--color-text-info);margin-bottom:8px;display:inline-block;font-weight:500}
+.stripe-pg{max-width:600px}
+.sg-step{display:flex;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.sg-step:last-child{border:none}
+.sg-num{width:22px;height:22px;border-radius:50%;background:var(--color-background-info);color:var(--color-text-info);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0;margin-top:2px}
+.sg-text{font-size:12px;color:var(--color-text-secondary);flex:1;line-height:1.6}
+.sg-text b{font-weight:500;color:var(--color-text-primary)}
+.sg-link{color:var(--color-text-info);font-weight:500}
+.perm-t{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.perm-t th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.perm-t td{padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px}
+.perm-t tr:last-child td{border:none}
+.pr{font-size:10px;padding:2px 8px;border-radius:10px}.pr-r{background:var(--color-background-success);color:var(--color-text-success)}.pr-n{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.key-row{display:flex;gap:0;margin:12px 0 8px}
+.key-row input{flex:1;font-family:var(--font-mono);font-size:12px;padding:10px 12px;border-radius:var(--border-radius-md) 0 0 var(--border-radius-md);letter-spacing:.3px}
+.key-row button{padding:0 16px;border:0.5px solid var(--color-border-secondary);border-left:none;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;background:var(--color-background-secondary);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;color:var(--color-text-primary)}
+.val-box{padding:10px 14px;border-radius:var(--border-radius-md);margin:10px 0;display:none}
+.val-ok{background:var(--color-background-success);border:0.5px solid var(--color-border-success)}
+.val-ok .vt{color:var(--color-text-success)}
+.val-err{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger)}
+.val-err .vt{color:var(--color-text-danger)}
+.vt{font-size:13px;font-weight:500;margin-bottom:2px}
+.vs{font-size:11px;color:var(--color-text-secondary)}
+.sync-box{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin:14px 0;display:none}
+.sync-t{font-size:13px;font-weight:500;margin-bottom:8px}
+.sync-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.sync-s{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 10px;text-align:center}
+.sync-sv{font-size:16px;font-weight:500}
+.sync-sl{font-size:10px;color:var(--color-text-tertiary)}
+.sync-custs{font-size:11px;color:var(--color-text-secondary)}
+.sync-cust-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.sync-cust-row:last-child{border:none}
+.sync-cust-name{font-weight:500;font-size:12px}
+.sync-cust-id{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary)}
+.map-q{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-bottom:12px}
+.map-q-t{font-size:12px;font-weight:500;margin-bottom:6px}
+.map-opts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.map-opt{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 10px;cursor:pointer;transition:all .12s;font-size:12px}
+.map-opt:hover{border-color:var(--color-border-secondary);background:var(--color-background-secondary)}
+.map-opt.sel{border-color:var(--color-text-primary);border-width:2px}
+.map-opt-t{font-weight:500;margin-bottom:1px}
+.map-opt-s{font-size:10px;color:var(--color-text-secondary)}
+.map-result{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:12px;display:none}
+.map-result-bar{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:var(--color-background-secondary)}
+.map-result-t{font-size:12px;font-weight:500}
+.map-result-badge{font-size:10px;padding:2px 8px;border-radius:10px}
+.map-result-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.map-result-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.cust-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.cust-tbl th{text-align:left;font-weight:500;font-size:10px;color:var(--color-text-secondary);padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.cust-tbl td{padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.cust-tbl tr:last-child td{border:none}
+.cust-name{font-weight:500;font-size:11px}
+.cust-id{font-family:var(--font-mono);font-size:9px;color:var(--color-text-tertiary)}
+.cust-rev{font-family:var(--font-mono);font-size:10px}
+.cust-match{font-family:var(--font-mono);font-size:10px;color:var(--color-text-info)}
+.cust-input{font-family:var(--font-mono);font-size:10px;padding:3px 6px;width:100%;border:0.5px solid var(--color-border-secondary);border-radius:3px}
+.match-pill{font-size:9px;padding:1px 6px;border-radius:8px}
+.match-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.match-manual{background:var(--color-background-warning);color:var(--color-text-warning)}
+.sec-note{font-size:10px;color:var(--color-text-tertiary);text-align:center;margin-top:10px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem}
+.btn-stripe{width:100%;padding:10px;font-size:13px;font-weight:500;border:none;border-radius:var(--border-radius-md);background:var(--color-text-primary);color:var(--color-background-primary);cursor:pointer}
+.btn-stripe:hover{opacity:.9}
+.btn-stripe:disabled{opacity:.4;cursor:not-allowed}
+.complete-box{border:0.5px solid var(--color-border-success);border-radius:var(--border-radius-lg);padding:16px;margin-top:14px;display:none;background:var(--color-background-success)}
+.complete-t{font-size:14px;font-weight:500;color:var(--color-text-success);margin-bottom:4px}
+.complete-s{font-size:12px;color:var(--color-text-secondary)}
+</style>
+
+<div class="pg">
+<div class="logo">Your Platform</div>
+
+<div class="view show" id="v-trial">
+<div class="hero-t">Trial the tracker until the end of next month</div>
+<div class="hero-s">Track your AI costs — and optionally revenue — at the customer level. Free trial, no card required.</div>
+<div class="card">
+<div class="fld"><label>Work email</label><input type="email" placeholder="you@company.com" /></div>
+<div class="fld"><label>Company website</label><input type="url" placeholder="https://company.com" /></div>
+<div class="row2">
+<div class="fld"><label>Approximate customers</label><select><option>1-10</option><option selected>10-50</option><option>50-200</option><option>200+</option></select></div>
+<div class="fld"><label>Billing via Stripe?</label><select><option selected>Yes</option><option>Not yet</option><option>No, other provider</option></select></div>
+</div>
+<button class="btn-p" onclick="showView('v-sent')">Send request to founders to set up SDK</button>
+<div class="trust"><span><span class="trust-d"></span>Usually approved within 24 hours</span><span><span class="trust-d"></span>Free until end of next month</span></div>
+</div>
+</div>
+
+<div class="view" id="v-sent">
+<div style="text-align:center;padding:1rem 0">
+<div class="sub-icon sub-ok"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div>
+<div style="font-size:18px;font-weight:500;margin-bottom:4px">Request sent</div>
+<div style="font-size:13px;color:var(--color-text-secondary);max-width:360px;margin:0 auto 16px">We'll review and get back to you within 24 hours with a login link sent to your email.</div>
+<div style="font-size:12px;color:var(--color-text-tertiary);margin-bottom:14px">In the meantime, you can preview what comes next:</div>
+<button class="btn-o" onclick="showView('v-login')">Preview login screen</button>
+</div>
+</div>
+
+<div class="view" id="v-login">
+<div class="hero-t">Create your account</div>
+<div class="hero-s">We've verified your request. Set a password to get started.</div>
+<div class="card">
+<div class="fld">
+<label>Email</label>
+<input type="email" value="sarah@acmecorp.com" readonly style="color:var(--color-text-tertiary);background:var(--color-background-secondary)" />
+<div class="ht">This was set when we approved your request. Contact us to change it.</div>
+</div>
+<div class="fld"><label>Create password</label><input type="password" placeholder="Minimum 8 characters" /></div>
+<div class="fld"><label>Confirm password</label><input type="password" placeholder="Repeat password" /></div>
+<button class="btn-p" onclick="showView('v-choose')">Create account and log in</button>
+</div>
+</div>
+
+<div class="view" id="v-choose">
+<div class="hero-t">What would you like to track?</div>
+<div class="hero-s">You can always add revenue tracking later if you start with costs only.</div>
+<div class="path-grid">
+<div class="path-card" onclick="sendPrompt('Take me to create my first pricing card for cost tracking only')">
+<div class="path-icon" style="background:var(--color-background-secondary)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="2" stroke="var(--color-text-secondary)" stroke-width="1.5"/><path d="M7 9h6M7 12h4" stroke="var(--color-text-secondary)" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+<div class="path-t">Track costs</div>
+<div class="path-s">Set up pricing cards and track your API costs. No Stripe needed.</div>
+</div>
+<div class="path-card rec" onclick="showView('v-stripe')">
+<div class="path-badge">Recommended</div>
+<div class="path-icon" style="background:#EEEDFE"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="2" stroke="#534AB7" stroke-width="1.5"/><path d="M7 9h6M7 12h4" stroke="#534AB7" stroke-width="1.5" stroke-linecap="round"/><circle cx="15" cy="5" r="4" fill="#5DCAA5" stroke="var(--color-background-primary)" stroke-width="1.5"/></svg></div>
+<div class="path-t">Track revenue and costs</div>
+<div class="path-s">Connect Stripe to see profitability by customer alongside your API costs.</div>
+</div>
+</div>
+</div>
+
+<div class="view" id="v-stripe">
+<div class="stripe-pg" style="max-width:600px;margin:0 auto">
+<div class="hero-t">Connect Stripe</div>
+<div class="hero-s">Link your Stripe account so we can pull customer and revenue data. You stay in full control — read-only access, revocable anytime.</div>
+
+<div class="card">
+<div class="card-t">Step 1: Create a restricted API key in Stripe</div>
+<div class="card-s">This takes about 2 minutes. We only need read access to four resources.</div>
+
+<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px;margin-bottom:12px">
+<div class="sg-step"><div class="sg-num">1</div><div class="sg-text">In your Stripe dashboard, go to <b>Developers &rarr; API keys &rarr; Restricted keys</b>. Or <span class="sg-link" style="cursor:pointer">open it directly here</span>.</div></div>
+<div class="sg-step"><div class="sg-num">2</div><div class="sg-text">Click <b>Create restricted key</b>. Name it <b>"YourPlatform read-only"</b>.</div></div>
+<div class="sg-step" style="border:none"><div class="sg-num">3</div><div class="sg-text">Set exactly these permissions, leave everything else as "None":</div></div>
+</div>
+
+<table class="perm-t">
+<thead><tr><th>Resource</th><th>Access</th><th style="font-size:10px;color:var(--color-text-tertiary)">Why</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Customers</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Map customers to SDK events</td></tr>
+<tr><td style="font-weight:500">Subscriptions</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Track subscription revenue</td></tr>
+<tr><td style="font-weight:500">Invoices</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Calculate amounts paid</td></tr>
+<tr><td style="font-weight:500">Charges</td><td><span class="pr pr-r">Read</span></td><td style="font-size:10px;color:var(--color-text-tertiary)">Usage-based and one-off payments</td></tr>
+<tr><td style="color:var(--color-text-tertiary)">Everything else</td><td><span class="pr pr-n">None</span></td><td></td></tr>
+</tbody>
+</table>
+
+<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Once created, Stripe will show you the key. Copy and paste it below.</div>
+
+<div style="font-size:12px;font-weight:500;margin-bottom:4px">Paste your restricted API key</div>
+<div class="key-row">
+<input type="text" id="stripe-key" placeholder="rk_live_..." />
+<button onclick="validateKey()">Validate key</button>
+</div>
+
+<div class="val-box val-ok" id="val-pass">
+<div class="vt">Key validated successfully</div>
+<div class="vs">Read-only access confirmed for Customers, Subscriptions, Invoices, and Charges. No write permissions detected.</div>
+</div>
+
+<div class="val-box val-err" id="val-fail">
+<div class="vt">Validation failed</div>
+<div class="vs" id="val-fail-msg">The key appears to be invalid. Make sure you copied the full key starting with rk_live_.</div>
+</div>
+
+<div class="sync-box" id="sync-prev">
+<div class="sync-t">We found your Stripe data</div>
+<div class="sync-stats">
+<div class="sync-s"><div class="sync-sv">21</div><div class="sync-sl">Customers</div></div>
+<div class="sync-s"><div class="sync-sv">18</div><div class="sync-sl">Active subscriptions</div></div>
+<div class="sync-s"><div class="sync-sv">$8,420</div><div class="sync-sl">Revenue (last 30d)</div></div>
+</div>
+<div style="font-size:12px;font-weight:500;margin-bottom:4px">Preview of your customers</div>
+<div class="sync-custs">
+<div class="sync-cust-row"><div><span class="sync-cust-name">Acme Corp</span><div class="sync-cust-id">cus_R4kB9xPm2nQ</div></div><span style="font-family:var(--font-mono);font-size:11px">$2,400/mo</span></div>
+<div class="sync-cust-row"><div><span class="sync-cust-name">BrightPath Ltd</span><div class="sync-cust-id">cus_Q7mN3vHj8wL</div></div><span style="font-family:var(--font-mono);font-size:11px">$1,800/mo</span></div>
+<div class="sync-cust-row"><div><span class="sync-cust-name">NovaTech Inc</span><div class="sync-cust-id">cus_S2pK5tRn7xY</div></div><span style="font-family:var(--font-mono);font-size:11px">$950/mo</span></div>
+<div style="font-size:11px;color:var(--color-text-tertiary);padding-top:4px">and 18 more customers...</div>
+</div>
+</div>
+
+<div class="sec-note">Your key is encrypted at rest and only used for scheduled read-only syncs. We never store card details, modify your Stripe data, or initiate charges. You can revoke this key from your Stripe dashboard at any time.</div>
+</div>
+
+<div class="card" style="border-color:var(--color-border-secondary);display:none" id="map-card">
+<div class="card-t">Step 2: Map your customers</div>
+<div class="card-s">Your SDK will send a customer identifier with each API event. We need to know how to match that to your Stripe customers so revenue pairs with costs.</div>
+
+<div class="map-q">
+<div class="map-q-t">How do you identify customers in your code?</div>
+<div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">When your app processes a request, what identifier do you use for the customer? This is what your SDK track() call will send.</div>
+<div class="map-opts">
+<div class="map-opt sel" id="mo-0" onclick="pickMapMode(0)"><div class="map-opt-t">Stripe customer ID</div><div class="map-opt-s">I use cus_xxxxx directly</div></div>
+<div class="map-opt" id="mo-1" onclick="pickMapMode(1)"><div class="map-opt-t">Email address</div><div class="map-opt-s">I identify by email</div></div>
+<div class="map-opt" id="mo-2" onclick="pickMapMode(2)"><div class="map-opt-t">My own internal ID</div><div class="map-opt-s">e.g. acme_corp, user_123</div></div>
+<div class="map-opt" id="mo-3" onclick="pickMapMode(3)"><div class="map-opt-t">Stripe metadata field</div><div class="map-opt-s">I store it in metadata</div></div>
+</div>
+</div>
+
+<div id="meta-field" style="display:none;margin-bottom:12px">
+<div class="fld"><label>Which metadata key?</label><input type="text" id="meta-key" placeholder="e.g. internal_id, org_slug, company_key" /><div class="ht">We'll look for this key in each Stripe customer's metadata object.</div></div>
+</div>
+
+<button class="btn-stripe" id="match-btn" onclick="runMatch()" style="margin-bottom:12px">Auto-match customers</button>
+
+<div class="map-result" id="map-result">
+<div class="map-result-bar">
+<div class="map-result-t" id="mr-title">19 of 21 matched</div>
+<span class="map-result-badge map-result-ok" id="mr-badge">2 need manual input</span>
+</div>
+<table class="cust-tbl">
+<thead><tr><th>Stripe customer</th><th>Your customer ID</th><th style="text-align:right">Revenue (30d)</th><th style="width:60px">Status</th></tr></thead>
+<tbody id="cust-body">
+<tr><td><div class="cust-name">Acme Corp</div><div class="cust-id">cus_R4kB9xPm2nQ</div></td><td class="cust-match">cus_R4kB9xPm2nQ</td><td class="cust-rev" style="text-align:right">$2,400</td><td><span class="match-pill match-ok">Matched</span></td></tr>
+<tr><td><div class="cust-name">BrightPath Ltd</div><div class="cust-id">cus_Q7mN3vHj8wL</div></td><td class="cust-match">cus_Q7mN3vHj8wL</td><td class="cust-rev" style="text-align:right">$1,800</td><td><span class="match-pill match-ok">Matched</span></td></tr>
+<tr><td><div class="cust-name">NovaTech Inc</div><div class="cust-id">cus_S2pK5tRn7xY</div></td><td class="cust-match">cus_S2pK5tRn7xY</td><td class="cust-rev" style="text-align:right">$950</td><td><span class="match-pill match-ok">Matched</span></td></tr>
+<tr style="background:rgba(250,238,218,0.3)"><td><div class="cust-name">Zenith Labs</div><div class="cust-id">cus_T9wM1kJp4qB</div></td><td><input class="cust-input" placeholder="Type your ID..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$680</td><td><span class="match-pill match-manual">Manual</span></td></tr>
+<tr style="background:rgba(250,238,218,0.3)"><td><div class="cust-name">Pinnacle AI</div><div class="cust-id">cus_X5rW8nKp3mQ</div></td><td><input class="cust-input" placeholder="Type your ID..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$340</td><td><span class="match-pill match-manual">Manual</span></td></tr>
+</tbody>
+</table>
+<div style="padding:8px 14px;font-size:10px;color:var(--color-text-tertiary);background:var(--color-background-secondary)">Showing 5 of 21 customers. <span style="color:var(--color-text-info);cursor:pointer">Show all 21</span></div>
+</div>
+
+<div style="font-size:11px;color:var(--color-text-secondary);margin-top:10px;padding:8px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)">
+<span style="font-weight:500">How this works in your code:</span> When you call meter.track(), include the customer ID exactly as shown in the "Your customer ID" column above. Example: <span style="font-family:var(--font-mono);font-size:10px;background:var(--color-background-primary);padding:1px 4px;border-radius:3px">customer: "cus_R4kB9xPm2nQ"</span>
+</div>
+</div>
+
+<div class="complete-box" id="complete-box">
+<div class="complete-t">Stripe integration complete</div>
+<div class="complete-s">21 customers synced, revenue data flowing. You're ready to create your first pricing card and start tracking costs against revenue.</div>
+</div>
+
+<div class="nav">
+<button class="btn-o" onclick="showView('v-choose')">Back</button>
+<button class="btn-stripe" id="stripe-done-btn" style="width:auto;padding:10px 24px;opacity:.4;cursor:not-allowed" onclick="sendPrompt('Take me to create my first pricing card')">Continue to pricing cards</button>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('show'));document.getElementById(v).classList.add('show')}
+let mapMode=0,keyValid=false,matchDone=false;
+
+function validateKey(){
+  const key=document.getElementById('stripe-key').value.trim();
+  const pass=document.getElementById('val-pass');
+  const fail=document.getElementById('val-fail');
+  const sync=document.getElementById('sync-prev');
+  const btn=document.getElementById('stripe-done-btn');
+  const mapCard=document.getElementById('map-card');
+
+  pass.style.display='none';fail.style.display='none';sync.style.display='none';mapCard.style.display='none';
+
+  if(!key){fail.style.display='block';document.getElementById('val-fail-msg').textContent='Please paste your Stripe restricted API key.';return}
+  if(!key.startsWith('rk_')){fail.style.display='block';document.getElementById('val-fail-msg').textContent='This doesn\'t look like a restricted key. It should start with rk_live_ or rk_test_. Secret keys (sk_) have too many permissions — please create a restricted key instead.';return}
+
+  const keyBtn=document.querySelector('.key-row button');
+  keyBtn.textContent='Validating...';keyBtn.style.opacity='.6';
+
+  setTimeout(()=>{
+    keyBtn.textContent='Validate key';keyBtn.style.opacity='1';
+    pass.style.display='block';
+    sync.style.display='block';
+    mapCard.style.display='block';
+    keyValid=true;
+    checkDone();
+  },1200);
+}
+
+function pickMapMode(m){
+  mapMode=m;
+  [0,1,2,3].forEach(i=>document.getElementById('mo-'+i).classList.toggle('sel',i===m));
+  document.getElementById('meta-field').style.display=m===3?'block':'none';
+  document.getElementById('map-result').style.display='none';
+  matchDone=false;
+  checkDone();
+}
+
+function runMatch(){
+  const btn=document.getElementById('match-btn');
+  btn.textContent='Matching...';btn.style.opacity='.6';
+  setTimeout(()=>{
+    btn.textContent='Auto-match customers';btn.style.opacity='1';
+    document.getElementById('map-result').style.display='block';
+    matchDone=true;
+
+    const body=document.getElementById('cust-body');
+    if(mapMode===0){
+      document.getElementById('mr-title').textContent='21 of 21 matched';
+      document.getElementById('mr-badge').textContent='All matched';
+      document.getElementById('mr-badge').className='map-result-badge map-result-ok';
+      body.innerHTML='<tr><td><div class="cust-name">Acme Corp</div><div class="cust-id">cus_R4kB9xPm2nQ</div></td><td class="cust-match">cus_R4kB9xPm2nQ</td><td class="cust-rev" style="text-align:right">$2,400</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr><td><div class="cust-name">BrightPath Ltd</div><div class="cust-id">cus_Q7mN3vHj8wL</div></td><td class="cust-match">cus_Q7mN3vHj8wL</td><td class="cust-rev" style="text-align:right">$1,800</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr><td><div class="cust-name">NovaTech Inc</div><div class="cust-id">cus_S2pK5tRn7xY</div></td><td class="cust-match">cus_S2pK5tRn7xY</td><td class="cust-rev" style="text-align:right">$950</td><td><span class="match-pill match-ok">Matched</span></td></tr>';
+    } else if(mapMode===1){
+      document.getElementById('mr-title').textContent='19 of 21 matched';
+      document.getElementById('mr-badge').textContent='2 need manual input';
+      document.getElementById('mr-badge').className='map-result-badge map-result-warn';
+      body.innerHTML='<tr><td><div class="cust-name">Acme Corp</div><div class="cust-id">cus_R4kB9xPm2nQ</div></td><td class="cust-match">admin@acmecorp.com</td><td class="cust-rev" style="text-align:right">$2,400</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr><td><div class="cust-name">BrightPath Ltd</div><div class="cust-id">cus_Q7mN3vHj8wL</div></td><td class="cust-match">team@brightpath.io</td><td class="cust-rev" style="text-align:right">$1,800</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr style="background:rgba(250,238,218,0.2)"><td><div class="cust-name">Zenith Labs</div><div class="cust-id">cus_T9wM1kJp4qB</div></td><td><input class="cust-input" placeholder="Enter email..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$680</td><td><span class="match-pill match-manual">Manual</span></td></tr><tr style="background:rgba(250,238,218,0.2)"><td><div class="cust-name">Pinnacle AI</div><div class="cust-id">cus_X5rW8nKp3mQ</div></td><td><input class="cust-input" placeholder="Enter email..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$340</td><td><span class="match-pill match-manual">Manual</span></td></tr>';
+    } else {
+      document.getElementById('mr-title').textContent='19 of 21 matched';
+      document.getElementById('mr-badge').textContent='2 need manual input';
+      document.getElementById('mr-badge').className='map-result-badge map-result-warn';
+      body.innerHTML='<tr><td><div class="cust-name">Acme Corp</div><div class="cust-id">cus_R4kB9xPm2nQ</div></td><td class="cust-match">acme_corp</td><td class="cust-rev" style="text-align:right">$2,400</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr><td><div class="cust-name">BrightPath Ltd</div><div class="cust-id">cus_Q7mN3vHj8wL</div></td><td class="cust-match">brightpath</td><td class="cust-rev" style="text-align:right">$1,800</td><td><span class="match-pill match-ok">Matched</span></td></tr><tr style="background:rgba(250,238,218,0.2)"><td><div class="cust-name">Zenith Labs</div><div class="cust-id">cus_T9wM1kJp4qB</div></td><td><input class="cust-input" placeholder="Type ID..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$680</td><td><span class="match-pill match-manual">Manual</span></td></tr><tr style="background:rgba(250,238,218,0.2)"><td><div class="cust-name">Pinnacle AI</div><div class="cust-id">cus_X5rW8nKp3mQ</div></td><td><input class="cust-input" placeholder="Type ID..." oninput="checkAllMapped()" /></td><td class="cust-rev" style="text-align:right">$340</td><td><span class="match-pill match-manual">Manual</span></td></tr>';
+    }
+    checkDone();
+  },800);
+}
+
+function checkAllMapped(){
+  const inputs=document.querySelectorAll('.cust-input');
+  let allFilled=true;
+  inputs.forEach(i=>{if(!i.value.trim())allFilled=false});
+  if(allFilled&&inputs.length>0){
+    document.getElementById('mr-title').textContent='21 of 21 matched';
+    document.getElementById('mr-badge').textContent='All matched';
+    document.getElementById('mr-badge').className='map-result-badge map-result-ok';
+  }
+  checkDone();
+}
+
+function checkDone(){
+  const btn=document.getElementById('stripe-done-btn');
+  const complete=document.getElementById('complete-box');
+  const inputs=document.querySelectorAll('.cust-input');
+  let allFilled=true;
+  inputs.forEach(i=>{if(!i.value.trim())allFilled=false});
+  const ready=keyValid&&matchDone&&(inputs.length===0||allFilled);
+  btn.style.opacity=ready?'1':'.4';
+  btn.style.cursor=ready?'pointer':'not-allowed';
+  complete.style.display=ready?'block':'none';
+}
+</script></body></html>
