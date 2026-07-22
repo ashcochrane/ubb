@@ -66,7 +66,12 @@ render everything — including stray `HttpError`s, request-validation
 failures, `Http404`, auth failures, and unhandled exceptions. **No endpoint
 builds an error body by hand.** An unregistered code refuses at raise time.
 Where a route documents error statuses in its `response=` map, they point at
-`core.problems.ProblemOut`.
+`core.problems.ProblemOut`, and the document declares them under
+`application/problem+json` — the media type the wire serves (#104: ninja
+exports `response=` models under plain `application/json`; the one schema
+seam in `api/v1/api.py` re-keys the problem envelopes, so the committed and
+runtime documents both tell the truth; pinned by
+`api/v1/tests/test_problem_media_type_pins.py`).
 
 ## Entity lists: one cursor envelope
 
@@ -133,8 +138,8 @@ plans, rate-card books, rates, webhook configs, referral attribution).
 `ubb-platform/conformance/` fuzzes every operation of the committed spec
 in-process (schemathesis over the WSGI app) and reports where the
 implementation contradicts the document: undocumented statuses, documented
-response-shape mismatches, and any error that breaks the problem+json
-envelope above. "Contract" here = the operation's `responses` map **plus**
+response-shape and content-type mismatches, and any error that breaks the
+problem+json envelope above. "Contract" here = the operation's `responses` map **plus**
 the registry's 4xx statuses, which are documented globally, not per-route;
 5xx is always a finding. Excluded from the default suite; run it with
 `python -m pytest conformance` (needs `pip install schemathesis`). CI runs

@@ -8,12 +8,15 @@ runs anywhere the platform suite runs.
 Checks per response:
 
 * ``not_a_server_error`` / ``response_schema_conformance`` /
-  ``response_headers_conformance`` — schemathesis built-ins;
+  ``response_headers_conformance`` / ``content_type_conformance`` —
+  schemathesis built-ins. Content-type is per documented status (an
+  out-of-band status has no response definition, so it skips); it became
+  runnable once #104 made the document declare ``application/problem+json``
+  on error responses — the media type the wire always served;
 * ``documented_or_dialect_status`` + ``problem_json_envelope`` — the
   repo dialect, see checks.py. The built-in ``status_code_conformance``
-  and ``content_type_conformance`` are deliberately not run: the former
-  can't know about the globally-documented out-of-band statuses, and the
-  latter duplicates the envelope check's content-type demand for errors.
+  is deliberately not run: it can't know about the globally-documented
+  out-of-band statuses.
 
 Coverage is best-effort per run: ``max_examples=10`` fuzzed inputs per
 operation, unseeded — "no findings" means this run found nothing, not a
@@ -27,6 +30,7 @@ from conformance.checks import documented_or_dialect_status, problem_json_envelo
 from config.wsgi import application
 from schemathesis.checks import not_a_server_error
 from schemathesis.specs.openapi.checks import (
+    content_type_conformance,
     response_headers_conformance,
     response_schema_conformance,
 )
@@ -38,6 +42,7 @@ schema.app = application
 
 CHECKS = [
     not_a_server_error,
+    content_type_conformance,
     response_schema_conformance,
     response_headers_conformance,
 ]

@@ -28,13 +28,23 @@ from api.v1.sandbox_endpoints import sandbox_router
 from api.v1.tenant_endpoints import tenant_router
 from apps.platform.events.api.webhook_endpoints import webhook_router
 from apps.platform.events.openapi import build_webhooks_section
-from api.v1.problems import install_problem_handlers
+from api.v1.problems import document_problem_media_type, install_problem_handlers
 from apps.referrals.api.endpoints import referrals_router
 from apps.subscriptions.api.endpoints import subscriptions_router
 from apps.subscriptions.api.margin_endpoints import margin_router
 from core.auth import ApiKeyAuth
 
-api = NinjaAPI(
+class _ProblemDocumentingNinjaAPI(NinjaAPI):
+    """The one schema seam (#104): the offline exporter and the runtime
+    ``/api/v1/openapi.json`` both render through ``get_openapi_schema``, so
+    correcting the error media type here keeps the committed document and
+    the served one truthful — and identical — by construction."""
+
+    def get_openapi_schema(self, **kwargs):
+        return document_problem_media_type(super().get_openapi_schema(**kwargs))
+
+
+api = _ProblemDocumentingNinjaAPI(
     title="UBB API",
     version="v1",
     description=(
