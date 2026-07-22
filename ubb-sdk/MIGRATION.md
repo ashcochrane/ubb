@@ -184,14 +184,30 @@ Breaking field/type edges:
   response enums parse as plain `str` — a v3.0 client **never crashes** on a
   field or enum value the API adds after you pinned (ADR-003 open-world).
 
-### Still-untyped endpoints (known gap, #98)
+### The last untyped 200s are typed (#98)
 
-A few billing/margin endpoints leave their 200 body untyped in the committed
-spec, so the SDK still returns **raw `dict`s** (or a small shell result):
-top-up / withdraw / refund / transactions / auto-top-up and the margin surface.
-`analytics = client.usage_analytics(...)` etc. remain dict-keyed. Typing these
-platform-side is tracked in **#98**; when done they flow into the generated core
-for free — no SDK change needed on your side.
+The billing money-movement calls and the margin surface are typed in the
+committed contract now, so their returns are **generated models** too — the
+small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
+`RefundResult`, `WalletTransaction`, `CustomerMargin`, `DimensionMargin`,
+`MarginTrendPoint`) are retired:
+
+| Call | Now returns |
+|---|---|
+| `create_top_up` | `TopUpCheckoutResponse` |
+| `configure_auto_top_up` | `StatusResponse` |
+| `withdraw` | `WithdrawResponse` |
+| `refund_usage` | `RefundResponse` (`refund_id` is `str \| None`) |
+| `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
+| `get_customer_margin` | `CustomerMarginOut` (full body — adds `revenue_mode`, `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
+| `get_margin_by_dimension` | `list[DimensionMarginRow]` |
+| `get_margin_trend` | `list[MarginTrendPointOut]` |
+
+Attribute names are unchanged, so `result.checkout_url`-style call sites keep
+working. One type edge: **`WalletTransactionOut.id` is `uuid.UUID`** (was
+`str`) — call `str(txn.id)` if you need the string form. Methods documented as
+returning raw `dict`s (`BillingClient.withdraw/refund`, `usage_analytics`,
+`get_unprofitable_customers`, …) still do.
 
 ---
 

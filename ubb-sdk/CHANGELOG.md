@@ -20,7 +20,7 @@ coordination recorded on issue #85 (see MIGRATION.md → Release checklist)._
 | Stamp | Value |
 |---|---|
 | `ubb.__version__` | `3.0.0` |
-| `ubb.__spec_revision__` | `874d040d9a051fc50f962f7f8d419e1d23d9a3c6059a1ecfc6164739b5235295` |
+| `ubb.__spec_revision__` | `648f8e424ad243afdc06ed6e27351a79dac6b8a1fc5438f5adb3206993b17f06` |
 | `ubb.__spec_version__` | `v1` |
 | Generator | `openapi-python-client==0.29.0` |
 
@@ -48,6 +48,13 @@ disagree with the shipped bytes.
   `RecordUsageResponse` — `balance_after_micros` is removed, use
   `new_balance_micros`. `UsageEventOut.id` is now `uuid.UUID` (was `str`). See
   MIGRATION.md §4.
+- **The last untyped 200s are typed (#98)** — top-up / withdraw / refund /
+  transactions / auto-top-up and the margin surface now return generated
+  models (`TopUpCheckoutResponse`, `WithdrawResponse`, `RefundResponse`,
+  `WalletTransactionOut`, `StatusResponse`, `CustomerMarginOut`,
+  `DimensionMarginRow`, `MarginTrendPointOut`); the corresponding hand result
+  types are retired. `WalletTransactionOut.id` is `uuid.UUID` (was `str`).
+  See MIGRATION.md §4.
 - **`idempotency_key` now required on top-ups** (tenant + widget). See
   MIGRATION.md §5.
 - **Single versioned API.** All routes under `/api/v1/…`; per-mount

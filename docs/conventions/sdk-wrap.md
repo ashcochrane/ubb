@@ -63,10 +63,13 @@ changes. (Facade-async decision, parked on #65, resolved here.)
 `ubb/_spec_revision.py` (generated, ratcheted) records the exact committed-spec
 sha256 and version each build was cut from, exposed as `ubb.__spec_revision__`.
 
-## Known gap — untyped responses
+## Typed 200s everywhere — the gap is closed (#98)
 
-A few endpoints (billing top-up / withdraw / refund / transactions / auto-top-up
-and the margin surface) leave their 200 response **untyped in the committed
-spec**, so the generator emits no model and the shell returns raw dicts (or a
-small shell result). Typing those responses in the platform is a follow-up;
-once typed, they flow into the generated core for free — the wrap's payoff.
+Every operation whose 200 returns a JSON body declares a `response=` out-schema
+in the platform, so the committed spec types all of them and the generated core
+carries their DTOs — the last hand result types (`TopUpResult`,
+`WithdrawResult`, `RefundResult`, `WalletTransaction`, `CustomerMargin`, …)
+are retired. Pinned by `api/v1/tests/test_typed_200_pins.py`: a new endpoint
+whose 200 carries no schema turns CI red. The rule when typing a response:
+**document what the wire serves, never reshape it** — the schema's fields and
+nullability come from reading the handler, not from what would be nice.
