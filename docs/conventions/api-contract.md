@@ -48,6 +48,14 @@ widget surface — renders as `application/problem+json`:
   at the boundary, renders as a bare `string` in the document); the channel
   mapping lives in the central validation handler. Pinned by
   `api/v1/tests/test_uuid_identifier_pins.py`.
+- **Storage-constraint violations** (#103): a doc-legal scalar that violates
+  a database constraint — NUL bytes in text, integer overflow, over-long
+  strings — surfaces as the driver's `DataError` and answers 422
+  `validation_error` with a stable sanitized detail (the driver's message
+  can name column types, so it goes to the server log, never the body).
+  Only `DataError` takes this lane; every other database error stays a 500
+  `internal_error`. The mapping is central (`api/v1/problems.py`), so it
+  covers future fields too. Pinned by `api/v1/tests/test_data_error_pins.py`.
 
 Mechanics: endpoints `raise core.problems.Problem(code, detail, extensions=,
 headers=)` (products may raise it too — `core` is importable everywhere);
