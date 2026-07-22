@@ -6,17 +6,19 @@ from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
 from ubb._models import from_wire
-from ubb.types import (
-    PreCheckResult, TopUpResult, AutoTopUpResult, WithdrawResult,
-    RefundResult, WalletTransaction, PaginatedResponse,
-)
+from ubb.types import PreCheckResult, PaginatedResponse
 # Generated DTOs (the wrap, #84): the facade returns the same generated models
 # its sub-clients do.
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.refund_response import RefundResponse
+from ubb._core.models.status_response import StatusResponse
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._core.models.wallet_transaction_out import WalletTransactionOut
+from ubb._core.models.withdraw_response import WithdrawResponse
 
 
 def _check_micros(value: int, name: str) -> None:
@@ -537,7 +539,7 @@ class UBBClient:
 
     def create_top_up(self, customer_id: str, amount_micros: int, *,
                       success_url: str, cancel_url: str,
-                      idempotency_key: str) -> TopUpResult:
+                      idempotency_key: str) -> TopUpCheckoutResponse:
         """Create a top-up checkout session. Requires billing product.
         idempotency_key is REQUIRED (#78) — replays never double-charge."""
         return self._require_billing().create_top_up(
@@ -546,7 +548,7 @@ class UBBClient:
         )
 
     def configure_auto_top_up(self, customer_id: str, threshold: int,
-                              amount: int, enabled: bool = True) -> AutoTopUpResult:
+                              amount: int, enabled: bool = True) -> StatusResponse:
         """Configure auto top-up. Requires billing product."""
         billing = self._require_billing()
         result = billing.configure_auto_topup(
@@ -554,10 +556,10 @@ class UBBClient:
             trigger_threshold_micros=threshold,
             top_up_amount_micros=amount,
         )
-        return AutoTopUpResult(**result)
+        return from_wire(StatusResponse, result)
 
     def withdraw(self, customer_id: str, amount_micros: int,
-                 idempotency_key: str, description: str = "") -> WithdrawResult:
+                 idempotency_key: str, description: str = "") -> WithdrawResponse:
         """Withdraw from a customer wallet. Requires billing product.
 
         Routes to the guarded /withdraw endpoint (floor-checked — rejects an
@@ -567,13 +569,10 @@ class UBBClient:
         billing = self._require_billing()
         result = billing.withdraw(customer_id, amount_micros, idempotency_key,
                                   description)
-        return WithdrawResult(
-            transaction_id=result.get("transaction_id", ""),
-            balance_micros=result.get("balance_micros", 0),
-        )
+        return from_wire(WithdrawResponse, result)
 
     def refund_usage(self, customer_id: str, usage_event_id: str,
-                     idempotency_key: str, reason: str = "") -> RefundResult:
+                     idempotency_key: str, reason: str = "") -> RefundResponse:
         """Refund a usage event. Requires billing product.
 
         Routes to the guarded, lot-aware /refund endpoint, which resolves the
@@ -583,13 +582,10 @@ class UBBClient:
         billing = self._require_billing()
         result = billing.refund(customer_id, usage_event_id, idempotency_key,
                                 reason)
-        return RefundResult(
-            refund_id=result.get("refund_id", ""),
-            balance_micros=result.get("balance_micros", 0),
-        )
+        return from_wire(RefundResponse, result)
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,
-                         limit: int = 50) -> PaginatedResponse[WalletTransaction]:
+                         limit: int = 50) -> PaginatedResponse[WalletTransactionOut]:
         """Get wallet transactions. Requires billing product."""
         return self._require_billing().get_transactions(customer_id, cursor=cursor, limit=limit)
 

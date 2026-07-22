@@ -8,6 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.status_response import StatusResponse
+from typing import cast
 from uuid import UUID
 
 
@@ -32,9 +34,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> StatusResponse | None:
     if response.status_code == 200:
-        return None
+        response_200 = StatusResponse.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -42,7 +48,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[StatusResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -56,7 +62,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Response[StatusResponse]:
     """ Delete Customer Markup
 
      Remove a customer's markup override so they revert to inheriting the
@@ -73,7 +79,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[StatusResponse]
      """
 
 
@@ -88,13 +94,12 @@ def sync_detailed(
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     customer_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> StatusResponse | None:
     """ Delete Customer Markup
 
      Remove a customer's markup override so they revert to inheriting the
@@ -111,7 +116,39 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        StatusResponse
+     """
+
+
+    return sync_detailed(
+        customer_id=customer_id,
+client=client,
+
+    ).parsed
+
+async def asyncio_detailed(
+    customer_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[StatusResponse]:
+    """ Delete Customer Markup
+
+     Remove a customer's markup override so they revert to inheriting the
+    tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
+    resolves as the customer's markup and SHADOWS the tenant default, pinning
+    the customer at cost. Idempotent: 'no_override' when none existed; a bad
+    customer id is a 404.
+
+    Args:
+        customer_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[StatusResponse]
      """
 
 
@@ -126,3 +163,34 @@ async def asyncio_detailed(
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    customer_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> StatusResponse | None:
+    """ Delete Customer Markup
+
+     Remove a customer's markup override so they revert to inheriting the
+    tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
+    resolves as the customer's markup and SHADOWS the tenant default, pinning
+    the customer at cost. Idempotent: 'no_override' when none existed; a bad
+    customer id is a 404.
+
+    Args:
+        customer_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        StatusResponse
+     """
+
+
+    return (await asyncio_detailed(
+        customer_id=customer_id,
+client=client,
+
+    )).parsed

@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.paginated_referrers import PaginatedReferrers
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -49,9 +50,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PaginatedReferrers | None:
     if response.status_code == 200:
-        return None
+        response_200 = PaginatedReferrers.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -59,7 +64,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PaginatedReferrers]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,7 +79,7 @@ def sync_detailed(
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[Any]:
+) -> Response[PaginatedReferrers]:
     """ List Referrers
 
     Args:
@@ -86,7 +91,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[PaginatedReferrers]
      """
 
 
@@ -102,14 +107,13 @@ limit=limit,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     *,
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[Any]:
+) -> PaginatedReferrers | None:
     """ List Referrers
 
     Args:
@@ -121,7 +125,36 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        PaginatedReferrers
+     """
+
+
+    return sync_detailed(
+        client=client,
+cursor=cursor,
+limit=limit,
+
+    ).parsed
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
+
+) -> Response[PaginatedReferrers]:
+    """ List Referrers
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[PaginatedReferrers]
      """
 
 
@@ -137,3 +170,31 @@ limit=limit,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
+
+) -> PaginatedReferrers | None:
+    """ List Referrers
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        PaginatedReferrers
+     """
+
+
+    return (await asyncio_detailed(
+        client=client,
+cursor=cursor,
+limit=limit,
+
+    )).parsed

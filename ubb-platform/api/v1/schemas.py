@@ -261,6 +261,13 @@ class CreateTopUpRequest(Schema):
         return v
 
 
+class TopUpCheckoutResponse(Schema):
+    # The 200 answer when the Stripe connector is active (#98). The
+    # no-connector twin answers 202 out-of-band (top-up request handed to the
+    # tenant) — see the globally-documented out-of-band statuses.
+    checkout_url: str
+
+
 class PaginatedUsageResponse(Schema):
     data: list[UsageEventOut]
     next_cursor: Optional[str] = None
@@ -284,6 +291,46 @@ class RefundRequest(Schema):
     usage_event_id: UUID
     reason: str = ""
     idempotency_key: str = Field(min_length=1, max_length=500)
+
+
+class WithdrawResponse(Schema):
+    transaction_id: str
+    balance_micros: int
+
+
+class RefundResponse(Schema):
+    # A fresh refund answers the REFUND transaction id; an idempotent replay
+    # answers the original's reference_id — always a string (the column is
+    # NOT NULL, default ""), possibly empty if the replayed key belongs to a
+    # non-refund transaction that carries no reference.
+    refund_id: str
+    balance_micros: int
+
+
+class WalletTransactionOut(Schema):
+    id: UUID
+    transaction_type: str
+    amount_micros: int
+    balance_after_micros: int
+    description: str
+    # "" for transaction types that carry no reference (e.g. WITHDRAWAL) —
+    # the column is NOT NULL, so the wire never serves null here.
+    reference_id: str
+    created_at: str
+
+
+class PaginatedWalletTransactions(Schema):
+    data: list[WalletTransactionOut]
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+class ReadyResponse(Schema):
+    # The passing readiness answer (#98): overall status plus the per-
+    # dependency word ("ok"). The failing answer is a problem+json 503 with
+    # the same map riding as a `checks` extension member (#78).
+    status: str
+    checks: dict[str, str]
 
 
 REASON_CODES = ("correction", "goodwill", "chargeback", "write_off", "migration", "other")

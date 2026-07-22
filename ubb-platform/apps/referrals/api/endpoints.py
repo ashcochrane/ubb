@@ -9,6 +9,7 @@ from ninja import Router
 
 from core.identifiers import UUIDIdentifier
 from core.pagination import paginate
+from core.responses import StatusResponse
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from core.problems import Problem
 from apps.platform.customers.models import Customer
@@ -18,14 +19,15 @@ from apps.referrals.api.schemas import (
     ProgramOut,
     RegisterReferrerRequest,
     ReferrerOut,
+    PaginatedReferrers,
+    PaginatedReferrals,
+    PaginatedLedgerEntries,
+    PayoutExportOut,
     AttributeRequest,
     AttributeResponse,
     EarningsOut,
-    ReferralOut,
-    LedgerEntryOut,
     AnalyticsSummaryOut,
     AnalyticsEarningsOut,
-    ReferrerEarningsSummary,
 )
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
@@ -147,7 +149,7 @@ def update_program(request, payload: ProgramUpdateRequest):
     return _program_to_dict(program)
 
 
-@referrals_router.delete("/program")
+@referrals_router.delete("/program", response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("referral_program.deactivated")
 def deactivate_program(request):
@@ -253,7 +255,7 @@ def get_referrer(request, customer_id: UUIDIdentifier):
     }
 
 
-@referrals_router.get("/referrers")
+@referrals_router.get("/referrers", response=PaginatedReferrers)
 @role_floor(READ)
 def list_referrers(request, cursor: str = None, limit: int = 50):
     _product_check(request)
@@ -434,7 +436,8 @@ def get_referrer_earnings(request, customer_id: UUIDIdentifier):
     }
 
 
-@referrals_router.get("/referrers/{customer_id}/referrals")
+@referrals_router.get("/referrers/{customer_id}/referrals",
+                      response=PaginatedReferrals)
 @role_floor(READ)
 def get_referrer_referrals(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
@@ -482,7 +485,8 @@ def get_referrer_referrals(request, customer_id: UUIDIdentifier, cursor: str = N
     }
 
 
-@referrals_router.get("/referrals/{referral_id}/ledger")
+@referrals_router.get("/referrals/{referral_id}/ledger",
+                      response=PaginatedLedgerEntries)
 @role_floor(READ)
 def get_referral_ledger(request, referral_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
@@ -518,7 +522,7 @@ def get_referral_ledger(request, referral_id: UUIDIdentifier, cursor: str = None
 # ---------- Revocation ----------
 
 
-@referrals_router.delete("/referrals/{referral_id}")
+@referrals_router.delete("/referrals/{referral_id}", response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("referral.revoked")
 def revoke_referral(request, referral_id: UUIDIdentifier):
@@ -543,7 +547,7 @@ def revoke_referral(request, referral_id: UUIDIdentifier):
 # ---------- Payout Export ----------
 
 
-@referrals_router.get("/payouts/export")
+@referrals_router.get("/payouts/export", response=PayoutExportOut)
 @role_floor(READ)
 def payout_export(request):
     _product_check(request)
@@ -650,7 +654,7 @@ def _parse_earnings_window(period_start, period_end):
     return start, end
 
 
-@referrals_router.get("/analytics/earnings")
+@referrals_router.get("/analytics/earnings", response=AnalyticsEarningsOut)
 @role_floor(READ)
 def analytics_earnings(request, period_start: str = None, period_end: str = None):
     _product_check(request)

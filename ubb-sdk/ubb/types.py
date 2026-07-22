@@ -35,59 +35,12 @@ class BatchResult:
     accepted: int
     rejected: int
 
-@dataclass(frozen=True)
-class TopUpResult:
-    checkout_url: str
-
-@dataclass(frozen=True)
-class AutoTopUpResult:
-    status: str
-
-@dataclass(frozen=True)
-class WithdrawResult:
-    transaction_id: str
-    balance_micros: int
-
-@dataclass(frozen=True)
-class RefundResult:
-    refund_id: str
-    balance_micros: int
-
-@dataclass(frozen=True)
-class WalletTransaction:
-    id: str
-    transaction_type: str
-    amount_micros: int
-    balance_after_micros: int
-    description: str
-    reference_id: str
-    created_at: str
-
-@dataclass(frozen=True)
-class CustomerMargin:
-    customer_id: str
-    subscription_revenue_micros: int | None = None
-    usage_billed_micros: int | None = None
-    provider_cost_micros: int | None = None
-    gross_margin_micros: int | None = None
-    margin_percentage: float | None = None
-
-@dataclass(frozen=True)
-class DimensionMargin:
-    dimension: str | None = None
-    provider_cost_micros: int | None = None
-    billed_cost_micros: int | None = None
-    margin_micros: int | None = None
-    event_count: int | None = None
-
-@dataclass(frozen=True)
-class MarginTrendPoint:
-    period_start: str
-    provider_cost_micros: int | None = None
-    usage_billed_micros: int | None = None
-    subscription_revenue_micros: int | None = None
-    gross_margin_micros: int | None = None
-    margin_percentage: float | None = None
+# The small hand results that once covered untyped 200s (top-up / withdraw /
+# refund / transactions / auto-top-up / the margin surface) are RETIRED (#98):
+# those responses are typed in the committed contract now, so their DTOs come
+# from the generated core (TopUpCheckoutResponse, WithdrawResponse,
+# RefundResponse, WalletTransactionOut, StatusResponse, CustomerMarginOut,
+# DimensionMarginRow, MarginTrendPointOut).
 
 T = TypeVar("T")
 

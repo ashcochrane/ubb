@@ -6,15 +6,15 @@ from ubb.exceptions import UBBConnectionError
 from ubb._http import raise_for_status
 from ubb._models import from_wire
 from ubb.retry import request_with_retry
-from ubb.types import (
-    TopUpResult, WalletTransaction, PaginatedResponse,
-)
+from ubb.types import PaginatedResponse
 # Generated DTOs (the wrap, #84).
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.budget_config_out import BudgetConfigOut
 from ubb._core.models.budget_status_out import BudgetStatusOut
 from ubb._core.models.grant_out import GrantOut
+from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
+from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 
 
 class BillingClient:
@@ -153,7 +153,7 @@ class BillingClient:
 
     def create_top_up(self, customer_id: str, amount_micros: int,
                       success_url: str, cancel_url: str,
-                      idempotency_key: str) -> TopUpResult:
+                      idempotency_key: str) -> TopUpCheckoutResponse:
         """Create a top-up checkout session via POST
         /api/v1/billing/customers/{customer_id}/top-up.
 
@@ -165,7 +165,7 @@ class BillingClient:
             "cancel_url": cancel_url,
             "idempotency_key": idempotency_key,
         })
-        return TopUpResult(**r.json())
+        return from_wire(TopUpCheckoutResponse, r.json())
 
     def configure_auto_topup(self, customer_id: str, is_enabled: bool,
                              trigger_threshold_micros: int | None = None,
@@ -180,14 +180,14 @@ class BillingClient:
         return r.json()
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,
-                         limit: int = 20) -> PaginatedResponse[WalletTransaction]:
+                         limit: int = 20) -> PaginatedResponse[WalletTransactionOut]:
         """Get transactions via GET /api/v1/billing/customers/{customer_id}/transactions."""
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
         r = self._request("get", f"/api/v1/billing/customers/{customer_id}/transactions", params=params)
         body = r.json()
-        txns = [WalletTransaction(**item) for item in body["data"]]
+        txns = [from_wire(WalletTransactionOut, item) for item in body["data"]]
         return PaginatedResponse(data=txns, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
 
     def set_budget(self, customer_id, cap_micros, enforce_mode="advisory",

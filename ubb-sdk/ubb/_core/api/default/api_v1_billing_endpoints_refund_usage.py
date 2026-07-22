@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.refund_request import RefundRequest
+from ...models.refund_response import RefundResponse
 from typing import cast
 
 
@@ -40,9 +41,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> RefundResponse | None:
     if response.status_code == 200:
-        return None
+        response_200 = RefundResponse.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -50,7 +55,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[RefundResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,7 +70,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: RefundRequest,
 
-) -> Response[Any]:
+) -> Response[RefundResponse]:
     """ Refund Usage
 
      Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
@@ -83,7 +88,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[RefundResponse]
      """
 
 
@@ -99,14 +104,13 @@ body=body,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     customer_id: str,
     *,
     client: AuthenticatedClient,
     body: RefundRequest,
 
-) -> Response[Any]:
+) -> RefundResponse | None:
     """ Refund Usage
 
      Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
@@ -124,7 +128,42 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        RefundResponse
+     """
+
+
+    return sync_detailed(
+        customer_id=customer_id,
+client=client,
+body=body,
+
+    ).parsed
+
+async def asyncio_detailed(
+    customer_id: str,
+    *,
+    client: AuthenticatedClient,
+    body: RefundRequest,
+
+) -> Response[RefundResponse]:
+    """ Refund Usage
+
+     Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
+    USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
+    back into those lots (promo refunds restore the promo lot — they never
+    become withdrawable cash); only the base-funded remainder, plus shares
+    from since-expired/voided lots, lands as base credit.
+
+    Args:
+        customer_id (str):
+        body (RefundRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[RefundResponse]
      """
 
 
@@ -140,3 +179,37 @@ body=body,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    customer_id: str,
+    *,
+    client: AuthenticatedClient,
+    body: RefundRequest,
+
+) -> RefundResponse | None:
+    """ Refund Usage
+
+     Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
+    USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
+    back into those lots (promo refunds restore the promo lot — they never
+    become withdrawable cash); only the base-funded remainder, plus shares
+    from since-expired/voided lots, lands as base credit.
+
+    Args:
+        customer_id (str):
+        body (RefundRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        RefundResponse
+     """
+
+
+    return (await asyncio_detailed(
+        customer_id=customer_id,
+client=client,
+body=body,
+
+    )).parsed

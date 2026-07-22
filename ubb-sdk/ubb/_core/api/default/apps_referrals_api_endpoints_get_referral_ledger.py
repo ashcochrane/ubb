@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.paginated_ledger_entries import PaginatedLedgerEntries
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -50,9 +51,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PaginatedLedgerEntries | None:
     if response.status_code == 200:
-        return None
+        response_200 = PaginatedLedgerEntries.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -60,7 +65,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PaginatedLedgerEntries]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -76,7 +81,7 @@ def sync_detailed(
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[Any]:
+) -> Response[PaginatedLedgerEntries]:
     """ Get Referral Ledger
 
     Args:
@@ -89,7 +94,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[PaginatedLedgerEntries]
      """
 
 
@@ -106,15 +111,14 @@ limit=limit,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     referral_id: str,
     *,
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[Any]:
+) -> PaginatedLedgerEntries | None:
     """ Get Referral Ledger
 
     Args:
@@ -127,7 +131,39 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        PaginatedLedgerEntries
+     """
+
+
+    return sync_detailed(
+        referral_id=referral_id,
+client=client,
+cursor=cursor,
+limit=limit,
+
+    ).parsed
+
+async def asyncio_detailed(
+    referral_id: str,
+    *,
+    client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
+
+) -> Response[PaginatedLedgerEntries]:
+    """ Get Referral Ledger
+
+    Args:
+        referral_id (str):
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[PaginatedLedgerEntries]
      """
 
 
@@ -144,3 +180,34 @@ limit=limit,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    referral_id: str,
+    *,
+    client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
+
+) -> PaginatedLedgerEntries | None:
+    """ Get Referral Ledger
+
+    Args:
+        referral_id (str):
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        PaginatedLedgerEntries
+     """
+
+
+    return (await asyncio_detailed(
+        referral_id=referral_id,
+client=client,
+cursor=cursor,
+limit=limit,
+
+    )).parsed

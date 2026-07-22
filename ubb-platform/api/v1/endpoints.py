@@ -10,16 +10,17 @@ from ninja import Router
 from core.auth import ApiKeyAuth, ProductAccess, READ, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem
+from core.responses import StatusResponse
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 
-from api.v1.schemas import PastLimitReportResponse
+from api.v1.schemas import PastLimitReportResponse, ReadyResponse
 
 root_router = Router(auth=ApiKeyAuth())
 
 _metering_check = ProductAccess("metering")
 
 
-@root_router.get("/health", auth=None)
+@root_router.get("/health", auth=None, response=StatusResponse)
 def health(request):
     return {"status": "ok"}
 
@@ -55,7 +56,7 @@ def past_limit_report(request, customer_id: UUIDIdentifier,
                                    since=since, until=until)
 
 
-@root_router.get("/ready", auth=None)
+@root_router.get("/ready", auth=None, response=ReadyResponse)
 def ready(request):
     checks = {}
     try:

@@ -9,6 +9,7 @@ from core.auth import ADMIN, ApiKeyAuth, READ, role_floor
 from core.identifiers import UUIDIdentifier
 from core.pagination import paginate
 from core.problems import Problem, ProblemOut
+from core.responses import StatusResponse
 from core.url_validation import validate_webhook_url
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
@@ -193,7 +194,7 @@ def list_webhook_configs(request, cursor: str = None, limit: int = 50):
     }
 
 
-@webhook_router.delete("/configs/{config_id}")
+@webhook_router.delete("/configs/{config_id}", response=StatusResponse)
 @role_floor(ADMIN)
 @records_audit("webhook_config.deleted")
 def delete_webhook_config(request, config_id: UUIDIdentifier):

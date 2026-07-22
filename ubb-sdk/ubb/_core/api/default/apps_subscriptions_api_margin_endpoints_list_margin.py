@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.margin_list_out import MarginListOut
 from ...types import UNSET, Unset
 from typing import cast
 import datetime
@@ -59,9 +60,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> MarginListOut | None:
     if response.status_code == 200:
-        return None
+        response_200 = MarginListOut.from_dict(response.json())
+
+
+
+        return response_200
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -69,7 +74,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[MarginListOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -84,7 +89,7 @@ def sync_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[Any]:
+) -> Response[MarginListOut]:
     """ List Margin
 
     Args:
@@ -96,7 +101,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[MarginListOut]
      """
 
 
@@ -112,14 +117,13 @@ end_date=end_date,
 
     return _build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     *,
     client: AuthenticatedClient,
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[Any]:
+) -> MarginListOut | None:
     """ List Margin
 
     Args:
@@ -131,7 +135,36 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        MarginListOut
+     """
+
+
+    return sync_detailed(
+        client=client,
+start_date=start_date,
+end_date=end_date,
+
+    ).parsed
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    start_date: datetime.date | None | Unset = UNSET,
+    end_date: datetime.date | None | Unset = UNSET,
+
+) -> Response[MarginListOut]:
+    """ List Margin
+
+    Args:
+        start_date (datetime.date | None | Unset):
+        end_date (datetime.date | None | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[MarginListOut]
      """
 
 
@@ -147,3 +180,31 @@ end_date=end_date,
 
     return _build_response(client=client, response=response)
 
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    start_date: datetime.date | None | Unset = UNSET,
+    end_date: datetime.date | None | Unset = UNSET,
+
+) -> MarginListOut | None:
+    """ List Margin
+
+    Args:
+        start_date (datetime.date | None | Unset):
+        end_date (datetime.date | None | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        MarginListOut
+     """
+
+
+    return (await asyncio_detailed(
+        client=client,
+start_date=start_date,
+end_date=end_date,
+
+    )).parsed
