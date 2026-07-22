@@ -97,6 +97,93 @@ jobs:
         working-directory: ubb-sdk
         run: python -m pytest
 
+  # Schemathesis conformance sweep (#87): fuzz the app in-process against the
+  # committed openapi/v1.json and report every place the implementation
+  # contradicts the document (see ubb-platform/conformance/). WANTED, NOT
+  # GATING — continue-on-error on the sweep step means findings annotate the
+  # run and land in the job summary + artifact, but never turn a PR red.
+  # Promoting this to a gate is a separate future decision. Schemathesis is
+  # installed here, pinned, not in the lock — the same in-job tool pattern as
+  # oasdiff and the SDK generator below.
+  conformance:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ubb
+          POSTGRES_PASSWORD: ubb
+          POSTGRES_DB: ubb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ubb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://ubb:ubb@localhost:5432/ubb
+      REDIS_URL: redis://localhost:6379/1
+      SECRET_KEY: ci-only-dummy-secret-key
+      DEBUG: "True"
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: ubb-platform/requirements.lock.txt
+
+      - name: Install dependencies (locked) + schemathesis (pinned)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ubb-platform/requirements.lock.txt
+          pip install "schemathesis==4.24.2"
+
+      - name: Conformance sweep (non-blocking)
+        id: sweep
+        continue-on-error: true
+        working-directory: ubb-platform
+        run: |
+          python -m pytest conformance -q --tb=long 2>&1 | tee /tmp/conformance-report.txt
+          exit "${PIPESTATUS[0]}"
+
+      - name: Publish the report to the job summary
+        if: always()
+        run: |
+          {
+            echo "## Schemathesis conformance sweep (non-gating, #87)"
+            if [ "${{ steps.sweep.outcome }}" = "success" ]; then
+              echo "No conformance findings."
+            else
+              echo "Findings below — triage into bug tickets; this job never gates a PR."
+            fi
+            echo '```'
+            tail -c 60000 /tmp/conformance-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-report
+          path: /tmp/conformance-report.txt
+
   # The spec-as-truth ratchet (#77, ADR-002): the committed openapi/v1.json is
   # the single source of truth for the tenant surface. Three gates:
   #   drift    — offline regeneration must produce zero diff (code == document)
