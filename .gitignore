@@ -209,3 +209,8 @@ __marimo__/
 # Redis (local dev dump)
 dump.rdb
 *.rdb
+
+# Claude Code local state (worktrees, per-user settings, session artifacts).
+# If shared repo-level config is ever wanted, switch to `.claude/*` + negations
+# (e.g. `!.claude/settings.json`).
+.claude/
