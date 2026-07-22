@@ -50,6 +50,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "core.middleware.CorrelationIdMiddleware",
+    # ADR-003 §4: stamp a `Sunset` header on responses from deprecated /api/v1/
+    # routes. Outer of the API's response rewriters (below) so it stamps the
+    # final response; a no-op while the registry is empty (the launch state).
+    "api.v1.deprecation.SunsetHeaderMiddleware",
     # Clears the request-scoped audit actor at request end (see core/auth.py +
     # apps/platform/audit/actors.py). Wraps the view, so its reset runs after
     # auth captured the actor — the mirror of the correlation-id reset above.

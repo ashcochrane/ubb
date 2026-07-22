@@ -33,13 +33,34 @@ class MarginEndpointsTest(TestCase):
             data=json.dumps({"recurring_amount_micros": 500_000_000}),
             content_type="application/json", **self._auth())
         assert r.status_code == 200
-        r = self.http.get(f"/api/v1/margin/{self.customer.id}", **self._auth())
+        r = self.http.get(f"/api/v1/margin/customers/{self.customer.id}", **self._auth())
         assert r.status_code == 200
         b = r.json()
         assert b["provider_cost_micros"] == 1_000_000
         assert b["usage_billed_micros"] == 1_300_000
         # metered_only mode: usage excluded from revenue; margin = subscription_revenue - provider_cost
         assert b["gross_margin_micros"] == b["subscription_revenue_micros"] - 1_000_000
+
+    def test_list_all_customer_margins(self):
+        # #86 sweep: the root margin list moved from GET /margin to the explicit
+        # GET /margin/customers segment — proving the named subpaths (/summary,
+        # /by-dimension, ...) are no longer shadowed by a bare mount root.
+        r = self.http.get("/api/v1/margin/customers", **self._auth())
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertIn("customers", body)
+        self.assertTrue(
+            any(c["customer_id"] == str(self.customer.id) for c in body["customers"]))
+
+    def test_customer_margin_trend_new_path(self):
+        # #86 sweep: GET /margin/{customer_id}/trend -> /margin/customers/{id}/trend
+        # (the bare-{customer_id} shadow is gone; a UUID no longer competes with
+        # /summary et al. at the mount root).
+        r = self.http.get(
+            f"/api/v1/margin/customers/{self.customer.id}/trend", **self._auth())
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["customer_id"], str(self.customer.id))
+        self.assertIn("points", r.json())
 
     def test_by_dimension_provider(self):
         r = self.http.get("/api/v1/margin/by-dimension?provider=1", **self._auth())

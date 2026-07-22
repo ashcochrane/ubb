@@ -113,11 +113,13 @@ class RateCardClientTest(unittest.TestCase):
         self.assertEqual(cards, [])
 
     @patch("ubb.metering.httpx.Client.delete")
-    def test_delete_rate_card(self, mock_delete):
+    def test_delete_rate(self, mock_delete):
         mock_delete.return_value = MagicMock(status_code=200, json=lambda: {"status": "deleted"})
-        result = self.client.delete_rate_card("rc1")
+        result = self.client.delete_rate("book1", "rc1")
         self.assertTrue(result)
-        self.assertEqual(mock_delete.call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc1")
+        self.assertEqual(
+            mock_delete.call_args.args[0],
+            "/api/v1/metering/pricing/rate-cards/book1/rates/rc1")
 
 
     @patch("ubb.metering.httpx.Client.post")

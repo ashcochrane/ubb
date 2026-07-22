@@ -29,10 +29,18 @@ review.
      tool default says.
    - `oasdiff-err-ignore.txt` / `oasdiff-warn-ignore.txt` are the committed
      suppression files: accepting a break means adding a line here in the
-     same PR — a visible, deliberate, reviewed change. (Pre-launch breaks
-     ride this lane; after the launch tag, every entry requires the ADR-003
-     deprecation process.) Lines are free-text matches against oasdiff's
-     reported error text.
+     same PR — a visible, deliberate, reviewed change. Lines are free-text
+     matches against oasdiff's reported error text.
+     - The err-ignore file carries a **`LAUNCH TAG BOUNDARY`** marker
+       (added in #86). Every entry **above** it is a pre-launch free break,
+       hand-coordinated with the one known tenant. From the launch tag onward,
+       a **new** entry **below** the marker is permitted **only as evidence of
+       an ADR-003 §4 deprecation already in flight** — `deprecated: true` on
+       the operation, a runtime `Sunset` header (register the route in
+       `ubb-platform/api/v1/deprecation.py`), a changelog + email, and ≥90
+       days' notice. A bare removal or rename below the marker is a contract
+       breach, not a CI escape hatch. The customer-facing promise is
+       [`docs/api-compatibility.md`](../docs/api-compatibility.md).
 3. **TypeScript smoke gate** — the committed spec must generate clean TS
    types with a pinned `openapi-typescript`; nothing is committed on main
    (the revived UI branch owns real generation).

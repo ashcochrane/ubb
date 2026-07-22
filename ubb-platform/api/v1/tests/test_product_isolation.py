@@ -143,8 +143,10 @@ class TestMeteringBillingTenant(TestCase):
         self.assertIn("has_more", body)
 
     def test_can_list_billing_periods(self):
+        # Canonical home is the tenant mount (#86 sweep removed the
+        # billing-mount duplicate).
         response = self.http_client.get(
-            "/api/v1/billing/tenant/billing-periods",
+            "/api/v1/tenant/billing-periods",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)

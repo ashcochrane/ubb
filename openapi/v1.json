@@ -6335,108 +6335,6 @@
         "summary": "Pre Check"
       }
     },
-    "/api/v1/billing/tenant/billing-periods": {
-      "get": {
-        "operationId": "api_v1_billing_endpoints_list_billing_periods",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantBillingPeriodListResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Billing Periods"
-      }
-    },
-    "/api/v1/billing/tenant/invoices": {
-      "get": {
-        "operationId": "api_v1_billing_endpoints_list_invoices",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantInvoiceListResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Invoices"
-      }
-    },
     "/api/v1/billing/tenant/usage-invoices": {
       "get": {
         "operationId": "api_v1_billing_endpoints_list_tenant_usage_invoices",
@@ -6657,58 +6555,6 @@
         "summary": "Health"
       }
     },
-    "/api/v1/margin/": {
-      "get": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_list_margin",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "start_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Start Date"
-            }
-          },
-          {
-            "in": "query",
-            "name": "end_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "End Date"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Margin"
-      }
-    },
     "/api/v1/margin/business/{external_id}": {
       "get": {
         "operationId": "apps_subscriptions_api_margin_endpoints_business_margin",
@@ -6868,6 +6714,120 @@
           }
         ],
         "summary": "Margin By Dimension"
+      }
+    },
+    "/api/v1/margin/customers": {
+      "get": {
+        "operationId": "apps_subscriptions_api_margin_endpoints_list_margin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Margin"
+      }
+    },
+    "/api/v1/margin/customers/{customer_id}": {
+      "get": {
+        "operationId": "apps_subscriptions_api_margin_endpoints_customer_margin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Customer Margin"
       }
     },
     "/api/v1/margin/customers/{customer_id}/revenue": {
@@ -7066,6 +7026,44 @@
         "summary": "Put Revenue Mode"
       }
     },
+    "/api/v1/margin/customers/{customer_id}/trend": {
+      "get": {
+        "operationId": "apps_subscriptions_api_margin_endpoints_margin_trend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periods",
+            "required": false,
+            "schema": {
+              "default": 6,
+              "title": "Periods",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Margin Trend"
+      }
+    },
     "/api/v1/margin/summary": {
       "get": {
         "operationId": "apps_subscriptions_api_margin_endpoints_margin_summary",
@@ -7207,106 +7205,6 @@
           }
         ],
         "summary": "Margin Unprofitable"
-      }
-    },
-    "/api/v1/margin/{customer_id}": {
-      "get": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_customer_margin",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "start_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Start Date"
-            }
-          },
-          {
-            "in": "query",
-            "name": "end_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "End Date"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Customer Margin"
-      }
-    },
-    "/api/v1/margin/{customer_id}/trend": {
-      "get": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_margin_trend",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "periods",
-            "required": false,
-            "schema": {
-              "default": 6,
-              "title": "Periods",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Margin Trend"
       }
     },
     "/api/v1/me/balance": {
@@ -8642,17 +8540,28 @@
         "summary": "Add Rate"
       }
     },
-    "/api/v1/metering/pricing/rate-cards/{card_id}": {
+    "/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}": {
       "delete": {
-        "operationId": "api_v1_metering_endpoints_delete_rate_card",
+        "description": "Retire (soft-expire) a single rate within its book. Addressed under its\nbook \u2014 matching GET/POST /pricing/rate-cards/{book_id}/rates \u2014 so the path\nnoun (``rates``) agrees with the identifier it takes (#86 sweep: this route\npreviously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).",
+        "operationId": "api_v1_metering_endpoints_delete_rate",
         "parameters": [
           {
             "in": "path",
-            "name": "card_id",
+            "name": "book_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Card Id",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Rate Id",
               "type": "string"
             }
           }
@@ -8667,7 +8576,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Delete Rate Card"
+        "summary": "Delete Rate"
       }
     },
     "/api/v1/metering/tasks/{task_id}/close": {
@@ -10971,7 +10880,7 @@
         "summary": "Create Sandbox"
       }
     },
-    "/api/v1/webhooks/config/configs": {
+    "/api/v1/webhooks/configs": {
       "get": {
         "operationId": "apps_platform_events_api_webhook_endpoints_list_webhook_configs",
         "parameters": [
@@ -11084,7 +10993,7 @@
         "summary": "Create Webhook Config"
       }
     },
-    "/api/v1/webhooks/config/configs/{config_id}": {
+    "/api/v1/webhooks/configs/{config_id}": {
       "delete": {
         "operationId": "apps_platform_events_api_webhook_endpoints_delete_webhook_config",
         "parameters": [
@@ -11184,7 +11093,7 @@
         "summary": "Update Webhook Config"
       }
     },
-    "/api/v1/webhooks/config/configs/{config_id}/deliveries": {
+    "/api/v1/webhooks/configs/{config_id}/deliveries": {
       "get": {
         "description": "The self-serve debugging surface: per-endpoint delivery attempts \u2014\nsuccesses, retries, and dead-letters \u2014 newest first, in the house cursor\nenvelope, over the per-endpoint checkpointed records (#76).",
         "operationId": "apps_platform_events_api_webhook_endpoints_list_webhook_deliveries",
@@ -11265,7 +11174,7 @@
         "summary": "List Webhook Deliveries"
       }
     },
-    "/api/v1/webhooks/config/configs/{config_id}/rotate-secret": {
+    "/api/v1/webhooks/configs/{config_id}/rotate-secret": {
       "post": {
         "description": "Two-secret overlap rotation: the current secret keeps signing a second\n`v1=` candidate for `overlap_hours` while the new one takes over, so a\nreceiver verifies with zero downtime. Rotating again mid-window replaces\nthe retiring secret (#83).",
         "operationId": "apps_platform_events_api_webhook_endpoints_rotate_webhook_secret",

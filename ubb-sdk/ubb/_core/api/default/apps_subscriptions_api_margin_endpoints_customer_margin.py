@@ -52,7 +52,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/margin/{customer_id}".format(customer_id=quote(str(customer_id), safe=""),),
+        "url": "/api/v1/margin/customers/{customer_id}".format(customer_id=quote(str(customer_id), safe=""),),
         "params": params,
     }
 

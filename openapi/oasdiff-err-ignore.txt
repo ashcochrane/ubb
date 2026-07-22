@@ -9,3 +9,42 @@ GET /api/v1/metering/pricing/rate-cards/{book_id}/rates the response's body `typ
 # Batch + async ingest converge on one verdict field set (accepted/rejected counters):
 POST /api/v1/metering/usage/batch removed the required property `failed` from the response with the `200` status
 POST /api/v1/metering/usage/batch removed the required property `succeeded` from the response with the `200` status
+
+# 86 Stage-5 final sweep (pre-launch lane; the last free breaks — ADR-003 §5).
+# Duplicate tenant billing routes removed; canonical home is the tenant mount
+# (GET /api/v1/tenant/billing-periods, .../invoices):
+GET /api/v1/billing/tenant/billing-periods api path removed without deprecation
+GET /api/v1/billing/tenant/invoices api path removed without deprecation
+# Margin routes gain an explicit /customers segment, ending the root-path and
+# bare-{customer_id} shadowing of the mount's named subpaths:
+GET /api/v1/margin/ api path removed without deprecation
+GET /api/v1/margin/{customer_id} api path removed without deprecation
+GET /api/v1/margin/{customer_id}/trend api path removed without deprecation
+# Rate retire route re-nested under its book so the path noun (rates) agrees
+# with the identifier it takes (a rate id), matching GET/POST .../{book_id}/rates:
+DELETE /api/v1/metering/pricing/rate-cards/{card_id} api path removed without deprecation
+# Webhook config surface de-stuttered: the legacy "webhooks/config/" mount plus
+# the router's own /configs collection made /webhooks/config/configs; now
+# /api/v1/webhooks/configs:
+GET /api/v1/webhooks/config/configs api path removed without deprecation
+POST /api/v1/webhooks/config/configs api path removed without deprecation
+DELETE /api/v1/webhooks/config/configs/{config_id} api path removed without deprecation
+PATCH /api/v1/webhooks/config/configs/{config_id} api path removed without deprecation
+GET /api/v1/webhooks/config/configs/{config_id}/deliveries api path removed without deprecation
+POST /api/v1/webhooks/config/configs/{config_id}/rotate-secret api path removed without deprecation
+
+# ============================================================================
+# ===== LAUNCH TAG BOUNDARY — the v1 compatibility contract binds here =====
+# ============================================================================
+# The openapi/v1.json revision tagged at launch (ADR-003 §5) is the public v1
+# contract. Every entry ABOVE this line is a pre-launch free break, coordinated
+# by hand with the one known tenant.
+#
+# From the launch tag onward, a NEW entry BELOW this line is permitted ONLY as
+# evidence of an ADR-003 §4 deprecation already in flight — which requires, in
+# the same or a prior change: `deprecated: true` on the operation in the spec, a
+# runtime `Sunset` header (register the route in api/v1/deprecation.py), a dated
+# changelog entry + email announcement, and at least 90 days' notice (a floor we
+# may raise, never lower). A bare removal or rename below this line is a contract
+# breach, not a CI escape hatch. See docs/api-compatibility.md.
+# ============================================================================

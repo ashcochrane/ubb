@@ -13,7 +13,8 @@ from uuid import UUID
 
 
 def _get_kwargs(
-    card_id: UUID,
+    book_id: UUID,
+    rate_id: UUID,
 
 ) -> dict[str, Any]:
     
@@ -24,7 +25,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "delete",
-        "url": "/api/v1/metering/pricing/rate-cards/{card_id}".format(card_id=quote(str(card_id), safe=""),),
+        "url": "/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}".format(book_id=quote(str(book_id), safe=""),rate_id=quote(str(rate_id), safe=""),),
     }
 
 
@@ -52,15 +53,22 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    card_id: UUID,
+    book_id: UUID,
+    rate_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Response[Any]:
-    """ Delete Rate Card
+    """ Delete Rate
+
+     Retire (soft-expire) a single rate within its book. Addressed under its
+    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
+    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
 
     Args:
-        card_id (UUID):
+        book_id (UUID):
+        rate_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -72,7 +80,8 @@ def sync_detailed(
 
 
     kwargs = _get_kwargs(
-        card_id=card_id,
+        book_id=book_id,
+rate_id=rate_id,
 
     )
 
@@ -84,15 +93,22 @@ def sync_detailed(
 
 
 async def asyncio_detailed(
-    card_id: UUID,
+    book_id: UUID,
+    rate_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Response[Any]:
-    """ Delete Rate Card
+    """ Delete Rate
+
+     Retire (soft-expire) a single rate within its book. Addressed under its
+    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
+    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
 
     Args:
-        card_id (UUID):
+        book_id (UUID):
+        rate_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -104,7 +120,8 @@ async def asyncio_detailed(
 
 
     kwargs = _get_kwargs(
-        card_id=card_id,
+        book_id=book_id,
+rate_id=rate_id,
 
     )
 

@@ -22,7 +22,7 @@ class MarginClientTest(unittest.TestCase):
         m = self.client.get_customer_margin("c1")
         self.assertIsInstance(m, CustomerMargin)
         self.assertEqual(m.gross_margin_micros, 500_300_000)
-        self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/c1")
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
 
     @patch("ubb.metering.httpx.Client.get")
     def test_get_margin_by_dimension(self, mock_get):
@@ -45,6 +45,7 @@ class MarginClientTest(unittest.TestCase):
         pts = self.client.get_margin_trend("c1", periods=3)
         self.assertIsInstance(pts[0], MarginTrendPoint)
         self.assertEqual(mock_get.call_args.kwargs["params"]["periods"], 3)
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1/trend")
 
     @patch("ubb.metering.httpx.Client.put")
     def test_set_customer_revenue(self, mock_put):

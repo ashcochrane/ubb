@@ -623,7 +623,7 @@ class TestWebhookConfigAPI:
 
     def test_create_webhook_config(self):
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {
                     "url": "https://example.com/hook",
@@ -643,7 +643,7 @@ class TestWebhookConfigAPI:
     def test_create_requires_event_types(self):
         """Omitting event_types is rejected — no implicit default subscription."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps({"url": "https://example.com/hook", "secret": "a" * 32}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -656,7 +656,7 @@ class TestWebhookConfigAPI:
     def test_create_rejects_empty_event_types(self):
         """An empty list would be a silent no-op webhook — reject it."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": []}
             ),
@@ -671,7 +671,7 @@ class TestWebhookConfigAPI:
 
         Semantic validation -> 422 validation_error problem+json (#78)."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {
                     "url": "https://example.com/hook",
@@ -692,7 +692,7 @@ class TestWebhookConfigAPI:
     def test_create_rejects_non_https_url(self):
         """A non-https URL is semantic validation -> 422 validation_error."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {
                     "url": "http://example.com/hook",
@@ -713,7 +713,7 @@ class TestWebhookConfigAPI:
         delivery path emitted it while the catalog silently hid it from
         subscribers."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {
                     "url": "https://example.com/hook",
@@ -730,7 +730,7 @@ class TestWebhookConfigAPI:
     def test_create_accepts_wildcard(self):
         """["*"] is the explicit opt-in to all events."""
         resp = self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {"url": "https://example.com/hook", "secret": "a" * 32, "event_types": ["*"]}
             ),
@@ -748,7 +748,7 @@ class TestWebhookConfigAPI:
             secret="s1",
         )
         resp = self.client.get(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 200
@@ -788,7 +788,7 @@ class TestWebhookConfigAPI:
         ids_newest_first = self._create_configs_with_distinct_created_at(3)
 
         page1 = self.client.get(
-            "/api/v1/webhooks/config/configs?limit=2",
+            "/api/v1/webhooks/configs?limit=2",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert page1.status_code == 200
@@ -798,7 +798,7 @@ class TestWebhookConfigAPI:
         assert body1["next_cursor"]
 
         page2 = self.client.get(
-            f"/api/v1/webhooks/config/configs?limit=2&cursor={body1['next_cursor']}",
+            f"/api/v1/webhooks/configs?limit=2&cursor={body1['next_cursor']}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert page2.status_code == 200
@@ -809,7 +809,7 @@ class TestWebhookConfigAPI:
 
     def test_list_invalid_cursor_is_problem(self):
         resp = self.client.get(
-            "/api/v1/webhooks/config/configs?cursor=not-a-cursor",
+            "/api/v1/webhooks/configs?cursor=not-a-cursor",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 400
@@ -818,7 +818,7 @@ class TestWebhookConfigAPI:
 
     def _post_config(self, url="https://example.com/hook"):
         return self.client.post(
-            "/api/v1/webhooks/config/configs",
+            "/api/v1/webhooks/configs",
             data=json.dumps(
                 {"url": url, "secret": "a" * 32, "event_types": ["usage.recorded"]}
             ),
@@ -866,7 +866,7 @@ class TestWebhookConfigAPI:
         assert create.status_code == 201
         config_id = create.json()["id"]
         resp = self.client.delete(
-            f"/api/v1/webhooks/config/configs/{config_id}",
+            f"/api/v1/webhooks/configs/{config_id}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 200
@@ -879,7 +879,7 @@ class TestWebhookConfigAPI:
             secret="s1",
         )
         resp = self.client.delete(
-            f"/api/v1/webhooks/config/configs/{config.id}",
+            f"/api/v1/webhooks/configs/{config.id}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 200
@@ -893,7 +893,7 @@ class TestWebhookConfigAPI:
             secret="s1",
         )
         resp = self.client.delete(
-            f"/api/v1/webhooks/config/configs/{config.id}",
+            f"/api/v1/webhooks/configs/{config.id}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         assert resp.status_code == 404
