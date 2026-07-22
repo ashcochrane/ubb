@@ -15,24 +15,24 @@ import { FormField } from "@/components/shared/form-field";
 import { useWithdraw } from "../api/queries";
 import { withdrawSchema, type WithdrawFormValues } from "../lib/schema";
 
-function randomKey() {
-  return crypto.randomUUID();
-}
-
 export function WithdrawDialog({ customerId }: { customerId: string }) {
   const [open, setOpen] = useState(false);
   const withdraw = useWithdraw(customerId);
-  const { register, handleSubmit, reset, formState: { errors } } =
-    useForm<WithdrawFormValues>({
-      resolver: zodResolver(withdrawSchema),
-      defaultValues: { amount: 0, description: "" },
-    });
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<WithdrawFormValues>({
+    resolver: zodResolver(withdrawSchema),
+    defaultValues: { amount: 0, description: "" },
+  });
 
   async function onSubmit(values: WithdrawFormValues) {
     await withdraw.mutateAsync({
-      amountMicros: Math.round(values.amount * 1_000_000),
+      amount_micros: Math.round(values.amount * 1_000_000),
       description: values.description,
-      idempotencyKey: randomKey(),
+      idempotency_key: crypto.randomUUID(),
     });
     setOpen(false);
     reset();
@@ -40,7 +40,7 @@ export function WithdrawDialog({ customerId }: { customerId: string }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" />}>Withdraw</DialogTrigger>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>Withdraw</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Withdraw from wallet</DialogTitle>
@@ -48,20 +48,14 @@ export function WithdrawDialog({ customerId }: { customerId: string }) {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField label="Amount (USD)" error={errors.amount?.message}>
             {(id) => (
-              <Input
-                id={id}
-                type="number"
-                min={1}
-                step={0.01}
-                {...register("amount", { valueAsNumber: true })}
-              />
+              <Input id={id} type="number" min={1} step={0.01} {...register("amount", { valueAsNumber: true })} />
             )}
           </FormField>
           <FormField label="Description" error={errors.description?.message}>
-            {(id) => <Input id={id} {...register("description")} />}
+            {(id) => <Input id={id} placeholder="Reason for withdrawal" {...register("description")} />}
           </FormField>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={withdraw.isPending}>

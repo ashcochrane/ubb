@@ -1,7 +1,9 @@
 // src/features/billing-ops/api/queries.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { toastOnError } from "@/lib/mutations";
-import { billingOpsApi } from "./provider";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
 import type {
   ConfigureAutoTopUpRequest,
   CreateTopUpRequest,
@@ -15,63 +17,69 @@ const txKey = (id: string) => ["billing-ops", "transactions", id] as const;
 export function useBalance(customerId: string) {
   return useQuery({
     queryKey: balanceKey(customerId),
-    queryFn: () => billingOpsApi.getBalance(customerId),
+    queryFn: () => api.getBalance(customerId),
     enabled: !!customerId,
   });
 }
 
 export function useTransactions(customerId: string) {
-  return useQuery({
-    queryKey: txKey(customerId),
-    queryFn: () => billingOpsApi.getTransactions(customerId),
+  return useCursorList({
+    queryKeyBase: txKey(customerId),
+    fetchPage: (cursor) => api.getTransactions(customerId, { cursor, limit: 50 }),
     enabled: !!customerId,
   });
 }
 
-function useBillingMutation<TVars>(
-  customerId: string,
-  fn: (vars: TVars) => Promise<void>,
-  errorMessage: string,
-) {
+function useWalletRefetch(customerId: string) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: balanceKey(customerId) });
-      qc.invalidateQueries({ queryKey: txKey(customerId) });
-    },
-    onError: toastOnError(errorMessage),
-  });
+  return () => {
+    qc.invalidateQueries({ queryKey: balanceKey(customerId) });
+    qc.invalidateQueries({ queryKey: txKey(customerId) });
+  };
 }
 
 export function useCreateTopUp(customerId: string) {
-  return useBillingMutation<CreateTopUpRequest>(
-    customerId,
-    (body) => billingOpsApi.createTopUp(customerId, body),
-    "Couldn't start top-up",
-  );
+  const refresh = useWalletRefetch(customerId);
+  return useMutation({
+    mutationFn: (body: CreateTopUpRequest) => api.createTopUp(customerId, body),
+    onSuccess: refresh,
+    onError: toastOnError("Couldn't start top-up"),
+  });
 }
 
 export function useWithdraw(customerId: string) {
-  return useBillingMutation<WithdrawRequest>(
-    customerId,
-    (body) => billingOpsApi.withdraw(customerId, body),
-    "Couldn't withdraw",
-  );
+  const refresh = useWalletRefetch(customerId);
+  return useMutation({
+    mutationFn: (body: WithdrawRequest) => api.withdraw(customerId, body),
+    onSuccess: () => {
+      refresh();
+      toast.success("Withdrawal complete");
+    },
+    onError: toastOnError("Couldn't withdraw"),
+  });
 }
 
 export function useRefund(customerId: string) {
-  return useBillingMutation<RefundRequest>(
-    customerId,
-    (body) => billingOpsApi.refund(customerId, body),
-    "Couldn't refund",
-  );
+  const refresh = useWalletRefetch(customerId);
+  return useMutation({
+    mutationFn: (body: RefundRequest) => api.refund(customerId, body),
+    onSuccess: () => {
+      refresh();
+      toast.success("Refund issued");
+    },
+    onError: toastOnError("Couldn't refund"),
+  });
 }
 
 export function useConfigureAutoTopUp(customerId: string) {
-  return useBillingMutation<ConfigureAutoTopUpRequest>(
-    customerId,
-    (body) => billingOpsApi.configureAutoTopUp(customerId, body),
-    "Couldn't configure auto top-up",
-  );
+  const refresh = useWalletRefetch(customerId);
+  return useMutation({
+    mutationFn: (body: ConfigureAutoTopUpRequest) =>
+      api.configureAutoTopUp(customerId, body),
+    onSuccess: () => {
+      refresh();
+      toast.success("Auto top-up saved");
+    },
+    onError: toastOnError("Couldn't configure auto top-up"),
+  });
 }

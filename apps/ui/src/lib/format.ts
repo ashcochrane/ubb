@@ -2,10 +2,55 @@ export function formatMicros(micros: number, currency = "USD"): string {
   const dollars = micros / 1_000_000;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency,
+    currency: normalizeCurrency(currency),
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(dollars);
+}
+
+/** Signed money in micros, e.g. +$12.50 / -$4.00. Zero renders unsigned. */
+export function formatSignedMicros(micros: number, currency = "USD"): string {
+  if (micros === 0) return formatMicros(0, currency);
+  const sign = micros > 0 ? "+" : "-";
+  return `${sign}${formatMicros(Math.abs(micros), currency)}`;
+}
+
+/**
+ * Format a value stored as (percentage × 1e6) — e.g. `markup_percentage_micros`.
+ * 2_500_000 → "2.5%". These are NOT money; never pass them to formatMicros.
+ */
+export function formatPercentMicros(percentMicros: number): string {
+  const pct = percentMicros / 1_000_000;
+  const trimmed = Number.isInteger(pct) ? pct.toString() : pct.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${trimmed}%`;
+}
+
+/** Format a plain percentage number (already a percent, e.g. 42.5 → "42.5%"). */
+export function formatPercent(pct: number, digits = 1): string {
+  return `${pct.toFixed(digits)}%`;
+}
+
+/** Currency codes sometimes arrive lowercase ("usd") or blank; Intl needs a valid uppercase ISO code. */
+function normalizeCurrency(currency: string | null | undefined): string {
+  const code = (currency ?? "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : "USD";
+}
+
+/**
+ * Humanize an open backend enum/status string for display.
+ * "meter_only" → "Meter only", "revenue_share" → "Revenue share", "OPEN" → "Open".
+ */
+export function humanizeLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const spaced = value.replace(/[_-]+/g, " ").trim();
+  if (!spaced) return "—";
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+/** Truncate a long technical id for display, keeping head and tail: "cus_1a2b…9z". */
+export function truncateId(id: string, head = 10, tail = 4): string {
+  if (id.length <= head + tail + 1) return id;
+  return `${id.slice(0, head)}…${id.slice(-tail)}`;
 }
 
 export function formatDate(isoString: string): string {

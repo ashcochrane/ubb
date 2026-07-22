@@ -16,11 +16,9 @@ export const Route = createFileRoute("/_app")({
       throw redirect({ to: "/sign-in" });
     }
 
-    // Tenant / onboarding check via /me
-    const me = await queryClient.ensureQueryData(meQueryOptions);
-    if (!me.tenantUser || !me.onboardingCompleted) {
-      throw redirect({ to: "/onboarding" });
-    }
+    // Load tenant context (products, billing mode, Stripe connection). A failure
+    // here (e.g. no tenant provisioned) surfaces via the route errorComponent.
+    await queryClient.ensureQueryData(meQueryOptions);
   },
   errorComponent: RouteError,
   component: AppLayout,

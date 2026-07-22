@@ -1,17 +1,44 @@
-// src/features/customers/api/types.ts
-import type { PlatformSchemas } from "@/api/types";
+import type {
+  PlatformSchemas,
+  MarginSchemas,
+  BillingSchemas,
+  MeteringSchemas,
+  SubscriptionSchemas,
+} from "@/api/types";
 
-export type Customer = PlatformSchemas["CustomerDetailResponse"];
-export type CustomerListResponse = PlatformSchemas["CustomerListResponse"];
-// POST /customers returns 201 with CustomerResponse, which is a thinner shape
-// than CustomerDetailResponse (no `metadata` etc.). Re-export for clarity.
-export type CreatedCustomer = PlatformSchemas["CustomerResponse"];
+// Create (the only platform customer write that returns a customer)
 export type CreateCustomerRequest = PlatformSchemas["CreateCustomerRequest"];
-export type UpdateCustomerRequest = PlatformSchemas["UpdateCustomerRequest"];
+export type CustomerResponse = PlatformSchemas["CustomerResponse"];
 
-export type CustomerStatus = "active" | "suspended" | "archived";
-export const CUSTOMER_STATUSES: CustomerStatus[] = [
-  "active",
-  "suspended",
-  "archived",
-];
+// Roster + margin (the closest thing to a customer directory)
+export type MarginList = MarginSchemas["MarginListOut"];
+export type MarginRow = MarginSchemas["CustomerMarginListRow"];
+export type CustomerMargin = MarginSchemas["CustomerMarginOut"];
+export type MarginTrend = MarginSchemas["MarginTrendOut"];
+export type RevenueProfile = MarginSchemas["RevenueProfileOut"];
+export type RevenueProfileIn = MarginSchemas["RevenueProfileIn"];
+export type RevenueMode = MarginSchemas["RevenueModeOut"];
+export type RevenueModeIn = MarginSchemas["RevenueModeIn"];
+
+// Billing (customer-scoped)
+export type Grant = BillingSchemas["GrantOut"];
+export type CreateGrantRequest = BillingSchemas["CreateGrantRequest"];
+export type BudgetConfig = BillingSchemas["BudgetConfigOut"];
+export type BudgetConfigIn = BillingSchemas["BudgetConfigIn"];
+export type BudgetStatus = BillingSchemas["BudgetStatusOut"];
+export type BillingProfile = BillingSchemas["CustomerBillingProfileOut"];
+export type BillingProfileIn = BillingSchemas["CustomerBillingProfileIn"];
+export type PastLimitReport = BillingSchemas["PastLimitReportResponse"];
+
+// Metering (customer-scoped)
+export type CustomerMarkup = MeteringSchemas["TenantMarkupOut"];
+export type CustomerMarkupIn = MeteringSchemas["TenantMarkupIn"];
+export type AssignBook = MeteringSchemas["AssignIn"];
+export type UsageEvent = MeteringSchemas["UsageEventOut"];
+
+// Subscriptions (customer-scoped)
+export type StripeSubscription = SubscriptionSchemas["StripeSubscriptionOut"];
+export type SubscriptionInvoice = SubscriptionSchemas["SubscriptionInvoiceOut"];
+export type SubscribeIn = PlatformSchemas["SubscribeIn"];
+export type SeatsIn = PlatformSchemas["SeatsIn"];
+export type SubscriptionCancelIn = PlatformSchemas["SubscriptionCancelIn"];

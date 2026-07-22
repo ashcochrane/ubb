@@ -1,9 +1,9 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { authApi } from "./provider";
+import { getMe } from "./api";
 
 export const meQueryOptions = queryOptions({
   queryKey: ["me"] as const,
-  queryFn: () => authApi.getMe(),
+  queryFn: getMe,
   staleTime: Infinity,
 });
 

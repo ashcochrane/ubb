@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { navSections } from "./nav-config";
+import { navSections, type NavGate } from "./nav-config";
 import { TopBar } from "./top-bar";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -19,13 +19,22 @@ const NAV_LINK_IDLE =
 const NAV_LINK_ACTIVE = "bg-accent-ghost text-accent-text font-semibold";
 
 export function NavShell({ children, userSlot }: NavShellProps) {
-  const { isBillingMode } = useAuth();
+  const { hasProduct, isBillingMode, tenantName } = useAuth();
 
-  const visibleSections = navSections.filter(
-    (section) =>
-      !section.visibleWhen ||
-      (section.visibleWhen === "billing" && isBillingMode),
-  );
+  const gateOk = (gate?: NavGate) => {
+    if (!gate) return true;
+    if (gate === "billing") return isBillingMode;
+    return hasProduct(gate);
+  };
+
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => gateOk(item.gate)),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  const initial = (tenantName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div className="grid h-screen grid-cols-[200px_1fr] grid-rows-[46px_1fr] bg-bg-page">
@@ -70,11 +79,13 @@ export function NavShell({ children, userSlot }: NavShellProps) {
         <div className="mt-auto border-t border-border px-4 py-[14px]">
           <div className="flex items-center gap-2">
             <div className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-accent-light text-[10px] font-bold text-accent-text">
-              A
+              {initial}
             </div>
-            <div>
-              <div className="text-[12px] font-semibold">Ash</div>
-              <div className="text-[10px] text-text-muted">admin</div>
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold" title={tenantName ?? undefined}>
+                {tenantName ?? "Workspace"}
+              </div>
+              <div className="text-[10px] text-text-muted">Tenant</div>
             </div>
           </div>
         </div>

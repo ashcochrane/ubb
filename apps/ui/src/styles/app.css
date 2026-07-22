@@ -9,66 +9,66 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Shadcn base (drives all shadcn components app-wide).
-     Hex values sourced from docs/superpowers/specs/2026-04-10-v4-visual-refresh-design.md §3.1. */
-  --background:           #f4f2ee;
-  --foreground:           #2e2520;
-  --card:                 #fcfaf7;
-  --card-foreground:      #2e2520;
-  --popover:              #fcfaf7;
-  --popover-foreground:   #2e2520;
-  --primary:              #2e2520;
-  --primary-foreground:   #fcfaf7;
-  --secondary:            #ece8e2;
-  --secondary-foreground: #2e2520;
-  --muted:                #ece8e2;
-  --muted-foreground:     #6d6358;
-  --accent:               #f8f0e8;
-  --accent-foreground:    #5a3520;
-  --destructive:          #b84848;
-  --border:               #e2ddd5;
-  --input:                #e2ddd5;
-  --ring:                 #a16a4a;
+  /* Monochrome black-and-white system. Neutral grays only; a single
+     restrained red is reserved for genuine destructive/danger affordances. */
+  --background:           #ffffff;
+  --foreground:           #18181b;
+  --card:                 #ffffff;
+  --card-foreground:      #18181b;
+  --popover:              #ffffff;
+  --popover-foreground:   #18181b;
+  --primary:              #18181b;
+  --primary-foreground:   #ffffff;
+  --secondary:            #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted:                #f4f4f5;
+  --muted-foreground:     #71717a;
+  --accent:               #f4f4f5;
+  --accent-foreground:    #18181b;
+  --destructive:          #b42318;
+  --border:               #e4e4e7;
+  --input:                #e4e4e7;
+  --ring:                 #a1a1aa;
   --radius:               0.625rem;
 
-  --sidebar:                     #fcfaf7;
-  --sidebar-foreground:          #2e2520;
-  --sidebar-primary:             #2e2520;
-  --sidebar-primary-foreground:  #fcfaf7;
-  --sidebar-accent:              #f8f0e8;
-  --sidebar-accent-foreground:   #5a3520;
-  --sidebar-border:              #e2ddd5;
-  --sidebar-ring:                #a16a4a;
+  --sidebar:                     #fafafa;
+  --sidebar-foreground:          #18181b;
+  --sidebar-primary:             #18181b;
+  --sidebar-primary-foreground:  #ffffff;
+  --sidebar-accent:              #f4f4f5;
+  --sidebar-accent-foreground:   #18181b;
+  --sidebar-border:              #e4e4e7;
+  --sidebar-ring:                #a1a1aa;
 }
 
 .dark {
-  --background:           #1c1814;
-  --foreground:           #f4f2ee;
-  --card:                 #24201b;
-  --card-foreground:      #f4f2ee;
-  --popover:              #24201b;
-  --popover-foreground:   #f4f2ee;
-  --primary:              #f4f2ee;
-  --primary-foreground:   #1c1814;
-  --secondary:            #2a2520;
-  --secondary-foreground: #f4f2ee;
-  --muted:                #2a2520;
-  --muted-foreground:     #a9a095;
-  --accent:               #3a2a20;
-  --accent-foreground:    #f4e0cc;
-  --destructive:          #cf6060;
-  --border:               rgba(255,255,255,0.08);
-  --input:                rgba(255,255,255,0.12);
-  --ring:                 #c08060;
+  --background:           #0a0a0a;
+  --foreground:           #fafafa;
+  --card:                 #131316;
+  --card-foreground:      #fafafa;
+  --popover:              #131316;
+  --popover-foreground:   #fafafa;
+  --primary:              #fafafa;
+  --primary-foreground:   #0a0a0a;
+  --secondary:            #1f1f23;
+  --secondary-foreground: #fafafa;
+  --muted:                #1f1f23;
+  --muted-foreground:     #a1a1aa;
+  --accent:               #1f1f23;
+  --accent-foreground:    #fafafa;
+  --destructive:          #e5675b;
+  --border:               rgba(255,255,255,0.10);
+  --input:                rgba(255,255,255,0.14);
+  --ring:                 #52525b;
 
-  --sidebar:                     #1c1814;
-  --sidebar-foreground:          #f4f2ee;
-  --sidebar-primary:             #f4f2ee;
-  --sidebar-primary-foreground:  #1c1814;
-  --sidebar-accent:              #3a2a20;
-  --sidebar-accent-foreground:   #f4e0cc;
-  --sidebar-border:              rgba(255,255,255,0.08);
-  --sidebar-ring:                #c08060;
+  --sidebar:                     #0a0a0a;
+  --sidebar-foreground:          #fafafa;
+  --sidebar-primary:             #fafafa;
+  --sidebar-primary-foreground:  #0a0a0a;
+  --sidebar-accent:              #1f1f23;
+  --sidebar-accent-foreground:   #fafafa;
+  --sidebar-border:              rgba(255,255,255,0.10);
+  --sidebar-ring:                #52525b;
 }
 
 @theme inline {
@@ -105,65 +105,66 @@
   --color-foreground: var(--foreground);
   --color-background: var(--background);
 
-  /* Named design-system palette (v4). All hex taken from
-     ui-mockups/ubb-design-system.html and ui-mockups/v2/ubb-dashboard-v4.html. */
-  --color-bg-page:        #f4f2ee;
-  --color-bg-subtle:      #ece8e2;
-  --color-bg-surface:     #fcfaf7;
+  /* Named design-system palette — monochrome. Every hue collapses to a
+     neutral gray ramp so badges, charts, and legacy callers render in
+     black-and-white. The one exception is the `red` family, retained (muted)
+     for genuine danger/negative affordances. */
+  --color-bg-page:        #fafafa;
+  --color-bg-subtle:      #f4f4f5;
+  --color-bg-surface:     #ffffff;
   --color-bg-raised:      #ffffff;
-  --color-border-mid:     #d4cdc2;
-  --color-border-strong:  #b5ad9e;
-  --color-text-primary:   #2e2520;
-  --color-text-secondary: #6d6358;
-  --color-text-muted:     #9a8e80;
-  --color-text-inverse:   #fcfaf7;
+  --color-border-mid:     #d4d4d8;
+  --color-border-strong:  #a1a1aa;
+  --color-text-primary:   #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted:     #a1a1aa;
+  --color-text-inverse:   #ffffff;
 
-  --color-accent-base:    #a16a4a;
-  --color-accent-hover:   #b07855;
-  --color-accent-dark:    #855638;
-  --color-accent-light:   #f0e0d2;
-  --color-accent-ghost:   #f8f0e8;
-  --color-accent-text:    #5a3520;
-  --color-accent-border:  #d4ad90;
+  --color-accent-base:    #18181b;
+  --color-accent-hover:   #27272a;
+  --color-accent-dark:    #09090b;
+  --color-accent-light:   #e4e4e7;
+  --color-accent-ghost:   #f4f4f5;
+  --color-accent-text:    #18181b;
+  --color-accent-border:  #d4d4d8;
 
-  --color-blue:           #4a7fa8;
-  --color-blue-light:     #eaf1f7;
-  --color-blue-text:      #1e4060;
-  --color-blue-border:    #b0cce0;
+  --color-blue:           #52525b;
+  --color-blue-light:     #f4f4f5;
+  --color-blue-text:      #27272a;
+  --color-blue-border:    #d4d4d8;
 
-  --color-red:            #b84848;
-  --color-red-light:      #faecec;
-  --color-red-text:       #6a1e1e;
-  --color-red-border:     #e0a0a0;
+  --color-red:            #b42318;
+  --color-red-light:      #fbeae8;
+  --color-red-text:       #7a1c14;
+  --color-red-border:     #e6b4ae;
 
-  --color-green:          #3a8050;
-  --color-green-light:    #eaf5ee;
-  --color-green-text:     #1a4a28;
-  --color-green-border:   #a0cca8;
+  --color-green:          #3f3f46;
+  --color-green-light:    #f4f4f5;
+  --color-green-text:     #18181b;
+  --color-green-border:   #d4d4d8;
 
-  --color-amber:          #a07020;
-  --color-amber-light:    #fdf4e4;
-  --color-amber-text:     #5a3e10;
-  --color-amber-border:   #e0c070;
+  --color-amber:          #52525b;
+  --color-amber-light:    #f4f4f5;
+  --color-amber-text:     #27272a;
+  --color-amber-border:   #d4d4d8;
 
-  --color-purple:         #6a5aaa;
-  --color-purple-light:   #f0eefa;
-  --color-purple-text:    #3a2a6a;
-  --color-purple-border:  #c0b0e0;
+  --color-purple:         #52525b;
+  --color-purple-light:   #f4f4f5;
+  --color-purple-text:    #27272a;
+  --color-purple-border:  #d4d4d8;
 
-  --color-stone:          #c2a68e;
-  --color-stone-light:    #ede4da;
+  --color-stone:          #a1a1aa;
+  --color-stone-light:    #f4f4f5;
 
-  /* Legacy feature tokens aliased onto new palette so existing callers
-     (billing, customers, reconciliation, etc.) keep compiling without
-     touching every file. See spec §3.2. */
-  --color-success-dark:   var(--color-green-text);
+  /* Legacy feature tokens aliased onto the monochrome palette so existing
+     callers keep compiling. Positive/neutral map to gray; danger to red. */
+  --color-success-dark:   var(--color-text-primary);
   --color-danger-dark:    var(--color-red-text);
   --color-purple-bg:      var(--color-purple-light);
   --color-purple-fg:      var(--color-purple-text);
-  --color-chart-margin:   var(--color-accent-base);
+  --color-chart-margin:   #18181b;
   --color-chart-loss:     var(--color-red);
-  --color-chart-alloc:    var(--color-purple);
+  --color-chart-alloc:    #a1a1aa;
 
   /* Tailwind radii */
   --radius-sm: calc(var(--radius) * 0.6);

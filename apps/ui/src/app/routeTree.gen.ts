@@ -10,29 +10,32 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppWebhooksIndexRouteImport } from './routes/_app/webhooks/index'
+import { Route as AppUsageIndexRouteImport } from './routes/_app/usage/index'
+import { Route as AppSubscriptionsIndexRouteImport } from './routes/_app/subscriptions/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
-import { Route as AppPricingCardsIndexRouteImport } from './routes/_app/pricing-cards/index'
-import { Route as AppExportIndexRouteImport } from './routes/_app/export/index'
-import { Route as AppEventsIndexRouteImport } from './routes/_app/events/index'
+import { Route as AppReferralsIndexRouteImport } from './routes/_app/referrals/index'
+import { Route as AppPricingIndexRouteImport } from './routes/_app/pricing/index'
+import { Route as AppMarginIndexRouteImport } from './routes/_app/margin/index'
 import { Route as AppCustomersIndexRouteImport } from './routes/_app/customers/index'
 import { Route as AppBillingIndexRouteImport } from './routes/_app/billing/index'
-import { Route as AppPricingCardsNewRouteImport } from './routes/_app/pricing-cards/new'
-import { Route as AppPricingCardsCardIdRouteImport } from './routes/_app/pricing-cards/$cardId'
+import { Route as AppAuditIndexRouteImport } from './routes/_app/audit/index'
+import { Route as AppWebhooksConfigIdRouteImport } from './routes/_app/webhooks/$configId'
+import { Route as AppUsageEventIdRouteImport } from './routes/_app/usage/$eventId'
+import { Route as AppSubscriptionsPlansRouteImport } from './routes/_app/subscriptions/plans'
+import { Route as AppReferralsCustomerIdRouteImport } from './routes/_app/referrals/$customerId'
+import { Route as AppPricingMarkupRouteImport } from './routes/_app/pricing/markup'
+import { Route as AppPricingBookIdRouteImport } from './routes/_app/pricing/$bookId'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/_app/customers/$customerId'
+import { Route as AppBillingInvoicesRouteImport } from './routes/_app/billing/invoices'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/onboarding.lazy').then((d) => d.Route))
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -41,27 +44,40 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
-} as any).lazy(() => import('./routes/_app/index.lazy').then((d) => d.Route))
+} as any)
+const AppWebhooksIndexRoute = AppWebhooksIndexRouteImport.update({
+  id: '/webhooks/',
+  path: '/webhooks/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppUsageIndexRoute = AppUsageIndexRouteImport.update({
+  id: '/usage/',
+  path: '/usage/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSubscriptionsIndexRoute = AppSubscriptionsIndexRouteImport.update({
+  id: '/subscriptions/',
+  path: '/subscriptions/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppPricingCardsIndexRoute = AppPricingCardsIndexRouteImport.update({
-  id: '/pricing-cards/',
-  path: '/pricing-cards/',
+const AppReferralsIndexRoute = AppReferralsIndexRouteImport.update({
+  id: '/referrals/',
+  path: '/referrals/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppExportIndexRoute = AppExportIndexRouteImport.update({
-  id: '/export/',
-  path: '/export/',
+const AppPricingIndexRoute = AppPricingIndexRouteImport.update({
+  id: '/pricing/',
+  path: '/pricing/',
   getParentRoute: () => AppRoute,
-} as any).lazy(() =>
-  import('./routes/_app/export/index.lazy').then((d) => d.Route),
-)
-const AppEventsIndexRoute = AppEventsIndexRouteImport.update({
-  id: '/events/',
-  path: '/events/',
+} as any)
+const AppMarginIndexRoute = AppMarginIndexRouteImport.update({
+  id: '/margin/',
+  path: '/margin/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
@@ -73,120 +89,193 @@ const AppBillingIndexRoute = AppBillingIndexRouteImport.update({
   id: '/billing/',
   path: '/billing/',
   getParentRoute: () => AppRoute,
-} as any).lazy(() =>
-  import('./routes/_app/billing/index.lazy').then((d) => d.Route),
-)
-const AppPricingCardsNewRoute = AppPricingCardsNewRouteImport.update({
-  id: '/pricing-cards/new',
-  path: '/pricing-cards/new',
+} as any)
+const AppAuditIndexRoute = AppAuditIndexRouteImport.update({
+  id: '/audit/',
+  path: '/audit/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppPricingCardsCardIdRoute = AppPricingCardsCardIdRouteImport.update({
-  id: '/pricing-cards/$cardId',
-  path: '/pricing-cards/$cardId',
+const AppWebhooksConfigIdRoute = AppWebhooksConfigIdRouteImport.update({
+  id: '/webhooks/$configId',
+  path: '/webhooks/$configId',
   getParentRoute: () => AppRoute,
-} as any).lazy(() =>
-  import('./routes/_app/pricing-cards/$cardId.lazy').then((d) => d.Route),
-)
+} as any)
+const AppUsageEventIdRoute = AppUsageEventIdRouteImport.update({
+  id: '/usage/$eventId',
+  path: '/usage/$eventId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSubscriptionsPlansRoute = AppSubscriptionsPlansRouteImport.update({
+  id: '/subscriptions/plans',
+  path: '/subscriptions/plans',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReferralsCustomerIdRoute = AppReferralsCustomerIdRouteImport.update({
+  id: '/referrals/$customerId',
+  path: '/referrals/$customerId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPricingMarkupRoute = AppPricingMarkupRouteImport.update({
+  id: '/pricing/markup',
+  path: '/pricing/markup',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPricingBookIdRoute = AppPricingBookIdRouteImport.update({
+  id: '/pricing/$bookId',
+  path: '/pricing/$bookId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   id: '/customers/$customerId',
   path: '/customers/$customerId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBillingInvoicesRoute = AppBillingInvoicesRouteImport.update({
+  id: '/billing/invoices',
+  path: '/billing/invoices',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
-  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/billing/invoices': typeof AppBillingInvoicesRoute
   '/customers/$customerId': typeof AppCustomersCustomerIdRoute
-  '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
-  '/pricing-cards/new': typeof AppPricingCardsNewRoute
+  '/pricing/$bookId': typeof AppPricingBookIdRoute
+  '/pricing/markup': typeof AppPricingMarkupRoute
+  '/referrals/$customerId': typeof AppReferralsCustomerIdRoute
+  '/subscriptions/plans': typeof AppSubscriptionsPlansRoute
+  '/usage/$eventId': typeof AppUsageEventIdRoute
+  '/webhooks/$configId': typeof AppWebhooksConfigIdRoute
+  '/audit/': typeof AppAuditIndexRoute
   '/billing/': typeof AppBillingIndexRoute
   '/customers/': typeof AppCustomersIndexRoute
-  '/events/': typeof AppEventsIndexRoute
-  '/export/': typeof AppExportIndexRoute
-  '/pricing-cards/': typeof AppPricingCardsIndexRoute
+  '/margin/': typeof AppMarginIndexRoute
+  '/pricing/': typeof AppPricingIndexRoute
+  '/referrals/': typeof AppReferralsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/subscriptions/': typeof AppSubscriptionsIndexRoute
+  '/usage/': typeof AppUsageIndexRoute
+  '/webhooks/': typeof AppWebhooksIndexRoute
 }
 export interface FileRoutesByTo {
-  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/': typeof AppIndexRoute
+  '/billing/invoices': typeof AppBillingInvoicesRoute
   '/customers/$customerId': typeof AppCustomersCustomerIdRoute
-  '/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
-  '/pricing-cards/new': typeof AppPricingCardsNewRoute
+  '/pricing/$bookId': typeof AppPricingBookIdRoute
+  '/pricing/markup': typeof AppPricingMarkupRoute
+  '/referrals/$customerId': typeof AppReferralsCustomerIdRoute
+  '/subscriptions/plans': typeof AppSubscriptionsPlansRoute
+  '/usage/$eventId': typeof AppUsageEventIdRoute
+  '/webhooks/$configId': typeof AppWebhooksConfigIdRoute
+  '/audit': typeof AppAuditIndexRoute
   '/billing': typeof AppBillingIndexRoute
   '/customers': typeof AppCustomersIndexRoute
-  '/events': typeof AppEventsIndexRoute
-  '/export': typeof AppExportIndexRoute
-  '/pricing-cards': typeof AppPricingCardsIndexRoute
+  '/margin': typeof AppMarginIndexRoute
+  '/pricing': typeof AppPricingIndexRoute
+  '/referrals': typeof AppReferralsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/subscriptions': typeof AppSubscriptionsIndexRoute
+  '/usage': typeof AppUsageIndexRoute
+  '/webhooks': typeof AppWebhooksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
-  '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/billing/invoices': typeof AppBillingInvoicesRoute
   '/_app/customers/$customerId': typeof AppCustomersCustomerIdRoute
-  '/_app/pricing-cards/$cardId': typeof AppPricingCardsCardIdRoute
-  '/_app/pricing-cards/new': typeof AppPricingCardsNewRoute
+  '/_app/pricing/$bookId': typeof AppPricingBookIdRoute
+  '/_app/pricing/markup': typeof AppPricingMarkupRoute
+  '/_app/referrals/$customerId': typeof AppReferralsCustomerIdRoute
+  '/_app/subscriptions/plans': typeof AppSubscriptionsPlansRoute
+  '/_app/usage/$eventId': typeof AppUsageEventIdRoute
+  '/_app/webhooks/$configId': typeof AppWebhooksConfigIdRoute
+  '/_app/audit/': typeof AppAuditIndexRoute
   '/_app/billing/': typeof AppBillingIndexRoute
   '/_app/customers/': typeof AppCustomersIndexRoute
-  '/_app/events/': typeof AppEventsIndexRoute
-  '/_app/export/': typeof AppExportIndexRoute
-  '/_app/pricing-cards/': typeof AppPricingCardsIndexRoute
+  '/_app/margin/': typeof AppMarginIndexRoute
+  '/_app/pricing/': typeof AppPricingIndexRoute
+  '/_app/referrals/': typeof AppReferralsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/subscriptions/': typeof AppSubscriptionsIndexRoute
+  '/_app/usage/': typeof AppUsageIndexRoute
+  '/_app/webhooks/': typeof AppWebhooksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/onboarding'
     | '/sign-in'
+    | '/billing/invoices'
     | '/customers/$customerId'
-    | '/pricing-cards/$cardId'
-    | '/pricing-cards/new'
+    | '/pricing/$bookId'
+    | '/pricing/markup'
+    | '/referrals/$customerId'
+    | '/subscriptions/plans'
+    | '/usage/$eventId'
+    | '/webhooks/$configId'
+    | '/audit/'
     | '/billing/'
     | '/customers/'
-    | '/events/'
-    | '/export/'
-    | '/pricing-cards/'
+    | '/margin/'
+    | '/pricing/'
+    | '/referrals/'
     | '/settings/'
+    | '/subscriptions/'
+    | '/usage/'
+    | '/webhooks/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/onboarding'
     | '/sign-in'
     | '/'
+    | '/billing/invoices'
     | '/customers/$customerId'
-    | '/pricing-cards/$cardId'
-    | '/pricing-cards/new'
+    | '/pricing/$bookId'
+    | '/pricing/markup'
+    | '/referrals/$customerId'
+    | '/subscriptions/plans'
+    | '/usage/$eventId'
+    | '/webhooks/$configId'
+    | '/audit'
     | '/billing'
     | '/customers'
-    | '/events'
-    | '/export'
-    | '/pricing-cards'
+    | '/margin'
+    | '/pricing'
+    | '/referrals'
     | '/settings'
+    | '/subscriptions'
+    | '/usage'
+    | '/webhooks'
   id:
     | '__root__'
     | '/_app'
-    | '/onboarding'
     | '/sign-in'
     | '/_app/'
+    | '/_app/billing/invoices'
     | '/_app/customers/$customerId'
-    | '/_app/pricing-cards/$cardId'
-    | '/_app/pricing-cards/new'
+    | '/_app/pricing/$bookId'
+    | '/_app/pricing/markup'
+    | '/_app/referrals/$customerId'
+    | '/_app/subscriptions/plans'
+    | '/_app/usage/$eventId'
+    | '/_app/webhooks/$configId'
+    | '/_app/audit/'
     | '/_app/billing/'
     | '/_app/customers/'
-    | '/_app/events/'
-    | '/_app/export/'
-    | '/_app/pricing-cards/'
+    | '/_app/margin/'
+    | '/_app/pricing/'
+    | '/_app/referrals/'
     | '/_app/settings/'
+    | '/_app/subscriptions/'
+    | '/_app/usage/'
+    | '/_app/webhooks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
-  OnboardingRoute: typeof OnboardingRoute
   SignInRoute: typeof SignInRoute
 }
 
@@ -197,13 +286,6 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -220,6 +302,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/webhooks/': {
+      id: '/_app/webhooks/'
+      path: '/webhooks'
+      fullPath: '/webhooks/'
+      preLoaderRoute: typeof AppWebhooksIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/usage/': {
+      id: '/_app/usage/'
+      path: '/usage'
+      fullPath: '/usage/'
+      preLoaderRoute: typeof AppUsageIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/subscriptions/': {
+      id: '/_app/subscriptions/'
+      path: '/subscriptions'
+      fullPath: '/subscriptions/'
+      preLoaderRoute: typeof AppSubscriptionsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/': {
       id: '/_app/settings/'
       path: '/settings'
@@ -227,25 +330,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/pricing-cards/': {
-      id: '/_app/pricing-cards/'
-      path: '/pricing-cards'
-      fullPath: '/pricing-cards/'
-      preLoaderRoute: typeof AppPricingCardsIndexRouteImport
+    '/_app/referrals/': {
+      id: '/_app/referrals/'
+      path: '/referrals'
+      fullPath: '/referrals/'
+      preLoaderRoute: typeof AppReferralsIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/export/': {
-      id: '/_app/export/'
-      path: '/export'
-      fullPath: '/export/'
-      preLoaderRoute: typeof AppExportIndexRouteImport
+    '/_app/pricing/': {
+      id: '/_app/pricing/'
+      path: '/pricing'
+      fullPath: '/pricing/'
+      preLoaderRoute: typeof AppPricingIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/events/': {
-      id: '/_app/events/'
-      path: '/events'
-      fullPath: '/events/'
-      preLoaderRoute: typeof AppEventsIndexRouteImport
+    '/_app/margin/': {
+      id: '/_app/margin/'
+      path: '/margin'
+      fullPath: '/margin/'
+      preLoaderRoute: typeof AppMarginIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/customers/': {
@@ -262,18 +365,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillingIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/pricing-cards/new': {
-      id: '/_app/pricing-cards/new'
-      path: '/pricing-cards/new'
-      fullPath: '/pricing-cards/new'
-      preLoaderRoute: typeof AppPricingCardsNewRouteImport
+    '/_app/audit/': {
+      id: '/_app/audit/'
+      path: '/audit'
+      fullPath: '/audit/'
+      preLoaderRoute: typeof AppAuditIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/pricing-cards/$cardId': {
-      id: '/_app/pricing-cards/$cardId'
-      path: '/pricing-cards/$cardId'
-      fullPath: '/pricing-cards/$cardId'
-      preLoaderRoute: typeof AppPricingCardsCardIdRouteImport
+    '/_app/webhooks/$configId': {
+      id: '/_app/webhooks/$configId'
+      path: '/webhooks/$configId'
+      fullPath: '/webhooks/$configId'
+      preLoaderRoute: typeof AppWebhooksConfigIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/usage/$eventId': {
+      id: '/_app/usage/$eventId'
+      path: '/usage/$eventId'
+      fullPath: '/usage/$eventId'
+      preLoaderRoute: typeof AppUsageEventIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/subscriptions/plans': {
+      id: '/_app/subscriptions/plans'
+      path: '/subscriptions/plans'
+      fullPath: '/subscriptions/plans'
+      preLoaderRoute: typeof AppSubscriptionsPlansRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/referrals/$customerId': {
+      id: '/_app/referrals/$customerId'
+      path: '/referrals/$customerId'
+      fullPath: '/referrals/$customerId'
+      preLoaderRoute: typeof AppReferralsCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/pricing/markup': {
+      id: '/_app/pricing/markup'
+      path: '/pricing/markup'
+      fullPath: '/pricing/markup'
+      preLoaderRoute: typeof AppPricingMarkupRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/pricing/$bookId': {
+      id: '/_app/pricing/$bookId'
+      path: '/pricing/$bookId'
+      fullPath: '/pricing/$bookId'
+      preLoaderRoute: typeof AppPricingBookIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/customers/$customerId': {
@@ -283,40 +421,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/billing/invoices': {
+      id: '/_app/billing/invoices'
+      path: '/billing/invoices'
+      fullPath: '/billing/invoices'
+      preLoaderRoute: typeof AppBillingInvoicesRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppBillingInvoicesRoute: typeof AppBillingInvoicesRoute
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
-  AppPricingCardsCardIdRoute: typeof AppPricingCardsCardIdRoute
-  AppPricingCardsNewRoute: typeof AppPricingCardsNewRoute
+  AppPricingBookIdRoute: typeof AppPricingBookIdRoute
+  AppPricingMarkupRoute: typeof AppPricingMarkupRoute
+  AppReferralsCustomerIdRoute: typeof AppReferralsCustomerIdRoute
+  AppSubscriptionsPlansRoute: typeof AppSubscriptionsPlansRoute
+  AppUsageEventIdRoute: typeof AppUsageEventIdRoute
+  AppWebhooksConfigIdRoute: typeof AppWebhooksConfigIdRoute
+  AppAuditIndexRoute: typeof AppAuditIndexRoute
   AppBillingIndexRoute: typeof AppBillingIndexRoute
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
-  AppEventsIndexRoute: typeof AppEventsIndexRoute
-  AppExportIndexRoute: typeof AppExportIndexRoute
-  AppPricingCardsIndexRoute: typeof AppPricingCardsIndexRoute
+  AppMarginIndexRoute: typeof AppMarginIndexRoute
+  AppPricingIndexRoute: typeof AppPricingIndexRoute
+  AppReferralsIndexRoute: typeof AppReferralsIndexRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+  AppSubscriptionsIndexRoute: typeof AppSubscriptionsIndexRoute
+  AppUsageIndexRoute: typeof AppUsageIndexRoute
+  AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppBillingInvoicesRoute: AppBillingInvoicesRoute,
   AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
-  AppPricingCardsCardIdRoute: AppPricingCardsCardIdRoute,
-  AppPricingCardsNewRoute: AppPricingCardsNewRoute,
+  AppPricingBookIdRoute: AppPricingBookIdRoute,
+  AppPricingMarkupRoute: AppPricingMarkupRoute,
+  AppReferralsCustomerIdRoute: AppReferralsCustomerIdRoute,
+  AppSubscriptionsPlansRoute: AppSubscriptionsPlansRoute,
+  AppUsageEventIdRoute: AppUsageEventIdRoute,
+  AppWebhooksConfigIdRoute: AppWebhooksConfigIdRoute,
+  AppAuditIndexRoute: AppAuditIndexRoute,
   AppBillingIndexRoute: AppBillingIndexRoute,
   AppCustomersIndexRoute: AppCustomersIndexRoute,
-  AppEventsIndexRoute: AppEventsIndexRoute,
-  AppExportIndexRoute: AppExportIndexRoute,
-  AppPricingCardsIndexRoute: AppPricingCardsIndexRoute,
+  AppMarginIndexRoute: AppMarginIndexRoute,
+  AppPricingIndexRoute: AppPricingIndexRoute,
+  AppReferralsIndexRoute: AppReferralsIndexRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
+  AppSubscriptionsIndexRoute: AppSubscriptionsIndexRoute,
+  AppUsageIndexRoute: AppUsageIndexRoute,
+  AppWebhooksIndexRoute: AppWebhooksIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
-  OnboardingRoute: OnboardingRoute,
   SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,8 +1,11 @@
-import { platformApi } from "@/api/client";
+import { tenantApi } from "@/api/client";
+import { requireData } from "@/api/errors";
 import type { Me } from "./types";
 
+/** Load the current tenant's configuration — the app's identity/context source. */
 export async function getMe(): Promise<Me> {
-  const { data, error } = await platformApi.GET("/me", {});
-  if (error) throw new Error("Failed to load user");
-  return data as Me;
+  const tenant = await tenantApi
+    .GET("/config", {})
+    .then((r) => requireData(r, "Failed to load tenant"));
+  return { tenant };
 }

@@ -6,23 +6,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { BillingTransaction } from "../api/types";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
+import { formatSignedMicros, formatMicros, formatShortDate } from "@/lib/format";
+import type { WalletTransaction } from "../api/types";
 
-function microsToDollars(micros: number): string {
-  const sign = micros < 0 ? "-" : "";
-  return `${sign}$${(Math.abs(micros) / 1_000_000).toFixed(2)}`;
-}
-
-function microsToBalance(micros: number): string {
-  return (micros / 1_000_000).toFixed(2);
-}
-
-export function TransactionsTable({ rows }: { rows: BillingTransaction[] }) {
+export function TransactionsTable({
+  rows,
+  currency = "USD",
+}: {
+  rows: WalletTransaction[];
+  currency?: string;
+}) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        No transactions yet.
-      </div>
+      <EmptyState
+        title="No transactions yet"
+        description="Top-ups, debits, credits, and refunds will appear here."
+      />
     );
   }
 
@@ -40,11 +41,21 @@ export function TransactionsTable({ rows }: { rows: BillingTransaction[] }) {
       <TableBody>
         {rows.map((r) => (
           <TableRow key={r.id}>
-            <TableCell>{r.type}</TableCell>
-            <TableCell className="text-muted-foreground">{r.description}</TableCell>
-            <TableCell className="text-right">{microsToDollars(r.amountMicros)}</TableCell>
-            <TableCell className="text-right">{microsToBalance(r.balanceAfterMicros)}</TableCell>
-            <TableCell className="text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</TableCell>
+            <TableCell>
+              <StatusBadge value={r.transaction_type} />
+            </TableCell>
+            <TableCell className="max-w-[20rem] truncate text-muted-foreground" title={r.description}>
+              {r.description || "—"}
+            </TableCell>
+            <TableCell className="text-right font-medium tabular-nums">
+              {formatSignedMicros(r.amount_micros, currency)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-muted-foreground">
+              {formatMicros(r.balance_after_micros, currency)}
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {formatShortDate(r.created_at)}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
