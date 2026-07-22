@@ -17,6 +17,7 @@ from ninja import Router
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
+from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 
 from core.pagination import paginate
@@ -55,7 +56,7 @@ def trigger_sync(request):
     response={200: StripeSubscriptionOut, 404: ProblemOut},
 )
 @role_floor(READ)
-def get_subscription(request, customer_id: str):
+def get_subscription(request, customer_id: UUIDIdentifier):
     _product_check(request)
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
@@ -86,7 +87,7 @@ def get_subscription(request, customer_id: str):
     response={200: PaginatedInvoicesResponse, 400: ProblemOut, 404: ProblemOut},
 )
 @role_floor(READ)
-def get_invoices(request, customer_id: str, cursor: str = None, limit: int = 50):
+def get_invoices(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)

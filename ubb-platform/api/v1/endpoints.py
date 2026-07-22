@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 from core.auth import ApiKeyAuth, ProductAccess, READ, role_floor
+from core.identifiers import UUIDIdentifier
 from core.problems import Problem
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 
@@ -26,7 +27,7 @@ def health(request):
 @root_router.get("/customers/{customer_id}/past-limit-report",
          response=PastLimitReportResponse)
 @role_floor(READ)
-def past_limit_report(request, customer_id: str,
+def past_limit_report(request, customer_id: UUIDIdentifier,
                       since: datetime = None, until: datetime = None):
     """The past-limit report (#41, spec §I): per-customer episodes — each
     with the tripping limit, tripped-at, resume time (if any), itemized

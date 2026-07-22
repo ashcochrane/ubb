@@ -19,6 +19,7 @@ from ninja.errors import (
     ValidationError as NinjaValidationError,
 )
 
+from core.identifiers import is_path_identifier_error
 from core.problems import PROBLEM_TYPE_BASE, PROBLEMS, Problem
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,14 @@ def install_problem_handlers(api):
 
     @api.exception_handler(NinjaValidationError)
     def _validation(request, exc):
+        # #102: a path identifier that does not parse as a UUID cannot name
+        # a resource — indistinguishable from a nonexistent one, so it takes
+        # the same bare 404 lane as Http404. Only when nothing else failed:
+        # any other error keeps the 422 lane, mirroring the ordering a
+        # well-formed-but-unknown identifier gets (validation answers first,
+        # the lookup never runs).
+        if exc.errors and all(is_path_identifier_error(e) for e in exc.errors):
+            return problem_response("not_found")
         # pydantic's per-error dicts also carry `input` (the caller's own
         # payload echoed back) and `ctx`/`url` (not JSON-safe / noise) —
         # only location, message, and error type are contract.

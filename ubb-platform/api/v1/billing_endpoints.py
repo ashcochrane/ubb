@@ -22,6 +22,7 @@ from api.v1.schemas import (
     TenantUsageInvoiceListResponse,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
+from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.audit.ledger import record as audit_record
@@ -44,7 +45,7 @@ _product_check = ProductAccess("billing")
 
 @billing_router.get("/customers/{customer_id}/balance", response=BalanceResponse)
 @role_floor(READ)
-def get_balance(request, customer_id: str):
+def get_balance(request, customer_id: UUIDIdentifier):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     from apps.billing.wallets.models import Wallet
@@ -209,7 +210,7 @@ def credit(request, payload: CreditRequest):
 @billing_router.put("/customers/{customer_id}/auto-top-up")
 @role_floor(ADMIN)
 @records_audit("auto_top_up.configured")
-def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUpRequest):
+def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     with transaction.atomic():
@@ -234,7 +235,7 @@ def configure_auto_top_up(request, customer_id: str, payload: ConfigureAutoTopUp
 @billing_router.post("/customers/{customer_id}/top-up")
 @role_floor(WRITE)
 @records_audit("top_up.requested")
-def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
+def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequest):
     """Start a top-up. Replay-safe: idempotency_key is required and unique
     per customer — a retried call re-uses the original attempt and never
     starts a second charge."""
@@ -247,7 +248,7 @@ def create_top_up(request, customer_id: str, payload: CreateTopUpRequest):
 @billing_router.post("/customers/{customer_id}/withdraw")
 @role_floor(ADMIN)
 @records_audit("wallet.withdrawn")
-def withdraw(request, customer_id: str, payload: WithdrawRequest):
+def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
     """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
     availability is balance minus active promo remainders."""
     _product_check(request)
@@ -329,7 +330,7 @@ def pre_check(request, payload: PreCheckRequest):
 @billing_router.post("/customers/{customer_id}/refund")
 @role_floor(ADMIN)
 @records_audit("usage.refunded")
-def refund_usage(request, customer_id: str, payload: RefundRequest):
+def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
     """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
     USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
     back into those lots (promo refunds restore the promo lot — they never
@@ -416,7 +417,7 @@ def refund_usage(request, customer_id: str, payload: RefundRequest):
 
 @billing_router.get("/customers/{customer_id}/transactions")
 @role_floor(READ)
-def get_transactions(request, customer_id: str, cursor: str = None, limit: int = 50):
+def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
 
