@@ -86,15 +86,17 @@ def handle_checkout_completed(event):
                 extra={"data": {"payment_intent": pi_id}},
             )
 
-    with transaction.atomic():
-        wallet, customer = lock_for_billing(customer.id)
+    from apps.billing.wallets import operations as wallet_ops
 
-        # Idempotency: check for existing top-up transaction
+    with transaction.atomic():
+        # The wallet lock is taken FIRST (canonical Wallet -> TopUpAttempt
+        # order); the read-only replay probe keeps a redelivery from touching
+        # the attempt at all (parity with the pre-#109 shape). The wallet op
+        # below re-enters the same lock and re-probes under it.
         from apps.billing.wallets.models import WalletTransaction
-        existing = WalletTransaction.objects.filter(
-            wallet=wallet, idempotency_key=f"topup:{session.id}",
-        ).first()
-        if existing:
+        wallet, customer = lock_for_billing(customer.id)
+        if WalletTransaction.objects.filter(
+                wallet=wallet, idempotency_key=f"topup:{session.id}").exists():
             return
 
         # Re-check attempt status under lock
@@ -119,35 +121,16 @@ def handle_checkout_completed(event):
                     save_fields.append("stripe_charge_id")
             attempt.save(update_fields=save_fields)
 
-        wallet.balance_micros += amount_micros
-        wallet.save(update_fields=["balance_micros", "updated_at"])
-
-        # Tier-2 (P2/D20): mirror the durable credit onto the live balance once
-        # it commits. Mandatory — a missed credit cannot be re-raised by the
-        # MIN-merge reconcile. No-op when enforcement is off / postpaid.
-        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-        transaction.on_commit(
-            lambda oid=wallet.customer_id, t=customer.tenant, amt=amount_micros:
-            LiveLedgerService.credit(oid, t, amt))
-
-        txn = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type="TOP_UP",
+        # The credit, its PAID lot, and the Tier-2 live mirror land behind the
+        # wallet seam (#109), co-committed with the attempt walk above.
+        wallet_ops.credit_top_up(
+            customer_id=customer.id, tenant=customer.tenant,
             amount_micros=amount_micros,
-            balance_after_micros=wallet.balance_micros,
-            description="Stripe top-up",
-            reference_id=str(attempt.id) if attempt else "",
             idempotency_key=f"topup:{session.id}",
-        )
-        # F4.3: paid lot for the top-up — guarded by the topup:{session} check
-        # above (same transaction, same wallet lock).
-        from apps.billing.wallets.grants import GrantLedger
-        GrantLedger.create_grant(
-            wallet, customer.tenant_id, kind="paid", amount_micros=amount_micros,
-            expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
             source="checkout",
             source_reference=str(attempt.id) if attempt else session.id,
-            txn=txn)
+            description="Stripe top-up",
+            reference_id=str(attempt.id) if attempt else "")
 
     # Generate receipt invoice (after commit)
     if attempt:
@@ -294,54 +277,34 @@ def handle_charge_dispute_closed(event):
         return
     amount_micros = dispute.amount * 10_000  # Stripe cents -> micros
 
-    with transaction.atomic():
-        wallet, customer = lock_for_billing(attempt.customer_id)
+    from apps.billing.wallets import operations as wallet_ops
 
-        # Idempotency: key on dispute id (not charge id) so each distinct dispute is tracked
-        from apps.billing.wallets.models import CreditGrant, WalletTransaction
-        from apps.billing.wallets.grants import GrantLedger
-        GrantLedger.expire_due(wallet)  # F4.3: due lots expire before the clawback reads them
-        existing = WalletTransaction.objects.filter(
-            wallet=wallet, idempotency_key=f"dispute:{dispute_id}",
-        ).first()
-        if existing:
+    customer = attempt.customer
+    with transaction.atomic():
+        # Deduct + clawback cascade behind the wallet seam (#109), keyed on
+        # the dispute id (not charge id) so each distinct dispute is tracked.
+        result = wallet_ops.claw_back_dispute(
+            customer_id=attempt.customer_id, tenant=customer.tenant,
+            amount_micros=amount_micros, dispute_id=dispute_id,
+            charge_id=charge_id, attempt_id=attempt.id)
+        if result.outcome != "applied":
             return
 
-        wallet.balance_micros -= amount_micros
-        wallet.save(update_fields=["balance_micros", "updated_at"])
-
-        txn = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type="DISPUTE_DEDUCTION",
-            amount_micros=-amount_micros,
-            balance_after_micros=wallet.balance_micros,
-            description=f"Dispute lost: {charge_id}",
-            reference_id=str(attempt.id),
-            idempotency_key=f"dispute:{dispute_id}",
-        )
-        # F4.3 clawback cascade: void the disputed top-up's lot first, then
-        # consume other lots until G1 holds again. Only top-up-born lots
-        # qualify as the source (an API/other lot that happens to share the
-        # reference must never be voided for a Stripe charge reversal);
-        # created_at order makes the pick deterministic.
-        source_grant = CreditGrant.objects.filter(
-            wallet=wallet, source_reference=str(attempt.id),
-            source__in=("checkout", "auto_topup"),
-        ).order_by("created_at").first()
-        GrantLedger.clawback(wallet, txn, amount_micros, source_grant=source_grant)
-
-        # Suspend customer if balance dropped below min_balance threshold
+        # Suspend customer if balance dropped below min_balance threshold —
+        # a Customer-status policy, so it stays with the webhook (the op's
+        # customer-row lock is held until this outer transaction commits).
         from apps.billing.queries import get_customer_min_balance
         from apps.billing.gating.crossing import past_floor
+        customer = Customer.objects.select_for_update().get(id=attempt.customer_id)
         threshold = get_customer_min_balance(customer.id, customer.tenant_id)
-        if past_floor(wallet.balance_micros, threshold) and customer.status == "active":
+        if past_floor(result.balance_micros, threshold) and customer.status == "active":
             customer.status = "suspended"
             customer.save(update_fields=["status", "updated_at"])
             logger.warning(
                 "Customer suspended after dispute deduction",
                 extra={"data": {
                     "customer_id": str(customer.id),
-                    "balance_micros": wallet.balance_micros,
+                    "balance_micros": result.balance_micros,
                     "threshold": threshold,
                 }},
             )
@@ -382,46 +345,23 @@ def handle_charge_refunded(event):
         # Fallback: synthesise a single entry from the top-level amount_refunded
         refund_list = [type("R", (), {"id": charge_id, "amount": charge.amount_refunded})()]
 
-    from apps.billing.wallets.models import CreditGrant, WalletTransaction
-    from apps.billing.wallets.grants import GrantLedger
-    from django.db import IntegrityError
+    from apps.billing.wallets import operations as wallet_ops
 
+    tenant = attempt.customer.tenant
     with transaction.atomic():
-        wallet, customer = lock_for_billing(attempt.customer_id)
-        GrantLedger.expire_due(wallet)  # F4.3: due lots expire before the clawback reads them
-
+        # One commit for the whole refund list (parity with the pre-#109
+        # single transaction); each refund is its own exactly-once wallet op
+        # keyed on stripe_refund:{refund_id} — a replayed one skips, the rest
+        # still land.
         for refund in refund_list:
             refund_id = getattr(refund, "id", None)
             refund_amount = getattr(refund, "amount", None)
             if not refund_id or not refund_amount:
                 continue
-            key = f"stripe_refund:{refund_id}"
-            if WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).exists():
-                continue
-            refunded_micros = refund_amount * 10_000
-            try:
-                with transaction.atomic():  # savepoint for race-safe exactly-once (I2 pattern)
-                    txn = WalletTransaction.objects.create(
-                        wallet=wallet,
-                        transaction_type="STRIPE_REFUND",
-                        amount_micros=-refunded_micros,
-                        balance_after_micros=wallet.balance_micros - refunded_micros,
-                        description=f"Stripe refund: {refund_id}",
-                        reference_id=str(attempt.id),
-                        idempotency_key=key,
-                    )
-            except IntegrityError:
-                continue  # raced redelivery — already applied
-            wallet.balance_micros -= refunded_micros
-            wallet.save(update_fields=["balance_micros", "updated_at"])
-            # F4.3 clawback cascade (winning branch only): shrink the refunded
-            # top-up's lot first, then restore G1 from other lots. Top-up-born
-            # lots only + deterministic created_at order (see dispute handler).
-            source_grant = CreditGrant.objects.filter(
-                wallet=wallet, source_reference=str(attempt.id),
-                source__in=("checkout", "auto_topup"),
-            ).order_by("created_at").first()
-            GrantLedger.clawback(wallet, txn, refunded_micros, source_grant=source_grant)
+            wallet_ops.claw_back_stripe_refund(
+                customer_id=attempt.customer_id, tenant=tenant,
+                amount_micros=refund_amount * 10_000, refund_id=refund_id,
+                attempt_id=attempt.id)
 
 
 def handle_payment_intent_succeeded(event):

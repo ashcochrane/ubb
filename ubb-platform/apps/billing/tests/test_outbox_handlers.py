@@ -321,7 +321,6 @@ class TestBillingOutboxHandler:
 
     def test_overage_event_fires_once_on_crossing_below_zero(self):
         import uuid
-        from unittest.mock import patch
         from apps.billing.handlers import handle_usage_recorded_billing
         from apps.billing.wallets.models import Wallet
         tenant = Tenant.objects.create(name="OV", products=["metering", "billing"], billing_mode="prepaid")
@@ -331,14 +330,12 @@ class TestBillingOutboxHandler:
         payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
                    "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
-        with patch("apps.billing.handlers.write_event") as mw:
-            handle_usage_recorded_billing(str(e.id), payload)
-            names = [type(call.args[0]).__name__ for call in mw.call_args_list]
-        assert "BalanceOverage" in names
+        handle_usage_recorded_billing(str(e.id), payload)
+        assert OutboxEvent.objects.filter(
+            event_type="billing.balance_overage").count() == 1
 
     def test_redelivery_does_not_double_debit_or_refire_overage(self):
         import uuid
-        from unittest.mock import patch
         from apps.billing.handlers import handle_usage_recorded_billing
         from apps.billing.wallets.models import Wallet, WalletTransaction
         tenant = Tenant.objects.create(name="OV2", products=["metering", "billing"], billing_mode="prepaid")
@@ -349,9 +346,10 @@ class TestBillingOutboxHandler:
                    "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
         handle_usage_recorded_billing(str(e.id), payload)
-        with patch("apps.billing.handlers.write_event") as mw:
-            handle_usage_recorded_billing(str(e.id), payload)   # re-deliver
-            assert not mw.called                                 # no overage re-fire
+        emitted = OutboxEvent.objects.exclude(id=e.id).count()
+        handle_usage_recorded_billing(str(e.id), payload)   # re-deliver
+        # I2: the replay emits nothing new — no overage re-fire.
+        assert OutboxEvent.objects.exclude(id=e.id).count() == emitted
         w.refresh_from_db()
         assert w.balance_micros == -500_000                      # debited once
         assert WalletTransaction.objects.filter(wallet=w, idempotency_key=f"usage_deduction:{ev_id}").count() == 1

@@ -1,31 +1,24 @@
 import logging
 
-from django.db import transaction
-
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
-from apps.platform.events.outbox import write_event
-from apps.platform.events.schemas import BalanceLow, CustomerSuspended, BalanceOverage
 
 logger = logging.getLogger("ubb.events")
 
 
 def handle_usage_recorded_billing(event_id, payload):
-    """Outbox handler: deduct wallet + emit billing events.
+    """Outbox handler: draw the usage down against the owner's wallet.
 
     Registered as outbox handler with requires_product="billing".
     Called by the outbox dispatcher with (event_id, payload) signature.
 
-    Responsibilities:
-    1. Deduct wallet balance (with proper locking)
-    2. Create a WalletTransaction record (idempotent via usage_event_id key)
-    3. Emit BalanceOverage when balance crosses zero (winning insert only)
-    4. Detect a crossing of the CONFIGURED floor (#39 durable lane): drive the
-       StopSignalState transition guard, whose winner emits stop.fired and
-       performs the folded suspension (enforcement off keeps the Tier-1
-       level-based suspend, byte-for-byte)
-    5. Check auto-topup threshold → emit BalanceLow event
-    6. Accumulate billing period totals
+    The wallet movement and its whole winning-branch tail — exactly-once
+    debit, lot consumption, BalanceOverage on zero-cross, the #39/#40
+    floor-crossing lanes (or the Tier-1 suspension when enforcement is off),
+    and BalanceLow under the auto-top-up trigger — live behind the wallet
+    seam (``wallet_ops.draw_down_usage``, #109). This handler keeps what is
+    caller-side by decision 7: the postpaid branch, the owner resolution,
+    billing-period accumulation, and the budget counters.
 
     This handler NEVER calls Stripe or dispatches payment tasks.
     Payment connectors subscribe to the emitted events.
@@ -42,122 +35,18 @@ def handle_usage_recorded_billing(event_id, payload):
         # this handler no longer reads the stop flag (the old D13 shape), so
         # floor-stop and suspension cannot double-fire.
         if tenant.billing_mode != "postpaid":
-            from apps.billing.wallets.models import WalletTransaction
-            from apps.billing.wallets.grants import GrantLedger
-            from apps.billing.locking import lock_for_billing
-            from apps.billing.topups.models import AutoTopUpConfig
-            from apps.billing.queries import get_customer_min_balance
-            from django.db import IntegrityError
+            from apps.billing.wallets import operations as wallet_ops
 
             owner_id = payload.get("billing_owner_id") or str(seat.resolve_billing_owner().id)
             usage_event_id = payload.get("event_id", "")
-            key = f"usage_deduction:{usage_event_id}"
-            with transaction.atomic():
-                wallet, owner = lock_for_billing(owner_id)
-                # F4.3 lazy expiry: due lots expire BEFORE the old_balance read
-                # so an expired lot is never consumed by this drawdown.
-                GrantLedger.expire_due(wallet)
-                existing = WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).first()
-                if existing is not None:
-                    if existing.amount_micros != -billed_cost_micros:
-                        logger.error("ledger.usage_deduction_amount_mismatch", extra={"data": {
-                            "usage_event_id": usage_event_id, "existing": existing.amount_micros,
-                            "expected": -billed_cost_micros}})
-                    # I2: already debited -> no decrement, no events
-                else:
-                    old_balance = wallet.balance_micros
-                    new_balance = old_balance - billed_cost_micros
-                    try:
-                        with transaction.atomic():  # savepoint
-                            txn = WalletTransaction.objects.create(
-                                wallet=wallet, transaction_type="USAGE_DEDUCTION",
-                                amount_micros=-billed_cost_micros, balance_after_micros=new_balance,
-                                description=f"Usage: {usage_event_id}", reference_id=usage_event_id,
-                                idempotency_key=key, usage_event_id=usage_event_id or None)
-                    except IntegrityError:
-                        pass  # I2: raced -> already debited, no decrement, no events
-                    else:
-                        wallet.balance_micros = new_balance
-                        wallet.save(update_fields=["balance_micros", "updated_at"])
-                        # F4.3: winning branch only — lot consumption rides the
-                        # usage_deduction:{event_id} exactly-once key.
-                        GrantLedger.allocate(wallet, txn, billed_cost_micros)
-                        limit = get_customer_min_balance(owner.id, tenant.id)
-                        if old_balance >= 0 and new_balance < 0:   # I6
-                            # The zero-crossing EARLY WARNING (Stage D) — a
-                            # distinct event, deliberately NOT part of the
-                            # #39 stop/resume pair.
-                            write_event(BalanceOverage(
-                                tenant_id=str(tenant.id), customer_id=str(owner.id),
-                                balance_micros=new_balance, overage_limit_micros=limit,
-                                overage_micros=-new_balance))
-                        from apps.platform.tenants.flags import enforcing
-                        from apps.billing.gating.crossing import (crossed_floor,
-                                                                  past_floor)
-                        if enforcing(tenant):
-                            # #39 §D — the DURABLE lane of the stop signal: a
-                            # crossing of the CONFIGURED floor drives the
-                            # transition guard, independent of Redis health (a
-                            # crossing during a blind window signals late,
-                            # never lost). The winner emits stop.fired and
-                            # performs the folded suspension; a crossing the
-                            # fast lane already signaled loses silently.
-                            # Signal bookkeeping must never poison the debit:
-                            # drive_stop is savepoint-isolated, and a failure
-                            # here is re-driven by the hourly reconcile.
-                            if crossed_floor(old_balance, new_balance, limit):
-                                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
-                                from apps.billing.gating.services.stop_signal_service import (
-                                    StopSignalService)
-                                from apps.billing.gating.services.live_ledger_service import (
-                                    LiveLedgerService)
-                                try:
-                                    StopSignalService.drive_stop(
-                                        owner.id, tenant, reason=CUSTOMER_WIDE_STOP,
-                                        balance_micros=new_balance)
-                                except Exception:
-                                    logger.warning("billing.floor_stop_transition_failed",
-                                                   extra={"data": {"owner_id": str(owner.id)}})
-                                LiveLedgerService.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
-                            # #40 §F — the soft floor's ONLY crossing detector
-                            # (no fast lane, no Redis threshold: signal
-                            # latency is outbox latency). Crossing the
-                            # resolved soft line drives the soft_floor family
-                            # of the same guard — the winner emits
-                            # soft_floor.crossed. Never an ack change, never
-                            # a suspension; a drive lost here is re-announced
-                            # by the delivery patrol (#44), not by reconcile.
-                            from apps.billing.queries import get_customer_soft_min_balance
-                            soft = get_customer_soft_min_balance(owner.id, tenant.id)
-                            if crossed_floor(old_balance, new_balance, soft):
-                                from apps.billing.gating.services.stop_signal_service import (
-                                    StopSignalService)
-                                try:
-                                    StopSignalService.drive_soft_crossed(
-                                        owner.id, tenant, balance_micros=new_balance,
-                                        soft_min_balance_micros=soft)
-                                except Exception:
-                                    logger.warning("billing.soft_floor_transition_failed",
-                                                   extra={"data": {"owner_id": str(owner.id)}})
-                        elif past_floor(new_balance, limit) and owner.status == "active":
-                            # enforcement off: Tier-1 baseline suspension,
-                            # byte-for-byte (no signal suite, no ledger).
-                            owner.status = "suspended"
-                            owner.suspension_reason = "min_balance_exceeded"  # P6b/D15
-                            owner.save(update_fields=["status", "suspension_reason", "updated_at"])
-                            write_event(CustomerSuspended(
-                                tenant_id=str(tenant.id), customer_id=str(owner.id),
-                                reason="min_balance_exceeded", balance_micros=new_balance))
-                        try:
-                            config = AutoTopUpConfig.objects.get(customer=owner, is_enabled=True)
-                        except AutoTopUpConfig.DoesNotExist:
-                            config = None
-                        if config and new_balance < config.trigger_threshold_micros:
-                            write_event(BalanceLow(
-                                tenant_id=str(tenant.id), customer_id=str(owner.id),
-                                balance_micros=new_balance,
-                                threshold_micros=config.trigger_threshold_micros,
-                                suggested_topup_micros=config.top_up_amount_micros))
+            # The whole drawdown — lock, lazy expiry, exactly-once debit, lot
+            # consumption, and the winning-branch tail (BalanceOverage, the
+            # #39/#40 crossing lanes or the Tier-1 suspension, BalanceLow) —
+            # lives behind the wallet seam (#109).
+            wallet_ops.draw_down_usage(
+                customer_id=owner_id, tenant=tenant,
+                usage_event_id=usage_event_id,
+                billed_cost_micros=billed_cost_micros)
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
