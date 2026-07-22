@@ -8,8 +8,6 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..types import UNSET, Unset
-from typing import cast
 
 
 
@@ -25,11 +23,11 @@ class RefundResponse:
     """ 
         Attributes:
             balance_micros (int):
-            refund_id (None | str | Unset):
+            refund_id (str):
      """
 
     balance_micros: int
-    refund_id: None | str | Unset = UNSET
+    refund_id: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -39,20 +37,15 @@ class RefundResponse:
     def to_dict(self) -> dict[str, Any]:
         balance_micros = self.balance_micros
 
-        refund_id: None | str | Unset
-        if isinstance(self.refund_id, Unset):
-            refund_id = UNSET
-        else:
-            refund_id = self.refund_id
+        refund_id = self.refund_id
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
             "balance_micros": balance_micros,
+            "refund_id": refund_id,
         })
-        if refund_id is not UNSET:
-            field_dict["refund_id"] = refund_id
 
         return field_dict
 
@@ -63,15 +56,7 @@ class RefundResponse:
         d = dict(src_dict)
         balance_micros = d.pop("balance_micros")
 
-        def _parse_refund_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        refund_id = _parse_refund_id(d.pop("refund_id", UNSET))
-
+        refund_id = d.pop("refund_id")
 
         refund_response = cls(
             balance_micros=balance_micros,

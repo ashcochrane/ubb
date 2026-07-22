@@ -299,11 +299,11 @@ class WithdrawResponse(Schema):
 
 
 class RefundResponse(Schema):
-    # Nullable (#98): a fresh refund answers the REFUND transaction id and an
-    # idempotent replay answers the original's reference_id — which is null
-    # when the replayed key belongs to a non-refund transaction that carries
-    # no reference. Typing documents that edge; it never reshapes it.
-    refund_id: Optional[str] = None
+    # A fresh refund answers the REFUND transaction id; an idempotent replay
+    # answers the original's reference_id — always a string (the column is
+    # NOT NULL, default ""), possibly empty if the replayed key belongs to a
+    # non-refund transaction that carries no reference.
+    refund_id: str
     balance_micros: int
 
 
@@ -313,8 +313,9 @@ class WalletTransactionOut(Schema):
     amount_micros: int
     balance_after_micros: int
     description: str
-    # Null for transaction types that carry no reference (e.g. WITHDRAWAL).
-    reference_id: Optional[str] = None
+    # "" for transaction types that carry no reference (e.g. WITHDRAWAL) —
+    # the column is NOT NULL, so the wire never serves null here.
+    reference_id: str
     created_at: str
 
 

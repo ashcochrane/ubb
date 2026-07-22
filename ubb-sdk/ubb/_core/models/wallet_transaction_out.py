@@ -8,8 +8,6 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..types import UNSET, Unset
-from typing import cast
 from uuid import UUID
 
 
@@ -30,8 +28,8 @@ class WalletTransactionOut:
             created_at (str):
             description (str):
             id (UUID):
+            reference_id (str):
             transaction_type (str):
-            reference_id (None | str | Unset):
      """
 
     amount_micros: int
@@ -39,8 +37,8 @@ class WalletTransactionOut:
     created_at: str
     description: str
     id: UUID
+    reference_id: str
     transaction_type: str
-    reference_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -58,13 +56,9 @@ class WalletTransactionOut:
 
         id = str(self.id)
 
-        transaction_type = self.transaction_type
+        reference_id = self.reference_id
 
-        reference_id: None | str | Unset
-        if isinstance(self.reference_id, Unset):
-            reference_id = UNSET
-        else:
-            reference_id = self.reference_id
+        transaction_type = self.transaction_type
 
 
         field_dict: dict[str, Any] = {}
@@ -75,10 +69,9 @@ class WalletTransactionOut:
             "created_at": created_at,
             "description": description,
             "id": id,
+            "reference_id": reference_id,
             "transaction_type": transaction_type,
         })
-        if reference_id is not UNSET:
-            field_dict["reference_id"] = reference_id
 
         return field_dict
 
@@ -100,17 +93,9 @@ class WalletTransactionOut:
 
 
 
+        reference_id = d.pop("reference_id")
+
         transaction_type = d.pop("transaction_type")
-
-        def _parse_reference_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        reference_id = _parse_reference_id(d.pop("reference_id", UNSET))
-
 
         wallet_transaction_out = cls(
             amount_micros=amount_micros,
@@ -118,8 +103,8 @@ class WalletTransactionOut:
             created_at=created_at,
             description=description,
             id=id,
-            transaction_type=transaction_type,
             reference_id=reference_id,
+            transaction_type=transaction_type,
         )
 
 

@@ -20,7 +20,7 @@ coordination recorded on issue #85 (see MIGRATION.md → Release checklist)._
 | Stamp | Value |
 |---|---|
 | `ubb.__version__` | `3.0.0` |
-| `ubb.__spec_revision__` | `648f8e424ad243afdc06ed6e27351a79dac6b8a1fc5438f5adb3206993b17f06` |
+| `ubb.__spec_revision__` | `07c6e90ec514c7bb5e3622f0a3b331e9441784ac4c0067610eb52e6541c322a7` |
 | `ubb.__spec_version__` | `v1` |
 | Generator | `openapi-python-client==0.29.0` |
 

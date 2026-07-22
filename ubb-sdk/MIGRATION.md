@@ -197,7 +197,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `create_top_up` | `TopUpCheckoutResponse` |
 | `configure_auto_top_up` | `StatusResponse` |
 | `withdraw` | `WithdrawResponse` |
-| `refund_usage` | `RefundResponse` (`refund_id` is `str \| None`) |
+| `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
 | `get_customer_margin` | `CustomerMarginOut` (full body — adds `revenue_mode`, `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
 | `get_margin_by_dimension` | `list[DimensionMarginRow]` |

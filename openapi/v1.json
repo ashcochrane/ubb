@@ -4308,18 +4308,12 @@
             "type": "integer"
           },
           "refund_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Refund Id"
+            "title": "Refund Id",
+            "type": "string"
           }
         },
         "required": [
+          "refund_id",
           "balance_micros"
         ],
         "title": "RefundResponse",
@@ -5957,15 +5951,8 @@
             "type": "string"
           },
           "reference_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference Id"
+            "title": "Reference Id",
+            "type": "string"
           },
           "transaction_type": {
             "title": "Transaction Type",
@@ -5978,6 +5965,7 @@
           "amount_micros",
           "balance_after_micros",
           "description",
+          "reference_id",
           "created_at"
         ],
         "title": "WalletTransactionOut",
