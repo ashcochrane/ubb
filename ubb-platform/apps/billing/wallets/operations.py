@@ -298,7 +298,7 @@ def withdraw(*, customer_id, tenant, amount_micros, idempotency_key,
 
 
 def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
-                 reason="", audit=_NO_AUDIT):
+                 reason=""):
     """Refund a usage charge. The module looks the cost up via the sanctioned
     metering read channel (no caller supplies an amount, so no caller can book
     a wrong one), preserving replay-probe-before-lookup ordering. LOT-AWARE
@@ -399,7 +399,7 @@ def mint_grant(*, customer_id, tenant, kind, amount_micros, expires_at,
                     on_replay=replay_shape, on_conflict=on_conflict)
 
 
-def void_grant(*, customer_id, tenant, grant_id, audit=_NO_AUDIT):
+def void_grant(*, customer_id, tenant, grant_id):
     """Void a grant: debit its remaining (clamped so the balance never goes
     negative, like expiry) and retire the lot. Exactly-once via
     ``grant_void:{grant_id}``; replays and no-longer-active lots return the

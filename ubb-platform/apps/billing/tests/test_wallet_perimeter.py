@@ -57,12 +57,11 @@ MANAGER_MUTATORS = frozenset({
     "delete",
 })
 
-# Rule 5 allowlist: the sanctioned non-ledger LiveLedgerService.credit site.
+# Rule 5 allowlist: the ONE sanctioned non-ledger LiveLedgerService.credit
+# site (a hold release is not a ledger movement). Defining credit() is free —
+# only `LiveLedgerService.credit(...)` call sites are pinned.
 MIRROR_ALLOWLIST = frozenset({
     "apps/billing/gating/services/hold_service.py",
-    # The gating service defines credit() and calls it from its own recovery
-    # paths (reconcile) — the mirror OWNER, not a mirror site.
-    "apps/billing/gating/services/live_ledger_service.py",
 })
 
 _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}
