@@ -26,6 +26,11 @@ from core.problems import PROBLEM_TYPE_BASE, PROBLEMS, Problem
 
 logger = logging.getLogger(__name__)
 
+# The one media type of the dialect: what problem_response serves, what the
+# middleware below detects, and what document_problem_media_type writes into
+# the OpenAPI document (#104).
+PROBLEM_MEDIA_TYPE = "application/problem+json"
+
 # Fallback mapping for HttpErrors that predate the conversion (and ninja's own
 # internals, e.g. the 400 "Cannot parse request body"). Converted code raises
 # Problem directly; this lane keeps any straggler on-dialect. An unmapped
@@ -71,11 +76,34 @@ def problem_response(code, detail=None, *, extensions=None, headers=None):
     response = HttpResponse(
         json.dumps(payload),
         status=entry["status"],
-        content_type="application/problem+json",
+        content_type=PROBLEM_MEDIA_TYPE,
     )
     for name, value in (headers or {}).items():
         response[name] = value
     return response
+
+
+_PROBLEM_SCHEMA_REF = "#/components/schemas/ProblemOut"
+
+
+def document_problem_media_type(schema):
+    """The document side of the dialect (#104). ninja exports every
+    ``response=`` model under the JSON renderer's ``application/json`` —
+    including the ``ProblemOut`` error statuses, which the handlers below
+    actually serve as ``application/problem+json``. Re-key exactly those
+    content maps so the document tells the truth about the wire. Success
+    bodies and the ``webhooks`` section (event deliveries, not error
+    responses) are untouched. Mutates and returns ``schema``."""
+    for path_item in schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            for response in operation.get("responses", {}).values():
+                content = response.get("content") or {}
+                body = content.get("application/json")
+                if body and body.get("schema", {}).get("$ref") == _PROBLEM_SCHEMA_REF:
+                    content[PROBLEM_MEDIA_TYPE] = content.pop("application/json")
+    return schema
 
 
 def install_problem_handlers(api):
@@ -160,7 +188,7 @@ class MethodNotAllowedProblemMiddleware:
         if (
             response.status_code == 405
             and request.path.startswith("/api/v1/")
-            and response.get("Content-Type") != "application/problem+json"
+            and response.get("Content-Type") != PROBLEM_MEDIA_TYPE
         ):
             allow = response.get("Allow", "")
             return problem_response(
