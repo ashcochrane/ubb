@@ -78,6 +78,30 @@ def problem_response(code, detail=None, *, extensions=None, headers=None):
     return response
 
 
+PROBLEM_MEDIA_TYPE = "application/problem+json"
+_PROBLEM_SCHEMA_REF = "#/components/schemas/ProblemOut"
+
+
+def document_problem_media_type(schema):
+    """The document side of the dialect (#104). ninja exports every
+    ``response=`` model under the JSON renderer's ``application/json`` —
+    including the ``ProblemOut`` error statuses, which the handlers below
+    actually serve as ``application/problem+json``. Re-key exactly those
+    content maps so the document tells the truth about the wire. Success
+    bodies and the ``webhooks`` section (event deliveries, not error
+    responses) are untouched. Mutates and returns ``schema``."""
+    for path_item in schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            for response in operation.get("responses", {}).values():
+                content = response.get("content") or {}
+                body = content.get("application/json")
+                if body and body.get("schema", {}).get("$ref") == _PROBLEM_SCHEMA_REF:
+                    content[PROBLEM_MEDIA_TYPE] = content.pop("application/json")
+    return schema
+
+
 def install_problem_handlers(api):
     @api.exception_handler(Problem)
     def _problem(request, exc):
