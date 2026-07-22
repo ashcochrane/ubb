@@ -38,8 +38,9 @@ class TestStatusViolation:
         # internal_error/service_unavailable, a fuzzed 500 is a defect.
         assert status_violation(500, {"200"}) is not None
 
-    def test_documented_5xx_is_still_a_finding(self):
-        # Defence in depth: not_a_server_error also flags these.
+    def test_documented_5xx_passes_the_status_check(self):
+        # A documented 503 isn't a lie about the document; the separate
+        # not_a_server_error check still reports every 5xx.
         assert status_violation(503, {"503"}) is None
 
     def test_undocumented_redirect_is_a_lie(self):

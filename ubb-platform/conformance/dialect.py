@@ -17,8 +17,9 @@ _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "openapi" / "error-codes.
 # registry — the same file core.problems loads, so the sweep and the app
 # cannot disagree about what "contract" means. Every 4xx a registered code
 # renders as may appear on any operation undocumented; 5xx is deliberately
-# excluded — internal_error/service_unavailable name the *rendering*, but a
-# server error during the sweep is always a finding.
+# excluded — internal_error/service_unavailable name the *rendering*, so an
+# UNDOCUMENTED 5xx is always a status violation here (and every 5xx,
+# documented or not, is additionally reported by not_a_server_error).
 OUT_OF_BAND_STATUSES = frozenset(
     entry["status"]
     for entry in json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))[
@@ -42,8 +43,8 @@ def status_violation(status, documented):
     success code, a redirect, any 5xx — contradicts the document.
     """
     if str(status) in documented:
-        if status >= 500:
-            return None  # documented 5xx (e.g. a /ready 503) — not a lie
+        # Including a documented 5xx (e.g. a /ready 503) — not a lie about
+        # the document; not_a_server_error still reports it separately.
         return None
     if status in OUT_OF_BAND_STATUSES:
         return None

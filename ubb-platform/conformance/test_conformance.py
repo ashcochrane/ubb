@@ -14,6 +14,10 @@ Checks per response:
   and ``content_type_conformance`` are deliberately not run: the former
   can't know about the globally-documented out-of-band statuses, and the
   latter duplicates the envelope check's content-type demand for errors.
+
+Coverage is best-effort per run: ``max_examples=10`` fuzzed inputs per
+operation, unseeded — "no findings" means this run found nothing, not a
+proof of conformance. Depth is a knob, not a redesign.
 """
 import schemathesis
 from hypothesis import HealthCheck, settings

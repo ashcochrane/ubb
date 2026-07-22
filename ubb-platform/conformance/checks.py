@@ -7,7 +7,8 @@ not per-route, so those are contract, not lies. What IS a lie:
 
 * ``documented_or_dialect_status`` — a status neither in the operation's
   ``responses`` map nor in the dialect's out-of-band set (undocumented
-  success codes, redirects, and any 5xx);
+  success codes, redirects, and undocumented 5xx — while every 5xx,
+  documented or not, is also reported by ``not_a_server_error``);
 * ``problem_json_envelope`` — an error response that breaks the dialect's
   "every error is RFC 9457 problem+json" promise (wrong content type,
   non-JSON body, missing members, status mismatch, 429 sans Retry-After).
@@ -20,13 +21,6 @@ def _headers(response):
     return {key: value[0] for key, value in response.headers.items() if value}
 
 
-def _content_type(response):
-    for key, value in response.headers.items():
-        if key.lower() == "content-type" and value:
-            return value[0]
-    return None
-
-
 def documented_or_dialect_status(ctx, response, case):
     documented = set(case.operation.definition.raw.get("responses", {}))
     violation = status_violation(response.status_code, documented)
@@ -36,11 +30,14 @@ def documented_or_dialect_status(ctx, response, case):
 
 
 def problem_json_envelope(ctx, response, case):
+    headers = _headers(response)
+    content_type = next(
+        (v for k, v in headers.items() if k.lower() == "content-type"), None)
     violations = envelope_violations(
         response.status_code,
-        _content_type(response),
+        content_type,
         response.content,
-        _headers(response),
+        headers,
     )
     assert not violations, (
         f"{case.operation.label}: {response.status_code} breaks the "

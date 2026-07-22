@@ -20,6 +20,8 @@ LocMemCache — gating/budget tests need cross-process cache semantics). Run eve
   `apps/metering/pricing/tests/_helpers.py:rate_in_default_book`). Reuse them rather than
   re-scaffolding tenants/customers/wallets by hand.
 - DB tests are marked `@pytest.mark.django_db` (often on a `class TestXxx:` with `test_...` methods).
+- One deliberate exception: `conformance/` (the non-gating schemathesis sweep, #87) sits outside
+  `apps/` and outside default collection — see the conformance section in `api-contract.md`.
 
 ## Two non-obvious guards (in the root `conftest.py`)
 
