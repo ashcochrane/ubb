@@ -279,5 +279,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install UI dependencies (locked)
+        run: pnpm install --frozen-lockfile
+
+      - name: UI contract snapshot gate — committed spec produces zero diff
+        run: pnpm ui:api:check
+
       - name: TypeScript smoke gate — committed spec generates clean types
         run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts
