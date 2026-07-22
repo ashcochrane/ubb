@@ -118,9 +118,7 @@ class OnlyDataErrorTakesTheValidationLaneTest(TestCase):
 
     def test_data_error_maps_to_422_validation_error(self):
         response = self._dispatch(DataError("integer out of range"))
-        body = json.loads(response.content)
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(body["code"], "validation_error")
+        body = assert_problem(self, response, "validation_error")
         self.assertEqual(body["detail"], DATA_ERROR_DETAIL)
 
     def test_sibling_database_errors_stay_internal_error(self):
@@ -131,9 +129,7 @@ class OnlyDataErrorTakesTheValidationLaneTest(TestCase):
         ):
             with self.subTest(type(exc).__name__):
                 response = self._dispatch(exc)
-                body = json.loads(response.content)
-                self.assertEqual(response.status_code, 500)
-                self.assertEqual(body["code"], "internal_error")
+                assert_problem(self, response, "internal_error")
 
     def test_driver_message_never_reaches_the_body(self):
         # The driver's text can name column types ("character varying(5)")
@@ -141,6 +137,6 @@ class OnlyDataErrorTakesTheValidationLaneTest(TestCase):
         response = self._dispatch(
             DataError("value too long for type character varying(5)")
         )
-        body = json.loads(response.content)
+        body = assert_problem(self, response, "validation_error")
         self.assertNotIn("character varying", json.dumps(body))
         self.assertEqual(body["detail"], DATA_ERROR_DETAIL)

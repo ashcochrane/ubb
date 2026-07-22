@@ -33,8 +33,10 @@ widget surface — renders as `application/problem+json`:
   link docs.
 - **Extension members** (RFC 9457) carry structured context per code — e.g.
   `would_overdraw` adds `floor_micros`/`balance_micros`, `validation_error`
-  adds `errors` (sanitized `{loc, msg, type}` items), the failing `/ready`
-  adds `checks`. Extensions are open-world: clients must tolerate unknowns.
+  adds `errors` (sanitized `{loc, msg, type}` items) on request-validation
+  failures — the storage-constraint lane below carries `detail` only — the
+  failing `/ready` adds `checks`. Extensions are open-world: clients must
+  tolerate unknowns.
 - **Status semantics** (#63): 400 malformed / bad cursor · 401 · 403 product
   gate or forbidden · 404 · 409 conflict with current state · 410 gone ·
   422 semantic validation · 429 always with `Retry-After` · 5xx as
