@@ -1,6 +1,37 @@
 {
   "components": {
     "schemas": {
+      "AnalyticsEarningsOut": {
+        "properties": {
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "referrers": {
+            "items": {
+              "$ref": "#/components/schemas/ReferrerEarningsSummary"
+            },
+            "title": "Referrers",
+            "type": "array"
+          },
+          "total_earned_micros": {
+            "title": "Total Earned Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "referrers",
+          "total_earned_micros"
+        ],
+        "title": "AnalyticsEarningsOut",
+        "type": "object"
+      },
       "AnalyticsSummaryOut": {
         "properties": {
           "active_referrals": {
@@ -567,6 +598,74 @@
         "title": "BudgetStatusOut",
         "type": "object"
       },
+      "BusinessMarginOut": {
+        "properties": {
+          "business_id": {
+            "title": "Business Id",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/SeatMarginOut"
+            },
+            "title": "Seats",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/BusinessMarginTotals"
+          }
+        },
+        "required": [
+          "business_id",
+          "external_id",
+          "totals",
+          "seats"
+        ],
+        "title": "BusinessMarginOut",
+        "type": "object"
+      },
+      "BusinessMarginTotals": {
+        "properties": {
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "total_revenue_micros": {
+            "title": "Total Revenue Micros",
+            "type": "integer"
+          },
+          "usage_revenue_micros": {
+            "title": "Usage Revenue Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_revenue_micros",
+          "usage_revenue_micros",
+          "provider_cost_micros",
+          "total_revenue_micros",
+          "gross_margin_micros",
+          "event_count"
+        ],
+        "title": "BusinessMarginTotals",
+        "type": "object"
+      },
       "CloseTaskResponse": {
         "properties": {
           "event_count": {
@@ -910,6 +1009,116 @@
         "title": "CustomerBillingProfileOut",
         "type": "object"
       },
+      "CustomerMarginListRow": {
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "usage_billed_micros": {
+            "title": "Usage Billed Micros",
+            "type": "integer"
+          },
+          "usage_revenue_micros": {
+            "title": "Usage Revenue Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "customer_id",
+          "subscription_revenue_micros",
+          "usage_billed_micros",
+          "usage_revenue_micros",
+          "provider_cost_micros",
+          "gross_margin_micros",
+          "margin_percentage"
+        ],
+        "title": "CustomerMarginListRow",
+        "type": "object"
+      },
+      "CustomerMarginOut": {
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodWindow"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "revenue_mode": {
+            "title": "Revenue Mode",
+            "type": "string"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "total_revenue_micros": {
+            "title": "Total Revenue Micros",
+            "type": "integer"
+          },
+          "usage_billed_micros": {
+            "title": "Usage Billed Micros",
+            "type": "integer"
+          },
+          "usage_revenue_micros": {
+            "title": "Usage Revenue Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "customer_id",
+          "revenue_mode",
+          "subscription_revenue_micros",
+          "usage_billed_micros",
+          "usage_revenue_micros",
+          "provider_cost_micros",
+          "total_revenue_micros",
+          "gross_margin_micros",
+          "margin_percentage",
+          "event_count",
+          "external_id",
+          "period"
+        ],
+        "title": "CustomerMarginOut",
+        "type": "object"
+      },
       "CustomerResponse": {
         "properties": {
           "external_id": {
@@ -1007,6 +1216,45 @@
           "idempotency_key"
         ],
         "title": "DebitRequest",
+        "type": "object"
+      },
+      "DimensionMarginRow": {
+        "properties": {
+          "billed_cost_micros": {
+            "title": "Billed Cost Micros",
+            "type": "integer"
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "margin_micros": {
+            "title": "Margin Micros",
+            "type": "integer"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_cost_micros",
+          "billed_cost_micros",
+          "margin_micros",
+          "event_count"
+        ],
+        "title": "DimensionMarginRow",
         "type": "object"
       },
       "EarningsOut": {
@@ -1543,6 +1791,146 @@
         "title": "InvoiceOut",
         "type": "object"
       },
+      "LedgerEntryOut": {
+        "properties": {
+          "calculation_method": {
+            "title": "Calculation Method",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "raw_cost_micros": {
+            "title": "Raw Cost Micros",
+            "type": "integer"
+          },
+          "referred_spend_micros": {
+            "title": "Referred Spend Micros",
+            "type": "integer"
+          },
+          "reward_micros": {
+            "title": "Reward Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "period_start",
+          "period_end",
+          "referred_spend_micros",
+          "raw_cost_micros",
+          "reward_micros",
+          "calculation_method",
+          "created_at"
+        ],
+        "title": "LedgerEntryOut",
+        "type": "object"
+      },
+      "MarginByDimensionOut": {
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/PeriodWindow"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionMarginRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "rows"
+        ],
+        "title": "MarginByDimensionOut",
+        "type": "object"
+      },
+      "MarginListOut": {
+        "properties": {
+          "customers": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerMarginListRow"
+            },
+            "title": "Customers",
+            "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodWindow"
+          }
+        },
+        "required": [
+          "period",
+          "customers"
+        ],
+        "title": "MarginListOut",
+        "type": "object"
+      },
+      "MarginSummaryOut": {
+        "properties": {
+          "customer_count": {
+            "title": "Customer Count",
+            "type": "integer"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodWindow"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "total_revenue_micros": {
+            "title": "Total Revenue Micros",
+            "type": "integer"
+          },
+          "usage_billed_micros": {
+            "title": "Usage Billed Micros",
+            "type": "integer"
+          },
+          "usage_revenue_micros": {
+            "title": "Usage Revenue Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "subscription_revenue_micros",
+          "usage_billed_micros",
+          "usage_revenue_micros",
+          "provider_cost_micros",
+          "total_revenue_micros",
+          "gross_margin_micros",
+          "margin_percentage",
+          "customer_count"
+        ],
+        "title": "MarginSummaryOut",
+        "type": "object"
+      },
       "MarginThresholdIn": {
         "properties": {
           "consecutive_periods": {
@@ -1586,6 +1974,65 @@
           "provider_cost_spike_pct"
         ],
         "title": "MarginThresholdOut",
+        "type": "object"
+      },
+      "MarginTrendOut": {
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MarginTrendPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "customer_id",
+          "points"
+        ],
+        "title": "MarginTrendOut",
+        "type": "object"
+      },
+      "MarginTrendPointOut": {
+        "properties": {
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "usage_billed_micros": {
+            "title": "Usage Billed Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_start",
+          "provider_cost_micros",
+          "usage_billed_micros",
+          "subscription_revenue_micros",
+          "gross_margin_micros",
+          "margin_percentage"
+        ],
+        "title": "MarginTrendPointOut",
         "type": "object"
       },
       "MeBalanceResponse": {
@@ -1998,6 +2445,38 @@
         "title": "PaginatedInvoicesResponse",
         "type": "object"
       },
+      "PaginatedLedgerEntries": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerEntryOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedLedgerEntries",
+        "type": "object"
+      },
       "PaginatedRates": {
         "properties": {
           "data": {
@@ -2028,6 +2507,70 @@
           "has_more"
         ],
         "title": "PaginatedRates",
+        "type": "object"
+      },
+      "PaginatedReferrals": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReferralOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedReferrals",
+        "type": "object"
+      },
+      "PaginatedReferrers": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReferrerOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedReferrers",
         "type": "object"
       },
       "PaginatedSubscriptionInvoices": {
@@ -2158,6 +2701,38 @@
         "title": "PaginatedUsageResponse",
         "type": "object"
       },
+      "PaginatedWalletTransactions": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WalletTransactionOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedWalletTransactions",
+        "type": "object"
+      },
       "PastLimitReportResponse": {
         "properties": {
           "billing_owner_id": {
@@ -2211,6 +2786,98 @@
           "totals_per_limit"
         ],
         "title": "PastLimitReportResponse",
+        "type": "object"
+      },
+      "PayoutExportOut": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/PayoutRow"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "exported_at": {
+            "title": "Exported At",
+            "type": "string"
+          },
+          "referrer_count": {
+            "title": "Referrer Count",
+            "type": "integer"
+          },
+          "total_payout_micros": {
+            "title": "Total Payout Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "total_payout_micros",
+          "referrer_count",
+          "exported_at"
+        ],
+        "title": "PayoutExportOut",
+        "type": "object"
+      },
+      "PayoutRow": {
+        "properties": {
+          "active_referral_count": {
+            "title": "Active Referral Count",
+            "type": "integer"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "referral_code": {
+            "title": "Referral Code",
+            "type": "string"
+          },
+          "referral_count": {
+            "title": "Referral Count",
+            "type": "integer"
+          },
+          "referrer_customer_id": {
+            "title": "Referrer Customer Id",
+            "type": "string"
+          },
+          "total_earned_micros": {
+            "title": "Total Earned Micros",
+            "type": "integer"
+          },
+          "total_referred_spend_micros": {
+            "title": "Total Referred Spend Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "referrer_customer_id",
+          "external_id",
+          "referral_code",
+          "total_earned_micros",
+          "total_referred_spend_micros",
+          "referral_count",
+          "active_referral_count"
+        ],
+        "title": "PayoutRow",
+        "type": "object"
+      },
+      "PeriodWindow": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "PeriodWindow",
         "type": "object"
       },
       "PlanIn": {
@@ -3093,6 +3760,27 @@
         "title": "RateOut",
         "type": "object"
       },
+      "ReadyResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadyResponse",
+        "type": "object"
+      },
       "RecordUsageRequest": {
         "properties": {
           "billed_cost_micros": {
@@ -3451,6 +4139,104 @@
         "title": "RecordUsageResponse",
         "type": "object"
       },
+      "ReferralOut": {
+        "properties": {
+          "attributed_at": {
+            "title": "Attributed At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "referral_code_used": {
+            "title": "Referral Code Used",
+            "type": "string"
+          },
+          "referred_customer_id": {
+            "title": "Referred Customer Id",
+            "type": "string"
+          },
+          "referred_external_id": {
+            "title": "Referred External Id",
+            "type": "string"
+          },
+          "reward_type": {
+            "title": "Reward Type",
+            "type": "string"
+          },
+          "reward_window_ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Window Ends At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_earned_micros": {
+            "title": "Total Earned Micros",
+            "type": "integer"
+          },
+          "total_referred_spend_micros": {
+            "title": "Total Referred Spend Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "referred_customer_id",
+          "referred_external_id",
+          "referral_code_used",
+          "status",
+          "reward_type",
+          "total_earned_micros",
+          "total_referred_spend_micros",
+          "attributed_at",
+          "reward_window_ends_at"
+        ],
+        "title": "ReferralOut",
+        "type": "object"
+      },
+      "ReferrerEarningsSummary": {
+        "properties": {
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "referral_code": {
+            "title": "Referral Code",
+            "type": "string"
+          },
+          "referral_count": {
+            "title": "Referral Count",
+            "type": "integer"
+          },
+          "referrer_customer_id": {
+            "title": "Referrer Customer Id",
+            "type": "string"
+          },
+          "total_earned_micros": {
+            "title": "Total Earned Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "referrer_customer_id",
+          "external_id",
+          "referral_code",
+          "total_earned_micros",
+          "referral_count"
+        ],
+        "title": "ReferrerEarningsSummary",
+        "type": "object"
+      },
       "ReferrerOut": {
         "properties": {
           "created_at": {
@@ -3513,6 +4299,24 @@
           "idempotency_key"
         ],
         "title": "RefundRequest",
+        "type": "object"
+      },
+      "RefundResponse": {
+        "properties": {
+          "balance_micros": {
+            "title": "Balance Micros",
+            "type": "integer"
+          },
+          "refund_id": {
+            "title": "Refund Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refund_id",
+          "balance_micros"
+        ],
+        "title": "RefundResponse",
         "type": "object"
       },
       "RegisterReferrerRequest": {
@@ -3685,6 +4489,65 @@
         "title": "SandboxResetIn",
         "type": "object"
       },
+      "SeatMarginOut": {
+        "description": "One customer's live margin (``MarginService.compute_live``) \u2014 the shape\na business rollup's ``seats`` entries carry.",
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "revenue_mode": {
+            "title": "Revenue Mode",
+            "type": "string"
+          },
+          "subscription_revenue_micros": {
+            "title": "Subscription Revenue Micros",
+            "type": "integer"
+          },
+          "total_revenue_micros": {
+            "title": "Total Revenue Micros",
+            "type": "integer"
+          },
+          "usage_billed_micros": {
+            "title": "Usage Billed Micros",
+            "type": "integer"
+          },
+          "usage_revenue_micros": {
+            "title": "Usage Revenue Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "customer_id",
+          "revenue_mode",
+          "subscription_revenue_micros",
+          "usage_billed_micros",
+          "usage_revenue_micros",
+          "provider_cost_micros",
+          "total_revenue_micros",
+          "gross_margin_micros",
+          "margin_percentage",
+          "event_count"
+        ],
+        "title": "SeatMarginOut",
+        "type": "object"
+      },
       "SeatsIn": {
         "properties": {
           "seats": {
@@ -3697,6 +4560,20 @@
           "seats"
         ],
         "title": "SeatsIn",
+        "type": "object"
+      },
+      "StatusResponse": {
+        "description": "The tiny cross-product acknowledgement body: ``{\"status\": \"<word>\"}``.\n\nOne shared out-type (#98) for the endpoints that answer a mutation with a\nsingle status word (``ok`` / ``deleted`` / ``no_override`` / ``deactivated``\n/ ``revoked`` / \u2026) \u2014 kernel-owned so every product can declare it without\ncrossing a product boundary (ADR-001). The value stays an open string\n(ADR-003 open enums).",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StatusResponse",
         "type": "object"
       },
       "StripeSubscriptionOut": {
@@ -4364,6 +5241,19 @@
         "title": "TenantUsageInvoiceOut",
         "type": "object"
       },
+      "TopUpCheckoutResponse": {
+        "properties": {
+          "checkout_url": {
+            "title": "Checkout Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkout_url"
+        ],
+        "title": "TopUpCheckoutResponse",
+        "type": "object"
+      },
       "TopUpRequest": {
         "properties": {
           "amount_micros": {
@@ -4446,6 +5336,55 @@
           "created_at"
         ],
         "title": "TransactionOut",
+        "type": "object"
+      },
+      "UnprofitableCustomerRow": {
+        "properties": {
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "gross_margin_micros": {
+            "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "margin_percentage": {
+            "title": "Margin Percentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "customer_id",
+          "external_id",
+          "gross_margin_micros",
+          "margin_percentage"
+        ],
+        "title": "UnprofitableCustomerRow",
+        "type": "object"
+      },
+      "UnprofitableOut": {
+        "properties": {
+          "customers": {
+            "items": {
+              "$ref": "#/components/schemas/UnprofitableCustomerRow"
+            },
+            "title": "Customers",
+            "type": "array"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "customers"
+        ],
+        "title": "UnprofitableOut",
         "type": "object"
       },
       "UsageAnalyticsResponse": {
@@ -4988,6 +5927,50 @@
         "title": "UsageTimeseriesResponse",
         "type": "object"
       },
+      "WalletTransactionOut": {
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "balance_after_micros": {
+            "title": "Balance After Micros",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reference_id": {
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "transaction_type": {
+            "title": "Transaction Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "transaction_type",
+          "amount_micros",
+          "balance_after_micros",
+          "description",
+          "reference_id",
+          "created_at"
+        ],
+        "title": "WalletTransactionOut",
+        "type": "object"
+      },
       "WebhookConfigCreateRequest": {
         "properties": {
           "event_types": {
@@ -5272,6 +6255,24 @@
           "idempotency_key"
         ],
         "title": "WithdrawRequest",
+        "type": "object"
+      },
+      "WithdrawResponse": {
+        "properties": {
+          "balance_micros": {
+            "title": "Balance Micros",
+            "type": "integer"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "balance_micros"
+        ],
+        "title": "WithdrawResponse",
         "type": "object"
       }
     },
@@ -5569,6 +6570,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -5685,7 +6693,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -6010,6 +7018,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6048,6 +7063,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopUpCheckoutResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6101,6 +7123,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedWalletTransactions"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6200,6 +7229,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6431,7 +7467,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -6549,6 +7585,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6605,6 +7648,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessMarginOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6705,6 +7755,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginByDimensionOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6757,6 +7814,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginListOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6819,6 +7883,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerMarginOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -6901,7 +7972,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -6911,7 +7982,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -6999,7 +8070,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -7009,7 +8080,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -7053,6 +8124,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginTrendOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7105,6 +8183,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginSummaryOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7196,6 +8281,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnprofitableOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7692,7 +8784,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -7804,7 +8896,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -7979,6 +9071,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -8107,7 +9206,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8274,7 +9373,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8284,7 +9383,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8340,7 +9439,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8350,7 +9449,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8449,7 +9548,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8503,7 +9602,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8513,7 +9612,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8523,7 +9622,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8568,6 +9667,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -8749,7 +9855,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8795,7 +9901,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8839,7 +9945,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8849,7 +9955,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8905,7 +10011,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8915,7 +10021,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8971,7 +10077,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -8981,7 +10087,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9045,7 +10151,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9055,7 +10161,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9102,7 +10208,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9112,7 +10218,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9159,7 +10265,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9169,7 +10275,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9213,7 +10319,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9270,7 +10376,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9280,7 +10386,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9303,6 +10409,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9348,6 +10461,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsEarningsOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9423,6 +10543,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutExportOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9440,6 +10567,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9577,6 +10711,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9630,6 +10771,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedLedgerEntries"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9674,6 +10822,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedReferrers"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9827,6 +10982,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedReferrals"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -9875,7 +11037,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9945,7 +11107,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9955,7 +11117,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -9999,7 +11161,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10120,7 +11282,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10168,7 +11330,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10178,7 +11340,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10226,7 +11388,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10343,7 +11505,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10353,7 +11515,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10448,7 +11610,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10458,7 +11620,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10468,7 +11630,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10516,7 +11678,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10526,7 +11688,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10536,7 +11698,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10687,7 +11849,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10697,7 +11859,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10707,7 +11869,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10761,7 +11923,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10771,7 +11933,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10781,7 +11943,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10791,7 +11953,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10828,7 +11990,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10863,7 +12025,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10924,7 +12086,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10966,7 +12128,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -10976,7 +12138,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11009,6 +12171,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -11056,7 +12225,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11066,7 +12235,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11076,7 +12245,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11147,7 +12316,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11157,7 +12326,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11212,7 +12381,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
@@ -11222,7 +12391,7 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemOut"
                 }
