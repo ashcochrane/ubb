@@ -112,12 +112,11 @@ def reconcile_usage_drawdowns():
     effective age predates the lookback. basis="created" keeps the window
     unchanged (GRACE..LOOKBACK after insertion) for every event regardless of
     its effective timestamp; the (tenant, created_at) index supports the scan."""
-    from django.db import transaction, IntegrityError
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from apps.metering.queries import iter_billable_usage_events
+    from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet, WalletTransaction
-    from apps.billing.locking import lock_for_billing
 
     now = timezone.now()
     settled_before = now - GRACE
@@ -133,38 +132,20 @@ def reconcile_usage_drawdowns():
             if ow and WalletTransaction.objects.filter(
                     wallet=ow, usage_event_id=ev["id"], transaction_type="USAGE_DEDUCTION").exists():
                 continue  # already debited (column anti-join, cutover-safe)
-            key = f"usage_deduction:{ev['id']}"
-            with transaction.atomic():
-                wallet, owner = lock_for_billing(owner_id)
-                # F4.3 lazy expiry: same as the live drawdown twin — due lots
-                # expire BEFORE the balance read so repair never consumes them.
-                from apps.billing.wallets.grants import GrantLedger
-                GrantLedger.expire_due(wallet)
-                existing = WalletTransaction.objects.filter(wallet=wallet, idempotency_key=key).first()
-                if existing is not None:
-                    if existing.amount_micros != -ev["billed_cost_micros"]:
-                        logger.error("ledger.usage_deduction_amount_mismatch", extra={"data": {
-                            "usage_event_id": str(ev["id"]), "existing": existing.amount_micros,
-                            "expected": -ev["billed_cost_micros"]}})
-                    continue
-                new_balance = wallet.balance_micros - ev["billed_cost_micros"]
-                try:
-                    with transaction.atomic():
-                        txn = WalletTransaction.objects.create(
-                            wallet=wallet, transaction_type="USAGE_DEDUCTION",
-                            amount_micros=-ev["billed_cost_micros"], balance_after_micros=new_balance,
-                            description=f"Usage (reconciled): {ev['id']}", reference_id=str(ev["id"]),
-                            idempotency_key=key, usage_event_id=ev["id"])
-                except IntegrityError:
-                    continue  # raced with the live drawdown -> already debited
-                wallet.balance_micros = new_balance
-                wallet.save(update_fields=["balance_micros", "updated_at"])
-                GrantLedger.allocate(wallet, txn, ev["billed_cost_micros"])  # winning branch only
-                repaired += 1
-                logger.warning("wallet.drawdown_repaired", extra={"data": {
-                    "usage_event_id": str(ev["id"]), "owner_id": str(owner_id),
-                    "amount_micros": -ev["billed_cost_micros"]}})
-                # I12: do NOT re-fire CustomerSuspended / balance_overage on a back-correction
+            # The repair twin IS the live drawdown (#109): one module path,
+            # the repair flag suppressing the signal tail (I12: no
+            # CustomerSuspended / balance_overage on a back-correction) and
+            # stamping the reconciled description.
+            result = wallet_ops.draw_down_usage(
+                customer_id=owner_id, tenant=tenant,
+                usage_event_id=ev["id"],
+                billed_cost_micros=ev["billed_cost_micros"], repair=True)
+            if result.outcome != "applied":
+                continue  # replayed: the live twin (or a prior run) won
+            repaired += 1
+            logger.warning("wallet.drawdown_repaired", extra={"data": {
+                "usage_event_id": str(ev["id"]), "owner_id": str(owner_id),
+                "amount_micros": -ev["billed_cost_micros"]}})
     if repaired:
         logger.warning("wallet.drawdown_repair_summary", extra={"data": {"repaired": repaired}})
         if repaired >= REPAIR_SPIKE_THRESHOLD:
@@ -179,7 +160,7 @@ def expire_credit_grants():
     """Beat (hourly :10): expire due credit grants + warn on soon-to-expire.
 
     Pass 1 — for each LIVE wallet/customer holding active grants with
-    expires_at <= now: lock_for_billing + GrantLedger.expire_due, with
+    expires_at <= now: wallet_ops.expire_due_sweep (#109), with
     per-customer fault isolation (one failure logs grants.expiry_sweep_failed
     and the sweep continues). Exactly-once per grant via the expiry:{grant_id}
     WalletTransaction key; lazy expiry in the drawdown paths makes this beat a
@@ -191,8 +172,7 @@ def expire_credit_grants():
     atomic — concurrent beats can't double-fire.
     """
     from django.db import transaction
-    from apps.billing.locking import lock_for_billing
-    from apps.billing.wallets.grants import GrantLedger
+    from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import CreditGrant
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import CreditGrantExpiring
@@ -215,10 +195,7 @@ def expire_credit_grants():
     expired_wallets = 0
     for customer_id in customer_ids:
         try:
-            with transaction.atomic():
-                wallet, _customer = lock_for_billing(customer_id)
-                expired = GrantLedger.expire_due(wallet, now=now)
-            if expired:
+            if wallet_ops.expire_due_sweep(customer_id, now=now):
                 expired_wallets += 1
         except Exception:
             # Fault isolation: a single poisoned wallet/customer must never

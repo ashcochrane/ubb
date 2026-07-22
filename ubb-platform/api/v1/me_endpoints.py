@@ -158,12 +158,12 @@ class UsageSummaryResponse(Schema):
 def get_balance(request):
     _check_billing_product(request)
     customer = request.widget_customer
+    from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet
-    from apps.billing.wallets.grants import GrantLedger
     try:
         wallet = Wallet.objects.get(customer=customer)
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
-                **GrantLedger.balance_summary(wallet)}
+                **wallet_ops.balance_summary(wallet)}
     except Wallet.DoesNotExist:
         # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
         return {"balance_micros": 0,
