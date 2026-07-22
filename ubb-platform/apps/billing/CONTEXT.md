@@ -161,6 +161,15 @@ _Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event fro
 **Crossing**:
 The instant a debit or hold pushes an owner's live counter past its threshold (wallet floor or
 budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
+The compare itself — both sign orientations (wallet balance FALLS below the line, budget spend
+RISES over it), the transition/level/recovery forms, the budget stop line's `enforce_mode`
+semantics (an advisory budget alerts but can never cross, in every lane), and the month
+label/bounds the postpaid crossing is scoped by — has ONE owner:
+`apps/billing/gating/crossing.py` (#110). Every lane (fast, durable, start-gate, reconcile,
+repair, budget gate, dispute clawback) imports those predicates rather than re-deriving the
+comparison.
+_Avoid_: writing `balance < -floor` / `spend >= cap * pct // 100` inline anywhere — that is the
+exact re-sprawl #110 retired.
 
 **Orphan hold**:
 A hold whose event never durably landed (crash between the hold and the append); the live balance

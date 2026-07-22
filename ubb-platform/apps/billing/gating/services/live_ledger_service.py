@@ -45,6 +45,10 @@ import logging
 
 from django.conf import settings
 
+from apps.billing.gating.crossing import (budget_stop_threshold, crossed_live,
+                                          floor_line, month_label_bounds,
+                                          past_floor, recovered_floor,
+                                          same_month)
 from apps.platform.tenants.flags import arrival_signals_on, enforcing
 
 logger = logging.getLogger("ubb.billing")
@@ -151,23 +155,6 @@ def _stop_key(owner_id) -> str:
     return f"ubb:stop:{owner_id}"
 
 
-def _month_label_bounds(now):
-    """(label 'YYYY-MM', start date, end date exclusive) for now's month."""
-    d = now.date()
-    start = d.replace(day=1)
-    end = (start.replace(year=start.year + 1, month=1, day=1) if start.month == 12
-           else start.replace(month=start.month + 1, day=1))
-    return f"{start.year:04d}-{start.month:02d}", start, end
-
-
-def _same_month(effective_at, now) -> bool:
-    if effective_at is None:
-        return True
-    from datetime import timezone as _tz
-    eff = effective_at.astimezone(_tz.utc) if effective_at.tzinfo else effective_at
-    return (eff.year, eff.month) == (now.year, now.month)
-
-
 class LiveLedgerService:
     # ---- synchronous usage hook (called from record_usage) ----
     @staticmethod
@@ -202,9 +189,9 @@ class LiveLedgerService:
                 now = now or timezone.now()
                 # I9: a prior-month backdated event must not inflate THIS
                 # month's live counter (mirrors handlers.py budget tail).
-                if not _same_month(effective_at, now):
+                if not same_month(effective_at, now):
                     return None
-                label, _, _ = _month_label_bounds(now)
+                label, _, _ = month_label_bounds(now)
                 key = _livespend_key(owner_id, label)
                 v = int(_client().eval(_SPEND_INCR, 1, key, int(billed_cost_micros), LEDGER_TTL_SECONDS))
                 base = {"mode": "postpaid", "spend_micros": v, "key": key}
@@ -240,40 +227,37 @@ class LiveLedgerService:
     @staticmethod
     def _threshold(mode, owner_id, tenant):
         """Resolve the ONE comparable crossing bound for this (mode, owner):
-        postpaid -> cap_micros * hard_stop_pct // 100 (or None if there is no
-        BudgetConfig / cap <= 0 -> can never cross); prepaid -> -min_balance
-        (the wallet floor). Exactly ONE ORM lookup (BudgetConfig, or
-        CustomerBillingProfile/BillingTenantConfig via get_customer_min_balance).
+        postpaid -> ``crossing.budget_stop_threshold`` over the resolved
+        BudgetConfig (None = can never cross: no config, cap <= 0, or an
+        advisory ``enforce_mode`` — #110 unified every lane on the
+        BudgetService.check semantics); prepaid -> ``crossing.floor_line``
+        (the wallet floor). Exactly ONE ORM lookup (BudgetConfig via
+        BudgetService.resolve_config_for, or CustomerBillingProfile/
+        BillingTenantConfig via get_customer_min_balance).
 
         Extracted out of ``_crossed`` so a caller processing MANY items for the
         SAME owner in one call (HoldService.acquire) can resolve this ONCE per
         call and compare every item's post-hold value against it in plain
         Python, instead of re-querying per item."""
         if mode == "postpaid":
-            from apps.billing.gating.models import BudgetConfig
-            cfg = (BudgetConfig.objects.filter(tenant_id=tenant.id, customer_id=owner_id).first()
-                   or BudgetConfig.objects.filter(tenant_id=tenant.id, customer__isnull=True).first())
-            if not cfg or cfg.cap_micros <= 0:
-                return None
-            return cfg.cap_micros * cfg.hard_stop_pct // 100
+            from apps.billing.gating.services.budget_service import BudgetService
+            return budget_stop_threshold(
+                BudgetService.resolve_config_for(tenant.id, owner_id))
         from apps.billing.queries import get_customer_min_balance
-        return -get_customer_min_balance(owner_id, tenant.id)
+        return floor_line(get_customer_min_balance(owner_id, tenant.id))
 
     @staticmethod
     def _crossed(mode, value, owner_id, tenant) -> bool:
         """True if the live counter has crossed the owner's threshold:
         prepaid balance below the wallet floor (-min_balance), or postpaid
-        month-to-date spend at/over the budget cap (cap * hard_stop_pct).
-        Resolves the threshold via ``_threshold`` — ONE ORM query per call.
+        month-to-date spend at/over the budget stop line. Resolves the
+        threshold via ``_threshold`` (ONE ORM query per call) and compares
+        via ``crossing.crossed_live`` — the one owner of both orientations.
         A caller evaluating many items per owner in one batch should instead
         call ``_threshold`` once and compare each item in Python (see
         HoldService.acquire)."""
-        threshold = LiveLedgerService._threshold(mode, owner_id, tenant)
-        if threshold is None:
-            return False
-        if mode == "postpaid":
-            return value >= threshold
-        return value < threshold
+        return crossed_live(
+            mode, value, LiveLedgerService._threshold(mode, owner_id, tenant))
 
     @staticmethod
     def _set_stop(owner_id, reason, tenant=None, balance_micros=0):
@@ -456,14 +440,12 @@ class LiveLedgerService:
                 CLEAR_BALANCE_RECOVERED, StopSignalService)
             floor = get_customer_min_balance(owner_id, tenant.id)
             if v is not None:
-                recovered = int(v) >= -floor
                 clearance_balance = int(v)
             else:
                 # Redis blind or unseeded counter: the durable balance is the
                 # guaranteed lane's view of the re-cross.
                 clearance_balance = int(get_customer_balance(owner_id))
-                recovered = clearance_balance >= -floor
-            if recovered:
+            if recovered_floor(clearance_balance, floor):
                 StopSignalService.drive_clear(owner_id, tenant,
                                               reason=CLEAR_BALANCE_RECOVERED,
                                               balance_micros=clearance_balance)
@@ -472,7 +454,7 @@ class LiveLedgerService:
                 # counter — a dispute/refund debit is not mirrored to the
                 # live counter, so v can over-state and would otherwise flip
                 # status active while the true balance is still below floor.
-                if get_customer_balance(owner_id) >= -floor:
+                if recovered_floor(get_customer_balance(owner_id), floor):
                     LiveLedgerService._maybe_unsuspend(owner_id)
             # #40 §F — the soft floor's credit-side clearing, independent of
             # the hard pair (an owner can be past the soft line without ever
@@ -496,7 +478,7 @@ class LiveLedgerService:
         from apps.billing.queries import get_customer_soft_min_balance
         from apps.billing.gating.services.stop_signal_service import StopSignalService
         soft = get_customer_soft_min_balance(owner_id, tenant.id)
-        if soft is None or balance_micros >= -soft:
+        if recovered_floor(balance_micros, soft):
             StopSignalService.drive_soft_cleared(
                 owner_id, tenant, reason=reason,
                 balance_micros=balance_micros, soft_min_balance_micros=soft)
@@ -591,7 +573,7 @@ class LiveLedgerService:
                 from apps.billing.gating.services.stop_signal_service import (
                     CLEAR_RECONCILED, StopSignalService)
                 soft = get_customer_soft_min_balance(owner_id, tenant.id)
-                if soft is not None and basis < -soft:
+                if past_floor(basis, soft):
                     StopSignalService.drive_soft_crossed(
                         owner_id, tenant, balance_micros=basis,
                         soft_min_balance_micros=soft)
@@ -628,7 +610,7 @@ class LiveLedgerService:
         from django.utils import timezone
         from apps.metering.queries import get_billing_owner_billed_total
         now = now or timezone.now()
-        label, start, end = _month_label_bounds(now)
+        label, start, end = month_label_bounds(now)
         try:
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
             before = None
@@ -670,7 +652,7 @@ class LiveLedgerService:
     @staticmethod
     def read_postpaid(owner_id, now=None):
         from django.utils import timezone
-        label, _, _ = _month_label_bounds(now or timezone.now())
+        label, _, _ = month_label_bounds(now or timezone.now())
         v = _client().get(_livespend_key(owner_id, label))
         return int(v) if v is not None else None
 

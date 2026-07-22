@@ -297,11 +297,24 @@ def test_postpaid_release_restores_live_spend(enforced_postpaid_tenant, postpaid
 
 def test_postpaid_budget_crossing_sets_stop(enforced_postpaid_tenant, postpaid_owner):
     BudgetConfig.objects.create(tenant=enforced_postpaid_tenant, customer=postpaid_owner,
-                                cap_micros=10_000_000, hard_stop_pct=100)
+                                cap_micros=10_000_000, hard_stop_pct=100,
+                                enforce_mode="enforcing")
     out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(12_000_000)])
     assert out[0]["held"] is True
     assert out[0]["stop"] is True
     assert out[0]["stop_scope"] == "customer"
+
+
+def test_postpaid_advisory_budget_holds_without_stop(enforced_postpaid_tenant, postpaid_owner):
+    """#110 drift resolution: the hold batch shares the fast lane's
+    enforce_mode semantics — an advisory budget never trips the batch
+    crossing check."""
+    BudgetConfig.objects.create(tenant=enforced_postpaid_tenant, customer=postpaid_owner,
+                                cap_micros=10_000_000, hard_stop_pct=100,
+                                enforce_mode="advisory")
+    out = HoldService.acquire(postpaid_owner.id, enforced_postpaid_tenant, [_item(12_000_000)])
+    assert out[0]["held"] is True
+    assert out[0]["stop"] is False
 
 
 # ---- Final-review fix batch #2: I9 postpaid prior-month guard parity -----
