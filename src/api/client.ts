@@ -1,10 +1,14 @@
 import createClient, { type Middleware } from "openapi-fetch";
 
-import type { paths as BillingPaths } from "./generated/billing";
-import type { paths as MeteringPaths } from "./generated/metering";
-import type { paths as MePaths } from "./generated/me";
-import type { paths as PlatformPaths } from "./generated/platform";
-import type { paths as TenantPaths } from "./generated/tenant";
+import type { paths as ApiPaths } from "./generated/api";
+
+type NamespacePaths<Prefix extends string> = {
+  [Path in keyof ApiPaths as Path extends `${Prefix}${infer RelativePath}`
+    ? RelativePath extends ""
+      ? "/"
+      : RelativePath
+    : never]: ApiPaths[Path];
+};
 
 let _getToken: (() => Promise<string | null>) | null = null;
 
@@ -38,8 +42,8 @@ function createApiClient<Paths extends {}>(basePath: string) {
   return client;
 }
 
-export const platformApi = createApiClient<PlatformPaths>("/api/v1/platform");
-export const meteringApi = createApiClient<MeteringPaths>("/api/v1/metering");
-export const billingApi = createApiClient<BillingPaths>("/api/v1/billing");
-export const tenantApi = createApiClient<TenantPaths>("/api/v1/tenant");
-export const meApi = createApiClient<MePaths>("/api/v1/me");
+export const platformApi = createApiClient<NamespacePaths<"/api/v1/platform">>("/api/v1/platform");
+export const meteringApi = createApiClient<NamespacePaths<"/api/v1/metering">>("/api/v1/metering");
+export const billingApi = createApiClient<NamespacePaths<"/api/v1/billing">>("/api/v1/billing");
+export const tenantApi = createApiClient<NamespacePaths<"/api/v1/tenant">>("/api/v1/tenant");
+export const meApi = createApiClient<NamespacePaths<"/api/v1/me">>("/api/v1/me");

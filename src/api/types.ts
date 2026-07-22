@@ -1,16 +1,14 @@
 // src/api/types.ts
 //
-// Shortcut for consuming generated component schemas from each namespace.
+// Shortcut for consuming generated component schemas from the canonical API.
 // Use like: `type Customer = PlatformSchemas["CustomerDetailResponse"]`.
 
-import type { components as BillingComponents } from "./generated/billing";
-import type { components as MeComponents } from "./generated/me";
-import type { components as MeteringComponents } from "./generated/metering";
-import type { components as PlatformComponents } from "./generated/platform";
-import type { components as TenantComponents } from "./generated/tenant";
+import type { components as ApiComponents } from "./generated/api";
 
-export type PlatformSchemas = PlatformComponents["schemas"];
-export type MeteringSchemas = MeteringComponents["schemas"];
-export type BillingSchemas = BillingComponents["schemas"];
-export type TenantSchemas = TenantComponents["schemas"];
-export type MeSchemas = MeComponents["schemas"];
+type ApiSchemas = ApiComponents["schemas"];
+
+export type PlatformSchemas = ApiSchemas;
+export type MeteringSchemas = ApiSchemas;
+export type BillingSchemas = ApiSchemas;
+export type TenantSchemas = ApiSchemas;
+export type MeSchemas = ApiSchemas;
