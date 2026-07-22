@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UBB — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:wght@700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-page:       #f4f2ee;
+  --bg-subtle:     #ece8e2;
+  --bg-surface:    #fcfaf7;
+  --bg-raised:     #ffffff;
+
+  --border:        #e2ddd5;
+  --border-mid:    #d4cdc2;
+  --border-strong: #b5ad9e;
+
+  --text-primary:  #2e2520;
+  --text-secondary:#6d6358;
+  --text-muted:    #9a8e80;
+  --text-inverse:  #fcfaf7;
+
+  --accent:        #a16a4a;
+  --accent-hover:  #b07855;
+  --accent-dark:   #855638;
+  --accent-light:  #f0e0d2;
+  --accent-ghost:  #f8f0e8;
+  --accent-text:   #5a3520;
+  --accent-border: #d4ad90;
+
+  --stone:         #c2a68e;
+  --stone-light:   #ede4da;
+
+  --blue:          #4a7fa8;
+  --blue-light:    #eaf1f7;
+  --blue-text:     #1e4060;
+
+  --red:           #b84848;
+  --red-light:     #faecec;
+  --red-text:      #6a1e1e;
+
+  --green:         #3a8050;
+  --green-light:   #eaf5ee;
+  --green-text:    #1a4a28;
+
+  --amber:         #a07020;
+  --amber-light:   #fdf4e4;
+  --amber-text:    #5a3e10;
+
+  --purple:        #6a5aaa;
+  --purple-light:  #f0eefa;
+  --purple-text:   #3a2a6a;
+
+  --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
+  --shadow-sm: 0 1px 2px rgba(46,37,32,0.04);
+  --shadow-md: 0 2px 8px rgba(46,37,32,0.06);
+  --font-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-serif:'Cormorant',Georgia,serif;
+  --font-mono:'SF Mono','Fira Code',ui-monospace,monospace;
+  --ease: 0.15s ease;
+}
+
+body { font-family: var(--font-sans); background: var(--bg-page); color: var(--text-primary); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+/* ═══ SHELL ═══ */
+.app { display: grid; grid-template-columns: 200px 1fr; grid-template-rows: 46px 1fr; min-height: 100vh; }
+
+/* ═══ TOP BAR ═══ */
+.topbar { grid-column: 1/-1; background: var(--bg-surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 20; }
+.topbar-logo { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-primary); width: 200px; line-height: 1; }
+.topbar-logo .dot { color: var(--accent); }
+.topbar-sep { width: 1px; height: 22px; background: var(--border); margin-left: -24px; }
+.topbar-r { display: flex; align-items: center; gap: 8px; }
+.mock-pill { padding: 3px 9px; border-radius: var(--radius-pill); background: var(--accent-ghost); color: var(--accent-text); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--accent-border); }
+.ib { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-muted); cursor: pointer; transition: all var(--ease); }
+.ib:hover { background: var(--bg-subtle); color: var(--text-secondary); border-color: var(--border-mid); }
+
+/* ═══ SIDEBAR ═══ */
+.side { grid-column:1; grid-row:2; background: var(--bg-surface); border-right: 1px solid var(--border); padding: 16px 0; display: flex; flex-direction: column; }
+.ns { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); padding: 14px 16px 5px; }
+.ng { display: flex; flex-direction: column; padding: 0 6px; }
+.ni { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary); text-decoration: none; cursor: pointer; transition: all var(--ease); }
+.ni:hover { background: var(--bg-subtle); color: var(--text-primary); }
+.ni.on { background: var(--accent-ghost); color: var(--accent-text); font-weight: 600; }
+.ni svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.45; }
+.ni.on svg { opacity: 0.8; color: var(--accent-dark); }
+.sf { margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--border); }
+.ur { display: flex; align-items: center; gap: 8px; }
+.ua { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-light); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+.un { font-size: 12px; font-weight: 600; }
+.ue { font-size: 10px; color: var(--text-muted); }
+
+/* ═══ MAIN ═══ */
+.main { grid-column:2; grid-row:2; padding: 32px 40px 80px; overflow-y: auto; }
+
+.ph { margin-bottom: 28px; }
+.ph h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.ph-s { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ── Filters ── */
+.fb { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 10px; }
+.fb-l { display: flex; align-items: center; gap: 14px; }
+.fb-r { display: flex; align-items: center; gap: 10px; }
+.tp { display: flex; gap: 1px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px; }
+.ti { padding: 4px 13px; border-radius: var(--radius-pill); font-size: 11px; color: var(--text-secondary); cursor: pointer; border: none; background: none; font-family: var(--font-sans); transition: all var(--ease); }
+.ti:hover { color: var(--text-primary); }
+.ti.on { background: var(--accent-ghost); color: var(--accent-text); font-weight: 600; }
+.pp { display: flex; gap: 1px; background: var(--bg-subtle); border-radius: var(--radius-pill); padding: 2px; }
+.pi { padding: 3px 10px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: var(--font-sans); transition: all var(--ease); }
+.pi:hover { color: var(--text-secondary); }
+.pi.on { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.ctx { font-size: 11px; color: var(--text-muted); }
+.ctx b { color: var(--text-secondary); font-weight: 600; }
+.sb { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border-mid); background: var(--bg-surface); color: var(--text-secondary); font-family: var(--font-sans); transition: all var(--ease); }
+.sb:hover { background: var(--bg-subtle); color: var(--text-primary); }
+
+/* ═══ KPI ═══ */
+.kg { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 32px; }
+.kpi { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px 14px; position: relative; overflow: hidden; transition: all var(--ease); }
+.kpi:hover { border-color: var(--border-mid); box-shadow: var(--shadow-md); }
+.kl { font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.01em; margin-bottom: 6px; }
+.kv { font-size: 26px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; margin-bottom: 4px; }
+.kd { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: var(--radius-pill); }
+.kd.up { color: var(--green-text); background: var(--green-light); }
+.kd.dn { color: var(--red-text); background: var(--red-light); }
+.kd.fl { color: var(--text-muted); background: var(--bg-subtle); }
+.ks { height: 32px; margin: 10px -4px 0; }
+.ks canvas { width: 100% !important; height: 100% !important; }
+
+/* ═══ CARDS ═══ */
+.cd { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 24px; margin-bottom: 18px; transition: border-color var(--ease); }
+.cd:hover { border-color: var(--border-mid); }
+.ch { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.ct { font-size: 14px; font-weight: 600; letter-spacing: -0.15px; }
+.lg { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.li { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.ld { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ll { width: 16px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.cw { position: relative; width: 100%; }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+/* ═══ BREAKDOWN ═══ */
+.bt { font-size: 14px; font-weight: 600; margin-bottom: 18px; letter-spacing: -0.15px; }
+.br { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--bg-subtle); }
+.br:last-child { border-bottom: none; }
+.bd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.bn { font-size: 13px; flex: 1; }
+.bv { font-size: 13px; font-weight: 600; min-width: 65px; text-align: right; }
+.bbg { width: 72px; height: 5px; background: var(--bg-subtle); border-radius: var(--radius-pill); overflow: hidden; flex-shrink: 0; }
+.bb { height: 100%; border-radius: var(--radius-pill); }
+.bp { font-size: 11px; color: var(--text-muted); min-width: 34px; text-align: right; font-weight: 500; }
+
+/* ═══ TABLE ═══ */
+.tc { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; margin-top: 18px; }
+.th { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; }
+.tt { font-size: 14px; font-weight: 600; letter-spacing: -0.15px; }
+table.dt { width: 100%; border-collapse: collapse; }
+table.dt thead th { text-align: left; padding: 10px 24px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); background: var(--bg-subtle); border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); }
+table.dt tbody tr { transition: background var(--ease); }
+table.dt tbody tr:hover { background: var(--bg-page); }
+table.dt tbody td { padding: 14px 24px; font-size: 13px; border-bottom: 1px solid var(--bg-subtle); vertical-align: middle; }
+table.dt tbody tr:last-child td { border-bottom: none; }
+.cn { font-weight: 600; }
+.cs { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px; }
+.badge { font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: var(--radius-pill); display: inline-block; }
+.badge-b { background: var(--blue-light); color: var(--blue-text); }
+.badge-a { background: var(--amber-light); color: var(--amber-text); }
+.mg { display: flex; align-items: center; gap: 6px; }
+.mgb { width: 48px; height: 4px; background: var(--bg-subtle); border-radius: var(--radius-pill); overflow: hidden; }
+.mgi { height: 100%; border-radius: var(--radius-pill); }
+.mgi.g { background: var(--accent); }
+.mgi.w { background: var(--amber); }
+.mgi.x { background: var(--red); }
+.mv { font-size: 12px; font-weight: 600; }
+.mv.g { color: var(--green-text); }
+.mv.w { color: var(--amber-text); }
+.mv.x { color: var(--red-text); }
+.tr { text-align: right; }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+
+@keyframes rise { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+.kpi { animation: rise 0.4s ease both; }
+.kpi:nth-child(1){animation-delay:0s} .kpi:nth-child(2){animation-delay:.04s} .kpi:nth-child(3){animation-delay:.08s} .kpi:nth-child(4){animation-delay:.12s} .kpi:nth-child(5){animation-delay:.16s}
+.cd,.tc { animation: rise 0.45s ease both; animation-delay: 0.2s; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div style="display:flex;align-items:center;">
+      <div class="topbar-logo">ubb<span class="dot">.</span></div>
+      <div class="topbar-sep"></div>
+    </div>
+    <div class="topbar-r">
+      <span class="mock-pill">Mock</span>
+      <button class="ib"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>
+      <button class="ib"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-2.5 2-4.5 5-4.5s5 2 5 4.5"/></svg></button>
+    </div>
+  </header>
+
+  <aside class="side">
+    <nav class="ng">
+      <a class="ni on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>Dashboard</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5"/></svg>Customers</a>
+    </nav>
+    <div class="ns">Metering</div>
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><line x1="2" y1="7" x2="14" y2="7"/></svg>Pricing Cards</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="8.5" x2="9" y2="8.5"/><line x1="5" y1="11" x2="8" y2="11"/></svg>Products</a>
+    </nav>
+    <div class="ns">Billing</div>
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v12M5 5h5a2 2 0 010 4H6a2 2 0 000 4h5"/></svg>Billing</a>
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h8v4"/><path d="M2 8h12l-1.5 5H3.5z"/></svg>Export</a>
+    </nav>
+    <div class="ns">Settings</div>
+    <nav class="ng">
+      <a class="ni"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.1 3.1l1.1 1.1M11.8 11.8l1.1 1.1M3.1 12.9l1.1-1.1M11.8 4.2l1.1-1.1"/></svg>Settings</a>
+    </nav>
+    <div class="sf"><div class="ur"><div class="ua">A</div><div><div class="un">Ash</div><div class="ue">admin</div></div></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="ph"><h1>Dashboard</h1><div class="ph-s">Profitability overview across all products and customers.</div></div>
+
+    <div class="fb">
+      <div class="fb-l">
+        <div class="tp"><button class="ti on">All customers</button><button class="ti">Top 5 by revenue</button><button class="ti">Unprofitable</button></div>
+        <span class="ctx">Showing: <b>All 18 customers</b> (aggregate)</span>
+      </div>
+      <div class="fb-r">
+        <span class="ctx">30-day period</span>
+        <div class="pp"><button class="pi">7d</button><button class="pi on">30d</button><button class="pi">90d</button><button class="pi">YTD</button></div>
+        <button class="sb"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V4h8v4"/><path d="M2 8h12l-1.5 5H3.5z"/></svg>Export</button>
+      </div>
+    </div>
+
+    <div class="kg">
+      <div class="kpi"><div class="kl">Revenue</div><div class="kv">$8,420</div><span class="kd up"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M4 1L7 5H1z" fill="currentColor"/></svg>+14.2% vs prev</span><div class="ks"><canvas id="s1"></canvas></div></div>
+      <div class="kpi"><div class="kl">API costs</div><div class="kv">$1,247</div><span class="kd dn"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M4 7L7 3H1z" fill="currentColor"/></svg>12.3% vs prev</span><div class="ks"><canvas id="s2"></canvas></div></div>
+      <div class="kpi"><div class="kl">Gross margin</div><div class="kv">$7,173</div><span class="kd up"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M4 1L7 5H1z" fill="currentColor"/></svg>+14.5% vs prev</span><div class="ks"><canvas id="s3"></canvas></div></div>
+      <div class="kpi"><div class="kl">Margin %</div><div class="kv">85.2%</div><span class="kd up"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M4 1L7 5H1z" fill="currentColor"/></svg>+0.2pp vs prev</span><div class="ks"><canvas id="s4"></canvas></div></div>
+      <div class="kpi"><div class="kl">Cost / $1 rev</div><div class="kv">$0.148</div><span class="kd fl">±0.3% vs prev</span><div class="ks"><canvas id="s5"></canvas></div></div>
+    </div>
+
+    <div class="cd">
+      <div class="ch">
+        <div class="ct">Revenue and margin</div>
+        <div class="lg">
+          <div class="li"><div class="ll" style="background:#a16a4a;"></div>Revenue</div>
+          <div class="li"><div class="ll" style="background:#b84848;"></div>API costs</div>
+          <div class="li"><div class="ll" style="background:#b5ad9e;border-top:1px dashed #b5ad9e;height:0;"></div>Margin</div>
+        </div>
+      </div>
+      <div class="cw" style="height:240px;"><canvas id="c1"></canvas></div>
+    </div>
+
+    <div class="g2" style="margin-bottom:18px;">
+      <div class="cd" style="margin-bottom:0;">
+        <div class="ch">
+          <div class="ct">Cost by product</div>
+          <div class="lg">
+            <div class="li"><div class="ld" style="background:#4a7fa8;"></div>Property search</div>
+            <div class="li"><div class="ld" style="background:#6a5aaa;"></div>Doc summariser</div>
+            <div class="li"><div class="ld" style="background:#b84848;"></div>Content gen</div>
+          </div>
+        </div>
+        <div class="cw" style="height:180px;"><canvas id="c2"></canvas></div>
+      </div>
+      <div class="cd" style="margin-bottom:0;">
+        <div class="ch">
+          <div class="ct">Cost by pricing card</div>
+          <div class="lg" style="gap:8px;">
+            <div class="li"><div class="ld" style="background:#c0392b;"></div>Gemini Flash</div>
+            <div class="li"><div class="ld" style="background:#4a7fa8;"></div>Claude Sonnet</div>
+            <div class="li"><div class="ld" style="background:#484240;"></div>GPT-4o</div>
+            <div class="li"><div class="ld" style="background:#a16a4a;"></div>Google Places</div>
+            <div class="li"><div class="ld" style="background:#b5ad9e;"></div>Serper</div>
+          </div>
+        </div>
+        <div class="cw" style="height:180px;"><canvas id="c3"></canvas></div>
+      </div>
+    </div>
+
+    <div class="g2" style="margin-bottom:18px;">
+      <div class="cd" style="margin-bottom:0;">
+        <div class="bt">Revenue by product</div>
+        <div class="br"><div class="bd" style="background:#4a7fa8;"></div><div class="bn">Property search</div><div class="bv">$4,631</div><div class="bbg"><div class="bb" style="width:55%;background:#4a7fa8;"></div></div><div class="bp">55%</div></div>
+        <div class="br"><div class="bd" style="background:#6a5aaa;"></div><div class="bn">Doc summariser</div><div class="bv">$2,526</div><div class="bbg"><div class="bb" style="width:38%;background:#6a5aaa;"></div></div><div class="bp">38%</div></div>
+        <div class="br"><div class="bd" style="background:#b84848;"></div><div class="bn">Content gen</div><div class="bv">$1,263</div><div class="bbg"><div class="bb" style="width:15%;background:#b84848;opacity:.65;"></div></div><div class="bp">15%</div></div>
+      </div>
+      <div class="cd" style="margin-bottom:0;">
+        <div class="bt">Margin by product</div>
+        <div class="br"><div class="bd" style="background:#4a7fa8;"></div><div class="bn">Property search</div><div class="bv">$3,783</div><div class="bbg"><div class="bb" style="width:82%;background:#a16a4a;"></div></div><div class="bp">81.7%</div></div>
+        <div class="br"><div class="bd" style="background:#6a5aaa;"></div><div class="bn">Doc summariser</div><div class="bv">$2,252</div><div class="bbg"><div class="bb" style="width:89%;background:#a16a4a;"></div></div><div class="bp">89.2%</div></div>
+        <div class="br"><div class="bd" style="background:#b84848;"></div><div class="bn">Content gen</div><div class="bv">$1,138</div><div class="bbg"><div class="bb" style="width:90%;background:#a16a4a;"></div></div><div class="bp">90.1%</div></div>
+      </div>
+    </div>
+
+    <div class="tc">
+      <div class="th"><div class="tt">Customer profitability</div><button class="sb"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V4h8v4"/><path d="M2 8h12l-1.5 5H3.5z"/></svg>Export table</button></div>
+      <table class="dt">
+        <thead><tr><th>Customer</th><th class="tr">Revenue</th><th style="text-align:center;">Type</th><th class="tr">API costs</th><th class="tr">Margin</th><th>Margin %</th><th class="tr">Events</th></tr></thead>
+        <tbody>
+          <tr><td><div class="cn">Acme Corp</div><div class="cs">acme_corp</div></td><td class="tr mono">$2,400</td><td style="text-align:center;"><span class="badge badge-b">Sub</span></td><td class="tr mono">$312</td><td class="tr mono">$2,088</td><td><div class="mg"><div class="mgb"><div class="mgi g" style="width:87%;"></div></div><span class="mv g">87%</span></div></td><td class="tr mono">14.2k</td></tr>
+          <tr><td><div class="cn">BrightPath Ltd</div><div class="cs">brightpath</div></td><td class="tr mono">$1,800</td><td style="text-align:center;"><span class="badge badge-b">Sub</span></td><td class="tr mono">$247</td><td class="tr mono">$1,553</td><td><div class="mg"><div class="mgb"><div class="mgi g" style="width:86%;"></div></div><span class="mv g">86.3%</span></div></td><td class="tr mono">11.4k</td></tr>
+          <tr><td><div class="cn">NovaTech Inc</div><div class="cs">novatech</div></td><td class="tr mono">$950</td><td style="text-align:center;"><span class="badge badge-a">Usage</span></td><td class="tr mono">$189</td><td class="tr mono">$761</td><td><div class="mg"><div class="mgb"><div class="mgi g" style="width:80%;"></div></div><span class="mv g">80.1%</span></div></td><td class="tr mono">6.8k</td></tr>
+          <tr><td><div class="cn">Helios Digital</div><div class="cs">helios</div></td><td class="tr mono">$720</td><td style="text-align:center;"><span class="badge badge-b">Sub</span></td><td class="tr mono">$198</td><td class="tr mono">$522</td><td><div class="mg"><div class="mgb"><div class="mgi g" style="width:73%;"></div></div><span class="mv g">72.5%</span></div></td><td class="tr mono">9.4k</td></tr>
+          <tr><td><div class="cn">ClearView Analytics</div><div class="cs">clearview</div></td><td class="tr mono">$150</td><td style="text-align:center;"><span class="badge badge-a">Usage</span></td><td class="tr mono">$142</td><td class="tr mono">$8</td><td><div class="mg"><div class="mgb"><div class="mgi w" style="width:5%;"></div></div><span class="mv w">5.3%</span></div></td><td class="tr mono">8.2k</td></tr>
+          <tr><td><div class="cn">Eko Systems</div><div class="cs">eko</div></td><td class="tr mono">$90</td><td style="text-align:center;"><span class="badge badge-a">Usage</span></td><td class="tr mono">$118</td><td class="tr mono" style="color:#b84848;">−$28</td><td><div class="mg"><div class="mgb"><div class="mgi x" style="width:31%;"></div></div><span class="mv x">−31.1%</span></div></td><td class="tr mono">7.9k</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script>
+const D = ['19 Feb','20 Feb','21 Feb','22 Feb','23 Feb','24 Feb','25 Feb','26 Feb','27 Feb','28 Feb','1 Mar','2 Mar','3 Mar','4 Mar','5 Mar','6 Mar','7 Mar','8 Mar','9 Mar','10 Mar','11 Mar','12 Mar','13 Mar','14 Mar','15 Mar','16 Mar','17 Mar','18 Mar','19 Mar','20 Mar'];
+const R=[240,260,250,255,270,265,280,275,290,285,295,288,300,310,295,305,298,315,310,290,308,295,305,320,300,310,305,295,315,310];
+const C=[38,40,36,42,39,41,43,38,44,40,42,39,45,43,41,44,40,46,42,38,43,40,44,42,41,45,43,39,44,41];
+const M=R.map((r,i)=>r-C[i]);
+const P=R.map((r,i)=>Math.round(((r-C[i])/r)*1000)/10);
+const CR=R.map((r,i)=>Math.round((C[i]/r)*1000)/1000);
+
+const gc='#e2ddd5', gd=[3,3], tc='#9a8e80', ff="'DM Sans',sans-serif";
+function so(mn,mx,pre,suf){return{x:{display:true,grid:{display:false},ticks:{font:{family:ff,size:10},color:tc,maxRotation:0,autoSkip:true,maxTicksLimit:8},border:{display:false}},y:{display:true,position:'left',suggestedMin:mn,suggestedMax:mx,grid:{color:gc,borderDash:gd,drawBorder:false},ticks:{font:{family:ff,size:10},color:tc,callback:v=>(pre||'')+v+(suf||'')},border:{display:false}}}}
+
+function spark(id,data,col){new Chart(document.getElementById(id),{type:'line',data:{labels:D,datasets:[{data,borderColor:col,borderWidth:1.5,fill:true,backgroundColor:col+'15',pointRadius:0,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},layout:{padding:{top:2,bottom:0}}}})}
+spark('s1',R,'#a16a4a');spark('s2',C,'#b84848');spark('s3',M,'#3a8050');spark('s4',P,'#a16a4a');spark('s5',CR,'#9a8e80');
+
+const tto={backgroundColor:'#2e2520',titleFont:{family:ff,size:11},bodyFont:{family:ff,size:11},padding:10,cornerRadius:8,displayColors:true,boxWidth:8,boxHeight:8,usePointStyle:true};
+
+new Chart(document.getElementById('c1'),{type:'line',data:{labels:D,datasets:[
+  {label:'Revenue',data:R,borderColor:'#a16a4a',borderWidth:2,fill:true,backgroundColor:'rgba(161,106,74,0.07)',pointRadius:0,pointHoverRadius:4,pointHoverBackgroundColor:'#a16a4a',tension:0.35,order:1},
+  {label:'Margin',data:M,borderColor:'#b5ad9e',borderWidth:1.5,borderDash:[5,3],fill:false,pointRadius:0,pointHoverRadius:3,pointHoverBackgroundColor:'#b5ad9e',tension:0.35,order:2},
+  {label:'API costs',data:C,borderColor:'#b84848',borderWidth:1.5,fill:true,backgroundColor:'rgba(184,72,72,0.05)',pointRadius:0,pointHoverRadius:3,pointHoverBackgroundColor:'#b84848',tension:0.35,order:3}
+]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...tto,callbacks:{label:c=>' '+c.dataset.label+': $'+c.parsed.y}}},scales:so(0,340,'$','')}});
+
+const D2=D.filter((_,i)=>i%2===0);
+const ps=[32,34,30,36,33,35,38,34,40,36,42,38,44,40,46];
+const ds=[28,26,24,28,25,27,30,26,32,28,34,30,36,32,34];
+const cg=[12,14,10,15,11,13,16,12,18,14,20,16,22,18,20];
+
+new Chart(document.getElementById('c2'),{type:'line',data:{labels:D2,datasets:[
+  {label:'Property search',data:ps,borderColor:'#4a7fa8',borderWidth:1.8,fill:true,backgroundColor:'rgba(74,127,168,0.07)',pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'Doc summariser',data:ds,borderColor:'#6a5aaa',borderWidth:1.8,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'Content gen',data:cg,borderColor:'#b84848',borderWidth:1.5,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35}
+]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...tto,callbacks:{label:c=>' '+c.dataset.label+': $'+c.parsed.y}}},scales:so(0,55,'$','')}});
+
+const gf=[18,16,20,18,22,19,24,20,26,22,28,24,30,26,28];
+const cl=[14,12,16,14,18,15,20,16,22,18,24,20,26,22,24];
+const g4=[8,10,7,9,11,8,12,9,14,10,16,12,18,14,16];
+const gp=[5,4,6,5,7,5,8,6,9,7,10,8,11,9,10];
+const sp=[2,3,2,3,2,3,3,2,4,3,4,3,5,4,4];
+
+new Chart(document.getElementById('c3'),{type:'line',data:{labels:D2,datasets:[
+  {label:'Gemini 2.0 Flash',data:gf,borderColor:'#c0392b',borderWidth:1.5,fill:true,backgroundColor:'rgba(192,57,43,0.05)',pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'Claude Sonnet',data:cl,borderColor:'#4a7fa8',borderWidth:1.5,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'GPT-4o',data:g4,borderColor:'#484240',borderWidth:1.5,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'Google Places',data:gp,borderColor:'#a16a4a',borderWidth:1.3,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35},
+  {label:'Serper',data:sp,borderColor:'#b5ad9e',borderWidth:1.2,fill:false,pointRadius:0,pointHoverRadius:3,tension:0.35}
+]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...tto,callbacks:{label:c=>' '+c.dataset.label+': $'+c.parsed.y}}},scales:so(0,35,'$','')}});
+</script>
+</body>
+</html>
