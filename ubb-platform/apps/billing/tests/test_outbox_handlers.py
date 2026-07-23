@@ -195,7 +195,6 @@ class TestBillingOutboxHandler:
         # typed write side cannot produce a payload without it, so the handler
         # treats one as malformed (loud TypeError -> outbox retry/dead-letter)
         # instead of silently deducting zero. The wallet is untouched.
-        import pytest
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(

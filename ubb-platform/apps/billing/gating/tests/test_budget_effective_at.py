@@ -71,6 +71,9 @@ class TestBudgetEffectiveMonthBasis:
         e = UsageEvent.objects.create(
             tenant=t, customer=c, request_id="r1", idempotency_key="i1",
             billed_cost_micros=70_000)
+        # Deliberate literal dict (#114 testing.md exception): the point is a
+        # LEGACY queued payload with no effective_at key at all — asdict()
+        # always emits the key, so the typed constructor cannot express this.
         handle_usage_recorded_billing(str(uuid.uuid4()), {
             "tenant_id": str(t.id), "customer_id": str(c.id),
             "event_id": str(e.id), "cost_micros": 70_000})  # no effective_at key
