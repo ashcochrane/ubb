@@ -25,10 +25,11 @@ class IngestEndpointTestBase(TestCase):
 
     def setUp(self):
         cache.clear()
-        # The task-metadata L1 cache is module-level in-process state; clear it
-        # so an entry cached by one test can never leak into another.
-        from api.v1 import metering_endpoints
-        metering_endpoints._TASK_META_CACHE.clear()
+        # The task-metadata L1 cache is module-level in-process state; reset it
+        # so an entry cached by one test can never leak into another (#113:
+        # through the seam's owned reset surface, not the private dict).
+        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
+        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="AsyncIngest", products=["metering", "billing", "metering_async"],
@@ -203,7 +204,7 @@ class SyncFallbackRejectionIdemUnwindTest(IngestEndpointTestBase):
         self.assertEqual(UsageEvent.objects.count(), 0)
         self.assertEqual(RawIngestEvent.objects.count(), 0)
 
-        from api.v1.metering_endpoints import _idem_key
+        from apps.metering.usage.services.ingest_accept import _idem_key
         key = _idem_key(self.tenant.id, self.customer.id, event["idempotency_key"])
         import redis
         from django.conf import settings
@@ -333,7 +334,7 @@ class TaskMetaCacheEvictionTest(IngestEndpointTestBase):
         the entries fresh for THIS call must survive into the return value
         (the first cut re-read the module cache after clearing it: KeyError).
         Entries are (customer_id_str|None, expires) — existence/ownership only."""
-        from api.v1 import metering_endpoints
+        from apps.metering.usage.services import ingest_accept
         task_a = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
             balance_snapshot_micros=20_000_000,
@@ -342,7 +343,7 @@ class TaskMetaCacheEvictionTest(IngestEndpointTestBase):
             tenant=self.tenant, customer=self.customer, status="active",
             balance_snapshot_micros=20_000_000,
             billing_owner_id=self.customer.id)
-        with patch.object(metering_endpoints, "_TASK_META_MAX", 1):
+        with patch.object(ingest_accept, "_TASK_META_MAX", 1):
             first = self._post([self._event(task_id=str(task_a.id), billed_cost_micros=100_000)])
             self.assertEqual(first.status_code, 200)  # caches task_a; cache now AT the max
             resp = self._post([
@@ -354,7 +355,7 @@ class TaskMetaCacheEvictionTest(IngestEndpointTestBase):
         self.assertTrue(results[0]["accepted"])
         self.assertTrue(results[1]["accepted"])
         # The cache holds (customer_id_str|None, expires) tuples.
-        entry = metering_endpoints._TASK_META_CACHE.get(str(task_b.id))
+        entry = ingest_accept._TASK_META_CACHE.get(str(task_b.id))
         self.assertIsNotNone(entry)
         self.assertEqual(entry[0], str(self.customer.id))
 
@@ -590,8 +591,8 @@ class PostpaidPriorMonthGuardTest(TestCase):
 
     def setUp(self):
         cache.clear()
-        from api.v1 import metering_endpoints
-        metering_endpoints._TASK_META_CACHE.clear()
+        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
+        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="PostpaidAsyncIngest",
