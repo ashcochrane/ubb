@@ -32,8 +32,9 @@ _Avoid_: "error" — infrastructure faults raise; refusals return.
 **Mirror invariant**:
 The rule that every credit-raising wallet mutation schedules a matching live-counter credit on
 commit — enforced structurally at the wallet-operations seam, since the MIN-merge reconcile can
-never re-raise a missed credit. The one sanctioned non-ledger credit site is estimate-hold-settle.
-_Avoid_: wiring `LiveLedgerService.credit` by hand at call sites.
+never re-raise a missed credit. The one sanctioned non-ledger credit site is estimate-hold-settle
+(inside the live counter itself since #111).
+_Avoid_: wiring `LiveCounter.credit` by hand at call sites.
 
 **Drawdown**:
 The wallet debit applied when a `usage.recorded` event is processed.
@@ -95,11 +96,20 @@ Refusing a start is legitimate under the one-rule model: it refuses work that ha
 never a usage report.
 (`apps/billing/gating/services/risk_service.py`)
 
-**Live ledger (Tier-2 counter)**:
-The billing-owner-keyed Redis counter decremented synchronously at record time so the API response
-can carry a real stop verdict; reconciled against the durable ledger. Part of the arrival-signals
-fast lane — unmaintained at accept when the switch is off.
-(`apps/billing/gating/services/live_ledger_service.py`)
+**Live counter**:
+THE one module owning every piece of Tier-2 Redis state (#111): the billing-owner-keyed live
+balance/spend counters maintained synchronously at record time (so the API response carries a real
+stop verdict), the cooperative stop flag, the seat-keyed budget counter, and every key format, Lua
+script, and TTL behind them. Interface: `debit · hold · settle · release · credit · read ·
+reconcile · repair_incr · resume · cleanup · budget_incr/read/reconcile`, plus a deliberate
+TEST-ONLY door (`Door`) for fabricating counter/flag state. Key formats are frozen once in the
+module's own pin test; a perimeter walker (ADR-001 style) keeps the keyspace, the Lua, and the
+test door private everywhere else. The counter writes are part of the arrival-signals fast lane —
+unmaintained at accept when the switch is off; the verdict reads never switch off.
+(`apps/billing/gating/services/live_counter.py`;
+pins: `apps/billing/tests/test_live_counter_perimeter.py`)
+_Avoid_: "live ledger" — "ledger" now means the signal ledger (`StopSignalState`); one word, one
+thing.
 
 **Arrival signals (fast lane)**:
 The per-tenant posture (`Tenant.arrival_signals_enabled`, default ON, read only through
@@ -170,11 +180,12 @@ A per-tenant (optionally per-customer) monthly spend cap with alert levels.
 (`apps/billing/gating/models.py:BudgetConfig`)
 
 **Hold**:
-The arrival-time reservation of one async event's estimated price on the live ledger, taken
+The arrival-time reservation of one async event's estimated price on the live counter, taken
 *before* the event is durably appended; trued up at settle. Always holds, against the wallet only
 — task limits are detected at settle with exact costs. With arrival signals off, nothing is held
-(`held: false` on the raw row) and settle trues up nothing.
-(`apps/billing/gating/services/hold_service.py`)
+(`held: false` on the raw row) and settle trues up nothing. An op of the live counter
+(`LiveCounter.hold`) since #111 — the old standalone HoldService was a second implementation of
+the same counter and was folded in.
 _Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event from landing.
 
 **Crossing**:

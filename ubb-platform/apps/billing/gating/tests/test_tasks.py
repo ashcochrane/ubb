@@ -4,7 +4,8 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import BudgetService, _key, _period
+from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.services.live_counter import Door
 
 
 @pytest.mark.django_db
@@ -21,7 +22,6 @@ class TestBudgetReconciliation:
                                   provider_cost_micros=400_000, billed_cost_micros=400_000)
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r2", idempotency_key="i2",
                                   provider_cost_micros=350_000, billed_cost_micros=350_000)
-        label, _s, _e = _period()
-        cache.set(_key(c.id, label), 0)  # corrupt/drifted counter
+        Door.set_budget(c.id, 0)  # corrupt/drifted counter
         reconcile_budget_counters()
         assert BudgetService.current_spend(c.tenant_id, c.id) == 750_000

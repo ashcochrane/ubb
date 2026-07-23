@@ -23,7 +23,7 @@ Design decisions (grilled 2026-07-22, recorded on issue #109):
   roll them back.
 - **The module owns the mirror.** The executor derives the Tier-2 live-counter
   credit from the op's balance delta and registers the single
-  ``transaction.on_commit(LiveLedgerService.credit)`` for POSITIVE deltas only
+  ``transaction.on_commit(LiveCounter.credit)`` for POSITIVE deltas only
   (mandatory — the MIN-merge reconcile cannot re-raise a missed credit;
   a missed debit is absorbed by the MIN-merge, so debits never mirror).
 - **Audit is a caller-passed value.** ``Audit`` (actor, reason_code,
@@ -182,10 +182,10 @@ def _execute(*, customer_id, tenant, key, run_expiry, prepare, on_replay,
             # the live balance after commit — mandatory, the MIN-merge cannot
             # re-raise a missed credit. Debits are absorbed by the MIN-merge
             # and never mirror. Enforced here once, for every op.
-            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+            from apps.billing.gating.services.live_counter import LiveCounter
             transaction.on_commit(
                 lambda oid=wallet.customer_id, t=tenant, amt=move.amount_micros:
-                LiveLedgerService.credit(oid, t, amt))
+                LiveCounter.credit(oid, t, amt))
         if move.events is not None:
             move.events(wallet, owner, old_balance, new_balance, txn)
         if move.result is not None:
@@ -541,8 +541,8 @@ def _drawdown_tail(tenant):
                 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
-                from apps.billing.gating.services.live_ledger_service import (
-                    LiveLedgerService)
+                from apps.billing.gating.services.live_counter import (
+                    LiveCounter)
                 try:
                     StopSignalService.drive_stop(
                         owner.id, tenant, reason=CUSTOMER_WIDE_STOP,
@@ -550,7 +550,7 @@ def _drawdown_tail(tenant):
                 except Exception:
                     logger.warning("billing.floor_stop_transition_failed",
                                    extra={"data": {"owner_id": str(owner.id)}})
-                LiveLedgerService.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
+                LiveCounter.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
             # #40 §F — the soft floor's ONLY crossing detector (no fast lane,
             # no Redis threshold: signal latency is outbox latency). Crossing
             # the resolved soft line drives the soft_floor family of the same

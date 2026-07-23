@@ -520,14 +520,15 @@ class UsageService:
                 # decremented the live counter once — this full debit
                 # double-counts against that orphan. Documented, NOT fixed
                 # here (spec invariant 7 — corrected wording): the hourly
-                # reconcile_prepaid MIN-merge does NOT correct this — it only
+                # prepaid reconcile MIN-merge does NOT correct this — it only
                 # ever LOWERS toward the durable balance, and the orphan has
                 # already made the live counter LOWER than durable, so
                 # reconcile finds it already at (or below) target and leaves
                 # it untouched (a fixed point, not a correction). The drift
                 # persists (bounded, over-restrictive, DRIFT_ALERT_MICROS-
-                # visible) until a credit/top-up, cleanup_keys, or the 62-day
-                # TTL heals it; see test_settlement.py's orphan-hold pin.
+                # visible) until a credit/top-up, the enforcement-transition
+                # cleanup, or the 62-day TTL heals it; see test_settlement.py's
+                # orphan-hold pin.
                 # Rows accepted while arrival signals were OFF land here too
                 # once the lane is back ON: the full debit keeps the freshly
                 # re-seeded counter honest for spend the seed missed.

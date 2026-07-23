@@ -35,7 +35,7 @@ def _per_owner_reconcile(tenant):
     raises; returns the flag-realignment count (#44 §C.2)."""
     from apps.platform.customers.models import Customer
     from apps.billing.wallets.models import Wallet
-    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.budget_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
 
@@ -60,15 +60,13 @@ def _per_owner_reconcile(tenant):
                 tenant=tenant, status="suspended", suspension_reason="budget_exceeded"
             ).values_list("id", flat=True))
             for owner_id in owners:
-                flag_realigned += _count(
-                    LiveLedgerService.reconcile_postpaid(owner_id, tenant))
+                flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
         else:
             for owner_id in Wallet.objects.filter(
                     customer__tenant=tenant).values_list("customer_id", flat=True):
-                flag_realigned += _count(
-                    LiveLedgerService.reconcile_prepaid(owner_id, tenant))
+                flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
     except Exception:
-        logger.exception("live_ledger.reconcile_tenant_failed",
+        logger.exception("live_counter.reconcile_tenant_failed",
                          extra={"data": {"tenant_id": str(tenant.id)}})
     return flag_realigned
 

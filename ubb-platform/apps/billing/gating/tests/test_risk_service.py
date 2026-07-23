@@ -226,6 +226,7 @@ import pytest
 from django.core.cache import cache as django_cache
 from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.services.live_counter import LiveCounter
 
 
 @pytest.mark.django_db
@@ -250,7 +251,7 @@ class TestRiskServiceBudget:
         from apps.metering.usage.models import UsageEvent
         UsageEvent.objects.create(tenant=c.tenant, customer=c, request_id="r", idempotency_key="i",
                                   provider_cost_micros=amount, billed_cost_micros=amount)
-        BudgetService.record_spend(c.tenant_id, c.id, amount)
+        LiveCounter.budget_incr(c.tenant_id, c.id, amount)
 
     def test_no_budget_config_allows(self):
         c = self._funded()
@@ -272,7 +273,7 @@ class TestRiskServiceBudget:
         # pre-call gate — the money is still guarded by the Postgres credit check.
         from unittest.mock import patch
         c = self._funded(cap_micros=1_000, enforce_mode="enforcing")
-        with patch("apps.billing.gating.services.budget_service.cache.get",
+        with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = RiskService.check(c)
         assert res["allowed"] is True
@@ -295,7 +296,7 @@ class TestRiskServiceBudget:
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="enforcing")
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
-        BudgetService.record_spend(t.id, c.id, 1_000)
+        LiveCounter.budget_incr(t.id, c.id, 1_000)
         res = RiskService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
 

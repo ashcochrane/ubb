@@ -140,7 +140,7 @@ class TestSuspensionFold:
 @pytest.mark.django_db
 class TestEmissionAtomicity:
     """#43 §A at the service seam: every family rides the same savepoint
-    contract pinned for stop.fired in test_live_ledger.py's pin 2 — a failed
+    contract pinned for stop.fired in test_live_counter.py's pin 2 — a failed
     event INSERT takes the transition down with it (never "transitioned but
     unqueued") and leaves the ambient transaction usable for the money path.
     """

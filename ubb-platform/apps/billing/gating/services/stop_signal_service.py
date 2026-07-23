@@ -4,7 +4,7 @@ The single emission choke point for the customer-wide stop/resume pair
 (``stop.fired`` / ``stop.cleared``) and the soft-floor pair
 (``soft_floor.crossed`` / ``soft_floor.cleared`` — its own family, its own
 episode sequence, never a suspension). Every lane that detects a crossing —
-the fast Redis lane at arrival (``LiveLedgerService._set_stop``), the durable
+the fast Redis lane at arrival (the live counter's ``_set_stop``), the durable
 drawdown handler (``apps.billing.handlers``), the hourly reconcile — drives a
 transition on the owner's ``StopSignalState`` row; only the WINNING transition
 emits the outbox event, and the emission commits atomically with the ledger
@@ -16,9 +16,9 @@ flip and its ``CustomerSuspended`` emission ride the winning STOP transition —
 prepaid/meter_only in every enforcement-on mode (the Tier-1 baseline
 suspension, unchanged), postpaid only when ``enforcing`` (D13). Floor-stop and
 suspension therefore can never disagree or double-fire. The paired un-suspend
-stays with the clearing call sites (``LiveLedgerService._maybe_unsuspend``),
-which gate on the DURABLE balance per D15 — a live-view clear must not
-un-suspend an owner whose true balance is still past the floor.
+stays with the clearing side (``LiveCounter.resume``'s durable gate), decided
+on the DURABLE balance per D15 — a live-view clear must not un-suspend an
+owner whose true balance is still past the floor.
 
 Lock order (core/locking.py): Customer before StopSignalState — ``drive_stop``
 locks the owner row first (it may flip status), then the ledger row; callers
@@ -57,8 +57,9 @@ CLEAR_BALANCE_REPAIRED = "balance_repaired"
 # The soft_floor family's stop-side reason (ledger row + the start-gate
 # refusal share the string; the crossed event itself carries no reason).
 SOFT_FLOOR_REACHED = "soft_floor_reached"
-# Administrative silent close on an enforcement_mode transition (cleanup_keys)
-# — never rides a StopCleared event (a config flip is not a re-cross).
+# Administrative silent close on an enforcement_mode transition (the live
+# counter's cleanup → close_all_silently) — never rides a StopCleared event
+# (a config flip is not a re-cross).
 CLEAR_ENFORCEMENT_MODE_TRANSITION = "enforcement_mode_transition"
 
 
@@ -136,8 +137,8 @@ class StopSignalService:
         (state was stopped), else None — a clear that didn't win emits
         nothing (spec §E). The winner flips the row to ``cleared`` and emits
         ``stop.cleared`` carrying the closed episode and the balance at
-        clearance. Un-suspension is deliberately NOT here: it stays with the
-        call sites' ``_maybe_unsuspend``, gated on the durable balance (D15).
+        clearance. Un-suspension is deliberately NOT here: it rides
+        ``LiveCounter.resume``'s durable gate (D15).
         """
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import StopCleared
@@ -156,6 +157,28 @@ class StopSignalService:
                                            reason=reason, episode_seq=row.episode_seq,
                                            balance_micros=int(balance_micros)))
             return row.episode_seq
+
+    @staticmethod
+    def close_all_silently(tenant, *, reason):
+        """Administratively close every OPEN stop episode of a tenant — the
+        silent bulk close behind an enforcement_mode transition (D5 of #111;
+        the ledger must not carry a stale 'stopped' row across the flip, or
+        it would swallow the first real crossing's emission after re-enable).
+
+        DELIBERATELY a bulk, NON-EMITTING UPDATE — do NOT rewrite this as a
+        loop of ``drive_clear`` calls: per #39 a config flip is not a
+        re-cross, so no ``stop.cleared`` may ride out, and ``episode_seq`` is
+        preserved so episode ids never restart or collide (test_p7 pins the
+        observable behavior). Closes open episodes of BOTH families (a stale
+        soft_floor 'crossed' row would equally swallow the first real
+        crossing after re-enable); the patrol's re-mint leg skips
+        administratively-closed rows, so the close never rides the wire."""
+        from apps.billing.gating.models import StopSignalState
+
+        now = timezone.now()
+        StopSignalState.objects.filter(tenant_id=tenant.id, state=STATE_STOPPED).update(
+            state=STATE_CLEARED, reason=reason,
+            transitioned_at=now, updated_at=now)
 
     @staticmethod
     def drive_soft_crossed(owner_id, tenant, *, balance_micros=0,

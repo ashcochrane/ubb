@@ -28,11 +28,7 @@ from unittest.mock import patch
 
 from apps.billing.gating import patrol
 from apps.billing.gating.models import PatrolOutcome, StopSignalState
-from apps.billing.gating.services.live_ledger_service import (
-    LiveLedgerService,
-    _client,
-    _stop_key,
-)
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     FAMILY_FLOOR_STOP,
     FAMILY_SOFT_FLOOR,
@@ -92,10 +88,10 @@ class TestPin1AmbientRollback:
         # is emitted (there is no state to announce).
         t = _tenant()
         c = _customer(t, balance_micros=5_000_000)
-        _client().set(_stop_key(c.id), "customer_wide_stop")
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
-        out = LiveLedgerService.reconcile_prepaid(c.id, t)
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
+        assert LiveCounter.read(c.id, t)["stop"] is True
+        out = LiveCounter.reconcile(c.id, t)
+        assert LiveCounter.read(c.id, t)["stop"] is False
         assert out["flag_realigned"] is True
         assert not OutboxEvent.objects.filter(
             event_type__in=["stop.fired", "stop.cleared"]).exists()
@@ -107,12 +103,12 @@ class TestPin1AmbientRollback:
         # drives the stop and emits — late, never lost.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)  # floor defaults to 0
-        _client().set(_stop_key(c.id), "customer_wide_stop")  # survived flag
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)  # survived flag
+        LiveCounter.reconcile(c.id, t)
         fired = _events("stop.fired")
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
 
     def test_missing_flag_for_a_durably_stopped_owner_is_realigned(self):
         # The inverse orphan: durable truth says stopped, the flag is gone
@@ -120,9 +116,9 @@ class TestPin1AmbientRollback:
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
         StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        assert _client().get(_stop_key(c.id)) is None  # durable lane, no flag
-        out = LiveLedgerService.reconcile_prepaid(c.id, t)
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert Door.stop_reason(c.id) is None  # durable lane, no flag
+        out = LiveCounter.reconcile(c.id, t)
+        assert LiveCounter.read(c.id, t)["stop"] is True
         assert out["flag_realigned"] is True
         assert _events("stop.fired").count() == 1  # no re-emission
 
@@ -154,7 +150,7 @@ class TestPin2EmitFailureCompletes:
         assert not StopSignalState.objects.filter(owner=c).exists()
         monkeypatch.setattr(OutboxEvent.objects, "create", orig_create)
 
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         fired = _events("stop.fired")
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
@@ -395,11 +391,11 @@ class TestPatrolBeatAndCounters:
         t = _tenant()
         # Owner A: orphaned flag, healthy balance -> one flag re-alignment.
         a = _customer(t, balance_micros=5_000_000, ext="a")
-        _client().set(_stop_key(a.id), "customer_wide_stop")
+        Door.plant_stop(a.id, "customer_wide_stop", ttl=False)
         # Owner B: durably stopped, announcement dead-lettered -> one re-mint.
         b = _customer(t, balance_micros=-1_000_000, ext="b")
         StopSignalService.drive_stop(b.id, t, reason="customer_wide_stop")
-        LiveLedgerService.ensure_stop_flag(b.id, "customer_wide_stop")
+        LiveCounter.ensure_stop_flag(b.id, "customer_wide_stop")
         _set_status(_stamp_of(b, FAMILY_FLOOR_STOP), "failed")
         # Owner C: an over-limit task the kill flow never reached -> one sweep.
         c = _customer(t, balance_micros=1_000_000, ext="c")

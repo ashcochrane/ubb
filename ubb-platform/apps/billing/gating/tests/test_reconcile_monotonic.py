@@ -1,19 +1,19 @@
 """P1 (D8/I7): BudgetService.reconcile_customer is a monotonic MAX-merge.
 
-The old reconcile did an absolute cache.set(durable_total); mid-burst that
-could set the counter BACKWARD below an in-flight record_usage_spend INCR the
+The old reconcile did an absolute set(durable_total); mid-burst that could
+set the counter BACKWARD below an in-flight record_usage_spend INCR the
 durable ledger had not yet recorded — a lost update that re-allowed over-cap
-spend. The fix is an atomic Lua MAX-merge on the SAME physical key the Django
-cache uses. These tests pin both the merge semantics and the cross-client
-key/prefix contract the merge relies on (D9).
+spend. The fix is the live counter's atomic Lua MAX-merge (#111 D3b retired
+the old two-dialect Django-cache/raw-client hack — the budget counter now
+lives on the module's own raw key). These tests pin the merge semantics and
+the one-key contract every budget op shares.
 """
 import pytest
 from django.core.cache import cache
 
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import (
-    BudgetService, _key, _period, _raw_redis,
-)
+from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -41,30 +41,30 @@ class TestReconcileMonotonic:
     def setup_method(self):
         cache.clear()
 
-    def test_raw_client_reads_cache_key(self):
-        # D9 contract: the raw redis client + cache.make_key target the SAME
-        # physical key, and an int set by the Django cache is a plain integer
-        # the raw client (and our Lua) can read. If this ever breaks, the
-        # MAX-merge would silently operate on a different/absent key.
-        cache.set("budget:probetest", 4242, timeout=300)
-        raw = _raw_redis()
-        physical = raw.get(cache.make_key("budget:probetest"))
-        assert physical == b"4242"
+    def test_every_budget_op_targets_the_one_counter(self):
+        # The one-key contract the merge relies on: the drawdown INCR
+        # (budget_incr), the read (current_spend), and the MAX-merge all
+        # address the SAME counter — the successor of the old D9 cross-client
+        # probe, whose two-dialect key contract #111 D3b retired.
+        t, c = _setup()
+        Door.set_budget(c.id, 4242)
+        old, new, _label = LiveCounter.budget_incr(t.id, c.id, 8)
+        assert (old, new) == (4242, 4250)
+        assert BudgetService.current_spend(t.id, c.id) == 4250
+        assert Door.budget(c.id) == 4250
 
     def test_reconcile_never_lowers_inmonth_counter(self):
         t, c = _setup()
-        label, _, _ = _period()
         # Counter is high (e.g. in-flight spend already counted); durable total
         # is 0 (no committed events yet). MAX-merge must keep the high value.
-        cache.set(_key(c.id, label), 100_000_000, timeout=300)
+        Door.set_budget(c.id, 100_000_000)
         BudgetService.reconcile_customer(c)
         assert BudgetService.current_spend(t.id, c.id) == 100_000_000
 
     def test_reconcile_raises_to_durable_when_counter_drifted_low(self):
         t, c = _setup()
-        label, _, _ = _period()
         _durable_event(t, c, 50_000_000, 1)  # durable total = 50M
-        cache.set(_key(c.id, label), 10, timeout=300)  # counter drifted low
+        Door.set_budget(c.id, 10)  # counter drifted low
         BudgetService.reconcile_customer(c)
         assert BudgetService.current_spend(t.id, c.id) == 50_000_000
 
@@ -74,9 +74,8 @@ class TestReconcileMonotonic:
         # read has not yet caught up to. The OLD absolute set(30M) would erase
         # the in-flight 30M; the MAX-merge must preserve 60M.
         t, c = _setup()
-        label, _, _ = _period()
         _durable_event(t, c, 30_000_000, 1)  # durable total = 30M
-        cache.set(_key(c.id, label), 60_000_000, timeout=300)  # in-flight ahead
+        Door.set_budget(c.id, 60_000_000)  # in-flight ahead
         BudgetService.reconcile_customer(c)
         assert BudgetService.current_spend(t.id, c.id) == 60_000_000
 

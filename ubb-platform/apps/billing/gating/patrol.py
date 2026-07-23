@@ -8,8 +8,8 @@ down. The jobs here join the existing hourly reconcile pass
 (``reconcile_live_ledgers`` — no new scheduled task; enforcing tenants only):
 
 1. Missed-transition drive + fast-flag re-alignment run PER OWNER inside
-   ``LiveLedgerService.reconcile_prepaid/postpaid`` (§C.1/§C.2) — this module
-   receives their flag-realignment count for the outcome record.
+   ``LiveCounter.reconcile`` (§C.1/§C.2) — this module receives their
+   flag-realignment count for the outcome record.
 2. ``remint_unannounced_signals`` (§C.3) — any signal-ledger row whose last
    announcement never terminally succeeded gets a fresh CURRENT-STATE event
    (``re_announcement: true``, current episode), through the same atomic

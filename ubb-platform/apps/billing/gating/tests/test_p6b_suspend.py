@@ -15,7 +15,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
@@ -50,7 +50,7 @@ class TestPostpaidDurableSuspend:
                                     enforce_mode="enforcing")
         # The fast lane's crossing wins the stop transition and suspends there
         # (#39) — the handler drain adds nothing for postpaid.
-        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 12_000_000))
         c.refresh_from_db()
         assert c.status == "suspended"
@@ -62,8 +62,8 @@ class TestPostpaidDurableSuspend:
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="enforcing")
-        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
-        LiveLedgerService.record_usage_debit(c.id, t, 5_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 5_000_000, now=timezone.now())
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
         assert _suspend_events(c.id).count() == 1  # winning transition only
@@ -93,11 +93,11 @@ class TestUnsuspendOnRecovery:
         t = _tenant(mode="prepaid", enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
+        LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
         c.status = "suspended"
         c.suspension_reason = "min_balance_exceeded"
         c.save(update_fields=["status", "suspension_reason"])
-        LiveLedgerService.credit(c.id, t, 10_000_000)  # recovers above floor
+        LiveCounter.credit(c.id, t, 10_000_000)  # recovers above floor
         c.refresh_from_db()
         assert c.status == "active"
         assert c.suspension_reason == ""
@@ -106,11 +106,11 @@ class TestUnsuspendOnRecovery:
         t = _tenant(mode="prepaid", enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         c.status = "suspended"
         c.suspension_reason = "fraud_review"  # admin suspension
         c.save(update_fields=["status", "suspension_reason"])
-        LiveLedgerService.credit(c.id, t, 10_000_000)
+        LiveCounter.credit(c.id, t, 10_000_000)
         c.refresh_from_db()
         assert c.status == "suspended"  # never auto-cleared
 
@@ -137,12 +137,11 @@ class TestP6bReviewFixes:
     def test_credit_unsuspend_gated_on_durable_balance(self):
         # The live counter can over-state (e.g. an unmirrored dispute debit) —
         # un-suspend must use the DURABLE wallet, not the live counter.
-        from apps.billing.gating.services.live_ledger_service import _client, _livebal_key
         t = _tenant(mode="prepaid", enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1",
                                     status="suspended", suspension_reason="min_balance_exceeded")
         Wallet.objects.create(customer=c, balance_micros=-5_000_000)  # durable below floor
-        _client().set(_livebal_key(c.id), 1_000_000)  # live counter over-states
-        LiveLedgerService.credit(c.id, t, 100_000)  # live -> 1.1M >= floor, durable still -5M
+        Door.set_balance(c.id, 1_000_000)  # live counter over-states
+        LiveCounter.credit(c.id, t, 100_000)  # live -> 1.1M >= floor, durable still -5M
         c.refresh_from_db()
         assert c.status == "suspended"  # NOT un-suspended (durable still below floor)

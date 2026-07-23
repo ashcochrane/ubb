@@ -14,9 +14,7 @@ from django.core.cache import cache
 from django.test import Client
 
 from apps.billing.gating.models import StopSignalState
-from apps.billing.gating.services.live_ledger_service import (
-    _client, _livebal_key, _stop_key,
-)
+from apps.billing.gating.services.live_counter import Door
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import UsageEvent
@@ -97,8 +95,8 @@ class TestOffIsByteForBytePreEnforcement:
         assert body["stop"] is False and body["stop_reason"] is None
         ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
         assert ev.stop_context is None                            # no tagging
-        assert _client().get(_livebal_key(c.id)) is None          # no counter
-        assert _client().get(_stop_key(c.id)) is None             # no flag
+        assert Door.balance(c.id) is None                         # no counter
+        assert Door.stop_reason(c.id) is None                     # no flag
         assert not StopSignalState.objects.filter(owner=c).exists()  # no ledger
         assert not OutboxEvent.objects.filter(event_type__in=[
             "stop.fired", "stop.cleared", "soft_floor.crossed",

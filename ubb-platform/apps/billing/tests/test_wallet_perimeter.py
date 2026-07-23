@@ -17,10 +17,11 @@ asserts, for every file OUTSIDE the perimeter:
    ``update_or_create`` / ``get_or_create`` / ``delete``) rooted at
    ``WalletTransaction`` / ``CreditGrant`` / ``GrantAllocation`` — ledger rows
    and lots are born and mutated only behind the seam (reads stay free);
-5. no ``LiveLedgerService.credit`` call — the Tier-2 credit mirror is derived
+5. no ``LiveCounter.credit`` call — the Tier-2 credit mirror is derived
    from the op's balance delta INSIDE the module (decision 4; the five
    hand-wired sites died with #109). The one sanctioned non-ledger site is
-   ``HoldService.settle`` (a hold release is not a ledger movement).
+   the live counter's own ``settle`` (a hold release is not a ledger
+   movement — since #111 that call lives inside ``live_counter.py``).
 
 Instance-level ``.save()`` on a fetched model can't be attributed statically —
 rules 2/3 cover the fields such a write would have to touch first, which is
@@ -57,11 +58,12 @@ MANAGER_MUTATORS = frozenset({
     "delete",
 })
 
-# Rule 5 allowlist: the ONE sanctioned non-ledger LiveLedgerService.credit
-# site (a hold release is not a ledger movement). Defining credit() is free —
-# only `LiveLedgerService.credit(...)` call sites are pinned.
+# Rule 5 allowlist: the ONE sanctioned non-ledger LiveCounter.credit site —
+# the hold-settle inside the live counter itself (a hold release is not a
+# ledger movement). Defining credit() is free — only
+# `LiveCounter.credit(...)` call sites are pinned.
 MIRROR_ALLOWLIST = frozenset({
-    "apps/billing/gating/services/hold_service.py",
+    "apps/billing/gating/services/live_counter.py",
 })
 
 _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}
@@ -164,12 +166,12 @@ def check_source(tree, label, module_parts):
                         f"see {ISSUE}")))
             if (node.func.attr == "credit"
                     and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "LiveLedgerService"):
+                    and node.func.value.id == "LiveCounter"):
                 violations.append((RULE_MIRROR_CALL, (
-                    f"{label}:{node.lineno} calls LiveLedgerService.credit — "
+                    f"{label}:{node.lineno} calls LiveCounter.credit — "
                     f"the credit mirror is derived inside the wallet module "
-                    f"(HoldService.settle is the one sanctioned non-ledger "
-                    f"site) — see {ISSUE}")))
+                    f"(the live counter's own settle is the one sanctioned "
+                    f"non-ledger site) — see {ISSUE}")))
     return violations
 
 
@@ -300,7 +302,7 @@ def test_negative_control_manager_mutation_is_flagged():
 
 
 def test_negative_control_mirror_call_is_flagged():
-    hits = _check_snippet("LiveLedgerService.credit(oid, tenant, amt)\n")
+    hits = _check_snippet("LiveCounter.credit(oid, tenant, amt)\n")
     assert [r for r, _ in hits] == [RULE_MIRROR_CALL]
 
 
@@ -313,5 +315,5 @@ def test_positive_control_reads_are_not_flagged():
         "b = w.balance_micros\n")
     # Other models' managers stay free.
     assert not _check_snippet("TopUpAttempt.objects.create(customer=c)\n")
-    # Reading LiveLedgerService's other surface stays free.
-    assert not _check_snippet("LiveLedgerService.read_stop(oid, tenant)\n")
+    # Reading the live counter's other surface stays free.
+    assert not _check_snippet("LiveCounter.read(oid, tenant)\n")

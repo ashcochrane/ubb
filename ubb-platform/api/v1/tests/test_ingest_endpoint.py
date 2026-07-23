@@ -9,7 +9,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
 from apps.billing.wallets.models import Wallet
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import Door
 from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.metering.pricing.services.estimation_service import Unpriceable
 
@@ -18,7 +18,7 @@ class IngestEndpointTestBase(TestCase):
     """Shared fixture: prepaid + enforcing tenant with metering_async enabled,
     one customer with a funded wallet.
 
-    Same Redis DB-15 cleanup idiom as apps/billing/gating/tests/test_hold_service.py
+    Same Redis DB-15 cleanup idiom as apps/billing/gating/tests/test_hold_lane.py
     — cache.clear() FLUSHDBs the dedicated test db, wiping every raw
     ubb:idem:*/livebal:*/stop:* key this test file writes.
     """
@@ -83,7 +83,7 @@ class HappyPathTest(IngestEndpointTestBase):
         self.assertTrue(raw.held)
         self.assertEqual(raw.estimate_micros, 1_500_000)
         self.assertEqual(raw.status, "pending")
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 1_500_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000 - 1_500_000)
 
 
 class FloorCrossingTest(IngestEndpointTestBase):
@@ -91,7 +91,7 @@ class FloorCrossingTest(IngestEndpointTestBase):
         # Same customer/owner -> one acquire() pipeline call for all three
         # items; balance 20_000_000 -> 900_000 leaves headroom, +200_000 more
         # crosses the (default 0) overdraft floor, the third item lands AFTER
-        # the crossing. HoldService applies the resulting stop verdict
+        # the crossing. The hold lane applies the resulting stop verdict
         # uniformly to every HELD item in that one acquire() call (I3:
         # cooperative — never rejects the crossing hold itself).
         self.wallet.balance_micros = 1_000_000
@@ -133,7 +133,7 @@ class TaskLimitAcceptAlwaysTest(IngestEndpointTestBase):
         self.assertTrue(raw.held)
         self.assertEqual(raw.task_id, task.id)
         # A real hold was taken; accept never kills.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 600_000)
         task.refresh_from_db()
         self.assertEqual(task.status, "active")
@@ -146,7 +146,7 @@ class IdemReplayTest(IngestEndpointTestBase):
         self.assertEqual(first.status_code, 200)
         self.assertTrue(first.json()["results"][0]["accepted"])
         self.assertEqual(RawIngestEvent.objects.count(), 1)
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 500_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000 - 500_000)
 
         second = self._post([event])  # identical customer_id + idempotency_key
         self.assertEqual(second.status_code, 200)
@@ -157,7 +157,7 @@ class IdemReplayTest(IngestEndpointTestBase):
         raw_rows = list(RawIngestEvent.objects.order_by("created_at"))
         self.assertFalse(raw_rows[1].held)
         # No second hold: the balance is decremented exactly once.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 500_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000 - 500_000)
 
 
 class UnpriceableSyncFallbackTest(IngestEndpointTestBase):
@@ -255,7 +255,7 @@ class AppendFailureReleasesHoldsTest(IngestEndpointTestBase):
         self.assertGreaterEqual(resp.status_code, 500)
         self.assertEqual(RawIngestEvent.objects.count(), 0)
         # The hold taken before the failed append must be fully released.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000)
 
 
 class BatchSizeBoundsTest(IngestEndpointTestBase):
@@ -286,7 +286,7 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         self.assertFalse(r1["accepted"])
         self.assertEqual(r1["code"], "not_found")
         self.assertEqual(RawIngestEvent.objects.count(), 0)
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        self.assertIsNone(Door.balance(self.customer.id))
 
         real_task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
@@ -300,7 +300,7 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         self.assertTrue(r2["accepted"])
         self.assertFalse(r2["duplicate_suspect"])
         # A REAL hold this time — the rejection must not have burned the key.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 400_000)
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
@@ -312,7 +312,7 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         r1 = first.json()["results"][0]
         self.assertFalse(r1["accepted"])
         self.assertEqual(r1["code"], "validation_error")
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        self.assertIsNone(Door.balance(self.customer.id))
 
         del event["currency"]  # corrected; SAME idempotency_key
         second = self._post([event])
@@ -320,7 +320,7 @@ class RejectionDoesNotBurnIdemKeyTest(IngestEndpointTestBase):
         r2 = second.json()["results"][0]
         self.assertTrue(r2["accepted"])
         self.assertFalse(r2["duplicate_suspect"])
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 300_000)
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
@@ -372,7 +372,7 @@ class AppendFailureIdemUnwindTest(IngestEndpointTestBase):
         ):
             first = self._post([event])
         self.assertGreaterEqual(first.status_code, 500)
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000)
 
         retry = self._post([event])  # identical batch, identical idem key
         self.assertEqual(retry.status_code, 200)
@@ -382,7 +382,7 @@ class AppendFailureIdemUnwindTest(IngestEndpointTestBase):
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
         # A REAL hold on the retry — decremented exactly once overall.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 500_000)
 
 
@@ -414,7 +414,7 @@ class KilledTaskAcceptedTest(IngestEndpointTestBase):
             self.assertTrue(raw.held)
             self.assertEqual(raw.task_id, task.id)
         # Real holds were taken for both items.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 500_000)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")  # accept never re-touches it
@@ -431,7 +431,7 @@ class EffectiveAtTest(IngestEndpointTestBase):
         r = resp.json()["results"][0]
         self.assertFalse(r["accepted"])
         self.assertEqual(r["code"], "effective_at_naive")
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        self.assertIsNone(Door.balance(self.customer.id))
         # Rejection precedes the SETNX: the corrected retry (same key) is a
         # genuine first accept with a real hold. The retry must stay inside the
         # ROLLING backfill_window_days accept bound, so stamp it relative to now
@@ -441,7 +441,7 @@ class EffectiveAtTest(IngestEndpointTestBase):
         r2 = second.json()["results"][0]
         self.assertTrue(r2["accepted"])
         self.assertFalse(r2["duplicate_suspect"])
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 200_000)
 
     def test_too_old_effective_at_rejected(self):
@@ -486,7 +486,7 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         event = self._event(billed_cost_micros=200_000, effective_at=eff)
         first = self._post([event])
         self.assertTrue(first.json()["results"][0]["accepted"])
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 200_000)
 
         # The period FREEZES between the first accept and the retry.
@@ -500,7 +500,7 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         self.assertEqual(len(rows), 2)
         self.assertFalse(rows[1].held)
         # No second hold taken for the replay.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 200_000)
 
     def test_fresh_key_on_closed_period_still_rejected_without_burning_key(self):
@@ -514,7 +514,7 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         self.assertFalse(r["accepted"])
         self.assertEqual(r["code"], "billing_period_closed")
         self.assertEqual(RawIngestEvent.objects.count(), 0)
-        self.assertIsNone(LiveLedgerService.read_prepaid(self.customer.id))
+        self.assertIsNone(Door.balance(self.customer.id))
 
         # The probe is read-only: the rejection must not have burned the key,
         # so the retry (period reopened) is a genuine first accept + real hold.
@@ -524,7 +524,7 @@ class EffectiveAtReplayWinsTest(IngestEndpointTestBase):
         self.assertFalse(r2["duplicate_suspect"])
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          20_000_000 - 200_000)
 
 
@@ -537,7 +537,7 @@ class MixedBatchTest(IngestEndpointTestBase):
         replay_event = self._event(billed_cost_micros=250_000)
         pre = self._post([replay_event])  # seed the idem-hit item (takes a hold)
         self.assertTrue(pre.json()["results"][0]["accepted"])
-        balance_before = LiveLedgerService.read_prepaid(self.customer.id)
+        balance_before = Door.balance(self.customer.id)
         raw_before = RawIngestEvent.objects.count()
 
         resp = self._post([
@@ -559,7 +559,7 @@ class MixedBatchTest(IngestEndpointTestBase):
         self.assertEqual(body["accepted"], 2)
         self.assertEqual(body["rejected"], 2)
         # Exactly one NEW hold (the valid item); replay + rejects take none.
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id),
+        self.assertEqual(Door.balance(self.customer.id),
                          balance_before - 500_000)
         # Two new raw rows: the held item + the held=False replay append.
         self.assertEqual(RawIngestEvent.objects.count(), raw_before + 2)
@@ -580,13 +580,13 @@ class TaskHeldItemTest(IngestEndpointTestBase):
         self.assertTrue(raw.held)
         self.assertEqual(raw.task_id, task.id)
         self.assertEqual(raw.payload["task_id"], str(task.id))
-        self.assertEqual(LiveLedgerService.read_prepaid(self.customer.id), 20_000_000 - 400_000)
+        self.assertEqual(Door.balance(self.customer.id), 20_000_000 - 400_000)
 
 
 class PostpaidPriorMonthGuardTest(TestCase):
     """Final-review fix batch #2 (I9 parity): a postpaid backfill accepted
     through the ASYNC ingest path must not inflate the CURRENT month's live
-    spend counter (mirrors record_usage_debit's sync-path guard)."""
+    spend counter (mirrors LiveCounter.debit's sync-path guard)."""
 
     def setUp(self):
         cache.clear()
@@ -651,7 +651,7 @@ class PostpaidPriorMonthGuardTest(TestCase):
         self.assertTrue(r0["accepted"])
 
         # The backfilled (accepted) item never touched THIS month's livespend.
-        self.assertIsNone(LiveLedgerService.read_postpaid(self.customer.id))
+        self.assertIsNone(Door.spend(self.customer.id))
         raw = RawIngestEvent.objects.get()
         self.assertTrue(raw.held)
 
@@ -661,4 +661,4 @@ class PostpaidPriorMonthGuardTest(TestCase):
         r = resp.json()["results"][0]
         self.assertTrue(r["accepted"])
         # No effective_at (== now, current month) -> livespend moves normally.
-        self.assertEqual(LiveLedgerService.read_postpaid(self.customer.id), 2_500_000)
+        self.assertEqual(Door.spend(self.customer.id), 2_500_000)

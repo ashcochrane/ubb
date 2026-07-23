@@ -21,7 +21,7 @@ import pytest
 from django.core.cache import cache
 
 from apps.billing.gating.models import StopSignalState
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.gating.services.stop_signal_service import StopSignalService
 from apps.billing.handlers import handle_usage_recorded_billing
@@ -222,9 +222,9 @@ class TestPin12PairExactlyOnce:
         # stop verdict must not change (stop=true keeps meaning exactly one
         # thing), and NO fast-lane soft signal exists — signal latency is
         # outbox latency (the durable drawdown handler), by design.
-        out = LiveLedgerService.record_usage_debit(c.id, t, 3_000_000)
+        out = LiveCounter.debit(c.id, t, 3_000_000)
         assert out["stop"] is False
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.read(c.id, t)["stop"] is False
         assert _crossed().count() == 0  # no second Redis threshold, no fast lane
 
     def test_a_replayed_transition_loses(self):
@@ -250,13 +250,13 @@ class TestPin12PairExactlyOnce:
         _drain(t, c, 3_000_000)                      # crossed, episode 1
         # The durable top-up lands first (every credit site), then the hook.
         Wallet.objects.filter(customer=c).update(balance_micros=-2_000_000)
-        LiveLedgerService.credit(c.id, t, 1_000_000)  # -2M >= -2M: AT the line
+        LiveCounter.credit(c.id, t, 1_000_000)  # -2M >= -2M: AT the line
         assert _cleared().count() == 1
         payload = _cleared().get().payload
         assert payload["episode_seq"] == 1
         assert payload["reason"] == "balance_recovered"
         assert payload["balance_micros"] == -2_000_000
-        LiveLedgerService.credit(c.id, t, 1_000_000)  # already cleared -> loses
+        LiveCounter.credit(c.id, t, 1_000_000)  # already cleared -> loses
         assert _cleared().count() == 1
 
     def test_a_credit_that_does_not_recross_does_not_clear(self):
@@ -264,7 +264,7 @@ class TestPin12PairExactlyOnce:
         c = _customer(t)
         _drain(t, c, 3_000_000)
         Wallet.objects.filter(customer=c).update(balance_micros=-2_500_000)
-        LiveLedgerService.credit(c.id, t, 500_000)   # -2.5M still past -2M
+        LiveCounter.credit(c.id, t, 500_000)   # -2.5M still past -2M
         assert _cleared().count() == 0
 
     def test_reconcile_clears_a_stale_soft_crossing(self):
@@ -274,10 +274,10 @@ class TestPin12PairExactlyOnce:
         # The credit hook was lost: only the durable wallet shows recovery.
         Wallet.objects.filter(customer=c).update(balance_micros=0)
         cache.clear()
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert _cleared().count() == 1
         assert _cleared().get().payload["reason"] == "reconciled"
-        LiveLedgerService.reconcile_prepaid(c.id, t)  # same position -> loses
+        LiveCounter.reconcile(c.id, t)  # same position -> loses
         assert _cleared().count() == 1
 
     def test_reconcile_sets_a_missed_soft_crossing(self):
@@ -286,11 +286,11 @@ class TestPin12PairExactlyOnce:
         # down is re-driven from durable truth within one interval.
         t = _tenant()
         c = _customer(t, balance_micros=-3_000_000)  # past soft, never signaled
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert _crossed().count() == 1
         assert _crossed().get().payload["episode_seq"] == 1
         assert _cleared().count() == 0
-        LiveLedgerService.reconcile_prepaid(c.id, t)  # same position -> loses
+        LiveCounter.reconcile(c.id, t)  # same position -> loses
         assert _crossed().count() == 1
 
     def test_episodes_pair_up_across_a_full_cycle(self):
@@ -298,7 +298,7 @@ class TestPin12PairExactlyOnce:
         c = _customer(t)
         _drain(t, c, 3_000_000)                      # crossed, episode 1
         Wallet.objects.filter(customer=c).update(balance_micros=0)
-        LiveLedgerService.credit(c.id, t, 3_000_000)  # cleared, episode 1
+        LiveCounter.credit(c.id, t, 3_000_000)  # cleared, episode 1
         _drain(t, c, 3_000_000)                      # crossed, episode 2
         assert [e.payload["episode_seq"] for e in _crossed()] == [1, 2]
         assert [e.payload["episode_seq"] for e in _cleared()] == [1]

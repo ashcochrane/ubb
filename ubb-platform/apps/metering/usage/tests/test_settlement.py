@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from django.utils import timezone
 
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.queries import acquire_ingest_holds
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, UsageEvent
@@ -94,7 +94,7 @@ class NetsToExactTest(SettlementTestBase):
         # PROPERTY: accept-hold + settle-delta nets EXACTLY to what a single
         # synchronous debit of the exact cost would have produced.
         self.assertEqual(
-            LiveLedgerService.read_prepaid(self.customer.id),
+            Door.balance(self.customer.id),
             self.wallet.balance_micros - exact.billed_cost_micros,
         )
 
@@ -120,12 +120,12 @@ class DuplicateSettleTest(SettlementTestBase):
         raw1 = self._raw(idempotency_key="dup-key", payload=payload,
                         estimate_micros=500_000, held=True)
         self.assertEqual(UsageService.settle_raw(raw1), "settled")
-        balance_after_first = LiveLedgerService.read_prepaid(owner_id)
+        balance_after_first = Door.balance(owner_id)
         self.assertEqual(balance_after_first, self.wallet.balance_micros - 500_000)
 
         acquire_ingest_holds(owner_id, self.tenant,
                             [{"estimate_micros": 500_000}])
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+        self.assertEqual(Door.balance(owner_id),
                         balance_after_first - 500_000)
         raw2 = self._raw(idempotency_key="dup-key", payload=payload,
                         estimate_micros=500_000, held=True)
@@ -139,7 +139,7 @@ class DuplicateSettleTest(SettlementTestBase):
         self.assertEqual(OutboxEvent.objects.filter(event_type="usage.recorded").count(), 1)
         # The second hold is fully credited back -> balance returns to
         # exactly what it was after the FIRST settle.
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), balance_after_first)
+        self.assertEqual(Door.balance(owner_id), balance_after_first)
 
 
 class SettleAfterTaskKillTest(SettlementTestBase):
@@ -223,7 +223,7 @@ class PoisonEventTest(SettlementTestBase):
         owner_id = self.customer.id
         acquire_ingest_holds(owner_id, self.tenant,
                             [{"estimate_micros": 250_000}])
-        balance_after_hold = LiveLedgerService.read_prepaid(owner_id)
+        balance_after_hold = Door.balance(owner_id)
         self.assertEqual(balance_after_hold, self.wallet.balance_micros - 250_000)
 
         raw = self._raw(idempotency_key="poison-key",
@@ -245,7 +245,7 @@ class PoisonEventTest(SettlementTestBase):
         self.assertEqual(raw.attempts, MAX_SETTLE_ATTEMPTS)
         self.assertEqual(UsageEvent.objects.count(), 0)
         # The hold is released -> balance returns to its pre-hold value.
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), self.wallet.balance_micros)
+        self.assertEqual(Door.balance(owner_id), self.wallet.balance_micros)
 
 
 class OrphanHoldUnheldBranchTest(SettlementTestBase):
@@ -257,7 +257,7 @@ class OrphanHoldUnheldBranchTest(SettlementTestBase):
     the hold and the durable append), this row is the only survivor, and the
     orphaned hold already decremented the live counter once — the full debit
     here double-counts against it. This is NOT fixed locally (spec invariant
-    7): the hourly reconcile_prepaid MIN-merge is documented as the corrector.
+    7): the hourly prepaid reconcile MIN-merge is documented as the corrector.
     This test pins what that merge ACTUALLY does — MIN-merge only ever
     LOWERS toward the durable balance, so an OVER-restrictive live counter
     (already below durable) is left exactly as-is (a fixed point, not
@@ -274,7 +274,7 @@ class OrphanHoldUnheldBranchTest(SettlementTestBase):
         # exists (the process died before the durable append).
         acquire_ingest_holds(owner_id, self.tenant,
                             [{"estimate_micros": 5_000_000}])
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), 45_000_000)
+        self.assertEqual(Door.balance(owner_id), 45_000_000)
 
         # The RETRY's raw: the idem key was already SET by the crashed
         # attempt, so accept treated it as an idem-hit -> held=False.
@@ -286,7 +286,7 @@ class OrphanHoldUnheldBranchTest(SettlementTestBase):
         self.assertEqual(result, "settled")
         self.assertEqual(UsageEvent.objects.count(), 1)
         # Full debit applied on top of the still-live orphan hold.
-        live_after_settle = LiveLedgerService.read_prepaid(owner_id)
+        live_after_settle = Door.balance(owner_id)
         self.assertEqual(live_after_settle, 45_000_000 - 10_000_000)
 
         # Simulate the durable wallet reflecting the ONE real debit (what the
@@ -296,15 +296,15 @@ class OrphanHoldUnheldBranchTest(SettlementTestBase):
         durable = self.wallet.balance_micros
         self.assertGreater(durable, live_after_settle)  # over-restrictive, as documented
 
-        LiveLedgerService.reconcile_prepaid(owner_id, self.tenant)
-        after_first_reconcile = LiveLedgerService.read_prepaid(owner_id)
+        LiveCounter.reconcile(owner_id, self.tenant)
+        after_first_reconcile = Door.balance(owner_id)
         # MIN-merge only lowers; durable > live here, so it is a no-op.
         self.assertEqual(after_first_reconcile, live_after_settle)
 
         # Convergence: the value is a fixed point of the merge (idempotent
         # under repeated reconcile calls), not merely unchanged once.
-        LiveLedgerService.reconcile_prepaid(owner_id, self.tenant)
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), after_first_reconcile)
+        LiveCounter.reconcile(owner_id, self.tenant)
+        self.assertEqual(Door.balance(owner_id), after_first_reconcile)
 
 
 class EnqueueOnCommitTest(IngestEndpointTestBase):
@@ -380,13 +380,13 @@ class DuplicateRaceExactlyOnceReleaseTest(SettlementTestBase):
         raw1 = self._raw(idempotency_key="race-key", payload=payload,
                          estimate_micros=500_000, held=True)
         self.assertEqual(UsageService.settle_raw(raw1), "settled")
-        balance_after_first = LiveLedgerService.read_prepaid(owner_id)
+        balance_after_first = Door.balance(owner_id)
 
         acquire_ingest_holds(owner_id, self.tenant,
                              [{"estimate_micros": 500_000}])
         raw2 = self._raw(idempotency_key="race-key", payload=payload,
                          estimate_micros=500_000, held=True)
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+        self.assertEqual(Door.balance(owner_id),
                          balance_after_first - 500_000)
 
         real_sfu = RawIngestEvent.objects.select_for_update
@@ -417,7 +417,7 @@ class DuplicateRaceExactlyOnceReleaseTest(SettlementTestBase):
         self.assertEqual(UsageEvent.objects.count(), 1)
         # ...and did NOT release again: exactly ONE release (the winner's) —
         # a double release would leave the balance 500_000 ABOVE this.
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id), balance_after_first)
+        self.assertEqual(Door.balance(owner_id), balance_after_first)
 
 
 class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
@@ -434,7 +434,7 @@ class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
         raw = self._raw(idempotency_key="poison-race-key",
                         payload={"request_id": "r1"},
                         estimate_micros=250_000, held=True)
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+        self.assertEqual(Door.balance(owner_id),
                          self.wallet.balance_micros - 250_000)
 
         real_sfu = RawIngestEvent.objects.select_for_update
@@ -466,7 +466,7 @@ class PoisonRaceExactlyOnceReleaseTest(SettlementTestBase):
         # ...took no unlocked read-modify-write over the winner's attempts...
         self.assertEqual(raw.attempts, MAX_SETTLE_ATTEMPTS)
         # ...and released nothing itself: exactly ONE release (the winner's).
-        self.assertEqual(LiveLedgerService.read_prepaid(owner_id),
+        self.assertEqual(Door.balance(owner_id),
                          self.wallet.balance_micros)
 
 

@@ -78,7 +78,7 @@ def get_customer_balance(customer_id):
 
 def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
                             effective_at=None, now=None):
-    """Tier-2 synchronous live-ledger hook — the cross-product PORT for the
+    """Tier-2 synchronous live-counter hook — the cross-product PORT for the
     metering choke point.
 
     Maintains the billing owner's live spend/balance counter synchronously at
@@ -86,10 +86,10 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     it). Exposed here (the sanctioned billing read/port contract) so metering
     need not import a billing internal — mirrors is_usage_period_closed().
     No-op unless the tenant has enforcement enabled. Returns the live verdict
-    dict ({mode, balance_micros|spend_micros, key}) or None.
+    dict ({mode, balance_micros|spend_micros, stop fields}) or None.
     """
-    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-    return LiveLedgerService.record_usage_debit(
+    from apps.billing.gating.services.live_counter import LiveCounter
+    return LiveCounter.debit(
         owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
 
 
@@ -98,8 +98,8 @@ def read_live_stop(owner_id, tenant) -> dict:
     cross-product port for the metering replay paths. Returns
     {stop, stop_reason, stop_scope}; {stop: False, ...} when enforcement is off
     (short-circuits before touching Redis)."""
-    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-    return LiveLedgerService.read_stop(owner_id, tenant)
+    from apps.billing.gating.services.live_counter import LiveCounter
+    return LiveCounter.read(owner_id, tenant)
 
 
 def get_negative_balance_stats(tenant_id=None):
@@ -171,7 +171,7 @@ def acquire_ingest_holds(owner_id, tenant, items):
     items: [{"estimate_micros": int, "effective_at": datetime|None}]
 
     effective_at (optional, default None == current month) gates the I9
-    postpaid prior-month guard in HoldService.acquire (a backdated item's
+    postpaid prior-month guard in LiveCounter.hold (a backdated item's
     livespend move is skipped).
 
     One-rule (#37): the acquire ALWAYS holds, against the wallet only — no
@@ -184,35 +184,35 @@ def acquire_ingest_holds(owner_id, tenant, items):
     (the durable start-gate remains the backstop), mirroring
     record_live_usage_debit.
     """
-    from apps.billing.gating.services.hold_service import HoldService
-    return HoldService.acquire(owner_id, tenant, items)
+    from apps.billing.gating.services.live_counter import LiveCounter
+    return LiveCounter.hold(owner_id, tenant, items)
 
 
 def settle_ingest_hold(owner_id, tenant, delta_micros, *, effective_at=None):
     """Settle a prior estimate hold once the actual billed cost is known
     (Task 6) — cross-product port. delta_micros = estimate − exact: positive
     credits back the over-hold, negative debits further. Routes through
-    HoldService.settle -> LiveLedgerService.credit (the same MIN-merge-safe
+    LiveCounter.settle -> LiveCounter.credit (the same MIN-merge-safe
     site every other credit hook uses). Never raises.
 
     effective_at (optional, default None == current month): forwards to
-    HoldService.settle's prior-month guard — a POSTPAID event backdated to a
+    LiveCounter.settle's prior-month guard — a POSTPAID event backdated to a
     prior calendar month skips the livespend adjustment (I9 parity; its
-    matching acquire() already skipped the hold-time move). Omitting it
+    matching hold() already skipped the hold-time move). Omitting it
     preserves every pre-existing caller's behavior exactly."""
-    from apps.billing.gating.services.hold_service import HoldService
-    HoldService.settle(owner_id, tenant, delta_micros, effective_at=effective_at)
+    from apps.billing.gating.services.live_counter import LiveCounter
+    LiveCounter.settle(owner_id, tenant, delta_micros, effective_at=effective_at)
 
 
 def release_ingest_hold(owner_id, tenant, estimate_micros, *, effective_at=None):
     """Fully release (credit back) a prior estimate hold — duplicate
-    ingest, failed append, or any path that must undo acquire() entirely.
+    ingest, failed append, or any path that must undo the hold entirely.
     Cross-product port; equivalent to
     settle_ingest_hold(delta_micros=estimate_micros). Never raises.
     effective_at forwards to the same prior-month guard as
     settle_ingest_hold (optional, default None == current month)."""
-    from apps.billing.gating.services.hold_service import HoldService
-    HoldService.release(owner_id, tenant, estimate_micros, effective_at=effective_at)
+    from apps.billing.gating.services.live_counter import LiveCounter
+    LiveCounter.release(owner_id, tenant, estimate_micros, effective_at=effective_at)
 
 
 def is_usage_period_closed(owner_id, period_start) -> bool:
