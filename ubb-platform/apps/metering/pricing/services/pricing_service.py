@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 from django.db.models import Q
 from django.utils import timezone
 
@@ -8,6 +10,20 @@ PRICING_ENGINE_VERSION = "2.1.0"
 
 class PricingError(Exception):
     pass
+
+
+class Unpriceable(Exception):
+    """Estimation cannot proceed safely — route this item down the sync path.
+
+    Raised by ``PricingService.estimate`` exactly where ``price`` raises
+    ``PricingError`` (they share one compute spine, #112), so the sync
+    fallback surfaces the real pricing error to the caller."""
+
+
+# ``exact`` is belt-and-braces provenance: it records that the estimate was
+# exact at accept time, and stays load-bearing if a future pricing model
+# reintroduces inexact estimates.
+Estimate = namedtuple("Estimate", "micros exact")
 
 
 class PricingService:
@@ -61,9 +77,15 @@ class PricingService:
             default_book, provider, event_type, metric_name, tags, currency, as_of)
 
     @staticmethod
-    def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
-              caller_provider_cost, caller_billed, units=None, as_of=None):
-        as_of = as_of or timezone.now()
+    def _compute(*, tenant, usage_metrics, caller_provider_cost, caller_billed,
+                 units, resolve_card, apply_markup):
+        """The ONE compute spine (#112): coverage → cost → price → markup
+        fallback. ``price`` and ``estimate`` are this spine under two card
+        resolvers — ``resolve_card(card_type, metric)`` and the matching
+        ``apply_markup(provider_cost)`` are the ONLY things that differ — so
+        estimate-vs-price equality holds by construction, not convention.
+        Raises PricingError exactly where strict cost coverage fails; always
+        returns (provider_cost, billed, provenance)."""
         usage_metrics = usage_metrics or {}
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
@@ -76,9 +98,7 @@ class PricingService:
             # Without this check the caller-cost path silently bypasses the guarantee.
             if usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
                 uncosted = [m for m in usage_metrics
-                            if PricingService._resolve_card(
-                                tenant, customer, "cost", provider,
-                                event_type, m, tags, currency, as_of) is None]
+                            if resolve_card("cost", m) is None]
                 if uncosted:
                     prov["uncosted_metrics"] = uncosted
                     raise PricingError(f"No cost rate card for metrics: {uncosted}")
@@ -93,8 +113,7 @@ class PricingService:
                     "strict cost coverage: units > 0 with no usage_metrics — no cost rate "
                     "card can match; pass usage_metrics or provider_cost_micros")
             for metric, units_val in usage_metrics.items():
-                card = PricingService._resolve_card(tenant, customer, "cost", provider,
-                                                    event_type, metric, tags, currency, as_of)
+                card = resolve_card("cost", metric)
                 if card is None:
                     uncosted.append(metric)
                     continue
@@ -115,8 +134,7 @@ class PricingService:
         else:
             price_total, matched = 0, False
             for metric, units_val in sorted(usage_metrics.items()):
-                card = PricingService._resolve_card(tenant, customer, "price", provider,
-                                                    event_type, metric, tags, currency, as_of)
+                card = resolve_card("price", metric)
                 if card is None:
                     continue
                 matched = True
@@ -130,10 +148,69 @@ class PricingService:
                 billed = price_total
                 prov["price_source"] = "rate_card"
             else:
-                from apps.metering.pricing.services.markup_service import MarkupService
-                billed = MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
+                billed = apply_markup(provider_cost)
                 prov["price_source"] = "markup"
 
         prov["provider_cost_micros"] = provider_cost
         prov["billed_cost_micros"] = billed
         return provider_cost, billed, prov
+
+    @staticmethod
+    def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
+              caller_provider_cost, caller_billed, units=None, as_of=None):
+        """Exact pricing: the compute spine over as_of-exact ORM card
+        resolution (the full provenance receipt is persisted with the event)
+        and live-ORM markup."""
+        as_of = as_of or timezone.now()
+
+        def resolve_card(card_type, metric):
+            return PricingService._resolve_card(
+                tenant, customer, card_type, provider, event_type, metric,
+                tags, currency, as_of)
+
+        def apply_markup(provider_cost):
+            from apps.metering.pricing.services.markup_service import MarkupService
+            return MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
+
+        return PricingService._compute(
+            tenant=tenant, usage_metrics=usage_metrics,
+            caller_provider_cost=caller_provider_cost,
+            caller_billed=caller_billed, units=units,
+            resolve_card=resolve_card, apply_markup=apply_markup)
+
+    @staticmethod
+    def estimate(tenant, customer, *, event_type, provider, usage_metrics,
+                 tags, currency, caller_billed, caller_provider_cost, units):
+        """Accept-time cost estimation for async ingestion: the SAME compute
+        spine as ``price``, over CardCache current-card resolution and the
+        cached markup — read-only, never charges a wallet, and the receipt is
+        discarded (no event row exists yet to carry it). The one remaining
+        accept-vs-settle difference is WHICH cards resolve — CURRENT cards
+        here (the hot accept path keeps its L1 cache), as_of-exact cards at
+        settle — i.e. rate-card config drift between the two instants. With
+        per_unit/flat-only pricing (ADR-0003 deleted tiered pricing), every
+        estimate therefore equals what price() will charge by construction.
+
+        Unpriceable is raised exactly where price() raises PricingError
+        (strict cost coverage — one spine, one failure surface), so the
+        ingest endpoint can route the item down the sync path to surface the
+        real error."""
+        from apps.metering.pricing.services.card_cache import CardCache
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+
+        def resolve_card(card_type, metric):
+            return CardCache.resolve(tenant, customer, card_type, provider,
+                                     event_type, metric, tags, currency)
+
+        def apply_markup(provider_cost):
+            return MarkupCache.apply(provider_cost, tenant=tenant, customer=customer)
+
+        try:
+            _, billed, _ = PricingService._compute(
+                tenant=tenant, usage_metrics=usage_metrics,
+                caller_provider_cost=caller_provider_cost,
+                caller_billed=caller_billed, units=units,
+                resolve_card=resolve_card, apply_markup=apply_markup)
+        except PricingError as exc:
+            raise Unpriceable(str(exc)) from exc
+        return Estimate(billed, True)

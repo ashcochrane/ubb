@@ -11,7 +11,7 @@ from apps.platform.tasks.models import Task
 from apps.billing.wallets.models import Wallet
 from apps.billing.gating.services.live_counter import Door
 from apps.metering.usage.models import RawIngestEvent, UsageEvent
-from apps.metering.pricing.services.estimation_service import Unpriceable
+from apps.metering.pricing.services.pricing_service import Unpriceable
 
 
 class IngestEndpointTestBase(TestCase):
@@ -163,7 +163,7 @@ class IdemReplayTest(IngestEndpointTestBase):
 class UnpriceableSyncFallbackTest(IngestEndpointTestBase):
     def test_unpriceable_routes_through_sync_path(self):
         with patch(
-            "apps.metering.pricing.services.estimation_service.EstimationService.estimate",
+            "apps.metering.pricing.services.pricing_service.PricingService.estimate",
             side_effect=Unpriceable("forced for test"),
         ):
             resp = self._post([self._event(

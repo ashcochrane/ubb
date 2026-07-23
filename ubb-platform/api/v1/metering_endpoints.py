@@ -384,7 +384,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     from apps.metering.pricing.services.card_cache import CardCache
     from apps.metering.pricing.services.markup_cache import MarkupCache
-    from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
+    from apps.metering.pricing.services.pricing_service import PricingService, Unpriceable
     from apps.metering.usage.services.usage_service import EffectiveAtError, validate_effective_at
     from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
     from apps.metering.usage.models import RawIngestEvent
@@ -522,8 +522,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             append_only.append((i, item, customer, owner_id))
             continue
         try:
-            est = EstimationService.estimate(
-                tenant=tenant, customer=customer, event_type=item.event_type or "",
+            est = PricingService.estimate(
+                tenant, customer, event_type=item.event_type or "",
                 provider=item.provider or "", usage_metrics=item.usage_metrics,
                 tags=item.tags, currency=tenant_currency,
                 caller_billed=item.billed_cost_micros,

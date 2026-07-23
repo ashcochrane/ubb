@@ -63,7 +63,12 @@ a durable priced usage event. (`apps/metering/usage/models.py:RawIngestEvent`)
 
 **Estimate**:
 The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will
-charge. Exact for caller-supplied, linear, and markup pricing.
+charge. Exact for caller-supplied, linear, and markup pricing — equal to `price()` *by
+construction*: both run the ONE compute spine (`PricingService._compute`), differing only in which
+cards resolve (CardCache current cards at accept vs `as_of`-exact cards at settle).
+(`apps/metering/pricing/services/pricing_service.py:PricingService.estimate`)
+_Avoid_: "quote" — the domain word is estimate (it is on `RawIngestEvent.estimate_micros` and the
+estimate–hold–settle story); and never fork a second pricing body — change the spine.
 
 **Settle sweep**:
 The claim of pending raw events from the durable table itself — the accepted row *is* the queue

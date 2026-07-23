@@ -19,7 +19,7 @@ class IngestMarkupQueryCountTest(IngestEndpointTestBase):
 
     def test_markup_table_queried_at_most_once_per_batch(self):
         # provider_cost_micros (not billed) forces the markup branch in
-        # EstimationService (caller_provider_cost path) for every item.
+        # PricingService.estimate (caller_provider_cost path) for every item.
         events = [self._event(provider_cost_micros=100_000) for _ in range(10)]
         for e in events:
             del e["billed_cost_micros"]
