@@ -15,7 +15,7 @@ latency and must never surface an error for an event that durably landed
 import logging
 from dataclasses import asdict
 
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.platform.events.models import OutboxEvent
 
@@ -43,6 +43,12 @@ def _dispatch(outbox_id):
 def write_event(schema_instance):
     """Write an event to the outbox. Must be called inside @transaction.atomic."""
     from core.logging import get_correlation_id
+
+    # Not just documentation: an event written outside the caller's atomic
+    # block would survive a rollback of the domain change it announces.
+    assert connection.in_atomic_block, (
+        "write_event must be called inside transaction.atomic"
+    )
 
     outbox = OutboxEvent.objects.create(
         event_type=schema_instance.EVENT_TYPE,

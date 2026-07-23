@@ -1,8 +1,10 @@
 import pytest
+from dataclasses import asdict
 from unittest.mock import patch, MagicMock
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import BalanceLow
 from apps.billing.wallets.models import Wallet
 from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 from apps.billing.connectors.stripe.handlers import handle_balance_low_stripe
@@ -28,13 +30,13 @@ class TestHandleBalanceLowStripe:
             top_up_amount_micros=20_000_000,
         )
 
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "balance_micros": 3_000_000,
-            "threshold_micros": 5_000_000,
-            "suggested_topup_micros": 20_000_000,
-        }
+        payload = asdict(BalanceLow(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            balance_micros=3_000_000,
+            threshold_micros=5_000_000,
+            suggested_topup_micros=20_000_000,
+        ))
 
         with patch(
             "apps.billing.connectors.stripe.tasks.charge_auto_topup_task"
@@ -56,13 +58,13 @@ class TestHandleBalanceLowStripe:
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         Wallet.objects.create(customer=customer)
 
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "balance_micros": 3_000_000,
-            "threshold_micros": 5_000_000,
-            "suggested_topup_micros": 20_000_000,
-        }
+        payload = asdict(BalanceLow(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            balance_micros=3_000_000,
+            threshold_micros=5_000_000,
+            suggested_topup_micros=20_000_000,
+        ))
 
         handle_balance_low_stripe("evt_1", payload)
         assert TopUpAttempt.objects.count() == 0
@@ -79,13 +81,13 @@ class TestHandleBalanceLowStripe:
 
         # No AutoTopUpConfig created
 
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "balance_micros": 3_000_000,
-            "threshold_micros": 5_000_000,
-            "suggested_topup_micros": 20_000_000,
-        }
+        payload = asdict(BalanceLow(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            balance_micros=3_000_000,
+            threshold_micros=5_000_000,
+            suggested_topup_micros=20_000_000,
+        ))
 
         handle_balance_low_stripe("evt_1", payload)
         assert TopUpAttempt.objects.count() == 0
@@ -115,13 +117,13 @@ class TestHandleBalanceLowStripe:
             status="pending",
         )
 
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "balance_micros": 3_000_000,
-            "threshold_micros": 5_000_000,
-            "suggested_topup_micros": 20_000_000,
-        }
+        payload = asdict(BalanceLow(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            balance_micros=3_000_000,
+            threshold_micros=5_000_000,
+            suggested_topup_micros=20_000_000,
+        ))
 
         handle_balance_low_stripe("evt_1", payload)
         # Should still only be 1 attempt (the pre-existing one)

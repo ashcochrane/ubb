@@ -46,10 +46,7 @@ class TestUsageRecordedSchema:
             "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
             "cost_micros": 5000, "some_new_field": "value",
         }
-        import dataclasses
-        known = {f.name for f in dataclasses.fields(UsageRecorded)}
-        filtered = {k: v for k, v in d.items() if k in known}
-        event = UsageRecorded(**filtered)
+        event = UsageRecorded.from_payload(d)
         assert event.cost_micros == 5000
 
 
@@ -194,3 +191,118 @@ def test_balance_overage_contract():
                        overage_limit_micros=0, overage_micros=500)
     assert e.EVENT_TYPE == "billing.balance_overage"
     assert asdict(e)["overage_micros"] == 500
+
+
+# --- #114: the consumer half of the frozen contract lives on the base class ---
+
+
+class TestFromPayload:
+    def test_unknown_keys_are_filtered(self):
+        # Additive-only evolution: a NEWER producer's extra field must not
+        # break an older consumer constructing from the payload.
+        from apps.platform.events.schemas import UsageRecorded
+
+        event = UsageRecorded.from_payload({
+            "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
+            "cost_micros": 500, "some_future_field": "ignored",
+        })
+        assert event.cost_micros == 500
+        assert not hasattr(event, "some_future_field")
+
+    def test_defaults_are_defined_once_on_the_class(self):
+        # A legacy queued payload written before a field existed constructs
+        # with the class default — no consumer restates it.
+        from apps.platform.events.schemas import UsageRecorded
+
+        event = UsageRecorded.from_payload({
+            "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
+            "cost_micros": 500,
+        })
+        assert event.provider_cost_micros is None
+        assert event.billing_owner_id == ""
+        assert event.effective_at == ""
+
+    def test_missing_required_field_is_loud(self):
+        # Required-since-birth fields have no default: a payload without one
+        # is malformed and must not construct half-initialized.
+        import pytest
+        from apps.platform.events.schemas import UsageRecorded
+
+        with pytest.raises(TypeError):
+            UsageRecorded.from_payload({"tenant_id": "t1"})
+
+    def test_roundtrips_the_producer_side(self):
+        from dataclasses import asdict
+        from apps.platform.events.schemas import StopFired
+
+        produced = StopFired(tenant_id="t1", owner_id="o1", reason="floor",
+                             episode_seq=3)
+        assert StopFired.from_payload(asdict(produced)) == produced
+
+
+class TestUuidOrStrIds:
+    def test_uuid_ids_are_accepted_and_normalized_to_str(self):
+        import uuid
+        from apps.platform.events.schemas import UsageRecorded
+
+        tid, cid = uuid.uuid4(), uuid.uuid4()
+        event = UsageRecorded(tenant_id=tid, customer_id=cid, event_id="e1",
+                              cost_micros=1)
+        assert event.tenant_id == str(tid)
+        assert event.customer_id == str(cid)
+
+    def test_asdict_payload_stays_json_serializable(self):
+        import json
+        import uuid
+        from dataclasses import asdict
+        from apps.platform.events.schemas import UsageRecorded
+
+        event = UsageRecorded(tenant_id=uuid.uuid4(), customer_id=uuid.uuid4(),
+                              event_id=uuid.uuid4(), cost_micros=1)
+        json.dumps(asdict(event))  # raises on a stray UUID
+
+
+class TestPayloadSchemaRegistry:
+    def test_registry_holds_every_dataclass_defined_in_the_module(self):
+        # Independent enumeration (defense in depth for the catalog
+        # derivation): every frozen dataclass defined in schemas.py must have
+        # registered itself via the base class.
+        import dataclasses
+        import inspect
+        from apps.platform.events import schemas
+        from apps.platform.events.schemas import payload_schema_classes
+
+        defined = {
+            obj
+            for obj in vars(schemas).values()
+            if inspect.isclass(obj)
+            and obj.__module__ == schemas.__name__
+            and dataclasses.is_dataclass(obj)
+        }
+        assert defined == set(payload_schema_classes())
+
+    def test_registered_classes_are_keyed_by_unique_event_type(self):
+        from apps.platform.events.schemas import payload_schema_classes
+
+        event_types = [cls.EVENT_TYPE for cls in payload_schema_classes()]
+        assert len(event_types) == len(set(event_types))
+
+    def test_duplicate_event_type_is_a_class_creation_error(self):
+        # Uses an EXISTING event type so the rejected class never registers —
+        # no registry pollution for later tests.
+        import pytest
+        from apps.platform.events.schemas import EventSchema
+
+        with pytest.raises(TypeError, match="usage.recorded"):
+            class Dupe(EventSchema):
+                EVENT_TYPE = "usage.recorded"
+
+    def test_schema_without_event_type_is_a_class_creation_error(self):
+        # The old pin turned a missing EVENT_TYPE into a red test; the base
+        # class turns it into an error at class creation.
+        import pytest
+        from apps.platform.events.schemas import EventSchema
+
+        with pytest.raises(TypeError, match="EVENT_TYPE"):
+            class Missing(EventSchema):
+                tenant_id: str

@@ -2,6 +2,8 @@ import logging
 
 from django.db import IntegrityError, transaction
 
+from apps.platform.events.schemas import RefundRequested
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,36 +16,38 @@ def handle_refund_requested(event_id, payload):
     """
     from apps.metering.usage.models import UsageEvent, Refund
 
+    evt = RefundRequested.from_payload(payload)
+
     try:
         event = UsageEvent.objects.get(
-            id=payload["usage_event_id"], tenant_id=payload["tenant_id"],
+            id=evt.usage_event_id, tenant_id=evt.tenant_id,
         )
     except UsageEvent.DoesNotExist:
         logger.warning(
             "Refund requested for missing usage event",
-            extra={"data": {"usage_event_id": payload["usage_event_id"]}},
+            extra={"data": {"usage_event_id": evt.usage_event_id}},
         )
         return
 
     try:
         with transaction.atomic():
             refund = Refund.objects.create(
-                tenant_id=payload["tenant_id"],
-                customer_id=payload["customer_id"],
+                tenant_id=evt.tenant_id,
+                customer_id=evt.customer_id,
                 usage_event=event,
-                amount_micros=payload["refund_amount_micros"],
-                reason=payload.get("reason", ""),
+                amount_micros=evt.refund_amount_micros,
+                reason=evt.reason,
             )
 
             from apps.platform.events.outbox import write_event
             from apps.platform.events.schemas import UsageRefunded
 
             write_event(UsageRefunded(
-                tenant_id=payload["tenant_id"],
-                customer_id=payload["customer_id"],
-                event_id=str(event.id),
-                refund_id=str(refund.id),
-                refund_amount_micros=payload["refund_amount_micros"],
+                tenant_id=evt.tenant_id,
+                customer_id=evt.customer_id,
+                event_id=event.id,
+                refund_id=refund.id,
+                refund_amount_micros=evt.refund_amount_micros,
             ))
     except IntegrityError as exc:
         if "refund" in str(exc).lower() or "unique" in str(exc).lower():
@@ -51,6 +55,6 @@ def handle_refund_requested(event_id, payload):
         else:
             logger.exception(
                 "Unexpected IntegrityError in refund handler",
-                extra={"data": {"usage_event_id": payload["usage_event_id"]}},
+                extra={"data": {"usage_event_id": evt.usage_event_id}},
             )
             raise

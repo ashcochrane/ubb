@@ -1,6 +1,8 @@
 import pytest
 import uuid
+from dataclasses import asdict
 
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -24,12 +26,12 @@ class TestBillingOutboxHandler:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 5_000_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=5_000_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -53,12 +55,12 @@ class TestBillingOutboxHandler:
         event_id = str(uuid.uuid4())
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": event_id,
-                "cost_micros": 3_000_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=event_id,
+                cost_micros=3_000_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -80,12 +82,12 @@ class TestBillingOutboxHandler:
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 5_000_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=5_000_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -109,12 +111,12 @@ class TestBillingOutboxHandler:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 500_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=500_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -140,12 +142,12 @@ class TestBillingOutboxHandler:
         event_uuid = str(uuid.uuid4())
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": event_uuid,
-                "cost_micros": 500_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=event_uuid,
+                cost_micros=500_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -173,12 +175,12 @@ class TestBillingOutboxHandler:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 0,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=0,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -188,7 +190,12 @@ class TestBillingOutboxHandler:
         assert wallet.balance_micros == 10_000_000
         assert WalletTransaction.objects.filter(wallet=wallet).count() == 0
 
-    def test_skips_deduction_when_cost_missing(self):
+    def test_malformed_payload_missing_cost_is_loud_not_zero(self):
+        # #114: cost_micros is required-since-birth on UsageRecorded — the
+        # typed write side cannot produce a payload without it, so the handler
+        # treats one as malformed (loud TypeError -> outbox retry/dead-letter)
+        # instead of silently deducting zero. The wallet is untouched.
+        import pytest
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
@@ -210,7 +217,8 @@ class TestBillingOutboxHandler:
             tenant_id=tenant.id,
         )
 
-        handle_usage_recorded_billing(str(event.id), event.payload)
+        with pytest.raises(TypeError):
+            handle_usage_recorded_billing(str(event.id), event.payload)
 
         wallet.refresh_from_db()
         assert wallet.balance_micros == 10_000_000
@@ -233,12 +241,12 @@ class TestBillingOutboxHandler:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 2_000_000,  # $2 deduction, puts wallet at -$2
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=2_000_000,  # $2 deduction, puts wallet at -$2
+            )),
             tenant_id=tenant.id,
         )
 
@@ -265,12 +273,12 @@ class TestBillingOutboxHandler:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 2_000_000,  # $2 deduction, wallet at -$2 (within $5 threshold)
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=2_000_000,  # $2 deduction, wallet at -$2 (within $5 threshold)
+            )),
             tenant_id=tenant.id,
         )
 
@@ -293,8 +301,9 @@ class TestBillingOutboxHandler:
         w.save(update_fields=["balance_micros"])
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
-            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
-                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id, customer_id=customer.id,
+                event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         with patch("apps.billing.gating.services.budget_service.BudgetService.record_usage_spend") as mock_rec:
             handle_usage_recorded_billing(str(event.id), event.payload)
         mock_rec.assert_called_once()
@@ -313,8 +322,9 @@ class TestBillingOutboxHandler:
         w.save(update_fields=["balance_micros"])
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
-            payload={"tenant_id": str(tenant.id), "customer_id": str(customer.id),
-                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id, customer_id=customer.id,
+                event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         handle_usage_recorded_billing(str(event.id), event.payload)
         w.refresh_from_db()
         assert w.balance_micros == 10_000_000  # untouched — postpaid is invoiced, not drawn down
@@ -327,8 +337,9 @@ class TestBillingOutboxHandler:
         c = Customer.objects.create(tenant=tenant, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
         ev_id = str(uuid.uuid4())
-        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
-                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        payload = asdict(UsageRecorded(
+            tenant_id=tenant.id, customer_id=c.id, event_id=ev_id,
+            billing_owner_id=c.id, cost_micros=1_500_000))
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
         handle_usage_recorded_billing(str(e.id), payload)
         assert OutboxEvent.objects.filter(
@@ -342,8 +353,9 @@ class TestBillingOutboxHandler:
         c = Customer.objects.create(tenant=tenant, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=1_000_000)
         ev_id = str(uuid.uuid4())
-        payload = {"tenant_id": str(tenant.id), "customer_id": str(c.id), "event_id": ev_id,
-                   "billing_owner_id": str(c.id), "cost_micros": 1_500_000}
+        payload = asdict(UsageRecorded(
+            tenant_id=tenant.id, customer_id=c.id, event_id=ev_id,
+            billing_owner_id=c.id, cost_micros=1_500_000))
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
         handle_usage_recorded_billing(str(e.id), payload)
         emitted = OutboxEvent.objects.exclude(id=e.id).count()
@@ -365,8 +377,9 @@ class TestBillingOutboxHandler:
         bw = Wallet.objects.create(customer=biz, balance_micros=10_000_000)
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
-            payload={"tenant_id": str(tenant.id), "customer_id": str(seat.id),
-                     "event_id": str(uuid.uuid4()), "cost_micros": 2_000_000})
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id, customer_id=seat.id,
+                event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         handle_usage_recorded_billing(str(event.id), event.payload)
         bw.refresh_from_db()
         assert bw.balance_micros == 8_000_000  # the BUSINESS pool was debited
@@ -401,12 +414,12 @@ class TestBillingHandlerEmitsBalanceLow:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 2_000_000,  # $2 deduction -> balance $4 (below $5)
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=2_000_000,  # $2 deduction -> balance $4 (below $5)
+            )),
             tenant_id=tenant.id,
         )
 
@@ -442,12 +455,12 @@ class TestBillingHandlerEmitsBalanceLow:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 100_000,  # small deduction
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=100_000,  # small deduction
+            )),
             tenant_id=tenant.id,
         )
 
@@ -472,12 +485,12 @@ class TestBillingHandlerEmitsBalanceLow:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 500_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=500_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -508,12 +521,12 @@ class TestBillingHandlerEmitsCustomerSuspended:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 2_000_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=2_000_000,
+            )),
             tenant_id=tenant.id,
         )
 
@@ -545,12 +558,12 @@ class TestBillingHandlerEmitsCustomerSuspended:
 
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
-            payload={
-                "tenant_id": str(tenant.id),
-                "customer_id": str(customer.id),
-                "event_id": str(uuid.uuid4()),
-                "cost_micros": 2_000_000,
-            },
+            payload=asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=customer.id,
+                event_id=str(uuid.uuid4()),
+                cost_micros=2_000_000,
+            )),
             tenant_id=tenant.id,
         )
 

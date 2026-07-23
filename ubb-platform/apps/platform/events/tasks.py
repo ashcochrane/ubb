@@ -19,6 +19,13 @@ logger = logging.getLogger("ubb.events")
 
 BACKOFF_SCHEDULE = [30, 120, 600, 1800, 7200]  # seconds: 30s, 2m, 10m, 30m, 2h
 
+# Wall-clock from first failure to dead-letter when every retry fails
+# (~2h43m). Repair jobs that must outwait the outbox before treating absence
+# as loss (the wallet drawdown reconcile's GRACE, the prior-month resnapshot
+# marker age) assert against this instead of restating the arithmetic as
+# prose that silently rots when the schedule changes.
+RETRY_HORIZON = timedelta(seconds=sum(BACKOFF_SCHEDULE))
+
 
 def calculate_backoff(retry_count):
     """Calculate next_retry_at based on retry count."""
@@ -134,7 +141,7 @@ def sweep_outbox():
 
 @shared_task(queue="ubb_events")
 def cleanup_outbox():
-    """Delete old processed/skipped events. Failed events are never auto-deleted."""
+    """Delete old processed events. Failed events are never auto-deleted."""
     now = timezone.now()
 
     # Processed events older than 30 days
@@ -144,20 +151,12 @@ def cleanup_outbox():
         created_at__lt=cutoff_processed,
     ).delete()
 
-    # Skipped events older than 90 days
-    cutoff_skipped = now - timedelta(days=90)
-    deleted_skipped, _ = OutboxEvent.objects.filter(
-        status="skipped",
-        created_at__lt=cutoff_skipped,
-    ).delete()
-
-    if deleted_processed or deleted_skipped:
+    if deleted_processed:
         logger.info(
             "outbox.cleanup",
             extra={
                 "data": {
                     "deleted_processed": deleted_processed,
-                    "deleted_skipped": deleted_skipped,
                 }
             },
         )

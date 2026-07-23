@@ -1,5 +1,6 @@
 import logging
 
+from apps.platform.events.schemas import CustomerDeleted, UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
 
@@ -23,12 +24,13 @@ def handle_usage_recorded_billing(event_id, payload):
     This handler NEVER calls Stripe or dispatches payment tasks.
     Payment connectors subscribe to the emitted events.
     """
-    tenant = Tenant.objects.get(id=payload["tenant_id"])
-    billed_cost_micros = payload.get("cost_micros", 0)
+    evt = UsageRecorded.from_payload(payload)
+    tenant = Tenant.objects.get(id=evt.tenant_id)
+    billed_cost_micros = evt.cost_micros
 
     if billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
-        seat = Customer.objects.get(id=payload["customer_id"])
+        seat = Customer.objects.get(id=evt.customer_id)
         # Postpaid has no wallet to draw down, and (#39) its budget-cap
         # stop/suspension rides the StopSignalState transition guard from the
         # fast lane at the crossing plus the hourly reconcile's SET power —
@@ -37,8 +39,8 @@ def handle_usage_recorded_billing(event_id, payload):
         if tenant.billing_mode != "postpaid":
             from apps.billing.wallets import operations as wallet_ops
 
-            owner_id = payload.get("billing_owner_id") or str(seat.resolve_billing_owner().id)
-            usage_event_id = payload.get("event_id", "")
+            owner_id = evt.billing_owner_id or str(seat.resolve_billing_owner().id)
+            usage_event_id = evt.event_id
             # The whole drawdown — lock, lazy expiry, exactly-once debit, lot
             # consumption, and the winning-branch tail (BalanceOverage, the
             # #39/#40 crossing lanes or the Tier-1 suspension, BalanceLow) —
@@ -65,7 +67,7 @@ def handle_usage_recorded_billing(event_id, payload):
         from django.utils.dateparse import parse_datetime
         from apps.billing.gating.crossing import same_month
         count_in_live = True
-        raw_eff = payload.get("effective_at")
+        raw_eff = evt.effective_at
         if raw_eff:
             eff = parse_datetime(raw_eff)
             if eff is not None:
@@ -81,7 +83,7 @@ def handle_customer_deleted_billing(event_id, payload):
     Registered as outbox handler with requires_product="billing".
     Soft-deletes Wallet and AutoTopUpConfig for the customer.
     """
-    customer_id = payload["customer_id"]
+    customer_id = CustomerDeleted.from_payload(payload).customer_id
 
     from apps.billing.wallets.models import Wallet
     from apps.billing.topups.models import AutoTopUpConfig

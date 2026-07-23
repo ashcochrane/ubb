@@ -2,17 +2,78 @@
 Frozen dataclass contracts for outbox events.
 
 Rules:
-- All event schemas are frozen dataclasses.
+- All event schemas are frozen dataclasses inheriting ``EventSchema``.
 - New fields MUST have defaults (additive-only evolution).
 - Breaking changes (renames, removals, type changes) require a new class.
-- Producers: construct dataclass -> asdict() -> write to outbox.
-- Consumers: filter unknown keys -> construct dataclass from payload.
+- Producers: construct dataclass -> asdict() -> write to outbox. Id fields
+  accept ``UUID | str``; construction normalizes to str.
+- Consumers: ``SchemaClass.from_payload(payload)`` — unknown keys filtered,
+  defaults applied from the class, missing required fields loud.
+
+The base class registers every subclass by its ``EVENT_TYPE``, and the
+webhook catalog (``catalog.WEBHOOK_EVENT_TYPES``) derives from that registry:
+adding a schema class here IS adding the event type. A subclass without an
+EVENT_TYPE, or two subclasses claiming one, is an import-time error.
 """
+import dataclasses
+import uuid as _uuid
 from dataclasses import dataclass
+from typing import ClassVar
+
+
+class EventSchema:
+    """Base for all payload schemas: the consumer half of the frozen contract
+    plus the EVENT_TYPE registry the catalog derives from."""
+
+    _registry: ClassVar[dict[str, type]] = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        event_type = cls.__dict__.get("EVENT_TYPE")
+        if not isinstance(event_type, str) or not event_type:
+            raise TypeError(
+                f"{cls.__name__} must define EVENT_TYPE as a non-empty str"
+            )
+        if event_type in EventSchema._registry:
+            raise TypeError(
+                f"{cls.__name__} redefines EVENT_TYPE {event_type!r}, already "
+                f"owned by {EventSchema._registry[event_type].__name__}"
+            )
+        EventSchema._registry[event_type] = cls
+
+    def __post_init__(self):
+        # UUID | str for ids: writers pass model ids as-is; the payload (and
+        # asdict()) always carries plain, JSON-serializable strings.
+        for f in dataclasses.fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, _uuid.UUID):
+                object.__setattr__(self, f.name, str(value))
+
+    @classmethod
+    def from_payload(cls, payload):
+        """Construct from a stored outbox payload dict.
+
+        Unknown keys are filtered (additive-only evolution: a newer producer's
+        extra fields must not break this consumer), absent defaulted fields
+        take the class default (defined once, here), and an absent required
+        field raises TypeError — a payload that malformed cannot be produced
+        by the typed write side.
+        """
+        field_names = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in payload.items() if k in field_names})
+
+
+def payload_schema_classes():
+    """Every registered payload schema class, in definition order.
+
+    The one enumeration of the payload contract surface — the webhook catalog
+    and the OpenAPI ``webhooks`` section both derive from it.
+    """
+    return tuple(EventSchema._registry.values())
 
 
 @dataclass(frozen=True)
-class UsageRecorded:
+class UsageRecorded(EventSchema):
     EVENT_TYPE = "usage.recorded"
 
     tenant_id: str
@@ -37,7 +98,7 @@ class UsageRecorded:
 
 
 @dataclass(frozen=True)
-class UsageRefunded:
+class UsageRefunded(EventSchema):
     EVENT_TYPE = "usage.refunded"
 
     tenant_id: str
@@ -48,7 +109,7 @@ class UsageRefunded:
 
 
 @dataclass(frozen=True)
-class ReferralRewardEarned:
+class ReferralRewardEarned(EventSchema):
     EVENT_TYPE = "referral.reward_earned"
 
     tenant_id: str
@@ -59,7 +120,7 @@ class ReferralRewardEarned:
 
 
 @dataclass(frozen=True)
-class ReferralCreated:
+class ReferralCreated(EventSchema):
     EVENT_TYPE = "referral.created"
 
     tenant_id: str
@@ -69,7 +130,7 @@ class ReferralCreated:
 
 
 @dataclass(frozen=True)
-class ReferralExpired:
+class ReferralExpired(EventSchema):
     EVENT_TYPE = "referral.expired"
 
     tenant_id: str
@@ -79,7 +140,7 @@ class ReferralExpired:
 
 
 @dataclass(frozen=True)
-class RefundRequested:
+class RefundRequested(EventSchema):
     EVENT_TYPE = "refund.requested"
 
     tenant_id: str
@@ -91,14 +152,14 @@ class RefundRequested:
 
 
 @dataclass(frozen=True)
-class CustomerDeleted:
+class CustomerDeleted(EventSchema):
     EVENT_TYPE = "customer.deleted"
     tenant_id: str
     customer_id: str
 
 
 @dataclass(frozen=True)
-class WithdrawalRequested:
+class WithdrawalRequested(EventSchema):
     EVENT_TYPE = "billing.withdrawal_requested"
     tenant_id: str
     customer_id: str
@@ -108,7 +169,7 @@ class WithdrawalRequested:
 
 
 @dataclass(frozen=True)
-class ReferralPayoutDue:
+class ReferralPayoutDue(EventSchema):
     EVENT_TYPE = "referral.payout_due"
     tenant_id: str
     referral_id: str
@@ -119,7 +180,7 @@ class ReferralPayoutDue:
 
 
 @dataclass(frozen=True)
-class BalanceLow:
+class BalanceLow(EventSchema):
     EVENT_TYPE = "billing.balance_low"
     tenant_id: str
     customer_id: str
@@ -129,7 +190,7 @@ class BalanceLow:
 
 
 @dataclass(frozen=True)
-class BalanceCritical:
+class BalanceCritical(EventSchema):
     EVENT_TYPE = "billing.balance_critical"
     tenant_id: str
     customer_id: str
@@ -138,7 +199,7 @@ class BalanceCritical:
 
 
 @dataclass(frozen=True)
-class TopUpRequested:
+class TopUpRequested(EventSchema):
     EVENT_TYPE = "billing.topup_requested"
     tenant_id: str
     customer_id: str
@@ -149,7 +210,7 @@ class TopUpRequested:
 
 
 @dataclass(frozen=True)
-class CustomerSuspended:
+class CustomerSuspended(EventSchema):
     EVENT_TYPE = "billing.customer_suspended"
     tenant_id: str
     customer_id: str
@@ -158,7 +219,7 @@ class CustomerSuspended:
 
 
 @dataclass(frozen=True)
-class MarginCustomerUnprofitable:
+class MarginCustomerUnprofitable(EventSchema):
     EVENT_TYPE = "margin.customer_unprofitable"
     tenant_id: str
     customer_id: str
@@ -169,7 +230,7 @@ class MarginCustomerUnprofitable:
 
 
 @dataclass(frozen=True)
-class MarginProviderCostSpike:
+class MarginProviderCostSpike(EventSchema):
     EVENT_TYPE = "margin.provider_cost_spike"
     tenant_id: str
     customer_id: str
@@ -181,7 +242,7 @@ class MarginProviderCostSpike:
 
 
 @dataclass(frozen=True)
-class BudgetThresholdReached:
+class BudgetThresholdReached(EventSchema):
     EVENT_TYPE = "budget.threshold_reached"
     tenant_id: str
     customer_id: str
@@ -193,7 +254,7 @@ class BudgetThresholdReached:
 
 
 @dataclass(frozen=True)
-class UsageInvoicePushed:
+class UsageInvoicePushed(EventSchema):
     EVENT_TYPE = "usage.invoice_pushed"
     tenant_id: str
     customer_id: str
@@ -205,7 +266,7 @@ class UsageInvoicePushed:
 
 
 @dataclass(frozen=True)
-class UsageInvoicePushFailedPermanent:
+class UsageInvoicePushFailedPermanent(EventSchema):
     EVENT_TYPE = "usage.invoice_push_failed_permanent"
     tenant_id: str
     customer_id: str
@@ -216,7 +277,7 @@ class UsageInvoicePushFailedPermanent:
 
 
 @dataclass(frozen=True)
-class AutoTopupRequiresAction:
+class AutoTopupRequiresAction(EventSchema):
     EVENT_TYPE = "auto_topup.requires_action"
     tenant_id: str
     customer_id: str
@@ -226,7 +287,7 @@ class AutoTopupRequiresAction:
 
 
 @dataclass(frozen=True)
-class BalanceOverage:
+class BalanceOverage(EventSchema):
     EVENT_TYPE = "billing.balance_overage"
     tenant_id: str
     customer_id: str
@@ -236,7 +297,7 @@ class BalanceOverage:
 
 
 @dataclass(frozen=True)
-class CreditGrantExpiring:
+class CreditGrantExpiring(EventSchema):
     EVENT_TYPE = "billing.credit_grant_expiring"
     tenant_id: str
     customer_id: str
@@ -247,14 +308,14 @@ class CreditGrantExpiring:
 
 
 @dataclass(frozen=True)
-class SandboxResetCompleted:
+class SandboxResetCompleted(EventSchema):
     EVENT_TYPE = "sandbox.reset_completed"
     tenant_id: str
     keep_config: bool = True
 
 
 @dataclass(frozen=True)
-class TenantApiKeyCreated:
+class TenantApiKeyCreated(EventSchema):
     EVENT_TYPE = "tenant.api_key_created"
     tenant_id: str
     api_key_id: str
@@ -263,7 +324,7 @@ class TenantApiKeyCreated:
 
 
 @dataclass(frozen=True)
-class TenantApiKeyRotated:
+class TenantApiKeyRotated(EventSchema):
     EVENT_TYPE = "tenant.api_key_rotated"
     tenant_id: str
     old_api_key_id: str
@@ -273,7 +334,7 @@ class TenantApiKeyRotated:
 
 
 @dataclass(frozen=True)
-class TenantApiKeyRevoked:
+class TenantApiKeyRevoked(EventSchema):
     EVENT_TYPE = "tenant.api_key_revoked"
     tenant_id: str
     api_key_id: str
@@ -282,7 +343,7 @@ class TenantApiKeyRevoked:
 
 
 @dataclass(frozen=True)
-class CreditGrantExpired:
+class CreditGrantExpired(EventSchema):
     EVENT_TYPE = "billing.credit_grant_expired"
     tenant_id: str
     customer_id: str
@@ -293,7 +354,7 @@ class CreditGrantExpired:
 
 
 @dataclass(frozen=True)
-class TaskLimitExceeded:
+class TaskLimitExceeded(EventSchema):
     """One-rule task-kill fan-out event (#37). The SINGLE canonical class —
     no other module may redefine it.
 
@@ -326,7 +387,7 @@ class TaskLimitExceeded:
 
 
 @dataclass(frozen=True)
-class SubtaskLimitExceeded:
+class SubtaskLimitExceeded(EventSchema):
     """Subtask-kill fan-out event (#38) — the subtask sibling of
     TaskLimitExceeded, emitted exactly once per winning active->killed
     transition of a SUBTASK (its own limit/floor crossing, or the reaper).
@@ -358,7 +419,7 @@ class SubtaskLimitExceeded:
 
 
 @dataclass(frozen=True)
-class StopFired:
+class StopFired(EventSchema):
     """Customer-wide stop signal — the stop half of the stop/resume pair (#39).
 
     Emitted through the ``StopSignalState`` transition guard
@@ -393,7 +454,7 @@ class StopFired:
 
 
 @dataclass(frozen=True)
-class StopCleared:
+class StopCleared(EventSchema):
     """The resume half of the stop/resume pair (#39, spec §E).
 
     Fires the moment the balance re-crosses the floor — no hysteresis margin,
@@ -422,7 +483,7 @@ class StopCleared:
 
 
 @dataclass(frozen=True)
-class SoftFloorCrossed:
+class SoftFloorCrossed(EventSchema):
     """The soft floor's crossing half (#40, spec §F) — the wind-down line.
 
     Emitted through the ``soft_floor`` family of the ``StopSignalState``
@@ -451,7 +512,7 @@ class SoftFloorCrossed:
 
 
 @dataclass(frozen=True)
-class SoftFloorCleared:
+class SoftFloorCleared(EventSchema):
     """The soft floor's clearing half (#40, spec §F).
 
     Fires when the owner's balance re-crosses the resolved soft line — from
@@ -477,7 +538,7 @@ class SoftFloorCleared:
 
 
 @dataclass(frozen=True)
-class InvitationCreated:
+class InvitationCreated(EventSchema):
     """An Admin invited a teammate. A pending Member is created alongside; the
     invitee activates it on their first Clerk-verified login (member.activated)."""
     EVENT_TYPE = "invitation.created"
@@ -489,7 +550,7 @@ class InvitationCreated:
 
 
 @dataclass(frozen=True)
-class InvitationRevoked:
+class InvitationRevoked(EventSchema):
     """An Admin cancelled a still-pending invitation; its pending Member is
     dropped and can no longer activate."""
     EVENT_TYPE = "invitation.revoked"
@@ -499,7 +560,7 @@ class InvitationRevoked:
 
 
 @dataclass(frozen=True)
-class MemberActivated:
+class MemberActivated(EventSchema):
     """A pending Member joined — matched by email on first Clerk login and
     bound from then on to the Clerk user id."""
     EVENT_TYPE = "member.activated"

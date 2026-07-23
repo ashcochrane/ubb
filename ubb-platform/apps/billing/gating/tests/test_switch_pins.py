@@ -23,6 +23,7 @@ Plus  — the upward repair is inert with the lane off; patrol jobs 1–4
 import ast
 import json
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from unittest import mock
 
@@ -51,6 +52,7 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tasks.models import Task
 from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
 from apps.platform.tenants.flags import arrival_signals_on
@@ -212,9 +214,9 @@ class TestPin9CrossingSignalsAtSettleLatency:
         assert not _events("stop.fired").exists()
         # Settle latency: the durable drawdown lane processes the event and
         # detects the floor crossing — signal + flag, never an ack change.
-        handle_usage_recorded_billing(str(uuid.uuid4()), {
-            "tenant_id": str(t.id), "customer_id": str(c.id),
-            "event_id": str(uuid.uuid4()), "cost_micros": 8_000_000})
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            tenant_id=t.id, customer_id=c.id,
+            event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         assert _events("stop.fired").count() == 1
         assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
         nxt = _record_sync(client, auth, c, billed=1_000).json()

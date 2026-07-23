@@ -9,6 +9,7 @@ suspension_reason records WHY; only a monetary reason is auto-cleared on
 recovery, so a top-up never silently un-suspends an admin/fraud suspension.
 """
 import uuid
+from dataclasses import asdict
 
 import pytest
 from django.core.cache import cache
@@ -20,6 +21,7 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 
@@ -29,8 +31,8 @@ def _tenant(mode="postpaid", enf="enforcing"):
 
 
 def _payload(t, c, billed):
-    return {"tenant_id": str(t.id), "customer_id": str(c.id),
-            "event_id": str(uuid.uuid4()), "cost_micros": billed}
+    return asdict(UsageRecorded(tenant_id=t.id, customer_id=c.id,
+                                event_id=str(uuid.uuid4()), cost_micros=billed))
 
 
 def _suspend_events(cid):

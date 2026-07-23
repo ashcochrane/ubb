@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from apps.platform.events.schemas import UsageRecorded
 from apps.referrals.rewards.services import RewardService
 
 logger = logging.getLogger("ubb.events")
@@ -18,12 +19,13 @@ def handle_usage_recorded_referrals(event_id, payload):
     from apps.referrals.models import Referral
     from apps.referrals.rewards.models import ReferralRewardAccumulator
 
-    cost_micros = payload.get("cost_micros", 0)
+    evt = UsageRecorded.from_payload(payload)
+    cost_micros = evt.cost_micros
     if cost_micros <= 0:
         return
 
-    customer_id = payload["customer_id"]
-    tenant_id = payload["tenant_id"]
+    customer_id = evt.customer_id
+    tenant_id = evt.tenant_id
 
     # Find active referral for this customer
     try:
@@ -46,7 +48,7 @@ def handle_usage_recorded_referrals(event_id, payload):
         return
 
     # Calculate reward
-    raw_cost_micros = payload.get("provider_cost_micros")
+    raw_cost_micros = evt.provider_cost_micros
     reward_micros = RewardService.calculate_reward(
         referral, cost_micros, raw_cost_micros=raw_cost_micros
     )

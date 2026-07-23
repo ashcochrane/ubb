@@ -16,6 +16,7 @@ Invariants asserted:
 
 import threading
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -29,6 +30,7 @@ from apps.billing.wallets.models import (
     CreditGrant, GrantAllocation, Wallet, WalletTransaction,
 )
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 
@@ -67,13 +69,13 @@ class ConcurrentDrawdownWithGrants(TransactionTestCase):
             expires_at=timezone.now() + timedelta(days=5))
 
         ev_id = str(uuid.uuid4())
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "event_id": ev_id,
-            "billing_owner_id": str(customer.id),
-            "cost_micros": 2_000_000,
-        }
+        payload = asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            event_id=ev_id,
+            billing_owner_id=customer.id,
+            cost_micros=2_000_000,
+        ))
 
         barrier = threading.Barrier(2)
         errors = []
@@ -136,13 +138,13 @@ class ConcurrentExpiryVsDrawdown(TransactionTestCase):
 
         tenant, customer, wallet, grant = self._fixture()
         ev_id = str(uuid.uuid4())
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "event_id": ev_id,
-            "billing_owner_id": str(customer.id),
-            "cost_micros": 2_000_000,
-        }
+        payload = asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            event_id=ev_id,
+            billing_owner_id=customer.id,
+            cost_micros=2_000_000,
+        ))
 
         barrier = threading.Barrier(2)
         errors = []

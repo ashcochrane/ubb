@@ -1,63 +1,30 @@
-"""Canonical catalog of webhook-deliverable event types.
+"""Canonical catalog of webhook-deliverable event types — derived, not listed.
 
 Single source of truth for the events a tenant can subscribe a webhook to.
 ``apps.EventsConfig.ready()`` registers a delivery handler for each type here,
 and the webhook config API validates submitted ``event_types`` against it, so
 the registration and the public contract cannot drift apart.
 
-To add a new tenant-facing webhook event: add its type string here (and emit it
-to the outbox). Do not register webhook delivery anywhere else.
+The catalog DERIVES from the payload-schema registry (``schemas.py``): every
+frozen payload dataclass IS the contract for one webhook-deliverable event,
+so the two can no longer disagree (the drift class the old hand-listed tuple
+needed pin tests to police — the #75 defect that hid ``customer.deleted``
+from subscribers while the delivery path emitted it).
+
+To add a new tenant-facing webhook event: add its frozen dataclass to
+``schemas.py`` (and emit it to the outbox). That is the whole change — the
+catalog, delivery registration, and the OpenAPI ``webhooks`` section all
+follow. Do not register webhook delivery anywhere else.
 """
+from apps.platform.events.schemas import payload_schema_classes
 
 # Sentinel a tenant uses to subscribe to *all* events (Stripe's enabled_events
 # convention). Stored verbatim in TenantWebhookConfig.event_types as ["*"].
 WILDCARD = "*"
 
-# Order is not significant — grouped by namespace for readability.
-WEBHOOK_EVENT_TYPES = (
-    # usage / metering
-    "usage.recorded",
-    "usage.refunded",
-    "usage.invoice_pushed",
-    "usage.invoice_push_failed_permanent",
-    "refund.requested",
-    # billing / wallet
-    "billing.balance_low",
-    "billing.balance_critical",
-    "billing.balance_overage",
-    "billing.topup_requested",
-    "billing.withdrawal_requested",
-    "billing.customer_suspended",
-    "billing.credit_grant_expiring",
-    "billing.credit_grant_expired",
-    "auto_topup.requires_action",
-    # budgets / tasks
-    "budget.threshold_reached",
-    "task.limit_exceeded",
-    "subtask.limit_exceeded",
-    "stop.fired",
-    "stop.cleared",
-    "soft_floor.crossed",
-    "soft_floor.cleared",
-    # margins / economics
-    "margin.customer_unprofitable",
-    "margin.provider_cost_spike",
-    # referrals
-    "referral.created",
-    "referral.reward_earned",
-    "referral.expired",
-    "referral.payout_due",
-    # customers / lifecycle
-    "customer.deleted",
-    # platform / lifecycle
-    "sandbox.reset_completed",
-    "tenant.api_key_created",
-    "tenant.api_key_rotated",
-    "tenant.api_key_revoked",
-    # membership / identity
-    "invitation.created",
-    "invitation.revoked",
-    "member.activated",
+# Sorted for deterministic iteration; order is not significant.
+WEBHOOK_EVENT_TYPES = tuple(
+    sorted(cls.EVENT_TYPE for cls in payload_schema_classes())
 )
 
 _WEBHOOK_EVENT_TYPES_SET = frozenset(WEBHOOK_EVENT_TYPES)

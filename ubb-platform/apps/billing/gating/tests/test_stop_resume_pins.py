@@ -12,6 +12,7 @@ Spec pins (docs/plans/2026-07-15-one-rule-enforcement-spec.md §L):
            zero, distinct from the stop/resume pair.
 """
 import uuid
+from dataclasses import asdict
 
 import pytest
 from django.core.cache import cache
@@ -23,6 +24,7 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 FLOOR = 5_000_000  # configured min balance: the stop line is -5_000_000
@@ -41,9 +43,9 @@ def _customer(t, balance_micros=0):
 
 
 def _payload(t, c, billed):
-    return {"tenant_id": str(t.id), "customer_id": str(c.id),
-            "billing_owner_id": str(c.id), "event_id": str(uuid.uuid4()),
-            "cost_micros": billed}
+    return asdict(UsageRecorded(
+        tenant_id=t.id, customer_id=c.id, billing_owner_id=c.id,
+        event_id=str(uuid.uuid4()), cost_micros=billed))
 
 
 def _drain(t, c, billed):

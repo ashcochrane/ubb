@@ -21,14 +21,15 @@ def test_catalog_is_exactly_what_registers_webhook_delivery():
 
 
 def test_catalog_is_set_equal_to_frozen_payload_schema_registry():
-    """Bridge pin (#75): set(catalog) == set(payload-schema event types).
-
-    Every frozen dataclass in schemas.py IS the payload contract for a
-    webhook-deliverable event, so an event type added to one side but not
-    the other is a red test, not silent drift — the defect that hid
-    customer.deleted from subscribers while the delivery path emitted it.
-    Stage 1's OpenAPI ``webhooks`` section subsumes this behind the drift
-    gate; this unit pin stays as defense in depth.
+    """Derivation check (#75 → #114): the catalog derives from the schema
+    registry, so set-equality is structural — UNLESS a dataclass defined in
+    schemas.py never registered because it forgot to inherit ``EventSchema``.
+    This independent vars()-based enumeration catches exactly that residual
+    drift (the base class already makes a missing/duplicate EVENT_TYPE an
+    import-time error), keeping the #75 pin's intent: an event type present
+    in the module but absent from the catalog is a red test, not the silent
+    drift that hid customer.deleted from subscribers while the delivery path
+    emitted it.
     """
     import dataclasses
     import inspect

@@ -15,6 +15,7 @@ On failure the full op sequence is printed for deterministic replay
 """
 import random
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 
 import pytest
@@ -29,6 +30,7 @@ from apps.billing.wallets.grants import GrantLedger
 from apps.billing.wallets.models import CreditGrant, Wallet, WalletTransaction
 from apps.billing.wallets.tasks import expire_credit_grants
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 M = 1_000_000
@@ -106,10 +108,11 @@ class TestGrantLedgerInvariantFuzz:
         def op_debit():
             cost = rng.randint(1, 40) * M
             ev = str(uuid.uuid4())
-            handle_usage_recorded_billing(str(uuid.uuid4()), {
-                "tenant_id": str(tenant.id), "customer_id": str(customer.id),
-                "event_id": ev, "billing_owner_id": str(customer.id),
-                "cost_micros": cost})
+            payload = asdict(UsageRecorded(
+                tenant_id=tenant.id, customer_id=customer.id,
+                event_id=ev, billing_owner_id=customer.id,
+                cost_micros=cost))
+            handle_usage_recorded_billing(str(uuid.uuid4()), payload)
             debited.append((ev, cost))
             return f"debit cost={cost} ev={ev[:8]}"
 
