@@ -13,6 +13,7 @@ hold, a poison payload).
 """
 from unittest.mock import patch
 
+from django.test import TransactionTestCase
 from django.utils import timezone
 
 from apps.billing.gating.services.live_counter import Door, LiveCounter
@@ -538,3 +539,56 @@ class SettleRawEventsTaskTest(SettlementTestBase):
         with patch("apps.metering.usage.tasks.settle_raw_events.delay") as mock_delay:
             settle_raw_events(batch_size=200)
         mock_delay.assert_not_called()
+
+
+class SettleKillOrderingPinTest(TransactionTestCase):
+    """#112 (D3): kill execution registers on the settle transaction's
+    on_commit and must fire BEFORE the hold true-up that follows the atomic
+    — the order the old inline kill loop guaranteed. This holds because
+    settle_raw owns its transaction (settle_raw_events calls it with no
+    ambient atomic); a future caller wrapping settle_raw in an ambient
+    transaction would silently defer kills past the true-up and turn this
+    red. TransactionTestCase: the ordering only exists under a real commit.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        from apps.billing.wallets.models import Wallet
+        from apps.platform.customers.models import Customer
+        from apps.platform.tenants.models import Tenant
+        cache.clear()
+        self.tenant = Tenant.objects.create(
+            name="KillOrder", products=["metering", "billing", "metering_async"],
+            billing_mode="prepaid")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="ko1")
+        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
+
+    def tearDown(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_kills_fire_before_the_hold_true_up(self, _dispatch):
+        task = Task.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000,
+            provider_cost_limit_micros=1_000_000,
+            billing_owner_id=self.customer.id)
+        raw = RawIngestEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            billing_owner_id=self.customer.id, task_id=task.id,
+            idempotency_key="ko-1",
+            payload={"request_id": "r1", "provider_cost_micros": 2_000_000,
+                     "billed_cost_micros": 500_000},
+            estimate_micros=500_000, estimate_exact=True, held=True,
+            status="pending")
+
+        order = []
+        with patch("apps.platform.tasks.services.TaskService.kill_and_announce",
+                   side_effect=lambda *a, **k: order.append("kill")), \
+             patch("apps.billing.queries.settle_ingest_hold",
+                   side_effect=lambda *a, **k: order.append("true_up")):
+            result = UsageService.settle_raw(raw)
+
+        self.assertEqual(result, "settled")
+        self.assertEqual(order, ["kill", "true_up"])

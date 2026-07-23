@@ -2,7 +2,8 @@ import logging
 import re
 from collections import namedtuple
 from dataclasses import dataclass
-from datetime import timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
+from uuid import UUID
 
 from django.db import transaction, IntegrityError
 from django.utils import timezone
@@ -19,6 +20,13 @@ TAG_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
 
 # Tolerated clock skew for caller-supplied effective_at in the future.
 _FUTURE_SKEW = timedelta(minutes=5)
+
+
+def _tenant_currency(tenant):
+    """CUR-1: the tenant's single event currency, normalized lowercase — the
+    ONE rule both the sync adapter's mismatch check and the recording
+    input's stamp share."""
+    return (tenant.default_currency or "usd").lower()
 
 
 class EffectiveAtError(ValueError):
@@ -191,6 +199,8 @@ class RecordingInput:
     the metering service; it never appears in the API surface. Build it via
     ``gather``, never by hand — the normalization rules live there once."""
 
+    # tenant / customer / owner_row are platform-kernel ORM rows, annotated
+    # loosely to keep this module's import surface flat.
     tenant: object
     customer: object
     request_id: str
@@ -204,17 +214,17 @@ class RecordingInput:
     product_id: str
     service_id: str
     agent_id: str
-    task_id: object
-    billing_owner_id: object
+    task_id: UUID | None
+    billing_owner_id: UUID
     # The resolved billing-owner ROW for stop-context tagging (status already
     # in hand — no extra query), or None when the lane skipped the fetch
     # (settle, enforcement off: no durable owner state can exist).
     owner_row: object
-    effective_at: object
-    units: object
-    caller_provider_cost: object
-    caller_billed: object
-    now: object
+    effective_at: datetime | None
+    units: int | None
+    caller_provider_cost: int | None
+    caller_billed: int | None
+    now: datetime
     # Lane declaration: the sync lane maintains the live counter at record
     # time; the settle lane converges it via its hold true-up instead.
     debit_live_counter: bool
@@ -239,7 +249,7 @@ class RecordingInput:
             # CUR-1: every event is denominated in the tenant's single
             # currency, stored normalized lowercase. The sync adapter has
             # already rejected any mismatching caller currency.
-            currency=(tenant.default_currency or "usd").lower(),
+            currency=_tenant_currency(tenant),
             usage_metrics=usage_metrics or {}, tags=tags,
             # Tags are analytics-only labels (#37): the task_id request field
             # is the ONLY unit attribution — no tag-fallback inference.
@@ -258,6 +268,19 @@ class RecordingInput:
 # accumulate primitive's outputs (both None for an unattributed event), and
 # the live-debit verdict dict ({} for the settle lane).
 RecordingOutcome = namedtuple("RecordingOutcome", "event task verdicts live")
+
+
+class RecordingConflict(IntegrityError):
+    """The recording savepoint (price → create → accumulate) hit an
+    IntegrityError — the core's idempotency boundary (#112). The typed
+    re-raise lets the sync lane react to THIS boundary alone: an
+    IntegrityError from a post-savepoint stage (live-debit ledger, outbox)
+    stays a plain IntegrityError and propagates as the hard failure it is
+    (500 + full rollback — the event was NOT durably recorded without its
+    emission), instead of being misread as an idempotent replay of the
+    lane's own just-created row. The settle lane deliberately catches the
+    base IntegrityError — its whole transaction has always shared one
+    duplicate-flip reaction."""
 
 
 def _execute_kills(kills, *, tenant_id, customer_id):
@@ -294,9 +317,9 @@ class UsageService:
 
         Must run inside the calling lane's transaction (write_event asserts
         it). The savepoint around price/create/accumulate is the idempotency
-        boundary: its IntegrityError PROPAGATES, with everything after it
-        unentered — each lane keeps its own reaction (sync: replay result;
-        settle: duplicate-flip under a fresh lock).
+        boundary: its IntegrityError propagates as RecordingConflict, with
+        everything after it unentered — each lane keeps its own reaction
+        (sync: replay result; settle: duplicate-flip under a fresh lock).
 
         Kill execution (#112): the core computes reasons.kill_plan inside the
         recording transaction and registers execution on its own
@@ -308,44 +331,47 @@ class UsageService:
         tenant, customer = inp.tenant, inp.customer
         task = None
         verdicts = None
-        with transaction.atomic():
-            # as_of=effective_at prices on the card versions valid at the
-            # EFFECTIVE time (None → the pricer's own now()).
-            provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
-                tenant=tenant, customer=customer, event_type=inp.event_type,
-                provider=inp.provider, usage_metrics=inp.usage_metrics,
-                tags=inp.tags, currency=inp.currency,
-                caller_provider_cost=inp.caller_provider_cost,
-                caller_billed=inp.caller_billed, units=inp.units,
-                as_of=inp.effective_at)
-            create_kwargs = {}
-            if inp.effective_at is not None:
-                create_kwargs["effective_at"] = inp.effective_at
-            event = UsageEvent.objects.create(
-                tenant=tenant, customer=customer, request_id=inp.request_id,
-                idempotency_key=inp.idempotency_key, metadata=inp.metadata,
-                event_type=inp.event_type, provider=inp.provider,
-                provider_cost_micros=provider_cost_micros,
-                billed_cost_micros=billed_cost_micros,
-                units=inp.units, currency=inp.currency,
-                usage_metrics=inp.usage_metrics,
-                pricing_provenance=provenance,
-                product_id=inp.product_id, tags=inp.tags, task_id=inp.task_id,
-                billing_owner_id=inp.billing_owner_id,
-                service_id=inp.service_id, agent_id=inp.agent_id,
-                **create_kwargs)
-            if inp.task_id is not None:
-                # One-rule: the ONE accumulate primitive — always records
-                # both totals (the tipping event and everything after a
-                # kill land, bill, and count) and returns crossing
-                # verdicts instead of raising. The event create above and
-                # this accumulate share the savepoint, so totals and
-                # events can never diverge.
-                from apps.platform.tasks.services import TaskService
-                task, verdicts = TaskService.accumulate_cost(
-                    inp.task_id, billed_cost_micros=billed_cost_micros,
+        try:
+            with transaction.atomic():
+                # as_of=effective_at prices on the card versions valid at the
+                # EFFECTIVE time (None → the pricer's own now()).
+                provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
+                    tenant=tenant, customer=customer, event_type=inp.event_type,
+                    provider=inp.provider, usage_metrics=inp.usage_metrics,
+                    tags=inp.tags, currency=inp.currency,
+                    caller_provider_cost=inp.caller_provider_cost,
+                    caller_billed=inp.caller_billed, units=inp.units,
+                    as_of=inp.effective_at)
+                create_kwargs = {}
+                if inp.effective_at is not None:
+                    create_kwargs["effective_at"] = inp.effective_at
+                event = UsageEvent.objects.create(
+                    tenant=tenant, customer=customer, request_id=inp.request_id,
+                    idempotency_key=inp.idempotency_key, metadata=inp.metadata,
+                    event_type=inp.event_type, provider=inp.provider,
                     provider_cost_micros=provider_cost_micros,
-                    tenant_id=tenant.id, customer_id=customer.id)
+                    billed_cost_micros=billed_cost_micros,
+                    units=inp.units, currency=inp.currency,
+                    usage_metrics=inp.usage_metrics,
+                    pricing_provenance=provenance,
+                    product_id=inp.product_id, tags=inp.tags, task_id=inp.task_id,
+                    billing_owner_id=inp.billing_owner_id,
+                    service_id=inp.service_id, agent_id=inp.agent_id,
+                    **create_kwargs)
+                if inp.task_id is not None:
+                    # One-rule: the ONE accumulate primitive — always records
+                    # both totals (the tipping event and everything after a
+                    # kill land, bill, and count) and returns crossing
+                    # verdicts instead of raising. The event create above and
+                    # this accumulate share the savepoint, so totals and
+                    # events can never diverge.
+                    from apps.platform.tasks.services import TaskService
+                    task, verdicts = TaskService.accumulate_cost(
+                        inp.task_id, billed_cost_micros=billed_cost_micros,
+                        provider_cost_micros=provider_cost_micros,
+                        tenant_id=tenant.id, customer_id=customer.id)
+        except IntegrityError as exc:
+            raise RecordingConflict(str(exc)) from exc
         live = {}
         if inp.debit_live_counter:
             # Tier-2 (P2/WS1): maintain the synchronous live counter on the
@@ -436,7 +462,7 @@ class UsageService:
         # currency. A caller-supplied currency must MATCH it (case-insensitive)
         # or the event is rejected — no FX, no mixed-currency data. The
         # normalized stamp itself is gather()'s job.
-        tenant_currency = (tenant.default_currency or "usd").lower()
+        tenant_currency = _tenant_currency(tenant)
         if currency:
             currency = str(currency).strip().lower()
             if currency != tenant_currency:
@@ -456,7 +482,10 @@ class UsageService:
             debit_live_counter=True)
         try:
             outcome = UsageService._record_core(inp)
-        except IntegrityError as exc:
+        except RecordingConflict as exc:
+            # ONLY the savepoint's typed conflict — a post-savepoint
+            # IntegrityError propagates as the hard failure it is (it cannot
+            # be a replay: our own row exists), exactly as on main.
             try:
                 existing = UsageEvent.objects.get(
                     tenant=tenant, customer=customer, idempotency_key=idempotency_key)
@@ -509,6 +538,13 @@ class UsageService:
         payload — e.g. a strict-coverage PricingError) propagates UNCAUGHT;
         the caller (apps.metering.usage.tasks.settle_raw_events) owns the
         attempts/failed bookkeeping and hold release for that case.
+
+        Caller contract: call WITHOUT an ambient transaction, so the atomic
+        below is outermost. Kill execution registers on ITS on_commit and
+        must fire before the hold true-up after it (kills → true-up, the
+        order the old inline loop guaranteed) — an ambient transaction would
+        silently defer kills past the true-up. Pinned by
+        test_settlement.SettleKillOrderingPinTest.
         """
         from apps.billing.queries import settle_ingest_hold, release_ingest_hold
 
@@ -561,6 +597,9 @@ class UsageService:
                 raw.status = "settled"
                 raw.save(update_fields=["status", "updated_at"])
         except IntegrityError:
+            # Base IntegrityError on purpose (the core's RecordingConflict
+            # included): this lane's duplicate-flip reaction has always
+            # covered its WHOLE transaction, not just the recording savepoint.
             # The IntegrityError rolled the atomic back — RELEASING the row
             # lock taken at the top while the DB status is still "pending" —
             # so a second settle_raw_events invocation that claimed this same

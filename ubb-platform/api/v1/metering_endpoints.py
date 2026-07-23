@@ -95,6 +95,13 @@ def _with_uncosted(result):
     return result
 
 
+def _rejected(code, detail):
+    """A batch-item rejection verdict: the typed code plus the constant stop
+    trio — a rejected item was never recorded, so nothing can have stopped."""
+    return {"accepted": False, "code": code, "detail": detail,
+            "stop": False, "stop_reason": None, "stop_scope": None}
+
+
 @metering_router.post("/usage", response={200: RecordUsageResponse})
 @role_floor(WRITE)
 def record_usage(request, payload: RecordUsageRequest):
@@ -140,25 +147,19 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
         customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
     customer = customers[cid]
     if customer is None:
-        return {"accepted": False, "code": "not_found",
-                "detail": "Customer not found",
-                "stop": False, "stop_reason": None, "stop_scope": None}
+        return _rejected("not_found", "Customer not found")
     if item.task_id is not None:
         task_key = (cid, str(item.task_id))
         if task_key not in task_exists:
             task_exists[task_key] = Task.objects.filter(
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
-            return {"accepted": False, "code": "not_found",
-                    "detail": "Task not found",
-                    "stop": False, "stop_reason": None, "stop_scope": None}
+            return _rejected("not_found", "Task not found")
     try:
         result = UsageService.record_usage(
             tenant=tenant, customer=customer, **_usage_kwargs(item))
     except (PricingError, ValueError) as e:
-        code, detail = _usage_error(e)
-        return {"accepted": False, "code": code, "detail": detail,
-                "stop": False, "stop_reason": None, "stop_scope": None}
+        return _rejected(*_usage_error(e))
     return {"accepted": True, **_with_uncosted(result)}
 
 

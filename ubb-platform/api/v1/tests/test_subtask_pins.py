@@ -244,6 +244,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         sub.refresh_from_db()
         self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
 
+
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
     """TransactionTestCase (#112): the mid-batch semantics under test — the
