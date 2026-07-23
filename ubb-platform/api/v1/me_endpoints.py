@@ -5,7 +5,7 @@ from typing import Optional
 
 from django.utils import timezone
 
-from api.v1.pagination import paginate
+from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
 from apps.platform.audit.marker import records_audit
 from core.auth import ProductAccess
@@ -48,10 +48,17 @@ class GrantSummaryOut(Schema):
     expires_at: Optional[str] = None
 
 
-class GrantListResponse(Schema):
-    data: list[GrantSummaryOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def _grant_summary_out(g):
+    return {
+        "id": str(g.id),
+        "kind": g.kind,
+        "remaining_micros": g.remaining_micros,
+        "expires_at": g.expires_at.isoformat() if g.expires_at else None,
+    }
+
+
+class GrantListResponse(Paginated[GrantSummaryOut]):
+    pass
 
 
 class TopUpRequest(Schema):
@@ -83,10 +90,19 @@ class TransactionOut(Schema):
     created_at: str
 
 
-class PaginatedTransactions(Schema):
-    data: list[TransactionOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def _transaction_out(t):
+    return {
+        "id": str(t.id),
+        "transaction_type": t.transaction_type,
+        "amount_micros": t.amount_micros,
+        "balance_after_micros": t.balance_after_micros,
+        "description": t.description,
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+class PaginatedTransactions(Paginated[TransactionOut]):
+    pass
 
 
 class InvoiceOut(Schema):
@@ -97,10 +113,18 @@ class InvoiceOut(Schema):
     created_at: str
 
 
-class PaginatedInvoices(Schema):
-    data: list[InvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def _invoice_out(inv):
+    return {
+        "id": str(inv.id),
+        "total_amount_micros": inv.total_amount_micros,
+        "status": inv.status,
+        "stripe_invoice_id": inv.stripe_invoice_id,
+        "created_at": inv.created_at.isoformat(),
+    }
+
+
+class PaginatedInvoices(Paginated[InvoiceOut]):
+    pass
 
 
 class MeUsageInvoiceOut(Schema):
@@ -115,10 +139,22 @@ class MeUsageInvoiceOut(Schema):
     created_at: datetime
 
 
-class PaginatedUsageInvoices(Schema):
-    data: list[MeUsageInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def _usage_invoice_out(inv):
+    return {
+        "id": str(inv.id),
+        "total_billed_micros": inv.total_billed_micros,
+        "payment_status": inv.payment_status,
+        "hosted_invoice_url": inv.hosted_invoice_url,
+        "invoice_pdf": inv.invoice_pdf,
+        "period_start": inv.period_start,
+        "period_end": inv.period_end,
+        "stripe_invoice_id": inv.stripe_invoice_id,
+        "created_at": inv.created_at,
+    }
+
+
+class PaginatedUsageInvoices(Paginated[MeUsageInvoiceOut]):
+    pass
 
 
 class MeSubscriptionInvoiceOut(Schema):
@@ -132,10 +168,21 @@ class MeSubscriptionInvoiceOut(Schema):
     created_at: datetime
 
 
-class PaginatedSubscriptionInvoices(Schema):
-    data: list[MeSubscriptionInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def _subscription_invoice_out(inv):
+    return {
+        "id": str(inv.id),
+        "amount_paid_micros": inv.amount_paid_micros,
+        "status": inv.status,
+        "hosted_invoice_url": inv.hosted_invoice_url,
+        "invoice_pdf": inv.invoice_pdf,
+        "period_start": inv.period_start,
+        "period_end": inv.period_end,
+        "created_at": inv.created_at,
+    }
+
+
+class PaginatedSubscriptionInvoices(Paginated[MeSubscriptionInvoiceOut]):
+    pass
 
 
 class UsageMetricOut(Schema):
@@ -189,14 +236,9 @@ def list_grants(request, cursor: str = None, limit: int = 50):
     from apps.billing.wallets.models import CreditGrant, Wallet
     wallet = Wallet.objects.filter(customer=customer).first()
     if wallet is None:
-        return {"data": [], "next_cursor": None, "has_more": False}
-    grants, next_cursor, has_more = paginate(
-        CreditGrant.objects.filter(wallet=wallet, status="active"), cursor, limit)
-    return {"data": [
-        {"id": str(g.id), "kind": g.kind, "remaining_micros": g.remaining_micros,
-         "expires_at": g.expires_at.isoformat() if g.expires_at else None}
-        for g in grants],
-        "next_cursor": next_cursor, "has_more": has_more}
+        return empty_page()
+    return page(CreditGrant.objects.filter(wallet=wallet, status="active"),
+                cursor, limit, serialize=_grant_summary_out)
 
 
 @me_router.get("/transactions", response=PaginatedTransactions)
@@ -208,25 +250,9 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     try:
         wallet = Wallet.objects.get(customer=customer)
     except Wallet.DoesNotExist:
-        return {"data": [], "next_cursor": None, "has_more": False}
+        return empty_page()
 
-    txns, next_cursor, has_more = paginate(wallet.transactions.all(), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(t.id),
-                "transaction_type": t.transaction_type,
-                "amount_micros": t.amount_micros,
-                "balance_after_micros": t.balance_after_micros,
-                "description": t.description,
-                "created_at": t.created_at.isoformat(),
-            }
-            for t in txns
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(wallet.transactions.all(), cursor, limit, serialize=_transaction_out)
 
 
 @me_router.post("/top-up", response=TopUpResponse)
@@ -246,23 +272,8 @@ def get_invoices(request, cursor: str = None, limit: int = 50):
     _check_billing_product(request)
     customer = request.widget_customer
 
-    invoices, next_cursor, has_more = paginate(
-        Invoice.objects.filter(customer=customer), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(inv.id),
-                "total_amount_micros": inv.total_amount_micros,
-                "status": inv.status,
-                "stripe_invoice_id": inv.stripe_invoice_id,
-                "created_at": inv.created_at.isoformat(),
-            }
-            for inv in invoices
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(Invoice.objects.filter(customer=customer), cursor, limit,
+                serialize=_invoice_out)
 
 
 @me_router.get("/usage-invoices", response=PaginatedUsageInvoices)
@@ -274,30 +285,11 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
     # invoice (which aggregates every sibling seat). Surfacing it to the seat
     # would leak sibling spend, so a non-owner sees nothing of its own here.
     if customer.resolve_billing_owner().id != customer.id:
-        return {"data": [], "next_cursor": None, "has_more": False}
+        return empty_page()
 
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    invoices, next_cursor, has_more = paginate(
-        CustomerUsageInvoice.objects.filter(customer=customer), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(inv.id),
-                "total_billed_micros": inv.total_billed_micros,
-                "payment_status": inv.payment_status,
-                "hosted_invoice_url": inv.hosted_invoice_url,
-                "invoice_pdf": inv.invoice_pdf,
-                "period_start": inv.period_start,
-                "period_end": inv.period_end,
-                "stripe_invoice_id": inv.stripe_invoice_id,
-                "created_at": inv.created_at,
-            }
-            for inv in invoices
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(CustomerUsageInvoice.objects.filter(customer=customer),
+                cursor, limit, serialize=_usage_invoice_out)
 
 
 @me_router.get("/usage-summary", response=UsageSummaryResponse)
@@ -342,26 +334,8 @@ def list_subscription_invoices(request, cursor: str = None, limit: int = 50):
     # Same billing-owner gate as usage invoices: a pooled seat does not own the
     # consolidated subscription bill and must not see it.
     if customer.resolve_billing_owner().id != customer.id:
-        return {"data": [], "next_cursor": None, "has_more": False}
+        return empty_page()
 
     from apps.subscriptions.models import SubscriptionInvoice
-    invoices, next_cursor, has_more = paginate(
-        SubscriptionInvoice.objects.filter(customer=customer), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(inv.id),
-                "amount_paid_micros": inv.amount_paid_micros,
-                "status": inv.status,
-                "hosted_invoice_url": inv.hosted_invoice_url,
-                "invoice_pdf": inv.invoice_pdf,
-                "period_start": inv.period_start,
-                "period_end": inv.period_end,
-                "created_at": inv.created_at,
-            }
-            for inv in invoices
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(SubscriptionInvoice.objects.filter(customer=customer),
+                cursor, limit, serialize=_subscription_invoice_out)

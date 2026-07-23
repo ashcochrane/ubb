@@ -14,11 +14,9 @@ Operator actions on the account appear here like any other principal's, under th
 one ``UBB operator`` name; widget-initiated top-ups appear with actor kind
 ``end_customer``.
 """
-from typing import Optional
-
 from ninja import Router, Schema
 
-from api.v1.pagination import paginate
+from api.v1.pagination import Paginated, page
 from apps.platform.audit.models import AuditRecord
 from core.auth import ApiKeyAuth, READ, role_floor
 
@@ -38,10 +36,8 @@ class AuditRecordOut(Schema):
     metadata: dict
 
 
-class AuditRecordListResponse(Schema):
-    data: list[AuditRecordOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class AuditRecordListResponse(Paginated[AuditRecordOut]):
+    pass
 
 
 def _audit_out(r):
@@ -78,6 +74,4 @@ def list_audit_records(request, action: str = None, resource_type: str = None,
         qs = qs.filter(resource_type=resource_type)
     if resource_id:
         qs = qs.filter(resource_id=resource_id)
-    rows, next_cursor, has_more = paginate(qs, cursor, limit)
-    return {"data": [_audit_out(r) for r in rows],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(qs, cursor, limit, serialize=_audit_out)

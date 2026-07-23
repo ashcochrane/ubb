@@ -5,6 +5,15 @@ from typing import Optional
 from ninja import Schema, Field
 from pydantic import field_validator
 
+from core.pagination import Paginated
+
+# Envelope + serializer conventions (#115): every list endpoint answers a
+# concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
+# name (ninja silently overwrites duplicate schema names in the one document,
+# #77's hazard, so every name below must stay unique). Each entity's row
+# mapping lives in ONE named serializer function declared beside its Out
+# schema; endpoints answer ``page(qs, cursor, limit, serialize=<it>)``.
+
 
 class PreCheckRequest(Schema):
     customer_id: UUID
@@ -185,6 +194,23 @@ class UsageEventOut(Schema):
     stop_context: Optional[list] = None
 
 
+def usage_event_out(e):
+    """UsageEventOut's serializer — the lean list row (the full pricing
+    receipt is the detail view's, GET /usage/{event_id})."""
+    return {
+        "id": e.id,
+        "request_id": e.request_id,
+        "event_type": e.event_type,
+        "provider": e.provider,
+        "provider_cost_micros": e.provider_cost_micros,
+        "billed_cost_micros": e.billed_cost_micros,
+        "units": e.units,
+        "metadata": e.metadata,
+        "effective_at": e.effective_at.isoformat(),
+        "stop_context": e.stop_context,
+    }
+
+
 class UsageEventDetailOut(Schema):
     # Full pricing receipt for one event — the audit lookup. pricing_provenance
     # is the recorded "why this amount" (engine version, price source, per-metric
@@ -268,10 +294,8 @@ class TopUpCheckoutResponse(Schema):
     checkout_url: str
 
 
-class PaginatedUsageResponse(Schema):
-    data: list[UsageEventOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class PaginatedUsageResponse(Paginated[UsageEventOut]):
+    pass
 
 
 class WithdrawRequest(Schema):
@@ -319,10 +343,22 @@ class WalletTransactionOut(Schema):
     created_at: str
 
 
-class PaginatedWalletTransactions(Schema):
-    data: list[WalletTransactionOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def wallet_transaction_out(t):
+    """WalletTransactionOut's serializer (the tenant-facing ledger row; the
+    /me widget surface serves its own leaner TransactionOut)."""
+    return {
+        "id": t.id,
+        "transaction_type": t.transaction_type,
+        "amount_micros": t.amount_micros,
+        "balance_after_micros": t.balance_after_micros,
+        "description": t.description,
+        "reference_id": t.reference_id,
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+class PaginatedWalletTransactions(Paginated[WalletTransactionOut]):
+    pass
 
 
 class ReadyResponse(Schema):
@@ -424,10 +460,29 @@ class GrantOut(Schema):
     transaction_id: Optional[str] = None
 
 
-class PaginatedGrants(Schema):
-    data: list[GrantOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def grant_out(grant, *, balance_micros=None, transaction_id=None):
+    """GrantOut's serializer. The keyword pair is set only on the
+    money-moving answers (create/void), never on list rows."""
+    return {
+        "id": str(grant.id),
+        "kind": grant.kind,
+        "granted_micros": grant.granted_micros,
+        "remaining_micros": grant.remaining_micros,
+        "expired_micros": grant.expired_micros,
+        "voided_micros": grant.voided_micros,
+        "currency": grant.currency,
+        "status": grant.status,
+        "source": grant.source,
+        "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
+        "warning_sent_at": grant.warning_sent_at.isoformat() if grant.warning_sent_at else None,
+        "created_at": grant.created_at.isoformat(),
+        "balance_micros": balance_micros,
+        "transaction_id": transaction_id,
+    }
+
+
+class PaginatedGrants(Paginated[GrantOut]):
+    pass
 
 
 class TenantMarkupIn(Schema):
@@ -534,13 +589,26 @@ class UsageInvoiceOut(Schema):
     last_attempt_error: Optional[str] = None
 
 
-class UsageInvoiceListResponse(Schema):
+def usage_invoice_out(r):
+    """UsageInvoiceOut's serializer — one customer's usage invoice."""
+    return {
+        "period_start": r.period_start.isoformat(),
+        "period_end": r.period_end.isoformat(),
+        "total_billed_micros": r.total_billed_micros,
+        "currency": r.currency,
+        "status": r.status,
+        "stripe_invoice_id": r.stripe_invoice_id,
+        "skip_reason": r.skip_reason,
+        "push_attempts": r.push_attempts,
+        "last_attempt_error": r.last_attempt_error,
+    }
+
+
+class UsageInvoiceListResponse(Paginated[UsageInvoiceOut]):
     # NOT "PaginatedUsageInvoices" — the /me surface already owns that
     # component name (me_endpoints.py) and ninja silently overwrites
     # duplicate schema names in the one document (#77's hazard).
-    data: list[UsageInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+    pass
 
 
 class TenantUsageInvoiceOut(Schema):
@@ -555,10 +623,24 @@ class TenantUsageInvoiceOut(Schema):
     last_attempt_error: Optional[str] = None
 
 
-class TenantUsageInvoiceListResponse(Schema):
-    data: list[TenantUsageInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def tenant_usage_invoice_out(r):
+    """TenantUsageInvoiceOut's serializer — the tenant-wide invoice sweep
+    row (callers select_related("customer") for external_id)."""
+    return {
+        "customer_id": str(r.customer_id),
+        "external_id": r.customer.external_id,
+        "period_start": r.period_start.isoformat(),
+        "total_billed_micros": r.total_billed_micros,
+        "status": r.status,
+        "stripe_invoice_id": r.stripe_invoice_id,
+        "skip_reason": r.skip_reason,
+        "push_attempts": r.push_attempts,
+        "last_attempt_error": r.last_attempt_error,
+    }
+
+
+class TenantUsageInvoiceListResponse(Paginated[TenantUsageInvoiceOut]):
+    pass
 
 
 class PostpaidConfigIn(Schema):
@@ -616,6 +698,20 @@ class BookOut(Schema):
     is_default: bool
 
 
+def book_out(b):
+    """BookOut's serializer — a rate-card book (the container)."""
+    return {
+        "id": str(b.id),
+        "card_type": b.card_type,
+        "provider_key": b.provider_key,
+        "key": b.key,
+        "name": b.name,
+        "currency": b.currency,
+        "version": b.version,
+        "is_default": b.is_default,
+    }
+
+
 class RateChangeIn(Schema):
     """One reprice in a publish. Match keys (metric_name/provider/event_type/
     dimensions) locate the active rate; the remaining (nullable) fields, when
@@ -657,16 +753,34 @@ class RateOut(Schema):
     valid_to: Optional[str] = None
 
 
-class PaginatedBooks(Schema):
-    data: list[BookOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def rate_out(r):
+    """RateOut's serializer — one rate version under a book."""
+    return {
+        "id": str(r.id),
+        "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
+        "lineage_id": str(r.lineage_id),
+        "card_type": r.card_type,
+        "metric_name": r.metric_name,
+        "provider": r.provider,
+        "event_type": r.event_type,
+        "dimensions": r.dimensions,
+        "pricing_model": r.pricing_model,
+        "rate_per_unit_micros": r.rate_per_unit_micros,
+        "unit_quantity": r.unit_quantity,
+        "fixed_micros": r.fixed_micros,
+        "currency": r.currency,
+        "product_id": r.product_id,
+        "valid_from": r.valid_from.isoformat(),
+        "valid_to": r.valid_to.isoformat() if r.valid_to else None,
+    }
 
 
-class PaginatedRates(Schema):
-    data: list[RateOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class PaginatedBooks(Paginated[BookOut]):
+    pass
+
+
+class PaginatedRates(Paginated[RateOut]):
+    pass
 
 
 class TenantConfigOut(Schema):
@@ -787,10 +901,21 @@ class TenantBillingPeriodOut(Schema):
     platform_fee_micros: int
 
 
-class TenantBillingPeriodListResponse(Schema):
-    data: list[TenantBillingPeriodOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def tenant_billing_period_out(p):
+    """TenantBillingPeriodOut's serializer — one platform billing period."""
+    return {
+        "id": str(p.id),
+        "period_start": p.period_start.isoformat(),
+        "period_end": p.period_end.isoformat(),
+        "status": p.status,
+        "total_usage_cost_micros": p.total_usage_cost_micros,
+        "event_count": p.event_count,
+        "platform_fee_micros": p.platform_fee_micros,
+    }
+
+
+class TenantBillingPeriodListResponse(Paginated[TenantBillingPeriodOut]):
+    pass
 
 
 class TenantInvoiceOut(Schema):
@@ -802,7 +927,17 @@ class TenantInvoiceOut(Schema):
     created_at: str
 
 
-class TenantInvoiceListResponse(Schema):
-    data: list[TenantInvoiceOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+def tenant_invoice_out(inv):
+    """TenantInvoiceOut's serializer — one platform invoice."""
+    return {
+        "id": str(inv.id),
+        "billing_period_id": str(inv.billing_period_id),
+        "stripe_invoice_id": inv.stripe_invoice_id,
+        "total_amount_micros": inv.total_amount_micros,
+        "status": inv.status,
+        "created_at": inv.created_at.isoformat(),
+    }
+
+
+class TenantInvoiceListResponse(Paginated[TenantInvoiceOut]):
+    pass

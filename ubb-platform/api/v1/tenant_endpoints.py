@@ -4,14 +4,14 @@ from uuid import UUID
 from django.db import transaction
 from ninja import Router, Schema
 
-from api.v1.pagination import paginate
+from api.v1.pagination import Paginated, page
 from api.v1.schemas import (
     TenantBillingPeriodListResponse,
-    TenantBillingPeriodOut,
     TenantConfigIn,
     TenantConfigOut,
     TenantInvoiceListResponse,
-    TenantInvoiceOut,
+    tenant_billing_period_out,
+    tenant_invoice_out,
 )
 from core.auth import ApiKeyAuth, role_floor
 from core.problems import Problem, ProblemOut
@@ -29,52 +29,15 @@ tenant_router = Router(auth=ApiKeyAuth())
 @tenant_router.get("/billing-periods", response=TenantBillingPeriodListResponse)
 @role_floor(READ)
 def list_billing_periods(request, cursor: str = None, limit: int = 50):
-    tenant = request.auth.tenant
-
-    periods, next_cursor, has_more = paginate(
-        TenantBillingPeriod.objects.filter(tenant=tenant), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(p.id),
-                "period_start": p.period_start.isoformat(),
-                "period_end": p.period_end.isoformat(),
-                "status": p.status,
-                "total_usage_cost_micros": p.total_usage_cost_micros,
-                "event_count": p.event_count,
-                "platform_fee_micros": p.platform_fee_micros,
-            }
-            for p in periods
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(TenantBillingPeriod.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=tenant_billing_period_out)
 
 
 @tenant_router.get("/invoices", response=TenantInvoiceListResponse)
 @role_floor(READ)
 def list_invoices(request, cursor: str = None, limit: int = 50):
-    tenant = request.auth.tenant
-
-    invoices, next_cursor, has_more = paginate(
-        TenantInvoice.objects.filter(tenant=tenant), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": str(inv.id),
-                "billing_period_id": str(inv.billing_period_id),
-                "stripe_invoice_id": inv.stripe_invoice_id,
-                "total_amount_micros": inv.total_amount_micros,
-                "status": inv.status,
-                "created_at": inv.created_at.isoformat(),
-            }
-            for inv in invoices
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(TenantInvoice.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=tenant_invoice_out)
 
 
 # ---- Self-serve API key lifecycle (F5.2) ----
@@ -101,10 +64,8 @@ class ApiKeyOut(Schema):
     created_at: str
 
 
-class ApiKeyListResponse(Schema):
-    data: list[ApiKeyOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class ApiKeyListResponse(Paginated[ApiKeyOut]):
+    pass
 
 
 class ApiKeyCreateIn(Schema):
@@ -132,10 +93,8 @@ def list_api_keys(request, cursor: str = None, limit: int = 50):
     last_used_at is buffered in Redis and flushed to the DB periodically, so
     it may lag a recently-used key by up to the flush interval.
     """
-    keys, next_cursor, has_more = paginate(
-        TenantApiKey.objects.filter(tenant=request.auth.tenant), cursor, limit)
-    return {"data": [_api_key_out(k) for k in keys],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(TenantApiKey.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=_api_key_out)
 
 
 @tenant_router.post("/api-keys", response={201: dict, 422: ProblemOut})
@@ -300,10 +259,8 @@ class InvitationOut(Schema):
     created_at: str
 
 
-class InvitationListResponse(Schema):
-    data: list[InvitationOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class InvitationListResponse(Paginated[InvitationOut]):
+    pass
 
 
 class MemberOut(Schema):
@@ -317,10 +274,8 @@ class MemberOut(Schema):
     created_at: str
 
 
-class MemberListResponse(Schema):
-    data: list[MemberOut]
-    next_cursor: Optional[str] = None
-    has_more: bool
+class MemberListResponse(Paginated[MemberOut]):
+    pass
 
 
 class MemberRoleUpdateIn(Schema):
@@ -378,10 +333,8 @@ def list_invitations(request, cursor: str = None, limit: int = 50):
     Admin floor — the one deliberate exception to "every GET floors at Read"
     (#62's literal "invitations create/list/revoke, Admin-gated"; the members
     list beside it stays Read). Flagged for review on #80; kept as specified."""
-    invitations, next_cursor, has_more = paginate(
-        Invitation.objects.filter(tenant=request.auth.tenant), cursor, limit)
-    return {"data": [_invitation_out(i) for i in invitations],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(Invitation.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=_invitation_out)
 
 
 @tenant_router.delete(
@@ -404,10 +357,8 @@ def revoke_invitation(request, invitation_id: UUID):
 def list_members(request, cursor: str = None, limit: int = 50):
     """This tenant's members (pending and active), newest first. Read floor —
     any tenant principal may list the roster."""
-    members, next_cursor, has_more = paginate(
-        Member.objects.filter(tenant=request.auth.tenant), cursor, limit)
-    return {"data": [_member_out(m) for m in members],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(Member.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=_member_out)
 
 
 @tenant_router.patch(
