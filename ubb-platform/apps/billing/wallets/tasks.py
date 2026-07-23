@@ -4,6 +4,8 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
+from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,7 +98,10 @@ def reconcile_wallet_balances():
     )
 
 
-GRACE = timedelta(hours=6)       # > the live outbox retry/DLQ horizon (~2h43m: backoff 30s,2m,10m,30m,2h x5) + headroom
+GRACE = timedelta(hours=6)       # > the live outbox retry/DLQ horizon + headroom
+# Loud rot: shrinking GRACE (or growing the outbox backoff schedule) past each
+# other would repair events the outbox is still legitimately retrying.
+assert GRACE > OUTBOX_RETRY_HORIZON
 LOOKBACK = timedelta(days=7)
 REPAIR_SPIKE_THRESHOLD = 25
 

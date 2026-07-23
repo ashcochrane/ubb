@@ -70,6 +70,15 @@ rule needs judgment; the legitimate shapes are:
   debits exactly once, accept-hold plus settle-delta nets to the exact price, a stale task gets
   reaped. Prefer an invariant assertion over a single golden value.
 - **Money in micros**, as integers, everywhere in fixtures and assertions.
+- **Outbox payloads are typed, even in tests** (#114): build any payload a consumer will *parse*
+  as `asdict(SchemaClass(...))` from `apps/platform/events/schemas.py`, never as a literal payload
+  dict — a literal dict re-encodes field names and defaults, and can silently omit required
+  fields. Ids may be passed as UUIDs (construction normalizes to str). Two legitimate literals:
+  a test whose *point* is a malformed or legacy payload shape (e.g. "missing required field is
+  loud", "absent key takes the class default"), kept as a dict with a comment saying so; and the
+  events-infrastructure tests (`apps/platform/events/tests/`) that exercise row/dispatch/delivery
+  mechanics with deliberately skeletal payloads — there the payload is opaque transport content,
+  and typing it would falsely couple transport tests to product contracts.
 
 ## "Done" means
 

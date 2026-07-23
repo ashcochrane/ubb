@@ -3,12 +3,14 @@ from django.db import models
 from core.models import BaseModel
 
 
+# "skipped" (no-config ⇒ vacuous success) was documented here for years but
+# produced nowhere — deleted by #114. A tenant with no webhook config still
+# terminates as "processed" (the delivery handler is a no-op for it).
 OUTBOX_STATUS_CHOICES = [
     ("pending", "Pending"),
     ("processing", "Processing"),
     ("processed", "Processed"),
     ("failed", "Failed"),
-    ("skipped", "Skipped"),
 ]
 
 

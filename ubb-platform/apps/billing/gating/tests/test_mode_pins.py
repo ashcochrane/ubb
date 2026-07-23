@@ -7,6 +7,7 @@ zero-crossing early warning, level-based suspend) is untouched.
 """
 import json
 import uuid
+from dataclasses import asdict
 from importlib import import_module
 
 import pytest
@@ -22,6 +23,7 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -111,9 +113,9 @@ class TestOffIsByteForBytePreEnforcement:
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        handle_usage_recorded_billing(str(uuid.uuid4()), {
-            "tenant_id": str(t.id), "customer_id": str(c.id),
-            "event_id": str(uuid.uuid4()), "cost_micros": 8_000_000})
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            tenant_id=t.id, customer_id=c.id,
+            event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         w = Wallet.objects.get(customer=c)
         assert w.balance_micros == -3_000_000                     # billed
         c.refresh_from_db()

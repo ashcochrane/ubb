@@ -1,9 +1,11 @@
 import pytest
+from dataclasses import asdict
 from unittest.mock import patch
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import UsageRecorded
 from apps.referrals.models import ReferralProgram, Referrer, Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator
 from apps.referrals.handlers import handle_usage_recorded_referrals
@@ -34,13 +36,13 @@ class TestUsageRecordedHandler:
     def test_accumulates_revenue_share(self, mock_task):
         tenant, _, referred, referral = self._setup("revenue_share", 0.10)
 
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 100_000
@@ -52,13 +54,13 @@ class TestUsageRecordedHandler:
         tenant, _, referred, referral = self._setup("revenue_share", 0.10)
 
         for i in range(3):
-            handle_usage_recorded_referrals(f"evt-outbox-{i}", {
-                "tenant_id": str(tenant.id),
-                "customer_id": str(referred.id),
-                "cost_micros": 500_000,
-                "event_type": "api_call",
-                "event_id": f"evt-{i}",
-            })
+            handle_usage_recorded_referrals(f"evt-outbox-{i}", asdict(UsageRecorded(
+                tenant_id=tenant.id,
+                customer_id=referred.id,
+                cost_micros=500_000,
+                event_type="api_call",
+                event_id=f"evt-{i}",
+            )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 150_000  # 3 * 50K
@@ -68,25 +70,25 @@ class TestUsageRecordedHandler:
     def test_flat_fee_paid_once(self, mock_task):
         tenant, _, referred, referral = self._setup("flat_fee", 5_000_000)
 
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 5_000_000
 
         # Second event should not add more
-        handle_usage_recorded_referrals("evt-outbox-2", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-2",
-        })
+        handle_usage_recorded_referrals("evt-outbox-2", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-2",
+        )))
 
         acc.refresh_from_db()
         assert acc.total_earned_micros == 5_000_000  # Still 5M
@@ -98,24 +100,24 @@ class TestUsageRecordedHandler:
         customer = Customer.objects.create(tenant=tenant, external_id="nobody")
 
         # Should not raise
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
     def test_skips_zero_cost(self):
         tenant, _, referred, referral = self._setup("revenue_share", 0.10)
 
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 0,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=0,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 0
@@ -128,25 +130,25 @@ class TestUsageRecordedHandler:
         )
 
         # First event: 100K reward (within cap)
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 100_000
 
         # Second event: would be 100K but cap allows only 50K more
-        handle_usage_recorded_referrals("evt-outbox-2", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-2",
-        })
+        handle_usage_recorded_referrals("evt-outbox-2", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-2",
+        )))
 
         acc.refresh_from_db()
         assert acc.total_earned_micros == 150_000  # Capped
@@ -160,25 +162,25 @@ class TestUsageRecordedHandler:
         )
 
         # First event: 10% of 1M = 100K (within 120K cap)
-        handle_usage_recorded_referrals("evt-outbox-cap-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-cap-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-cap-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-cap-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 100_000
 
         # Second event: would be 100K but only 20K remaining under cap
-        handle_usage_recorded_referrals("evt-outbox-cap-2", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-cap-2",
-        })
+        handle_usage_recorded_referrals("evt-outbox-cap-2", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-cap-2",
+        )))
 
         acc.refresh_from_db()
         assert acc.total_earned_micros == 120_000  # Capped at 120K, not 200K
@@ -187,14 +189,14 @@ class TestUsageRecordedHandler:
     def test_profit_share_with_raw_cost(self, mock_task):
         tenant, _, referred, referral = self._setup("profit_share", 0.50)
 
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "provider_cost_micros": 200_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            provider_cost_micros=200_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         # Profit = 800K, reward = 400K
@@ -206,13 +208,13 @@ class TestUsageRecordedHandler:
             reward_window_ends_at=timezone.now() - timezone.timedelta(days=1),
         )
 
-        handle_usage_recorded_referrals("evt-outbox-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(referred.id),
-            "cost_micros": 1_000_000,
-            "event_type": "api_call",
-            "event_id": "evt-1",
-        })
+        handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
+            tenant_id=tenant.id,
+            customer_id=referred.id,
+            cost_micros=1_000_000,
+            event_type="api_call",
+            event_id="evt-1",
+        )))
 
         # Referral should be marked expired
         referral.refresh_from_db()

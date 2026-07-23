@@ -2,21 +2,16 @@
 
 Rides ``openapi/v1.json`` (and the runtime ``/api/v1/openapi.json``) via the
 composed API's ``openapi_extra``, making catalog drift a CI failure at the
-drift gate (ADR-002; subsumes the unit set-equality pin in
-``tests/test_catalog.py``, which stays as defense in depth).
+drift gate (ADR-002).
 
-Sources of truth: ``catalog.WEBHOOK_EVENT_TYPES`` for the catalog,
-``schemas.py``'s frozen dataclasses for payloads. Building refuses if the two
-disagree, so the generated document can never advertise a catalog the payload
-registry doesn't back.
+Source of truth: the payload-schema registry (``schemas.py``). The catalog
+(``catalog.WEBHOOK_EVENT_TYPES``) derives from the same registry, so the
+generated document can never advertise a catalog the payload registry doesn't
+back — the build-time refusal this module used to need is structural now.
 """
-import dataclasses
-import inspect
-
 from pydantic import TypeAdapter
 
-from apps.platform.events import schemas
-from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
+from apps.platform.events.schemas import payload_schema_classes
 
 # The three delivery headers webhooks.py sends with every POST.
 _HEADER_PARAMETERS = [
@@ -53,33 +48,11 @@ _HEADER_PARAMETERS = [
 ]
 
 
-def _payload_schema_classes():
-    """The frozen payload dataclasses defined in schemas.py (not imported in),
-    keyed for the catalog comparison — the same enumeration the set-equality
-    pin uses."""
-    return [
-        obj
-        for obj in vars(schemas).values()
-        if inspect.isclass(obj)
-        and obj.__module__ == schemas.__name__
-        and dataclasses.is_dataclass(obj)
-        and isinstance(getattr(obj, "EVENT_TYPE", None), str)
-    ]
-
-
 def build_webhooks_section() -> dict:
-    by_type = {cls.EVENT_TYPE: cls for cls in _payload_schema_classes()}
-    if set(by_type) != set(WEBHOOK_EVENT_TYPES):
-        missing = sorted(set(WEBHOOK_EVENT_TYPES) - set(by_type))
-        extra = sorted(set(by_type) - set(WEBHOOK_EVENT_TYPES))
-        raise RuntimeError(
-            "webhook catalog and payload-schema registry disagree — "
-            f"catalog-only: {missing}, schema-only: {extra}. Fix catalog.py "
-            "or schemas.py before the document can be generated."
-        )
+    by_type = {cls.EVENT_TYPE: cls for cls in payload_schema_classes()}
 
     section = {}
-    for event_type in sorted(WEBHOOK_EVENT_TYPES):
+    for event_type in sorted(by_type):
         payload_schema = TypeAdapter(by_type[event_type]).json_schema()
         envelope = {
             "type": "object",

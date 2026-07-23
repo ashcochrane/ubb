@@ -3,6 +3,8 @@ import logging
 from django.db.models import F
 from django.utils import timezone
 
+from apps.platform.events.schemas import UsageRecorded
+
 logger = logging.getLogger("ubb.events")
 
 
@@ -30,8 +32,12 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     contract, then to now() when event_id is absent or not a valid UUID row
     (keeps legacy test fixtures with "evt-1" style ids green).
     """
-    provider = payload.get("provider_cost_micros", 0) or 0
-    billed = payload.get("billed_cost_micros", payload.get("cost_micros", 0)) or 0
+    evt = UsageRecorded.from_payload(payload)
+    provider = evt.provider_cost_micros or 0
+    # billed_cost_micros is None on a legacy payload predating the split —
+    # the billed total then IS cost_micros.
+    billed = (evt.billed_cost_micros
+              if evt.billed_cost_micros is not None else evt.cost_micros) or 0
     if billed <= 0 and provider <= 0:
         return
 
@@ -40,7 +46,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     import datetime as _dt
     from django.utils.dateparse import parse_datetime
     eff = None
-    raw_eff = payload.get("effective_at")
+    raw_eff = evt.effective_at
     if raw_eff:
         eff = parse_datetime(raw_eff)
         if eff is not None and eff.tzinfo is not None:
@@ -51,17 +57,16 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         # BEFORE the DB query, so it can never raise DataError inside the
         # atomic block. Falls back to now() below.
         from apps.metering.queries import get_usage_event_effective_at
-        ev_id = payload.get("event_id")
-        if ev_id:
-            eff = get_usage_event_effective_at(ev_id)
+        if evt.event_id:
+            eff = get_usage_event_effective_at(evt.event_id)
     basis = eff.date() if eff else timezone.now().date()
     period_start, period_end = _period_bounds_for(basis)
 
     from apps.subscriptions.economics.models import CustomerCostAccumulator
 
     rows = CustomerCostAccumulator.objects.filter(
-        tenant_id=payload["tenant_id"],
-        customer_id=payload["customer_id"],
+        tenant_id=evt.tenant_id,
+        customer_id=evt.customer_id,
         period_start=period_start,
     ).update(
         total_provider_cost_micros=F("total_provider_cost_micros") + provider,
@@ -73,8 +78,8 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         from django.db import IntegrityError
         try:
             CustomerCostAccumulator.objects.create(
-                tenant_id=payload["tenant_id"],
-                customer_id=payload["customer_id"],
+                tenant_id=evt.tenant_id,
+                customer_id=evt.customer_id,
                 period_start=period_start,
                 period_end=period_end,
                 total_provider_cost_micros=provider,
@@ -83,8 +88,8 @@ def handle_usage_recorded_subscriptions(event_id, payload):
             )
         except IntegrityError:
             CustomerCostAccumulator.objects.filter(
-                tenant_id=payload["tenant_id"],
-                customer_id=payload["customer_id"],
+                tenant_id=evt.tenant_id,
+                customer_id=evt.customer_id,
                 period_start=period_start,
             ).update(
                 total_provider_cost_micros=F("total_provider_cost_micros") + provider,

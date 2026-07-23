@@ -2,11 +2,12 @@
 
 The patrol (#44) keys its re-mint pass on exactly these verdicts, so the
 mapping from OutboxEvent status to announcement status is pinned here:
-terminal success (processed, or skipped = vacuous success for a tenant with
-no webhook config) is announced and never re-minted; a dead-lettered stamp is
-unannounced; pending/processing is in flight and left alone; a stamp whose
-row the outbox cleanup deleted is announced (cleanup only ever deletes
-terminal-success rows).
+terminal success (processed — for a tenant with no webhook config that is
+vacuous success, the delivery handler being a no-op) is announced and never
+re-minted; a dead-lettered stamp is unannounced; pending/processing is in
+flight and left alone; a stamp whose row the outbox cleanup deleted is
+announced (cleanup only ever deletes terminal-success rows). The unproduced
+"skipped" status was deleted by #114.
 """
 import uuid
 
@@ -35,9 +36,6 @@ class TestAnnouncementStatus:
     def test_processed_is_announced(self):
         assert announcement_status(_row("processed").id) == ANNOUNCED
 
-    def test_skipped_is_vacuous_success_never_reminted(self):
-        assert announcement_status(_row("skipped").id) == ANNOUNCED
-
     def test_dead_lettered_is_unannounced(self):
         assert announcement_status(_row("failed").id) == UNANNOUNCED
 
@@ -46,7 +44,7 @@ class TestAnnouncementStatus:
         assert announcement_status(_row("processing").id) == IN_FLIGHT
 
     def test_stamp_outliving_outbox_cleanup_stays_announced(self):
-        # cleanup_outbox deletes processed/skipped rows after 30/90 days;
-        # failed rows are never auto-deleted — so a dangling stamp can only
-        # mean the announcement terminally succeeded long ago.
+        # cleanup_outbox deletes processed rows after 30 days; failed rows
+        # are never auto-deleted — so a dangling stamp can only mean the
+        # announcement terminally succeeded long ago.
         assert announcement_status(uuid.uuid4()) == ANNOUNCED

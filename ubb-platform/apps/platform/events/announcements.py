@@ -6,9 +6,9 @@ announcement, inside the same atomic unit as the transition that emitted it.
 This module is the ONE definition of what that stamp means, shared by every
 consumer (the hourly patrol's re-mint pass, ops surfaces, tests):
 
-- ANNOUNCED   — the stamped event reached terminal success: ``processed``,
-                or ``skipped`` (a tenant with no webhook config has chosen no
-                push channel — vacuous success, never re-minted). A stamp
+- ANNOUNCED   — the stamped event reached terminal success (``processed`` —
+                for a tenant with no webhook config that is vacuous success:
+                no push channel was chosen, never re-minted). A stamp
                 pointing at a row the outbox cleanup has since deleted is
                 ALSO announced: cleanup only ever deletes terminal-success
                 rows (failed rows are never auto-deleted).
@@ -30,8 +30,6 @@ ANNOUNCED = "announced"
 IN_FLIGHT = "in_flight"
 UNANNOUNCED = "unannounced"
 
-_TERMINAL_SUCCESS = ("processed", "skipped")
-
 
 def announcement_status(announce_outbox_id):
     """Classify a row's ``announce_outbox_id`` stamp per delivery spec §B.
@@ -46,7 +44,7 @@ def announcement_status(announce_outbox_id):
         # The stamped row was deleted by cleanup_outbox, which only touches
         # terminal-success rows — announced, long ago.
         return ANNOUNCED
-    if status in _TERMINAL_SUCCESS:
+    if status == "processed":
         return ANNOUNCED
     if status == "failed":
         return UNANNOUNCED

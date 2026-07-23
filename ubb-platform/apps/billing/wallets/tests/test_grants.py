@@ -3,6 +3,7 @@
 Concurrency proofs live in apps/billing/tests/test_concurrency_races_grants.py.
 """
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 from unittest.mock import MagicMock
 
@@ -20,6 +21,7 @@ from apps.billing.wallets.models import (
 )
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 
@@ -48,11 +50,11 @@ def _make_grant(wallet, tenant, *, kind, amount, expires_at=None, source="api",
 def _drawdown(tenant, customer, cost, event_id=None):
     """Drive the real live drawdown handler once."""
     event_id = event_id or str(uuid.uuid4())
-    payload = {
-        "tenant_id": str(tenant.id), "customer_id": str(customer.id),
-        "event_id": event_id, "billing_owner_id": str(customer.id),
-        "cost_micros": cost,
-    }
+    payload = asdict(UsageRecorded(
+        tenant_id=tenant.id, customer_id=customer.id,
+        event_id=event_id, billing_owner_id=customer.id,
+        cost_micros=cost,
+    ))
     handle_usage_recorded_billing(str(uuid.uuid4()), payload)
     return event_id
 

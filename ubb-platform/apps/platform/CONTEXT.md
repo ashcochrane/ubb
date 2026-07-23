@@ -179,6 +179,24 @@ _Avoid_: "message", "signal"; treating a `.delay()` failure as a delivery failur
 A product's subscriber to an event type, registered in `AppConfig.ready()`, optionally gated by
 `requires_product`. (`apps/platform/events/registry.py`)
 
+**Payload schema**:
+The frozen dataclass contract for one event type — both halves of the seam live on the base
+class: producers construct (ids as `UUID | str`, normalized to str at construction) then
+`asdict()` into `write_event` (which asserts the caller's open atomic block); consumers
+`SchemaClass.from_payload(payload)` — unknown keys filtered, defaults applied from the class,
+absent required fields loud. The webhook catalog (`catalog.WEBHOOK_EVENT_TYPES`) DERIVES from
+the registry the base class builds, so adding the schema class IS adding the event type (two
+edits: the class + the emit); a missing or duplicate `EVENT_TYPE` is an import-time error.
+(`apps/platform/events/schemas.py:EventSchema`)
+_Avoid_: hand-parsing `payload["…"]` / `.get(…, restated-default)` in handlers, or hand-building
+payload dicts in tests — both re-encode the contract the class already owns.
+
+**Retry horizon**:
+The wall-clock from an event's first failed dispatch to dead-letter when every retry fails —
+`RETRY_HORIZON` (= sum of `BACKOFF_SCHEDULE`, ~2h43m). Repair jobs that must outwait the outbox
+before treating absence as loss (drawdown reconcile GRACE, resnapshot marker age) assert against
+it instead of restating the arithmetic as prose. (`apps/platform/events/tasks.py`)
+
 **Dead letter**:
 An event that has exhausted its retries and been marked `failed` — alerted, never auto-deleted.
 

@@ -33,6 +33,8 @@ class TestWriteEvent:
 
     @pytest.mark.django_db(transaction=True)
     def test_write_event_schedules_celery_task_on_commit(self):
+        from django.db import transaction
+
         from apps.platform.events.outbox import write_event
 
         schema = UsageRecorded(
@@ -43,7 +45,9 @@ class TestWriteEvent:
         )
 
         with patch("apps.platform.events.tasks.process_single_event") as mock_task:
-            write_event(schema)
+            with transaction.atomic():
+                write_event(schema)
+                mock_task.delay.assert_not_called()  # doorbell waits for commit
 
         mock_task.delay.assert_called_once()
 
@@ -53,6 +57,8 @@ class TestWriteEvent:
         not the queue. A dead broker at dispatch time must never raise out
         of the on_commit chain — the durable pending row is picked up by the
         minutely sweep."""
+        from django.db import transaction
+
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.outbox import write_event
 
@@ -65,10 +71,31 @@ class TestWriteEvent:
 
         with patch("apps.platform.events.tasks.process_single_event") as mock_task:
             mock_task.delay.side_effect = ConnectionError("broker down")
-            write_event(schema)  # must not raise
+            with transaction.atomic():
+                write_event(schema)  # must not raise
 
         event = OutboxEvent.objects.get()
         assert event.status == "pending"
+
+    @pytest.mark.django_db(transaction=True)
+    def test_write_event_outside_atomic_is_loud(self):
+        """#114: the docstring precondition is enforced — an event written
+        outside the caller's atomic block would survive a rollback of the
+        domain change it announces."""
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.outbox import write_event
+
+        schema = UsageRecorded(
+            tenant_id=TENANT_UUID,
+            customer_id="c1",
+            event_id="e1",
+            cost_micros=5000,
+        )
+
+        with pytest.raises(AssertionError):
+            write_event(schema)
+
+        assert OutboxEvent.objects.count() == 0
 
 
 @pytest.mark.django_db

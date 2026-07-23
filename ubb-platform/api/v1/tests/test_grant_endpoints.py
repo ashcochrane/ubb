@@ -2,6 +2,7 @@
 /me grants + balance grant fields, lot-aware usage refunds."""
 import json
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 
 from django.test import Client, TestCase
@@ -13,6 +14,7 @@ from apps.billing.wallets.models import (
 )
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.widget_auth import create_widget_token
 
@@ -252,12 +254,12 @@ class RefundLotAwareTest(TestCase):
             request_id=f"req-{uuid.uuid4()}",
             idempotency_key=f"uek-{uuid.uuid4()}",
             billed_cost_micros=cost)
-        handle_usage_recorded_billing(str(uuid.uuid4()), {
-            "tenant_id": str(self.tenant.id),
-            "customer_id": str(self.customer.id),
-            "event_id": str(ev.id),
-            "billing_owner_id": str(self.customer.id),
-            "cost_micros": cost})
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            tenant_id=self.tenant.id,
+            customer_id=self.customer.id,
+            event_id=ev.id,
+            billing_owner_id=self.customer.id,
+            cost_micros=cost)))
         return ev
 
     def _refund(self, ev, key):

@@ -1,7 +1,10 @@
+from dataclasses import asdict
+
 import pytest
 from django.db import transaction
 from django.test import Client
 from apps.platform.customers.models import Customer
+from apps.platform.events.schemas import CustomerDeleted
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.billing.wallets.models import Wallet
 from apps.billing.handlers import handle_customer_deleted_billing
@@ -25,7 +28,8 @@ class TestF4SoftDeleteUniqueness:
         tenant = Tenant.objects.create(name="T2", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c2")
         w = Wallet.objects.create(customer=customer, balance_micros=7_000_000)
-        handle_customer_deleted_billing("e1", {"tenant_id": str(tenant.id), "customer_id": str(customer.id)})
+        handle_customer_deleted_billing(
+            "e1", asdict(CustomerDeleted(tenant_id=tenant.id, customer_id=customer.id)))
         customer.restore()
         with transaction.atomic():
             wallet, _cust = lock_for_billing(customer.id)

@@ -4,6 +4,7 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
+from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.stripe.sync import sync_subscriptions
@@ -104,12 +105,15 @@ def reconcile_cost_accumulators():
 
 # Markers younger than this are NOT consumed. The snapshot reads the cost
 # accumulator, which the OUTBOX populates — a dispatch can legitimately land
-# up to ~2h43m after the backfill committed (retry backoff 30s, 2m, 10m, 30m,
-# 2h before dead-letter). Acking a younger marker could freeze the prior-month
+# up to RETRY_HORIZON after the backfill committed (the outbox retry backoff
+# before dead-letter). Acking a younger marker could freeze the prior-month
 # snapshot against an accumulator that has not seen the backfill yet — wrong
 # forever. 3h covers the dead-letter horizon plus one full :50 accumulator
 # reconcile pass (which repairs even a dead-lettered dispatch from the ledger).
 RESNAPSHOT_MARKER_MIN_AGE = datetime.timedelta(hours=3)
+# Loud rot: growing the outbox backoff schedule past this age would ack
+# markers whose accumulator dispatch is still legitimately in flight.
+assert RESNAPSHOT_MARKER_MIN_AGE > OUTBOX_RETRY_HORIZON
 
 
 @shared_task(queue="ubb_economics")

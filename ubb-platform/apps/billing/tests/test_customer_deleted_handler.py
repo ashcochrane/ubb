@@ -1,4 +1,7 @@
 import pytest
+from dataclasses import asdict
+
+from apps.platform.events.schemas import CustomerDeleted
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet
@@ -21,10 +24,10 @@ class TestHandleCustomerDeletedBilling:
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         wallet = Wallet.objects.create(customer=customer)
 
-        handle_customer_deleted_billing("evt-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-        })
+        handle_customer_deleted_billing("evt-1", asdict(CustomerDeleted(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+        )))
 
         wallet.refresh_from_db()
         assert wallet.is_deleted is True
@@ -38,10 +41,10 @@ class TestHandleCustomerDeletedBilling:
             top_up_amount_micros=5000000,
         )
 
-        handle_customer_deleted_billing("evt-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-        })
+        handle_customer_deleted_billing("evt-1", asdict(CustomerDeleted(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+        )))
 
         config = AutoTopUpConfig.all_objects.get(customer=customer)
         assert config.is_deleted is True
@@ -52,10 +55,10 @@ class TestHandleCustomerDeletedBilling:
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         # No wallet created — handler should not raise
 
-        handle_customer_deleted_billing("evt-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-        })
+        handle_customer_deleted_billing("evt-1", asdict(CustomerDeleted(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+        )))
 
     def test_handles_no_auto_topup_config(self):
         """No error if AutoTopUpConfig doesn't exist."""
@@ -63,20 +66,20 @@ class TestHandleCustomerDeletedBilling:
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
 
         # Should not raise (no AutoTopUpConfig exists)
-        handle_customer_deleted_billing("evt-1", {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-        })
+        handle_customer_deleted_billing("evt-1", asdict(CustomerDeleted(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+        )))
 
     def test_idempotent(self):
         """Running twice doesn't error."""
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
 
-        payload = {
-            "tenant_id": str(tenant.id),
-            "customer_id": str(customer.id),
-        }
+        payload = asdict(CustomerDeleted(
+            tenant_id=tenant.id,
+            customer_id=customer.id,
+        ))
         handle_customer_deleted_billing("evt-1", payload)
         # Second call should not raise
         handle_customer_deleted_billing("evt-1", payload)

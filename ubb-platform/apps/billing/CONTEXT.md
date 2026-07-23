@@ -138,13 +138,14 @@ the ledger is the truth.
 
 **Announcement**:
 What a signal-bearing row (a ledger row, a killed task) last told the world: the stamped
-`announce_outbox_id`. ANNOUNCED = the stamped event reached terminal success (`processed`, or
-`skipped` — a tenant with no webhook config chose no push channel: vacuous success, never
-re-minted). UNANNOUNCED = no stamp while signal-bearing, or the stamped row dead-lettered — the
+`announce_outbox_id`. ANNOUNCED = the stamped event reached terminal success (`processed` — for a
+tenant with no webhook config that is vacuous success: no push channel chosen, never re-minted).
+UNANNOUNCED = no stamp while signal-bearing, or the stamped row dead-lettered — the
 patrol re-mints a fresh current-state event carrying `re_announcement: true` and the current
 episode. IN-FLIGHT (`pending`/`processing`) is left alone: at most one live announcement per row.
 _Avoid_: replaying the original failed event — a re-mint announces the CURRENT state, bottom-line
-only. (`apps/platform/events/announcements.py`)
+only; a `skipped` outbox status (documented for years, produced never) was deleted by #114.
+(`apps/platform/events/announcements.py`)
 
 **Patrol**:
 The hourly traffic-independent backstop that makes every signal "late, never lost" — the #44 leg
