@@ -6,9 +6,16 @@ import pytest
 from django.core.cache import cache
 from django.test import Client
 
+from apps.billing.gating.models import StopSignalState
 from apps.billing.gating.services.live_counter import Door, LiveCounter
+from apps.billing.gating.services.stop_signal_service import (
+    CLEAR_ENFORCEMENT_MODE_TRANSITION,
+    STATE_CLEARED,
+    StopSignalService,
+)
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
+from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -38,6 +45,37 @@ class TestCleanup:
         Door.plant_stop(c2.id, "customer_wide_stop", ttl=False)
         LiveCounter.cleanup(t1)  # cleaning t1 must not touch t2's keys
         assert Door.stop_reason(c2.id) is not None
+
+    def test_silent_close_is_bulk_non_emitting_and_preserves_episode_seq(self):
+        # The D5 trap pin (#111): cleanup's ledger leg is a BULK,
+        # NON-EMITTING close — a config flip is not a re-cross, so no
+        # stop.cleared rides out, and episode_seq is preserved so episode
+        # ids never restart or collide. A rewrite as a loop of drive_clear
+        # calls would emit per row and fail here.
+        t = _tenant()
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=-1_000_000)
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_clear(c.id, t, reason="balance_recovered")
+        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        row = StopSignalState.objects.get(owner=c)
+        assert row.episode_seq == 2  # a real history, not a fresh row
+        cleared_before = OutboxEvent.objects.filter(
+            event_type="stop.cleared").count()
+
+        LiveCounter.cleanup(t)
+
+        row.refresh_from_db()
+        assert row.state == STATE_CLEARED
+        assert row.reason == CLEAR_ENFORCEMENT_MODE_TRANSITION
+        assert row.episode_seq == 2  # preserved, never reset
+        # Non-emitting: the close itself put NOTHING on the wire.
+        assert OutboxEvent.objects.filter(
+            event_type="stop.cleared").count() == cleared_before
+        # Ids never restart: the first real crossing after re-enable opens
+        # episode 3, not a colliding episode 1.
+        assert StopSignalService.drive_stop(
+            c.id, t, reason="customer_wide_stop") == 3
 
 
 @pytest.mark.django_db
