@@ -731,8 +731,8 @@ def update_tenant_config(request, payload: TenantConfigIn):
         # D17: clear stale Tier-2 keys so the new mode starts clean (esp. a
         # leftover stop flag that could wrongly suspend after a re-enable).
         from django.db import transaction
-        from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-        transaction.on_commit(lambda: LiveLedgerService.cleanup_keys(t))
+        from apps.billing.gating.services.live_counter import LiveCounter
+        transaction.on_commit(lambda: LiveCounter.cleanup(t))
     if arrival_flipped:
         # Toggle choreography (#46, delivery spec §E): flipping either way
         # enqueues an immediate per-tenant reconcile — OFF→ON re-seeds honest

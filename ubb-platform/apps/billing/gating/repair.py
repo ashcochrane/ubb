@@ -2,7 +2,7 @@
 
 "We CANNOT have a wallet balance that does not show reality." An orphaned
 hold — acquired on the fast lane, its ``RawIngestEvent`` row rolled back with
-a crashed request — leaves the prepaid live counter (``ubb:livebal:{owner}``)
+a crashed request — leaves the prepaid live counter (the owner-keyed balance)
 permanently below reality: the stingy direction, false stops when it drifts
 far enough. The MIN-merge can only lower; this is its grace-gated upward
 sibling, the fifth patrol job (rides ``run_patrol`` on the hourly reconcile
@@ -115,7 +115,7 @@ def _repair_owner(owner_id, tenant):
                                             OUTCOME_REPAIRED_MICROS)
     from apps.billing.locking import lock_for_billing
     from apps.billing.queries import get_customer_balance
-    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    from apps.billing.gating.services.live_counter import LiveCounter
     from apps.metering.queries import get_pending_held_estimate_total
 
     now = timezone.now()
@@ -124,15 +124,15 @@ def _repair_owner(owner_id, tenant):
         lock_for_billing(owner_id)
         durable = int(get_customer_balance(owner_id))
         pending = int(get_pending_held_estimate_total(tenant.id, owner_id))
-        try:
-            live = LiveLedgerService.read_prepaid(owner_id)
-        except Exception:
+        position = LiveCounter.read(owner_id, tenant, counter=True)
+        if position["counter_blind"]:
             # Redis blind: nothing can be measured or applied. An open
             # candidate stays open — the next pass (or the staleness guard)
             # resolves it.
             logger.warning("live_balance.repair_redis_blind", extra={
                 "data": {"owner_id": str(owner_id)}})
             return counts
+        live = position["counter_micros"]
         # No counter, no deficit: an absent key is seeded from durable at
         # first use, so there is nothing to repair.
         deficit = None if live is None else durable - pending - live
@@ -202,7 +202,7 @@ def _repair_owner(owner_id, tenant):
             "durable_micros": durable, "pending_micros": pending}})
         counts[OUTCOME_REPAIRED] = 1
         counts[OUTCOME_REPAIRED_MICROS] = amount
-        _resume_if_wedge_lifted(owner_id, tenant, live_after, durable)
+        _resume_if_wedge_lifted(owner_id, tenant, live_after)
     return counts
 
 
@@ -224,48 +224,46 @@ def _lapse(candidate, now, second_deficit=None, durable=None, pending=None):
 
 
 def _apply_increment(owner_id, amount):
-    """Apply the repair as a guarded relative INCRBY on the live counter —
-    only if the key still exists (creating one here would plant a stale
-    absolute value that first-use seeding owns). Returns (amount, new value)
-    or None when nothing was applied. Reuses the credit hook's Lua so the
-    upward move rides the exact primitive every credit site uses."""
-    from apps.billing.gating.services.live_ledger_service import (
-        LEDGER_TTL_SECONDS, _CREDIT_IF_PRESENT, _client, _livebal_key)
+    """Apply the repair through ``LiveCounter.repair_incr`` — the policy-free
+    "add N only if the counter exists" primitive (D1; creating a key here
+    would plant a stale absolute value that first-use seeding owns). Returns
+    (amount, new value) or None when nothing was applied. The primitive rides
+    the same INCRBY-if-present script every credit site uses, so the upward
+    move is relative-always; the failure policy (log-and-lapse) stays here."""
+    from apps.billing.gating.services.live_counter import LiveCounter
 
     try:
-        v = _client().eval(_CREDIT_IF_PRESENT, 1, _livebal_key(owner_id),
-                           int(amount), LEDGER_TTL_SECONDS)
+        v = LiveCounter.repair_incr(owner_id, int(amount))
     except Exception:
         logger.warning("live_balance.repair_apply_failed",
                        extra={"data": {"owner_id": str(owner_id)}})
         return None
-    return None if v is None else (int(amount), int(v))
+    return None if v is None else (int(amount), v)
 
 
-def _resume_if_wedge_lifted(owner_id, tenant, live_after, durable):
+def _resume_if_wedge_lifted(owner_id, tenant, live_after):
     """Resume on repair (§D): re-check the floor_stop family against the
-    repaired balance; a repair that lifted a wedged stop drives the clearing
-    transition — ``stop.cleared`` exactly once, through the same guard as
-    every other clearing — deletes the fast flag, and un-suspends on the
-    DURABLE balance (D15). Best-effort: a failure here degrades to the next
+    repaired balance; a repair that lifted a wedged stop runs
+    ``LiveCounter.resume`` (D2 — the clearing trio as one op: ``stop.cleared``
+    exactly once through the same guard as every other clearing, fast-flag
+    delete, and the D15 durable-gated un-suspend; the module re-reads the
+    durable balance inside this pass's billing lock, so the gate decides on
+    the same snapshot). The WHEN stays here: only a repair that actually
+    lifted the wedge resumes. Best-effort: a failure degrades to the next
     reconcile bottom line (late, never lost), never rolls back the repair's
     audit row."""
     from apps.billing.queries import get_customer_min_balance
-    from apps.billing.gating.crossing import past_floor, recovered_floor
-    from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+    from apps.billing.gating.crossing import past_floor
+    from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.stop_signal_service import (
-        CLEAR_BALANCE_REPAIRED, StopSignalService)
+        CLEAR_BALANCE_REPAIRED)
 
     try:
         floor = get_customer_min_balance(owner_id, tenant.id)
         if past_floor(live_after, floor):
             return  # still past the floor: the stop stands
-        StopSignalService.drive_clear(owner_id, tenant,
-                                      reason=CLEAR_BALANCE_REPAIRED,
-                                      balance_micros=live_after)
-        LiveLedgerService._clear_stop(owner_id)
-        if recovered_floor(durable, floor):
-            LiveLedgerService._maybe_unsuspend(owner_id)
+        LiveCounter.resume(owner_id, tenant, reason=CLEAR_BALANCE_REPAIRED,
+                           balance_micros=live_after)
     except Exception:
         logger.warning("live_balance.repair_resume_failed",
                        extra={"data": {"owner_id": str(owner_id)}})

@@ -1,4 +1,4 @@
-"""P2 (WS1): the synchronous live-spend/balance counter.
+"""P2 (WS1): the synchronous live-spend/balance counter (LiveCounter, #111).
 
 The counter is maintained synchronously in record_usage; P2 is write-only (P3
 reads the verdict). These tests pin the decrement/credit/INCR semantics, the
@@ -15,7 +15,7 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.wallets.models import Wallet
 from apps.metering.queries import get_billing_owner_billed_total
 from apps.metering.usage.models import UsageEvent
@@ -31,7 +31,7 @@ def _tenant(mode="prepaid", enf="enforcing"):
 
 
 @pytest.mark.django_db
-class TestLiveLedgerPrepaid:
+class TestLiveCounterPrepaid:
     def setup_method(self):
         cache.clear()
 
@@ -39,18 +39,18 @@ class TestLiveLedgerPrepaid:
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
-        assert LiveLedgerService.record_usage_debit(c.id, t, 30_000_000, now=timezone.now()) is None
-        assert LiveLedgerService.read_prepaid(c.id) is None
+        assert LiveCounter.debit(c.id, t, 30_000_000, now=timezone.now()) is None
+        assert Door.balance(c.id) is None
 
     def test_seed_from_balance_then_decrby(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 30_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 30_000_000, now=timezone.now())
         assert out["mode"] == "prepaid" and out["balance_micros"] == 70_000_000
         # second event: key present -> plain DECRBY
-        LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())
-        assert LiveLedgerService.read_prepaid(c.id) == 60_000_000
+        LiveCounter.debit(c.id, t, 10_000_000, now=timezone.now())
+        assert Door.balance(c.id) == 60_000_000
 
     def test_seed_once_across_repeated_first_use(self):
         # The SEED_AND_DECR EXISTS-guard seeds only on the first call; both
@@ -59,17 +59,17 @@ class TestLiveLedgerPrepaid:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 30_000_000, now=timezone.now())
-        LiveLedgerService.record_usage_debit(c.id, t, 30_000_000, now=timezone.now())
-        assert LiveLedgerService.read_prepaid(c.id) == 40_000_000
+        LiveCounter.debit(c.id, t, 30_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 30_000_000, now=timezone.now())
+        assert Door.balance(c.id) == 40_000_000
 
     def test_credit_increments_when_seeded(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=50_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())  # seeds -> 40M
-        LiveLedgerService.credit(c.id, t, 20_000_000)
-        assert LiveLedgerService.read_prepaid(c.id) == 60_000_000
+        LiveCounter.debit(c.id, t, 10_000_000, now=timezone.now())  # seeds -> 40M
+        LiveCounter.credit(c.id, t, 20_000_000)
+        assert Door.balance(c.id) == 60_000_000
 
     def test_credit_dropped_when_unseeded(self):
         # An unseeded credit is a no-op: first usage will seed from the
@@ -77,48 +77,48 @@ class TestLiveLedgerPrepaid:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=50_000_000)
-        LiveLedgerService.credit(c.id, t, 20_000_000)
-        assert LiveLedgerService.read_prepaid(c.id) is None
+        LiveCounter.credit(c.id, t, 20_000_000)
+        assert Door.balance(c.id) is None
 
     def test_reconcile_min_merge_only_lowers(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=50_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())  # live = 40M
+        LiveCounter.debit(c.id, t, 10_000_000, now=timezone.now())  # live = 40M
         # durable HIGHER than live -> MIN keeps live (does not raise)
         w.balance_micros = 100_000_000
         w.save(update_fields=["balance_micros"])
-        LiveLedgerService.reconcile_prepaid(c.id, t)
-        assert LiveLedgerService.read_prepaid(c.id) == 40_000_000
+        LiveCounter.reconcile(c.id, t)
+        assert Door.balance(c.id) == 40_000_000
         # durable LOWER than live -> MIN lowers live toward durable
         w.balance_micros = 25_000_000
         w.save(update_fields=["balance_micros"])
-        LiveLedgerService.reconcile_prepaid(c.id, t)
-        assert LiveLedgerService.read_prepaid(c.id) == 25_000_000
+        LiveCounter.reconcile(c.id, t)
+        assert Door.balance(c.id) == 25_000_000
 
 
 @pytest.mark.django_db
-class TestLiveLedgerPostpaid:
+class TestLiveCounterPostpaid:
     def setup_method(self):
         cache.clear()
 
     def test_incr_and_read(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        out = LiveLedgerService.record_usage_debit(c.id, t, 5_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 5_000_000, now=timezone.now())
         assert out["mode"] == "postpaid" and out["spend_micros"] == 5_000_000
-        LiveLedgerService.record_usage_debit(c.id, t, 4_000_000, now=timezone.now())
-        assert LiveLedgerService.read_postpaid(c.id) == 9_000_000
+        LiveCounter.debit(c.id, t, 4_000_000, now=timezone.now())
+        assert Door.spend(c.id) == 9_000_000
 
     def test_backdated_prior_month_event_does_not_move_counter(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         now = timezone.now()
-        LiveLedgerService.record_usage_debit(c.id, t, 5_000_000, now=now)
+        LiveCounter.debit(c.id, t, 5_000_000, now=now)
         prior = now.replace(day=1) - datetime.timedelta(days=2)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 9_000_000, effective_at=prior, now=now)
+        out = LiveCounter.debit(c.id, t, 9_000_000, effective_at=prior, now=now)
         assert out is None
-        assert LiveLedgerService.read_postpaid(c.id, now=now) == 5_000_000
+        assert Door.spend(c.id, now=now) == 5_000_000
 
     def test_pooled_postpaid_aggregates_seats_at_owner(self):
         t = _tenant(mode="postpaid")
@@ -141,9 +141,9 @@ class TestLiveLedgerPostpaid:
         assert get_billing_owner_billed_total(t.id, biz.id, start, end) == 10_000_000
         # One seat already posted synchronously (owner-keyed); reconcile MAX-raises
         # to the full owner-aggregated total.
-        LiveLedgerService.record_usage_debit(biz.id, t, 5_000_000, now=now)  # live = 5M
-        LiveLedgerService.reconcile_postpaid(biz.id, t, now=now)
-        assert LiveLedgerService.read_postpaid(biz.id, now=now) == 10_000_000
+        LiveCounter.debit(biz.id, t, 5_000_000, now=now)  # live = 5M
+        LiveCounter.reconcile(biz.id, t, now=now)
+        assert Door.spend(biz.id, now=now) == 10_000_000
 
 
 @pytest.mark.django_db
@@ -157,43 +157,43 @@ class TestStopFlag:
         t = _tenant()  # prepaid, enforcing; default min_balance floor = 0
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         assert out["balance_micros"] == -1_000_000  # below floor (0)
         assert out["stop"] is True
         assert out["stop_reason"] == "customer_wide_stop"
         assert out["stop_scope"] == "customer"
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
 
     def test_non_crossing_sets_no_flag(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 10_000_000, now=timezone.now())
         assert out["stop"] is False
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.read(c.id, t)["stop"] is False
 
     def test_flag_clears_on_credit_recovery(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
-        LiveLedgerService.credit(c.id, t, 10_000_000)  # live -1M -> 9M >= floor -> clear
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
+        assert LiveCounter.read(c.id, t)["stop"] is True
+        LiveCounter.credit(c.id, t, 10_000_000)  # live -1M -> 9M >= floor -> clear
+        assert LiveCounter.read(c.id, t)["stop"] is False
 
     def test_off_sets_no_flag_and_reads_clear(self):
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        assert LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now()) is None
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now()) is None
+        assert LiveCounter.read(c.id, t)["stop"] is False
 
     def test_postpaid_crossing_at_budget_cap(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     hard_stop_pct=100, enforce_mode="enforcing")
-        out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000
         assert out["stop"] is True
 
@@ -206,10 +206,10 @@ class TestStopFlag:
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     hard_stop_pct=100, enforce_mode="advisory")
-        out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000  # the counter still tracks
         assert out["stop"] is False
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.read(c.id, t)["stop"] is False
 
     def test_postpaid_reconcile_clears_stale_flag_next_month(self):
         t = _tenant(mode="postpaid")
@@ -217,13 +217,13 @@ class TestStopFlag:
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="enforcing")
         now = timezone.now()
-        LiveLedgerService.record_usage_debit(c.id, t, 12_000_000, now=now)  # flag set
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        LiveCounter.debit(c.id, t, 12_000_000, now=now)  # flag set
+        assert LiveCounter.read(c.id, t)["stop"] is True
         # Next month: fresh livespend key, durable spend 0 -> under cap -> the
         # monthless stop flag is cleared by the reconcile backstop.
         next_month = (now.replace(day=1) + datetime.timedelta(days=40)).replace(day=1)
-        LiveLedgerService.reconcile_postpaid(c.id, t, now=next_month)
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        LiveCounter.reconcile(c.id, t, now=next_month)
+        assert LiveCounter.read(c.id, t)["stop"] is False
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_crossing_returns_stop_event_persists_and_replays(self, _m):
@@ -311,8 +311,8 @@ class TestCreditHookFiresThroughEndpoint:
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
         _key, raw = TenantApiKey.create_key(t, label="t")
         # Seed the live counter (credit only applies once seeded).
-        LiveLedgerService.record_usage_debit(c.id, t, 10_000_000, now=timezone.now())
-        assert LiveLedgerService.read_prepaid(c.id) == 90_000_000
+        LiveCounter.debit(c.id, t, 10_000_000, now=timezone.now())
+        assert Door.balance(c.id) == 90_000_000
 
         with django_capture_on_commit_callbacks(execute=True):
             resp = Client().post(
@@ -324,4 +324,4 @@ class TestCreditHookFiresThroughEndpoint:
                 HTTP_AUTHORIZATION=f"Bearer {raw}")
         assert resp.status_code == 200
         # 90M − (durable credit mirrored) → 110M on the fast path.
-        assert LiveLedgerService.read_prepaid(c.id) == 110_000_000
+        assert Door.balance(c.id) == 110_000_000

@@ -34,11 +34,7 @@ from django.utils import timezone
 
 from apps.billing.gating import repair
 from apps.billing.gating.models import LiveBalanceRepair
-from apps.billing.gating.services.live_ledger_service import (
-    LiveLedgerService,
-    _client,
-    _livebal_key,
-)
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     CLEAR_BALANCE_REPAIRED,
     StopSignalService,
@@ -64,11 +60,11 @@ def _customer(t, balance_micros=0, ext="c1"):
 
 
 def _set_live(owner_id, value):
-    _client().set(_livebal_key(owner_id), int(value))
+    Door.set_balance(owner_id, int(value))
 
 
 def _live(owner_id):
-    return LiveLedgerService.read_prepaid(owner_id)
+    return Door.balance(owner_id)
 
 
 def _events(event_type):
@@ -130,7 +126,7 @@ class TestPin7TwoPassRepair:
         repair.repair_live_balances(t)
 
         Wallet.objects.filter(customer=c).update(balance_micros=9_000_000)
-        _client().decrby(_livebal_key(c.id), 1_000_000)
+        Door.incr_balance(c.id, -1_000_000)
 
         counts = repair.repair_live_balances(t)
         assert counts["repaired_micros"] == 6_000_000
@@ -144,7 +140,7 @@ class TestPin7TwoPassRepair:
         c = _customer(t, balance_micros=10_000_000)
         _set_live(c.id, 4_000_000)
         repair.repair_live_balances(t)
-        _client().incrby(_livebal_key(c.id), 2_000_000)
+        Door.incr_balance(c.id, 2_000_000)
 
         counts = repair.repair_live_balances(t)
         row = LiveBalanceRepair.objects.get(owner=c)
@@ -160,7 +156,7 @@ class TestPin7TwoPassRepair:
         c = _customer(t, balance_micros=10_000_000)
         _set_live(c.id, 4_000_000)
         repair.repair_live_balances(t)
-        _client().decrby(_livebal_key(c.id), 3_000_000)
+        Door.incr_balance(c.id, -3_000_000)
 
         counts = repair.repair_live_balances(t)
         assert counts["repaired_micros"] == 6_000_000
@@ -176,13 +172,13 @@ class TestPin7TwoPassRepair:
         _set_live(c.id, -1_000_000)  # wedged below the floor by a 6M orphan
         # The wedge's false crossing stopped + suspended the owner durably.
         StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        LiveLedgerService.ensure_stop_flag(c.id, "customer_wide_stop")
+        LiveCounter.ensure_stop_flag(c.id, "customer_wide_stop")
         c.refresh_from_db()
         assert c.status == "suspended"
 
         repair.repair_live_balances(t)  # pass one: candidate only
         assert not _events("stop.cleared").exists()
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
 
         repair.repair_live_balances(t)  # pass two: +6M -> 5M, wedge lifted
         assert _live(c.id) == 5_000_000
@@ -190,13 +186,13 @@ class TestPin7TwoPassRepair:
         assert cleared.count() == 1
         assert cleared.get().payload["episode_seq"] == 1
         assert cleared.get().payload["reason"] == CLEAR_BALANCE_REPAIRED
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.read(c.id, t)["stop"] is False
         c.refresh_from_db()
         assert c.status == "active"  # durable balance is healthy -> unsuspended
 
         # Exactly once: the reconcile bottom line and further patrol passes
         # find the episode already closed.
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         repair.repair_live_balances(t)
         assert _events("stop.cleared").count() == 1
 
@@ -228,7 +224,7 @@ class TestPin8TransientAndDeMinimis:
         c = _customer(t, balance_micros=10_000_000)
         _set_live(c.id, 4_000_000)
         repair.repair_live_balances(t)
-        _client().incrby(_livebal_key(c.id), 6_000_000)
+        Door.incr_balance(c.id, 6_000_000)
 
         counts = repair.repair_live_balances(t)
         assert counts == {"repaired": 0, "repaired_micros": 0,
@@ -279,7 +275,7 @@ class TestPin10DownwardNeighborsUntouched:
         _pending_row(t, c, 3_000_000)
         _set_live(c.id, 7_000_000)
 
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert repair.repair_live_balances(t) == NO_OUTCOMES
         assert _live(c.id) == 7_000_000
         assert not LiveBalanceRepair.objects.exists()
@@ -304,7 +300,7 @@ class TestPin10DownwardNeighborsUntouched:
         _set_live(c.id, 15_000_000)
         assert repair.repair_live_balances(t) == NO_OUTCOMES
         assert not LiveBalanceRepair.objects.exists()
-        LiveLedgerService.reconcile_prepaid(c.id, t)  # downward: byte-identical
+        LiveCounter.reconcile(c.id, t)  # downward: byte-identical
         assert _live(c.id) == 10_000_000
 
     def test_absent_counter_is_never_repaired(self):
@@ -369,7 +365,7 @@ class TestRepairRidesThePatrol:
         _set_live(b.id, 5_000_000)
 
         reconcile_live_ledgers()  # pass one: two candidates
-        _client().incrby(_livebal_key(b.id), 3_000_000)  # b's deficit drains
+        Door.incr_balance(b.id, 3_000_000)  # b's deficit drains
         reconcile_live_ledgers()  # pass two: repair a, lapse b
 
         stats = get_patrol_stats(tenant_id=t.id)

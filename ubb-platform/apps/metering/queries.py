@@ -247,7 +247,7 @@ def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_
     events pin the business as billing owner) and reduces to a single seat for
     an allocated/individual owner (whose events pin themselves). It is the
     durable source of truth the Tier-2 postpaid live-spend counter MAX-merges
-    toward (apps.billing.gating.services.live_ledger_service)."""
+    toward (apps.billing.gating.services.live_counter)."""
     from apps.metering.usage.models import UsageEvent
     return UsageEvent.objects.filter(
         tenant_id=tenant_id, billing_owner_id=billing_owner_id,

@@ -9,7 +9,8 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import BudgetService, _key, _period
+from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.services.live_counter import Door
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
@@ -48,13 +49,12 @@ class TestBudgetEffectiveMonthBasis:
     def test_prior_month_backfill_leaves_live_counter_untouched(self):
         t, c = _setup()
         _draw(t, c, 100_000, 1)  # current month → counter = 100_000
-        label, _, _ = _period()
-        assert int(cache.get(_key(c.id, label))) == 100_000
+        assert Door.budget(c.id) == 100_000
 
         prior = timezone.now().replace(day=1) - datetime.timedelta(days=2)
         _draw(t, c, 50_000, 2, effective_at=prior)
         # The live counter must NOT have been inflated by the prior-month event.
-        assert int(cache.get(_key(c.id, label))) == 100_000
+        assert Door.budget(c.id) == 100_000
 
     def test_same_month_backdated_event_increments(self):
         t, c = _setup()
@@ -63,8 +63,7 @@ class TestBudgetEffectiveMonthBasis:
         if backdated_same_month.month != timezone.now().month:
             backdated_same_month = timezone.now()  # month boundary edge: stay in-month
         _draw(t, c, 50_000, 2, effective_at=backdated_same_month)
-        label, _, _ = _period()
-        assert int(cache.get(_key(c.id, label))) == 150_000
+        assert Door.budget(c.id) == 150_000
 
     def test_legacy_payload_without_effective_at_increments(self):
         t, c = _setup()
@@ -77,8 +76,7 @@ class TestBudgetEffectiveMonthBasis:
         handle_usage_recorded_billing(str(uuid.uuid4()), {
             "tenant_id": str(t.id), "customer_id": str(c.id),
             "event_id": str(e.id), "cost_micros": 70_000})  # no effective_at key
-        label, _, _ = _period()
-        assert int(cache.get(_key(c.id, label))) == 70_000
+        assert Door.budget(c.id) == 70_000
 
     def test_rebuild_equals_effective_filtered_total(self):
         """The hourly rebuild (source of truth) counts ONLY current-effective

@@ -38,8 +38,8 @@ def arrival_signals_on(tenant) -> bool:
     the flag is a behavior posture within enforcing, meaningless outside it.
 
     Governs the whole fast lane as ONE unit: the accept-time Redis hold +
-    arrival floor detection (HoldService.acquire), the sync-path live debit +
-    crossing check (record_usage_debit), the reconcile's counter jobs
+    arrival floor detection (LiveCounter.hold), the sync-path live debit +
+    crossing check (LiveCounter.debit), the reconcile's counter jobs
     (seed/MIN-merge) and the upward repair. The durable lane — settle-time
     detection, the signal ledger, the patrol, webhook delivery, ack verdicts
     read from the durable-maintained stop flag — hangs off ``enforcing`` and

@@ -583,8 +583,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
     raw_objs: list = []
     # (owner_id, estimate_micros, effective_at) for held rows -- effective_at
     # threads the I9 prior-month guard through release (see
-    # HoldService.settle) so undoing a hold here mirrors exactly what
-    # acquire() did (a skipped-livespend hold must be released as a skipped-
+    # LiveCounter.settle) so undoing a hold here mirrors exactly what
+    # the hold did (a skipped-livespend hold must be released as a skipped-
     # livespend release, not a full current-month credit-back).
     release_list: list = []
 

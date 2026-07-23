@@ -32,16 +32,8 @@ from django.core.cache import cache
 from django.test import Client
 
 from apps.billing.gating import repair
-from apps.billing.gating.crossing import month_label_bounds
 from apps.billing.gating.models import LiveBalanceRepair, StopSignalState
-from apps.billing.gating.services.live_ledger_service import (
-    LEDGER_TTL_SECONDS,
-    LiveLedgerService,
-    _client,
-    _livebal_key,
-    _livespend_key,
-    _stop_key,
-)
+from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.stop_signal_service import StopSignalService
 from apps.billing.gating.tasks import (
     reconcile_live_ledgers,
@@ -137,20 +129,18 @@ class TestPin9AcceptWritesNoRedisKeys:
         # until settle — the honest degraded posture.
         assert all(x["stop"] is False for x in results)
         assert results[0]["estimated_cost_micros"] == 900_000  # ack unchanged
-        assert _client().get(_livebal_key(c.id)) is None       # no counter
-        assert _client().get(_stop_key(c.id)) is None          # no flag
+        assert Door.balance(c.id) is None                      # no counter
+        assert Door.stop_reason(c.id) is None                  # no flag
         for raw in RawIngestEvent.objects.all():
             assert raw.held is False                           # no hold taken
             assert raw.estimate_micros > 0                     # estimate kept
 
     def test_async_accept_postpaid_no_livespend(self):
-        from django.utils import timezone
         t = _tenant(mode="postpaid", arrival=False)
         c = _customer(t)
         r = _ingest(Client(), _auth(t), [_event(c, billed=5_000_000)])
         assert r.status_code == 200
-        label, _, _ = month_label_bounds(timezone.now())
-        assert _client().get(_livespend_key(c.id, label)) is None
+        assert Door.spend(c.id) is None
 
     def test_sync_accept_no_counter_and_event_still_lands_and_bills(self):
         t = _tenant(arrival=False)
@@ -160,7 +150,7 @@ class TestPin9AcceptWritesNoRedisKeys:
         assert r.json()["stop"] is False          # no arrival detection
         ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
         assert ev.billed_cost_micros == 8_000_000  # lands and bills
-        assert _client().get(_livebal_key(c.id)) is None
+        assert Door.balance(c.id) is None
         assert not _events("stop.fired").exists()
 
 
@@ -188,7 +178,7 @@ class TestPin9AckContractIdentical:
         c = _customer(t, balance_micros=10_000_000)
         # The durable lane set the flag (as its winning transition does in
         # both postures); both accept paths surface it — a READ, not a write.
-        LiveLedgerService.ensure_stop_flag(c.id, CUSTOMER_WIDE_STOP)
+        LiveCounter.ensure_stop_flag(c.id, CUSTOMER_WIDE_STOP)
         client, auth = Client(), _auth(t)
         item = _ingest(client, auth, [_event(c)]).json()["results"][0]
         assert item["stop"] is True
@@ -197,7 +187,7 @@ class TestPin9AckContractIdentical:
         sync = _record_sync(client, auth, c, billed=1_000).json()
         assert sync["stop"] is True
         assert sync["stop_reason"] == CUSTOMER_WIDE_STOP
-        assert _client().get(_livebal_key(c.id)) is None  # still no counter
+        assert Door.balance(c.id) is None  # still no counter
 
 
 @pytest.mark.django_db
@@ -218,7 +208,7 @@ class TestPin9CrossingSignalsAtSettleLatency:
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         assert _events("stop.fired").count() == 1
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
         nxt = _record_sync(client, auth, c, billed=1_000).json()
         assert nxt["stop"] is True                  # verdict via the flag
         assert nxt["stop_reason"] == CUSTOMER_WIDE_STOP
@@ -264,9 +254,9 @@ class TestPin9ToggleChoreography:
         # fast lane restarts honest within minutes, not at first-use luck.
         t = _tenant(arrival=True)   # post-flip state
         c = _customer(t, balance_micros=7_000_000)
-        assert _client().get(_livebal_key(c.id)) is None
+        assert Door.balance(c.id) is None
         reconcile_tenant_live_counters(str(t.id))
-        assert LiveLedgerService.read_prepaid(c.id) == 7_000_000
+        assert Door.balance(c.id) == 7_000_000
 
     def test_reconcile_with_lane_off_drives_signals_but_no_counter(self):
         # The same per-tenant pass in the OFF posture: counter jobs skip
@@ -276,9 +266,9 @@ class TestPin9ToggleChoreography:
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=-1_000_000)  # past the (default 0) floor
         reconcile_tenant_live_counters(str(t.id))
-        assert _client().get(_livebal_key(c.id)) is None      # no seed
+        assert Door.balance(c.id) is None                     # no seed
         assert _events("stop.fired").count() == 1             # durable lane
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
 
 
 @pytest.mark.django_db
@@ -287,7 +277,7 @@ class TestRepairInertWithLaneOff:
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=20_000_000)
         # A deficit the repair would candidate if the lane were on.
-        _client().set(_livebal_key(c.id), 5_000_000, ex=LEDGER_TTL_SECONDS)
+        Door.set_balance(c.id, 5_000_000)
         counts = repair.repair_live_balances(t)
         assert not any(counts.values())
         assert not LiveBalanceRepair.objects.exists()
@@ -295,7 +285,7 @@ class TestRepairInertWithLaneOff:
     def test_same_deficit_candidates_with_the_lane_on(self):
         t = _tenant(arrival=True)
         c = _customer(t, balance_micros=20_000_000)
-        _client().set(_livebal_key(c.id), 5_000_000, ex=LEDGER_TTL_SECONDS)
+        Door.set_balance(c.id, 5_000_000)
         repair.repair_live_balances(t)
         assert LiveBalanceRepair.objects.filter(
             owner_id=c.id, status=repair.STATUS_CANDIDATE).exists()
@@ -344,7 +334,7 @@ class TestOnToOffHoldsDrainAtSettle:
         c = _customer(t, balance_micros=20_000_000)
         r = _ingest(Client(), _auth(t), [_event(c, billed=1_500_000)])
         assert r.status_code == 200
-        assert LiveLedgerService.read_prepaid(c.id) == 18_500_000
+        assert Door.balance(c.id) == 18_500_000
         t.arrival_signals_enabled = False
         t.save(update_fields=["arrival_signals_enabled"])
         raw = RawIngestEvent.objects.get()
@@ -355,7 +345,7 @@ class TestOnToOffHoldsDrainAtSettle:
         raw.save(update_fields=["estimate_micros"])
         from apps.metering.usage.services.usage_service import UsageService
         assert UsageService.settle_raw(raw) == "settled"
-        assert LiveLedgerService.read_prepaid(c.id) == 19_000_000
+        assert Door.balance(c.id) == 19_000_000
 
 
 @pytest.mark.django_db
@@ -371,7 +361,6 @@ class TestSettleWritesNothingWithLaneOff:
         cache.clear()
 
     def test_postpaid_settle_births_no_livespend(self):
-        from django.utils import timezone
         from apps.metering.usage.services.usage_service import UsageService
         t = _tenant(mode="postpaid", arrival=False)
         c = _customer(t)
@@ -380,8 +369,7 @@ class TestSettleWritesNothingWithLaneOff:
         raw = RawIngestEvent.objects.get()
         assert raw.held is False
         assert UsageService.settle_raw(raw) == "settled"
-        label, _, _ = month_label_bounds(timezone.now())
-        assert _client().get(_livespend_key(c.id, label)) is None
+        assert Door.spend(c.id) is None
 
     def test_prepaid_settle_leaves_a_present_counter_untouched(self):
         from apps.metering.usage.services.usage_service import UsageService
@@ -391,11 +379,11 @@ class TestSettleWritesNothingWithLaneOff:
                        [_event(c, billed=1_500_000)]).status_code == 200
         # A leftover counter from before the ON→OFF flip: the lane-off
         # settle must not debit it (that would be fast-lane maintenance).
-        _client().set(_livebal_key(c.id), 10_000_000, ex=LEDGER_TTL_SECONDS)
+        Door.set_balance(c.id, 10_000_000)
         raw = RawIngestEvent.objects.get()
         assert raw.held is False
         assert UsageService.settle_raw(raw) == "settled"
-        assert LiveLedgerService.read_prepaid(c.id) == 10_000_000
+        assert Door.balance(c.id) == 10_000_000
 
 
 PLATFORM_ROOT = Path(__file__).resolve().parents[4]

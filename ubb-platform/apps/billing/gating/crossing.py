@@ -1,9 +1,9 @@
 """The ONE owner of the Crossing decision (#110).
 
 Every lane that compares a balance/spend value against a configured money
-line imports THESE predicates — the fast lane (``record_usage_debit`` /
-``HoldService.acquire``), the durable lane (``handlers.py`` drawdown), the
-start-gate (``RiskService``), reconcile (``LiveLedgerService``), the upward
+line imports THESE predicates — the fast lane (``LiveCounter.debit`` /
+``LiveCounter.hold``), the durable lane (``handlers.py`` drawdown), the
+start-gate (``RiskService``), reconcile (``LiveCounter``), the upward
 repair (``repair.py``), the budget gate (``BudgetService.check``) and the
 dispute clawback (Stripe webhooks). Pure module: no ORM, no Redis — the
 callers resolve the inputs (floor magnitudes, BudgetConfig rows, counter
@@ -42,8 +42,8 @@ from datetime import timezone as _utc_tz
 
 def floor_line(min_balance_micros):
     """The comparable wallet line: a balance below ``-min_balance`` is past
-    the floor. This is the value ``LiveLedgerService._threshold`` pre-resolves
-    for the batch/live compare (``crossed_live``)."""
+    the floor. This is the value the live counter's ``_threshold``
+    pre-resolves for the batch/live compare (``crossed_live``)."""
     return -int(min_balance_micros)
 
 
@@ -101,7 +101,7 @@ def past_budget_stop(spend_micros, stop_threshold_micros) -> bool:
 
 def crossed_live(mode, value_micros, threshold_micros) -> bool:
     """The live-counter compare, one orientation per mode, against a
-    threshold pre-resolved ONCE per owner (``LiveLedgerService._threshold``
+    threshold pre-resolved ONCE per owner (the live counter's ``_threshold``
     — so a batch caller pays one ORM lookup, not one per item):
 
       postpaid -> ``threshold`` is the budget stop line; spend at/over it.

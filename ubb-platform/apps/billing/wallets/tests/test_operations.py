@@ -60,7 +60,7 @@ def _txns(wallet, txn_type=None):
 # ---------------------------------------------------------------------------
 # THE mirror rule — decision 4: derived from the balance delta, one test for
 # every op. A positive delta mirrors exactly that amount via
-# LiveLedgerService.credit on commit; a non-positive delta never mirrors.
+# LiveCounter.credit on commit; a non-positive delta never mirrors.
 # ---------------------------------------------------------------------------
 
 
@@ -132,8 +132,8 @@ class TestMirrorRule:
         c = _customer(t)
         _wallet(c, balance=50_000_000)
         for name, thunk, expected in _op_registry(t, c, None):
-            with patch("apps.billing.gating.services.live_ledger_service."
-                       "LiveLedgerService.credit") as credit:
+            with patch("apps.billing.gating.services.live_counter."
+                       "LiveCounter.credit") as credit:
                 with django_capture_on_commit_callbacks(execute=True):
                     result = thunk()
             assert result.outcome == "applied", (name, result)
@@ -170,8 +170,8 @@ class TestMirrorRule:
         with django_capture_on_commit_callbacks(execute=True):
             wallet_ops.credit(customer_id=c.id, tenant=t,
                               amount_micros=1_000_000, idempotency_key=key)
-        with patch("apps.billing.gating.services.live_ledger_service."
-                   "LiveLedgerService.credit") as credit:
+        with patch("apps.billing.gating.services.live_counter."
+                   "LiveCounter.credit") as credit:
             with django_capture_on_commit_callbacks(execute=True):
                 replay = wallet_ops.credit(customer_id=c.id, tenant=t,
                                            amount_micros=1_000_000,
@@ -674,8 +674,8 @@ class TestDrawdownTail:
         _wallet(c, balance=1_000_000)
         with patch("apps.billing.gating.services.stop_signal_service."
                    "StopSignalService.drive_stop") as drive, \
-             patch("apps.billing.gating.services.live_ledger_service."
-                   "LiveLedgerService.ensure_stop_flag") as flag:
+             patch("apps.billing.gating.services.live_counter."
+                   "LiveCounter.ensure_stop_flag") as flag:
             wallet_ops.draw_down_usage(
                 customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
                 billed_cost_micros=2_000_000)

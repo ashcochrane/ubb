@@ -22,8 +22,8 @@ class RiskService:
         # the durable suspend lands, and for postpaid owner-aggregate stops.
         from apps.platform.tenants.flags import enforcing
         if enforcing(customer.tenant):
-            from apps.billing.gating.services.live_ledger_service import LiveLedgerService
-            if LiveLedgerService.read_stop(owner.id, customer.tenant)["stop"]:
+            from apps.billing.gating.services.live_counter import LiveCounter
+            if LiveCounter.read(owner.id, customer.tenant)["stop"]:
                 return {"allowed": False, "reason": "customer_stopped",
                         "balance_micros": None, "task_id": None}
         try:

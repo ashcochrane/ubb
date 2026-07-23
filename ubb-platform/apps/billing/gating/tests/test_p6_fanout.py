@@ -15,7 +15,7 @@ from django.core.cache import cache
 from django.test import Client
 from django.utils import timezone
 
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.wallets.models import Wallet
 from apps.platform.events.models import OutboxEvent
@@ -97,7 +97,7 @@ class TestStartGateHonorsStopFlag:
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())  # crosses -> flag set
+        LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())  # crosses -> flag set
         res = RiskService.check(c, create_task=True)
         assert res["allowed"] is False
         assert res["reason"] == "customer_stopped"
@@ -107,7 +107,7 @@ class TestStartGateHonorsStopFlag:
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        LiveLedgerService.record_usage_debit(c.id, t, 6_000_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         assert RiskService.check(c, create_task=True)["allowed"] is False
-        LiveLedgerService.credit(c.id, t, 10_000_000)  # recovery clears the flag
+        LiveCounter.credit(c.id, t, 10_000_000)  # recovery clears the flag
         assert RiskService.check(c, create_task=True)["allowed"] is True

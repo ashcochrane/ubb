@@ -18,7 +18,7 @@ import pytest
 from django.core.cache import cache
 
 from apps.billing.gating.models import StopSignalState
-from apps.billing.gating.services.live_ledger_service import LiveLedgerService
+from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.stop_signal_service import StopSignalService
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
@@ -72,7 +72,7 @@ def _break_redis(monkeypatch):
     def _boom():
         raise ConnectionError("redis down")
     monkeypatch.setattr(
-        "apps.billing.gating.services.live_ledger_service._client", _boom)
+        "apps.billing.gating.services.live_counter._client", _boom)
 
 
 @pytest.mark.django_db
@@ -111,7 +111,7 @@ class TestPin4DurableLane:
         c = _customer(t)
         # Fast lane sees the crossing at arrival (live counter seeds from the
         # durable balance, then debits past the floor) and wins the episode.
-        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000)
+        out = LiveCounter.debit(c.id, t, 6_000_000)
         assert out["stop"] is True
         assert _fired().count() == 1
         # The durable drawdown handler then replays the same crossing on the
@@ -132,10 +132,10 @@ class TestPin5ReconcileSetsAMissedStop:
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000)  # already past the floor,
         # but no lane ever signaled it (blind window): no flag, no ledger row.
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert _fired().count() == 1
         assert _fired().get().payload["episode_seq"] == 1
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True  # flag re-aligned
+        assert LiveCounter.read(c.id, t)["stop"] is True  # flag re-aligned
         c.refresh_from_db()
         assert c.status == "suspended"
 
@@ -143,7 +143,7 @@ class TestPin5ReconcileSetsAMissedStop:
         _break_redis(monkeypatch)
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000)
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert _fired().count() == 1
         c.refresh_from_db()
         assert c.status == "suspended"
@@ -151,8 +151,8 @@ class TestPin5ReconcileSetsAMissedStop:
     def test_reconcile_is_idempotent_per_position(self):
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000)
-        LiveLedgerService.reconcile_prepaid(c.id, t)
-        LiveLedgerService.reconcile_prepaid(c.id, t)  # same position -> loses
+        LiveCounter.reconcile(c.id, t)
+        LiveCounter.reconcile(c.id, t)  # same position -> loses
         assert _fired().count() == 1
 
 
@@ -162,7 +162,7 @@ class TestPin6ResumeOncePerEpisode:
         cache.clear()
 
     def _open_episode(self, t, c):
-        out = LiveLedgerService.record_usage_debit(c.id, t, 6_000_000)
+        out = LiveCounter.debit(c.id, t, 6_000_000)
         assert out["stop"] is True
         assert _fired().count() == 1
 
@@ -172,24 +172,24 @@ class TestPin6ResumeOncePerEpisode:
         self._open_episode(t, c)  # live -6M
         # The durable top-up lands first (every credit site), then the hook.
         Wallet.objects.filter(customer=c).update(balance_micros=10_000_000)
-        LiveLedgerService.credit(c.id, t, 10_000_000)  # live -> 4M ≥ -5M
+        LiveCounter.credit(c.id, t, 10_000_000)  # live -> 4M ≥ -5M
         assert _cleared().count() == 1
         payload = _cleared().get().payload
         assert payload["episode_seq"] == 1
         assert payload["balance_micros"] == 4_000_000
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is False
+        assert LiveCounter.read(c.id, t)["stop"] is False
         c.refresh_from_db()
         assert c.status == "active"  # durable balance recovered -> un-suspended
-        LiveLedgerService.credit(c.id, t, 1_000_000)  # already cleared -> loses
+        LiveCounter.credit(c.id, t, 1_000_000)  # already cleared -> loses
         assert _cleared().count() == 1
 
     def test_a_credit_that_does_not_recross_does_not_clear(self):
         t = _tenant()
         c = _customer(t)
         self._open_episode(t, c)                      # live -6M
-        LiveLedgerService.credit(c.id, t, 500_000)    # live -5.5M, still past floor
+        LiveCounter.credit(c.id, t, 500_000)    # live -5.5M, still past floor
         assert _cleared().count() == 0
-        assert LiveLedgerService.read_stop(c.id, t)["stop"] is True
+        assert LiveCounter.read(c.id, t)["stop"] is True
 
     def test_reconcile_path_clears_once(self):
         t = _tenant()
@@ -199,12 +199,12 @@ class TestPin6ResumeOncePerEpisode:
         # durable wallet shows the recovery. Reconcile is the bottom line.
         cache.clear()  # drop the live counter — reconcile re-seeds from durable
         Wallet.objects.filter(customer=c).update(balance_micros=10_000_000)
-        LiveLedgerService.reconcile_prepaid(c.id, t)
+        LiveCounter.reconcile(c.id, t)
         assert _cleared().count() == 1
         assert _cleared().get().payload["episode_seq"] == 1
         c.refresh_from_db()
         assert c.status == "active"
-        LiveLedgerService.reconcile_prepaid(c.id, t)  # already cleared -> loses
+        LiveCounter.reconcile(c.id, t)  # already cleared -> loses
         assert _cleared().count() == 1
 
     def test_durable_path_clears_when_redis_is_blind(self, monkeypatch):
@@ -216,7 +216,7 @@ class TestPin6ResumeOncePerEpisode:
         # The credit hook still fires from the durable credit site; with the
         # fast INCRBY blind, the DURABLE balance decides the re-cross — the
         # resume signals now, not an hour later at reconcile.
-        LiveLedgerService.credit(c.id, t, 10_000_000)
+        LiveCounter.credit(c.id, t, 10_000_000)
         assert _cleared().count() == 1
         assert _cleared().get().payload["balance_micros"] == 10_000_000
         c.refresh_from_db()
@@ -227,8 +227,8 @@ class TestPin6ResumeOncePerEpisode:
         c = _customer(t)
         self._open_episode(t, c)                       # stop, episode 1
         Wallet.objects.filter(customer=c).update(balance_micros=10_000_000)
-        LiveLedgerService.credit(c.id, t, 10_000_000)  # clear, episode 1 (live 4M)
-        out = LiveLedgerService.record_usage_debit(c.id, t, 12_000_000)  # live -8M
+        LiveCounter.credit(c.id, t, 10_000_000)  # clear, episode 1 (live 4M)
+        out = LiveCounter.debit(c.id, t, 12_000_000)  # live -8M
         assert out["stop"] is True                     # stop, episode 2
         assert [e.payload["episode_seq"] for e in _fired()] == [1, 2]
         assert [e.payload["episode_seq"] for e in _cleared()] == [1]
