@@ -18,7 +18,7 @@ import uuid
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import TestCase, Client
+from django.test import TestCase, TransactionTestCase, Client
 
 from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
@@ -30,7 +30,11 @@ from apps.platform.tasks.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
-class SubtaskPinTestBase(TestCase):
+class SubtaskPinMixin:
+    """Fixture + helpers, TestCase-agnostic: the batch-parity pin needs a
+    TransactionTestCase (real commits — #112 kills execute on_commit), the
+    rest stay on the fast wrapped-transaction TestCase."""
+
     def setUp(self):
         cache.clear()
         from api.v1 import metering_endpoints
@@ -79,14 +83,20 @@ class SubtaskPinTestBase(TestCase):
         return OutboxEvent.objects.filter(event_type=event_type)
 
 
+class SubtaskPinTestBase(SubtaskPinMixin, TestCase):
+    pass
+
+
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
     def test_sync_subtask_tipping_event_lands_bills_and_kills_alone(self, _mock):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
-        resp = self._record(task_id=str(sub.id),
-                            provider_cost_micros=6_000_000,
-                            billed_cost_micros=9_000_000)
+        # The kill executes on the recording transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(sub.id),
+                                provider_cost_micros=6_000_000,
+                                billed_cost_micros=9_000_000)
 
         # The tipping event answers 200 and is durably recorded + billed.
         self.assertEqual(resp.status_code, 200)
@@ -139,8 +149,10 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         sub.refresh_from_db()
         self.assertEqual(sub.status, "active")
 
-        # Settle: same verdicts, kill flow, and event as the sync path.
-        settle_raw_events()
+        # Settle: same verdicts, kill flow, and event as the sync path. The
+        # kill executes on the settle transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            settle_raw_events()
         self.assertEqual(RawIngestEvent.objects.get().status, "settled")
         sub.refresh_from_db()
         parent.refresh_from_db()
@@ -156,9 +168,10 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
     def test_subtask_killed_alone_parent_keeps_running_and_counting(self, _mock):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
-        # Trip the subtask's own limit.
-        self._record(task_id=str(sub.id), provider_cost_micros=6_000_000,
-                     billed_cost_micros=6_000_000)
+        # Trip the subtask's own limit (kill executes at commit — #112).
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(sub.id), provider_cost_micros=6_000_000,
+                         billed_cost_micros=6_000_000)
         sub.refresh_from_db()
         parent.refresh_from_db()
         self.assertEqual(sub.status, "killed")
@@ -187,9 +200,10 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
 
         # A subtask event pushes the ROLLED-UP provider total past the
         # parent's limit: the parent's cap covers everything underneath it.
-        resp = self._record(task_id=str(tripping_sub.id),
-                            provider_cost_micros=11_000_000,
-                            billed_cost_micros=11_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(tripping_sub.id),
+                                provider_cost_micros=11_000_000,
+                                billed_cost_micros=11_000_000)
         body = resp.json()
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], "task_limit")
@@ -215,9 +229,10 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
     def test_both_limits_tripping_on_one_event_announce_both(self, _mock):
         parent = self._task(limit=10_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
-        resp = self._record(task_id=str(sub.id),
-                            provider_cost_micros=12_000_000,
-                            billed_cost_micros=12_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(sub.id),
+                                provider_cost_micros=12_000_000,
+                                billed_cost_micros=12_000_000)
         body = resp.json()
         # The WIDEST tripped scope wins the scalar slot: stop the whole tree.
         self.assertEqual(body["stop_reason"], "task_limit")
@@ -228,6 +243,14 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(self._events("task.limit_exceeded").count(), 1)
         sub.refresh_from_db()
         self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
+
+
+@patch("apps.platform.events.tasks.process_single_event")
+class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
+    """TransactionTestCase (#112): the mid-batch semantics under test — the
+    tipping item's kill LANDS before the next item runs, so that item gets
+    task_not_active — exist only when each item's transaction really commits
+    (kill execution rides the recording transaction's on_commit)."""
 
     def test_batch_parity_subtask_verdicts(self, _mock):
         parent = self._task(limit=100_000_000)
@@ -252,7 +275,6 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(body["results"][1]["stop_scope"], "subtask")
         for item in body["results"]:
             self.assertEqual(item["parent_task_id"], str(parent.id))
-            self.assertNotIn("_kills", item)
         parent.refresh_from_db()
         self.assertEqual(parent.status, "active")
         self.assertEqual(parent.total_provider_cost_micros, 12_000_000)
@@ -279,8 +301,10 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         self.assertEqual(body["task_total_provider_cost_micros"], 1_000_000)
 
         # The provider total crossing is what kills.
-        resp = self._record(task_id=str(sub.id), provider_cost_micros=4_500_000,
-                            billed_cost_micros=1)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(sub.id),
+                                provider_cost_micros=4_500_000,
+                                billed_cost_micros=1)
         self.assertEqual(resp.json()["stop_reason"], "subtask_limit")
         sub.refresh_from_db()
         self.assertEqual(sub.status, "killed")

@@ -64,8 +64,8 @@ class AsyncIngestBurnToFloorE2ETest(IngestEndpointTestBase):
     adds a REAL price card (linear/"per_unit", $10 per 1,000,000 tokens:
     rate_per_unit_micros=10_000_000, unit_quantity=1_000_000 -> exactly
     units*10 micros for any integer units, no rounding slop) so estimation
-    goes through the real CardCache/EstimationService path instead of the
-    caller-supplied-cost shortcut.
+    goes through the real CardCache/PricingService.estimate path instead of
+    the caller-supplied-cost shortcut.
     """
 
     def setUp(self):

@@ -12,6 +12,14 @@ priced provider and billed cost; never updated or deleted once written.
 (`apps/metering/usage/models.py:UsageEvent`)
 _Avoid_: treating a usage event as a mutable row.
 
+**Recording core**:
+The ONE recording body both ingest lanes run (price → create → accumulate → stop-context tag →
+dirty marker → `usage.recorded` → kill registration on its own `on_commit`); `record_usage` (sync)
+and `settle_raw` (async) are thin input adapters over it, so the lanes structurally cannot drift.
+(`apps/metering/usage/services/usage_service.py:UsageService._record_core`)
+_Avoid_: adding a recording side effect to one lane's adapter — it belongs in the core, or it will
+silently miss the other lane.
+
 **effective_at**:
 When the usage economically *happened* — caller-suppliable, bounded by the tenant's backfill window
 — as opposed to when it *arrived*.
@@ -55,7 +63,12 @@ a durable priced usage event. (`apps/metering/usage/models.py:RawIngestEvent`)
 
 **Estimate**:
 The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will
-charge. Exact for caller-supplied, linear, and markup pricing.
+charge. Exact for caller-supplied, linear, and markup pricing — equal to `price()` *by
+construction*: both run the ONE compute spine (`PricingService._compute`), differing only in which
+cards resolve (CardCache current cards at accept vs `as_of`-exact cards at settle).
+(`apps/metering/pricing/services/pricing_service.py:PricingService.estimate`)
+_Avoid_: "quote" — the domain word is estimate (it is on `RawIngestEvent.estimate_micros` and the
+estimate–hold–settle story); and never fork a second pricing body — change the spine.
 
 **Settle sweep**:
 The claim of pending raw events from the durable table itself — the accepted row *is* the queue

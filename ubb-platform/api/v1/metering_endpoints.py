@@ -39,7 +39,9 @@ from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
-from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.pricing.services.pricing_service import PricingError
+from apps.metering.usage.services.usage_service import (
+    EffectiveAtError, UsageService, validate_effective_at)
 from apps.metering.usage.models import UsageEvent
 
 logger = logging.getLogger(__name__)
@@ -49,24 +51,55 @@ metering_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
 
 
-def _apply_task_kill(tenant, customer, result):
-    """One-rule (#37): a crossing verdict on the result drives the idempotent
-    kill flow (active->killed flip + task.limit_exceeded /
-    subtask.limit_exceeded on the winning transition). The record path
-    computed the reasons.kill_plan directives and carried them privately as
-    ``_kills`` — popped HERE unconditionally so they never leak into a
-    response body (the batch path spreads the result dict verbatim). A
-    subtask's own crossing kills it ALONE; a parent crossing kills the
-    parent and cascades downward inside kill_task (#38).
+def _usage_kwargs(item):
+    """The single↔batch pass-through, written ONCE (#112): the field-for-
+    field map from a request item (RecordUsageRequest — the batch and ingest
+    items share the schema) onto record_usage's keyword surface."""
+    return dict(
+        request_id=item.request_id,
+        idempotency_key=item.idempotency_key,
+        provider_cost_micros=item.provider_cost_micros,
+        billed_cost_micros=item.billed_cost_micros,
+        units=item.units,
+        currency=item.currency,
+        product_id=item.product_id,
+        metadata=item.metadata,
+        event_type=item.event_type,
+        provider=item.provider,
+        tags=item.tags,
+        task_id=item.task_id,
+        usage_metrics=item.usage_metrics,
+        effective_at=item.effective_at,
+    )
 
-    The event is ALREADY recorded and billed — the kill is a signal, never a
-    wall, so this runs after record_usage returned, in its own transaction,
-    and never raises (a kill failure must not turn a recorded event into a
-    non-200)."""
-    from apps.platform.tasks.services import TaskService
-    for target_id, reason in result.pop("_kills", None) or []:
-        TaskService.kill_and_announce(
-            target_id, reason, tenant_id=tenant.id, customer_id=customer.id)
+
+def _usage_error(e):
+    """The ONE record_usage error map (#112): exception → (code, detail).
+    The specific-before-general order lives HERE and only here —
+    PricingError first, then EffectiveAtError (which IS a ValueError, so it
+    must be tested before the generic branch), then plain ValueError. The
+    single endpoint raises the code as a Problem; the batch wraps the same
+    code in a verdict dict."""
+    if isinstance(e, PricingError):
+        return "pricing_error", str(e)
+    if isinstance(e, EffectiveAtError):
+        return e.code, str(e)
+    return "validation_error", str(e)
+
+
+def _with_uncosted(result):
+    """Surface the provenance receipt's uncosted-metrics list on a success
+    body — both sync ingestion surfaces return it."""
+    provenance = result.get("pricing_provenance") or {}
+    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
+    return result
+
+
+def _rejected(code, detail):
+    """A batch-item rejection verdict: the typed code plus the constant stop
+    trio — a rejected item was never recorded, so nothing can have stopped."""
+    return {"accepted": False, "code": code, "detail": detail,
+            "stop": False, "stop_reason": None, "stop_scope": None}
 
 
 @metering_router.post("/usage", response={200: RecordUsageResponse})
@@ -80,43 +113,20 @@ def record_usage(request, payload: RecordUsageRequest):
     malformed payload, unknown customer/task, pricing/validation errors)."""
     _product_check(request)
 
-    from apps.metering.pricing.services.pricing_service import PricingError
-    from apps.metering.usage.services.usage_service import EffectiveAtError
-
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
     try:
         result = UsageService.record_usage(
-            tenant=request.auth.tenant,
-            customer=customer,
-            request_id=payload.request_id,
-            idempotency_key=payload.idempotency_key,
-            provider_cost_micros=payload.provider_cost_micros,
-            billed_cost_micros=payload.billed_cost_micros,
-            units=payload.units,
-            currency=payload.currency,
-            product_id=payload.product_id,
-            metadata=payload.metadata,
-            event_type=payload.event_type,
-            provider=payload.provider,
-            tags=payload.tags,
-            task_id=payload.task_id,
-            usage_metrics=payload.usage_metrics,
-            effective_at=payload.effective_at,
-        )
-    except PricingError as e:
-        raise Problem("pricing_error", str(e))
-    except EffectiveAtError as e:
-        # MUST precede the ValueError branch below (EffectiveAtError IS a
-        # ValueError) so the typed code survives to the response body.
-        raise Problem(e.code, str(e))
-    except ValueError as e:
-        raise Problem("validation_error", str(e))
-    _apply_task_kill(request.auth.tenant, customer, result)
-    provenance = result.get("pricing_provenance") or {}
-    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
-    return result
+            tenant=request.auth.tenant, customer=customer,
+            **_usage_kwargs(payload))
+    except (PricingError, ValueError) as e:
+        code, detail = _usage_error(e)
+        raise Problem(code, detail)
+    # Kill execution is the recording core's job (#112): a crossing verdict
+    # registers kill_and_announce on the recording transaction's on_commit,
+    # so the kills have already fired by the time this returns.
+    return _with_uncosted(result)
 
 
 def _record_batch_item(request, tenant, item, customers, task_exists):
@@ -132,58 +142,25 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
     task still land, bill, and carry the task_not_active stop verdict,
     identical to firing the same items as sequential singles.
     """
-    from apps.metering.pricing.services.pricing_service import PricingError
-    from apps.metering.usage.services.usage_service import EffectiveAtError
-
     cid = str(item.customer_id)
     if cid not in customers:
         customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
     customer = customers[cid]
     if customer is None:
-        return {"accepted": False, "code": "not_found",
-                "detail": "Customer not found",
-                "stop": False, "stop_reason": None, "stop_scope": None}
+        return _rejected("not_found", "Customer not found")
     if item.task_id is not None:
         task_key = (cid, str(item.task_id))
         if task_key not in task_exists:
             task_exists[task_key] = Task.objects.filter(
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
-            return {"accepted": False, "code": "not_found",
-                    "detail": "Task not found",
-                    "stop": False, "stop_reason": None, "stop_scope": None}
+            return _rejected("not_found", "Task not found")
     try:
         result = UsageService.record_usage(
-            tenant=tenant,
-            customer=customer,
-            request_id=item.request_id,
-            idempotency_key=item.idempotency_key,
-            provider_cost_micros=item.provider_cost_micros,
-            billed_cost_micros=item.billed_cost_micros,
-            units=item.units,
-            currency=item.currency,
-            product_id=item.product_id,
-            metadata=item.metadata,
-            event_type=item.event_type,
-            provider=item.provider,
-            tags=item.tags,
-            task_id=item.task_id,
-            usage_metrics=item.usage_metrics,
-            effective_at=item.effective_at,
-        )
-    except PricingError as e:
-        return {"accepted": False, "code": "pricing_error", "detail": str(e),
-                "stop": False, "stop_reason": None, "stop_scope": None}
-    except EffectiveAtError as e:
-        return {"accepted": False, "code": e.code, "detail": str(e),
-                "stop": False, "stop_reason": None, "stop_scope": None}
-    except ValueError as e:
-        return {"accepted": False, "code": "validation_error", "detail": str(e),
-                "stop": False, "stop_reason": None, "stop_scope": None}
-    _apply_task_kill(tenant, customer, result)
-    provenance = result.get("pricing_provenance") or {}
-    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
-    return {"accepted": True, **result}
+            tenant=tenant, customer=customer, **_usage_kwargs(item))
+    except (PricingError, ValueError) as e:
+        return _rejected(*_usage_error(e))
+    return {"accepted": True, **_with_uncosted(result)}
 
 
 @metering_router.post("/usage/batch", response={200: UsageBatchResponse})
@@ -403,8 +380,7 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
 
     from apps.metering.pricing.services.card_cache import CardCache
     from apps.metering.pricing.services.markup_cache import MarkupCache
-    from apps.metering.pricing.services.estimation_service import EstimationService, Unpriceable
-    from apps.metering.usage.services.usage_service import EffectiveAtError, validate_effective_at
+    from apps.metering.pricing.services.pricing_service import PricingService, Unpriceable
     from apps.billing.queries import acquire_ingest_holds, release_ingest_hold, read_live_stop
     from apps.metering.usage.models import RawIngestEvent
 
@@ -541,8 +517,8 @@ def ingest_usage_batch(request, payload: IngestBatchRequest):
             append_only.append((i, item, customer, owner_id))
             continue
         try:
-            est = EstimationService.estimate(
-                tenant=tenant, customer=customer, event_type=item.event_type or "",
+            est = PricingService.estimate(
+                tenant, customer, event_type=item.event_type or "",
                 provider=item.provider or "", usage_metrics=item.usage_metrics,
                 tags=item.tags, currency=tenant_currency,
                 caller_billed=item.billed_cost_micros,
