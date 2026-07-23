@@ -40,8 +40,8 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 class OneRulePinTestBase(TestCase):
     def setUp(self):
         cache.clear()
-        from api.v1 import metering_endpoints
-        metering_endpoints._TASK_META_CACHE.clear()
+        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
+        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="OneRule", products=["metering", "billing", "metering_async"],
@@ -386,12 +386,15 @@ _RUN_ERA_TOKENS = (
 
 _PLATFORM_ROOT = Path(__file__).resolve().parents[3]
 
-# The public surfaces the clean cut renames wholesale.
+# The public surfaces the clean cut renames wholesale. ingest_accept.py is
+# in the list because the ingest verdict builders moved behind the metering
+# seam (#113) — its strings still answer on the wire.
 _SURFACE_FILES = [
     _PLATFORM_ROOT / "api" / "v1" / "schemas.py",
     _PLATFORM_ROOT / "api" / "v1" / "metering_endpoints.py",
     _PLATFORM_ROOT / "api" / "v1" / "billing_endpoints.py",
     _PLATFORM_ROOT / "api" / "v1" / "tenant_endpoints.py",
+    _PLATFORM_ROOT / "apps" / "metering" / "usage" / "services" / "ingest_accept.py",
     _PLATFORM_ROOT / "apps" / "platform" / "events" / "schemas.py",
     _PLATFORM_ROOT / "apps" / "platform" / "events" / "catalog.py",
 ]

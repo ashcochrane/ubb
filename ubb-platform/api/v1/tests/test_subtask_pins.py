@@ -37,8 +37,8 @@ class SubtaskPinMixin:
 
     def setUp(self):
         cache.clear()
-        from api.v1 import metering_endpoints
-        metering_endpoints._TASK_META_CACHE.clear()
+        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
+        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Subtasks", products=["metering", "billing", "metering_async"],
