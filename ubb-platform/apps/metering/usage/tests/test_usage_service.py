@@ -18,9 +18,9 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # One-rule (#37): the full record_usage result contract. hard_stop and
 # run_total_cost_micros are RETIRED; both task totals travel denominationally
 # explicit, and parent_task_id names the unit's parent when it is a subtask
-# (#38). The internal _kills key is popped by the endpoint layer and never
-# serialized — the exact-key-set assertion below pins that for the no-kill
-# paths.
+# (#38). Kill directives never ride the result at all (#112): the recording
+# core registers kill execution on its own transaction.on_commit — the
+# exact-key-set assertion below pins that nothing internal can sneak in.
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "billed_cost_micros", "units",
     "new_balance_micros", "suspended",
@@ -253,8 +253,9 @@ class UsageServiceTaskTest(TestCase):
     The service's ONE accumulate primitive never raises on limits: every
     event — including the tipping event and everything after a kill — lands,
     bills, and counts into BOTH totals. Crossing verdicts ride the result's
-    stop fields; the kill flow is the ENDPOINT's job, so the task is still
-    active when record_usage returns.
+    stop fields; kill execution registers on the recording transaction's
+    on_commit (#112), which never fires inside the test transaction — so the
+    task is still active when record_usage returns here.
     """
 
     def setUp(self):
@@ -332,7 +333,8 @@ class UsageServiceTaskTest(TestCase):
     def test_task_limit_crossing_records_event_and_returns_stop(self, mock_process):
         """One-rule: crossing the COGS limit is a VERDICT, never a wall — the
         tipping event lands, bills, and counts; the service seam leaves the
-        task active (the kill flow is the endpoint's job)."""
+        task active (the kill fires on the recording transaction's commit,
+        which the test transaction never reaches)."""
         task = self._task(balance=20_000_000, limit=10_000_000, floor=-5_000_000)
         # Accumulate close to the limit.
         UsageService.record_usage(
@@ -368,7 +370,7 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(task.total_billed_cost_micros, 11_000_000)
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(task.event_count, 2)
-        # Still ACTIVE at the service seam — the kill flow is the endpoint's.
+        # Still ACTIVE at the service seam — the kill fires only at commit.
         self.assertEqual(task.status, "active")
 
     @patch("apps.platform.events.tasks.process_single_event")

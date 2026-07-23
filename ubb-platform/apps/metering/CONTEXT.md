@@ -12,6 +12,14 @@ priced provider and billed cost; never updated or deleted once written.
 (`apps/metering/usage/models.py:UsageEvent`)
 _Avoid_: treating a usage event as a mutable row.
 
+**Recording core**:
+The ONE recording body both ingest lanes run (price → create → accumulate → stop-context tag →
+dirty marker → `usage.recorded` → kill registration on its own `on_commit`); `record_usage` (sync)
+and `settle_raw` (async) are thin input adapters over it, so the lanes structurally cannot drift.
+(`apps/metering/usage/services/usage_service.py:UsageService._record_core`)
+_Avoid_: adding a recording side effect to one lane's adapter — it belongs in the core, or it will
+silently miss the other lane.
+
 **effective_at**:
 When the usage economically *happened* — caller-suppliable, bounded by the tenant's backfill window
 — as opposed to when it *arrived*.

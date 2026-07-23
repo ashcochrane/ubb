@@ -129,12 +129,16 @@ class KillFailureIsolationTest(IngestEndpointTestBase):
         self.assertEqual(OutboxEvent.objects.filter(
             event_type="task.limit_exceeded").count(), 0)
 
-    def test_settle_completes_when_kill_fails(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_settle_completes_when_kill_fails(self, _dispatch):
         task, raw = self._crossing_raw()
+        # The kill executes on the settle transaction's on_commit (#112) —
+        # run the captured callbacks while the failing kill_task patch holds.
         with patch.object(TaskService, "kill_task",
                           side_effect=RuntimeError("lock timeout")):
             with self.assertLogs("apps.platform.tasks.services", level="ERROR") as logs:
-                result = UsageService.settle_raw(raw)
+                with self.captureOnCommitCallbacks(execute=True):
+                    result = UsageService.settle_raw(raw)
         # The settle itself completed — the raw is settled, not poisoned.
         self.assertEqual(result, "settled")
         self.assertTrue(any("task.kill_failed" in m for m in logs.output))
@@ -155,7 +159,8 @@ class SecondCrossingNoSecondEventTest(IngestEndpointTestBase):
     task_not_active verdict, not a crossing — no second kill, no second
     task.limit_exceeded (re-announcing every late event would be spam)."""
 
-    def test_second_settle_crossing_emits_no_second_event(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_second_settle_crossing_emits_no_second_event(self, _dispatch):
         task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
             balance_snapshot_micros=20_000_000, provider_cost_limit_micros=500_000,
@@ -171,8 +176,10 @@ class SecondCrossingNoSecondEventTest(IngestEndpointTestBase):
         raws = list(RawIngestEvent.objects.order_by("created_at"))
         self.assertEqual(len(raws), 2)
 
-        # First settle crosses the limit -> kill + exactly one event.
-        self.assertEqual(UsageService.settle_raw(raws[0]), "settled")
+        # First settle crosses the limit -> kill + exactly one event. The
+        # kill executes on the settle transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(UsageService.settle_raw(raws[0]), "settled")
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
         self.assertEqual(OutboxEvent.objects.filter(

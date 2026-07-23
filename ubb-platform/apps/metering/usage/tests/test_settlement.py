@@ -180,7 +180,8 @@ class SettleKillParityTest(SettlementTestBase):
     settle, with exactly one task.limit_exceeded outbox row — the same
     idempotent kill flow the sync path runs."""
 
-    def test_settle_crossing_kills_task_and_emits_exactly_one_event(self):
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_settle_crossing_kills_task_and_emits_exactly_one_event(self, _mock):
         task = Task.objects.create(
             tenant=self.tenant, customer=self.customer, status="active",
             balance_snapshot_micros=20_000_000,
@@ -195,7 +196,9 @@ class SettleKillParityTest(SettlementTestBase):
         self.assertEqual(task.status, "active")
 
         raw = RawIngestEvent.objects.get()
-        result = UsageService.settle_raw(raw)
+        # The kill executes on the settle transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            result = UsageService.settle_raw(raw)
         self.assertEqual(result, "settled")
 
         task.refresh_from_db()

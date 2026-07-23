@@ -109,8 +109,12 @@ class PastLimitPinTestBase(TestCase):
 class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
     def test_tipping_and_late_events_carry_schema_contexts(self, _mock):
         task = self._task(limit=10_000_000)
-        tip = self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                           billed_cost_micros=1_000_000)
+        # The kill executes on the recording transaction's on_commit (#112)
+        # — it must land before the late event so that event arrives AFTER.
+        with self.captureOnCommitCallbacks(execute=True):
+            tip = self._record(task_id=str(task.id),
+                               provider_cost_micros=11_000_000,
+                               billed_cost_micros=1_000_000)
         late = self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
                             billed_cost_micros=1_000_000)
 
@@ -145,8 +149,10 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
 
     def test_batch_items_carry_stop_context(self, _mock):
         task = self._task(limit=1_000_000)
-        self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=1_000_000)
+        # Kill executes at commit (#112) — land it before the batch below.
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
+                         billed_cost_micros=1_000_000)
         resp = self.http_client.post(
             "/api/v1/metering/usage/batch", data=json.dumps({"events": [{
                 "customer_id": str(self.customer.id),
@@ -196,10 +202,12 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin9PastLimitReportTest(PastLimitPinTestBase):
     def test_report_reconstructs_episodes_end_to_end(self, _mock):
-        # -- the task-limit episode: tipping event + one late event.
+        # -- the task-limit episode: tipping event + one late event. The
+        #    kill executes at the tipping record's commit (#112).
         task = self._task(limit=10_000_000)
-        self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                     billed_cost_micros=6_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
+                         billed_cost_micros=6_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
                      billed_cost_micros=3_000_000)
 

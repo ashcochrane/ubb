@@ -49,26 +49,6 @@ metering_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
 
 
-def _apply_task_kill(tenant, customer, result):
-    """One-rule (#37): a crossing verdict on the result drives the idempotent
-    kill flow (active->killed flip + task.limit_exceeded /
-    subtask.limit_exceeded on the winning transition). The record path
-    computed the reasons.kill_plan directives and carried them privately as
-    ``_kills`` — popped HERE unconditionally so they never leak into a
-    response body (the batch path spreads the result dict verbatim). A
-    subtask's own crossing kills it ALONE; a parent crossing kills the
-    parent and cascades downward inside kill_task (#38).
-
-    The event is ALREADY recorded and billed — the kill is a signal, never a
-    wall, so this runs after record_usage returned, in its own transaction,
-    and never raises (a kill failure must not turn a recorded event into a
-    non-200)."""
-    from apps.platform.tasks.services import TaskService
-    for target_id, reason in result.pop("_kills", None) or []:
-        TaskService.kill_and_announce(
-            target_id, reason, tenant_id=tenant.id, customer_id=customer.id)
-
-
 @metering_router.post("/usage", response={200: RecordUsageResponse})
 @role_floor(WRITE)
 def record_usage(request, payload: RecordUsageRequest):
@@ -113,7 +93,9 @@ def record_usage(request, payload: RecordUsageRequest):
         raise Problem(e.code, str(e))
     except ValueError as e:
         raise Problem("validation_error", str(e))
-    _apply_task_kill(request.auth.tenant, customer, result)
+    # Kill execution is the recording core's job (#112): a crossing verdict
+    # registers kill_and_announce on the recording transaction's on_commit,
+    # so the kills have already fired by the time this returns.
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return result
@@ -180,7 +162,6 @@ def _record_batch_item(request, tenant, item, customers, task_exists):
     except ValueError as e:
         return {"accepted": False, "code": "validation_error", "detail": str(e),
                 "stop": False, "stop_reason": None, "stop_scope": None}
-    _apply_task_kill(tenant, customer, result)
     provenance = result.get("pricing_provenance") or {}
     result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
     return {"accepted": True, **result}

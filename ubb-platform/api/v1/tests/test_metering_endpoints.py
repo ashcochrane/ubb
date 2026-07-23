@@ -354,13 +354,16 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.json()["stop"])
 
-        # Second event pushes the PROVIDER total past the 10M ceiling — still 200.
-        resp = self._record(
-            task_id=str(task.id),
-            request_id="req_hs2",
-            idempotency_key="idem_hs2",
-            provider_cost_micros=2_000_000,
-        )
+        # Second event pushes the PROVIDER total past the 10M ceiling — still
+        # 200. The kill executes on the recording transaction's on_commit
+        # (#112), which the test transaction never reaches on its own.
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(
+                task_id=str(task.id),
+                request_id="req_hs2",
+                idempotency_key="idem_hs2",
+                provider_cost_micros=2_000_000,
+            )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["stop"])

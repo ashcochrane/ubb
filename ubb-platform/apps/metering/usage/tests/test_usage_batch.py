@@ -3,6 +3,7 @@ mapping byte-equivalent to sequential singles, whole-batch replay safety."""
 import json
 import uuid
 from datetime import timedelta
+from unittest import mock
 
 import pytest
 from django.test import Client
@@ -156,11 +157,19 @@ class TestBatchBasics:
         assert set(single.keys()) == set(item.keys())
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
+@mock.patch("apps.platform.events.tasks.process_single_event")
 class TestBatchOneRuleParity:
     """One-rule (#37): items that once came back as hard_stop / run_not_active
     rejections now return accepted=True with the stop-verdict fields — the
-    batch CONTINUES, and every item lands, bills, and counts."""
+    batch CONTINUES, and every item lands, bills, and counts.
+
+    transaction=True (#112): kill execution rides the recording
+    transaction's on_commit, and the mid-batch semantics under test — the
+    tipping item's kill LANDS before the next item runs, so that item gets
+    task_not_active — exist only when each item's transaction really
+    commits. The dispatch task is patched so the real commits' outbox
+    doorbells stay inert (the ConcurrentKillRaceTest precedent)."""
 
     def _task(self, t, c, limit=1_000):
         return Task.objects.create(tenant=t, customer=c, status="active",
@@ -181,7 +190,7 @@ class TestBatchOneRuleParity:
              "task_id": str(task.id)},  # task now killed → task_not_active
         ]
 
-    def test_tipping_item_kills_task_and_batch_continues(self):
+    def test_tipping_item_kills_task_and_batch_continues(self, _mock):
         t, c, http, auth = _setup()
         task = self._task(t, c)
         resp = _post(http, auth, BATCH_URL, {"events": self._items(c, task)}).json()
@@ -210,13 +219,12 @@ class TestBatchOneRuleParity:
         assert task.total_billed_cost_micros == 1_300
         assert task.event_count == 3
 
-    def test_kill_failure_does_not_500_batch(self):
+    def test_kill_failure_does_not_500_batch(self, _mock):
         """A kill_task crash is contained by kill_and_announce (it swallows
         and logs task.kill_failed) — the batch still answers 200 with
         accepted=True items and every event lands. The failed kill leaves the
         task ACTIVE, so later items keep re-reporting the task_limit crossing
         (the next event's verdict retries the kill)."""
-        from unittest import mock
         t, c, http, auth = _setup()
         task = self._task(t, c)
         with mock.patch("apps.platform.tasks.services.TaskService.kill_task",
@@ -238,7 +246,7 @@ class TestBatchOneRuleParity:
         assert task.event_count == 3
         assert body["accepted"] == 3 and body["rejected"] == 0
 
-    def test_byte_equivalent_to_sequential_singles(self):
+    def test_byte_equivalent_to_sequential_singles(self, _mock):
         """The batch per-item bodies equal the single endpoint's bodies for the
         identical scenario (modulo the 'accepted' marker and the task/event
         ids)."""

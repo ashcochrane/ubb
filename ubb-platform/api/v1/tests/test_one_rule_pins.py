@@ -83,9 +83,11 @@ class OneRulePinTestBase(TestCase):
 class Pin1SyncTippingEventTest(OneRulePinTestBase):
     def test_tipping_event_lands_bills_and_kills(self, _mock):
         task = self._task(limit=10_000_000)
-        resp = self._record(task_id=str(task.id),
-                            provider_cost_micros=11_000_000,
-                            billed_cost_micros=15_000_000)
+        # The kill executes on the recording transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=11_000_000,
+                                billed_cost_micros=15_000_000)
 
         # The event that crossed the limit answers 200 and is durably
         # recorded + billed — never rolled back.
@@ -144,8 +146,10 @@ class Pin1AsyncSettleTest(OneRulePinTestBase):
         self.assertEqual(self._limit_events().count(), 0)
 
         # Settle runs the accumulate primitive with exact costs -> the same
-        # verdicts, kill flow, and event as the sync path.
-        settle_raw_events()
+        # verdicts, kill flow, and event as the sync path. The kill executes
+        # on the settle transaction's on_commit (#112).
+        with self.captureOnCommitCallbacks(execute=True):
+            settle_raw_events()
         raw = RawIngestEvent.objects.get()
         self.assertEqual(raw.status, "settled")
         self.assertEqual(raw.task_id, task.id)
@@ -163,9 +167,11 @@ class Pin1AsyncSettleTest(OneRulePinTestBase):
 class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
     def test_events_on_killed_task_land_bill_and_count(self, _mock):
         task = self._task(limit=10_000_000)
-        # Trip the limit (kills the task) ...
-        self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                     billed_cost_micros=11_000_000)
+        # Trip the limit (kills the task; the kill executes on the recording
+        # transaction's on_commit — #112) ...
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
+                         billed_cost_micros=11_000_000)
         # ... then a late event arrives on the killed task.
         resp = self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
                             billed_cost_micros=3_000_000)
@@ -194,8 +200,10 @@ class Pin3BelowFloorLandsTest(OneRulePinTestBase):
         # Floor snapshot: balance snapshot 5M, floor 0 — a 6M event drives
         # the estimated balance below the floor.
         task = self._task(limit=None, floor=0, balance=5_000_000)
-        resp = self._record(task_id=str(task.id), provider_cost_micros=6_000_000,
-                            billed_cost_micros=6_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=6_000_000,
+                                billed_cost_micros=6_000_000)
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -225,11 +233,14 @@ class Pin3BelowFloorLandsTest(OneRulePinTestBase):
 class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
     def test_no_usage_report_path_answers_429_or_409(self, _mock):
         task = self._task(limit=1_000_000)
-        # Tipping event, then two more on the killed task — singles.
+        # Tipping event, then two more on the killed task — singles. Each
+        # record's kill executes at its commit (#112), so the kill lands
+        # between iterations exactly as it does between real requests.
         for i in range(3):
-            resp = self._record(task_id=str(task.id),
-                                provider_cost_micros=2_000_000,
-                                billed_cost_micros=2_000_000)
+            with self.captureOnCommitCallbacks(execute=True):
+                resp = self._record(task_id=str(task.id),
+                                    provider_cost_micros=2_000_000,
+                                    billed_cost_micros=2_000_000)
             self.assertEqual(resp.status_code, 200)
             self.assertNotIn("hard_stop", resp.json())
 
@@ -277,8 +288,10 @@ class Pin14DenominationTest(OneRulePinTestBase):
         self.assertEqual(body["task_total_provider_cost_micros"], 1_000_000)
 
         # The provider total crossing is what kills.
-        resp = self._record(task_id=str(task.id), provider_cost_micros=9_500_000,
-                            billed_cost_micros=1)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=9_500_000,
+                                billed_cost_micros=1)
         self.assertTrue(resp.json()["stop"])
         self.assertEqual(resp.json()["stop_reason"], "task_limit")
         task.refresh_from_db()

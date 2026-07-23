@@ -9,6 +9,7 @@ sibling/idle workers tear down. The start-gate (RiskService) still blocks NEW
 tasks for a flag-stopped owner in enforcing mode.
 """
 import json
+from unittest import mock
 
 import pytest
 from django.core.cache import cache
@@ -39,7 +40,8 @@ class TestTaskLimitFanout:
     def setup_method(self):
         cache.clear()
 
-    def test_task_limit_crossing_emits_task_event_exactly_once(self):
+    def test_task_limit_crossing_emits_task_event_exactly_once(
+            self, django_capture_on_commit_callbacks):
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=100_000_000)
@@ -59,8 +61,13 @@ class TestTaskLimitFanout:
                 content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {raw}")
 
         # The crossing event answers 200 (one-rule: never a 429), the server
-        # kills the task, and the fan-out event fires exactly once.
-        resp = record("k1", 15_000_000)
+        # kills the task, and the fan-out event fires exactly once. The kill
+        # executes on the recording transaction's on_commit (#112); the
+        # dispatch task is patched so the executed callbacks' outbox
+        # doorbells stay inert.
+        with mock.patch("apps.platform.events.tasks.process_single_event"):
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = record("k1", 15_000_000)
         assert resp.status_code == 200
         body = resp.json()
         assert body["stop"] is True
