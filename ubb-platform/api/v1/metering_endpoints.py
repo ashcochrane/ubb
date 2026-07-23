@@ -29,12 +29,13 @@ from api.v1.schemas import (
     UsageTimeseriesResponse,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
+    book_out, rate_out, usage_event_out,
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
     CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
 )
-from api.v1.pagination import paginate
+from api.v1.pagination import page
 from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
 from apps.platform.audit.ledger import record as audit_record
@@ -207,28 +208,8 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
         qs = qs.filter(tags__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
 
-    events, next_cursor, has_more = paginate(
-        qs, cursor, limit, time_field="effective_at")
-
-    return {
-        "data": [
-            {
-                "id": e.id,
-                "request_id": e.request_id,
-                "event_type": e.event_type,
-                "provider": e.provider,
-                "provider_cost_micros": e.provider_cost_micros,
-                "billed_cost_micros": e.billed_cost_micros,
-                "units": e.units,
-                "metadata": e.metadata,
-                "effective_at": e.effective_at.isoformat(),
-                "stop_context": e.stop_context,
-            }
-            for e in events
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(qs, cursor, limit, serialize=usage_event_out,
+                time_field="effective_at")
 
 
 @metering_router.get("/usage/{event_id}", response={200: UsageEventDetailOut, 404: ProblemOut})
@@ -608,40 +589,6 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
 _billing_check = ProductAccess("billing")
 
 
-def _book_to_out(b):
-    return {
-        "id": str(b.id),
-        "card_type": b.card_type,
-        "provider_key": b.provider_key,
-        "key": b.key,
-        "name": b.name,
-        "currency": b.currency,
-        "version": b.version,
-        "is_default": b.is_default,
-    }
-
-
-def _rate_to_out(r):
-    return {
-        "id": str(r.id),
-        "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
-        "lineage_id": str(r.lineage_id),
-        "card_type": r.card_type,
-        "metric_name": r.metric_name,
-        "provider": r.provider,
-        "event_type": r.event_type,
-        "dimensions": r.dimensions,
-        "pricing_model": r.pricing_model,
-        "rate_per_unit_micros": r.rate_per_unit_micros,
-        "unit_quantity": r.unit_quantity,
-        "fixed_micros": r.fixed_micros,
-        "currency": r.currency,
-        "product_id": r.product_id,
-        "valid_from": r.valid_from.isoformat(),
-        "valid_to": r.valid_to.isoformat() if r.valid_to else None,
-    }
-
-
 def _gate_card_type(request, card_type):
     _product_check(request)
     if card_type == "price":
@@ -676,9 +623,7 @@ def list_books(request, card_type: str = None, cursor: str = None, limit: int = 
     qs = RateCard.objects.filter(tenant=request.auth.tenant)
     if card_type:
         qs = qs.filter(card_type=card_type)
-    books, next_cursor, has_more = paginate(qs, cursor, limit)
-    return {"data": [_book_to_out(b) for b in books],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(qs, cursor, limit, serialize=book_out)
 
 
 @metering_router.post("/pricing/rate-cards",
@@ -720,7 +665,7 @@ def create_book(request, payload: BookIn):
             )
     except IntegrityError:
         raise Problem("conflict", "a rate-card book with this identity already exists")
-    return 200, _book_to_out(book)
+    return 200, book_out(book)
 
 
 @metering_router.get("/pricing/rate-cards/{book_id}/rates",
@@ -740,9 +685,7 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
-    rates, next_cursor, has_more = paginate(qs, cursor, limit)
-    return 200, {"data": [_rate_to_out(r) for r in rates],
-                 "next_cursor": next_cursor, "has_more": has_more}
+    return 200, page(qs, cursor, limit, serialize=rate_out)
 
 
 @metering_router.post("/pricing/rate-cards/{book_id}/rates",
@@ -790,7 +733,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
             )
     except IntegrityError:
         raise Problem("conflict", "a rate with this identity already exists")
-    return 200, _rate_to_out(rate)
+    return 200, rate_out(rate)
 
 
 @metering_router.post("/pricing/rate-cards/{book_id}/publish",
@@ -818,7 +761,7 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
         metadata={"version": book.version,
                   "change_count": len(payload.changes)},
     )
-    return 200, _book_to_out(book)
+    return 200, book_out(book)
 
 
 @metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})

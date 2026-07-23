@@ -84,10 +84,21 @@ and answers:
 
 Keyset cursoring (`core/pagination.py`, blessed as-is): descending
 `(time_field, id)`, opaque base64 cursor, `next_cursor` present only when
-`has_more`. A bad cursor is a 400 `invalid_cursor` problem. The composition
-layer's one idiom is `api.v1.pagination.paginate()`. Bare arrays and
-unwrapped lists are banned from the public surface; short config lists wear
-the envelope too.
+`has_more`. A bad cursor is a 400 `invalid_cursor` problem. The `api/v1`
+idiom (#115) is `api.v1.pagination.page(qs, cursor, limit,
+serialize=<entity serializer>)`, which owns the envelope; `empty_page()` is
+the no-container answer (missing wallet, gated caller). The response schema
+is a **concrete subclass of `Paginated[T]`** (`class PaginatedRates(
+Paginated[RateOut]): ...`) — the subclass pins the OpenAPI component name,
+which must stay unique in the one document (ninja silently overwrites
+duplicates) and stable across releases (renames break the spec and the
+generated SDK). Each entity's row mapping is ONE named serializer function
+declared beside its Out schema — never a second inline dict. The product
+api mounts on the same document (`apps/referrals/api`,
+`apps/subscriptions/api`, `apps/platform/events/api`) still hand-assemble
+the envelope; they adopt this idiom as they are next touched. Bare arrays
+and unwrapped lists are banned from the public surface; short config lists
+wear the envelope too.
 
 **Computed reports are not lists** (analytics, margin, trend series,
 past-limit report, usage summary): cursor-exempt but **parameter-bounded** —
@@ -128,8 +139,8 @@ plans, rate-card books, rates, webhook configs, referral attribution).
 
 1. Raise `Problem`s with registry codes; need a new code → add it to
    `openapi/error-codes.json` (sorted, LF) in the same change.
-2. Lists go through `paginate()` + a concrete `{data, next_cursor,
-   has_more}` schema; reports get bounded parameters.
+2. Lists go through `page()` + a concrete `Paginated[T]` subclass and a
+   named per-entity serializer; reports get bounded parameters.
 3. Regenerate the spec (`python scripts/export_openapi.py`) — the diff is
    the API review; the drift/breaking gates hold the rest.
 

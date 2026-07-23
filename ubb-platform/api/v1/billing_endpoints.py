@@ -3,7 +3,7 @@ from uuid import UUID
 
 from ninja import Router
 
-from api.v1.pagination import paginate
+from api.v1.pagination import empty_page, page
 from api.v1.topups import start_top_up
 from api.v1.schemas import (
     PreCheckRequest, PreCheckResponse,
@@ -14,13 +14,15 @@ from api.v1.schemas import (
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
     TopUpCheckoutResponse, WithdrawResponse, RefundResponse,
-    WalletTransactionOut, PaginatedWalletTransactions,
+    PaginatedWalletTransactions,
     CreateGrantRequest, GrantOut, PaginatedGrants,
     RevenueAnalyticsResponse,
     BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
     TenantUsageInvoiceListResponse,
+    grant_out, tenant_usage_invoice_out, usage_invoice_out,
+    wallet_transaction_out,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
@@ -298,48 +300,13 @@ def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, l
     try:
         wallet = Wallet.objects.get(customer=customer)
     except Wallet.DoesNotExist:
-        return {"data": [], "next_cursor": None, "has_more": False}
+        return empty_page()
 
-    txns, next_cursor, has_more = paginate(wallet.transactions.all(), cursor, limit)
-
-    return {
-        "data": [
-            {
-                "id": t.id,
-                "transaction_type": t.transaction_type,
-                "amount_micros": t.amount_micros,
-                "balance_after_micros": t.balance_after_micros,
-                "description": t.description,
-                "reference_id": t.reference_id,
-                "created_at": t.created_at.isoformat(),
-            }
-            for t in txns
-        ],
-        "next_cursor": next_cursor,
-        "has_more": has_more,
-    }
+    return page(wallet.transactions.all(), cursor, limit,
+                serialize=wallet_transaction_out)
 
 
 # ---------- Credit grants (F4.3) ----------
-
-
-def _grant_out(grant, *, balance_micros=None, transaction_id=None):
-    return {
-        "id": str(grant.id),
-        "kind": grant.kind,
-        "granted_micros": grant.granted_micros,
-        "remaining_micros": grant.remaining_micros,
-        "expired_micros": grant.expired_micros,
-        "voided_micros": grant.voided_micros,
-        "currency": grant.currency,
-        "status": grant.status,
-        "source": grant.source,
-        "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
-        "warning_sent_at": grant.warning_sent_at.isoformat() if grant.warning_sent_at else None,
-        "created_at": grant.created_at.isoformat(),
-        "balance_micros": balance_micros,
-        "transaction_id": transaction_id,
-    }
 
 
 @billing_router.post("/customers/{customer_id}/grants", response=GrantOut)
@@ -392,8 +359,8 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
     if result.outcome == "refused":
         raise Problem(
             "conflict", "idempotency_key already used by a non-grant transaction")
-    return _grant_out(result.grant, balance_micros=result.balance_micros,
-                      transaction_id=result.transaction_id)
+    return grant_out(result.grant, balance_micros=result.balance_micros,
+                     transaction_id=result.transaction_id)
 
 
 @billing_router.get("/customers/{customer_id}/grants", response=PaginatedGrants)
@@ -408,16 +375,13 @@ def list_grants(request, customer_id: UUID, status: str = None,
     owner = customer.resolve_billing_owner()
     wallet = Wallet.objects.filter(customer=owner).first()
     if wallet is None:
-        return {"data": [], "next_cursor": None, "has_more": False}
+        return empty_page()
 
     qs = CreditGrant.objects.filter(wallet=wallet)
     if status:
         qs = qs.filter(status=status)
 
-    grants, next_cursor, has_more = paginate(qs, cursor, limit)
-
-    return {"data": [_grant_out(g) for g in grants],
-            "next_cursor": next_cursor, "has_more": has_more}
+    return page(qs, cursor, limit, serialize=grant_out)
 
 
 @billing_router.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
@@ -448,8 +412,8 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
                           "transaction_id": result.transaction_id})
     if result.outcome == "refused":  # grant_not_found — the pre-seam 404
         raise Http404("No CreditGrant matches the given query.")
-    return _grant_out(result.grant, balance_micros=result.balance_micros,
-                      transaction_id=result.transaction_id)
+    return grant_out(result.grant, balance_micros=result.balance_micros,
+                     transaction_id=result.transaction_id)
 
 
 # ---------- Tenant billing endpoints ----------
@@ -654,17 +618,9 @@ def list_customer_usage_invoices(request, customer_id: UUID,
     _product_check(request)
     from apps.billing.invoicing.models import CustomerUsageInvoice
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    rows, next_cursor, has_more = paginate(
-        CustomerUsageInvoice.objects.filter(
-            tenant=request.auth.tenant, customer=customer),
-        cursor, limit)
-    return {"data": [
-        {"period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat(),
-         "total_billed_micros": r.total_billed_micros, "currency": r.currency, "status": r.status,
-         "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
-         "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
-        for r in rows],
-        "next_cursor": next_cursor, "has_more": has_more}
+    return page(CustomerUsageInvoice.objects.filter(
+                    tenant=request.auth.tenant, customer=customer),
+                cursor, limit, serialize=usage_invoice_out)
 
 
 @billing_router.get("/tenant/usage-invoices", response=TenantUsageInvoiceListResponse)
@@ -684,14 +640,7 @@ def list_tenant_usage_invoices(request, period: str = None,
         if not (1 <= m_int <= 12):
             raise Problem("bad_request", "period month must be between 01 and 12")
         qs = qs.filter(period_start=date(int(y_str), m_int, 1))
-    rows, next_cursor, has_more = paginate(qs, cursor, limit)
-    return {"data": [
-        {"customer_id": str(r.customer_id), "external_id": r.customer.external_id,
-         "period_start": r.period_start.isoformat(), "total_billed_micros": r.total_billed_micros,
-         "status": r.status, "stripe_invoice_id": r.stripe_invoice_id, "skip_reason": r.skip_reason,
-         "push_attempts": r.push_attempts, "last_attempt_error": r.last_attempt_error}
-        for r in rows],
-        "next_cursor": next_cursor, "has_more": has_more}
+    return page(qs, cursor, limit, serialize=tenant_usage_invoice_out)
 
 
 @billing_router.get("/postpaid-config", response=PostpaidConfigOut)
