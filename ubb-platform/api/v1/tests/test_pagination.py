@@ -109,5 +109,6 @@ class PaginatedSchemaTest(TestCase):
         in openapi/v1.json stay byte-identical."""
         sub = _SubclassPage.model_json_schema()
         hand = _HandWrittenPage.model_json_schema()
-        sub.pop("title"), hand.pop("title")
+        sub.pop("title")
+        hand.pop("title")
         self.assertEqual(sub, hand)

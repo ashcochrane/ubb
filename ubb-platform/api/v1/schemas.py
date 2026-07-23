@@ -5,7 +5,7 @@ from typing import Optional
 from ninja import Schema, Field
 from pydantic import field_validator
 
-from core.pagination import Paginated
+from api.v1.pagination import Paginated
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
 # concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
