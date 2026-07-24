@@ -1,59 +1,484 @@
-// src/features/customers/api/api.ts
-import { platformApi } from "@/api/client";
-import type {
-  CreateCustomerRequest,
-  CreatedCustomer,
-  Customer,
-  CustomerListResponse,
-  UpdateCustomerRequest,
+// Real API implementation — every call goes through unwrap so failures reject
+// with a typed ApiProblem.
+//
+// Identifier discipline (the contract's sharpest edge):
+// - Path {customer_id} params are always the internal Customer UUID.
+// - POST /billing/credit and /billing/debit take the EXTERNAL id in the body.
+// - Platform routes (/customers/{external_id}/...) key on the external id.
+// - GET /margin/business/{external_id} keys on a business customer's external id.
+
+import {
+  billingApi,
+  marginApi,
+  meteringApi,
+  platformApi,
+  rootApi,
+  subscriptionsApi,
+} from "@/api/client";
+import type { CursorPage } from "@/api/pagination";
+import { unwrap } from "@/api/problem";
+import type { DateRange } from "@/lib/date-range";
+
+import {
+  narrowAssignResult,
+  narrowPastLimitReport,
+  type AssignRateCardResult,
+  type BalanceResponse,
+  type BookOut,
+  type BudgetConfigIn,
+  type BudgetConfigOut,
+  type BudgetStatusOut,
+  type ConfigureAutoTopUpRequest,
+  type CreateCustomerRequest,
+  type CreateGrantRequest,
+  type CreateTopUpRequest,
+  type CreditRequest,
+  type CustomerBillingProfileIn,
+  type CustomerBillingProfileOut,
+  type CustomerMarginOut,
+  type CustomerResponse,
+  type DebitCreditResponse,
+  type DebitRequest,
+  type GrantOut,
+  type MarginListOut,
+  type MarginTrendOut,
+  type PastLimitReport,
+  type PreCheckResponse,
+  type RevenueModeOut,
+  type RevenueProfileIn,
+  type RevenueProfileOut,
+  type StatusResponse,
+  type StripeSubscriptionOut,
+  type SubscribeIn,
+  type SubscriptionInvoiceOut,
+  type TenantMarkupIn,
+  type TenantMarkupOut,
+  type TopUpCheckoutResponse,
+  type UsageAnalyticsResponse,
+  type UsageTimeseriesResponse,
+  type WalletTransactionOut,
+  type WithdrawRequest,
+  type WithdrawResponse,
+  type BusinessMarginOut,
 } from "./types";
 
-export async function listCustomers(params?: {
-  cursor?: string;
-  limit?: number;
-}): Promise<CustomerListResponse> {
-  const { data, error } = await platformApi.GET("/customers", {
-    params: { query: params },
-  });
-  if (error || !data) throw error ?? new Error("Failed to list customers");
-  return data;
+// ---------------------------------------------------------------------------
+// Margin
+
+export async function listCustomerMargins(range: DateRange): Promise<MarginListOut> {
+  return unwrap(await marginApi.GET("/customers", { params: { query: range } }));
 }
 
-export async function getCustomer(customerId: string): Promise<Customer> {
-  const { data, error } = await platformApi.GET("/customers/{customer_id}", {
-    params: { path: { customer_id: customerId } },
-  });
-  if (error || !data) throw error ?? new Error("Failed to load customer");
-  return data;
+export async function getCustomerMargin(
+  customerId: string,
+  range: DateRange,
+): Promise<CustomerMarginOut> {
+  return unwrap(
+    await marginApi.GET("/customers/{customer_id}", {
+      params: { path: { customer_id: customerId }, query: range },
+    }),
+  );
 }
+
+export async function getMarginTrend(
+  customerId: string,
+  periods: number,
+): Promise<MarginTrendOut> {
+  return unwrap(
+    await marginApi.GET("/customers/{customer_id}/trend", {
+      params: { path: { customer_id: customerId }, query: { periods } },
+    }),
+  );
+}
+
+export async function getRevenueProfile(customerId: string): Promise<RevenueProfileOut> {
+  return unwrap(
+    await marginApi.GET("/customers/{customer_id}/revenue", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function putRevenueProfile(
+  customerId: string,
+  body: RevenueProfileIn,
+): Promise<RevenueProfileOut> {
+  return unwrap(
+    await marginApi.PUT("/customers/{customer_id}/revenue", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+export async function getRevenueMode(customerId: string): Promise<RevenueModeOut> {
+  return unwrap(
+    await marginApi.GET("/customers/{customer_id}/revenue-mode", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function putRevenueMode(
+  customerId: string,
+  revenueMode: string,
+): Promise<RevenueModeOut> {
+  return unwrap(
+    await marginApi.PUT("/customers/{customer_id}/revenue-mode", {
+      params: { path: { customer_id: customerId } },
+      body: { revenue_mode: revenueMode },
+    }),
+  );
+}
+
+export async function getBusinessMargin(
+  externalId: string,
+  range: DateRange,
+): Promise<BusinessMarginOut> {
+  return unwrap(
+    await marginApi.GET("/business/{external_id}", {
+      params: { path: { external_id: externalId }, query: range },
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Platform — create customer
 
 export async function createCustomer(
-  req: CreateCustomerRequest,
-): Promise<CreatedCustomer> {
-  const { data, error } = await platformApi.POST("/customers", {
-    body: req,
-  });
-  if (error || !data) {
-    throw error ?? new Error("Create customer failed");
-  }
-  return data;
+  body: CreateCustomerRequest,
+): Promise<CustomerResponse> {
+  return unwrap(await platformApi.POST("/customers", { body }));
 }
 
-export async function updateCustomer(
+// ---------------------------------------------------------------------------
+// Metering — usage analytics + past-limit report
+
+export async function getUsageAnalytics(
   customerId: string,
-  req: UpdateCustomerRequest,
-): Promise<Customer> {
-  const { data, error } = await platformApi.PATCH("/customers/{customer_id}", {
-    params: { path: { customer_id: customerId } },
-    body: req,
-  });
-  if (error || !data) throw error ?? new Error("Failed to update customer");
-  return data;
+  range: DateRange,
+): Promise<UsageAnalyticsResponse> {
+  return unwrap(
+    await meteringApi.GET("/analytics/usage", {
+      params: { query: { ...range, customer_id: customerId } },
+    }),
+  );
 }
 
-export async function deleteCustomer(customerId: string): Promise<void> {
-  const { error } = await platformApi.DELETE("/customers/{customer_id}", {
-    params: { path: { customer_id: customerId } },
-  });
-  if (error) throw error;
+export async function getUsageTimeseries(
+  customerId: string,
+  range: DateRange,
+): Promise<UsageTimeseriesResponse> {
+  return unwrap(
+    await meteringApi.GET("/analytics/usage/timeseries", {
+      params: { query: { ...range, customer_id: customerId, granularity: "day" } },
+    }),
+  );
+}
+
+export async function getPastLimitReport(customerId: string): Promise<PastLimitReport> {
+  const raw = unwrap(
+    await rootApi.GET("/customers/{customer_id}/past-limit-report", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+  return narrowPastLimitReport(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Billing — wallet + money movement
+
+export async function getBalance(customerId: string): Promise<BalanceResponse> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/balance", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function createTopUp(
+  customerId: string,
+  body: CreateTopUpRequest,
+): Promise<TopUpCheckoutResponse> {
+  return unwrap(
+    await billingApi.POST("/customers/{customer_id}/top-up", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+export async function withdraw(
+  customerId: string,
+  body: WithdrawRequest,
+): Promise<WithdrawResponse> {
+  return unwrap(
+    await billingApi.POST("/customers/{customer_id}/withdraw", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+/** NOTE: body.customer_id is the customer's EXTERNAL id, not the UUID. */
+export async function creditWallet(body: CreditRequest): Promise<DebitCreditResponse> {
+  return unwrap(await billingApi.POST("/credit", { body }));
+}
+
+/** NOTE: body.customer_id is the customer's EXTERNAL id, not the UUID. */
+export async function debitWallet(body: DebitRequest): Promise<DebitCreditResponse> {
+  return unwrap(await billingApi.POST("/debit", { body }));
+}
+
+/** A denial is still HTTP 200 — branch on `allowed`/`reason` in the body. */
+export async function preCheck(customerId: string): Promise<PreCheckResponse> {
+  return unwrap(
+    await billingApi.POST("/pre-check", {
+      body: { customer_id: customerId, start_task: false, external_task_id: "" },
+    }),
+  );
+}
+
+export async function listTransactions(
+  customerId: string,
+  cursor?: string,
+): Promise<CursorPage<WalletTransactionOut>> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/transactions", {
+      params: { path: { customer_id: customerId }, query: { cursor } },
+    }),
+  );
+}
+
+export async function listGrants(
+  customerId: string,
+  options: { status?: string; cursor?: string },
+): Promise<CursorPage<GrantOut>> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/grants", {
+      params: {
+        path: { customer_id: customerId },
+        query: { status: options.status, cursor: options.cursor },
+      },
+    }),
+  );
+}
+
+export async function createGrant(
+  customerId: string,
+  body: CreateGrantRequest,
+): Promise<GrantOut> {
+  return unwrap(
+    await billingApi.POST("/customers/{customer_id}/grants", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+export async function voidGrant(customerId: string, grantId: string): Promise<GrantOut> {
+  return unwrap(
+    await billingApi.POST("/customers/{customer_id}/grants/{grant_id}/void", {
+      params: { path: { customer_id: customerId, grant_id: grantId } },
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Billing — budget, profile, auto top-up
+
+export async function getCustomerBudget(customerId: string): Promise<BudgetConfigOut> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/budget", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+/** PUT is a FULL upsert — always send every field (defaults apply to omissions). */
+export async function putCustomerBudget(
+  customerId: string,
+  body: BudgetConfigIn,
+): Promise<BudgetConfigOut> {
+  return unwrap(
+    await billingApi.PUT("/customers/{customer_id}/budget", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+export async function getBudgetStatus(customerId: string): Promise<BudgetStatusOut> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/budget/status", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function getBillingProfile(
+  customerId: string,
+): Promise<CustomerBillingProfileOut> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/billing-profile", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function putBillingProfile(
+  customerId: string,
+  body: CustomerBillingProfileIn,
+): Promise<CustomerBillingProfileOut> {
+  return unwrap(
+    await billingApi.PUT("/customers/{customer_id}/billing-profile", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+/** There is NO GET for auto top-up — settings cannot be read back. */
+export async function configureAutoTopUp(
+  customerId: string,
+  body: ConfigureAutoTopUpRequest,
+): Promise<StatusResponse> {
+  return unwrap(
+    await billingApi.PUT("/customers/{customer_id}/auto-top-up", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Metering — pricing (markup override + price book assignment)
+
+/** Returns the RESOLVED markup — inherited vs overridden is indistinguishable. */
+export async function getCustomerMarkup(customerId: string): Promise<TenantMarkupOut> {
+  return unwrap(
+    await meteringApi.GET("/pricing/customers/{customer_id}/markup", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function putCustomerMarkup(
+  customerId: string,
+  body: TenantMarkupIn,
+): Promise<TenantMarkupOut> {
+  return unwrap(
+    await meteringApi.PUT("/pricing/customers/{customer_id}/markup", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
+
+export async function deleteCustomerMarkup(customerId: string): Promise<StatusResponse> {
+  return unwrap(
+    await meteringApi.DELETE("/pricing/customers/{customer_id}/markup", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+/** First page of PRICE books (limit 100) — enough for an assignment select. */
+export async function listPriceBooks(): Promise<CursorPage<BookOut>> {
+  return unwrap(
+    await meteringApi.GET("/pricing/rate-cards", {
+      params: { query: { card_type: "price", limit: 100 } },
+    }),
+  );
+}
+
+export async function assignRateCard(
+  customerId: string,
+  rateCardId: string,
+): Promise<AssignRateCardResult> {
+  const raw = unwrap(
+    await meteringApi.POST("/pricing/customers/{customer_id}/rate-card", {
+      params: { path: { customer_id: customerId } },
+      body: { rate_card_id: rateCardId },
+    }),
+  );
+  return narrowAssignResult(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions (reads key on the UUID; lifecycle verbs key on external_id)
+
+export async function getSubscription(customerId: string): Promise<StripeSubscriptionOut> {
+  return unwrap(
+    await subscriptionsApi.GET("/customers/{customer_id}/subscription", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
+export async function listSubscriptionInvoices(
+  customerId: string,
+  cursor?: string,
+): Promise<CursorPage<SubscriptionInvoiceOut>> {
+  return unwrap(
+    await subscriptionsApi.GET("/customers/{customer_id}/invoices", {
+      params: { path: { customer_id: customerId }, query: { cursor } },
+    }),
+  );
+}
+
+export async function subscribeCustomer(
+  externalId: string,
+  body: SubscribeIn,
+): Promise<Record<string, unknown>> {
+  return unwrap(
+    await platformApi.POST("/customers/{external_id}/subscribe", {
+      params: { path: { external_id: externalId } },
+      body,
+    }),
+  );
+}
+
+export async function cancelSubscription(
+  externalId: string,
+  atPeriodEnd: boolean,
+): Promise<Record<string, unknown>> {
+  return unwrap(
+    await platformApi.POST("/customers/{external_id}/subscription/cancel", {
+      params: { path: { external_id: externalId } },
+      body: { at_period_end: atPeriodEnd },
+    }),
+  );
+}
+
+export async function pauseSubscription(
+  externalId: string,
+): Promise<Record<string, unknown>> {
+  return unwrap(
+    await platformApi.POST("/customers/{external_id}/subscription/pause", {
+      params: { path: { external_id: externalId } },
+    }),
+  );
+}
+
+export async function resumeSubscription(
+  externalId: string,
+): Promise<Record<string, unknown>> {
+  return unwrap(
+    await platformApi.POST("/customers/{external_id}/subscription/resume", {
+      params: { path: { external_id: externalId } },
+    }),
+  );
+}
+
+export async function setSeats(
+  externalId: string,
+  seats: number,
+): Promise<Record<string, unknown>> {
+  return unwrap(
+    await platformApi.POST("/customers/{external_id}/seats", {
+      params: { path: { external_id: externalId } },
+      body: { seats },
+    }),
+  );
 }

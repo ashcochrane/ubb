@@ -1,20 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader } from "@/components/shared/page-header";
+
+import { WorkspaceSettingsPage } from "@/features/settings/components/workspace-settings-page";
+import { workspaceSearchSchema } from "@/features/settings/lib/settings";
 
 export const Route = createFileRoute("/_app/settings/")({
-  component: SettingsPage,
+  validateSearch: workspaceSearchSchema,
+  component: RouteComponent,
 });
 
-function SettingsPage() {
+function RouteComponent() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Settings"
-        description="Stripe connection, API keys, and account configuration."
-      />
-      <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
-        Settings — coming soon
-      </div>
-    </div>
+    <WorkspaceSettingsPage
+      connected={search.connected}
+      onClearConnected={() => void navigate({ search: {}, replace: true })}
+    />
   );
 }

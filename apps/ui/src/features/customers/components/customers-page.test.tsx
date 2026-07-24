@@ -1,78 +1,72 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import React from "react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-const createMutate = vi.fn();
-
-vi.mock("../api/queries", () => ({
-  useCustomers: () => ({
-    data: {
-      data: [
-        {
-          id: "cus_1",
-          externalId: "acme",
-          stripeCustomerId: "cus_stripe_1",
-          status: "active",
-          minBalanceMicros: null,
-          metadata: {},
-          createdAt: "2026-05-01T00:00:00Z",
-        },
-      ],
-      hasMore: false,
-      nextCursor: null,
-    },
-    isLoading: false,
-  }),
-  useCreateCustomer: () => ({ mutateAsync: createMutate, isPending: false }),
-}));
-
-vi.mock("@tanstack/react-router", () => ({
-  Link: ({ to, children }: { to: string; children: React.ReactNode }) =>
-    React.createElement("a", { href: to }, children),
-  useNavigate: () => vi.fn(),
-}));
-
+import { renderWithProviders } from "../test-utils";
 import { CustomersPage } from "./customers-page";
 
-function renderPage() {
-  const qc = new QueryClient();
-  return render(
-    React.createElement(QueryClientProvider, { client: qc },
-      React.createElement(CustomersPage),
-    ),
+function renderPage(onOpenCustomer = vi.fn()) {
+  renderWithProviders(
+    <CustomersPage
+      search={{}}
+      onSearchChange={vi.fn()}
+      onOpenCustomer={onOpenCustomer}
+    />,
   );
+  return onOpenCustomer;
 }
 
 describe("CustomersPage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    createMutate.mockResolvedValue({
-      id: "cus_new",
-      externalId: "wayne",
-      stripeCustomerId: "",
-      status: "active",
-    });
+  it("renders margin rows from the API with formatted money", async () => {
+    renderPage();
+    // acme-corp's shortened UUID row with derived revenue (sub + usage revenue).
+    expect(await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText("$541.50")).toBeInTheDocument();
+    // luna-labs' negative margin renders (styled by the restrained red).
+    expect(screen.getByText("-$14.70")).toBeInTheDocument();
+    // The contract-gap honesty note is visible.
+    expect(
+      screen.getByText(/the margin list has no external IDs/i),
+    ).toBeInTheDocument();
   });
 
-  it("renders customer rows", () => {
+  it("shows the filtered empty state when no customer ID matches", async () => {
     renderPage();
-    expect(screen.getByText("acme")).toBeInTheDocument();
-    expect(screen.getByText(/active/i)).toBeInTheDocument();
+    await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 });
+    fireEvent.change(screen.getByLabelText("Search customers"), {
+      target: { value: "zzz-no-such-id" },
+    });
+    expect(await screen.findByText("No customers match")).toBeInTheDocument();
+    expect(screen.queryByText("1f0c9c4e…")).not.toBeInTheDocument();
   });
 
-  it("opens the create dialog and submits", async () => {
-    renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /new customer/i }));
-    const externalIdInput = await screen.findByLabelText(/external id/i);
-    fireEvent.change(externalIdInput, { target: { value: "wayne" } });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-    await waitFor(() => {
-      expect(createMutate).toHaveBeenCalledWith({
-        externalId: "wayne",
-        stripeCustomerId: "",
-        metadata: {},
-      });
+  it("creates a customer and navigates to the new detail page", async () => {
+    const onOpenCustomer = renderPage();
+    await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "New customer" }));
+    fireEvent.change(await screen.findByLabelText("External ID"), {
+      target: { value: "test-co" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Create customer" }));
+    await waitFor(() => expect(onOpenCustomer).toHaveBeenCalledTimes(1), {
+      timeout: 5000,
+    });
+    expect(onOpenCustomer).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it("surfaces a 409 conflict inline and keeps the dialog open", async () => {
+    renderPage();
+    await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "New customer" }));
+    fireEvent.change(await screen.findByLabelText("External ID"), {
+      target: { value: "acme-corp" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create customer" }));
+    expect(
+      await screen.findByText(/already exists — pick another/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeInTheDocument();
+    // Input is preserved for correction.
+    expect(screen.getByLabelText("External ID")).toHaveValue("acme-corp");
   });
 });

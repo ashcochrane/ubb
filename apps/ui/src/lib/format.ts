@@ -1,11 +1,36 @@
+// All API money is integer MICROS of the tenant currency (1,000,000 micros =
+// 1 currency unit; 1 cent = 10,000 micros). Currency codes arrive lowercase
+// ("usd"). Formatting divides only for display — never compute in floats.
+
 export function formatMicros(micros: number, currency = "USD"): string {
   const dollars = micros / 1_000_000;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency,
+    currency: currency.toUpperCase(),
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(dollars);
+}
+
+/** Signed micros with explicit +/- for ledger deltas: "+$25.00" / "-$0.35". */
+export function formatSignedMicros(micros: number, currency = "USD"): string {
+  const formatted = formatMicros(Math.abs(micros), currency);
+  if (micros === 0) return formatted;
+  return `${micros > 0 ? "+" : "-"}${formatted}`;
+}
+
+/**
+ * `markup_percentage_micros` is a percentage expressed in micros:
+ * 1,000,000 = 1%. Not a currency amount.
+ */
+export function formatPercentMicros(percentMicros: number): string {
+  const pct = percentMicros / 1_000_000;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
+}
+
+/** Float percent (0–100) as the API's margin_percentage/pct fields carry it. */
+export function formatPercent(value: number, digits = 1): string {
+  return `${value.toFixed(digits).replace(/\.0+$/, "")}%`;
 }
 
 export function formatDate(isoString: string): string {

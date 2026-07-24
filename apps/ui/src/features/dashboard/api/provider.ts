@@ -1,6 +1,6 @@
-// src/features/dashboard/api/provider.ts
 import { selectProvider } from "@/lib/api-provider";
-import * as mock from "./mock";
+
 import * as api from "./api";
+import * as mock from "./mock";
 
 export const dashboardApi = selectProvider({ mock, api });
