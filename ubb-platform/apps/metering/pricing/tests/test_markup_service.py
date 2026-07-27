@@ -30,3 +30,60 @@ class TestMarkupService:
         c = Customer.objects.create(tenant=t, external_id="c1")
         TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=0, fixed_uplift_micros=500)
         assert MarkupService.apply(100_000, tenant=t, customer=c) == 100_500
+
+
+from apps.platform.plans.models import CustomerPlanAssignment, Plan
+
+
+@pytest.mark.django_db
+class TestMarkupPrecedenceWithPlans:
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+
+    def _assign(self, key, pct):
+        plan = Plan.objects.create(tenant=self.tenant, key=key, name=key,
+                                   markup_percentage_micros=pct)
+        CustomerPlanAssignment.objects.create(
+            tenant=self.tenant, customer=self.customer, plan=plan)
+        return plan
+
+    def test_plan_markup_beats_tenant_default(self):
+        """THE REVENUE LEAK, PINNED. A Personal Lite customer (50%) must not
+        fall through to the tenant default (20%). If this test ever passes
+        with 600_000, the plan rung has been lost."""
+        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
+                                    markup_percentage_micros=20_000_000)
+        self._assign("personal-lite", 50_000_000)
+        # $0.50 provider cost -> 50% -> $0.75, NOT the default's $0.60.
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 750_000
+
+    def test_customer_override_beats_plan(self):
+        self._assign("personal-lite", 50_000_000)
+        TenantMarkup.objects.create(tenant=self.tenant, customer=self.customer,
+                                    markup_percentage_micros=10_000_000)
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 550_000
+
+    def test_unassigned_customer_falls_through_to_tenant_default(self):
+        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
+                                    markup_percentage_micros=20_000_000)
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 600_000
+
+    def test_no_markup_anywhere_bills_at_provider_cost(self):
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 500_000
+
+    def test_resolve_reports_its_source(self):
+        self._assign("personal-lite", 50_000_000)
+        assert MarkupService.resolve(self.tenant, self.customer).source == "plan"
+
+    def test_plan_fixed_uplift_is_applied(self):
+        plan = Plan.objects.create(tenant=self.tenant, key="p", name="P",
+                                   markup_percentage_micros=20_000_000,
+                                   fixed_uplift_micros=7_000)
+        CustomerPlanAssignment.objects.create(
+            tenant=self.tenant, customer=self.customer, plan=plan)
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 607_000
+
+    def test_enterprise_and_personal_both_rate_at_twenty_percent(self):
+        self._assign("enterprise", 20_000_000)
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 600_000
