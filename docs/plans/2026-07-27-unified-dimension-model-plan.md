@@ -41,6 +41,14 @@ decisions are referenced below as D1–D9.
   database and applies every migration in dependency order, which is the real check that
   a new migration is sound. So: run `makemigrations`, then run the tests. If `pytest`
   passes, your migration is good.
+  **`makemigrations` itself works fine — the inconsistency is a `migrate`-time check.** It
+  emits a `RuntimeWarning` about the DB connection and generates normally. **Never
+  hand-write a migration file.** A hand-written one drifts from the model (e.g. recording
+  `id` as `UUIDField(default=None)` instead of `BaseModel`'s `default=uuid.uuid4`), which
+  is invisible in your own tests but injects a spurious `AlterField` into every later
+  task's `makemigrations` run. Verify with
+  `.venv/bin/python manage.py makemigrations <app> --check --dry-run` — it must report no
+  changes once you are done.
 - Every model inherits `core.models.BaseModel` (UUID pk, `created_at`, `updated_at`)
 - Every table name is prefixed `ubb_`
 - **ADR-001 product boundaries:** products (`apps/metering`, `apps/billing`,
