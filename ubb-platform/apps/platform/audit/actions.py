@@ -62,6 +62,8 @@ AUDIT_ACTIONS = (
     "rate.deleted",
     "markup.set",
     "markup.deleted",
+    # dimension registry (unified dimension model plan, D1)
+    "dimension.declared",
     # margin / revenue
     "margin_threshold.set",
     "revenue_profile.set",

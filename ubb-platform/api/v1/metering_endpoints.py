@@ -820,6 +820,7 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
 
 @metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
 @role_floor(WRITE)
+@records_audit("dimension.declared")
 def declare_dimensions(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -836,6 +837,13 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
                                      max_cardinality=d.max_cardinality)
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
+    audit_record(
+        action="dimension.declared",
+        tenant_id=tenant.id,
+        resource_type="dimension_registry",
+        resource_id=tenant.id,
+        metadata={"keys": [d.key for d in payload.dimensions]},
+    )
     return 200, {"dimensions": declared_dimensions(tenant.id)}
 
 
