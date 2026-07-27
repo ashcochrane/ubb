@@ -70,8 +70,16 @@ decisions are referenced below as D1–D9.
   nothing is wrong. Pointing at a dead host skips that check. Do not "fix" this recipe by
   restoring the real `DATABASE_URL` or adding `--check`.
 
-  To *generate* a migration, use the real `DATABASE_URL` as normal — generation works
-  fine and only warns.
+  **Generation needs the same trick.** `makemigrations` hits `check_consistent_history`
+  whenever it can reach the database, with or without `--dry-run`, so generate like this
+  too:
+  ```bash
+  DATABASE_URL="postgresql://nope:nope@localhost:5499/nope" \
+    DJANGO_SETTINGS_MODULE=config.settings \
+    .venv/bin/python manage.py makemigrations <app>
+  ```
+  Use the real `DATABASE_URL` for pytest and everything else — only `makemigrations` wants
+  the dead host.
 - Every model inherits `core.models.BaseModel` (UUID pk, `created_at`, `updated_at`)
 - Every table name is prefixed `ubb_`
 - **ADR-001 product boundaries:** products (`apps/metering`, `apps/billing`,
