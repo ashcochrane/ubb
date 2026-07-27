@@ -24,7 +24,10 @@ export const generalSettingsSchema = z.object({
     .string()
     .trim()
     .regex(/^[A-Za-z]{3}$/, "Use a 3-letter currency code, e.g. USD"),
-  enforcement_mode: z.enum(["off", "monitor", "enforce"]),
+  // Tenant.enforcement_mode: only "off" and "enforcing" exist server-side
+  // (apps/platform/tenants/models.py ENFORCEMENT_MODE_CHOICES) — anything
+  // else silently falls back to "off" (apps/platform/tenants/flags.py).
+  enforcement_mode: z.enum(["off", "enforcing"]),
   min_balance_micros: dollarString,
   soft_min_balance_micros: dollarString,
   default_task_provider_cost_limit_micros: dollarString,

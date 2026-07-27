@@ -7,12 +7,15 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatMicros, formatPercent, humanizeLabel } from "@/lib/format";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useBudgetStatus, usePastLimitReport } from "../api/queries";
 
 /** Risk/gating view: current budget consumption and past-limit episodes. */
 export function CustomerLimitsTab({ customerId }: { customerId: string }) {
   const status = useBudgetStatus(customerId);
   const report = usePastLimitReport(customerId);
+  const { enforcementMode } = useAuth();
+  const enforcementOff = enforcementMode !== "enforcing";
 
   return (
     <div className="space-y-6">
@@ -39,7 +42,16 @@ export function CustomerLimitsTab({ customerId }: { customerId: string }) {
             const totals = Object.entries(r.totals_per_limit ?? {});
             const episodes = Array.isArray(r.episodes) ? r.episodes : [];
             if (totals.length === 0 && episodes.length === 0) {
-              return <EmptyState title="No limit episodes" description="This customer hasn't hit any limits in the window." />;
+              return (
+                <EmptyState
+                  title="No limit episodes"
+                  description={
+                    enforcementOff
+                      ? "Tenant enforcement is off, so floor stops, task kills, and soft-floor (wind-down) crossings are never recorded — this view will stay empty until enforcement is turned on in Settings → Enforcement mode."
+                      : "This customer hasn't hit any limits in the window."
+                  }
+                />
+              );
             }
             return (
               <div className="space-y-4">

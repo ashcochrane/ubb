@@ -1,9 +1,13 @@
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Info } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import {
   Section,
   LoadingRows,
   ErrorInline,
+  DetailGrid,
+  DetailRow,
 } from "@/components/shared/data-states";
 import { FormField } from "@/components/shared/form-field";
 import {
@@ -13,8 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatMicros } from "@/lib/format";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   useBudget,
@@ -29,10 +35,15 @@ import {
   type BillingProfileValues,
 } from "../lib/schema";
 
-/** One-line, mode-specific explanation of what "blocking" actually does. */
+/**
+ * One-line, mode-specific explanation of what "blocking" actually does. The
+ * real stop line is `cap_micros * hard_stop_pct // 100`, not the cap itself —
+ * name the adjacent field rather than "the cap" so this doesn't contradict it
+ * whenever hard-stop % isn't 100.
+ */
 function blockingHint(billingMode: string | null): string {
   return billingMode === "postpaid"
-    ? "Blocking stops running work and fires a stop signal once month-to-date spend hits the cap."
+    ? "Blocking stops running work and fires a stop signal once month-to-date spend crosses the hard-stop line below (cap × hard-stop %) — not necessarily the cap itself."
     : "Blocking refuses new task starts; work already running continues — the wallet floor is what interrupts it.";
 }
 
@@ -131,6 +142,7 @@ export function CustomerBudgetForm({ customerId }: { customerId: string }) {
 export function CustomerBillingProfileForm({ customerId }: { customerId: string }) {
   const query = useBillingProfile(customerId);
   const save = usePutBillingProfile(customerId);
+  const { isPostpaid, enforcementMode } = useAuth();
 
   const form = useForm<BillingProfileValues>({
     resolver: zodResolver(billingProfileSchema),
@@ -156,6 +168,12 @@ export function CustomerBillingProfileForm({ customerId }: { customerId: string 
       setValueAs: (v) => (v === "" || v == null || Number.isNaN(Number(v)) ? undefined : Number(v)),
     });
 
+  const isPooledSeat = query.data?.is_pooled_seat ?? false;
+  const softFloorHint =
+    enforcementMode === "enforcing"
+      ? "Warns below this"
+      : "Warns below this — inactive while tenant enforcement is off (Settings → Enforcement mode)";
+
   return (
     <Section
       title="Billing profile"
@@ -165,13 +183,59 @@ export function CustomerBillingProfileForm({ customerId }: { customerId: string 
         <LoadingRows rows={2} />
       ) : query.isError ? (
         <ErrorInline error={query.error} onRetry={() => query.refetch()} />
+      ) : isPostpaid ? (
+        <Alert>
+          <Info />
+          <AlertTitle>Not used under postpaid</AlertTitle>
+          <AlertDescription>
+            Postpaid billing invoices usage at period close rather than gating on a wallet
+            floor, so these fields have no effect. The spend budget above is the postpaid
+            control.
+          </AlertDescription>
+        </Alert>
+      ) : isPooledSeat && query.data ? (
+        <div className="space-y-4">
+          <Alert>
+            <Info />
+            <AlertTitle>Billed to {query.data.billing_owner_external_id}</AlertTitle>
+            <AlertDescription>
+              This seat pools spend under{" "}
+              <Link
+                to="/customers/$customerId"
+                params={{ customerId: query.data.billing_owner_id }}
+                className="font-medium underline"
+              >
+                {query.data.billing_owner_external_id}
+              </Link>
+              . Floors are read-only here — saving would 422 — edit them on the business's own
+              billing profile instead.
+            </AlertDescription>
+          </Alert>
+          <DetailGrid>
+            <DetailRow label="Hard min balance">
+              {query.data.min_balance_micros != null
+                ? formatMicros(query.data.min_balance_micros)
+                : "—"}
+            </DetailRow>
+            <DetailRow label="Soft min balance">
+              {query.data.soft_min_balance_micros != null
+                ? formatMicros(query.data.soft_min_balance_micros)
+                : "—"}
+            </DetailRow>
+            <DetailRow label="Top-up grant expiry">
+              {query.data.topup_grant_expiry_days
+                ? `${query.data.topup_grant_expiry_days} days`
+                : "—"}
+            </DetailRow>
+          </DetailGrid>
+        </div>
       ) : (
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <FormField label="Hard min balance (USD)" hint="Blocks below this" error={form.formState.errors.min_balance?.message}>
               {(id) => <Input id={id} type="number" step={0.01} {...num("min_balance")} />}
             </FormField>
-            <FormField label="Soft min balance (USD)" hint="Warns below this" error={form.formState.errors.soft_min_balance?.message}>
+            <FormField label="Soft min balance (USD)" hint={softFloorHint} error={form.formState.errors.soft_min_balance?.message}>
               {(id) => <Input id={id} type="number" step={0.01} {...num("soft_min_balance")} />}
             </FormField>
             <FormField label="Top-up grant expiry (days)" hint="Optional" error={form.formState.errors.topup_grant_expiry_days?.message}>

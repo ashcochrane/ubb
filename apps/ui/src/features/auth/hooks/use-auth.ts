@@ -15,6 +15,22 @@ export interface UseAuth {
   billingMode: string | null;
   /** True when the tenant has a billing posture (prepaid/postpaid or billing product). */
   isBillingMode: boolean;
+  /**
+   * True only for `billing_mode === "prepaid"`. Prefer this (and
+   * `isPostpaid`) over `isBillingMode` whenever the wallet-vs-invoice
+   * mechanism actually differs — `isBillingMode` conflates the two.
+   */
+  isPrepaid: boolean;
+  /**
+   * True only for `billing_mode === "postpaid"`. Under postpaid the wallet
+   * is not the billing mechanism: drawdown skips postpaid customers
+   * entirely and both balance floors are skipped at the spend-control gate,
+   * so prepaid-only wallet surfaces (top-up, withdraw, auto top-up, grants,
+   * the min-balance floors) should be hidden rather than rendered inert.
+   */
+  isPostpaid: boolean;
+  /** `Tenant.enforcement_mode` (`"off" | "enforcing"`), or null while loading. */
+  enforcementMode: string | null;
   defaultCurrency: string;
   stripeConnected: boolean;
   /**
@@ -37,10 +53,9 @@ export function useAuth(): UseAuth {
     [products],
   );
 
-  const isBillingMode =
-    billingMode === "prepaid" ||
-    billingMode === "postpaid" ||
-    products.includes("billing");
+  const isPrepaid = billingMode === "prepaid";
+  const isPostpaid = billingMode === "postpaid";
+  const isBillingMode = isPrepaid || isPostpaid || products.includes("billing");
 
   return {
     tenant,
@@ -48,6 +63,9 @@ export function useAuth(): UseAuth {
     products,
     billingMode,
     isBillingMode,
+    isPrepaid,
+    isPostpaid,
+    enforcementMode: tenant?.enforcement_mode ?? null,
     defaultCurrency: tenant?.default_currency || "USD",
     stripeConnected: Boolean(tenant?.stripe_connected_account_id),
     hasProduct,

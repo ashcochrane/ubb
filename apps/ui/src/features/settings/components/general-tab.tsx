@@ -28,10 +28,14 @@ const BILLING_MODES = [
   { value: "postpaid", label: "Postpaid" },
 ] as const;
 
+// Tenant.enforcement_mode has exactly two real values (#42, spec §G):
+// "off" and "enforcing". There is no "monitor" — every route reads this via
+// apps.platform.tenants.flags.enforcing(), which treats anything but
+// "enforcing" as off, so offering a third value here would silently leave
+// the tenant unenforced while the operator believes they configured it.
 const ENFORCEMENT_MODES = [
   { value: "off", label: "Off" },
-  { value: "monitor", label: "Monitor" },
-  { value: "enforce", label: "Enforce" },
+  { value: "enforcing", label: "Enforcing" },
 ] as const;
 
 export function GeneralTab({ config }: { config: TenantConfig }) {

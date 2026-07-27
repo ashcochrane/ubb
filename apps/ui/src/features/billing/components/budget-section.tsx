@@ -30,10 +30,15 @@ const ENFORCE_MODES: { value: BudgetFormValues["enforceMode"]; label: string }[]
     { value: "blocking", label: "Blocking — refuse or stop spend over cap" },
   ];
 
-/** One-line, mode-specific explanation of what "blocking" actually does. */
+/**
+ * One-line, mode-specific explanation of what "blocking" actually does. The
+ * real stop line is `cap_micros * hard_stop_pct // 100`, not the cap itself —
+ * name the adjacent field rather than "the cap" so this doesn't contradict it
+ * whenever hard-stop % isn't 100.
+ */
 function blockingHint(billingMode: string | null): string {
   return billingMode === "postpaid"
-    ? "Blocking stops running work and fires a stop signal once month-to-date spend hits the cap."
+    ? "Blocking stops running work and fires a stop signal once month-to-date spend crosses the hard-stop line below (cap × hard-stop %) — not necessarily the cap itself."
     : "Blocking refuses new task starts; work already running continues — the wallet floor is what interrupts it.";
 }
 
