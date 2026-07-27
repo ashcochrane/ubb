@@ -59,10 +59,6 @@ _WRITE_ROUTES = {
     # referrals: register a referrer / attribute a referral
     ("POST", "/referrals/referrers"),
     ("POST", "/referrals/attribute"),
-    # dimension registry (unified dimension model plan, task 3): declaring a
-    # tenant's slicing vocabulary is day-to-day onboarding config, matching
-    # the brief's explicit choice — not a money/governance change.
-    ("PUT", "/metering/dimensions"),
 }
 
 # Guard against a vacuous pass (path-resolution breakage seeing zero routes).
@@ -72,8 +68,11 @@ _WRITE_ROUTES = {
 # less the 2 duplicate tenant billing GETs (billing-periods/invoices) removed
 # in the #86 sweep — their canonical Read-floored twins live on the tenant
 # mount. +3 (unified dimension model plan, task 3): PUT /metering/dimensions
-# [Write], GET /metering/dimensions [Read], GET
-# /metering/dimensions/{key}/values [Read] = 115.
+# [Admin — the plan owner's ruling: the dimension vocabulary feeds rate
+# selection (D1), a pricing-rule change like markup.set/rate_card.*, so it
+# takes the Admin default and needs no _WRITE_ROUTES entry], GET
+# /metering/dimensions [Read], GET /metering/dimensions/{key}/values [Read]
+# = 115.
 _EXPECTED_FLOORED = 115
 _EXPECTED_EXEMPT = 11
 

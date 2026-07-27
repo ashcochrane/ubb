@@ -819,7 +819,7 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
 
 
 @metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
-@role_floor(WRITE)
+@role_floor(ADMIN)
 @records_audit("dimension.declared")
 def declare_dimensions(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
@@ -832,18 +832,22 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
 
     tenant = request.auth.tenant
     try:
-        for d in payload.dimensions:
-            DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
-                                     max_cardinality=d.max_cardinality)
+        with transaction.atomic():
+            for d in payload.dimensions:
+                DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
+                                         max_cardinality=d.max_cardinality)
+            audit_record(
+                action="dimension.declared",
+                tenant_id=tenant.id,
+                resource_type="dimension_registry",
+                resource_id=tenant.id,
+                metadata={"dimensions": [
+                    {"key": d.key, "slot": d.slot, "scope": d.scope,
+                     "max_cardinality": d.max_cardinality}
+                    for d in payload.dimensions]},
+            )
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
-    audit_record(
-        action="dimension.declared",
-        tenant_id=tenant.id,
-        resource_type="dimension_registry",
-        resource_id=tenant.id,
-        metadata={"keys": [d.key for d in payload.dimensions]},
-    )
     return 200, {"dimensions": declared_dimensions(tenant.id)}
 
 
