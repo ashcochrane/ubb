@@ -104,6 +104,50 @@ def validate_tags(tags):
             raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
+SLOTS = ("dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+
+
+def _inherit_dimensions(task_id, dimension_slots):
+    """Resolve the ten selector values for one event (design D6).
+
+    Precedence per slot: the event's own value, then the leaf unit's, then its
+    parent's, then "". `task_type` always comes from the ROOT of the chain and
+    `subtask_type` from the leaf when it has a parent — so a subtask's events
+    carry both without the caller repeating either.
+
+    One query for the leaf and one for its parent; containment is a single
+    level (tasks/models.py:34-38), so this never recurses.
+    """
+    out = {"task_type": "", "subtask_type": ""}
+    out.update({s: (dimension_slots or {}).get(s, "") for s in SLOTS})
+    if task_id is None:
+        return out
+
+    from apps.platform.tasks.models import Task
+    cols = ("id", "parent_id", "task_type", "subtask_type") + SLOTS
+    leaf = Task.objects.filter(id=task_id).values(*cols).first()
+    if leaf is None:
+        return out
+
+    if leaf["parent_id"] is None:
+        out["task_type"] = leaf["task_type"]
+        chain = (leaf,)
+    else:
+        out["subtask_type"] = leaf["subtask_type"]
+        root = Task.objects.filter(id=leaf["parent_id"]).values(*cols).first()
+        out["task_type"] = (root or {}).get("task_type", "")
+        chain = (leaf, root) if root else (leaf,)
+
+    for slot in SLOTS:
+        if out[slot]:
+            continue  # the event's own value wins
+        for unit in chain:
+            if unit and unit.get(slot):
+                out[slot] = unit[slot]
+                break
+    return out
+
+
 _UNRESOLVED = object()  # sentinel: _result should look the parent up itself
 
 
@@ -211,6 +255,8 @@ class RecordingInput:
     currency: str
     usage_metrics: dict
     tags: dict | None
+    task_type: str
+    subtask_type: str
     dim1: str
     dim2: str
     dim3: str
@@ -250,9 +296,20 @@ class RecordingInput:
         RawIngestEvent payload never double-counts cardinality). Tags are
         analytics-only labels (#37) and are never consulted for dimension
         values — the historical "product"/"service"/"agent" tag-lifting is
-        retired; Task 10 adds declared task/subtask-scoped inheritance on
-        top of this slot map."""
+        retired.
+
+        Dimensions are DECLARED and INHERITED (design D1/D6) — there is no
+        tag-fallback inference. ``_inherit_dimensions`` resolves the ten
+        selector columns per slot: this event's own value wins, else the
+        leaf task's, else its parent's, else "". The legacy ``product_id``
+        wire field folds into the EVENT-scoped dim1 input alongside any
+        declared dim1 slot (an explicit declared dim1 wins when both are
+        sent — unchanged from Task 9), so it participates at the same
+        precedence tier as a declared dimension, ahead of task inheritance."""
         slots = dict(dimension_slots or {})
+        if not slots.get("dim1") and product_id:
+            slots["dim1"] = product_id
+        dims = _inherit_dimensions(task_id, slots)
         return cls(
             tenant=tenant, customer=customer,
             request_id=request_id or "", idempotency_key=idempotency_key,
@@ -263,14 +320,7 @@ class RecordingInput:
             # already rejected any mismatching caller currency.
             currency=_tenant_currency(tenant),
             usage_metrics=usage_metrics or {}, tags=tags,
-            # dim1/dim2/dim3 are UsageEvent's selector columns (Task 8);
-            # dim1 keeps the legacy product_id wire field as its fallback
-            # (Task 9 does not retire that field) — an explicit declared
-            # dim1-slotted dimension wins when both are sent.
-            dim1=slots.get("dim1") or product_id or "",
-            dim2=slots.get("dim2", ""), dim3=slots.get("dim3", ""),
-            dim4=slots.get("dim4", ""), dim5=slots.get("dim5", ""),
-            dim6=slots.get("dim6", ""),
+            **dims,
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at, units=units,
             caller_provider_cost=caller_provider_cost,
@@ -368,9 +418,10 @@ class UsageService:
                     units=inp.units, currency=inp.currency,
                     usage_metrics=inp.usage_metrics,
                     pricing_provenance=provenance,
-                    dim1=inp.dim1, tags=inp.tags, task_id=inp.task_id,
+                    tags=inp.tags, task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
-                    dim2=inp.dim2, dim3=inp.dim3,
+                    task_type=inp.task_type, subtask_type=inp.subtask_type,
+                    dim1=inp.dim1, dim2=inp.dim2, dim3=inp.dim3,
                     dim4=inp.dim4, dim5=inp.dim5, dim6=inp.dim6,
                     **create_kwargs)
                 if inp.task_id is not None:

@@ -28,7 +28,7 @@ from django.utils import timezone
 
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
-    EffectiveAtError, UsageService, validate_effective_at)
+    SLOTS, EffectiveAtError, UsageService, validate_effective_at)
 from apps.platform.customers.models import Customer
 from apps.platform.dimensions.services import DimensionError, DimensionService
 from apps.platform.tasks.models import Task
@@ -138,21 +138,33 @@ def record_sync_item(tenant, item, customers, task_exists):
 
 # --- Async accept (estimate -> atomic hold -> durable append) ---
 
-# 30s L1 cache: {task_id: (customer_id_str_or_None, expires_monotonic)} — ONE
-# batched Task.objects.values() read per ingest call for any task_ids not
-# already cached/fresh, instead of a query per event. Existence/ownership
-# ONLY (one-rule #37): a task's STATUS never gates acceptance — events for a
-# non-active task are accepted, held, and get their task_not_active verdict
-# at settle. customer_id None = no such task (sentinel for retry storms).
+# 30s L1 cache: {task_id: (customer_id_str_or_None, parent_id_str_or_None,
+# task_type, subtask_type, dim1..dim6, expires_monotonic)} — ONE batched
+# Task.objects.values() read per ingest call for any task_ids not already
+# cached/fresh, instead of a query per event. Existence/ownership (one-rule
+# #37: a task's STATUS never gates acceptance — events for a non-active task
+# are accepted, held, and get their task_not_active verdict at settle) PLUS
+# the containment/dimension shape Task 10 needs so accept-time estimation can
+# eventually price on the same inherited dimensions settle resolves via
+# _inherit_dimensions (usage_service.py) — kept in lockstep here rather than
+# behind a second, drifting read. customer_id None = no such task (sentinel
+# for retry storms); the rest of a sentinel entry is empty/None to match.
 # Clear-on-full bound mirrors CardCache._l1 (not an LRU).
 _TASK_META_CACHE: dict = {}
 _TASK_META_TTL_SECONDS = 30
 _TASK_META_MAX = 4096
 
+_TASK_META_COLS = ("id", "customer_id", "parent_id", "task_type", "subtask_type") + SLOTS
+
 
 def reset_task_meta_cache():
     """The cache's OWNED reset surface (#113): test fixtures (and any future
-    ops hook) call this instead of clearing the private dict."""
+    ops hook) call this instead of clearing the private dict.
+
+    Entry shape (Task 10): ``(customer_id_str_or_None, parent_id_str_or_None,
+    task_type, subtask_type, dim1, dim2, dim3, dim4, dim5, dim6,
+    expires_monotonic)`` — customer_id at index 0 (existence/ownership,
+    unchanged), expiry last."""
     _TASK_META_CACHE.clear()
 
 
@@ -168,18 +180,24 @@ def _task_meta_for(tenant, task_ids):
     missing = []
     for tid in task_ids:
         hit = _TASK_META_CACHE.get(tid)
-        if hit is not None and hit[1] > now_mono:
+        if hit is not None and hit[-1] > now_mono:
             out[tid] = hit  # captured before any clear-on-full can wipe it
         else:
             missing.append(tid)
     if missing:
-        rows = Task.objects.filter(tenant=tenant, id__in=missing).values(
-            "id", "customer_id")
+        rows = Task.objects.filter(tenant=tenant, id__in=missing).values(*_TASK_META_COLS)
         if len(_TASK_META_CACHE) >= _TASK_META_MAX:
             _TASK_META_CACHE.clear()  # crude bound; `out` already holds this call's hits
         for row in rows:
             tid = str(row["id"])
-            entry = (str(row["customer_id"]), now_mono + _TASK_META_TTL_SECONDS)
+            entry = (
+                str(row["customer_id"]),
+                str(row["parent_id"]) if row["parent_id"] else None,
+                row["task_type"], row["subtask_type"],
+                row["dim1"], row["dim2"], row["dim3"],
+                row["dim4"], row["dim5"], row["dim6"],
+                now_mono + _TASK_META_TTL_SECONDS,
+            )
             _TASK_META_CACHE[tid] = entry
             out[tid] = entry
         for tid in missing:
@@ -187,7 +205,8 @@ def _task_meta_for(tenant, task_ids):
                 # No such task (wrong tenant / never existed) — cache a
                 # sentinel so a hot retry-storm of a bad task_id still costs
                 # one query per TTL window, not one per event.
-                entry = (None, now_mono + _TASK_META_TTL_SECONDS)
+                entry = (None, None, "", "", "", "", "", "", "", "",
+                         now_mono + _TASK_META_TTL_SECONDS)
                 _TASK_META_CACHE[tid] = entry
                 out[tid] = entry
     return out
