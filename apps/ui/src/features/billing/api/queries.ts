@@ -1,100 +1,120 @@
-// TanStack Query hooks over the provider. ALL query keys + invalidation for
-// the billing feature live here. First key segment = backend namespace.
+// src/features/billing/api/queries.ts
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { formatMicros } from "@/lib/format";
+import { toastOnError } from "@/lib/mutations";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
+import type {
+  BudgetConfigIn,
+  CreditRequest,
+  DateRange,
+  DebitRequest,
+  PostpaidConfigIn,
+  PreCheckRequest,
+} from "./types";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+const budgetKey = ["billing", "budget"] as const;
+const postpaidKey = ["billing", "postpaid-config"] as const;
+const revenueKey = (range: DateRange) =>
+  ["billing", "revenue", range.start_date ?? "", range.end_date ?? ""] as const;
+const usageInvoicesKey = (period?: string) =>
+  ["billing", "tenant-usage-invoices", period ?? "all"] as const;
+const tenantInvoicesKey = ["billing", "tenant-invoices"] as const;
+const billingPeriodsKey = ["billing", "billing-periods"] as const;
 
-import { useCursorList } from "@/api/pagination";
-
-import { billingFeatureApi } from "./provider";
-import type { BudgetConfigIn, CreditRequest, DebitRequest, PostpaidConfigIn } from "./types";
-
-export const billingKeys = {
-  all: ["billing"] as const,
-  revenue: (range: { start_date: string; end_date: string }) =>
-    ["billing", "revenue-analytics", range] as const,
-  tenantBudget: ["billing", "budget", "tenant"] as const,
-  tenantUsageInvoices: (period: string | null) =>
-    ["billing", "tenant-usage-invoices", { period }] as const,
-  postpaidConfig: ["billing", "postpaid-config"] as const,
-};
-
-export function useRevenueAnalytics(range: { start_date: string; end_date: string }) {
-  return useQuery({
-    queryKey: billingKeys.revenue(range),
-    queryFn: () => billingFeatureApi.getRevenueAnalytics(range),
-    // Window changes keep the previous chart visible instead of blanking.
-    placeholderData: keepPreviousData,
-  });
+// --- Tenant budget ---
+export function useBudget() {
+  return useQuery({ queryKey: budgetKey, queryFn: api.getBudget });
 }
 
-export function useTenantBudget() {
-  return useQuery({
-    queryKey: billingKeys.tenantBudget,
-    queryFn: () => billingFeatureApi.getTenantBudget(),
-  });
-}
-
-export function useTenantUsageInvoices(period: string | undefined) {
-  return useCursorList(billingKeys.tenantUsageInvoices(period ?? null), (cursor) =>
-    billingFeatureApi.listTenantUsageInvoices({ period, cursor }),
-  );
-}
-
-export function usePostpaidConfig(enabled: boolean) {
-  return useQuery({
-    queryKey: billingKeys.postpaidConfig,
-    queryFn: () => billingFeatureApi.getPostpaidConfig(),
-    enabled,
-  });
-}
-
-export function useSaveTenantBudget() {
-  const queryClient = useQueryClient();
+export function usePutBudget() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: BudgetConfigIn) => billingFeatureApi.putTenantBudget(body),
+    mutationFn: (body: BudgetConfigIn) => api.putBudget(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: billingKeys.all });
+      qc.invalidateQueries({ queryKey: budgetKey });
+      toast.success("Tenant budget saved");
     },
+    onError: toastOnError("Couldn't save budget"),
   });
 }
 
-export function useSavePostpaidConfig() {
-  const queryClient = useQueryClient();
+// --- Postpaid config ---
+export function usePostpaidConfig() {
+  return useQuery({ queryKey: postpaidKey, queryFn: api.getPostpaidConfig });
+}
+
+export function usePutPostpaidConfig() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: PostpaidConfigIn) => billingFeatureApi.putPostpaidConfig(body),
+    mutationFn: (body: PostpaidConfigIn) => api.putPostpaidConfig(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: billingKeys.all });
+      qc.invalidateQueries({ queryKey: postpaidKey });
+      toast.success("Postpaid config saved");
     },
+    onError: toastOnError("Couldn't save postpaid config"),
   });
 }
 
-/**
- * Manual credit/debit moves real money: over-invalidate every affected
- * namespace (convention: over-invalidate rather than miss). Beyond the
- * billing surfaces themselves, money movement shifts customer economics
- * (['margin']), can clear or trip a floor stop so stop-state surfaces like
- * the past-limit report refresh (['metering']), and appends to the audit
- * ledger (['audit']). Mirrors customers/api/queries.ts useBillingMutation.
- */
-function invalidateMoneyMovement(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: billingKeys.all });
-  void queryClient.invalidateQueries({ queryKey: ["margin"] });
-  void queryClient.invalidateQueries({ queryKey: ["metering"] });
-  void queryClient.invalidateQueries({ queryKey: ["audit"] });
-}
-
-export function useCreditWallet() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreditRequest) => billingFeatureApi.creditWallet(body),
-    onSuccess: () => invalidateMoneyMovement(queryClient),
+// --- Revenue analytics ---
+export function useRevenueAnalytics(range: DateRange) {
+  return useQuery({
+    queryKey: revenueKey(range),
+    queryFn: () => api.getRevenueAnalytics(range),
   });
 }
 
-export function useDebitWallet() {
-  const queryClient = useQueryClient();
+// --- Manual adjustments ---
+export function useCredit() {
   return useMutation({
-    mutationFn: (body: DebitRequest) => billingFeatureApi.debitWallet(body),
-    onSuccess: () => invalidateMoneyMovement(queryClient),
+    mutationFn: (body: CreditRequest) => api.credit(body),
+    onSuccess: (data) =>
+      toast.success("Credit issued", {
+        description: `New wallet balance: ${formatMicros(data.new_balance_micros)}`,
+      }),
+    onError: toastOnError("Couldn't issue credit"),
+  });
+}
+
+export function useDebit() {
+  return useMutation({
+    mutationFn: (body: DebitRequest) => api.debit(body),
+    onSuccess: (data) =>
+      toast.success("Debit recorded", {
+        description: `New wallet balance: ${formatMicros(data.new_balance_micros)}`,
+      }),
+    onError: toastOnError("Couldn't record debit"),
+  });
+}
+
+// --- Spend pre-check ---
+export function usePreCheck() {
+  return useMutation({
+    mutationFn: (body: PreCheckRequest) => api.preCheck(body),
+    onError: toastOnError("Pre-check failed"),
+  });
+}
+
+// --- Invoices & periods ---
+export function useTenantUsageInvoices(period?: string) {
+  return useCursorList({
+    queryKeyBase: usageInvoicesKey(period),
+    fetchPage: (cursor) =>
+      api.listTenantUsageInvoices({ period, cursor, limit: 50 }),
+  });
+}
+
+export function useTenantInvoices() {
+  return useCursorList({
+    queryKeyBase: tenantInvoicesKey,
+    fetchPage: (cursor) => api.listTenantInvoices({ cursor, limit: 50 }),
+  });
+}
+
+export function useBillingPeriods() {
+  return useCursorList({
+    queryKeyBase: billingPeriodsKey,
+    fetchPage: (cursor) => api.listBillingPeriods({ cursor, limit: 50 }),
   });
 }

@@ -4,59 +4,70 @@ import {
   Activity,
   Tags,
   Wallet,
+  TrendingUp,
   Repeat,
   Gift,
   Webhook,
-  Terminal,
+  ScrollText,
   Settings,
   type LucideIcon,
 } from "lucide-react";
 
-import type { Product } from "@/lib/labels";
+/** Product/mode gate for a nav entry. Evaluated against `useAuth()`. */
+export type NavGate = "metering" | "billing" | "subscriptions" | "referrals";
 
 export interface NavItem {
   title: string;
   url: string;
   icon: LucideIcon;
-  /** Only show when this product is enabled for the tenant. */
-  product?: Product;
+  /** Hide unless the tenant has this product / billing posture enabled. */
+  gate?: NavGate;
 }
 
 export interface NavSection {
-  /** Section label (e.g. "REVENUE"). Omit for ungrouped top items. */
+  /** Section label (e.g. "METERING"). Omit for ungrouped top items. */
   label?: string;
   items: NavItem[];
 }
 
-// Routes must exist for every entry; items are filtered by the tenant's
-// enabled products (TenantConfigOut.products) in the nav shell.
+/**
+ * The full tenant-admin information architecture. Product-gated items are
+ * hidden when the tenant lacks the relevant product (see nav-shell). Sections
+ * with no visible items are dropped automatically.
+ */
 export const navSections: NavSection[] = [
   {
     items: [
       { title: "Overview", url: "/", icon: LayoutDashboard },
-      { title: "Events", url: "/events", icon: Activity },
       { title: "Customers", url: "/customers", icon: Users },
     ],
   },
   {
-    label: "REVENUE",
+    label: "METERING",
     items: [
-      { title: "Pricing", url: "/pricing", icon: Tags },
-      { title: "Billing", url: "/billing", icon: Wallet, product: "billing" },
-      {
-        title: "Subscriptions",
-        url: "/subscriptions",
-        icon: Repeat,
-        product: "subscriptions",
-      },
-      { title: "Referrals", url: "/referrals", icon: Gift, product: "referrals" },
+      { title: "Usage", url: "/usage", icon: Activity, gate: "metering" },
+      { title: "Pricing", url: "/pricing", icon: Tags, gate: "metering" },
+    ],
+  },
+  {
+    label: "BILLING",
+    items: [
+      { title: "Billing", url: "/billing", icon: Wallet, gate: "billing" },
+      { title: "Margin", url: "/margin", icon: TrendingUp, gate: "billing" },
+    ],
+  },
+  {
+    label: "GROWTH",
+    items: [
+      { title: "Subscriptions", url: "/subscriptions", icon: Repeat, gate: "subscriptions" },
+      { title: "Referrals", url: "/referrals", icon: Gift, gate: "referrals" },
     ],
   },
   {
     label: "PLATFORM",
     items: [
       { title: "Webhooks", url: "/webhooks", icon: Webhook },
-      { title: "Developers", url: "/developers", icon: Terminal },
+      { title: "Audit log", url: "/audit", icon: ScrollText },
       { title: "Settings", url: "/settings", icon: Settings },
     ],
   },

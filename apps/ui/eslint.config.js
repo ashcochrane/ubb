@@ -19,14 +19,6 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
-    rules: {
-      // Mock API modules must mirror the real adapters' signatures, so
-      // deliberately-unused parameters are underscore-prefixed.
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
-    },
   },
   // TanStack Router route files export Route + inline components — this is expected
   {

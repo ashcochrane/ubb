@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-
 import { ReferrerDetailPage } from "@/features/referrals/components/referrer-detail-page";
 
 export const Route = createFileRoute("/_app/referrals/$customerId")({
@@ -8,11 +7,5 @@ export const Route = createFileRoute("/_app/referrals/$customerId")({
 
 function RouteComponent() {
   const { customerId } = Route.useParams();
-  const navigate = Route.useNavigate();
-  return (
-    <ReferrerDetailPage
-      customerId={customerId}
-      onBack={() => void navigate({ to: "/referrals" })}
-    />
-  );
+  return <ReferrerDetailPage customerId={customerId} />;
 }

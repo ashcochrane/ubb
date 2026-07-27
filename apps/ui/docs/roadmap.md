@@ -1,7 +1,3 @@
-> **Frozen history (pre-rebuild, 2026-04).** This document describes the mock-first standalone
-> app built to HTML mockups, before the 2026-07 rebuild onto the regenerated backend contract.
-> Read it for UX/decision archaeology only — `CLAUDE.md` and `README.md` are current truth.
-
 # Roadmap
 
 ## Phase Overview

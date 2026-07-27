@@ -1,156 +1,73 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, UserRoundX } from "lucide-react";
-
-import { isNotFound } from "@/api/problem";
-import { CopyButton } from "@/components/shared/copy-button";
-import { DateRangePicker } from "@/components/shared/date-range-picker";
-import { EmptyState } from "@/components/shared/empty-state";
-import { ErrorCard } from "@/components/shared/error-card";
-import { ProductGate } from "@/components/shared/product-gate";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { resolveRange, type DateRange } from "@/lib/date-range";
-import { cn } from "@/lib/utils";
-
+import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
+import { TabBar, type TabDef } from "@/components/shared/tabs";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useCustomerMargin } from "../api/queries";
-import { BillingTab } from "./billing-tab";
-import { OverviewTab } from "./overview-tab";
-import { PricingTab } from "./pricing-tab";
-import { SubscriptionTab } from "./subscription-tab";
-import { UsageTab } from "./usage-tab";
+import { CustomerOverviewTab } from "./customer-overview-tab";
+import { CustomerWalletTab } from "./customer-wallet-tab";
+import { CustomerPricingTab } from "./customer-pricing-tab";
+import { CustomerUsageTab } from "./customer-usage-tab";
+import { CustomerMarginTab } from "./customer-margin-tab";
+import { CustomerSubscriptionTab } from "./customer-subscription-tab";
+import { CustomerLimitsTab } from "./customer-limits-tab";
 
-const TABS = [
-  { value: "overview", label: "Overview" },
-  { value: "usage", label: "Usage" },
-  { value: "billing", label: "Billing" },
-  { value: "pricing", label: "Pricing" },
-  { value: "subscription", label: "Subscription" },
-] as const;
+/**
+ * Customer detail. There is no single-customer GET endpoint, so identity is
+ * assembled from the customer-scoped views (margin, wallet, usage, …). The
+ * external_id — needed for subscription lifecycle — is resolved from margin
+ * data when billing is enabled.
+ */
+export function CustomerDetailPage({ customerId }: { customerId: string }) {
+  const navigate = useNavigate();
+  const { hasProduct, isBillingMode } = useAuth();
+  const [tab, setTab] = useState("overview");
 
-export type CustomerTab = (typeof TABS)[number]["value"];
+  // Margin carries the external_id needed for subscription lifecycle actions.
+  const margin = useCustomerMargin(customerId);
+  const externalId = margin.data?.external_id ?? null;
 
-export interface CustomerDetailSearch extends DateRange {
-  tab?: CustomerTab;
-}
-
-export function CustomerDetailPage({
-  customerId,
-  search,
-  onSearchChange,
-}: {
-  customerId: string;
-  search: CustomerDetailSearch;
-  onSearchChange: (next: CustomerDetailSearch) => void;
-}) {
-  const range = resolveRange(search);
-  const margin = useCustomerMargin(customerId, range);
-  // Unknown/stale ?tab= values fall back to Overview instead of rendering an
-  // empty tab panel (the route schema also coerces them to undefined).
-  const requestedTab = search.tab;
-  const tab =
-    requestedTab !== undefined && TABS.some((entry) => entry.value === requestedTab)
-      ? requestedTab
-      : "overview";
-
-  if (margin.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-9 w-72" />
-        <Skeleton className="h-8 w-96" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (margin.isError) {
-    if (isNotFound(margin.error)) {
-      return (
-        <EmptyState
-          icon={UserRoundX}
-          title="Customer not found"
-          description="This customer doesn't exist (or belongs to another workspace)."
-        />
-      );
+  const tabs = useMemo<TabDef[]>(() => {
+    const t: TabDef[] = [{ value: "overview", label: "Overview" }];
+    if (isBillingMode) t.push({ value: "wallet", label: "Wallet" });
+    if (hasProduct("metering")) {
+      t.push({ value: "pricing", label: "Pricing" });
+      t.push({ value: "usage", label: "Usage" });
     }
-    return <ErrorCard error={margin.error} onRetry={() => void margin.refetch()} />;
-  }
+    if (isBillingMode) t.push({ value: "margin", label: "Margin" });
+    if (hasProduct("subscriptions")) t.push({ value: "subscription", label: "Subscription" });
+    if (isBillingMode) t.push({ value: "limits", label: "Limits" });
+    return t;
+  }, [hasProduct, isBillingMode]);
 
-  const detail = margin.data;
-  if (!detail) return null;
+  const active = tabs.some((t) => t.value === tab) ? tab : "overview";
 
   return (
-    // keepPreviousData keeps the page mounted across range changes; the
-    // placeholder refresh dims subtly instead of blanking to skeletons.
-    <div
-      className={cn(
-        "space-y-4 transition-opacity",
-        margin.isPlaceholderData && "opacity-60",
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            to="/customers"
-            className="mb-1 inline-flex items-center gap-1 text-[12px] text-text-secondary hover:text-text-primary"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> Customers
-          </Link>
-          <h1 className="truncate text-xl font-semibold tracking-tight">
-            {detail.external_id}
-          </h1>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="font-mono text-[12px] text-text-secondary" title={customerId}>
-              {customerId}
-            </span>
-            <CopyButton value={customerId} label="Copy customer ID" />
-          </div>
-        </div>
-        <DateRangePicker
-          value={{ start_date: search.start_date, end_date: search.end_date }}
-          onChange={(next) => onSearchChange({ ...next, tab: search.tab })}
-        />
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Customer"
+        description={customerId}
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/customers" })}>
+            <ArrowLeft />
+            Back
+          </Button>
+        }
+      />
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          const entry = TABS.find((candidate) => candidate.value === value);
-          onSearchChange({
-            ...search,
-            tab: entry && entry.value !== "overview" ? entry.value : undefined,
-          });
-        }}
-      >
-        <TabsList>
-          {TABS.map((entry) => (
-            <TabsTrigger key={entry.value} value={entry.value}>
-              {entry.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="overview" className="pt-3">
-          <OverviewTab customerId={customerId} margin={detail} range={range} />
-        </TabsContent>
-        <TabsContent value="usage" className="pt-3">
-          <UsageTab customerId={customerId} range={range} />
-        </TabsContent>
-        <TabsContent value="billing" className="pt-3">
-          <ProductGate product="billing">
-            <BillingTab customerId={customerId} externalId={detail.external_id} />
-          </ProductGate>
-        </TabsContent>
-        <TabsContent value="pricing" className="pt-3">
-          <PricingTab customerId={customerId} />
-        </TabsContent>
-        <TabsContent value="subscription" className="pt-3">
-          <ProductGate product="subscriptions">
-            <SubscriptionTab
-              customerId={customerId}
-              externalId={detail.external_id}
-            />
-          </ProductGate>
-        </TabsContent>
-      </Tabs>
+      <TabBar tabs={tabs} value={active} onChange={setTab} />
+
+      {active === "overview" && <CustomerOverviewTab customerId={customerId} externalId={externalId} />}
+      {active === "wallet" && <CustomerWalletTab customerId={customerId} />}
+      {active === "pricing" && <CustomerPricingTab customerId={customerId} />}
+      {active === "usage" && <CustomerUsageTab customerId={customerId} />}
+      {active === "margin" && <CustomerMarginTab customerId={customerId} />}
+      {active === "subscription" && (
+        <CustomerSubscriptionTab customerId={customerId} externalId={externalId} />
+      )}
+      {active === "limits" && <CustomerLimitsTab customerId={customerId} />}
     </div>
   );
 }

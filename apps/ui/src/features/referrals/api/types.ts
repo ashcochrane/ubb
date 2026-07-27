@@ -1,38 +1,29 @@
-// Type aliases from the generated contract (ADR-002: openapi/v1.json is the
-// single source of truth). Every response this feature consumes is fully
-// typed by a named component schema — the referrals slice has NO untyped
-// (additionalProperties) responses, so no local narrowing interfaces exist.
+import type { ReferralSchemas } from "@/api/types";
 
-import type { MarginSchemas, ReferralSchemas } from "@/api/types";
+export type Program = ReferralSchemas["ProgramOut"];
+export type ProgramCreate = ReferralSchemas["ProgramCreateRequest"];
+export type ProgramUpdate = ReferralSchemas["ProgramUpdateRequest"];
+export type RewardType = ProgramCreate["reward_type"];
 
-export type ProgramOut = ReferralSchemas["ProgramOut"];
-export type ProgramCreateRequest = ReferralSchemas["ProgramCreateRequest"];
-export type ProgramUpdateRequest = ReferralSchemas["ProgramUpdateRequest"];
+export type Referrer = ReferralSchemas["ReferrerOut"];
+export type RegisterReferrer = ReferralSchemas["RegisterReferrerRequest"];
+export type Earnings = ReferralSchemas["EarningsOut"];
+export type Referral = ReferralSchemas["ReferralOut"];
 
-/** The ONE closed enum in the whole contract (create input only). */
-export type RewardType = ProgramCreateRequest["reward_type"];
+export type AttributeReferral = ReferralSchemas["AttributeRequest"];
+export type AttributeResult = ReferralSchemas["AttributeResponse"];
 
-export type ReferrerOut = ReferralSchemas["ReferrerOut"];
-export type ReferralOut = ReferralSchemas["ReferralOut"];
-export type LedgerEntryOut = ReferralSchemas["LedgerEntryOut"];
-export type EarningsOut = ReferralSchemas["EarningsOut"];
+export type LedgerEntry = ReferralSchemas["LedgerEntryOut"];
 
-export type AnalyticsSummaryOut = ReferralSchemas["AnalyticsSummaryOut"];
-export type AnalyticsEarningsOut = ReferralSchemas["AnalyticsEarningsOut"];
+export type AnalyticsSummary = ReferralSchemas["AnalyticsSummaryOut"];
+export type AnalyticsEarnings = ReferralSchemas["AnalyticsEarningsOut"];
 export type ReferrerEarningsSummary = ReferralSchemas["ReferrerEarningsSummary"];
-
-export type PayoutExportOut = ReferralSchemas["PayoutExportOut"];
+export type PayoutExport = ReferralSchemas["PayoutExportOut"];
 export type PayoutRow = ReferralSchemas["PayoutRow"];
 
-export type AttributeRequest = ReferralSchemas["AttributeRequest"];
-export type AttributeResponse = ReferralSchemas["AttributeResponse"];
-export type StatusResponse = ReferralSchemas["StatusResponse"];
-
-/** Row of GET /margin/customers — used only to feed the customer picker. */
-export type MarginCustomerRow = MarginSchemas["CustomerMarginListRow"];
-
-/** Query params for GET /referrals/analytics/earnings. */
-export interface EarningsPeriodParams {
-  period_start?: string;
-  period_end?: string;
-}
+/** The three reward models a program can run on. */
+export const REWARD_TYPES: readonly RewardType[] = [
+  "flat_fee",
+  "revenue_share",
+  "profit_share",
+];

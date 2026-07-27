@@ -2,24 +2,25 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { UserButton } from "@clerk/react";
 import { User } from "lucide-react";
 import { NavShell } from "@/components/shared/nav-shell";
-import { WorkspaceError } from "@/components/shared/workspace-error";
-import { noAuthMode } from "@/hooks/use-auth";
-import { tenantConfigQueryOptions } from "@/hooks/use-tenant-config";
+import { RouteError } from "@/components/shared/route-error";
+import { API_PROVIDER } from "@/lib/api-provider";
 import { queryClient } from "@/lib/query-client";
+import { meQueryOptions } from "@/features/auth/api/queries";
+
+const noAuthMode = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY && API_PROVIDER === "mock";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async ({ context }) => {
-    // Clerk signin check (skipped in no-auth dev mode).
+    // Clerk signin check (skipped in no-auth dev mode)
     if (!noAuthMode && !context.auth?.isSignedIn) {
       throw redirect({ to: "/sign-in" });
     }
 
-    // Workspace bootstrap: the tenant config gates products, billing mode,
-    // and currency for every page. A failure here (401/403/network) renders
-    // the workspace error screen instead of a broken shell.
-    await queryClient.ensureQueryData(tenantConfigQueryOptions);
+    // Load tenant context (products, billing mode, Stripe connection). A failure
+    // here (e.g. no tenant provisioned) surfaces via the route errorComponent.
+    await queryClient.ensureQueryData(meQueryOptions);
   },
-  errorComponent: WorkspaceError,
+  errorComponent: RouteError,
   component: AppLayout,
 });
 

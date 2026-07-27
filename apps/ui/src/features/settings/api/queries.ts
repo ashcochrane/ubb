@@ -1,174 +1,184 @@
-// TanStack Query hooks over the provider. ALL query keys + invalidation for
-// the settings feature live here. First key segment = backend namespace:
-// ['tenant', …], ['margin', …], ['connect', …], ['audit', …].
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
-import { useCursorList } from "@/api/pagination";
-
-import { settingsApi } from "./provider";
+import { toast } from "sonner";
+import { toastOnError } from "@/lib/mutations";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
 import type {
-  AuditFilters,
-  MarginThreshold,
-  MarginThresholdInput,
-  TenantConfig,
-  TenantConfigPatch,
+  ApiKeyCreate,
+  InvitationCreate,
+  MemberRoleUpdate,
+  SandboxReset,
+  TenantConfigUpdate,
 } from "./types";
 
-const CONFIG_KEY = ["tenant", "config"] as const;
+/** Tenant context lives under ["me"] (see features/auth). Invalidate it after
+ *  a config change so nav, product-gating, and currency refresh app-wide. */
+const ME_KEY = ["me"] as const;
+const API_KEYS_KEY = ["settings", "api-keys"] as const;
+const MEMBERS_KEY = ["settings", "members"] as const;
+const INVITATIONS_KEY = ["settings", "invitations"] as const;
+const CONNECT_STATUS_KEY = ["settings", "connect-status"] as const;
+const SANDBOX_KEY = ["settings", "sandbox"] as const;
 
-// --- Workspace config -------------------------------------------------------
-
-/** Same key as the app-level bootstrap hook — one cache entry, one truth. */
-export function useSettingsTenantConfig() {
-  return useQuery({
-    queryKey: CONFIG_KEY,
-    queryFn: () => settingsApi.getTenantConfig(),
-    staleTime: 5 * 60_000,
-  });
-}
-
-/**
- * PATCH /tenant/config. The response is the full updated config, so it is
- * written straight into the cache before the ['tenant'] prefix invalidation
- * (over-invalidate rather than miss — config gates the whole console).
- */
-export function useUpdateTenantConfig() {
-  const queryClient = useQueryClient();
+// ── Config ────────────────────────────────────────────────────────────────
+export function useUpdateConfig() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: TenantConfigPatch) => settingsApi.updateTenantConfig(patch),
-    onSuccess: (updated: TenantConfig) => {
-      queryClient.setQueryData(CONFIG_KEY, updated);
-      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    mutationFn: (body: TenantConfigUpdate) => api.updateConfig(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ME_KEY });
+      toast.success("Settings saved");
     },
+    onError: toastOnError("Couldn't save settings"),
   });
 }
 
-// --- Margin-alert thresholds ------------------------------------------------
-
-/** Caches the RAW MarginThresholdOut — the shared ['margin'] namespace prefix. */
-export function useMarginThreshold() {
-  return useQuery({
-    queryKey: ["margin", "threshold"] as const,
-    queryFn: () => settingsApi.getMarginThreshold(),
+// ── API keys ──────────────────────────────────────────────────────────────
+export function useApiKeys() {
+  return useCursorList({
+    queryKeyBase: API_KEYS_KEY,
+    fetchPage: (cursor) => api.listApiKeys({ cursor, limit: 50 }),
   });
 }
 
-/**
- * PUT /margin/threshold — the rules driving the unprofitable-customers alert
- * and cost-spike events, so the whole ['margin'] namespace is invalidated.
- */
-export function useUpdateMarginThreshold() {
-  const queryClient = useQueryClient();
+export function useCreateApiKey() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: MarginThresholdInput) =>
-      settingsApi.updateMarginThreshold(input),
-    onSuccess: (updated: MarginThreshold) => {
-      queryClient.setQueryData(["margin", "threshold"], updated);
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
+    mutationFn: (body: ApiKeyCreate) => api.createApiKey(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: API_KEYS_KEY }),
+    onError: toastOnError("Couldn't create API key"),
+  });
+}
+
+export function useRotateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keyId: string) => api.rotateApiKey(keyId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: API_KEYS_KEY }),
+    onError: toastOnError("Couldn't rotate API key"),
+  });
+}
+
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keyId: string) => api.revokeApiKey(keyId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: API_KEYS_KEY });
+      toast.success("API key revoked");
     },
+    onError: toastOnError("Couldn't revoke API key"),
   });
 }
 
-// --- Stripe Connect ---------------------------------------------------------
-
-export function useConnectStatus(options?: { poll?: boolean; enabled?: boolean }) {
-  return useQuery({
-    queryKey: ["connect", "status"] as const,
-    queryFn: () => settingsApi.getConnectStatus(),
-    enabled: options?.enabled,
-    // The GET lazily re-polls Stripe server-side, so client polling after the
-    // OAuth return is safe and intended. Polling stops once onboarded.
-    refetchInterval: options?.poll
-      ? (query) => (query.state.data?.onboarded ? false : 5_000)
-      : false,
-  });
-}
-
-export function useStartConnect() {
-  return useMutation({
-    mutationFn: (returnUrl: string) => settingsApi.startConnect(returnUrl),
-  });
-}
-
-// --- Team -------------------------------------------------------------------
-
+// ── Members ───────────────────────────────────────────────────────────────
 export function useMembers() {
-  return useCursorList(["tenant", "members"], (cursor) =>
-    settingsApi.listMembers(cursor),
-  );
+  return useCursorList({
+    queryKeyBase: MEMBERS_KEY,
+    fetchPage: (cursor) => api.listMembers({ cursor, limit: 50 }),
+  });
 }
 
 export function useUpdateMemberRole() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { memberId: string; role: string }) =>
-      settingsApi.updateMemberRole(input.memberId, input.role),
+    mutationFn: (vars: { memberId: string; body: MemberRoleUpdate }) =>
+      api.updateMemberRole(vars.memberId, vars.body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+      toast.success("Role updated");
     },
+    onError: toastOnError("Couldn't update role"),
   });
 }
 
 export function useRemoveMember() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (memberId: string) => settingsApi.removeMember(memberId),
+    mutationFn: (memberId: string) => api.removeMember(memberId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+      toast.success("Member removed");
     },
+    onError: toastOnError("Couldn't remove member"),
   });
 }
 
-/** ADMIN-gated list — pass enabled:false to skip fetching for non-admins. */
-export function useInvitations(options?: { enabled?: boolean }) {
-  return useCursorList(
-    ["tenant", "invitations"],
-    (cursor) => settingsApi.listInvitations(cursor),
-    { enabled: options?.enabled },
-  );
+// ── Invitations ───────────────────────────────────────────────────────────
+export function useInvitations() {
+  return useCursorList({
+    queryKeyBase: INVITATIONS_KEY,
+    fetchPage: (cursor) => api.listInvitations({ cursor, limit: 50 }),
+  });
 }
 
 export function useCreateInvitation() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { email: string; role: string }) =>
-      settingsApi.createInvitation(input),
+    mutationFn: (body: InvitationCreate) => api.createInvitation(body),
     onSuccess: () => {
-      // An invitation also creates a pending member — refresh both lists.
-      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      qc.invalidateQueries({ queryKey: INVITATIONS_KEY });
+      toast.success("Invitation sent");
     },
+    onError: toastOnError("Couldn't send invitation"),
   });
 }
 
 export function useRevokeInvitation() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (invitationId: string) => settingsApi.revokeInvitation(invitationId),
+    mutationFn: (invitationId: string) => api.revokeInvitation(invitationId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      qc.invalidateQueries({ queryKey: INVITATIONS_KEY });
+      toast.success("Invitation revoked");
     },
+    onError: toastOnError("Couldn't revoke invitation"),
   });
 }
 
-// --- UBB platform bill ------------------------------------------------------
-
-export function useBillingPeriods() {
-  return useCursorList(["tenant", "billing-periods"], (cursor) =>
-    settingsApi.listBillingPeriods(cursor),
-  );
+// ── Stripe Connect ────────────────────────────────────────────────────────
+export function useConnectStatus() {
+  return useQuery({
+    queryKey: CONNECT_STATUS_KEY,
+    queryFn: api.connectStatus,
+  });
 }
 
-export function useTenantInvoices() {
-  return useCursorList(["tenant", "invoices"], (cursor) =>
-    settingsApi.listTenantInvoices(cursor),
-  );
+export function useConnectStart() {
+  return useMutation({
+    mutationFn: (returnUrl: string) => api.connectStart({ return_url: returnUrl }),
+    onError: toastOnError("Couldn't start Stripe onboarding"),
+  });
 }
 
-// --- Audit ledger -----------------------------------------------------------
+// ── Sandbox ───────────────────────────────────────────────────────────────
+export function useSandbox() {
+  return useQuery({
+    queryKey: SANDBOX_KEY,
+    queryFn: api.getSandbox,
+  });
+}
 
-export function useAuditRecords(filters: AuditFilters) {
-  return useCursorList(["audit", "records", filters], (cursor) =>
-    settingsApi.listAuditRecords(filters, cursor),
-  );
+export function useCreateSandbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.createSandbox(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SANDBOX_KEY });
+      toast.success("Sandbox enabled");
+    },
+    onError: toastOnError("Couldn't enable sandbox"),
+  });
+}
+
+export function useResetSandbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SandboxReset) => api.resetSandbox(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SANDBOX_KEY });
+      toast.success("Sandbox data reset");
+    },
+    onError: toastOnError("Couldn't reset sandbox"),
+  });
 }

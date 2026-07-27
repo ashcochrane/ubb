@@ -1,114 +1,147 @@
-import { Suspense, lazy } from "react";
-
-import { toRevenueDailyRow } from "../api/types";
-import { useRevenueAnalytics } from "../api/queries";
-import { ChartLegend } from "@/components/shared/chart-legend";
-import { DateRangePicker } from "@/components/shared/date-range-picker";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DetailRow,
+  ErrorInline,
+  LoadingRows,
+  Section,
+} from "@/components/shared/data-states";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ErrorCard } from "@/components/shared/error-card";
-import { StatCard } from "@/components/shared/stat-card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { DATE_RANGE_PRESETS, resolveRange, type DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { FormField } from "@/components/shared/form-field";
+import { formatMicros, humanizeLabel } from "@/lib/format";
+import { useRevenueAnalytics } from "../api/queries";
+import type { DateRange } from "../api/types";
 
-import { SectionCard } from "./section-card";
+/** Render one defensively-typed daily cell: money keys as currency, else text. */
+function renderCell(key: string, value: unknown): string {
+  if (value == null) return "—";
+  if (key.endsWith("_micros") && typeof value === "number") {
+    return formatMicros(value);
+  }
+  if (typeof value === "number" || typeof value === "string") return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return JSON.stringify(value);
+}
 
-const RevenueChart = lazy(() => import("./revenue-chart"));
-
-const LEGEND_ITEMS = [
-  { label: "Billed", color: "var(--chart-1)" },
-  { label: "Provider cost", color: "var(--chart-2)" },
-  { label: "Markup", color: "var(--chart-3)" },
-];
-
-export function RevenueSection({
-  range,
-  onRangeChange,
-}: {
-  range: DateRange;
-  onRangeChange: (next: DateRange) => void;
-}) {
-  const resolved = resolveRange(range);
-  const currency = useTenantCurrency();
-  const query = useRevenueAnalytics(resolved);
-
+function DailyTable({ daily }: { daily: Record<string, unknown>[] }) {
+  if (daily.length === 0) {
+    return (
+      <EmptyState
+        title="No daily rows"
+        description="No revenue activity in this window."
+      />
+    );
+  }
+  // Union of keys across rows so a sparse row never drops a column.
+  const columns = Array.from(
+    daily.reduce((set, row) => {
+      Object.keys(row).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>()),
+  );
   return (
-    <SectionCard
-      title="Revenue"
-      description="What customers were billed vs. what providers cost you, day by day."
-      actions={<DateRangePicker value={resolved} onChange={onRangeChange} />}
-    >
-      {query.isLoading ? (
-        <RevenueSkeleton />
-      ) : query.isError ? (
-        <ErrorCard error={query.error} onRetry={() => void query.refetch()} />
-      ) : query.data ? (
-        (() => {
-          const daily = query.data.daily.map(toRevenueDailyRow);
-          const eventTotal = daily.reduce((sum, row) => sum + row.event_count, 0);
-          if (daily.length === 0) {
-            return (
-              <EmptyState
-                title="No usage in this window"
-                description="Nothing was billed between these dates. Try a wider window."
-                action={{
-                  label: "Show last 90 days",
-                  onClick: () => {
-                    const preset = DATE_RANGE_PRESETS.find((p) => p.key === "90d");
-                    if (preset) onRangeChange(preset.range());
-                  },
-                }}
-              />
-            );
-          }
-          return (
-            <div
-              className={cn(
-                "space-y-4 transition-opacity",
-                query.isPlaceholderData && "opacity-60",
-              )}
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <StatCard
-                  label="Billed"
-                  value={formatMicros(query.data.total_billed_cost_micros, currency)}
-                  subtitle={`${formatEventCount(eventTotal)} events`}
-                />
-                <StatCard
-                  label="Provider cost"
-                  value={formatMicros(query.data.total_provider_cost_micros, currency)}
-                />
-                <StatCard
-                  label="Markup"
-                  value={formatMicros(query.data.total_markup_micros, currency)}
-                  subtitle="Billed minus provider cost"
-                />
-              </div>
-              <div className="flex justify-end">
-                <ChartLegend items={LEGEND_ITEMS} variant="line" />
-              </div>
-              <Suspense fallback={<Skeleton className="h-[240px] w-full" />}>
-                <RevenueChart data={daily} currency={currency} />
-              </Suspense>
-            </div>
-          );
-        })()
-      ) : null}
-    </SectionCard>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((c) => (
+              <TableHead key={c}>{humanizeLabel(c)}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {daily.map((row, i) => (
+            <TableRow key={i}>
+              {columns.map((c) => (
+                <TableCell key={c} className="tabular-nums">
+                  {renderCell(c, row[c])}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
-function RevenueSkeleton() {
+export function RevenueSection() {
+  const [range, setRange] = useState<DateRange>({});
+  const query = useRevenueAnalytics(range);
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-      </div>
-      <Skeleton className="h-[240px] w-full" />
-    </div>
+    <Section
+      title="Revenue"
+      description="Provider cost is what you pay upstream; customer charge is what you bill; markup is your gross revenue on top."
+      actions={
+        <div className="flex items-end gap-2">
+          <FormField label="From" className="w-40">
+            {(id) => (
+              <Input
+                id={id}
+                type="date"
+                value={range.start_date ?? ""}
+                onChange={(e) =>
+                  setRange((r) => ({ ...r, start_date: e.target.value || undefined }))
+                }
+              />
+            )}
+          </FormField>
+          <FormField label="To" className="w-40">
+            {(id) => (
+              <Input
+                id={id}
+                type="date"
+                value={range.end_date ?? ""}
+                onChange={(e) =>
+                  setRange((r) => ({ ...r, end_date: e.target.value || undefined }))
+                }
+              />
+            )}
+          </FormField>
+        </div>
+      }
+    >
+      {query.isLoading ? (
+        <LoadingRows rows={3} />
+      ) : query.isError ? (
+        <ErrorInline error={query.error} onRetry={() => query.refetch()} />
+      ) : query.data ? (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-border p-4">
+              <DetailRow label="Provider cost (what you pay)">
+                <span className="text-lg font-semibold tabular-nums">
+                  {formatMicros(query.data.total_provider_cost_micros)}
+                </span>
+              </DetailRow>
+            </div>
+            <div className="rounded-lg border border-border p-4">
+              <DetailRow label="Customer charge (billed)">
+                <span className="text-lg font-semibold tabular-nums">
+                  {formatMicros(query.data.total_billed_cost_micros)}
+                </span>
+              </DetailRow>
+            </div>
+            <div className="rounded-lg border border-border p-4">
+              <DetailRow label="Platform markup (your revenue)">
+                <span className="text-lg font-semibold tabular-nums">
+                  {formatMicros(query.data.total_markup_micros)}
+                </span>
+              </DetailRow>
+            </div>
+          </div>
+          <DailyTable daily={(query.data.daily ?? []) as Record<string, unknown>[]} />
+        </div>
+      ) : null}
+    </Section>
   );
 }

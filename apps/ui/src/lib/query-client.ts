@@ -7,9 +7,7 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: true,
-      // Pages own their error states (empty/error cards per section) rather
-      // than throwing every fetch failure to the route boundary.
-      throwOnError: false,
+      throwOnError: true,
     },
     mutations: {
       retry: 0,

@@ -1,204 +1,188 @@
-// TanStack Query hooks for the referrals surface. ALL query keys and
-// invalidation live here (first key segment = backend namespace). Mutations
-// over-invalidate the whole ['referrals'] prefix — program, referrers,
-// referrals, and analytics all shift together.
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
-import { useCursorList } from "@/api/pagination";
-import { isNotFound } from "@/api/problem";
+import { toast } from "sonner";
 import { toastOnError } from "@/lib/mutations";
-
-import { referralsApi } from "./provider";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
 import type {
-  AttributeRequest,
-  EarningsPeriodParams,
-  ProgramCreateRequest,
-  ProgramOut,
-  ProgramUpdateRequest,
+  AttributeReferral,
+  ProgramCreate,
+  ProgramUpdate,
+  RegisterReferrer,
 } from "./types";
 
-export const referralKeys = {
-  all: ["referrals"] as const,
-  program: ["referrals", "program"] as const,
-  analyticsSummary: ["referrals", "analytics", "summary"] as const,
-  analyticsEarnings: (params: EarningsPeriodParams) =>
-    ["referrals", "analytics", "earnings", params] as const,
-  referrers: ["referrals", "referrers"] as const,
-  referrer: (customerId: string) => ["referrals", "referrers", customerId] as const,
-  referrerEarnings: (customerId: string) =>
-    ["referrals", "referrers", customerId, "earnings"] as const,
-  referrerReferrals: (customerId: string) =>
-    ["referrals", "referrers", customerId, "referrals"] as const,
-  referralLedger: (referralId: string) =>
-    ["referrals", "referrals", referralId, "ledger"] as const,
-  payoutExport: ["referrals", "payouts", "export"] as const,
-  marginCustomerPicker: ["margin", "customers", "referral-picker"] as const,
-};
+const ROOT = ["referrals"] as const;
+const PROGRAM_KEY = [...ROOT, "program"] as const;
+const REFERRERS_KEY = [...ROOT, "referrers"] as const;
+const ANALYTICS_KEY = [...ROOT, "analytics"] as const;
 
-// --- Reads -------------------------------------------------------------------
+// --- Program ---------------------------------------------------------------
 
-/**
- * The tenant's referral program, or `null` when none exists yet (the GET
- * answers a runtime 404 that the schema doesn't document — we treat it as
- * the empty state, not an error).
- */
 export function useProgram() {
-  return useQuery<ProgramOut | null>({
-    queryKey: referralKeys.program,
-    queryFn: async () => {
-      try {
-        return await referralsApi.getProgram();
-      } catch (error) {
-        if (isNotFound(error)) return null;
-        throw error;
-      }
+  return useQuery({
+    queryKey: PROGRAM_KEY,
+    queryFn: api.getProgram,
+    // No program configured yet surfaces as an error; don't hammer the endpoint.
+    retry: false,
+  });
+}
+
+export function useCreateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProgramCreate) => api.createProgram(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROGRAM_KEY });
+      toast.success("Referral program created");
     },
+    onError: toastOnError("Couldn't create referral program"),
   });
 }
 
-export function useAnalyticsSummary() {
-  return useQuery({
-    queryKey: referralKeys.analyticsSummary,
-    queryFn: () => referralsApi.getAnalyticsSummary(),
+export function useUpdateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProgramUpdate) => api.updateProgram(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROGRAM_KEY });
+      toast.success("Referral program updated");
+    },
+    onError: toastOnError("Couldn't update referral program"),
   });
 }
 
-export function useAnalyticsEarnings(params: EarningsPeriodParams) {
-  return useQuery({
-    queryKey: referralKeys.analyticsEarnings(params),
-    queryFn: () => referralsApi.getAnalyticsEarnings(params),
+export function useDeactivateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.deactivateProgram(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROGRAM_KEY });
+      toast.success("Referral program deactivated");
+    },
+    onError: toastOnError("Couldn't deactivate program"),
   });
 }
+
+export function useReactivateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.reactivateProgram(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROGRAM_KEY });
+      toast.success("Referral program reactivated");
+    },
+    onError: toastOnError("Couldn't reactivate program"),
+  });
+}
+
+// --- Referrers -------------------------------------------------------------
 
 export function useReferrers() {
-  return useCursorList(referralKeys.referrers, (cursor) => referralsApi.listReferrers(cursor));
+  return useCursorList({
+    queryKeyBase: REFERRERS_KEY,
+    fetchPage: (cursor) => api.listReferrers({ cursor, limit: 50 }),
+  });
 }
 
 export function useReferrer(customerId: string) {
   return useQuery({
-    queryKey: referralKeys.referrer(customerId),
-    queryFn: () => referralsApi.getReferrer(customerId),
+    queryKey: [...REFERRERS_KEY, "one", customerId],
+    queryFn: () => api.getReferrer(customerId),
+    enabled: !!customerId,
+    retry: false,
   });
 }
 
 export function useReferrerEarnings(customerId: string) {
   return useQuery({
-    queryKey: referralKeys.referrerEarnings(customerId),
-    queryFn: () => referralsApi.getReferrerEarnings(customerId),
+    queryKey: [...REFERRERS_KEY, "earnings", customerId],
+    queryFn: () => api.getReferrerEarnings(customerId),
+    enabled: !!customerId,
   });
 }
 
 export function useReferrerReferrals(customerId: string) {
-  return useCursorList(referralKeys.referrerReferrals(customerId), (cursor) =>
-    referralsApi.listReferrerReferrals(customerId, cursor),
-  );
-}
-
-export function useReferralLedger(referralId: string, enabled: boolean) {
-  return useCursorList(
-    referralKeys.referralLedger(referralId),
-    (cursor) => referralsApi.getReferralLedger(referralId, cursor),
-    { enabled },
-  );
-}
-
-/** On-demand payout snapshot — only fetched once the user asks for it. */
-export function usePayoutExport(enabled: boolean) {
-  return useQuery({
-    queryKey: referralKeys.payoutExport,
-    queryFn: () => referralsApi.getPayoutExport(),
-    enabled,
-    staleTime: 0,
-  });
-}
-
-/**
- * Customer feed for the register-referrer picker. Margin may be unavailable
- * (product off / role) — never retried, and callers fall back to the free
- * UUID input on failure.
- */
-export function useMarginCustomerPicker(enabled: boolean) {
-  return useQuery({
-    queryKey: referralKeys.marginCustomerPicker,
-    queryFn: () => referralsApi.listMarginCustomers(),
-    enabled,
-    staleTime: 60_000,
-    retry: 0,
-  });
-}
-
-// --- Mutations ---------------------------------------------------------------
-
-function useInvalidateReferrals() {
-  const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: referralKeys.all });
-}
-
-/** Program config mutations also write audit records — refresh that ledger too. */
-function useInvalidateProgramOps() {
-  const queryClient = useQueryClient();
-  return () => {
-    void queryClient.invalidateQueries({ queryKey: referralKeys.all });
-    void queryClient.invalidateQueries({ queryKey: ["audit"] });
-  };
-}
-
-export function useCreateProgram() {
-  const invalidate = useInvalidateProgramOps();
-  return useMutation({
-    mutationFn: (body: ProgramCreateRequest) => referralsApi.createProgram(body),
-    onSuccess: invalidate,
-  });
-}
-
-export function useUpdateProgram() {
-  const invalidate = useInvalidateProgramOps();
-  return useMutation({
-    mutationFn: (body: ProgramUpdateRequest) => referralsApi.updateProgram(body),
-    onSuccess: invalidate,
-  });
-}
-
-export function useDeactivateProgram() {
-  const invalidate = useInvalidateProgramOps();
-  return useMutation({
-    mutationFn: () => referralsApi.deactivateProgram(),
-    onSuccess: invalidate,
-    onError: toastOnError("Couldn't deactivate the program"),
-  });
-}
-
-export function useReactivateProgram() {
-  const invalidate = useInvalidateProgramOps();
-  return useMutation({
-    mutationFn: () => referralsApi.reactivateProgram(),
-    onSuccess: invalidate,
-    onError: toastOnError("Couldn't reactivate the program"),
+  return useCursorList({
+    queryKeyBase: [...REFERRERS_KEY, "referrals", customerId],
+    fetchPage: (cursor) =>
+      api.listReferrerReferrals(customerId, { cursor, limit: 50 }),
+    enabled: !!customerId,
   });
 }
 
 export function useRegisterReferrer() {
-  const invalidate = useInvalidateReferrals();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (customerId: string) => referralsApi.registerReferrer(customerId),
-    onSuccess: invalidate,
+    mutationFn: (body: RegisterReferrer) => api.registerReferrer(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: REFERRERS_KEY });
+      toast.success("Referrer registered");
+    },
+    onError: toastOnError("Couldn't register referrer"),
   });
 }
+
+// --- Attribution & referrals ----------------------------------------------
 
 export function useAttributeReferral() {
-  const invalidate = useInvalidateReferrals();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: AttributeRequest) => referralsApi.attributeReferral(body),
-    onSuccess: invalidate,
+    mutationFn: (body: AttributeReferral) => api.attributeReferral(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: REFERRERS_KEY });
+      qc.invalidateQueries({ queryKey: ANALYTICS_KEY });
+      toast.success("Referral attributed");
+    },
+    onError: toastOnError("Couldn't attribute referral"),
   });
 }
 
-export function useRevokeReferral() {
-  const invalidate = useInvalidateReferrals();
+export function useRevokeReferral(customerId: string) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (referralId: string) => referralsApi.revokeReferral(referralId),
-    onSuccess: invalidate,
-    onError: toastOnError("Couldn't revoke the referral"),
+    mutationFn: (referralId: string) => api.revokeReferral(referralId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: REFERRERS_KEY });
+      qc.invalidateQueries({
+        queryKey: [...REFERRERS_KEY, "earnings", customerId],
+      });
+      qc.invalidateQueries({ queryKey: ANALYTICS_KEY });
+      toast.success("Referral revoked");
+    },
+    onError: toastOnError("Couldn't revoke referral"),
+  });
+}
+
+export function useReferralLedger(referralId: string, enabled = true) {
+  return useCursorList({
+    queryKeyBase: [...ROOT, "ledger", referralId],
+    fetchPage: (cursor) =>
+      api.getReferralLedger(referralId, { cursor, limit: 50 }),
+    enabled: enabled && !!referralId,
+  });
+}
+
+// --- Analytics & payouts ---------------------------------------------------
+
+export function useAnalyticsSummary() {
+  return useQuery({
+    queryKey: [...ANALYTICS_KEY, "summary"],
+    queryFn: api.getAnalyticsSummary,
+  });
+}
+
+export function useAnalyticsEarnings(range: {
+  period_start?: string;
+  period_end?: string;
+}) {
+  return useQuery({
+    queryKey: [...ANALYTICS_KEY, "earnings", range],
+    queryFn: () => api.getAnalyticsEarnings(range),
+  });
+}
+
+export function usePayoutExport() {
+  return useQuery({
+    queryKey: [...ROOT, "payouts", "export"],
+    queryFn: api.getPayoutExport,
   });
 }

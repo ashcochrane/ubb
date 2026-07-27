@@ -1,20 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-import { WorkspaceSettingsPage } from "@/features/settings/components/workspace-settings-page";
-import { workspaceSearchSchema } from "@/features/settings/lib/settings";
+import { SettingsPage } from "@/features/settings/components/settings-page";
 
 export const Route = createFileRoute("/_app/settings/")({
-  validateSearch: workspaceSearchSchema,
-  component: RouteComponent,
+  component: SettingsPage,
 });
-
-function RouteComponent() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
-  return (
-    <WorkspaceSettingsPage
-      connected={search.connected}
-      onClearConnected={() => void navigate({ search: {}, replace: true })}
-    />
-  );
-}

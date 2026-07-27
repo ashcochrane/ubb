@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-
 import { WebhookDetailPage } from "@/features/webhooks/components/webhook-detail-page";
 
 export const Route = createFileRoute("/_app/webhooks/$configId")({
@@ -8,11 +7,5 @@ export const Route = createFileRoute("/_app/webhooks/$configId")({
 
 function RouteComponent() {
   const { configId } = Route.useParams();
-  const navigate = Route.useNavigate();
-  return (
-    <WebhookDetailPage
-      configId={configId}
-      onBack={() => void navigate({ to: "/webhooks" })}
-    />
-  );
+  return <WebhookDetailPage configId={configId} />;
 }

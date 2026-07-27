@@ -1,149 +1,146 @@
-// Real API calls for the referrals surface. Every call goes through
-// `unwrap` so callers always reject with a typed ApiProblem — most referral
-// operations declare only their 200 in the schema, and runtime errors still
-// arrive as problem+json.
-
-import { marginApi, referralsApi } from "@/api/client";
-import type { CursorPage } from "@/api/pagination";
-import { unwrap } from "@/api/problem";
-
+import { referralsApi } from "@/api/client";
+import { requireData } from "@/api/errors";
+import type { CursorPage } from "@/lib/use-cursor-list";
 import type {
-  AnalyticsEarningsOut,
-  AnalyticsSummaryOut,
-  AttributeRequest,
-  AttributeResponse,
-  EarningsOut,
-  EarningsPeriodParams,
-  LedgerEntryOut,
-  MarginCustomerRow,
-  PayoutExportOut,
-  ProgramCreateRequest,
-  ProgramOut,
-  ProgramUpdateRequest,
-  ReferralOut,
-  ReferrerOut,
-  StatusResponse,
+  AnalyticsEarnings,
+  AnalyticsSummary,
+  AttributeReferral,
+  AttributeResult,
+  Earnings,
+  LedgerEntry,
+  PayoutExport,
+  Program,
+  ProgramCreate,
+  ProgramUpdate,
+  Referral,
+  Referrer,
+  RegisterReferrer,
 } from "./types";
 
-const LIST_LIMIT = 50;
+// --- Program ---------------------------------------------------------------
 
-// --- Program -----------------------------------------------------------------
-
-export async function getProgram(): Promise<ProgramOut> {
-  return unwrap(await referralsApi.GET("/program"));
+export function getProgram(): Promise<Program> {
+  return referralsApi
+    .GET("/program")
+    .then((r) => requireData(r, "Failed to load referral program"));
 }
 
-export async function createProgram(body: ProgramCreateRequest): Promise<ProgramOut> {
-  return unwrap(await referralsApi.POST("/program", { body }));
+export function createProgram(body: ProgramCreate): Promise<Program> {
+  return referralsApi
+    .POST("/program", { body })
+    .then((r) => requireData(r, "Failed to create referral program"));
 }
 
-export async function updateProgram(body: ProgramUpdateRequest): Promise<ProgramOut> {
-  return unwrap(await referralsApi.PATCH("/program", { body }));
+export function updateProgram(body: ProgramUpdate): Promise<Program> {
+  return referralsApi
+    .PATCH("/program", { body })
+    .then((r) => requireData(r, "Failed to update referral program"));
 }
 
-export async function deactivateProgram(): Promise<StatusResponse> {
-  return unwrap(await referralsApi.DELETE("/program"));
+export function deactivateProgram() {
+  return referralsApi
+    .DELETE("/program")
+    .then((r) => requireData(r, "Failed to deactivate program"));
 }
 
-export async function reactivateProgram(): Promise<ProgramOut> {
-  return unwrap(await referralsApi.POST("/program/reactivate"));
+export function reactivateProgram(): Promise<Program> {
+  return referralsApi
+    .POST("/program/reactivate")
+    .then((r) => requireData(r, "Failed to reactivate program"));
 }
 
-// --- Analytics & payouts -----------------------------------------------------
+// --- Referrers -------------------------------------------------------------
 
-export async function getAnalyticsSummary(): Promise<AnalyticsSummaryOut> {
-  return unwrap(await referralsApi.GET("/analytics/summary"));
+export function listReferrers(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<Referrer>> {
+  return referralsApi
+    .GET("/referrers", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load referrers"));
 }
 
-export async function getAnalyticsEarnings(
-  params: EarningsPeriodParams,
-): Promise<AnalyticsEarningsOut> {
-  return unwrap(
-    await referralsApi.GET("/analytics/earnings", { params: { query: params } }),
-  );
+export function registerReferrer(body: RegisterReferrer): Promise<Referrer> {
+  return referralsApi
+    .POST("/referrers", { body })
+    .then((r) => requireData(r, "Failed to register referrer"));
 }
 
-export async function getPayoutExport(): Promise<PayoutExportOut> {
-  return unwrap(await referralsApi.GET("/payouts/export"));
-}
-
-// --- Referrers ---------------------------------------------------------------
-
-export async function listReferrers(cursor?: string): Promise<CursorPage<ReferrerOut>> {
-  return unwrap(
-    await referralsApi.GET("/referrers", {
-      params: { query: { cursor, limit: LIST_LIMIT } },
-    }),
-  );
-}
-
-export async function registerReferrer(customerId: string): Promise<ReferrerOut> {
-  return unwrap(
-    await referralsApi.POST("/referrers", { body: { customer_id: customerId } }),
-  );
-}
-
-export async function getReferrer(customerId: string): Promise<ReferrerOut> {
-  return unwrap(
-    await referralsApi.GET("/referrers/{customer_id}", {
+export function getReferrer(customerId: string): Promise<Referrer> {
+  return referralsApi
+    .GET("/referrers/{customer_id}", {
       params: { path: { customer_id: customerId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to load referrer"));
 }
 
-export async function getReferrerEarnings(customerId: string): Promise<EarningsOut> {
-  return unwrap(
-    await referralsApi.GET("/referrers/{customer_id}/earnings", {
+export function getReferrerEarnings(customerId: string): Promise<Earnings> {
+  return referralsApi
+    .GET("/referrers/{customer_id}/earnings", {
       params: { path: { customer_id: customerId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to load earnings"));
 }
 
-export async function listReferrerReferrals(
+export function listReferrerReferrals(
   customerId: string,
-  cursor?: string,
-): Promise<CursorPage<ReferralOut>> {
-  return unwrap(
-    await referralsApi.GET("/referrers/{customer_id}/referrals", {
-      params: { path: { customer_id: customerId }, query: { cursor, limit: LIST_LIMIT } },
-    }),
-  );
+  params?: { cursor?: string; limit?: number },
+): Promise<CursorPage<Referral>> {
+  return referralsApi
+    .GET("/referrers/{customer_id}/referrals", {
+      params: { path: { customer_id: customerId }, query: params },
+    })
+    .then((r) => requireData(r, "Failed to load referrals"));
 }
 
-// --- Individual referrals ----------------------------------------------------
+// --- Attribution & referrals ----------------------------------------------
 
-export async function attributeReferral(body: AttributeRequest): Promise<AttributeResponse> {
-  return unwrap(await referralsApi.POST("/attribute", { body }));
+export function attributeReferral(
+  body: AttributeReferral,
+): Promise<AttributeResult> {
+  return referralsApi
+    .POST("/attribute", { body })
+    .then((r) => requireData(r, "Failed to attribute referral"));
 }
 
-export async function revokeReferral(referralId: string): Promise<StatusResponse> {
-  // NOTE the doubled segment: the full path is /api/v1/referrals/referrals/{id}.
-  return unwrap(
-    await referralsApi.DELETE("/referrals/{referral_id}", {
+export function revokeReferral(referralId: string) {
+  return referralsApi
+    .DELETE("/referrals/{referral_id}", {
       params: { path: { referral_id: referralId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to revoke referral"));
 }
 
-export async function getReferralLedger(
+export function getReferralLedger(
   referralId: string,
-  cursor?: string,
-): Promise<CursorPage<LedgerEntryOut>> {
-  return unwrap(
-    await referralsApi.GET("/referrals/{referral_id}/ledger", {
-      params: { path: { referral_id: referralId }, query: { cursor, limit: LIST_LIMIT } },
-    }),
-  );
+  params?: { cursor?: string; limit?: number },
+): Promise<CursorPage<LedgerEntry>> {
+  return referralsApi
+    .GET("/referrals/{referral_id}/ledger", {
+      params: { path: { referral_id: referralId }, query: params },
+    })
+    .then((r) => requireData(r, "Failed to load ledger"));
 }
 
-// --- Customer picker (margin namespace) --------------------------------------
+// --- Analytics & payouts ---------------------------------------------------
 
-/**
- * Feed for the "register referrer" customer picker. Margin may be
- * unavailable (subscriptions product off) — callers must tolerate failure
- * and fall back to the free UUID input.
- */
-export async function listMarginCustomers(): Promise<MarginCustomerRow[]> {
-  const result = unwrap(await marginApi.GET("/customers"));
-  return result.customers;
+export function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return referralsApi
+    .GET("/analytics/summary")
+    .then((r) => requireData(r, "Failed to load analytics"));
+}
+
+export function getAnalyticsEarnings(params?: {
+  period_start?: string;
+  period_end?: string;
+}): Promise<AnalyticsEarnings> {
+  return referralsApi
+    .GET("/analytics/earnings", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load earnings by period"));
+}
+
+export function getPayoutExport(): Promise<PayoutExport> {
+  return referralsApi
+    .GET("/payouts/export")
+    .then((r) => requireData(r, "Failed to load payout export"));
 }

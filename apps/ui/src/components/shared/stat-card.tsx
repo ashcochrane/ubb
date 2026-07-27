@@ -26,8 +26,7 @@ export interface StatCardProps {
  * Variants:
  * - `muted`  (default) — quiet bg-accent/50 card used by billing + mapping pages
  * - `raised`            — bordered bg-bg-surface card used by the v4 dashboard KPI grid
- * - `purple`            — legacy name; muted layout whose value renders in the
- *                         neutral dark-gray the purple-fg token now maps to
+ * - `purple`            — muted layout with a purple-tinted value (billing mode)
  */
 export function StatCard({
   label,
@@ -77,7 +76,7 @@ export function StatCard({
         <div
           className={cn(
             "mt-0.5 text-muted",
-            change.positive ? "text-text-primary" : "text-danger-dark",
+            change.positive ? "text-success-dark" : "text-danger-dark",
           )}
         >
           {change.positive ? "+" : ""}

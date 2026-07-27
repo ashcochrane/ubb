@@ -1,129 +1,116 @@
-import { useEffect } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
-
-import { problemMessage } from "@/api/problem";
-import { FormField } from "@/components/shared/form-field";
-import { Button } from "@/components/ui/button";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormField } from "@/components/shared/form-field";
+import { CopyField } from "@/components/shared/data-states";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import { toastSuccess } from "@/lib/mutations";
+  registerReferrerSchema,
+  type RegisterReferrerValues,
+} from "../lib/schema";
+import { useRegisterReferrer } from "../api/queries";
+import type { Referrer } from "../api/types";
 
-import { useMarginCustomerPicker, useRegisterReferrer } from "../api/queries";
-import { registerReferrerSchema, type RegisterReferrerValues } from "../lib/schemas";
+/**
+ * Register an existing customer as a referrer. On success we surface the
+ * generated referral code and link token so they can be shared immediately.
+ */
+export function RegisterReferrerDialog({ trigger }: { trigger: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [created, setCreated] = useState<Referrer | null>(null);
+  const register = useRegisterReferrer();
 
-export function RegisterReferrerDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
   const form = useForm<RegisterReferrerValues>({
     resolver: zodResolver(registerReferrerSchema),
     defaultValues: { customer_id: "" },
   });
-  const picker = useMarginCustomerPicker(open);
-  const mutation = useRegisterReferrer();
 
-  useEffect(() => {
-    if (open) {
-      form.reset({ customer_id: "" });
-      mutation.reset();
-    }
-    // Reset only when the dialog (re)opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  const reset = () => {
+    form.reset({ customer_id: "" });
+    setCreated(null);
+  };
 
-  const submit = form.handleSubmit((values) =>
-    mutation.mutate(values.customer_id, {
-      onSuccess: (result) => {
-        toastSuccess(
-          "Referrer registered",
-          `Share code ${result.referral_code} — or the referral link token.`,
-        );
-        onOpenChange(false);
-      },
-    }),
-  );
-
-  const pickerRows = picker.data ?? [];
+  const onSubmit = form.handleSubmit(async (values) => {
+    const referrer = await register.mutateAsync(values);
+    setCreated(referrer);
+  });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) reset();
+      }}
+    >
+      <DialogTrigger render={trigger as React.ReactElement} />
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Register a referrer</DialogTitle>
-          <DialogDescription>
-            Turns an existing customer into a referrer with a shareable code and link token.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-4" noValidate>
-          {pickerRows.length > 0 && (
-            <FormField
-              label="Pick a customer"
-              hint="Recent customers from margin reporting — or paste any UBB customer UUID below."
-            >
-              {(id) => (
-                <Select
-                  onValueChange={(value) => {
-                    if (typeof value === "string") {
-                      form.setValue("customer_id", value, { shouldValidate: true });
-                    }
-                  }}
-                >
-                  <SelectTrigger id={id} className="w-full">
-                    <span className="truncate font-mono text-[12px] text-muted-foreground">
-                      {form.watch("customer_id") || "Choose a customer…"}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pickerRows.map((row) => (
-                      <SelectItem key={row.customer_id} value={row.customer_id}>
-                        <span className="font-mono text-[12px]">{row.customer_id}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </FormField>
-          )}
-          <FormField
-            label="Customer UUID"
-            error={form.formState.errors.customer_id?.message}
-            hint="The UBB customer UUID — not your own external customer ID."
-          >
-            {(id) => (
-              <Input
-                id={id}
-                className="font-mono"
-                placeholder="9f1c2e34-…"
-                autoComplete="off"
-                {...form.register("customer_id")}
+        {created ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Referrer registered</DialogTitle>
+              <DialogDescription>
+                Share this code or link so referred customers can be attributed.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <CopyField label="Referral code" value={created.referral_code} />
+              <CopyField
+                label="Referral link token"
+                value={created.referral_link_token}
               />
-            )}
-          </FormField>
-          {mutation.error ? (
-            <p className="text-xs text-destructive">{problemMessage(mutation.error)}</p>
-          ) : null}
-          <div className="flex justify-end">
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Working…" : "Register"}
-            </Button>
-          </div>
-        </form>
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button />}>Done</DialogClose>
+            </DialogFooter>
+          </>
+        ) : (
+          <form onSubmit={onSubmit}>
+            <DialogHeader>
+              <DialogTitle>Register referrer</DialogTitle>
+              <DialogDescription>
+                Enrol an existing customer so they can refer others and earn rewards.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4">
+              <FormField
+                label="Customer ID"
+                error={form.formState.errors.customer_id?.message}
+              >
+                {(id) => (
+                  <Input id={id} placeholder="cus_…" {...form.register("customer_id")} />
+                )}
+              </FormField>
+            </div>
+            <DialogFooter className="mt-2">
+              <DialogClose
+                render={
+                  <Button
+                    variant="outline"
+                    type="button"
+                    disabled={register.isPending}
+                  />
+                }
+              >
+                Cancel
+              </DialogClose>
+              <Button type="submit" disabled={register.isPending}>
+                {register.isPending ? "Registering…" : "Register"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

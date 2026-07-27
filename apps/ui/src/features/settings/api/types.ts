@@ -1,57 +1,55 @@
-// Type aliases from the generated schema map, plus local interfaces for the
-// contract's UNTYPED responses (additionalProperties: true) on this surface.
-
-import type { MarginSchemas, PlatformSchemas, TenantSchemas } from "@/api/types";
+import type { TenantSchemas } from "@/api/types";
 
 export type TenantConfig = TenantSchemas["TenantConfigOut"];
-export type TenantConfigPatch = TenantSchemas["TenantConfigIn"];
-export type MarginThreshold = MarginSchemas["MarginThresholdOut"];
-export type MarginThresholdInput = MarginSchemas["MarginThresholdIn"];
+export type TenantConfigUpdate = TenantSchemas["TenantConfigIn"];
+
+export type ApiKey = TenantSchemas["ApiKeyOut"];
+export type ApiKeyCreate = TenantSchemas["ApiKeyCreateIn"];
+
 export type Member = TenantSchemas["MemberOut"];
+export type MemberRoleUpdate = TenantSchemas["MemberRoleUpdateIn"];
+
 export type Invitation = TenantSchemas["InvitationOut"];
-export type BillingPeriod = TenantSchemas["TenantBillingPeriodOut"];
-export type TenantInvoice = TenantSchemas["TenantInvoiceOut"];
-export type AuditRecord = PlatformSchemas["AuditRecordOut"];
+export type InvitationCreate = TenantSchemas["InvitationCreateIn"];
 
-export interface AuditFilters {
-  action?: string;
-  resource_type?: string;
-  resource_id?: string;
+export type ConnectStart = TenantSchemas["ConnectStartIn"];
+export type SandboxReset = TenantSchemas["SandboxResetIn"];
+
+/**
+ * A handful of endpoints (api-key create/rotate, connect start/status, sandbox
+ * get/create) are typed as an open `object` in the OpenAPI spec — the backend
+ * returns a raw dict. We surface them as `Record<string, unknown>` and narrow
+ * defensively at the call site. The known field aliases below document what we
+ * probe for; none is guaranteed to be present.
+ */
+export type UntypedObject = Record<string, unknown>;
+
+/** Pull the one-time raw key out of an api-key create/rotate response. */
+export function readRawKey(obj: UntypedObject): string | null {
+  for (const field of ["key", "api_key", "secret", "token", "raw_key"]) {
+    const v = obj[field];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
 }
 
-// ---------------------------------------------------------------------------
-// Untyped responses — GET /connect/status and POST /connect/start return
-// `additionalProperties: true` objects in the schema. The concrete shapes are
-// recovered from the server source and narrowed here (never cast).
-
-// [backend-verified shape — see discovery spec §4.2]
-export interface ConnectStatus {
-  /** Stripe account id ("" = not connected). */
-  account_id: string;
-  charges_enabled: boolean;
-  /** account_id set AND charges_enabled. */
-  onboarded: boolean;
+/** Pull the Stripe onboarding redirect url out of a connect/start response. */
+export function readConnectUrl(obj: UntypedObject): string | null {
+  for (const field of ["url", "onboarding_url", "account_link_url", "link"]) {
+    const v = obj[field];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
 }
 
-// [backend-verified shape — see discovery spec §4.1]
-export interface ConnectStartResult {
-  /** Stripe OAuth URL to redirect the browser to. */
-  authorize_url: string;
+/** Pull a human string value from an untyped object for a given field. */
+export function readString(obj: UntypedObject, field: string): string | null {
+  const v = obj[field];
+  return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-export function toConnectStatus(raw: Record<string, unknown>): ConnectStatus {
-  return {
-    account_id: typeof raw["account_id"] === "string" ? raw["account_id"] : "",
-    charges_enabled: raw["charges_enabled"] === true,
-    onboarded: raw["onboarded"] === true,
-  };
-}
-
-export function toConnectStartResult(
-  raw: Record<string, unknown>,
-): ConnectStartResult {
-  return {
-    authorize_url:
-      typeof raw["authorize_url"] === "string" ? raw["authorize_url"] : "",
-  };
+/** Pull a boolean value from an untyped object for a given field. */
+export function readBool(obj: UntypedObject, field: string): boolean | null {
+  const v = obj[field];
+  return typeof v === "boolean" ? v : null;
 }

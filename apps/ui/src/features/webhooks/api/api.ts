@@ -1,67 +1,68 @@
-// Real API calls for /api/v1/webhooks/** (tenant-console auth).
-// Floors: list/deliveries = read; create/update/delete/rotate = admin.
-
-import { webhooksApi as client } from "@/api/client";
-import { unwrap } from "@/api/problem";
-
+import { webhooksApi } from "@/api/client";
+import { requireData } from "@/api/errors";
+import type { CursorPage } from "@/lib/use-cursor-list";
 import type {
-  CursorParams,
   WebhookConfig,
   WebhookConfigCreate,
-  WebhookConfigList,
   WebhookConfigUpdate,
-  WebhookDeleteStatus,
-  WebhookDeliveryList,
+  WebhookDelivery,
   WebhookSecretRotate,
 } from "./types";
 
-export async function listConfigs(params: CursorParams = {}): Promise<WebhookConfigList> {
-  return unwrap(await client.GET("/configs", { params: { query: params } }));
+export function listConfigs(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<WebhookConfig>> {
+  return webhooksApi
+    .GET("/configs", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load webhook endpoints"));
 }
 
-export async function createConfig(body: WebhookConfigCreate): Promise<WebhookConfig> {
-  return unwrap(await client.POST("/configs", { body }));
+export function createConfig(body: WebhookConfigCreate): Promise<WebhookConfig> {
+  return webhooksApi
+    .POST("/configs", { body })
+    .then((r) => requireData(r, "Failed to create webhook endpoint"));
 }
 
-export async function updateConfig(
+export function updateConfig(
   configId: string,
   body: WebhookConfigUpdate,
 ): Promise<WebhookConfig> {
-  return unwrap(
-    await client.PATCH("/configs/{config_id}", {
+  return webhooksApi
+    .PATCH("/configs/{config_id}", {
       params: { path: { config_id: configId } },
       body,
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to update webhook endpoint"));
 }
 
-export async function deleteConfig(configId: string): Promise<WebhookDeleteStatus> {
-  return unwrap(
-    await client.DELETE("/configs/{config_id}", {
+export function deleteConfig(configId: string) {
+  return webhooksApi
+    .DELETE("/configs/{config_id}", {
       params: { path: { config_id: configId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to delete webhook endpoint"));
 }
 
-export async function rotateSecret(
+export function rotateSecret(
   configId: string,
   body: WebhookSecretRotate,
 ): Promise<WebhookConfig> {
-  return unwrap(
-    await client.POST("/configs/{config_id}/rotate-secret", {
+  return webhooksApi
+    .POST("/configs/{config_id}/rotate-secret", {
       params: { path: { config_id: configId } },
       body,
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to rotate secret"));
 }
 
-export async function listDeliveries(
+export function listDeliveries(
   configId: string,
-  params: CursorParams = {},
-): Promise<WebhookDeliveryList> {
-  return unwrap(
-    await client.GET("/configs/{config_id}/deliveries", {
+  params?: { cursor?: string; limit?: number },
+): Promise<CursorPage<WebhookDelivery>> {
+  return webhooksApi
+    .GET("/configs/{config_id}/deliveries", {
       params: { path: { config_id: configId }, query: params },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to load deliveries"));
 }

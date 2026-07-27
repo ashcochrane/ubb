@@ -1,28 +1,44 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { ProductGate } from "@/components/shared/product-gate";
+import { ProductUnavailable } from "@/components/shared/data-states";
+import { TabBar, useTabs } from "@/components/shared/tabs";
+import { useAuth } from "@/features/auth/hooks/use-auth";
+import { ProgramTab } from "./program-tab";
+import { ReferrersTab } from "./referrers-tab";
+import { AnalyticsTab } from "./analytics-tab";
+import { PayoutsTab } from "./payouts-tab";
 
-import { AnalyticsSection } from "./analytics-section";
-import { PayoutExportCard } from "./payout-export-card";
-import { ProgramSection } from "./program-section";
-import { ReferrersSection } from "./referrers-section";
+const TABS = [
+  { value: "program", label: "Program" },
+  { value: "referrers", label: "Referrers" },
+  { value: "analytics", label: "Analytics" },
+  { value: "payouts", label: "Payouts" },
+];
 
-export function ReferralsPage({
-  onOpenReferrer,
-}: {
-  onOpenReferrer: (customerId: string) => void;
-}) {
-  return (
-    <ProductGate product="referrals">
+export function ReferralsPage() {
+  const { hasProduct } = useAuth();
+  const { active, setActive } = useTabs(TABS);
+
+  if (!hasProduct("referrals")) {
+    return (
       <div className="space-y-6">
-        <PageHeader
-          title="Referrals"
-          description="Reward customers for the customers they bring — attribution, rewards, and payout exports."
-        />
-        <ProgramSection />
-        <AnalyticsSection onOpenReferrer={onOpenReferrer} />
-        <ReferrersSection onOpenReferrer={onOpenReferrer} />
-        <PayoutExportCard />
+        <PageHeader title="Referrals" />
+        <ProductUnavailable product="Referrals" />
       </div>
-    </ProductGate>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Referrals"
+        description="Reward customers for bringing in new ones — configure the program, enrol referrers, and track earnings."
+      />
+      <TabBar tabs={TABS} value={active} onChange={setActive} />
+
+      {active === "program" && <ProgramTab />}
+      {active === "referrers" && <ReferrersTab />}
+      {active === "analytics" && <AnalyticsTab />}
+      {active === "payouts" && <PayoutsTab />}
+    </div>
   );
 }

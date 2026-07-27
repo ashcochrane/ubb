@@ -1,244 +1,235 @@
-import * as React from "react";
-import { SearchX } from "lucide-react";
-
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { CopyButton } from "@/components/shared/copy-button";
-import { DetailList } from "@/components/shared/detail-list";
-import { EmptyState } from "@/components/shared/empty-state";
-import { ErrorCard } from "@/components/shared/error-card";
-import { PageHeader } from "@/components/shared/page-header";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useHasRole } from "@/hooks/use-current-role";
-import { formatDate } from "@/lib/format";
-import { toastOnError, toastSuccess } from "@/lib/mutations";
-
+import { useNavigate } from "@tanstack/react-router";
 import {
-  useDeleteWebhookConfig,
-  useUpdateWebhookConfig,
+  ArrowLeft,
+  Pencil,
+  KeyRound,
+  Trash2,
+  Power,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  QueryState,
+  Section,
+  DetailGrid,
+  DetailRow,
+  LoadingRows,
+  ErrorInline,
+} from "@/components/shared/data-states";
+import { EmptyState } from "@/components/shared/empty-state";
+import { StatusBadge, BoolBadge } from "@/components/shared/status-badge";
+import { CursorPagerControls } from "@/components/shared/cursor-pager";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { formatDate, formatShortDate } from "@/lib/format";
+import {
   useWebhookConfig,
+  useWebhookDeliveries,
+  useUpdateWebhook,
+  useDeleteWebhook,
 } from "../api/queries";
-import type { WebhookConfig } from "../api/types";
-import { hostOf } from "../lib/secret";
-import { DeliveriesTable } from "./deliveries-table";
-import { EditEndpointDialog } from "./edit-endpoint-dialog";
+import { WebhookFormDialog } from "./webhook-form-dialog";
 import { RotateSecretDialog } from "./rotate-secret-dialog";
-import { SignatureHelp } from "./signature-help";
-import { EventTypeChips } from "./webhook-config-table";
 
-function DetailSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-8 w-64" />
-      <Skeleton className="h-44 w-full" />
-      <Skeleton className="h-64 w-full" />
-    </div>
-  );
-}
-
-function ConfigSummary({ config }: { config: WebhookConfig }) {
-  return (
-    <div className="rounded-lg border border-border px-4 py-1">
-      <DetailList
-        items={[
-          {
-            label: "Endpoint URL",
-            value: (
-              <span className="inline-flex max-w-full items-center gap-1.5">
-                <span className="truncate" title={config.url}>
-                  {config.url}
-                </span>
-                <CopyButton value={config.url} />
-              </span>
-            ),
-            mono: true,
-          },
-          {
-            label: "Endpoint ID",
-            value: (
-              <span className="inline-flex items-center gap-1.5">
-                {config.id}
-                <CopyButton value={config.id} />
-              </span>
-            ),
-            mono: true,
-          },
-          {
-            label: "Status",
-            // App-wide badge rule: Active = secondary (filled), dormant = outline.
-            value: config.is_active ? (
-              <Badge variant="secondary">Active</Badge>
-            ) : (
-              <Badge variant="outline">Paused</Badge>
-            ),
-          },
-          {
-            label: "Subscribed events",
-            value: <EventTypeChips eventTypes={config.event_types} />,
-          },
-          {
-            label: "Signing secret",
-            value:
-              "Write-only — UBB never displays it. Rotate to replace it.",
-          },
-          ...(config.retiring_secret_expires_at
-            ? [
-                {
-                  label: "Secret rotation",
-                  value: `Both secrets sign until ${formatDate(config.retiring_secret_expires_at)}`,
-                },
-              ]
-            : []),
-          { label: "Created", value: formatDate(config.created_at) },
-        ]}
-      />
-    </div>
-  );
-}
-
-export function WebhookDetailPage({
-  configId,
-  onBack,
-}: {
-  configId: string;
-  onBack: () => void;
-}) {
-  const lookup = useWebhookConfig(configId);
-  const update = useUpdateWebhookConfig();
-  const del = useDeleteWebhookConfig();
-  // UI affordance only (fail-open) — the server enforces the Admin floor.
-  const isAdmin = useHasRole("admin");
-
-  const [editOpen, setEditOpen] = React.useState(false);
-  const [rotateOpen, setRotateOpen] = React.useState(false);
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-
-  if (lookup.isLoading) return <DetailSkeleton />;
-  if (lookup.isError) {
-    return <ErrorCard error={lookup.error} onRetry={lookup.refetch} />;
-  }
-  const config = lookup.config;
-  if (!config) {
-    return (
-      <EmptyState
-        icon={SearchX}
-        title="Endpoint not found"
-        description="This webhook endpoint doesn't exist — it may have been deleted."
-        action={{ label: "Back to webhooks", onClick: onBack }}
-      />
-    );
-  }
-
-  const adminTitle = (label: string) =>
-    isAdmin ? undefined : `${label} requires the Admin role`;
-
-  const togglePause = () => {
-    const next = !config.is_active;
-    update.mutate(
-      { configId: config.id, body: { is_active: next } },
-      {
-        onSuccess: () =>
-          toastSuccess(next ? "Endpoint resumed" : "Endpoint paused", config.url),
-        onError: toastOnError(
-          next ? "Couldn't resume the endpoint" : "Couldn't pause the endpoint",
-        ),
-      },
-    );
-  };
+export function WebhookDetailPage({ configId }: { configId: string }) {
+  const navigate = useNavigate();
+  const query = useWebhookConfig(configId);
+  const update = useUpdateWebhook(configId);
+  const del = useDeleteWebhook();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
-        title={hostOf(config.url)}
-        description="Webhook endpoint"
+        title="Webhook endpoint"
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditOpen(true)}
-              disabled={!isAdmin}
-              title={adminTitle("Editing")}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={togglePause}
-              disabled={!isAdmin || update.isPending}
-              title={adminTitle("Pausing and resuming")}
-            >
-              {update.isPending ? "Working…" : config.is_active ? "Pause" : "Resume"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setRotateOpen(true)}
-              disabled={!isAdmin}
-              title={adminTitle("Rotating the secret")}
-            >
-              Rotate secret
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setDeleteOpen(true)}
-              disabled={!isAdmin}
-              title={adminTitle("Deleting")}
-            >
-              Delete
-            </Button>
-          </>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate({ to: "/webhooks" })}
+          >
+            <ArrowLeft />
+            Back
+          </Button>
         }
       />
 
-      <ConfigSummary config={config} />
+      <QueryState
+        query={query}
+        isEmpty={(c) => c === null}
+        empty={{
+          title: "Endpoint not found",
+          description: "It may have been deleted, or it lives beyond the first page of endpoints.",
+        }}
+      >
+        {(cfg) =>
+          cfg && (
+            <div className="space-y-6">
+              <Section
+                title="Configuration"
+                actions={
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={update.isPending}
+                      onClick={() =>
+                        update.mutate({ is_active: !cfg.is_active })
+                      }
+                    >
+                      <Power />
+                      {cfg.is_active ? "Pause" : "Activate"}
+                    </Button>
+                    <RotateSecretDialog
+                      configId={cfg.id}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <KeyRound />
+                          Rotate secret
+                        </Button>
+                      }
+                    />
+                    <WebhookFormDialog
+                      existing={cfg}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <Pencil />
+                          Edit
+                        </Button>
+                      }
+                    />
+                    <ConfirmDialog
+                      destructive
+                      title="Delete this endpoint?"
+                      description="Deliveries to this URL will stop immediately. This can't be undone."
+                      confirmLabel="Delete endpoint"
+                      onConfirm={async () => {
+                        await del.mutateAsync(cfg.id);
+                        navigate({ to: "/webhooks" });
+                      }}
+                      trigger={
+                        <Button variant="destructive" size="sm">
+                          <Trash2 />
+                          Delete
+                        </Button>
+                      }
+                    />
+                  </div>
+                }
+              >
+                <DetailGrid>
+                  <DetailRow label="Endpoint URL">
+                    <span className="font-mono text-xs break-all">{cfg.url}</span>
+                  </DetailRow>
+                  <DetailRow label="Status">
+                    <BoolBadge value={cfg.is_active} trueLabel="Active" falseLabel="Paused" />
+                  </DetailRow>
+                  <DetailRow label="Created">{formatDate(cfg.created_at)}</DetailRow>
+                  <DetailRow label="Retiring secret expires">
+                    {cfg.retiring_secret_expires_at
+                      ? formatDate(cfg.retiring_secret_expires_at)
+                      : "—"}
+                  </DetailRow>
+                  <DetailRow label="Subscribed events">
+                    <div className="flex flex-wrap gap-1">
+                      {cfg.event_types.map((e) => (
+                        <Badge key={e} variant="secondary" className="rounded-md font-normal">
+                          {e}
+                        </Badge>
+                      ))}
+                    </div>
+                  </DetailRow>
+                </DetailGrid>
+              </Section>
 
-      <Tabs defaultValue="deliveries">
-        <TabsList>
-          <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
-          <TabsTrigger value="signatures">Verifying signatures</TabsTrigger>
-        </TabsList>
-        <TabsContent value="deliveries">
-          <DeliveriesTable configId={config.id} />
-        </TabsContent>
-        <TabsContent value="signatures">
-          <SignatureHelp />
-        </TabsContent>
-      </Tabs>
-
-      <EditEndpointDialog config={config} open={editOpen} onOpenChange={setEditOpen} />
-      <RotateSecretDialog
-        configId={config.id}
-        open={rotateOpen}
-        onOpenChange={setRotateOpen}
-      />
-      <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="Delete webhook endpoint"
-        description={`Deliveries to ${config.url} stop immediately and its delivery history goes with it. This can't be undone — re-adding the endpoint means supplying a new secret.`}
-        confirmLabel="Delete endpoint"
-        destructive
-        typeToConfirm={hostOf(config.url)}
-        pending={del.isPending}
-        onConfirm={() =>
-          del.mutate(
-            { configId: config.id },
-            {
-              onSuccess: () => {
-                toastSuccess("Endpoint deleted", config.url);
-                setDeleteOpen(false);
-                onBack();
-              },
-              onError: toastOnError("Couldn't delete the endpoint"),
-            },
+              <DeliveriesSection configId={cfg.id} />
+            </div>
           )
         }
-      />
+      </QueryState>
     </div>
+  );
+}
+
+function DeliveriesSection({ configId }: { configId: string }) {
+  const pager = useWebhookDeliveries(configId);
+  return (
+    <Section
+      title="Recent deliveries"
+      description="The most recent delivery attempts, newest first."
+    >
+      {pager.isLoading ? (
+        <LoadingRows rows={4} />
+      ) : pager.isError ? (
+        <ErrorInline error={pager.error} onRetry={pager.refetch} />
+      ) : pager.items.length === 0 ? (
+        <EmptyState
+          title="No deliveries yet"
+          description="Once a subscribed event fires, its delivery attempts appear here."
+        />
+      ) : (
+        <div className="space-y-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8" />
+                <TableHead>Event</TableHead>
+                <TableHead>Result</TableHead>
+                <TableHead>Response</TableHead>
+                <TableHead>When</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pager.items.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell>
+                    {d.success ? (
+                      <CheckCircle2 className="size-4 text-foreground" />
+                    ) : (
+                      <XCircle className="size-4 text-destructive" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{d.event_type}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{d.event_id}</div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge
+                      value={d.success ? "Delivered" : "Failed"}
+                      tone={d.success ? "solid" : "danger"}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs">
+                        {d.status_code ?? "—"}
+                      </span>
+                      {!d.success && d.error_message && (
+                        <span className="max-w-[16rem] truncate text-xs text-muted-foreground" title={d.error_message}>
+                          {d.error_message}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatShortDate(d.created_at)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <CursorPagerControls pager={pager} />
+        </div>
+      )}
+    </Section>
   );
 }

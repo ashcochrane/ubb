@@ -1,406 +1,236 @@
-// TanStack Query hooks over the provider. ALL query keys and invalidation
-// live here (first key segment = backend namespace, not feature name).
-//
-// 404-as-state reads (revenue profile / business rollup / subscription) are
-// caught in the queryFn and resolved to null so an expected absence never
-// retries or renders as an error.
-
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-
-import { useCursorList } from "@/api/pagination";
-import { isNotFound } from "@/api/problem";
-import type { DateRange } from "@/lib/date-range";
-
-import { customersApi } from "./provider";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { toastOnError } from "@/lib/mutations";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
 import type {
+  BillingProfileIn,
   BudgetConfigIn,
-  ConfigureAutoTopUpRequest,
   CreateCustomerRequest,
   CreateGrantRequest,
-  CreateTopUpRequest,
-  CreditRequest,
-  CustomerBillingProfileIn,
-  DebitRequest,
+  CustomerMarkupIn,
+  RevenueModeIn,
   RevenueProfileIn,
+  SeatsIn,
   SubscribeIn,
-  TenantMarkupIn,
-  WithdrawRequest,
+  SubscriptionCancelIn,
 } from "./types";
 
-async function nullOn404<T>(promise: Promise<T>): Promise<T | null> {
-  try {
-    return await promise;
-  } catch (error) {
-    if (isNotFound(error)) return null;
-    throw error;
-  }
-}
+const k = {
+  roster: (from?: string, to?: string) => ["customers", "roster", from ?? "", to ?? ""] as const,
+  margin: (id: string) => ["customers", id, "margin"] as const,
+  trend: (id: string) => ["customers", id, "trend"] as const,
+  revenue: (id: string) => ["customers", id, "revenue"] as const,
+  revenueMode: (id: string) => ["customers", id, "revenue-mode"] as const,
+  budget: (id: string) => ["customers", id, "budget"] as const,
+  budgetStatus: (id: string) => ["customers", id, "budget-status"] as const,
+  profile: (id: string) => ["customers", id, "billing-profile"] as const,
+  markup: (id: string) => ["customers", id, "markup"] as const,
+  grants: (id: string) => ["customers", id, "grants"] as const,
+  usage: (id: string) => ["customers", id, "usage"] as const,
+  subscription: (id: string) => ["customers", id, "subscription"] as const,
+  subInvoices: (id: string) => ["customers", id, "subscription-invoices"] as const,
+  business: (ext: string) => ["customers", "business", ext] as const,
+  pastLimit: (id: string) => ["customers", id, "past-limit"] as const,
+};
 
-// ---------------------------------------------------------------------------
-// Margin reads
-
-export function useCustomerMargins(range: DateRange) {
+// ---- Roster / create ----
+export function useMarginRoster(range?: { start_date?: string; end_date?: string }) {
   return useQuery({
-    queryKey: ["margin", "customers", range],
-    queryFn: () => customersApi.listCustomerMargins(range),
-    // Date-range changes refresh in the background instead of blanking.
-    placeholderData: keepPreviousData,
+    queryKey: k.roster(range?.start_date, range?.end_date),
+    queryFn: () => api.listMarginCustomers(range),
   });
 }
-
-export function useCustomerMargin(customerId: string, range: DateRange) {
-  return useQuery({
-    queryKey: ["margin", "customer", customerId, range],
-    queryFn: () => customersApi.getCustomerMargin(customerId, range),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useMarginTrend(customerId: string, periods: number) {
-  return useQuery({
-    queryKey: ["margin", "trend", customerId, periods],
-    queryFn: () => customersApi.getMarginTrend(customerId, periods),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useRevenueProfile(customerId: string) {
-  return useQuery({
-    queryKey: ["margin", "revenue", customerId],
-    queryFn: () => nullOn404(customersApi.getRevenueProfile(customerId)),
-  });
-}
-
-export function useRevenueMode(customerId: string) {
-  return useQuery({
-    queryKey: ["margin", "revenue-mode", customerId],
-    queryFn: () => customersApi.getRevenueMode(customerId),
-  });
-}
-
-/** null = 404 (individual customer, not a business) — callers hide the section. */
-export function useBusinessMargin(externalId: string | undefined, range: DateRange) {
-  return useQuery({
-    queryKey: ["margin", "business", externalId ?? "", range],
-    queryFn: () => nullOn404(customersApi.getBusinessMargin(externalId ?? "", range)),
-    enabled: Boolean(externalId),
-    placeholderData: keepPreviousData,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Usage reads
-
-export function useUsageAnalytics(customerId: string, range: DateRange) {
-  return useQuery({
-    queryKey: ["metering", "analytics", "usage", customerId, range],
-    queryFn: () => customersApi.getUsageAnalytics(customerId, range),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useUsageTimeseries(customerId: string, range: DateRange) {
-  return useQuery({
-    queryKey: ["metering", "analytics", "timeseries", customerId, range],
-    queryFn: () => customersApi.getUsageTimeseries(customerId, range),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function usePastLimitReport(customerId: string) {
-  return useQuery({
-    queryKey: ["metering", "past-limit-report", customerId],
-    queryFn: () => customersApi.getPastLimitReport(customerId),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Billing reads
-
-export function useBalance(customerId: string, enabled = true) {
-  return useQuery({
-    queryKey: ["billing", "balance", customerId],
-    queryFn: () => customersApi.getBalance(customerId),
-    enabled,
-  });
-}
-
-export function useTransactionsList(customerId: string) {
-  return useCursorList(["billing", "transactions", customerId], (cursor) =>
-    customersApi.listTransactions(customerId, cursor),
-  );
-}
-
-export function useGrantsList(customerId: string, status: string | undefined) {
-  return useCursorList(["billing", "grants", customerId, { status }], (cursor) =>
-    customersApi.listGrants(customerId, { status, cursor }),
-  );
-}
-
-export function useCustomerBudget(customerId: string) {
-  return useQuery({
-    queryKey: ["billing", "budget", customerId],
-    queryFn: () => customersApi.getCustomerBudget(customerId),
-  });
-}
-
-export function useBudgetStatus(customerId: string) {
-  return useQuery({
-    queryKey: ["billing", "budget-status", customerId],
-    queryFn: () => customersApi.getBudgetStatus(customerId),
-  });
-}
-
-export function useBillingProfile(customerId: string) {
-  return useQuery({
-    queryKey: ["billing", "billing-profile", customerId],
-    queryFn: () => customersApi.getBillingProfile(customerId),
-  });
-}
-
-/** Stripe-push history for this customer's usage invoices (read floor). */
-export function useCustomerUsageInvoices(customerId: string) {
-  return useCursorList(["billing", "usage-invoices", customerId], (cursor) =>
-    customersApi.listCustomerUsageInvoices(customerId, cursor),
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Pricing reads
-
-export function useCustomerMarkup(customerId: string) {
-  return useQuery({
-    queryKey: ["metering", "customer-markup", customerId],
-    queryFn: () => customersApi.getCustomerMarkup(customerId),
-  });
-}
-
-export function usePriceBooks(enabled = true) {
-  return useQuery({
-    queryKey: ["metering", "price-books"],
-    queryFn: () => customersApi.listPriceBooks(),
-    enabled,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Subscription reads
-
-/** null = 404 (no subscription yet) — callers show the subscribe form. */
-export function useSubscription(customerId: string) {
-  return useQuery({
-    queryKey: ["subscriptions", "customer", customerId],
-    queryFn: () => nullOn404(customersApi.getSubscription(customerId)),
-  });
-}
-
-export function useSubscriptionInvoices(customerId: string, enabled = true) {
-  return useCursorList(
-    ["subscriptions", "invoices", customerId],
-    (cursor) => customersApi.listSubscriptionInvoices(customerId, cursor),
-    { enabled },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Mutations — invalidate every affected namespace prefix (over-invalidate
-// rather than miss).
 
 export function useCreateCustomer() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateCustomerRequest) => customersApi.createCustomer(body),
+    mutationFn: (body: CreateCustomerRequest) => api.createCustomer(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["platform"] });
+      qc.invalidateQueries({ queryKey: ["customers", "roster"] });
+      toast.success("Customer created");
     },
+    onError: toastOnError("Couldn't create customer"),
   });
 }
 
-export function useSaveRevenueProfile(customerId: string) {
-  const queryClient = useQueryClient();
+// ---- Margin ----
+export const useCustomerMargin = (id: string) =>
+  useQuery({ queryKey: k.margin(id), queryFn: () => api.getCustomerMargin(id), enabled: !!id });
+export const useMarginTrend = (id: string) =>
+  useQuery({ queryKey: k.trend(id), queryFn: () => api.getMarginTrend(id), enabled: !!id });
+export const useRevenueProfile = (id: string) =>
+  useQuery({ queryKey: k.revenue(id), queryFn: () => api.getRevenueProfile(id), enabled: !!id });
+export const useRevenueMode = (id: string) =>
+  useQuery({ queryKey: k.revenueMode(id), queryFn: () => api.getRevenueMode(id), enabled: !!id });
+
+export function usePutRevenueProfile(id: string) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: RevenueProfileIn) =>
-      customersApi.putRevenueProfile(customerId, body),
+    mutationFn: (body: RevenueProfileIn) => api.putRevenueProfile(id, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      qc.invalidateQueries({ queryKey: k.revenue(id) });
+      qc.invalidateQueries({ queryKey: k.margin(id) });
+      toast.success("Revenue profile saved");
     },
+    onError: toastOnError("Couldn't save revenue profile"),
+  });
+}
+export function usePutRevenueMode(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RevenueModeIn) => api.putRevenueMode(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.revenueMode(id) });
+      qc.invalidateQueries({ queryKey: k.margin(id) });
+      toast.success("Revenue mode saved");
+    },
+    onError: toastOnError("Couldn't save revenue mode"),
   });
 }
 
-export function useSaveRevenueMode(customerId: string) {
-  const queryClient = useQueryClient();
+// ---- Budget / profile / grants ----
+export const useBudget = (id: string) =>
+  useQuery({ queryKey: k.budget(id), queryFn: () => api.getBudget(id), enabled: !!id });
+export const useBudgetStatus = (id: string) =>
+  useQuery({ queryKey: k.budgetStatus(id), queryFn: () => api.getBudgetStatus(id), enabled: !!id });
+export const useBillingProfile = (id: string) =>
+  useQuery({ queryKey: k.profile(id), queryFn: () => api.getBillingProfile(id), enabled: !!id });
+export const usePastLimitReport = (id: string) =>
+  useQuery({ queryKey: k.pastLimit(id), queryFn: () => api.getPastLimitReport(id), enabled: !!id });
+
+export function usePutBudget(id: string) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (revenueMode: string) =>
-      customersApi.putRevenueMode(customerId, revenueMode),
+    mutationFn: (body: BudgetConfigIn) => api.putBudget(id, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      qc.invalidateQueries({ queryKey: k.budget(id) });
+      qc.invalidateQueries({ queryKey: k.budgetStatus(id) });
+      toast.success("Budget saved");
     },
+    onError: toastOnError("Couldn't save budget"),
+  });
+}
+export function usePutBillingProfile(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BillingProfileIn) => api.putBillingProfile(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.profile(id) });
+      toast.success("Billing profile saved");
+    },
+    onError: toastOnError("Couldn't save billing profile"),
   });
 }
 
-function useBillingMutation<TArgs, TResult>(
-  mutationFn: (args: TArgs) => Promise<TResult>,
+export function useGrants(id: string, status?: string) {
+  return useCursorList({
+    queryKeyBase: [...k.grants(id), status ?? "all"],
+    fetchPage: (cursor) => api.listGrants(id, { status, cursor, limit: 50 }),
+    enabled: !!id,
+  });
+}
+export function useCreateGrant(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateGrantRequest) => api.createGrant(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.grants(id) });
+      toast.success("Grant created");
+    },
+    onError: toastOnError("Couldn't create grant"),
+  });
+}
+export function useVoidGrant(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (grantId: string) => api.voidGrant(id, grantId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.grants(id) });
+      toast.success("Grant voided");
+    },
+    onError: toastOnError("Couldn't void grant"),
+  });
+}
+
+// ---- Markup / rate card ----
+export const useCustomerMarkup = (id: string) =>
+  useQuery({ queryKey: k.markup(id), queryFn: () => api.getCustomerMarkup(id), enabled: !!id });
+
+export function usePutCustomerMarkup(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CustomerMarkupIn) => api.putCustomerMarkup(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.markup(id) });
+      toast.success("Markup override saved");
+    },
+    onError: toastOnError("Couldn't save markup"),
+  });
+}
+export function useDeleteCustomerMarkup(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.deleteCustomerMarkup(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: k.markup(id) });
+      toast.success("Markup override removed");
+    },
+    onError: toastOnError("Couldn't remove markup"),
+  });
+}
+export function useAssignRateCard(id: string) {
+  return useMutation({
+    mutationFn: (rate_card_id: string) => api.assignRateCard(id, { rate_card_id }),
+    onSuccess: () => toast.success("Rate card assigned"),
+    onError: toastOnError("Couldn't assign rate card"),
+  });
+}
+
+// ---- Usage ----
+export function useCustomerUsage(id: string) {
+  return useCursorList({
+    queryKeyBase: k.usage(id),
+    fetchPage: (cursor) => api.listCustomerUsage(id, { cursor, limit: 50 }),
+    enabled: !!id,
+  });
+}
+
+// ---- Subscription ----
+export const useSubscription = (id: string) =>
+  useQuery({ queryKey: k.subscription(id), queryFn: () => api.getSubscription(id), enabled: !!id, retry: 0 });
+export function useSubscriptionInvoices(id: string) {
+  return useCursorList({
+    queryKeyBase: k.subInvoices(id),
+    fetchPage: (cursor) => api.listSubscriptionInvoices(id, { cursor, limit: 50 }),
+    enabled: !!id,
+  });
+}
+
+function useSubLifecycle<TArgs>(
+  id: string,
+  fn: (args: TArgs) => Promise<unknown>,
+  success: string,
+  failure: string,
 ) {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn,
+    mutationFn: fn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      // Money movement can open/clear stop episodes — refresh the metering
-      // surfaces (past-limit report, usage lists) too. Over-invalidate
-      // rather than miss, mirroring the events feature's refund.
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
+      qc.invalidateQueries({ queryKey: k.subscription(id) });
+      toast.success(success);
     },
+    onError: toastOnError(failure),
   });
 }
 
-export function useTopUp(customerId: string) {
-  return useBillingMutation((body: CreateTopUpRequest) =>
-    customersApi.createTopUp(customerId, body),
-  );
-}
-
-export function useWithdraw(customerId: string) {
-  return useBillingMutation((body: WithdrawRequest) =>
-    customersApi.withdraw(customerId, body),
-  );
-}
-
-/** Takes the EXTERNAL id in body.customer_id. */
-export function useCreditWallet() {
-  return useBillingMutation((body: CreditRequest) => customersApi.creditWallet(body));
-}
-
-/** Takes the EXTERNAL id in body.customer_id. */
-export function useDebitWallet() {
-  return useBillingMutation((body: DebitRequest) => customersApi.debitWallet(body));
-}
-
-/** Read-only verdict — nothing to invalidate; denial arrives as HTTP 200. */
-export function usePreCheck(customerId: string) {
-  return useMutation({
-    mutationFn: () => customersApi.preCheck(customerId),
-  });
-}
-
-export function useCreateGrant(customerId: string) {
-  return useBillingMutation((body: CreateGrantRequest) =>
-    customersApi.createGrant(customerId, body),
-  );
-}
-
-export function useVoidGrant(customerId: string) {
-  return useBillingMutation((grantId: string) =>
-    customersApi.voidGrant(customerId, grantId),
-  );
-}
-
-export function useSaveBudget(customerId: string) {
-  return useBillingMutation((body: BudgetConfigIn) =>
-    customersApi.putCustomerBudget(customerId, body),
-  );
-}
-
-export function useSaveBillingProfile(customerId: string) {
-  return useBillingMutation((body: CustomerBillingProfileIn) =>
-    customersApi.putBillingProfile(customerId, body),
-  );
-}
-
-export function useConfigureAutoTopUp(customerId: string) {
-  return useBillingMutation((body: ConfigureAutoTopUpRequest) =>
-    customersApi.configureAutoTopUp(customerId, body),
-  );
-}
-
-// The three pricing mutations write audit records (markup.set /
-// markup.deleted / rate_card.assigned) — refresh the audit ledger too.
-
-export function useSaveMarkup(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: TenantMarkupIn) =>
-      customersApi.putCustomerMarkup(customerId, body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
-
-export function useRemoveMarkup(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => customersApi.deleteCustomerMarkup(customerId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
-
-export function useAssignRateCard(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (rateCardId: string) =>
-      customersApi.assignRateCard(customerId, rateCardId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
-
-function useSubscriptionMutation<TArgs, TResult>(
-  mutationFn: (args: TArgs) => Promise<TResult>,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-      void queryClient.invalidateQueries({ queryKey: ["platform"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-    },
-  });
-}
-
-export function useSubscribe(externalId: string) {
-  return useSubscriptionMutation((body: SubscribeIn) =>
-    customersApi.subscribeCustomer(externalId, body),
-  );
-}
-
-export function useCancelSubscription(externalId: string) {
-  return useSubscriptionMutation((atPeriodEnd: boolean) =>
-    customersApi.cancelSubscription(externalId, atPeriodEnd),
-  );
-}
-
-export function usePauseSubscription(externalId: string) {
-  return useSubscriptionMutation((_: void) =>
-    customersApi.pauseSubscription(externalId),
-  );
-}
-
-export function useResumeSubscription(externalId: string) {
-  return useSubscriptionMutation((_: void) =>
-    customersApi.resumeSubscription(externalId),
-  );
-}
-
-export function useSetSeats(externalId: string) {
-  return useSubscriptionMutation((seats: number) =>
-    customersApi.setSeats(externalId, seats),
-  );
-}
+export const useSubscribeCustomer = (id: string, externalId: string) =>
+  useSubLifecycle<SubscribeIn>(id, (b) => api.subscribeCustomer(externalId, b), "Subscription started", "Couldn't subscribe");
+export const useSetSeats = (id: string, externalId: string) =>
+  useSubLifecycle<SeatsIn>(id, (b) => api.setSeats(externalId, b), "Seats updated", "Couldn't set seats");
+export const useCancelSubscription = (id: string, externalId: string) =>
+  useSubLifecycle<SubscriptionCancelIn | undefined>(id, (b) => api.cancelSubscription(externalId, b), "Subscription canceled", "Couldn't cancel");
+export const usePauseSubscription = (id: string, externalId: string) =>
+  useSubLifecycle<void>(id, () => api.pauseSubscription(externalId), "Subscription paused", "Couldn't pause");
+export const useResumeSubscription = (id: string, externalId: string) =>
+  useSubLifecycle<void>(id, () => api.resumeSubscription(externalId), "Subscription resumed", "Couldn't resume");

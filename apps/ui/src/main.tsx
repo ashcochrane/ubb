@@ -66,14 +66,26 @@ function NoAuthApp() {
   return <RouterProvider router={router} context={authContext} />;
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    {noAuthMode ? (
-      <NoAuthApp />
-    ) : (
-      <ClerkProvider publishableKey={clerkPubKey as string}>
-        <ClerkApp />
-      </ClerkProvider>
-    )}
-  </React.StrictMode>,
-);
+/**
+ * In mock mode, start the MSW worker before rendering so the very first
+ * queries (the tenant-config guard) are intercepted and served fixtures.
+ */
+async function enableMocking() {
+  if (API_PROVIDER !== "mock") return;
+  const { worker } = await import("./mocks/browser");
+  await worker.start({ onUnhandledRequest: "bypass" });
+}
+
+enableMocking().then(() => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      {noAuthMode ? (
+        <NoAuthApp />
+      ) : (
+        <ClerkProvider publishableKey={clerkPubKey as string}>
+          <ClerkApp />
+        </ClerkProvider>
+      )}
+    </React.StrictMode>,
+  );
+});

@@ -1,161 +1,145 @@
-// Real API implementation. Every call goes through unwrap() so failures
-// always reject with a typed ApiProblem.
-
-import { connectApi, marginApi, rootApi, tenantApi } from "@/api/client";
-import type { CursorPage } from "@/api/pagination";
-import { unwrap } from "@/api/problem";
-
-import {
-  toConnectStartResult,
-  toConnectStatus,
-  type AuditFilters,
-  type AuditRecord,
-  type BillingPeriod,
-  type ConnectStartResult,
-  type ConnectStatus,
-  type Invitation,
-  type MarginThreshold,
-  type MarginThresholdInput,
-  type Member,
-  type TenantConfig,
-  type TenantConfigPatch,
-  type TenantInvoice,
+import { tenantApi, connectApi, sandboxApi } from "@/api/client";
+import { requireData } from "@/api/errors";
+import type { CursorPage } from "@/lib/use-cursor-list";
+import type {
+  ApiKey,
+  ApiKeyCreate,
+  ConnectStart,
+  Invitation,
+  InvitationCreate,
+  Member,
+  MemberRoleUpdate,
+  SandboxReset,
+  TenantConfig,
+  TenantConfigUpdate,
+  UntypedObject,
 } from "./types";
 
-// --- Workspace config -------------------------------------------------------
-
-export async function getTenantConfig(): Promise<TenantConfig> {
-  return unwrap(await tenantApi.GET("/config"));
+// ── Tenant config ─────────────────────────────────────────────────────────
+export function getConfig(): Promise<TenantConfig> {
+  return tenantApi
+    .GET("/config", {})
+    .then((r) => requireData(r, "Failed to load settings"));
 }
 
-/**
- * PATCH semantics: send ONLY changed fields. For the clearable fields
- * (soft_min_balance_micros, default_task_*_micros) an explicit null CLEARS
- * the value while an omitted key preserves it — callers build the patch with
- * that distinction and JSON serialisation drops only `undefined` keys.
- */
-export async function updateTenantConfig(
-  patch: TenantConfigPatch,
-): Promise<TenantConfig> {
-  return unwrap(await tenantApi.PATCH("/config", { body: patch }));
+export function updateConfig(body: TenantConfigUpdate): Promise<TenantConfig> {
+  return tenantApi
+    .PATCH("/config", { body })
+    .then((r) => requireData(r, "Failed to save settings"));
 }
 
-// --- Margin-alert thresholds ------------------------------------------------
-
-/** Server returns defaults {min_margin_pct: 0, consecutive_periods: 1, provider_cost_spike_pct: 25} when unset. */
-export async function getMarginThreshold(): Promise<MarginThreshold> {
-  return unwrap(await marginApi.GET("/threshold"));
+// ── API keys ──────────────────────────────────────────────────────────────
+export function listApiKeys(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<ApiKey>> {
+  return tenantApi
+    .GET("/api-keys", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load API keys"));
 }
 
-export async function updateMarginThreshold(
-  input: MarginThresholdInput,
-): Promise<MarginThreshold> {
-  return unwrap(await marginApi.PUT("/threshold", { body: input }));
+/** Returns an untyped object — the raw key lives under one of several fields. */
+export function createApiKey(body: ApiKeyCreate): Promise<UntypedObject> {
+  return tenantApi
+    .POST("/api-keys", { body })
+    .then((r) => requireData(r, "Failed to create API key"));
 }
 
-// --- Stripe Connect ---------------------------------------------------------
-
-export async function getConnectStatus(): Promise<ConnectStatus> {
-  return toConnectStatus(unwrap(await connectApi.GET("/status")));
+export function rotateApiKey(keyId: string): Promise<UntypedObject> {
+  return tenantApi
+    .POST("/api-keys/{key_id}/rotate", { params: { path: { key_id: keyId } } })
+    .then((r) => requireData(r, "Failed to rotate API key"));
 }
 
-export async function startConnect(
-  returnUrl: string,
-): Promise<ConnectStartResult> {
-  return toConnectStartResult(
-    unwrap(
-      await connectApi.POST("/start", { body: { return_url: returnUrl } }),
-    ),
-  );
+export function revokeApiKey(keyId: string): Promise<UntypedObject> {
+  return tenantApi
+    .DELETE("/api-keys/{key_id}", { params: { path: { key_id: keyId } } })
+    .then((r) => requireData(r, "Failed to revoke API key"));
 }
 
-// --- Team -------------------------------------------------------------------
-
-export async function listMembers(
-  cursor?: string,
-): Promise<CursorPage<Member>> {
-  return unwrap(
-    await tenantApi.GET("/members", { params: { query: { cursor } } }),
-  );
+// ── Members ───────────────────────────────────────────────────────────────
+export function listMembers(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<Member>> {
+  return tenantApi
+    .GET("/members", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load team members"));
 }
 
-export async function updateMemberRole(
+export function updateMemberRole(
   memberId: string,
-  role: string,
+  body: MemberRoleUpdate,
 ): Promise<Member> {
-  return unwrap(
-    await tenantApi.PATCH("/members/{member_id}", {
+  return tenantApi
+    .PATCH("/members/{member_id}", {
       params: { path: { member_id: memberId } },
-      body: { role },
-    }),
-  );
+      body,
+    })
+    .then((r) => requireData(r, "Failed to update role"));
 }
 
-export async function removeMember(memberId: string): Promise<void> {
-  unwrap(
-    await tenantApi.DELETE("/members/{member_id}", {
+export function removeMember(memberId: string): Promise<UntypedObject> {
+  return tenantApi
+    .DELETE("/members/{member_id}", {
       params: { path: { member_id: memberId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to remove member"));
 }
 
-export async function listInvitations(
-  cursor?: string,
-): Promise<CursorPage<Invitation>> {
-  return unwrap(
-    await tenantApi.GET("/invitations", { params: { query: { cursor } } }),
-  );
+// ── Invitations ───────────────────────────────────────────────────────────
+export function listInvitations(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<Invitation>> {
+  return tenantApi
+    .GET("/invitations", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load invitations"));
 }
 
-export async function createInvitation(input: {
-  email: string;
-  role: string;
-}): Promise<Invitation> {
-  return unwrap(await tenantApi.POST("/invitations", { body: input }));
+export function createInvitation(body: InvitationCreate): Promise<Invitation> {
+  return tenantApi
+    .POST("/invitations", { body })
+    .then((r) => requireData(r, "Failed to send invitation"));
 }
 
-export async function revokeInvitation(invitationId: string): Promise<void> {
-  unwrap(
-    await tenantApi.DELETE("/invitations/{invitation_id}", {
+export function revokeInvitation(invitationId: string): Promise<UntypedObject> {
+  return tenantApi
+    .DELETE("/invitations/{invitation_id}", {
       params: { path: { invitation_id: invitationId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to revoke invitation"));
 }
 
-// --- UBB platform bill ------------------------------------------------------
-
-export async function listBillingPeriods(
-  cursor?: string,
-): Promise<CursorPage<BillingPeriod>> {
-  return unwrap(
-    await tenantApi.GET("/billing-periods", { params: { query: { cursor } } }),
-  );
+// ── Stripe Connect ────────────────────────────────────────────────────────
+/** Returns an untyped object — the onboarding redirect url lives under `url`. */
+export function connectStart(body: ConnectStart): Promise<UntypedObject> {
+  return connectApi
+    .POST("/start", { body })
+    .then((r) => requireData(r, "Failed to start Stripe onboarding"));
 }
 
-export async function listTenantInvoices(
-  cursor?: string,
-): Promise<CursorPage<TenantInvoice>> {
-  return unwrap(
-    await tenantApi.GET("/invoices", { params: { query: { cursor } } }),
-  );
+export function connectStatus(): Promise<UntypedObject> {
+  return connectApi
+    .GET("/status", {})
+    .then((r) => requireData(r, "Failed to load Stripe status"));
 }
 
-// --- Audit ledger -----------------------------------------------------------
+// ── Sandbox ───────────────────────────────────────────────────────────────
+export function getSandbox(): Promise<UntypedObject> {
+  return tenantApi
+    .GET("/sandbox", {})
+    .then((r) => requireData(r, "Failed to load sandbox"));
+}
 
-export async function listAuditRecords(
-  filters: AuditFilters,
-  cursor?: string,
-): Promise<CursorPage<AuditRecord>> {
-  return unwrap(
-    await rootApi.GET("/audit/records", {
-      params: {
-        query: {
-          action: filters.action || undefined,
-          resource_type: filters.resource_type || undefined,
-          resource_id: filters.resource_id || undefined,
-          cursor,
-        },
-      },
-    }),
-  );
+export function createSandbox(): Promise<UntypedObject> {
+  return tenantApi
+    .POST("/sandbox", {})
+    .then((r) => requireData(r, "Failed to enable sandbox"));
+}
+
+export function resetSandbox(body: SandboxReset): Promise<UntypedObject> {
+  return sandboxApi
+    .POST("/reset", { body })
+    .then((r) => requireData(r, "Failed to reset sandbox"));
 }

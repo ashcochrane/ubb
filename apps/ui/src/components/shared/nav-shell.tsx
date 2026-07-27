@@ -1,11 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { navSections } from "./nav-config";
+import { navSections, type NavGate } from "./nav-config";
 import { TopBar } from "./top-bar";
-import { useAuthUser } from "@/hooks/use-auth";
-import { useCurrentRole } from "@/hooks/use-current-role";
-import { useTenantConfig } from "@/hooks/use-tenant-config";
-import { roleLabel } from "@/lib/labels";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 interface NavShellProps {
@@ -22,27 +19,28 @@ const NAV_LINK_IDLE =
 const NAV_LINK_ACTIVE = "bg-accent-ghost text-accent-text font-semibold";
 
 export function NavShell({ children, userSlot }: NavShellProps) {
-  const { data: config } = useTenantConfig();
-  const user = useAuthUser();
-  const { role } = useCurrentRole();
+  const { hasProduct, isBillingMode, tenantName } = useAuth();
 
-  // Product-gated navigation: never show a surface the tenant can't use.
+  const gateOk = (gate?: NavGate) => {
+    if (!gate) return true;
+    if (gate === "billing") return isBillingMode;
+    return hasProduct(gate);
+  };
+
   const visibleSections = navSections
     .map((section) => ({
       ...section,
-      items: section.items.filter(
-        (item) => !item.product || (config?.products.includes(item.product) ?? false),
-      ),
+      items: section.items.filter((item) => gateOk(item.gate)),
     }))
     .filter((section) => section.items.length > 0);
 
-  const initial = (user.name || user.email || "?").charAt(0).toUpperCase();
+  const initial = (tenantName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div className="grid h-screen grid-cols-[200px_1fr] grid-rows-[46px_1fr] bg-bg-page">
       {/* Topbar spans full width */}
       <div className="col-span-2 row-start-1">
-        <TopBar userSlot={userSlot} tenantName={config?.name} />
+        <TopBar userSlot={userSlot} />
       </div>
 
       {/* Sidebar (below topbar, fixed 200px) */}
@@ -84,12 +82,10 @@ export function NavShell({ children, userSlot }: NavShellProps) {
               {initial}
             </div>
             <div className="min-w-0">
-              <div className="truncate text-[12px] font-semibold">
-                {user.name || user.email || "Signed in"}
+              <div className="truncate text-[12px] font-semibold" title={tenantName ?? undefined}>
+                {tenantName ?? "Workspace"}
               </div>
-              <div className="text-[10px] text-text-muted">
-                {role ? roleLabel(role) : " "}
-              </div>
+              <div className="text-[10px] text-text-muted">Tenant</div>
             </div>
           </div>
         </div>

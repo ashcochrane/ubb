@@ -1,71 +1,110 @@
-// Real API calls for the billing feature. Every call goes through `unwrap`
-// so failures always reject with a typed ApiProblem.
-
-import { billingApi } from "@/api/client";
-import { unwrap } from "@/api/problem";
-
+// src/features/billing/api/api.ts
+//
+// Thin calls to the generated namespaced clients, unwrapped via requireData.
+// Paths are RELATIVE to each namespace prefix (billingApi → /api/v1/billing,
+// tenantApi → /api/v1/tenant).
+import { billingApi, tenantApi } from "@/api/client";
+import { requireData } from "@/api/errors";
+import type { CursorPage } from "@/lib/use-cursor-list";
 import type {
   BudgetConfig,
   BudgetConfigIn,
   CreditRequest,
+  DateRange,
   DebitCreditResponse,
   DebitRequest,
   PostpaidConfig,
   PostpaidConfigIn,
-  RevenueAnalyticsResponse,
-  TenantUsageInvoicePage,
+  PreCheckRequest,
+  PreCheckResponse,
+  RevenueAnalytics,
+  TenantBillingPeriod,
+  TenantInvoice,
+  TenantUsageInvoice,
 } from "./types";
 
-export async function getRevenueAnalytics(range: {
-  start_date?: string;
-  end_date?: string;
-}): Promise<RevenueAnalyticsResponse> {
-  return unwrap(
-    await billingApi.GET("/analytics/revenue", {
-      params: { query: { start_date: range.start_date, end_date: range.end_date } },
-    }),
-  );
+// --- Tenant budget ---
+export function getBudget(): Promise<BudgetConfig> {
+  return billingApi
+    .GET("/budget", {})
+    .then((r) => requireData(r, "Failed to load tenant budget"));
 }
 
-export async function getTenantBudget(): Promise<BudgetConfig> {
-  return unwrap(await billingApi.GET("/budget"));
+export function putBudget(body: BudgetConfigIn): Promise<BudgetConfig> {
+  return billingApi
+    .PUT("/budget", { body })
+    .then((r) => requireData(r, "Couldn't save budget"));
 }
 
-/** PUT /billing/budget is a FULL upsert — always send every field. */
-export async function putTenantBudget(body: BudgetConfigIn): Promise<BudgetConfig> {
-  return unwrap(await billingApi.PUT("/budget", { body }));
+// --- Postpaid config ---
+export function getPostpaidConfig(): Promise<PostpaidConfig> {
+  return billingApi
+    .GET("/postpaid-config", {})
+    .then((r) => requireData(r, "Failed to load postpaid config"));
 }
 
-export async function listTenantUsageInvoices(options: {
+export function putPostpaidConfig(
+  body: PostpaidConfigIn,
+): Promise<PostpaidConfig> {
+  return billingApi
+    .PUT("/postpaid-config", { body })
+    .then((r) => requireData(r, "Couldn't save postpaid config"));
+}
+
+// --- Revenue analytics ---
+export function getRevenueAnalytics(
+  range?: DateRange,
+): Promise<RevenueAnalytics> {
+  return billingApi
+    .GET("/analytics/revenue", { params: { query: range } })
+    .then((r) => requireData(r, "Failed to load revenue analytics"));
+}
+
+// --- Manual adjustments ---
+export function credit(body: CreditRequest): Promise<DebitCreditResponse> {
+  return billingApi
+    .POST("/credit", { body })
+    .then((r) => requireData(r, "Couldn't issue credit"));
+}
+
+export function debit(body: DebitRequest): Promise<DebitCreditResponse> {
+  return billingApi
+    .POST("/debit", { body })
+    .then((r) => requireData(r, "Couldn't record debit"));
+}
+
+// --- Spend pre-check ---
+export function preCheck(body: PreCheckRequest): Promise<PreCheckResponse> {
+  return billingApi
+    .POST("/pre-check", { body })
+    .then((r) => requireData(r, "Pre-check failed"));
+}
+
+// --- Invoices & periods ---
+export function listTenantUsageInvoices(params?: {
   period?: string;
   cursor?: string;
-}): Promise<TenantUsageInvoicePage> {
-  return unwrap(
-    await billingApi.GET("/tenant/usage-invoices", {
-      params: { query: { period: options.period, cursor: options.cursor } },
-    }),
-  );
+  limit?: number;
+}): Promise<CursorPage<TenantUsageInvoice>> {
+  return billingApi
+    .GET("/tenant/usage-invoices", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load usage invoices"));
 }
 
-export async function getPostpaidConfig(): Promise<PostpaidConfig> {
-  return unwrap(await billingApi.GET("/postpaid-config"));
+export function listTenantInvoices(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<TenantInvoice>> {
+  return tenantApi
+    .GET("/invoices", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load tenant invoices"));
 }
 
-/**
- * PUT /billing/postpaid-config is a PARTIAL update: omitted/null fields keep
- * their current value; an explicit "" clears usage_line_item_group_by.
- * Callers build the body via buildPostpaidPayload so only changes are sent.
- */
-export async function putPostpaidConfig(body: PostpaidConfigIn): Promise<PostpaidConfig> {
-  return unwrap(await billingApi.PUT("/postpaid-config", { body }));
-}
-
-/** Body customer_id is the customer's EXTERNAL id, not the UBB UUID. */
-export async function creditWallet(body: CreditRequest): Promise<DebitCreditResponse> {
-  return unwrap(await billingApi.POST("/credit", { body }));
-}
-
-/** Body customer_id is the customer's EXTERNAL id, not the UBB UUID. */
-export async function debitWallet(body: DebitRequest): Promise<DebitCreditResponse> {
-  return unwrap(await billingApi.POST("/debit", { body }));
+export function listBillingPeriods(params?: {
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<TenantBillingPeriod>> {
+  return tenantApi
+    .GET("/billing-periods", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load billing periods"));
 }

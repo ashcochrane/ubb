@@ -8,8 +8,7 @@ export interface DeltaPillProps {
 }
 
 const TREND_STYLES: Record<DeltaPillProps["trend"], string> = {
-  // Monochrome system: positive is neutral dark; muted red is reserved for negative.
-  up: "bg-bg-subtle text-text-primary",
+  up: "bg-green-light text-green-text",
   down: "bg-red-light text-red-text",
   flat: "bg-bg-subtle text-text-muted",
 };

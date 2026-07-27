@@ -1,58 +1,56 @@
-// TanStack Query hooks for the subscriptions surface. All query keys and
-// invalidation live here. First key segment = backend namespace.
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
+import { toast } from "sonner";
 import { toastOnError } from "@/lib/mutations";
-
-import { subscriptionsFeatureApi } from "./provider";
+import { useCursorList } from "@/lib/use-cursor-list";
+import * as api from "./api";
 import type { PlanIn, PlanUpdateIn } from "./types";
 
-export const connectStatusQueryKey = ["connect", "status"] as const;
+const SUBS_KEY = ["subscriptions"] as const;
 
-export function useConnectStatus() {
+export function useSyncSubscriptions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.syncSubscriptions(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: SUBS_KEY });
+      toast.success(
+        `Sync complete — ${res.synced} synced, ${res.skipped} skipped, ${res.errors} errors`,
+      );
+    },
+    onError: toastOnError("Couldn't sync subscriptions"),
+  });
+}
+
+export function useCustomerSubscription(customerId: string) {
   return useQuery({
-    queryKey: connectStatusQueryKey,
-    queryFn: () => subscriptionsFeatureApi.getConnectStatus(),
+    queryKey: [...SUBS_KEY, "customer", customerId],
+    queryFn: () => api.getCustomerSubscription(customerId),
+    enabled: !!customerId,
+    retry: false,
   });
 }
 
-/** POST /platform/plans. Errors surface inline in the form (409 duplicate key). */
+export function useCustomerInvoices(customerId: string) {
+  return useCursorList({
+    queryKeyBase: [...SUBS_KEY, "invoices", customerId],
+    fetchPage: (cursor) => api.listCustomerInvoices(customerId, { cursor, limit: 50 }),
+    enabled: !!customerId,
+  });
+}
+
 export function useCreatePlan() {
-  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: PlanIn) => subscriptionsFeatureApi.createPlan(input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["platform"] });
-      void queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-    },
+    mutationFn: (body: PlanIn) => api.createPlan(body),
+    onSuccess: (plan) => toast.success(`Plan "${plan.name}" created`),
+    onError: toastOnError("Couldn't create plan"),
   });
 }
 
-/** PATCH /platform/plans/{key}. Errors surface inline in the form (404 unknown key). */
 export function useUpdatePlan() {
-  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ key, input }: { key: string; input: PlanUpdateIn }) =>
-      subscriptionsFeatureApi.updatePlan(key, input),
-    onSuccess: () => {
-      // migrate_existing can repoint live subscriptions, which feeds margin.
-      void queryClient.invalidateQueries({ queryKey: ["platform"] });
-      void queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-    },
-  });
-}
-
-/** POST /subscriptions/sync — synchronous mirror refresh from Stripe. */
-export function useTriggerSync() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => subscriptionsFeatureApi.triggerSync(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-    },
-    onError: toastOnError("Couldn't sync with Stripe"),
+    mutationFn: ({ key, body }: { key: string; body: PlanUpdateIn }) =>
+      api.updatePlan(key, body),
+    onSuccess: () => toast.success("Plan updated"),
+    onError: toastOnError("Couldn't update plan"),
   });
 }

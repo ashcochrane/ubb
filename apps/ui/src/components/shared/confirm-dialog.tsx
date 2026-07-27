@@ -1,83 +1,71 @@
-import * as React from "react";
-
-import { Button } from "@/components/ui/button";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
-interface ConfirmDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  /** Plain-language consequence of confirming. */
-  description: React.ReactNode;
-  confirmLabel?: string;
-  /** Style the confirm button as destructive. */
-  destructive?: boolean;
-  /** Require typing this exact string before confirm enables (for irreversible actions). */
-  typeToConfirm?: string;
-  onConfirm: () => void;
-  /** Disables buttons while the mutation runs. */
-  pending?: boolean;
-}
-
+/**
+ * Confirmation dialog for destructive or irreversible actions. Runs `onConfirm`
+ * (which may be async), showing a pending state and keeping the dialog open
+ * until it resolves; closes on success, stays open on throw so the toast is
+ * visible and the user can retry.
+ */
 export function ConfirmDialog({
-  open,
-  onOpenChange,
+  trigger,
   title,
   description,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   destructive = false,
-  typeToConfirm,
   onConfirm,
-  pending = false,
-}: ConfirmDialogProps) {
-  const [typed, setTyped] = React.useState("");
-  React.useEffect(() => {
-    if (!open) setTyped("");
-  }, [open]);
+}: {
+  trigger: ReactNode;
+  title: string;
+  description?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  /** Runs on confirm; may be async and may resolve to anything (result ignored). */
+  onConfirm: () => unknown | Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  const blocked = typeToConfirm !== undefined && typed !== typeToConfirm;
+  const handleConfirm = async () => {
+    setPending(true);
+    try {
+      await onConfirm();
+      setOpen(false);
+    } catch {
+      /* error surfaced via the mutation's toast; keep dialog open */
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={trigger as React.ReactElement} />
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        {typeToConfirm !== undefined && (
-          <div className="space-y-1.5">
-            <p className="text-[12px] text-text-secondary">
-              Type <span className="font-mono font-semibold">{typeToConfirm}</span> to
-              confirm.
-            </p>
-            <Input
-              value={typed}
-              onChange={(event) => setTyped(event.target.value)}
-              autoFocus
-              aria-label="Confirmation text"
-            />
-          </div>
-        )}
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
+          <DialogClose render={<Button variant="outline" disabled={pending} />}>
+            {cancelLabel}
+          </DialogClose>
           <Button
             variant={destructive ? "destructive" : "default"}
-            onClick={onConfirm}
-            disabled={blocked || pending}
+            onClick={handleConfirm}
+            disabled={pending}
           >
             {pending ? "Working…" : confirmLabel}
           </Button>

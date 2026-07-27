@@ -1,114 +1,82 @@
-// Real API implementation — one exported function per operation, every call
-// wrapped in unwrap() so failures always reject with a typed ApiProblem.
-
 import { meteringApi } from "@/api/client";
-import { ApiProblem, unwrap } from "@/api/problem";
+import { requireData } from "@/api/errors";
+import type { CursorPage } from "@/lib/use-cursor-list";
 import type {
   Book,
-  BookIn,
-  ListBooksParams,
-  ListRatesParams,
-  PaginatedBooks,
-  PaginatedRates,
-  PublishIn,
+  BookInput,
   Rate,
-  RateIn,
-  StatusResponse,
+  RateInput,
+  PublishInput,
   TenantMarkup,
-  TenantMarkupIn,
+  TenantMarkupInput,
 } from "./types";
 
-export async function listBooks(params?: ListBooksParams): Promise<PaginatedBooks> {
-  return unwrap(
-    await meteringApi.GET("/pricing/rate-cards", {
-      params: {
-        query: {
-          card_type: params?.card_type,
-          cursor: params?.cursor,
-          limit: params?.limit,
-        },
-      },
-    }),
-  );
+export function listBooks(params?: {
+  card_type?: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<CursorPage<Book>> {
+  return meteringApi
+    .GET("/pricing/rate-cards", { params: { query: params } })
+    .then((r) => requireData(r, "Failed to load rate cards"));
 }
 
-export async function createBook(body: BookIn): Promise<Book> {
-  return unwrap(await meteringApi.POST("/pricing/rate-cards", { body }));
+export function createBook(body: BookInput): Promise<Book> {
+  return meteringApi
+    .POST("/pricing/rate-cards", { body })
+    .then((r) => requireData(r, "Failed to create rate card"));
 }
 
-/**
- * The contract has no GET-one-book endpoint; resolve a book by walking the
- * (small) books list. Throws a 404-shaped ApiProblem when absent.
- */
-export async function getBook(bookId: string): Promise<Book> {
-  let cursor: string | undefined;
-  for (let page = 0; page < 10; page++) {
-    const result = await listBooks({ cursor, limit: 100 });
-    const match = result.data.find((book) => book.id === bookId);
-    if (match) return match;
-    if (!result.has_more || !result.next_cursor) break;
-    cursor = result.next_cursor;
-  }
-  throw new ApiProblem({
-    status: 404,
-    code: "not_found",
-    title: "Not found",
-    detail: "This rate-card book no longer exists.",
-  });
-}
-
-export async function listRates(
+export function listRates(
   bookId: string,
-  params?: ListRatesParams,
-): Promise<PaginatedRates> {
-  return unwrap(
-    await meteringApi.GET("/pricing/rate-cards/{book_id}/rates", {
-      params: {
-        path: { book_id: bookId },
-        query: {
-          include_history: params?.include_history,
-          as_of: params?.as_of,
-          cursor: params?.cursor,
-          limit: params?.limit,
-        },
-      },
-    }),
-  );
+  params?: {
+    include_history?: boolean;
+    as_of?: string;
+    cursor?: string;
+    limit?: number;
+  },
+): Promise<CursorPage<Rate>> {
+  return meteringApi
+    .GET("/pricing/rate-cards/{book_id}/rates", {
+      params: { path: { book_id: bookId }, query: params },
+    })
+    .then((r) => requireData(r, "Failed to load rates"));
 }
 
-export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
-  return unwrap(
-    await meteringApi.POST("/pricing/rate-cards/{book_id}/rates", {
+export function addRate(bookId: string, body: RateInput): Promise<Rate> {
+  return meteringApi
+    .POST("/pricing/rate-cards/{book_id}/rates", {
       params: { path: { book_id: bookId } },
       body,
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to add rate"));
 }
 
-export async function deleteRate(
-  bookId: string,
-  rateId: string,
-): Promise<StatusResponse> {
-  return unwrap(
-    await meteringApi.DELETE("/pricing/rate-cards/{book_id}/rates/{rate_id}", {
+export function deleteRate(bookId: string, rateId: string) {
+  return meteringApi
+    .DELETE("/pricing/rate-cards/{book_id}/rates/{rate_id}", {
       params: { path: { book_id: bookId, rate_id: rateId } },
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to delete rate"));
 }
 
-export async function publishBook(bookId: string, body: PublishIn): Promise<Book> {
-  return unwrap(
-    await meteringApi.POST("/pricing/rate-cards/{book_id}/publish", {
+export function publishBook(bookId: string, body: PublishInput): Promise<Book> {
+  return meteringApi
+    .POST("/pricing/rate-cards/{book_id}/publish", {
       params: { path: { book_id: bookId } },
       body,
-    }),
-  );
+    })
+    .then((r) => requireData(r, "Failed to publish rate card"));
 }
 
-export async function getTenantMarkup(): Promise<TenantMarkup> {
-  return unwrap(await meteringApi.GET("/pricing/markup"));
+export function getMarkup(): Promise<TenantMarkup> {
+  return meteringApi
+    .GET("/pricing/markup")
+    .then((r) => requireData(r, "Failed to load markup"));
 }
 
-export async function putTenantMarkup(body: TenantMarkupIn): Promise<TenantMarkup> {
-  return unwrap(await meteringApi.PUT("/pricing/markup", { body }));
+export function putMarkup(body: TenantMarkupInput): Promise<TenantMarkup> {
+  return meteringApi
+    .PUT("/pricing/markup", { body })
+    .then((r) => requireData(r, "Failed to save markup"));
 }

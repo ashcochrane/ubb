@@ -1,10 +1,5 @@
-import { useState } from "react";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { useForm } from "react-hook-form";
-
-import { problemMessage } from "@/api/problem";
-import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,198 +7,220 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-import { rewardTypeLabel } from "@/lib/labels";
-import { cn } from "@/lib/utils";
-
+import { FormField } from "@/components/shared/form-field";
+import { humanizeLabel } from "@/lib/format";
 import {
-  emptyProgramFormValues,
-  isRewardType,
-  programFormSchema,
-  REWARD_TYPES,
+  programSchema,
+  programToForm,
+  toProgramCreate,
+  toProgramUpdate,
   type ProgramFormValues,
-} from "../lib/program-form";
+} from "../lib/schema";
+import { rewardValueHint, rewardValueLabel } from "../lib/reward";
+import { REWARD_TYPES, type Program, type RewardType } from "../api/types";
+import { useCreateProgram, useUpdateProgram } from "../api/queries";
 
-const REWARD_TYPE_HINTS: Record<string, string> = {
-  flat_fee: "A fixed amount earned once per referred customer.",
-  revenue_share: "Referrers earn a share of what their referred customers spend.",
-  profit_share: "Referrers earn a share of the margin on referred usage (spend minus your provider cost).",
+const EMPTY: ProgramFormValues = {
+  reward_type: "flat_fee",
+  reward_value: "",
+  attribution_window_days: "30",
+  reward_window_days: "",
+  max_reward_dollars: "",
+  estimated_cost_percentage: "",
+  max_referrals_per_day: "",
+  min_customer_age_hours: "",
 };
 
-interface ProgramFormProps {
-  mode: "create" | "edit";
-  currency: string;
-  defaultValues?: ProgramFormValues;
-  pending: boolean;
-  /** Server-side failure — shown near the submit, inputs preserved. */
-  error: unknown;
-  onSubmit: (values: ProgramFormValues) => void;
-  submitLabel: string;
-}
-
+/**
+ * Create/edit form for the referral program. Used inline when no program
+ * exists yet, and inside a dialog to edit an existing one.
+ */
 export function ProgramForm({
-  mode,
-  currency,
-  defaultValues,
-  pending,
-  error,
-  onSubmit,
-  submitLabel,
-}: ProgramFormProps) {
-  const defaults = defaultValues ?? emptyProgramFormValues();
-  const form = useForm<ProgramFormValues>({
-    resolver: zodResolver(programFormSchema),
-    defaultValues: defaults,
-  });
-  const errors = form.formState.errors;
-  const rewardType = form.watch("reward_type");
-  const currencyCode = currency.toUpperCase();
+  existing,
+  onDone,
+}: {
+  existing?: Program;
+  onDone?: () => void;
+}) {
+  const isEdit = Boolean(existing);
+  const create = useCreateProgram();
+  const update = useUpdateProgram();
 
-  const hasAdvancedValues =
-    defaults.reward_window_days !== "" ||
-    defaults.max_reward !== "" ||
-    defaults.estimated_cost_percentage !== "" ||
-    defaults.max_referrals_per_day !== "" ||
-    defaults.min_customer_age_hours !== "";
-  const [showAdvanced, setShowAdvanced] = useState(mode === "edit" && hasAdvancedValues);
+  const form = useForm<ProgramFormValues>({
+    resolver: zodResolver(programSchema),
+    defaultValues: existing ? programToForm(existing) : EMPTY,
+  });
+  const { errors } = form.formState;
+  const rewardType = useWatch({ control: form.control, name: "reward_type" }) as RewardType;
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    if (isEdit) {
+      await update.mutateAsync(toProgramUpdate(values));
+    } else {
+      await create.mutateAsync(toProgramCreate(values));
+    }
+    onDone?.();
+  });
+
+  const pending = create.isPending || update.isPending;
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
-      <FormField
-        label="Reward type"
-        error={errors.reward_type?.message}
-        hint={REWARD_TYPE_HINTS[rewardType]}
-      >
-        {(id) => (
-          <Select
-            value={rewardType}
-            onValueChange={(value) => {
-              if (typeof value === "string" && isRewardType(value)) {
-                form.setValue("reward_type", value, { shouldValidate: form.formState.isSubmitted });
-              }
-            }}
-          >
-            <SelectTrigger id={id} className="w-full">
-              <span>{rewardTypeLabel(rewardType)}</span>
-            </SelectTrigger>
-            <SelectContent>
-              {REWARD_TYPES.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {rewardTypeLabel(type)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </FormField>
-
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField
-          label={rewardType === "flat_fee" ? `Reward amount (${currencyCode})` : "Reward percentage"}
-          error={errors.reward_amount?.message}
-          hint={
-            rewardType === "flat_fee"
-              ? "Entered in currency units — e.g. 5 means five dollars per referral."
-              : "Percent between 0 and 100."
-          }
-        >
+        <FormField label="Reward model" error={errors.reward_type?.message}>
           {(id) => (
-            <Input
-              id={id}
-              type="number"
-              step="any"
-              min="0"
-              inputMode="decimal"
-              placeholder={rewardType === "flat_fee" ? "5.00" : "10"}
-              {...form.register("reward_amount")}
+            <Controller
+              control={form.control}
+              name="reward_type"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(v) => field.onChange(v as RewardType)}
+                >
+                  <SelectTrigger id={id} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REWARD_TYPES.map((rt) => (
+                      <SelectItem key={rt} value={rt}>
+                        {humanizeLabel(rt)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
           )}
         </FormField>
+
         <FormField
-          label="Attribution window (days)"
-          error={errors.attribution_window_days?.message}
-          hint="How long after signup a new customer can still be attributed to a referrer (1–365)."
+          label={rewardValueLabel(rewardType)}
+          error={errors.reward_value?.message}
+          hint={rewardValueHint(rewardType)}
         >
           {(id) => (
             <Input
               id={id}
               type="number"
-              step="1"
-              min="1"
-              max="365"
+              step="0.01"
+              min={0}
+              {...form.register("reward_value")}
+            />
+          )}
+        </FormField>
+
+        <FormField
+          label="Attribution window (days)"
+          error={errors.attribution_window_days?.message}
+          hint="How long after signup a referral can be attributed."
+        >
+          {(id) => (
+            <Input
+              id={id}
+              type="number"
+              min={1}
               {...form.register("attribution_window_days")}
             />
           )}
         </FormField>
-      </div>
 
-      <button
-        type="button"
-        onClick={() => setShowAdvanced((value) => !value)}
-        className="flex items-center gap-1 text-[13px] font-medium text-text-secondary hover:text-text-primary"
-        aria-expanded={showAdvanced}
-      >
-        {showAdvanced ? (
-          <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
-        )}
-        Advanced settings
-      </button>
-
-      <div className={cn("grid gap-4 sm:grid-cols-2", !showAdvanced && "hidden")}>
         <FormField
           label="Reward window (days)"
           error={errors.reward_window_days?.message}
-          hint="How long rewards keep accruing after attribution. Leave empty for no end."
+          hint="Optional — how long rewards keep accruing."
         >
           {(id) => (
-            <Input id={id} type="number" step="1" min="1" placeholder="No end" {...form.register("reward_window_days")} />
+            <Input
+              id={id}
+              type="number"
+              min={0}
+              {...form.register("reward_window_days")}
+            />
           )}
         </FormField>
+
         <FormField
-          label={`Lifetime cap per referral (${currencyCode})`}
-          error={errors.max_reward?.message}
-          hint="The most any single referral can ever earn. Leave empty for no cap."
+          label="Max reward (USD)"
+          error={errors.max_reward_dollars?.message}
+          hint="Optional cap on total reward per referral."
         >
           {(id) => (
-            <Input id={id} type="number" step="any" min="0" placeholder="No cap" {...form.register("max_reward")} />
+            <Input
+              id={id}
+              type="number"
+              step="0.01"
+              min={0}
+              {...form.register("max_reward_dollars")}
+            />
           )}
         </FormField>
+
         <FormField
           label="Estimated cost (%)"
           error={errors.estimated_cost_percentage?.message}
-          hint="Optional planning figure: what you expect the program to cost as a share of referred spend."
+          hint="Optional — used for cost projections."
         >
           {(id) => (
-            <Input id={id} type="number" step="any" min="0" max="100" {...form.register("estimated_cost_percentage")} />
+            <Input
+              id={id}
+              type="number"
+              step="0.01"
+              min={0}
+              {...form.register("estimated_cost_percentage")}
+            />
           )}
         </FormField>
+
         <FormField
-          label="Max referrals per day"
+          label="Max referrals / day"
           error={errors.max_referrals_per_day?.message}
-          hint="Fraud guard: attributions beyond this daily count are refused."
+          hint="Optional fraud limit per referrer."
         >
           {(id) => (
-            <Input id={id} type="number" step="1" min="1" placeholder="No limit" {...form.register("max_referrals_per_day")} />
+            <Input
+              id={id}
+              type="number"
+              min={0}
+              {...form.register("max_referrals_per_day")}
+            />
           )}
         </FormField>
+
         <FormField
-          label="Minimum customer age (hours)"
+          label="Min customer age (hours)"
           error={errors.min_customer_age_hours?.message}
-          hint="Fraud guard: a referred customer must have existed at least this long before attribution."
+          hint="Optional — minimum account age before a referral counts."
         >
           {(id) => (
-            <Input id={id} type="number" step="1" min="0" placeholder="None" {...form.register("min_customer_age_hours")} />
+            <Input
+              id={id}
+              type="number"
+              min={0}
+              {...form.register("min_customer_age_hours")}
+            />
           )}
         </FormField>
       </div>
 
-      {error ? <p className="text-xs text-destructive">{problemMessage(error)}</p> : null}
-
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {onDone && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={onDone}
+          >
+            Cancel
+          </Button>
+        )}
         <Button type="submit" disabled={pending}>
-          {pending ? "Working…" : submitLabel}
+          {pending
+            ? "Saving…"
+            : isEdit
+              ? "Save changes"
+              : "Create program"}
         </Button>
       </div>
     </form>

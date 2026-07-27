@@ -42,21 +42,16 @@ function createApiClient<Paths extends {}>(basePath: string) {
   return client;
 }
 
-// One typed client per backend namespace. The tenant console authenticates all
-// of them with the same bearer scheme (Clerk member JWT or a tenant API key).
-// The /api/v1/me/** surface is deliberately absent: it is the END-CUSTOMER
-// widget portal (WidgetJWTAuth) and must not be called from the console.
 export const platformApi = createApiClient<NamespacePaths<"/api/v1/platform">>("/api/v1/platform");
 export const meteringApi = createApiClient<NamespacePaths<"/api/v1/metering">>("/api/v1/metering");
 export const billingApi = createApiClient<NamespacePaths<"/api/v1/billing">>("/api/v1/billing");
 export const tenantApi = createApiClient<NamespacePaths<"/api/v1/tenant">>("/api/v1/tenant");
+export const meApi = createApiClient<NamespacePaths<"/api/v1/me">>("/api/v1/me");
+export const subscriptionsApi = createApiClient<NamespacePaths<"/api/v1/subscriptions">>("/api/v1/subscriptions");
 export const marginApi = createApiClient<NamespacePaths<"/api/v1/margin">>("/api/v1/margin");
-export const webhooksApi = createApiClient<NamespacePaths<"/api/v1/webhooks">>("/api/v1/webhooks");
 export const referralsApi = createApiClient<NamespacePaths<"/api/v1/referrals">>("/api/v1/referrals");
-export const subscriptionsApi =
-  createApiClient<NamespacePaths<"/api/v1/subscriptions">>("/api/v1/subscriptions");
+export const webhooksApi = createApiClient<NamespacePaths<"/api/v1/webhooks">>("/api/v1/webhooks");
 export const connectApi = createApiClient<NamespacePaths<"/api/v1/connect">>("/api/v1/connect");
-
-// Root client for the handful of endpoints that live directly under /api/v1:
-// /audit/records, /customers/{id}/past-limit-report, /sandbox/reset, /health, /ready.
+export const auditApi = createApiClient<NamespacePaths<"/api/v1/audit">>("/api/v1/audit");
+export const sandboxApi = createApiClient<NamespacePaths<"/api/v1/sandbox">>("/api/v1/sandbox");
 export const rootApi = createApiClient<NamespacePaths<"/api/v1">>("/api/v1");
