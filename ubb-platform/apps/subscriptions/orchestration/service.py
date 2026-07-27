@@ -151,6 +151,9 @@ class SubscriptionOrchestrator:
         Routes money through the billing OWNER (pooled seat -> business). Ensures
         the owner has a Stripe Customer on the connected account first, provisions
         the plan, then creates a subscription with one item per non-zero axis.
+
+        Returns None without touching Stripe for a markup-only plan (both
+        Stripe axes zero) — see the guard below.
         """
         # A markup-only plan (both Stripe axes zero) has nothing for Stripe to
         # bill. Building items=[] and calling Subscription.create would be
