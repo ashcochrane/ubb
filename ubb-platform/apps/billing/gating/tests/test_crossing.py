@@ -84,13 +84,13 @@ class TestWalletFloorRecovery:
 
 
 class TestBudgetStopThreshold:
-    def test_enforcing_cap_times_hard_stop_pct(self):
-        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="enforcing",
+    def test_blocking_cap_times_hard_stop_pct(self):
+        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="blocking",
                            hard_stop_pct=120)
         assert crossing.budget_stop_threshold(cfg) == 12_000_000
 
     def test_floor_division(self):
-        cfg = BudgetConfig(cap_micros=999, enforce_mode="enforcing",
+        cfg = BudgetConfig(cap_micros=999, enforce_mode="blocking",
                            hard_stop_pct=50)
         assert crossing.budget_stop_threshold(cfg) == 499  # 999 * 50 // 100
 
@@ -98,20 +98,20 @@ class TestBudgetStopThreshold:
         assert crossing.budget_stop_threshold(None) is None
 
     def test_capless_config_can_never_cross(self):
-        cfg = BudgetConfig(cap_micros=0, enforce_mode="enforcing",
+        cfg = BudgetConfig(cap_micros=0, enforce_mode="blocking",
                            hard_stop_pct=100)
         assert crossing.budget_stop_threshold(cfg) is None
 
-    def test_advisory_can_never_cross(self):
+    def test_alert_only_can_never_cross(self):
         """THE #110 drift pin: enforce_mode is honored HERE, once, for every
         lane (the BudgetService.check semantics — decision 8 on the overspend
-        map kept advisory) — an advisory budget alerts but can never stop."""
-        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="advisory",
+        map kept alert_only) — an alert_only budget alerts but can never stop."""
+        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="alert_only",
                            hard_stop_pct=100)
         assert crossing.budget_stop_threshold(cfg) is None
 
-    def test_model_default_enforce_mode_is_advisory_and_never_crosses(self):
-        # A BudgetConfig created without enforce_mode is advisory — the safe
+    def test_model_default_enforce_mode_is_alert_only_and_never_crosses(self):
+        # A BudgetConfig created without enforce_mode is alert_only — the safe
         # default: alerts only, no stop, in every lane.
         cfg = BudgetConfig(cap_micros=10_000_000, hard_stop_pct=100)
         assert crossing.budget_stop_threshold(cfg) is None

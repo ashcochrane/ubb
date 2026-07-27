@@ -10,7 +10,7 @@ class TestBudgetConfig:
         t = Tenant.objects.create(name="T")
         cfg = BudgetConfig.objects.create(tenant=t, cap_micros=1_000_000_000)
         assert cfg.customer is None
-        assert cfg.enforce_mode == "advisory"
+        assert cfg.enforce_mode == "alert_only"
         assert cfg.hard_stop_pct == 100
         assert cfg.alert_levels == [50, 80, 100, 110]
         assert cfg.fail_closed is False

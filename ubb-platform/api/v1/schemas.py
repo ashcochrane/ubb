@@ -533,7 +533,7 @@ class UsageTimeseriesResponse(Schema):
 
 class BudgetConfigIn(Schema):
     cap_micros: int = Field(ge=0)
-    enforce_mode: str = "advisory"
+    enforce_mode: str = "alert_only"
     hard_stop_pct: int = Field(default=100, ge=1, le=1000)
     alert_levels: Optional[list[int]] = None
     fail_closed: bool = False

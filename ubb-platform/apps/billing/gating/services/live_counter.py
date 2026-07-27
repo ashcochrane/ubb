@@ -517,7 +517,7 @@ class LiveCounter:
         """Resolve the ONE comparable crossing bound for this (mode, owner):
         postpaid -> ``crossing.budget_stop_threshold`` over the resolved
         BudgetConfig (None = can never cross: no config, cap <= 0, or an
-        advisory ``enforce_mode`` — #110 unified every lane on the
+        alert_only ``enforce_mode`` — #110 unified every lane on the
         BudgetService.check semantics); prepaid -> ``crossing.floor_line``
         (the wallet floor). Exactly ONE ORM lookup (BudgetConfig via
         BudgetService.resolve_config_for, or CustomerBillingProfile/

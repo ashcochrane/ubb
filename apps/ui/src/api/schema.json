@@ -506,7 +506,7 @@
             "type": "integer"
           },
           "enforce_mode": {
-            "default": "advisory",
+            "default": "alert_only",
             "title": "Enforce Mode",
             "type": "string"
           },
@@ -13450,7 +13450,7 @@
                         "type": "string"
                       },
                       "enforce_mode": {
-                        "default": "advisory",
+                        "default": "alert_only",
                         "title": "Enforce Mode",
                         "type": "string"
                       },

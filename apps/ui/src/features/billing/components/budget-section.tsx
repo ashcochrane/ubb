@@ -15,6 +15,7 @@ import {
   Section,
 } from "@/components/shared/data-states";
 import { FormField } from "@/components/shared/form-field";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useBudget, usePutBudget } from "../api/queries";
 import {
   budgetSchema,
@@ -25,18 +26,21 @@ import type { BudgetConfig } from "../api/types";
 
 const ENFORCE_MODES: { value: BudgetFormValues["enforceMode"]; label: string }[] =
   [
-    { value: "advisory", label: "Advisory — alert only, never block" },
-    { value: "monitor", label: "Monitor — track spend, alert at levels" },
-    { value: "enforce", label: "Enforce — hard-stop spend over cap" },
+    { value: "alert_only", label: "Alert only — track spend, alert at levels, never block" },
+    { value: "blocking", label: "Blocking — refuse or stop spend over cap" },
   ];
+
+/** One-line, mode-specific explanation of what "blocking" actually does. */
+function blockingHint(billingMode: string | null): string {
+  return billingMode === "postpaid"
+    ? "Blocking stops running work and fires a stop signal once month-to-date spend hits the cap."
+    : "Blocking refuses new task starts; work already running continues — the wallet floor is what interrupts it.";
+}
 
 function toForm(b: BudgetConfig): BudgetFormValues {
   return {
     cap: b.cap_micros / 1_000_000,
-    enforceMode:
-      b.enforce_mode === "monitor" || b.enforce_mode === "enforce"
-        ? b.enforce_mode
-        : "advisory",
+    enforceMode: b.enforce_mode === "blocking" ? "blocking" : "alert_only",
     hardStopPct: b.hard_stop_pct,
     alertLevels: (b.alert_levels ?? []).join(", "),
     failClosed: b.fail_closed,
@@ -45,6 +49,7 @@ function toForm(b: BudgetConfig): BudgetFormValues {
 
 function BudgetForm({ budget }: { budget: BudgetConfig }) {
   const put = usePutBudget();
+  const { billingMode } = useAuth();
   const {
     register,
     control,
@@ -85,7 +90,7 @@ function BudgetForm({ budget }: { budget: BudgetConfig }) {
         <FormField
           label="Enforcement"
           error={errors.enforceMode?.message}
-          hint="Controls whether overspend is blocked or merely alerted."
+          hint={blockingHint(billingMode)}
         >
           {(id) => (
             <Controller
@@ -111,7 +116,7 @@ function BudgetForm({ budget }: { budget: BudgetConfig }) {
         <FormField
           label="Hard-stop at (% of cap)"
           error={errors.hardStopPct?.message}
-          hint="Under Enforce, block spend once this % of the cap is reached."
+          hint="Under Blocking, block spend once this % of the cap is reached."
         >
           {(id) => (
             <Input

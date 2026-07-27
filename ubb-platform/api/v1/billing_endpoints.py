@@ -470,7 +470,7 @@ def get_tenant_budget(request):
     from apps.billing.gating.models import BudgetConfig
     cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
     if not cfg:
-        return {"cap_micros": 0, "enforce_mode": "advisory", "hard_stop_pct": 100,
+        return {"cap_micros": 0, "enforce_mode": "alert_only", "hard_stop_pct": 100,
                 "alert_levels": [50, 80, 100, 110], "fail_closed": False}
     return _budget_out(cfg)
 
@@ -499,7 +499,7 @@ def get_customer_budget(request, customer_id: UUID):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer=customer).first()
     if not cfg:
-        return {"cap_micros": 0, "enforce_mode": "advisory", "hard_stop_pct": 100,
+        return {"cap_micros": 0, "enforce_mode": "alert_only", "hard_stop_pct": 100,
                 "alert_levels": [50, 80, 100, 110], "fail_closed": False}
     return _budget_out(cfg)
 
@@ -605,7 +605,7 @@ def get_customer_budget_status(request, customer_id: UUID):
         spend = 0
     pct = round(spend / cap * 100, 2) if cap > 0 else 0.0
     return {"period": label, "spend_micros": spend, "cap_micros": cap, "pct": pct,
-            "enforce_mode": cfg.enforce_mode if cfg else "advisory"}
+            "enforce_mode": cfg.enforce_mode if cfg else "alert_only"}
 
 
 # ---------- Postpaid usage-invoice + config ----------

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   useBudget,
   usePutBudget,
@@ -28,6 +29,13 @@ import {
   type BillingProfileValues,
 } from "../lib/schema";
 
+/** One-line, mode-specific explanation of what "blocking" actually does. */
+function blockingHint(billingMode: string | null): string {
+  return billingMode === "postpaid"
+    ? "Blocking stops running work and fires a stop signal once month-to-date spend hits the cap."
+    : "Blocking refuses new task starts; work already running continues — the wallet floor is what interrupts it.";
+}
+
 const dollars = (micros?: number | null) =>
   micros == null ? undefined : micros / 1_000_000;
 const micros = (d?: number) => (d == null ? undefined : Math.round(d * 1_000_000));
@@ -35,15 +43,16 @@ const micros = (d?: number) => (d == null ? undefined : Math.round(d * 1_000_000
 export function CustomerBudgetForm({ customerId }: { customerId: string }) {
   const query = useBudget(customerId);
   const save = usePutBudget(customerId);
+  const { billingMode } = useAuth();
 
   const form = useForm<BudgetValues>({
     resolver: zodResolver(budgetSchema),
     values: query.data
       ? {
           cap: (query.data.cap_micros ?? 0) / 1_000_000,
-          enforce_mode: (["advisory", "monitor", "enforce"].includes(query.data.enforce_mode)
+          enforce_mode: (["alert_only", "blocking"].includes(query.data.enforce_mode)
             ? query.data.enforce_mode
-            : "advisory") as BudgetValues["enforce_mode"],
+            : "alert_only") as BudgetValues["enforce_mode"],
           hard_stop_pct: query.data.hard_stop_pct ?? 100,
           fail_closed: query.data.fail_closed ?? false,
         }
@@ -75,7 +84,11 @@ export function CustomerBudgetForm({ customerId }: { customerId: string }) {
             <FormField label="Cap (USD)" error={form.formState.errors.cap?.message}>
               {(id) => <Input id={id} type="number" min={0} step={0.01} {...form.register("cap", { valueAsNumber: true })} />}
             </FormField>
-            <FormField label="Enforcement" error={form.formState.errors.enforce_mode?.message}>
+            <FormField
+              label="Enforcement"
+              error={form.formState.errors.enforce_mode?.message}
+              hint={blockingHint(billingMode)}
+            >
               {() => (
                 <Controller
                   control={form.control}
@@ -84,9 +97,8 @@ export function CustomerBudgetForm({ customerId }: { customerId: string }) {
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="advisory">Advisory (track only)</SelectItem>
-                        <SelectItem value="monitor">Monitor (alert)</SelectItem>
-                        <SelectItem value="enforce">Enforce (block)</SelectItem>
+                        <SelectItem value="alert_only">Alert only (track, never block)</SelectItem>
+                        <SelectItem value="blocking">Blocking</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

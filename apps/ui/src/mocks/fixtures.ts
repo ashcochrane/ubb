@@ -51,8 +51,8 @@ export const grants = [
   { id: "grant_2", kind: "goodwill", granted_micros: d(25), remaining_micros: 0, expired_micros: d(25), voided_micros: 0, currency: "USD", status: "expired", source: "manual", expires_at: daysAgo(2), warning_sent_at: daysAgo(4), created_at: daysAgo(40), balance_micros: 0, transaction_id: "wtx_0" },
 ];
 
-export const budgetConfig = { cap_micros: d(2000), enforce_mode: "monitor", hard_stop_pct: 100, alert_levels: [50, 80, 95], fail_closed: false };
-export const budgetStatus = { period: "2026-07", spend_micros: d(842.18), cap_micros: d(2000), pct: 42.1, enforce_mode: "monitor" };
+export const budgetConfig = { cap_micros: d(2000), enforce_mode: "blocking", hard_stop_pct: 100, alert_levels: [50, 80, 95], fail_closed: false };
+export const budgetStatus = { period: "2026-07", spend_micros: d(842.18), cap_micros: d(2000), pct: 42.1, enforce_mode: "blocking" };
 export const billingProfile = { min_balance_micros: d(5), topup_grant_expiry_days: 90, soft_min_balance_micros: d(10) };
 export const postpaidConfig = { usage_line_item_group_by: "product", consolidate_with_subscription: false };
 

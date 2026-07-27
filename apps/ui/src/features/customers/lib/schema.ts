@@ -19,7 +19,7 @@ export type GrantValues = z.infer<typeof grantSchema>;
 
 export const budgetSchema = z.object({
   cap: z.number().nonnegative("Cap must be 0 or more"),
-  enforce_mode: z.enum(["advisory", "monitor", "enforce"]),
+  enforce_mode: z.enum(["alert_only", "blocking"]),
   hard_stop_pct: z.number().int().min(0).max(1000),
   fail_closed: z.boolean(),
 });

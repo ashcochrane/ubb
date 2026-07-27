@@ -22,7 +22,7 @@ export function parseAlertLevels(raw: string): number[] {
 
 export const budgetSchema = z.object({
   cap: z.number().nonnegative("Cap can't be negative"),
-  enforceMode: z.enum(["advisory", "monitor", "enforce"]),
+  enforceMode: z.enum(["alert_only", "blocking"]),
   hardStopPct: z
     .number()
     .int("Whole number")

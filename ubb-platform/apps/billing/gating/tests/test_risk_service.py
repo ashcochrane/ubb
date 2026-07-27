@@ -249,22 +249,22 @@ class TestRiskServiceBudget:
         c = self._funded()
         assert RiskService.check(c)["allowed"] is True
 
-    def test_enforcing_over_cap_denies(self):
-        c = self._funded(cap_micros=1_000, enforce_mode="enforcing", hard_stop_pct=100)
+    def test_blocking_over_cap_denies(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="blocking", hard_stop_pct=100)
         self._spend(c, 1_000)  # at cap
         res = RiskService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
 
-    def test_advisory_over_cap_allows(self):
-        c = self._funded(cap_micros=1_000, enforce_mode="advisory")
+    def test_alert_only_over_cap_allows(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="alert_only")
         self._spend(c, 5_000)  # way over
         assert RiskService.check(c)["allowed"] is True
 
     def test_gate_fail_open_when_redis_down_with_budget_config(self):
-        # Even with an enforcing budget config, a Redis outage must NOT block the
+        # Even with a blocking budget config, a Redis outage must NOT block the
         # pre-call gate — the money is still guarded by the Postgres credit check.
         from unittest.mock import patch
-        c = self._funded(cap_micros=1_000, enforce_mode="enforcing")
+        c = self._funded(cap_micros=1_000, enforce_mode="blocking")
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = RiskService.check(c)
@@ -285,7 +285,7 @@ class TestRiskServiceBudget:
         from apps.metering.usage.models import UsageEvent
         t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="pp")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="enforcing")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
         LiveCounter.budget_incr(t.id, c.id, 1_000)

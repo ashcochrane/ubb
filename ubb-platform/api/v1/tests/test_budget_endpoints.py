@@ -16,12 +16,12 @@ class BudgetEndpointsTest(TestCase):
 
     def test_put_get_customer_budget(self):
         r = self.http.put(f"/api/v1/billing/customers/{self.customer.id}/budget",
-                          data=json.dumps({"cap_micros": 1_000_000, "enforce_mode": "enforcing"}),
+                          data=json.dumps({"cap_micros": 1_000_000, "enforce_mode": "blocking"}),
                           content_type="application/json", **self._auth())
         assert r.status_code == 200
         r = self.http.get(f"/api/v1/billing/customers/{self.customer.id}/budget", **self._auth())
         b = r.json()
-        assert b["cap_micros"] == 1_000_000 and b["enforce_mode"] == "enforcing"
+        assert b["cap_micros"] == 1_000_000 and b["enforce_mode"] == "blocking"
         assert b["alert_levels"] == [50, 80, 100, 110]
 
     def test_tenant_default_budget(self):
