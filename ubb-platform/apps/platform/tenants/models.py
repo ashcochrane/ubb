@@ -12,7 +12,11 @@ from core.models import BaseModel
 # not a separate billable product — it still requires "metering" to be present
 # (enforced nowhere else; the endpoint gate checks it directly via
 # tenant.products) and rides the same products JSONField for zero extra schema.
-VALID_PRODUCTS = {"metering", "billing", "subscriptions", "referrals", "metering_async"}
+#
+# "subscriptions" was retired 2026-07-27: it is not a standalone product but a
+# capability of billing (a wrapper over Stripe Billing, valuable only next to
+# metering and margin). Plans and subscription lifecycle gate on "billing".
+VALID_PRODUCTS = {"metering", "billing", "referrals", "metering_async"}
 
 # CUR-1: currencies a tenant may set as default_currency. 2-DECIMAL (cents
 # style) currencies ONLY — every micros<->Stripe-amount conversion path in the

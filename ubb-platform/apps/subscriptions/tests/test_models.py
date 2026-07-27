@@ -9,7 +9,7 @@ class TestStripeSubscription:
     def test_create_stripe_subscription(self):
         from apps.subscriptions.models import StripeSubscription
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
@@ -29,7 +29,7 @@ class TestStripeSubscription:
         from apps.subscriptions.models import StripeSubscription
         from django.db import IntegrityError
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
@@ -55,7 +55,7 @@ class TestSubscriptionInvoice:
     def test_create_subscription_invoice(self):
         from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
@@ -79,7 +79,7 @@ class TestSubscriptionInvoice:
         from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
         from django.db import IntegrityError
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
@@ -109,7 +109,7 @@ class TestCustomerCostAccumulator:
         from apps.subscriptions.economics.models import CustomerCostAccumulator
         from datetime import date
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         acc = CustomerCostAccumulator.objects.create(
@@ -128,7 +128,7 @@ class TestCustomerCostAccumulator:
         from django.db import IntegrityError
         from datetime import date
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         CustomerCostAccumulator.objects.create(

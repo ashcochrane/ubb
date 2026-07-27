@@ -57,9 +57,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         billing_mode = options["billing_mode"]
-        # Products required for J2 (billing + subscriptions) when not meter_only.
+        # Products required for J2 (billing, incl. subscriptions as a billing
+        # capability) when not meter_only.
         if billing_mode in ("prepaid", "postpaid"):
-            products = ["metering", "billing", "subscriptions"]
+            products = ["metering", "billing"]
         else:
             products = ["metering"]
 

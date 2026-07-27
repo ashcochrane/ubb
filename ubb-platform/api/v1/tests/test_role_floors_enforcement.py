@@ -39,7 +39,7 @@ class RoleFloorEnforcementTest(TestCase):
     def setUp(self):
         self.http = Client()
         self.tenant = Tenant.objects.create(
-            name="Acme", products=["metering", "billing", "subscriptions", "referrals"])
+            name="Acme", products=["metering", "billing", "referrals"])
         self.key_obj, self.admin_key = TenantApiKey.create_key(self.tenant, label="primary")
 
     # --- helpers ---

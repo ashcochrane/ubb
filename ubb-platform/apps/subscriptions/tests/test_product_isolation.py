@@ -3,9 +3,12 @@
 Verifies that product-gated endpoints correctly enforce access based on
 the tenant's products field. Plan-as-kernel #8 moved subscriptions_router's
 gate from the "subscriptions" product to "billing" (the write routes it now
-shares were never separately gated at all); #9 retires the "subscriptions"
-product value itself. The two tests below were written against the old
-subscriptions-vs-billing split and now assert the #8 behavior instead.
+shares were never separately gated at all). #9 then retired the
+"subscriptions" product value itself, so a tenant can no longer be
+configured with "subscriptions" and no "billing" — the test that asserted
+that now-impossible config is gone; the two below cover the same ground
+(metering-only refused, billing-tenant admitted) with configs that still
+exist.
 """
 import json
 
@@ -50,24 +53,9 @@ class TestSubscriptionsProductIsolation(TestCase):
         )
         self.assertNotEqual(response.status_code, 403)
 
-    def test_subscriptions_only_tenant_gets_403_on_subscriptions(self):
-        """Was "can_access" — the "subscriptions" product value no longer
-        grants access on its own; only "billing" does (#8)."""
+    def test_metering_only_tenant_gets_403_on_billing(self):
         tenant = Tenant.objects.create(
-            name="sub-tenant", products=["metering", "subscriptions"],
-        )
-        _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
-        customer = Customer.objects.create(tenant=tenant, external_id="cust-iso-3")
-
-        response = self.http_client.get(
-            f"/api/v1/subscriptions/customers/{customer.id}/subscription",
-            HTTP_AUTHORIZATION=f"Bearer {raw_key}",
-        )
-        self.assertEqual(response.status_code, 403)
-
-    def test_subscriptions_tenant_gets_403_on_billing(self):
-        tenant = Tenant.objects.create(
-            name="sub-tenant", products=["metering", "subscriptions"],
+            name="metering-only-2", products=["metering"],
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
@@ -78,9 +66,9 @@ class TestSubscriptionsProductIsolation(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_subscriptions_tenant_can_access_metering(self):
+    def test_billing_tenant_can_access_metering(self):
         tenant = Tenant.objects.create(
-            name="sub-tenant", products=["metering", "subscriptions"],
+            name="billing-tenant-2", products=["metering", "billing"],
         )
         _, raw_key = TenantApiKey.create_key(tenant=tenant, label="test")
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
