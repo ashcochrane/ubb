@@ -453,3 +453,62 @@ what you find; only fix it if it is unambiguous.** If it needs a product decisio
 **Tests:** the same three topologies, plus one that specifically drives the **webhook** path for a
 pooled seat and asserts the business's wallet was credited and no wallet exists on the seat. That
 async path is the reason this instance is worse than the other five.
+
+---
+
+## Task 8 — Systematic seat/owner sweep, and a guard test to stop it recurring
+
+**Seven instances of the same defect have now been found one at a time** (five endpoints in Task 3,
+`refund_usage` in its follow-up, `TopUpAttempt` in Task 7, and now the dispute clawback). Each was
+found only because someone went looking. Stop playing whack-a-mole: sweep the whole surface, then
+make the class unrepresentable.
+
+### 8a — Fix the known seventh instance
+
+`apps/billing/connectors/stripe/webhooks.py:314`, `:325`, `:389` — `handle_charge_refunded` and
+`handle_charge_dispute_closed` pass `attempt.customer_id` into the clawback ops. Task 7 already
+added `TopUpAttempt.billing_owner_id` and the credit path now uses it (`:76-86`, refusing outright
+on NULL rather than falling back — keep that failure mode). These three sites were missed.
+
+This one moves money **out**. On a pooled seat the original credit went to the business, but the
+clawback debits the seat — so `lock_for_billing` mints a phantom seat wallet, drives it negative,
+and the business keeps the credit. A disputed top-up leaves the tenant down the money with both
+wallets wrong. Use `attempt.billing_owner_id` with the same NULL refusal.
+
+### 8b — Sweep the whole billing surface
+
+Audit **every** call that reaches a wallet/ledger operation with a customer identity, not just the
+ones matching one grep. Cover at minimum `api/v1/`, `apps/billing/` (endpoints, services, tasks,
+connectors, handlers) and any Celery task. For each site record: the identity passed, whether it is
+resolved, and whether that is correct. Report the full table even for sites you conclude are fine —
+"I checked these 23 and 3 were wrong" is the deliverable, not just the 3.
+
+Watch for the spellings that defeated earlier greps: positional args, an id bound to a variable
+earlier, a helper handed the customer object, an id read off a persisted row (the `TopUpAttempt`
+shape), and anything crossing an async/webhook boundary where the resolution happened — or didn't —
+in a different request.
+
+Note the legitimate exceptions and say why they are exceptions: `BudgetConfig` is deliberately
+**seat**-keyed (budgets cap the seat's own spend), and audit records deliberately keep the seat as
+the subject of the action. Resolving those to the owner would be a bug in the other direction.
+
+### 8c — The ratchet: make it unrepresentable
+
+A one-off sweep decays. Add a guard, in the spirit of ADR-001's `test_product_boundaries.py`
+(an AST walker that CI enforces). Options, in rough order of preference — pick with judgement and
+justify the choice in your report:
+
+1. **Make the wallet layer refuse an unresolved seat.** `lock_for_billing(customer_id)` currently
+   locks whatever it is handed and lazily creates a wallet, which is what turns every one of these
+   bugs from a loud failure into silent money loss. If it asserted the id is a billing owner
+   (`resolve_billing_owner(c).id == c.id`), all seven would have been a hard error at the first
+   test run. This is the strongest fix — but check what legitimately passes a seat today before
+   assuming it can be tightened.
+2. An AST/static guard test asserting no call into the wallet ops layer passes an obviously
+   seat-shaped identity.
+3. At minimum, a test per money-moving path asserting no phantom wallet is created on a seat.
+
+Whichever you choose, it must **fail against the pre-Task-3 code**. Demonstrate that in your report.
+
+**Tests:** every fixed site gets the three-topology coverage the earlier tasks used, and the
+webhook paths get a test driving the actual async handler — not just the inner op.
