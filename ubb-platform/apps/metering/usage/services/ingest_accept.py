@@ -30,6 +30,7 @@ from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService, validate_effective_at)
 from apps.platform.customers.models import Customer
+from apps.platform.dimensions.services import DimensionError, DimensionService
 from apps.platform.tasks.models import Task
 
 logger = logging.getLogger(__name__)
@@ -119,9 +120,17 @@ def record_sync_item(tenant, item, customers, task_exists):
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
             return _rejected("not_found", "Task not found")
+    # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
+    # dimension is THIS item's rejection, same as any other validation
+    # failure below, and never reaches record_usage.
+    try:
+        dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+    except DimensionError as exc:
+        return _rejected("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
-            tenant=tenant, customer=customer, **usage_kwargs(item))
+            tenant=tenant, customer=customer, dimension_slots=dimension_slots,
+            **usage_kwargs(item))
     except (PricingError, ValueError) as e:
         return _rejected(*usage_error(e))
     return {"accepted": True, **with_uncosted(result)}
@@ -485,11 +494,28 @@ def accept_batch(tenant, items):
                     tenant.id,
                     [_idem_key(tenant.id, item.customer_id, item.idempotency_key)])
             continue
-        hold_candidates.append((i, item, customer, owner_id, est))
+        # Task 9: admission is a WRITE (records DimensionValue rows), run
+        # HERE — the accept-time boundary for this lane — rather than at
+        # settle, so a settle retry never re-admits (see settle_raw's
+        # dimension_slots consumption). A bad dimension rejects ONLY this
+        # item, matching every other per-item verdict in this loop; the idem
+        # key this item's prefilter already SET must be unwound too, or a
+        # retry (after the caller fixes its dimensions) would misread as an
+        # idem-hit and bypass the estimate+hold gate entirely.
+        try:
+            dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+        except DimensionError as exc:
+            results[i] = _ingest_verdict(accepted=False, code="validation_error",
+                                         detail=str(exc), mode="async")
+            _ingest_idem_unwind(
+                tenant.id,
+                [_idem_key(tenant.id, item.customer_id, item.idempotency_key)])
+            continue
+        hold_candidates.append((i, item, customer, owner_id, est, dimension_slots))
 
     acquire_by_owner: dict = {}
-    for i, item, customer, owner_id, est in hold_candidates:
-        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est))
+    for i, item, customer, owner_id, est, dimension_slots in hold_candidates:
+        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est, dimension_slots))
 
     # ---- acquire holds (one pipelined redis round trip per owner). One-rule
     # (#37): the acquire ALWAYS holds, against the wallet only — the
@@ -516,9 +542,9 @@ def accept_batch(tenant, items):
     for owner_id, entries in acquire_by_owner.items():
         acquire_payload = [{"estimate_micros": est.micros,
                             "effective_at": item.effective_at}
-                           for (_, item, _, est) in entries]
+                           for (_, item, _, est, _) in entries]
         verdicts = acquire_ingest_holds(owner_id, tenant, acquire_payload)
-        for (i, item, customer, est), v in zip(entries, verdicts):
+        for (i, item, customer, est, dimension_slots), v in zip(entries, verdicts):
             results[i] = _ingest_verdict(accepted=True, estimated_cost_micros=est.micros,
                                          mode="async", stop=v["stop"],
                                          stop_reason=v["stop_reason"], stop_scope=v["stop_scope"])
@@ -527,10 +553,16 @@ def accept_batch(tenant, items):
             # accept does no live-counter Redis work), so settle trues up
             # only holds that were really taken and the append-failure
             # unwind below releases nothing that was never reserved.
+            # dimension_slots (Task 9) rides the raw payload — already
+            # admitted here at accept, so settle consumes it instead of
+            # re-admitting (idempotency: a settle retry must not double-count
+            # cardinality).
+            payload = item.model_dump(mode="json")
+            payload["dimension_slots"] = dimension_slots
             raw_objs.append(RawIngestEvent(
                 tenant=tenant, customer=customer, billing_owner_id=owner_id,
                 task_id=item.task_id, idempotency_key=item.idempotency_key,
-                payload=item.model_dump(mode="json"), estimate_micros=est.micros,
+                payload=payload, estimate_micros=est.micros,
                 estimate_exact=est.exact, held=v["held"]))
             if v["held"]:
                 release_list.append((owner_id, est.micros, item.effective_at))

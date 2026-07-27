@@ -83,13 +83,18 @@ class RecordUsageRequest(Schema):
                 f"usage_metrics values must be >= 0; negative metrics: {negative}")
         return v
     currency: Optional[str] = Field(default=None, max_length=3)
-    # Free-form analytics labels — never unit attribution (task_id below is
-    # the only one; there is no tag-fallback inference).
+    # Free-form analytics labels. Never grouped, never priced, never unit
+    # attribution — see `dimensions` for anything you want to slice or price on.
     tags: Optional[dict[str, str]] = None
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
     product_id: Optional[str] = Field(default=None, max_length=100)
+    # Declared EVENT-scoped dimension values (design D1/D6). Keys must be in the
+    # tenant's DimensionDef registry and declared at event scope; task- and
+    # subtask-scoped values are set at the start-gate and inherited, not sent
+    # here. Values are cardinality-capped on write.
+    dimensions: dict = Field(default_factory=dict)
     # When the usage economically happened. Must be timezone-aware; bounded by
     # the tenant's backfill window. Omitted = now (server clock).
     effective_at: Optional[datetime] = None

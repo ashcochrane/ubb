@@ -48,6 +48,7 @@ from apps.metering.usage.services.ingest_accept import (
     usage_kwargs, with_uncosted)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
+from apps.platform.dimensions.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,19 @@ def record_usage(request, payload: RecordUsageRequest):
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
+    # Task 9: admission is a WRITE (records DimensionValue rows), so it runs
+    # BEFORE the recording core, outside record_usage's own retry/replay
+    # machinery — a bad dimension is a whole-request 422, never a partial
+    # record.
+    try:
+        dimension_slots = DimensionService.admit(
+            request.auth.tenant, payload.dimensions, scope="event")
+    except DimensionError as exc:
+        raise Problem("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
             tenant=request.auth.tenant, customer=customer,
+            dimension_slots=dimension_slots,
             **usage_kwargs(payload))
     except (PricingError, ValueError) as e:
         code, detail = usage_error(e)

@@ -214,6 +214,9 @@ class RecordingInput:
     dim1: str
     dim2: str
     dim3: str
+    dim4: str
+    dim5: str
+    dim6: str
     task_id: UUID | None
     billing_owner_id: UUID
     # The resolved billing-owner ROW for stop-context tagging (status already
@@ -234,13 +237,22 @@ class RecordingInput:
                metadata, event_type, provider, usage_metrics, tags,
                product_id, task_id, units, caller_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
-               now, debit_live_counter):
+               now, debit_live_counter, dimension_slots=None):
         """The shared normalization both lanes run: tenant-currency stamp,
-        reserved-tag extraction (service/agent + the product fallback), and
-        the ``or ""``/``or {}`` defaults the 14-field create relies on.
-        Validation does NOT live here — the sync adapter validates before
-        building; settle never rejects, by construction."""
-        _tags = tags or {}
+        declared-dimension slot fill, and the ``or ""``/``or {}`` defaults
+        the 14-field create relies on. Validation does NOT live here — the
+        sync adapter validates before building; settle never rejects, by
+        construction.
+
+        ``dimension_slots`` is an ALREADY-ADMITTED {slot: value} map (Task 9:
+        DimensionService.admit ran at accept time, in the caller's lane —
+        gather() never admits, so settle re-running gather() on a stashed
+        RawIngestEvent payload never double-counts cardinality). Tags are
+        analytics-only labels (#37) and are never consulted for dimension
+        values — the historical "product"/"service"/"agent" tag-lifting is
+        retired; Task 10 adds declared task/subtask-scoped inheritance on
+        top of this slot map."""
+        slots = dict(dimension_slots or {})
         return cls(
             tenant=tenant, customer=customer,
             request_id=request_id or "", idempotency_key=idempotency_key,
@@ -251,17 +263,14 @@ class RecordingInput:
             # already rejected any mismatching caller currency.
             currency=_tenant_currency(tenant),
             usage_metrics=usage_metrics or {}, tags=tags,
-            # Tags are analytics-only labels (#37): the task_id request field
-            # is the ONLY unit attribution — no tag-fallback inference.
-            # product is the one reserved-tag fallback both lanes share.
-            # dim1/dim2/dim3 are UsageEvent's new selector columns (Task 8);
-            # the request-side product_id keyword and the "product"/"service"/
-            # "agent" tag-lifting are unchanged here — only the storage target
-            # is renamed. Task 10 replaces this tag-lifting with declared
-            # dimension inheritance.
-            dim1=product_id or _tags.get("product", "") or "",
-            dim2=_tags.get("service", ""),
-            dim3=_tags.get("agent", ""),
+            # dim1/dim2/dim3 are UsageEvent's selector columns (Task 8);
+            # dim1 keeps the legacy product_id wire field as its fallback
+            # (Task 9 does not retire that field) — an explicit declared
+            # dim1-slotted dimension wins when both are sent.
+            dim1=slots.get("dim1") or product_id or "",
+            dim2=slots.get("dim2", ""), dim3=slots.get("dim3", ""),
+            dim4=slots.get("dim4", ""), dim5=slots.get("dim5", ""),
+            dim6=slots.get("dim6", ""),
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at, units=units,
             caller_provider_cost=caller_provider_cost,
@@ -362,6 +371,7 @@ class UsageService:
                     dim1=inp.dim1, tags=inp.tags, task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
                     dim2=inp.dim2, dim3=inp.dim3,
+                    dim4=inp.dim4, dim5=inp.dim5, dim6=inp.dim6,
                     **create_kwargs)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
@@ -441,11 +451,16 @@ class UsageService:
                      provider_cost_micros=None, billed_cost_micros=None, units=None,
                      provider="", event_type="", currency=None, tags=None,
                      product_id="", metadata=None, task_id=None, usage_metrics=None,
-                     effective_at=None):
+                     effective_at=None, dimension_slots=None):
         """The sync lane (#112): validation + replay + owner resolve, then
         the ONE recording core. The 16-param keyword surface is kept verbatim
         — this is the input adapter every service-level call site and both
-        sync endpoints already speak."""
+        sync endpoints already speak.
+
+        ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
+        — the caller (endpoint / record_sync_item) runs DimensionService.admit
+        BEFORE calling this, so a DimensionError is the whole-request/whole-
+        item rejection and never reaches here."""
         validate_tags(tags)
         existing = UsageEvent.objects.filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
@@ -484,7 +499,7 @@ class UsageService:
             caller_provider_cost=provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,
-            debit_live_counter=True)
+            debit_live_counter=True, dimension_slots=dimension_slots)
         try:
             outcome = UsageService._record_core(inp)
         except RecordingConflict as exc:
@@ -597,7 +612,13 @@ class UsageService:
                     # at settle.
                     billing_owner_id=raw.billing_owner_id, owner_row=owner_row,
                     now=timezone.now(),
-                    debit_live_counter=False)
+                    debit_live_counter=False,
+                    # Task 9: dimensions were admitted (a WRITE) at ACCEPT
+                    # time and stashed here — settle must stay idempotent, so
+                    # it consumes the stashed slot map rather than re-calling
+                    # DimensionService.admit (which would double-count
+                    # cardinality on every settle retry).
+                    dimension_slots=p.get("dimension_slots"))
                 outcome = UsageService._record_core(inp)
                 raw.status = "settled"
                 raw.save(update_fields=["status", "updated_at"])

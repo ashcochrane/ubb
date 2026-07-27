@@ -1656,6 +1656,11 @@
             "title": "Customer Id",
             "type": "string"
           },
+          "dimensions": {
+            "additionalProperties": true,
+            "title": "Dimensions",
+            "type": "object"
+          },
           "effective_at": {
             "anyOf": [
               {
@@ -3983,6 +3988,11 @@
             "format": "uuid",
             "title": "Customer Id",
             "type": "string"
+          },
+          "dimensions": {
+            "additionalProperties": true,
+            "title": "Dimensions",
+            "type": "object"
           },
           "effective_at": {
             "anyOf": [
