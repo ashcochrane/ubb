@@ -25,6 +25,22 @@ decisions are referenced below as D1–D9.
 
 - Run tests from `ubb-platform/`: `DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python -m pytest`
 - Python interpreter is always `.venv/bin/python` — never bare `python`
+- **Local environment (verified 2026-07-27, applies to every command you run):**
+  `.env`'s `DATABASE_URL` points at a docker Postgres on :5433 whose password auth
+  fails. The working database is the native one on :5432. Export this in every shell —
+  do NOT edit `.env`:
+  ```bash
+  export DATABASE_URL="postgresql://heyotis:heyotis@localhost:5432/ubb"
+  export DJANGO_SETTINGS_MODULE=config.settings
+  ```
+- **Never run `manage.py migrate`.** The dev `ubb` database has a pre-existing,
+  unrelated `InconsistentMigrationHistory` (`usage.0014_add_run_fk` is recorded as
+  applied before its dependency `tasks.0001_initial`). It predates this branch, is dev-DB
+  row state rather than a code defect, and is out of scope here. It does not affect
+  `makemigrations`, and it does not affect pytest — pytest-django builds a fresh test
+  database and applies every migration in dependency order, which is the real check that
+  a new migration is sound. So: run `makemigrations`, then run the tests. If `pytest`
+  passes, your migration is good.
 - Every model inherits `core.models.BaseModel` (UUID pk, `created_at`, `updated_at`)
 - Every table name is prefixed `ubb_`
 - **ADR-001 product boundaries:** products (`apps/metering`, `apps/billing`,
@@ -277,7 +293,8 @@ immediately after the existing `"apps.platform.tasks"` entry.
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations dimensions
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 ```
 
 - [ ] **Step 6: Run test to verify it passes**
@@ -914,7 +931,8 @@ def declared_task_types(tenant_id) -> list[dict]:
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations tasks
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -1051,7 +1069,8 @@ Also add to `Task.Meta.indexes`:
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations tasks
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 ```
 
 - [ ] **Step 5: Run the new test plus the existing task suite**
@@ -1327,7 +1346,8 @@ def pre_check(request, payload: PreCheckRequest):
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations tasks
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python -m pytest api/v1/tests/test_precheck_task_type.py apps/billing/gating apps/platform/tasks -v
 ```
 Expected: 5 new passed; gating and task suites still green.
@@ -1615,7 +1635,8 @@ grep -rn "product_id\|service_id\|agent_id" --include="*.py" apps/ api/ core/ | 
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations usage
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python -m pytest apps/metering -v
 ```
 Expected: 4 new passed. Existing metering tests referencing the old names will fail —
@@ -2101,7 +2122,8 @@ names as keyword arguments (defaulting to `""`) instead of `dimensions=`.
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py makemigrations pricing
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py migrate
+# NOTE: do NOT run `manage.py migrate` — see Global Constraints. pytest builds a
+# fresh test DB and applies migrations in dependency order, which is the check.
 DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python -m pytest apps/metering/pricing -v
 ```
 Expected: 5 new passed. Tests passing `dimensions={...}` fail — port them to the slot
