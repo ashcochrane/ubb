@@ -220,3 +220,4 @@ node_modules/
 # If shared repo-level config is ever wanted, switch to `.claude/*` + negations
 # (e.g. `!.claude/settings.json`).
 .claude/
+.superpowers/
