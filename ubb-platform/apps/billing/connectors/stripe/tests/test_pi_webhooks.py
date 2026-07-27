@@ -22,7 +22,8 @@ class TestPIWebhook:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
-        a = TopUpAttempt.objects.create(customer=c, amount_micros=20_000_000,
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=20_000_000,
                                         trigger="auto_topup", status="pending")
         return c, a
 
@@ -52,7 +53,8 @@ class TestPIWebhookCrossAccountGuard:
         t = Tenant.objects.create(name="T", stripe_connected_account_id=acct)
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
-        a = TopUpAttempt.objects.create(customer=c, amount_micros=20_000_000,
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=20_000_000,
                                         trigger="auto_topup", status="pending")
         return t, c, a
 

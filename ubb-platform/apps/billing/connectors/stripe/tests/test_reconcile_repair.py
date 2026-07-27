@@ -13,7 +13,8 @@ def test_reconcile_repairs_uncredited_succeeded_pi():
     c = Customer.objects.create(tenant=t, external_id="c1")
     Wallet.objects.create(customer=c, balance_micros=0)
     # attempt was charged at Stripe but never credited locally (left pending, no WalletTransaction)
-    a = TopUpAttempt.objects.create(customer=c, amount_micros=20_000_000,
+    a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                    amount_micros=20_000_000,
                                     trigger="auto_topup", status="pending")
     pi = MagicMock(id="pi_1", status="succeeded", latest_charge=MagicMock(id="ch_1"),
                    metadata={"topup_attempt_id": str(a.id)})

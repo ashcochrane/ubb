@@ -806,6 +806,69 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertEqual(response.json()["code"], "validation_error")
 
 
+class TopUpAttemptBillingOwnerPinTest(TestCase):
+    """Task 7 — create_top_up must pin TopUpAttempt.billing_owner_id at
+    creation, across all three topologies. `customer` on the row always
+    stays the SEAT (who initiated); this test asserts what actually gets
+    pinned into billing_owner_id, the value both credit_top_up call sites
+    key on later."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="No Stripe Pin Tenant", products=["metering", "billing"],
+            stripe_connected_account_id="",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def _topup(self, customer, idempotency_key):
+        return self.http_client.post(
+            f"/api/v1/billing/customers/{customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 10_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+                "idempotency_key": idempotency_key,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_individual_pins_self(self):
+        from apps.billing.topups.models import TopUpAttempt
+        customer = Customer.objects.create(tenant=self.tenant, external_id="ind_pin")
+        resp = self._topup(customer, "pin_ind_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=customer)
+        self.assertEqual(attempt.billing_owner_id, customer.id)
+
+    def test_pooled_seat_pins_the_business(self):
+        from apps.billing.topups.models import TopUpAttempt
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_pin",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_pin",
+            account_type="seat", parent=biz)
+        resp = self._topup(seat, "pin_pooled_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=seat)
+        self.assertEqual(attempt.billing_owner_id, biz.id)
+
+    def test_allocated_seat_pins_self(self):
+        from apps.billing.topups.models import TopUpAttempt
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc_pin",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc_pin",
+            account_type="seat", parent=biz)
+        resp = self._topup(seat, "pin_alloc_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=seat)
+        self.assertEqual(attempt.billing_owner_id, seat.id)
+
+
 class TopUpWithConnectorTest(TestCase):
     """Verify that top-up with Stripe connector still works (existing behavior)."""
 

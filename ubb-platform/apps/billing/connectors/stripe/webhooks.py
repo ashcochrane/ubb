@@ -61,6 +61,30 @@ def handle_checkout_completed(event):
         return
     amount_micros = session.amount_total * 10_000
 
+    # Task 7: the credit must land on the billing OWNER, never the
+    # Stripe-matched `customer` above (which can be a pooled seat). When a
+    # TopUpAttempt correlates (the normal path — every checkout session UBB
+    # creates carries client_reference_id=attempt.id), its PINNED
+    # billing_owner_id is authoritative: a NULL there is a data-integrity
+    # gap this webhook must refuse rather than silently credit the seat.
+    # When there is NO correlating attempt (an out-of-band Checkout Session
+    # this codebase didn't create), there is nothing pinned to trust or
+    # distrust, so this resolves the CURRENT owner fresh — the same
+    # resolver every other read/write in this bug's fix uses, and not a
+    # "fall back to the seat".
+    if attempt is not None:
+        if attempt.billing_owner_id is None:
+            logger.error(
+                "TopUpAttempt missing billing_owner_id — refusing to credit",
+                extra={"data": {"attempt_id": str(attempt.id), "session_id": session.id}},
+            )
+            raise RuntimeError(
+                f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+                "refusing to credit rather than risk crediting the seat")
+        credit_customer_id = attempt.billing_owner_id
+    else:
+        credit_customer_id = customer.resolve_billing_owner().id
+
     # Pre-fetch PaymentIntent and charge ID outside transaction (no network inside DB locks)
     pi_id = getattr(session, "payment_intent", None)
     charge_id_from_pi = None
@@ -92,9 +116,12 @@ def handle_checkout_completed(event):
         # The wallet lock is taken FIRST (canonical Wallet -> TopUpAttempt
         # order); the read-only replay probe keeps a redelivery from touching
         # the attempt at all (parity with the pre-#109 shape). The wallet op
-        # below re-enters the same lock and re-probes under it.
+        # below re-enters the same lock and re-probes under it. Locks the
+        # OWNER (Task 7) — `customer` is deliberately left unshadowed: the
+        # receipt dispatch below still needs the SEAT (whoever's Stripe
+        # customer/card was actually charged).
         from apps.billing.wallets.models import WalletTransaction
-        wallet, customer = lock_for_billing(customer.id)
+        wallet, owner = lock_for_billing(credit_customer_id)
         if WalletTransaction.objects.filter(
                 wallet=wallet, idempotency_key=f"topup:{session.id}").exists():
             return
@@ -124,7 +151,7 @@ def handle_checkout_completed(event):
         # The credit, its PAID lot, and the Tier-2 live mirror land behind the
         # wallet seam (#109), co-committed with the attempt walk above.
         wallet_ops.credit_top_up(
-            customer_id=customer.id, tenant=customer.tenant,
+            customer_id=owner.id, tenant=customer.tenant,
             amount_micros=amount_micros,
             idempotency_key=f"topup:{session.id}",
             source="checkout",

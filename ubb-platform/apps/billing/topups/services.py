@@ -44,6 +44,12 @@ class AutoTopUpService:
             with transaction.atomic():
                 attempt = TopUpAttempt.objects.create(
                     customer=customer,
+                    # `customer` here is already the billing owner (the
+                    # caller locked it via lock_for_billing(owner_id) off a
+                    # BalanceLow event keyed to the owner) — resolving again
+                    # is a no-op for that case and keeps this creation site
+                    # correct even if a future caller ever passed a seat.
+                    billing_owner_id=customer.resolve_billing_owner().id,
                     amount_micros=config.top_up_amount_micros,
                     trigger="auto_topup",
                     status="pending",
@@ -78,9 +84,20 @@ class AutoTopUpService:
         charge_id = (lc.id if hasattr(lc, "id") else lc) if lc else None
         amount_micros = attempt.amount_micros
 
+        # Task 7: credit the PINNED owner, never the seat. Every creation
+        # path in this codebase sets billing_owner_id — a NULL here is a
+        # data-integrity gap, not a normal state, and must be refused loudly
+        # rather than silently defaulting to attempt.customer_id (the seat),
+        # which would reproduce the exact phantom-wallet bug this pin exists
+        # to prevent.
+        if attempt.billing_owner_id is None:
+            raise RuntimeError(
+                f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+                "refusing to credit rather than risk crediting the seat")
+
         with transaction.atomic():
             result = wallet_ops.credit_top_up(
-                customer_id=attempt.customer_id, tenant=attempt.customer.tenant,
+                customer_id=attempt.billing_owner_id, tenant=attempt.customer.tenant,
                 amount_micros=amount_micros, idempotency_key=key,
                 source="auto_topup", source_reference=str(attempt.id),
                 description="Auto top-up", reference_id=str(attempt.id))

@@ -16,7 +16,8 @@ class TestChargeTask:
         Wallet.objects.create(customer=c, balance_micros=balance)
         AutoTopUpConfig.objects.create(customer=c, is_enabled=True,
                                        trigger_threshold_micros=10_000_000, top_up_amount_micros=20_000_000)
-        return c, TopUpAttempt.objects.create(customer=c, amount_micros=20_000_000,
+        return c, TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                              amount_micros=20_000_000,
                                               trigger="auto_topup", status="pending")
 
     def test_success_credits_via_service(self):
