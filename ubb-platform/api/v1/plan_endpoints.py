@@ -111,6 +111,11 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
         raise Problem("not_found", f"plan with key '{key}' not found")
 
     # Markup and name are UBB-side: a plain write, no Stripe involvement.
+    # Committed AND audited together, in their own transaction, before the
+    # fee branch runs. This axis's fate must never depend on what the fee
+    # branch's external Stripe call does next: a fee-branch failure below
+    # must not silently drop this already-durable change from the audit
+    # trail (Finding 1), and an empty payload must record nothing (Finding 2).
     fields = []
     if payload.name is not None:
         plan.name = payload.name
@@ -122,11 +127,22 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
         plan.fixed_uplift_micros = payload.fixed_uplift_micros
         fields.append("fixed_uplift_micros")
     if fields:
-        # Full save(), not update_fields only — the save hook bumps the markup
-        # cache version, and a re-priced plan must take effect immediately.
-        plan.save()
+        with transaction.atomic():
+            # Full save(), not update_fields only — the save hook bumps the
+            # markup cache version, and a re-priced plan must take effect
+            # immediately.
+            plan.save()
+            audit_record(
+                action="plan.updated", tenant_id=tenant.id,
+                resource_type="plan", resource_id=plan.key,
+                metadata={"changed": fields, **_plan_out(plan)})
 
-    # Fee axes go through the orchestrator, which mints versioned Stripe Prices.
+    # Fee axes go through the orchestrator, which mints versioned Stripe
+    # Prices — an external call, so (matching platform_endpoints.py's twin
+    # route) it stays outside any DB transaction: a transaction can't be held
+    # open across a Stripe round-trip. Audited only on success — a failure
+    # here commits nothing on this axis, so there is nothing to audit, and it
+    # must not retroactively touch the markup/name audit entry recorded above.
     if payload.access_fee_micros is not None or payload.per_seat_micros is not None:
         try:
             plan = SubscriptionOrchestrator.update_plan_prices(
@@ -136,11 +152,12 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
                 migrate_existing=payload.migrate_existing)
         except (OrchestrationError, StripeFatalError) as e:
             raise Problem("validation_error", str(e))
+        audit_record(
+            action="plan.updated", tenant_id=tenant.id,
+            resource_type="plan", resource_id=plan.key,
+            metadata={"changed": ["access_fee_micros", "per_seat_micros"],
+                      "migrate_existing": payload.migrate_existing, **_plan_out(plan)})
 
-    audit_record(
-        action="plan.updated", tenant_id=tenant.id,
-        resource_type="plan", resource_id=plan.key,
-        metadata={**_plan_out(plan), "migrate_existing": payload.migrate_existing})
     return 200, _plan_out(plan)
 
 
@@ -156,12 +173,15 @@ def archive_plan(request, key: str):
     if plan is None:
         raise Problem("not_found", f"plan with key '{key}' not found")
     try:
-        PlanService.archive(plan)
+        # PlanService.archive is a pure-DB operation (no Stripe call), so the
+        # mutation and its audit entry commit — or roll back — together.
+        with transaction.atomic():
+            PlanService.archive(plan)
+            audit_record(
+                action="plan.archived", tenant_id=tenant.id,
+                resource_type="plan", resource_id=plan.key, metadata={"key": plan.key})
     except PlanInUse as e:
         raise Problem("conflict", str(e))
-    audit_record(
-        action="plan.archived", tenant_id=tenant.id,
-        resource_type="plan", resource_id=plan.key, metadata={"key": plan.key})
     return 204, None
 
 
@@ -185,9 +205,12 @@ def assign_plan(request, external_id: str, payload: AssignPlanIn):
     plan = queries.get_plan_by_key(tenant.id, payload.plan_key)
     if plan is None or plan.archived_at is not None:
         raise Problem("not_found", f"plan with key '{payload.plan_key}' not found")
-    PlanService.assign(tenant, customer, plan)
-    audit_record(
-        action="plan.assigned", tenant_id=tenant.id,
-        resource_type="customer", resource_id=customer.external_id,
-        metadata={"external_id": customer.external_id, "plan_key": plan.key})
+    # PlanService.assign is a pure-DB operation (no Stripe call), so the
+    # mutation and its audit entry commit — or roll back — together.
+    with transaction.atomic():
+        PlanService.assign(tenant, customer, plan)
+        audit_record(
+            action="plan.assigned", tenant_id=tenant.id,
+            resource_type="customer", resource_id=customer.external_id,
+            metadata={"external_id": customer.external_id, "plan_key": plan.key})
     return 200, {"external_id": customer.external_id, "plan_key": plan.key}

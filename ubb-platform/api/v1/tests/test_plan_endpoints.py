@@ -1,9 +1,14 @@
+from unittest.mock import patch
+
 import pytest
 from django.test import Client
+from django.utils import timezone
 
+from apps.platform.audit.models import AuditRecord
 from apps.platform.customers.models import Customer
 from apps.platform.plans.models import CustomerPlanAssignment, Plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.subscriptions.orchestration.service import OrchestrationError
 
 
 @pytest.mark.django_db
@@ -78,6 +83,70 @@ class TestPlanEndpoints:
         r = self._post("/api/v1/customers/c1/plan", {"plan_key": "lite"})
         assert r.status_code == 200
         assert CustomerPlanAssignment.objects.filter(plan__key="lite").exists()
+
+    def test_assign_to_archived_plan_is_404(self):
+        # Review finding (minor): assign_plan's archived_at check at
+        # plan_endpoints.py had no covering test.
+        plan = Plan.objects.create(tenant=self.tenant, key="lite", name="Lite")
+        plan.archived_at = timezone.now()
+        plan.save(update_fields=["archived_at"])
+        Customer.objects.create(tenant=self.tenant, external_id="c1")
+        r = self._post("/api/v1/customers/c1/plan", {"plan_key": "lite"})
+        assert r.status_code == 404
+        assert not CustomerPlanAssignment.objects.filter(plan__key="lite").exists()
+
+    def test_patch_markup_invalidates_markup_cache(self):
+        # Review finding (minor): pins that a markup edit actually invalidates
+        # the markup cache, protecting against a future change to
+        # Plan.save()'s unconditional-invalidate hook.
+        Plan.objects.create(tenant=self.tenant, key="lite", name="Lite",
+                            markup_percentage_micros=50_000_000)
+        with patch(
+            "apps.metering.pricing.services.markup_cache.MarkupCache.invalidate"
+        ) as mock_invalidate:
+            r = self.client.patch(
+                "/api/v1/plans/lite",
+                data={"markup_percentage_micros": 60_000_000},
+                content_type="application/json", **self._auth())
+        assert r.status_code == 200
+        mock_invalidate.assert_called_once_with(self.tenant.id)
+
+    def test_patch_noop_payload_records_no_audit(self):
+        # Review finding 2: an empty (or migrate_existing-only) PATCH changes
+        # nothing and must not write a governance-ledger entry for it.
+        Plan.objects.create(tenant=self.tenant, key="lite", name="Lite")
+        before = AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="plan.updated").count()
+        r = self.client.patch(
+            "/api/v1/plans/lite", data={"migrate_existing": True},
+            content_type="application/json", **self._auth())
+        assert r.status_code == 200
+        after = AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="plan.updated").count()
+        assert after == before
+
+    def test_patch_markup_is_audited_even_when_fee_branch_fails(self):
+        # Review finding 1: markup/name commit + audit independently of the
+        # fee branch's outcome — a fee-branch failure must not silently drop
+        # the already-durable markup change from the audit trail.
+        Plan.objects.create(tenant=self.tenant, key="lite", name="Lite",
+                            markup_percentage_micros=50_000_000)
+        with patch(
+            "apps.subscriptions.orchestration.service."
+            "SubscriptionOrchestrator.update_plan_prices",
+            side_effect=OrchestrationError("boom"),
+        ):
+            r = self.client.patch(
+                "/api/v1/plans/lite",
+                data={"markup_percentage_micros": 60_000_000,
+                      "access_fee_micros": 5_000_000},
+                content_type="application/json", **self._auth())
+        assert r.status_code == 422
+        plan = Plan.objects.get(tenant=self.tenant, key="lite")
+        assert plan.markup_percentage_micros == 60_000_000
+        assert AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="plan.updated", resource_id="lite",
+        ).count() == 1
 
     def test_archive_refuses_an_assigned_plan(self):
         plan = Plan.objects.create(tenant=self.tenant, key="lite", name="Lite")
