@@ -445,7 +445,7 @@ export async function subscribeCustomer(
   body: SubscribeIn,
 ): Promise<Record<string, unknown>> {
   return unwrap(
-    await platformApi.POST("/customers/{external_id}/subscribe", {
+    await subscriptionsApi.POST("/customers/{external_id}/subscribe", {
       params: { path: { external_id: externalId } },
       body,
     }),
@@ -457,7 +457,7 @@ export async function cancelSubscription(
   atPeriodEnd: boolean,
 ): Promise<Record<string, unknown>> {
   return unwrap(
-    await platformApi.POST("/customers/{external_id}/subscription/cancel", {
+    await subscriptionsApi.POST("/customers/{external_id}/subscription/cancel", {
       params: { path: { external_id: externalId } },
       body: { at_period_end: atPeriodEnd },
     }),
@@ -468,7 +468,7 @@ export async function pauseSubscription(
   externalId: string,
 ): Promise<Record<string, unknown>> {
   return unwrap(
-    await platformApi.POST("/customers/{external_id}/subscription/pause", {
+    await subscriptionsApi.POST("/customers/{external_id}/subscription/pause", {
       params: { path: { external_id: externalId } },
     }),
   );
@@ -478,7 +478,7 @@ export async function resumeSubscription(
   externalId: string,
 ): Promise<Record<string, unknown>> {
   return unwrap(
-    await platformApi.POST("/customers/{external_id}/subscription/resume", {
+    await subscriptionsApi.POST("/customers/{external_id}/subscription/resume", {
       params: { path: { external_id: externalId } },
     }),
   );
@@ -489,7 +489,7 @@ export async function setSeats(
   seats: number,
 ): Promise<Record<string, unknown>> {
   return unwrap(
-    await platformApi.POST("/customers/{external_id}/seats", {
+    await subscriptionsApi.POST("/customers/{external_id}/seats", {
       params: { path: { external_id: externalId } },
       body: { seats },
     }),

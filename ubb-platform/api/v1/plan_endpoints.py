@@ -143,7 +143,12 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
     # on success — a failure here commits nothing on this axis, so there is
     # nothing to audit, and it must not retroactively touch the markup/name
     # audit entry recorded above.
-    if payload.access_fee_micros is not None or payload.per_seat_micros is not None:
+    fee_fields = []
+    if payload.access_fee_micros is not None:
+        fee_fields.append("access_fee_micros")
+    if payload.per_seat_micros is not None:
+        fee_fields.append("per_seat_micros")
+    if fee_fields:
         try:
             plan = SubscriptionOrchestrator.update_plan_prices(
                 tenant, key,
@@ -155,7 +160,7 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
         audit_record(
             action="plan.updated", tenant_id=tenant.id,
             resource_type="plan", resource_id=plan.key,
-            metadata={"changed": ["access_fee_micros", "per_seat_micros"],
+            metadata={"changed": fee_fields,
                       "migrate_existing": payload.migrate_existing, **_plan_out(plan)})
 
     return 200, _plan_out(plan)

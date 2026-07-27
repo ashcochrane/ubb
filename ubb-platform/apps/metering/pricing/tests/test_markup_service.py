@@ -87,3 +87,14 @@ class TestMarkupPrecedenceWithPlans:
     def test_enterprise_and_personal_both_rate_at_twenty_percent(self):
         self._assign("enterprise", 20_000_000)
         assert MarkupService.apply(500_000, self.tenant, self.customer) == 600_000
+
+    def test_zero_markup_plan_shadows_tenant_default_and_pins_provider_cost(self):
+        """A fee-only plan (markup left blank -> 0%) is a deliberate zero, same
+        as a zero customer override: it pins the customer at provider cost and
+        must NOT fall through to a non-zero tenant default."""
+        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
+                                    markup_percentage_micros=20_000_000)
+        self._assign("fee-only", 0)
+        resolved = MarkupService.resolve(self.tenant, self.customer)
+        assert resolved.source == "plan"
+        assert MarkupService.apply(500_000, self.tenant, self.customer) == 500_000

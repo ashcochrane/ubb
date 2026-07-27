@@ -148,6 +148,27 @@ class TestPlanEndpoints:
             tenant_id=self.tenant.id, action="plan.updated", resource_id="lite",
         ).count() == 1
 
+    def test_patch_per_seat_only_audits_only_per_seat(self):
+        # Review finding: the fee-branch audit_record used to hardcode
+        # ["access_fee_micros", "per_seat_micros"] regardless of which axis
+        # the caller actually supplied. A PATCH that only sets per_seat_micros
+        # must not claim access_fee_micros changed too.
+        Plan.objects.create(tenant=self.tenant, key="lite", name="Lite",
+                            access_fee_micros=10_000_000, per_seat_micros=5_000_000)
+        with patch(
+            "apps.subscriptions.orchestration.service."
+            "SubscriptionOrchestrator.update_plan_prices"
+        ) as mock_update:
+            mock_update.return_value = Plan.objects.get(tenant=self.tenant, key="lite")
+            r = self.client.patch(
+                "/api/v1/plans/lite",
+                data={"per_seat_micros": 7_000_000},
+                content_type="application/json", **self._auth())
+        assert r.status_code == 200
+        record = AuditRecord.objects.get(
+            tenant_id=self.tenant.id, action="plan.updated", resource_id="lite")
+        assert record.metadata["changed"] == ["per_seat_micros"]
+
     def test_archive_refuses_an_assigned_plan(self):
         plan = Plan.objects.create(tenant=self.tenant, key="lite", name="Lite")
         c = Customer.objects.create(tenant=self.tenant, external_id="c1")

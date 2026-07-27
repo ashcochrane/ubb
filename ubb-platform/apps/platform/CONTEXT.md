@@ -276,7 +276,10 @@ exists, so the change applies to the next rated event).
 
 **Markup precedence**:
 `customer TenantMarkup override -> customer's Plan -> tenant default -> none`. The plan rung is what
-stops a Personal Lite customer silently billing at the tenant default.
+stops a Personal Lite customer silently billing at the tenant default. A plan with an explicit
+zero markup (fee-only; the UI labels this "Blank = no markup") shadows the tenant default the same
+way a zero customer override does — it pins the customer at provider cost rather than falling
+through.
 (`apps/metering/pricing/services/markup_service.py`)
 
 ## Cross-cutting primitives

@@ -132,3 +132,23 @@ class TestMarkupOnlyPlanSubscribe:
         assert result is None
         stripe_call.assert_not_called()
         assert not StripeSubscription.objects.filter(customer=self.customer).exists()
+
+    def test_markup_only_plan_works_with_no_stripe_account_at_all(self):
+        """The has_stripe_axes guard sits before _require_charge_ready on
+        purpose: a markup-only plan needs nothing from Stripe, so a tenant
+        with no connected account (and charges_enabled=False) must still be
+        able to subscribe a customer to it, returning None without raising
+        OrchestrationError. If the guard is ever moved below the charge-ready
+        check, this is the test that catches it."""
+        tenant = Tenant.objects.create(
+            name="NoStripe", products=["metering", "billing"],
+            stripe_connected_account_id="", charges_enabled=False,
+            default_currency="usd")
+        customer = Customer.objects.create(tenant=tenant, external_id="no-stripe-cust")
+        plan = Plan.objects.create(tenant=tenant, key="markup-only",
+                                   name="Markup Only",
+                                   markup_percentage_micros=50_000_000)
+        with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
+            result = SubscriptionOrchestrator.subscribe(customer, plan, seats=0)
+        assert result is None
+        stripe_call.assert_not_called()
