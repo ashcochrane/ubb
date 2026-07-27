@@ -101,30 +101,19 @@ decisions are referenced below as D1–D9.
   `ValueError` (`apps/metering/usage/models.py:91-97`)
 - Dimension slot count is **six** (`dim1`..`dim6`) plus four reserved (`provider`,
   `event_type`, `task_type`, `subtask_type`) = ten selector columns
-- **Known-failing baseline (measured 2026-07-27 on this branch — supersedes the earlier,
-  stale "27 failures" figure).** A full run is `6 failed, 2188 passed, 3 skipped`. Judge by
-  CAUSE, not by count — if you see a failure that is not one of these two causes, it is
-  yours:
-  - **`attrs` is not installed** in `.venv` at all → 4 `ubb-sdk` test failures plus 1
-    excluded collection error
-  - **`psycopg2` 2.9.11 is installed where the lock pins `psycopg==3.3.4`** (psycopg 3 is
-    absent) → 2 NUL-byte tests fail
-  Both are venv/lock drift, both predate this work, and neither is in scope here. Do NOT
-  try to fix them — installing psycopg 3 mid-plan would swap the database driver under
-  2188 passing tests.
-- **Registry-mutating routes are ADMIN floor, audited, and atomic (ruled 2026-07-27 —
-  overrides the `@role_floor(WRITE)` written in Tasks 3 and 7).** `PUT /metering/dimensions`
-  and `PUT /metering/task-types` reshape the rules used to price usage — the dimension
-  vocabulary feeds rate selection (D1) and task types carry per-job COGS ceilings (D7) — so
-  they sit with `markup.set` and `rate_card.*` at Admin, per the carve table's own rule in
-  `api/v1/tests/test_role_floors.py`: *every write floors at Admin (changes the rules or
-  moves money) except the enumerated Write routes (day-to-day data ops)*. Each such route
-  must ALSO carry `@records_audit(...)`, and must wrap its whole mutation loop plus its
-  `audit_record(...)` call in ONE `transaction.atomic()` — `ledger.record()`'s docstring
-  requires being inside the mutation's atomic block, and without it a partially-applied
-  multi-item PUT commits rows, returns 422, and writes no audit trail. `POST
-  /billing/pre-check` stays at Write: starting a job is a day-to-day data op, not a rule
-  change.
+- **Known-failing baseline (re-measured 2026-07-27 after `attrs` was installed —
+  supersedes both earlier figures).** A full run is `3 failed, 2257 passed, 3 skipped`.
+  `attrs` 26.1.0 is now present, so the collection error and three of the four SDK
+  failures are gone. Judge by CAUSE, not count:
+  - **2 NUL-byte tests** in `api/v1/tests/test_data_error_pins.py` — `psycopg2` 2.9.11 is
+    installed where the lock pins `psycopg==3.3.4`. Environment drift, pre-existing, out
+    of scope. Do NOT try to fix it: installing psycopg 3 mid-plan would swap the database
+    driver under 2257 passing tests.
+  - **1 `test_journey1_best_in_class`** — this one is OURS. It drove pricing through
+    `tags={"service": ...}`, which Task 9 (tag-lifting removal) and Task 12 (tags removed
+    from pricing entirely) deliberately retired. It was invisible while `attrs` was
+    missing. Being ported to the declared-dimension contract.
+  Any failure that is not one of those is yours.
 - **`.venv` must match `requirements.lock.txt` for anything that generates committed
   artifacts.** A pydantic drift (2.12.5 installed vs 2.13.4 locked) silently stripped 9
   webhook `description` fields from every regenerated `openapi/v1.json`; that is now
