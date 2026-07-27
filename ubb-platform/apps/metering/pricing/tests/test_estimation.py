@@ -2,8 +2,8 @@
 (#112). Estimate-vs-price equality holds by construction (one spine); these
 pins cover the resolver-facing behavior: parity with price() on every
 fallback branch, Unpriceable exactly where price() raises PricingError, and
-the accept-path performance posture (tag-less estimation does no per-metric
-ORM once the L1 is warm)."""
+the accept-path performance posture (dimension-less estimation does no
+per-metric ORM once the L1 is warm)."""
 import redis
 import pytest
 from django.conf import settings
@@ -57,21 +57,22 @@ def _clean_ubb_redis_keys():
 
 def test_caller_billed_is_exact(tenant, customer):
     e = PricingService.estimate(
-        tenant, customer, event_type="x", provider="", usage_metrics=None,
-        tags=None, currency="usd", caller_billed=777, caller_provider_cost=None,
-        units=None)
+        tenant, customer, selectors={"event_type": "x", "provider": ""},
+        usage_metrics=None, currency="usd", caller_billed=777,
+        caller_provider_cost=None, units=None)
     assert (e.micros, e.exact) == (777, True)
 
 
 def test_linear_estimate_equals_exact_price(tenant, customer, price_card_fixture):
     CardCache.begin_request(tenant.id)
+    selectors = {"event_type": "llm_call", "provider": "openai"}
     e = PricingService.estimate(
-        tenant, customer, event_type="llm_call", provider="openai",
-        usage_metrics={"tokens": 12_000}, tags={}, currency="usd",
+        tenant, customer, selectors=selectors,
+        usage_metrics={"tokens": 12_000}, currency="usd",
         caller_billed=None, caller_provider_cost=None, units=None)
     _, exact_billed, _ = PricingService.price(
-        tenant=tenant, customer=customer, event_type="llm_call", provider="openai",
-        usage_metrics={"tokens": 12_000}, tags={}, currency="usd",
+        tenant=tenant, customer=customer, selectors=selectors,
+        usage_metrics={"tokens": 12_000}, currency="usd",
         caller_provider_cost=None, caller_billed=None)
     assert e.micros == exact_billed and e.exact is True
 
@@ -84,13 +85,14 @@ def test_markup_only_event_matches_pricer(tenant, customer):
                                 markup_percentage_micros=10_000_000,
                                 fixed_uplift_micros=25_000)
     CardCache.begin_request(tenant.id)
+    selectors = {"event_type": "api_call", "provider": ""}
     e = PricingService.estimate(
-        tenant, customer, event_type="api_call", provider="",
-        usage_metrics=None, tags={}, currency="usd",
+        tenant, customer, selectors=selectors,
+        usage_metrics=None, currency="usd",
         caller_billed=None, caller_provider_cost=None, units=5)
     _, exact_billed, _ = PricingService.price(
-        tenant=tenant, customer=customer, event_type="api_call", provider="",
-        usage_metrics=None, tags={}, currency="usd",
+        tenant=tenant, customer=customer, selectors=selectors,
+        usage_metrics=None, currency="usd",
         caller_provider_cost=None, caller_billed=None, units=5)
     assert e.micros == exact_billed and e.exact is True
 
@@ -100,13 +102,14 @@ def test_nonstrict_unknown_metric_falls_back_to_markup(tenant, customer):
     pricer treats the cost as 0 and bills markup(0) — estimation must mirror
     that, not raise a spurious Unpriceable."""
     CardCache.begin_request(tenant.id)
+    selectors = {"event_type": "unknown", "provider": ""}
     e = PricingService.estimate(
-        tenant, customer, event_type="unknown", provider="",
-        usage_metrics={"mystery": 5}, tags={}, currency="usd",
+        tenant, customer, selectors=selectors,
+        usage_metrics={"mystery": 5}, currency="usd",
         caller_billed=None, caller_provider_cost=None, units=None)
     _, exact_billed, _ = PricingService.price(
-        tenant=tenant, customer=customer, event_type="unknown", provider="",
-        usage_metrics={"mystery": 5}, tags={}, currency="usd",
+        tenant=tenant, customer=customer, selectors=selectors,
+        usage_metrics={"mystery": 5}, currency="usd",
         caller_provider_cost=None, caller_billed=None)
     assert e.micros == exact_billed and e.exact is True
 
@@ -119,8 +122,8 @@ def test_unpriceable_raises(tenant, customer):
     CardCache.begin_request(tenant.id)
     with pytest.raises(Unpriceable):
         PricingService.estimate(
-            tenant, customer, event_type="unknown", provider="",
-            usage_metrics={"mystery": 5}, tags={}, currency="usd",
+            tenant, customer, selectors={"event_type": "unknown", "provider": ""},
+            usage_metrics={"mystery": 5}, currency="usd",
             caller_billed=None, caller_provider_cost=None, units=None)
 
 
@@ -134,8 +137,9 @@ def test_strict_priced_metric_without_cost_card_raises(
     CardCache.begin_request(tenant.id)
     with pytest.raises(Unpriceable):
         PricingService.estimate(
-            tenant, customer, event_type="llm_call", provider="openai",
-            usage_metrics={"tokens": 12_000}, tags={}, currency="usd",
+            tenant, customer,
+            selectors={"event_type": "llm_call", "provider": "openai"},
+            usage_metrics={"tokens": 12_000}, currency="usd",
             caller_billed=None, caller_provider_cost=None, units=None)
 
 
@@ -151,8 +155,8 @@ def test_strict_caller_billed_with_uncosted_metric_raises(tenant, customer):
     CardCache.begin_request(tenant.id)
     with pytest.raises(Unpriceable):
         PricingService.estimate(
-            tenant, customer, event_type="llm_call", provider="",
-            usage_metrics={"tokens": 100}, tags={}, currency="usd",
+            tenant, customer, selectors={"event_type": "llm_call", "provider": ""},
+            usage_metrics={"tokens": 100}, currency="usd",
             caller_billed=555_000, caller_provider_cost=None, units=None)
 
 
@@ -160,17 +164,18 @@ def test_warm_tagless_estimation_does_no_per_metric_orm(
         tenant, customer, price_card_fixture, django_assert_num_queries):
     """Accept-path performance posture (#112 DoD): estimate() resolves via
     CardCache, so once the L1 holds this request-shape's resolutions
-    (including the negative cost-card entry), a tag-less estimate runs ZERO
-    ORM queries — the hot accept path never pays a per-metric DB round
+    (including the negative cost-card entry), a dimension-less estimate runs
+    ZERO ORM queries — the hot accept path never pays a per-metric DB round
     trip."""
     CardCache.begin_request(tenant.id)
+    selectors = {"event_type": "llm_call", "provider": "openai"}
     PricingService.estimate(  # warm the L1 (price hit + cost negative-cache)
-        tenant, customer, event_type="llm_call", provider="openai",
-        usage_metrics={"tokens": 12_000}, tags=None, currency="usd",
+        tenant, customer, selectors=selectors,
+        usage_metrics={"tokens": 12_000}, currency="usd",
         caller_billed=None, caller_provider_cost=None, units=None)
     with django_assert_num_queries(0):
         e = PricingService.estimate(
-            tenant, customer, event_type="llm_call", provider="openai",
-            usage_metrics={"tokens": 12_000}, tags=None, currency="usd",
+            tenant, customer, selectors=selectors,
+            usage_metrics={"tokens": 12_000}, currency="usd",
             caller_billed=None, caller_provider_cost=None, units=None)
     assert e.micros == 120_000

@@ -399,10 +399,15 @@ class UsageService:
             with transaction.atomic():
                 # as_of=effective_at prices on the card versions valid at the
                 # EFFECTIVE time (None → the pricer's own now()).
+                selectors = {"provider": inp.provider, "event_type": inp.event_type,
+                             "task_type": inp.task_type,
+                             "subtask_type": inp.subtask_type,
+                             "dim1": inp.dim1, "dim2": inp.dim2, "dim3": inp.dim3,
+                             "dim4": inp.dim4, "dim5": inp.dim5, "dim6": inp.dim6}
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
-                    tenant=tenant, customer=customer, event_type=inp.event_type,
-                    provider=inp.provider, usage_metrics=inp.usage_metrics,
-                    tags=inp.tags, currency=inp.currency,
+                    tenant=tenant, customer=customer, selectors=selectors,
+                    usage_metrics=inp.usage_metrics,
+                    currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
                     caller_billed=inp.caller_billed, units=inp.units,
                     as_of=inp.effective_at)

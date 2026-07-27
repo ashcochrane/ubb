@@ -487,10 +487,22 @@ def accept_batch(tenant, items):
             append_only.append((i, item, customer, owner_id))
             continue
         try:
+            # task_type/subtask_type/dim1..dim6 aren't resolved yet at accept
+            # time (DimensionService.admit + task inheritance run below/at
+            # settle, Task 9/10) — only provider/event_type are known here, so
+            # those ten selectors wildcard at estimate. Settle re-prices with
+            # the full inherited selector set via usage_service.py, so a rate
+            # pinning task_type/dim1..dim6 is still applied correctly by the
+            # time money is actually charged; this estimate is a provisional
+            # hold amount, not the final price.
+            selectors = {"provider": item.provider or "", "event_type": item.event_type or "",
+                         "task_type": "", "subtask_type": "",
+                         "dim1": "", "dim2": "", "dim3": "",
+                         "dim4": "", "dim5": "", "dim6": ""}
             est = PricingService.estimate(
-                tenant, customer, event_type=item.event_type or "",
-                provider=item.provider or "", usage_metrics=item.usage_metrics,
-                tags=item.tags, currency=tenant_currency,
+                tenant, customer, selectors=selectors,
+                usage_metrics=item.usage_metrics,
+                currency=tenant_currency,
                 caller_billed=item.billed_cost_micros,
                 caller_provider_cost=item.provider_cost_micros,
                 units=item.units)

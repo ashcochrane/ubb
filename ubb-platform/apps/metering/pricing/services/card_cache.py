@@ -1,17 +1,20 @@
 """In-process (L1) resolved-rate cache.
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
-cache) per tag-LESS resolution key for TTL_SECONDS — one entry per (tenant,
-customer, card_type, provider, event_type, metric, currency), not a set of
-candidate rows to re-match. Dimension (tag)-bearing lookups bypass L1
-entirely and re-resolve every call (tags vary per event; caching a
-tag-influenced result under a tag-less key would wrongly positive/negative-
-cache for a different tag set — see ``resolve``). Version key
-ubb:cardver:{tenant} is read at most once per request: begin_request stores
-the observed version in a contextvars.ContextVar — request/context-scoped, so
-a stale concurrent request can never clobber the version a fresher request
-observed — and resolve compares cached entries against it. A publish-time
-invalidation therefore propagates within one request boundary + TTL.
+cache) per dimension-LESS resolution key for TTL_SECONDS — one entry per
+(tenant, customer, card_type, provider, event_type, metric, currency), not a
+set of candidate rows to re-match. Lookups that PIN task_type/subtask_type/
+dim1..dim6 (any non-"" in ``selectors`` beyond provider/event_type) bypass L1
+entirely and re-resolve every call (those vary per event; caching a
+dimension-influenced result under a dimension-less key would wrongly
+positive/negative-cache for a different dimension set — see ``resolve``).
+Task 13 is where the L1 key itself learns to include dimensions; this cache
+still only keys on provider/event_type. Version key ubb:cardver:{tenant} is
+read at most once per request: begin_request stores the observed version in a
+contextvars.ContextVar — request/context-scoped, so a stale concurrent
+request can never clobber the version a fresher request observed — and
+resolve compares cached entries against it. A publish-time invalidation
+therefore propagates within one request boundary + TTL.
 """
 import contextvars
 import time
@@ -58,28 +61,33 @@ class CardCache:
             pass  # TTL bounds staleness
 
     @staticmethod
-    def resolve(tenant, customer, card_type, provider, event_type, metric, tags, currency):
+    def resolve(tenant, customer, card_type, selectors, metric, currency):
         """Resolve with PricingService._resolve_card semantics, via the L1
-        cache when tags are empty. Returned Rate instances are shared cache
-        objects — callers must NOT mutate them."""
+        cache when no task_type/subtask_type/dim1..dim6 selector is pinned.
+        Returned Rate instances are shared cache objects — callers must NOT
+        mutate them."""
         from django.utils import timezone
+        from apps.metering.pricing.models import Rate
         from apps.metering.pricing.services.pricing_service import PricingService
-        if tags:
-            # Dimension-bearing resolutions vary per tag set; caching the
-            # tag-influenced result under a tag-less key would wrongly
-            # negative/positive-cache for other tag sets. Bypass L1.
+        provider = selectors.get("provider") or ""
+        event_type = selectors.get("event_type") or ""
+        if any(selectors.get(name) for name in Rate.SELECTORS[2:]):
+            # A pinned task_type/subtask_type/dim1..dim6 selector varies per
+            # event; caching the result under a dimension-less key would
+            # wrongly negative/positive-cache for a different selector set.
+            # Bypass L1.
             return PricingService._resolve_card(
-                tenant, customer, card_type, provider, event_type, metric,
-                tags, currency, timezone.now())
+                tenant, customer, card_type, selectors, metric,
+                currency, timezone.now())
         ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "",
-               card_type, provider or "", event_type or "", metric, currency)
+               card_type, provider, event_type, metric, currency)
         hit = _l1.get(key)
         if hit and hit[0] == ver and hit[1] > time.monotonic():
             return hit[2]
         rate = PricingService._resolve_card(
-            tenant, customer, card_type, provider, event_type, metric,
-            tags, currency, timezone.now())
+            tenant, customer, card_type, selectors, metric,
+            currency, timezone.now())
         if len(_l1) >= _L1_MAX:
             _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, rate)
