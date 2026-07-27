@@ -1143,6 +1143,66 @@ class PooledSeatBillingSurfaceTest(TestCase):
         self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
         self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
 
+    # ---------- refund_usage ----------
+
+    def _usage_event(self, customer, amount=1_000_000, request_id="r1"):
+        from apps.metering.usage.models import UsageEvent
+        return UsageEvent.objects.create(
+            tenant=self.tenant, customer=customer, request_id=request_id,
+            idempotency_key=f"idem_{request_id}",
+            provider_cost_micros=amount, billed_cost_micros=amount)
+
+    def test_refund_pooled_seat_moves_business_wallet_no_second_wallet(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
+        event = self._usage_event(self.pooled_seat, amount=1_000_000)
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk1"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.pooled_biz).balance_micros, 6_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_refund_allocated_seat_unchanged(self):
+        Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
+        event = self._usage_event(self.alloc_seat, amount=1_000_000, request_id="r2")
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_alloc"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.alloc_seat).balance_micros, 6_000_000)
+
+    def test_refund_individual_unchanged(self):
+        Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
+        event = self._usage_event(self.individual, amount=1_000_000, request_id="r3")
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.individual.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_ind"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.individual).balance_micros, 6_000_000)
+
+    def test_refund_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
+        event = self._usage_event(self.pooled_seat, amount=1_000_000, request_id="r4")
+        self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_audit"}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="usage.refunded")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
     # ---------- configure_auto_top_up ----------
 
     def test_configure_auto_top_up_pooled_seat_configures_business_only(self):

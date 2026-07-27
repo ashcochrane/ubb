@@ -295,20 +295,25 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
     from since-expired/voided lots, lands as base credit."""
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Route through the billing owner (Task 3) — see debit() above.
+    owner = customer.resolve_billing_owner()
     from apps.billing.wallets import operations as wallet_ops
 
     with transaction.atomic():  # co-commit: audit rides the money transaction
         result = wallet_ops.refund_usage(
-            customer_id=customer.id, tenant=request.auth.tenant,
+            customer_id=owner.id, tenant=request.auth.tenant,
             usage_event_id=payload.usage_event_id,
             idempotency_key=payload.idempotency_key,
             reason=payload.reason)
         if result.outcome == "applied":
             # Audit the hand-moved refund (an idempotent replay skips this).
+            # resource_id/customer_id keep the SEAT as the named subject of
+            # the action; owner_id records whose wallet actually moved.
             audit_record(
                 action="usage.refunded", tenant_id=request.auth.tenant.id,
                 resource_type="wallet", resource_id=customer.id,
                 metadata={"customer_id": str(customer.id),
+                          "owner_id": str(owner.id),
                           "usage_event_id": str(payload.usage_event_id),
                           "refund_amount_micros": result.amount_micros,
                           "reason": payload.reason,
