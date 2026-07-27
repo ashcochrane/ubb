@@ -43,10 +43,8 @@ class TaskModelTest(TestCase):
             customer=self.customer,
             balance_snapshot_micros=5_000_000,
             provider_cost_limit_micros=10_000_000,
-            floor_snapshot_micros=-5_000_000,
         )
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
         self.assertEqual(task.balance_snapshot_micros, 5_000_000)
 
     def test_task_without_limits(self):
@@ -56,7 +54,6 @@ class TaskModelTest(TestCase):
             balance_snapshot_micros=0,
         )
         self.assertIsNone(task.provider_cost_limit_micros)
-        self.assertIsNone(task.floor_snapshot_micros)
 
     def test_task_with_external_task_id(self):
         task = Task.objects.create(

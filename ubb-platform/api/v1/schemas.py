@@ -47,7 +47,6 @@ class PreCheckResponse(Schema):
     # Set when the started unit is a subtask — the parent it registered under.
     parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
-    floor_snapshot_micros: Optional[int] = None
 
 
 class RecordUsageRequest(Schema):
@@ -143,7 +142,7 @@ class RecordUsageResponse(Schema):
     # simultaneous customer-wide stop, and among unit verdicts the WIDEST
     # tripped scope wins (a parent trip beats a subtask trip — stop the whole
     # tree); the losers surface on the next ack and via the pushed events.
-    # stop_reason ∈ task_limit | subtask_limit | customer_floor |
+    # stop_reason ∈ task_limit | subtask_limit |
     # task_not_active | customer_wide_stop; stop_scope ∈ task | subtask |
     # customer. On a subtask's ack, scope `task` names the PARENT
     # (parent_task_id above) — the whole tree is stopped, not just the named
@@ -154,7 +153,7 @@ class RecordUsageResponse(Schema):
     # The itemized past-limit story (#41, spec §H): null when the event
     # landed past nothing, else the event's immutable stop-context ARRAY —
     # one entry per limit it landed past (a simultaneous task-limit +
-    # customer-floor crossing carries both, nothing lost). Each entry:
+    # customer-wide-stop crossing carries both, nothing lost). Each entry:
     # {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
     # arrived_after} — arrived_after=false marks the tipping event.
     stop_context: Optional[list] = None
@@ -807,9 +806,6 @@ class TenantConfigOut(Schema):
     # Default COGS limit for new tasks (RiskConfig); null = no default —
     # absent an explicit start-call limit too, the task is uncapped.
     default_task_provider_cost_limit_micros: Optional[int] = None
-    # Default wallet-floor snapshot for new tasks (BillingTenantConfig, a
-    # balance line, e.g. -5_000_000); null = no per-task floor snapshot.
-    default_task_floor_snapshot_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): the wind-down
     # line (-value; negative places it above zero); null = no soft floor.
     soft_min_balance_micros: Optional[int] = None
@@ -839,9 +835,6 @@ class TenantConfigIn(Schema):
     # Default COGS limit for new tasks (RiskConfig). Omit = unchanged;
     # null = no default.
     default_task_provider_cost_limit_micros: Optional[int] = None
-    # Default wallet-floor snapshot for new tasks (BillingTenantConfig; may
-    # be negative — it is a balance line). Omit = unchanged; null = none.
-    default_task_floor_snapshot_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): may be negative
     # (a wind-down line above zero); must keep the soft line at or above the
     # hard floor's. Omit = unchanged; null = no soft floor.

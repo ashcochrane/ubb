@@ -267,10 +267,10 @@ class UsageServiceTaskTest(TestCase):
             tenant=self.tenant, external_id="c1"
         )
 
-    def _task(self, balance=20_000_000, limit=None, floor=None):
+    def _task(self, balance=20_000_000, limit=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit, floor_snapshot_micros=floor,
+            provider_cost_limit_micros=limit,
             billing_owner_id=self.customer.id,
         )
 
@@ -335,7 +335,7 @@ class UsageServiceTaskTest(TestCase):
         tipping event lands, bills, and counts; the service seam leaves the
         task active (the kill fires on the recording transaction's commit,
         which the test transaction never reaches)."""
-        task = self._task(balance=20_000_000, limit=10_000_000, floor=-5_000_000)
+        task = self._task(balance=20_000_000, limit=10_000_000)
         # Accumulate close to the limit.
         UsageService.record_usage(
             tenant=self.tenant,
@@ -371,37 +371,6 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(task.event_count, 2)
         # Still ACTIVE at the service seam — the kill fires only at commit.
-        self.assertEqual(task.status, "active")
-
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_floor_snapshot_crossing_returns_customer_floor(self, mock_process):
-        # balance snapshot 3M, floor -5M -> the estimated balance may fall to
-        # -5M; the event that drives it below returns the customer_floor stop.
-        task = self._task(balance=3_000_000, limit=10_000_000, floor=-5_000_000)
-        UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_floor_1",
-            idempotency_key="idem_floor_1",
-            provider_cost_micros=7_000_000,
-            task_id=task.id,
-        )
-
-        result = UsageService.record_usage(
-            tenant=self.tenant,
-            customer=self.customer,
-            request_id="req_floor_2",
-            idempotency_key="idem_floor_2",
-            provider_cost_micros=2_000_000,
-            task_id=task.id,
-        )
-        self.assertTrue(result["stop"])
-        self.assertEqual(result["stop_reason"], "customer_floor")
-        self.assertEqual(result["stop_scope"], "task")
-        # Landed and billed; still active at the service seam.
-        self.assertEqual(UsageEvent.objects.count(), 2)
-        task.refresh_from_db()
-        self.assertEqual(task.total_billed_cost_micros, 9_000_000)
         self.assertEqual(task.status, "active")
 
     @patch("apps.platform.events.tasks.process_single_event")

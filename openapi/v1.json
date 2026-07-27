@@ -3115,17 +3115,6 @@
             ],
             "title": "Balance Micros"
           },
-          "floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Floor Snapshot Micros"
-          },
           "parent_task_id": {
             "anyOf": [
               {
@@ -4855,17 +4844,6 @@
             ],
             "title": "Default Currency"
           },
-          "default_task_floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Task Floor Snapshot Micros"
-          },
           "default_task_provider_cost_limit_micros": {
             "anyOf": [
               {
@@ -4957,17 +4935,6 @@
           "default_currency": {
             "title": "Default Currency",
             "type": "string"
-          },
-          "default_task_floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Task Floor Snapshot Micros"
           },
           "default_task_provider_cost_limit_micros": {
             "anyOf": [

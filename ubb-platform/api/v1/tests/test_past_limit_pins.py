@@ -249,10 +249,10 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         self.assertEqual(ep["total_provider_cost_micros"], 13_000_000)
         self.assertEqual(ep["total_billed_cost_micros"], 9_000_000)
 
-        # Customer-floor episode: stop → itemized events → resume, keyed on
-        # the signal ledger's episode id.
+        # Customer-wide-stop episode: stop → itemized events → resume, keyed
+        # on the signal ledger's episode id.
         ep = by_family["floor_stop"][0]
-        self.assertEqual(ep["limit"], "customer_floor")
+        self.assertEqual(ep["limit"], "customer_wide_stop")
         self.assertEqual(ep["stop_scope"], "customer")
         self.assertEqual(ep["episode_seq"], 1)
         self.assertIsNotNone(ep["tripped_at"])
@@ -278,9 +278,9 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
             "task_limit": {"billed_cost_micros": 9_000_000,
                            "provider_cost_micros": 13_000_000,
                            "event_count": 2},
-            "customer_floor": {"billed_cost_micros": 18_000_000,
-                               "provider_cost_micros": 2_000_000,
-                               "event_count": 2},
+            "customer_wide_stop": {"billed_cost_micros": 18_000_000,
+                                   "provider_cost_micros": 2_000_000,
+                                   "event_count": 2},
         })
 
     def test_window_filters_episodes(self, _mock):

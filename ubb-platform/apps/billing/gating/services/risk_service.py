@@ -148,17 +148,14 @@ class RiskService:
                         and not customer.tenant.require_cost_card_coverage):
                     return {"allowed": False, "reason": "cost_coverage_required",
                             "balance_micros": balance, "task_id": None}
-                from apps.billing.queries import get_billing_config
                 from apps.platform.tasks.services import TaskService
 
-                billing_config = get_billing_config(customer.tenant_id)
                 task = TaskService.create_task(
                     tenant=customer.tenant,
                     customer=customer,
                     parent=parent,
                     balance_snapshot_micros=balance,
                     provider_cost_limit_micros=provider_cost_limit_micros,
-                    floor_snapshot_micros=billing_config.default_task_floor_snapshot_micros,
                     metadata=task_metadata or {},
                     external_task_id=external_task_id,
                     # Tier-2 (D4/I6): pin the resolved billing owner on the task.
@@ -167,6 +164,5 @@ class RiskService:
             result["task_id"] = str(task.id)
             result["parent_task_id"] = str(parent.id) if parent else None
             result["provider_cost_limit_micros"] = task.provider_cost_limit_micros
-            result["floor_snapshot_micros"] = task.floor_snapshot_micros
 
         return result

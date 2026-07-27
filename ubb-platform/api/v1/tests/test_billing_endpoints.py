@@ -653,10 +653,7 @@ class PreCheckTaskTest(TestCase):
             name="Task Tenant",
             products=["metering", "billing"],
         )
-        BillingTenantConfig.objects.create(
-            tenant=self.tenant,
-            default_task_floor_snapshot_micros=-5_000_000,
-        )
+        BillingTenantConfig.objects.create(tenant=self.tenant)
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_task_1"
@@ -678,22 +675,19 @@ class PreCheckTaskTest(TestCase):
     def test_pre_check_start_task_returns_task_id(self):
         # Uncapped start (no provider_cost_limit_micros anywhere) — the
         # coverage gate only fires for a RESOLVED limit, so no coverage
-        # setup is needed here. The floor snapshot comes from the tenant's
-        # BillingTenantConfig default.
+        # setup is needed here.
         resp = self._pre_check(start_task=True)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
         self.assertIsNotNone(body["task_id"])
         self.assertIsNone(body["provider_cost_limit_micros"])
-        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
 
         # Task exists in DB
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.status, "active")
         self.assertEqual(task.balance_snapshot_micros, 20_000_000)
         self.assertIsNone(task.provider_cost_limit_micros)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
     def test_pre_check_capped_start_refused_without_coverage(self):
         # A COGS limit over uncovered events would silently count 0 — with
@@ -718,7 +712,6 @@ class PreCheckTaskTest(TestCase):
         body = resp.json()
         self.assertTrue(body["allowed"])
         self.assertEqual(body["provider_cost_limit_micros"], 10_000_000)
-        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
 

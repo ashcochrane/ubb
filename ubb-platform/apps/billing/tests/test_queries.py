@@ -21,11 +21,13 @@ class GetBillingConfigTest(TestCase):
         self.assertEqual(config.stripe_customer_id, "")
         self.assertEqual(config.platform_fee_percentage, Decimal("1.00"))
         self.assertEqual(config.min_balance_micros, 0)
-        self.assertIsNone(config.default_task_floor_snapshot_micros)
-        # The run-era per-task cost knob is deleted from the model outright.
+        # The run-era per-task cost knob, and the per-task floor snapshot
+        # (billing-surface-correctness plan, task 1), are both deleted from
+        # the model outright.
         field_names = {f.name for f in type(config)._meta.get_fields()}
         self.assertNotIn("run_cost_limit_micros", field_names)
         self.assertNotIn("hard_stop_balance_micros", field_names)
+        self.assertNotIn("default_task_floor_snapshot_micros", field_names)
 
     def test_returns_existing_config(self):
         from apps.billing.tenant_billing.models import BillingTenantConfig

@@ -58,13 +58,15 @@ class Task(BaseModel):
 
     # Signal-point snapshots — copied from the start call / tenant config at
     # task creation so a config change never affects an in-flight task.
+    # Retained as forensics on the task record (what the wallet looked like
+    # when the task started) even though the per-task floor check that used
+    # to read it is gone — see reasons.py for why that check was deleted
+    # rather than repaired. No code currently reads this field; do not add
+    # a new floor comparison against it.
     balance_snapshot_micros = models.BigIntegerField()
     # COGS limit: measures what the job actually burns (provider cost),
     # never the tenant's markup policy.
     provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
-    # Wallet-floor snapshot. Billed denomination — wallet-shaped things stay
-    # billed; only the task limit above is provider-denominated.
-    floor_snapshot_micros = models.BigIntegerField(null=True, blank=True)
 
     # Tier-2 (D4/I6): the billing owner PINNED at task creation
     # (resolve_billing_owner), exactly like UsageEvent.billing_owner_id. The

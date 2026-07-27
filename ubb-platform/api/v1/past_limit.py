@@ -35,8 +35,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.tasks import reasons
 from apps.platform.tasks.models import Task
 
-_UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT,
-                reasons.CUSTOMER_FLOOR)
+_UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 
 
 def _iso(dt):
@@ -64,16 +63,13 @@ def _bucket_events(customer, since, until):
         for ctx in e.stop_context or []:
             limit = ctx.get("limit")
             if ctx.get("stop_scope") == "customer":
-                if limit != reasons.CUSTOMER_FLOOR:
+                if limit != reasons.CUSTOMER_WIDE_STOP:
                     continue  # `suspended` is taggable but not an episode
                 key = ("floor", ctx.get("episode_seq"))
             elif limit == reasons.TASK_LIMIT:
                 key = ("unit", ctx.get("task_id"))
             elif limit == reasons.SUBTASK_LIMIT:
                 key = ("unit", ctx.get("subtask_id"))
-            elif limit == reasons.CUSTOMER_FLOOR:
-                # Unit-scoped floor snapshot — keyed on the killed unit.
-                key = ("unit", ctx.get("subtask_id") or ctx.get("task_id"))
             else:
                 continue  # task_not_active — no limit episode to itemize
             b = buckets.setdefault(key, {"events": [], "ctx_tripped_at": None})
@@ -173,12 +169,12 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
         if not _in_window(tripped_at, since, until):
             continue
         row = _episode_row(
-            family="floor_stop", limit=reasons.CUSTOMER_FLOOR,
+            family="floor_stop", limit=reasons.CUSTOMER_WIDE_STOP,
             stop_scope="customer", episode_seq=seq,
             task_id=None, subtask_id=None, provider_cost_limit_micros=None,
             tripped_at=tripped_at, resumed_at=ep["resumed_at"],
             bucket=bucket)
-        _count(reasons.CUSTOMER_FLOOR, row["events"])
+        _count(reasons.CUSTOMER_WIDE_STOP, row["events"])
         episodes.append(row)
 
     # Soft-floor marker rows — crossed/cleared only, never itemized (§F).

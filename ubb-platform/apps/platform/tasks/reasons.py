@@ -18,8 +18,6 @@ reason rides the response's stop fields. The retired 429-era strings
 TASK_LIMIT = "task_limit"
 # The subtask's OWN provider-cost limit was crossed; it is killed alone (#38).
 SUBTASK_LIMIT = "subtask_limit"
-# The unit's wallet-floor snapshot was crossed (Task.floor_snapshot_micros).
-CUSTOMER_FLOOR = "customer_floor"
 # An event landed on a non-active (killed/completed/failed) unit. It was
 # still priced, recorded, and billed — this is a verdict, not a refusal.
 TASK_NOT_ACTIVE = "task_not_active"
@@ -37,7 +35,6 @@ PARENT_KILLED = "parent_killed"
 ALL_REASONS = frozenset({
     TASK_LIMIT,
     SUBTASK_LIMIT,
-    CUSTOMER_FLOOR,
     TASK_NOT_ACTIVE,
     CUSTOMER_WIDE_STOP,
     STALE,
@@ -47,15 +44,14 @@ ALL_REASONS = frozenset({
 
 # The reasons whose verdict drives the idempotent kill flow (a fresh
 # crossing); TASK_NOT_ACTIVE signals but never re-kills.
-CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT, CUSTOMER_FLOOR})
+CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
 
 
 def kill_scope(reason, *, is_subtask):
     """The ``stop_scope`` a limit-kill reason names (#41 stop-context and the
     past-limit report share this map): a task-limit kill is always scope
     ``task`` (the parent, on a subtask event), a subtask-limit kill always
-    ``subtask``; the unit-scoped reasons (floor snapshot, not-active) name
-    the unit itself."""
+    ``subtask``; the unit-scoped reasons (not-active) name the unit itself."""
     if reason == TASK_LIMIT:
         return "task"
     if reason == SUBTASK_LIMIT:
@@ -81,15 +77,11 @@ def kill_plan(unit_id, parent_id, verdicts):
     if parent_id is not None:
         if verdicts.get("crossed_subtask_limit"):
             plan.append((unit_id, SUBTASK_LIMIT))
-        elif verdicts.get("crossed_floor_snapshot"):
-            plan.append((unit_id, CUSTOMER_FLOOR))
         if verdicts.get("crossed_task_limit"):
             plan.append((parent_id, TASK_LIMIT))
     else:
         if verdicts.get("crossed_task_limit"):
             plan.append((unit_id, TASK_LIMIT))
-        elif verdicts.get("crossed_floor_snapshot"):
-            plan.append((unit_id, CUSTOMER_FLOOR))
     return plan
 
 
@@ -101,15 +93,13 @@ def stop_fields(verdicts, *, is_subtask):
     (``task_limit`` / scope ``task``) beats a simultaneous subtask trip —
     the caller must stop the whole tree, not just the child. (The itemized
     multi-limit story is the stop-context array, ticket #41.) For the
-    unit-scoped reasons (floor, not-active) the scope names the unit itself.
+    unit-scoped reasons (not-active) the scope names the unit itself.
     """
     unit_scope = "subtask" if is_subtask else "task"
     if verdicts.get("crossed_task_limit"):
         return TASK_LIMIT, "task"
     if verdicts.get("crossed_subtask_limit"):
         return SUBTASK_LIMIT, "subtask"
-    if verdicts.get("crossed_floor_snapshot"):
-        return CUSTOMER_FLOOR, unit_scope
     if verdicts.get("task_not_active"):
         return TASK_NOT_ACTIVE, unit_scope
     return None, None
