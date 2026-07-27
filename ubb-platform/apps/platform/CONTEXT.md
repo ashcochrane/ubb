@@ -15,8 +15,10 @@ A tenant's test-mode sibling that inherits its shape but never any real Stripe l
 `ubb_test_` keys can only ever reach test-mode Stripe. (`apps/platform/tenants/models.py:Tenant.is_sandbox`)
 
 **Product**:
-An enabled product app on a tenant, drawn from `{metering, billing, subscriptions, referrals}`;
-`metering` is always present.
+An enabled product app on a tenant, drawn from `{metering, billing, referrals, metering_async}`;
+`metering_async` is a metering sub-feature flag, not a peer product, and `metering` is always
+present. `subscriptions` was retired as a product flag — plans and subscription lifecycle now gate
+on `billing`. (`apps/platform/tenants/models.py:VALID_PRODUCTS`)
 _Avoid_: "module", "service" when you mean an enabled product.
 
 **billing_mode**:

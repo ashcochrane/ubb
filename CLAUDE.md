@@ -14,8 +14,9 @@ This directory (`ubb/`) is the git root; the Django project is `ubb-platform/`. 
 
 Four products — **metering, billing, subscriptions, referrals** — sit on a shared platform kernel
 (`apps/platform` + `core/`), which also owns the tenant's **plan catalog** (access fee + per-seat
-fee + markup) — a kernel concept because subscriptions and metering each realize one axis of it and
-neither owns it. Products communicate ONLY via four named channels:
+fee + markup) — a kernel concept because subscriptions realizes the first two axes (as Stripe
+Prices) and metering realizes the third (at rating time), and neither owns it. Products
+communicate ONLY via four named channels:
 
 1. **Outbox events** — `apps.platform.events.outbox.write_event` + the handler registry (async default).
 2. **`queries.py` read contracts** — module-level functions returning plain data, never ORM objects
