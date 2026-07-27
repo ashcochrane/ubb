@@ -261,6 +261,73 @@ against a v3.0 server and will be deleted in the launch sweep (#86). Use
 
 ---
 
+## 8. Pooled-seat billing + the retired per-task floor (folded into v3.0, pre-tag)
+
+Three more breaking edges landed on the same not-yet-tagged `openapi/v1.json` contract
+v3.0 is cut from — since v3.0 hasn't shipped, these are **part of the one coordinated
+cut**, not a second release. If you're integrating against v3.0 for the first time,
+just read them as more of the same guide; if you already adapted to an earlier
+pre-tag snapshot, these are the delta.
+
+### The per-task floor snapshot is gone
+
+`PreCheckResponse.floor_snapshot_micros` and `TenantConfigIn`/`TenantConfigOut`
+`.default_task_floor_snapshot_micros` are **removed, no replacement field.** The
+mechanism they backed — a snapshot of a tenant-wide constant, compared against the
+balance frozen at task start — was deleted server-side in favor of the existing
+customer-wide stop signal: it read a number that was never the customer's real
+floor, and it couldn't see a mid-task top-up, so it could kill a task for a customer
+who had just paid. Read `PreCheckResponse.stop`/`.stop_reason` (already present) for
+the real, wallet-wide stop verdict — there is no per-task floor to migrate to, because
+there is no per-task floor anymore.
+
+### `enforce_mode` values renamed (field name unchanged)
+
+Clean-cut rename on `BudgetConfigIn`/`BudgetConfigOut.enforce_mode` — same field,
+new values, no alias:
+
+| v2.x / earlier v3.0 pre-tag | v3.0 |
+|---|---|
+| `"advisory"` | `"alert_only"` |
+| `"enforcing"` | `"blocking"` |
+
+If you pass `enforce_mode` explicitly to `BillingClient.set_budget` /
+`UBBClient.set_budget`, update the literal. If you rely on the SDK's default
+(omitting the kwarg), no code change is needed — the default itself moved from
+`"advisory"` to `"alert_only"` inside the SDK.
+
+### Pooled-seat balance disclosure, and a 422 on writing floors to a seat
+
+`BalanceResponse`, `CustomerBillingProfileOut`, and `PaginatedWalletTransactions` all
+gained three new **required** fields:
+
+```python
+billing_owner_id: UUID
+billing_owner_external_id: str
+is_pooled_seat: bool
+```
+
+For a standalone customer, `billing_owner_id == customer_id` and `is_pooled_seat`
+is `False`. For a customer that is a pooled seat under a business
+(`billing_topology="pooled"`), these disclose the resolved billing owner — the
+business whose wallet the balance/transactions/profile actually belong to. If you
+maintain your own mock fixtures or hand-rolled response bodies for these three
+calls, add the fields or construction will raise (`attrs`-required, no defaults).
+
+`PUT .../billing-profile` now refuses with **`422` `InvalidConfigError`** when
+`customer_id` names a pooled seat — overdraft/expiry floors are configured on the
+billing owner, never the seat (writing to the seat's own row would be silently
+ignored by the gate; writing to the owner's row instead would silently change
+every sibling seat's policy). The error body's `extensions.billing_owner_external_id`
+names the row to retry the call against. `GET .../billing-profile` is unaffected —
+it already returns the effective (owner-resolved) profile.
+
+There is no dedicated SDK wrapper for `GET`/`PUT .../billing-profile` in either
+version — drop to the generated core (`ubb._core.models.CustomerBillingProfileOut`/
+`In`) if you call it today.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:
