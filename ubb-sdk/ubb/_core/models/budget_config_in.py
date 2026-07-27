@@ -26,14 +26,14 @@ class BudgetConfigIn:
         Attributes:
             cap_micros (int):
             alert_levels (list[int] | None | Unset):
-            enforce_mode (str | Unset):  Default: 'advisory'.
+            enforce_mode (str | Unset):  Default: 'alert_only'.
             fail_closed (bool | Unset):  Default: False.
             hard_stop_pct (int | Unset):  Default: 100.
      """
 
     cap_micros: int
     alert_levels: list[int] | None | Unset = UNSET
-    enforce_mode: str | Unset = 'advisory'
+    enforce_mode: str | Unset = 'alert_only'
     fail_closed: bool | Unset = False
     hard_stop_pct: int | Unset = 100
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)

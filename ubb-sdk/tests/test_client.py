@@ -97,7 +97,11 @@ class UBBClientTest(unittest.TestCase):
     # --- get_balance (delegates to billing) ---
 
     def test_get_balance(self):
-        expected = BalanceResponse(balance_micros=10000000, currency="USD")
+        expected = BalanceResponse(
+            balance_micros=10000000, currency="USD",
+            billing_owner_id="11111111-1111-1111-1111-111111111111",
+            billing_owner_external_id="c1", is_pooled_seat=False,
+        )
         self.client.billing.get_balance = MagicMock(return_value=expected)
         result = self.client.get_balance(customer_id="c1")
         self.assertEqual(result.balance_micros, 10000000)

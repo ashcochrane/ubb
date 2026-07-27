@@ -88,13 +88,31 @@ class BillingClientTest(unittest.TestCase):
     def test_get_balance(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 10_000_000, "currency": "USD",
+            "billing_owner_id": "11111111-1111-1111-1111-111111111111",
+            "billing_owner_external_id": "cust_1", "is_pooled_seat": False,
         })
         result = self.client.get_balance(customer_id="cust_1")
         self.assertIsInstance(result, BalanceResponse)
         self.assertEqual(result.balance_micros, 10_000_000)
         self.assertEqual(result.currency, "USD")
+        self.assertFalse(result.is_pooled_seat)
+        self.assertEqual(result.billing_owner_external_id, "cust_1")
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/balance")
+
+    @patch("ubb.billing.httpx.Client.get")
+    def test_get_balance_pooled_seat_names_the_owner(self, mock_get):
+        """Task 3: a pooled seat's balance resolves to the business's wallet;
+        the response discloses whose wallet it is showing."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "balance_micros": 5_000_000, "currency": "USD",
+            "billing_owner_id": "22222222-2222-2222-2222-222222222222",
+            "billing_owner_external_id": "biz_1", "is_pooled_seat": True,
+        })
+        result = self.client.get_balance(customer_id="seat_1")
+        self.assertTrue(result.is_pooled_seat)
+        self.assertEqual(result.billing_owner_external_id, "biz_1")
+        self.assertEqual(str(result.billing_owner_id), "22222222-2222-2222-2222-222222222222")
 
     # ---- pre_check ----
 
@@ -124,11 +142,10 @@ class BillingClientTest(unittest.TestCase):
     def test_pre_check_start_task_sends_task_keys(self, mock_post):
         """The start-gate wire body uses the task vocabulary: start_task,
         task_metadata, external_task_id, provider_cost_limit_micros; the
-        response carries task_id + the resolved limit and floor snapshot."""
+        response carries task_id + the resolved limit."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "allowed": True, "reason": None, "balance_micros": 10_000_000,
             "task_id": "task_1", "provider_cost_limit_micros": 5_000_000,
-            "floor_snapshot_micros": 1_000_000,
         })
         result = self.client.pre_check(
             customer_id="cust_1", start_task=True,
@@ -142,7 +159,6 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
         self.assertEqual(result["task_id"], "task_1")
         self.assertEqual(result["provider_cost_limit_micros"], 5_000_000)
-        self.assertEqual(result["floor_snapshot_micros"], 1_000_000)
 
     @patch("ubb.billing.httpx.Client.post")
     def test_pre_check_omits_task_keys_when_not_starting(self, mock_post):

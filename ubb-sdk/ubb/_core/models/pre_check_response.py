@@ -26,7 +26,6 @@ class PreCheckResponse:
         Attributes:
             allowed (bool):
             balance_micros (int | None | Unset):
-            floor_snapshot_micros (int | None | Unset):
             parent_task_id (None | str | Unset):
             provider_cost_limit_micros (int | None | Unset):
             reason (None | str | Unset):
@@ -35,7 +34,6 @@ class PreCheckResponse:
 
     allowed: bool
     balance_micros: int | None | Unset = UNSET
-    floor_snapshot_micros: int | None | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
     reason: None | str | Unset = UNSET
@@ -54,12 +52,6 @@ class PreCheckResponse:
             balance_micros = UNSET
         else:
             balance_micros = self.balance_micros
-
-        floor_snapshot_micros: int | None | Unset
-        if isinstance(self.floor_snapshot_micros, Unset):
-            floor_snapshot_micros = UNSET
-        else:
-            floor_snapshot_micros = self.floor_snapshot_micros
 
         parent_task_id: None | str | Unset
         if isinstance(self.parent_task_id, Unset):
@@ -93,8 +85,6 @@ class PreCheckResponse:
         })
         if balance_micros is not UNSET:
             field_dict["balance_micros"] = balance_micros
-        if floor_snapshot_micros is not UNSET:
-            field_dict["floor_snapshot_micros"] = floor_snapshot_micros
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
         if provider_cost_limit_micros is not UNSET:
@@ -121,16 +111,6 @@ class PreCheckResponse:
             return cast(int | None | Unset, data)
 
         balance_micros = _parse_balance_micros(d.pop("balance_micros", UNSET))
-
-
-        def _parse_floor_snapshot_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        floor_snapshot_micros = _parse_floor_snapshot_micros(d.pop("floor_snapshot_micros", UNSET))
 
 
         def _parse_parent_task_id(data: object) -> None | str | Unset:
@@ -176,7 +156,6 @@ class PreCheckResponse:
         pre_check_response = cls(
             allowed=allowed,
             balance_micros=balance_micros,
-            floor_snapshot_micros=floor_snapshot_micros,
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
             reason=reason,

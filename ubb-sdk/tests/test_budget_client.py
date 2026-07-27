@@ -15,17 +15,28 @@ class BudgetClientTest(unittest.TestCase):
     @patch("ubb.billing.httpx.Client.put")
     def test_set_budget(self, mock_put):
         mock_put.return_value = MagicMock(status_code=200, json=lambda: {
-            "cap_micros": 1000, "enforce_mode": "enforcing", "hard_stop_pct": 100,
+            "cap_micros": 1000, "enforce_mode": "blocking", "hard_stop_pct": 100,
             "alert_levels": [50, 80, 100, 110], "fail_closed": False})
-        cfg = self.client.set_budget("c1", 1000, enforce_mode="enforcing")
+        cfg = self.client.set_budget("c1", 1000, enforce_mode="blocking")
         self.assertIsInstance(cfg, BudgetConfigOut)
         self.assertEqual(cfg.cap_micros, 1000)
         self.assertEqual(mock_put.call_args.args[0], "/api/v1/billing/customers/c1/budget")
 
     @patch("ubb.billing.httpx.Client.put")
+    def test_set_budget_default_enforce_mode_is_alert_only(self, mock_put):
+        """The default must be a value the model still accepts (alert_only /
+        blocking, not the retired advisory / enforcing vocabulary)."""
+        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
+            "cap_micros": 1000, "enforce_mode": "alert_only", "hard_stop_pct": 100,
+            "alert_levels": [], "fail_closed": False})
+        self.client.set_budget("c1", 1000)
+        body = mock_put.call_args.kwargs["json"]
+        self.assertEqual(body["enforce_mode"], "alert_only")
+
+    @patch("ubb.billing.httpx.Client.put")
     def test_set_budget_with_alert_levels(self, mock_put):
         mock_put.return_value = MagicMock(status_code=200, json=lambda: {
-            "cap_micros": 5000, "enforce_mode": "advisory", "hard_stop_pct": 90,
+            "cap_micros": 5000, "enforce_mode": "alert_only", "hard_stop_pct": 90,
             "alert_levels": [50, 75, 90], "fail_closed": True})
         cfg = self.client.set_budget("c2", 5000, hard_stop_pct=90,
                                      alert_levels=[50, 75, 90], fail_closed=True)
@@ -38,7 +49,7 @@ class BudgetClientTest(unittest.TestCase):
     @patch("ubb.billing.httpx.Client.get")
     def test_get_budget(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "cap_micros": 2000, "enforce_mode": "advisory", "hard_stop_pct": 100,
+            "cap_micros": 2000, "enforce_mode": "alert_only", "hard_stop_pct": 100,
             "alert_levels": None, "fail_closed": False})
         cfg = self.client.get_budget("c1")
         self.assertIsInstance(cfg, BudgetConfigOut)
@@ -49,7 +60,7 @@ class BudgetClientTest(unittest.TestCase):
     def test_get_budget_status(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "period": "2026-06", "spend_micros": 600, "cap_micros": 1000, "pct": 60.0,
-            "enforce_mode": "advisory"})
+            "enforce_mode": "alert_only"})
         s = self.client.get_budget_status("c1")
         self.assertIsInstance(s, BudgetStatusOut)
         self.assertEqual(s.pct, 60.0)
