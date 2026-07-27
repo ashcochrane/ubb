@@ -138,11 +138,11 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
                 metadata={"changed": fields, **_plan_out(plan)})
 
     # Fee axes go through the orchestrator, which mints versioned Stripe
-    # Prices — an external call, so (matching platform_endpoints.py's twin
-    # route) it stays outside any DB transaction: a transaction can't be held
-    # open across a Stripe round-trip. Audited only on success — a failure
-    # here commits nothing on this axis, so there is nothing to audit, and it
-    # must not retroactively touch the markup/name audit entry recorded above.
+    # Prices — an external call, so it stays outside any DB transaction: a
+    # transaction can't be held open across a Stripe round-trip. Audited only
+    # on success — a failure here commits nothing on this axis, so there is
+    # nothing to audit, and it must not retroactively touch the markup/name
+    # audit entry recorded above.
     if payload.access_fee_micros is not None or payload.per_seat_micros is not None:
         try:
             plan = SubscriptionOrchestrator.update_plan_prices(
