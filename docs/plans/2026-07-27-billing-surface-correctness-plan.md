@@ -225,9 +225,27 @@ schema makes sense):
   `external_id` and telling the caller to set floors on the business. Do NOT silently write to the
   owner's profile: that would change every sibling seat while the operator believes they edited one.
 
-Use the existing `Problem` helper and the error vocabulary already in that module. Check whether
-other customer-scoped billing writes in the same file (top-up, withdraw, credit, debit, auto-top-up)
-already resolve the owner; if any do not, note it in your report — do not fix it in this task.
+Use the existing `Problem` helper and the error vocabulary already in that module.
+
+**The money-moving writes are in scope too — this is the worst of it.** Verified on this branch:
+`debit` (`billing_endpoints.py:75`), `credit` (`:121`), `configure_auto_top_up` (`:162`) and
+`withdraw` (`:200`) all pass `customer.id` — the SEAT — into the wallet ops layer.
+`lock_for_billing(customer_id)` (`apps/billing/locking.py:15`) locks whatever id it is handed and
+**lazily creates a wallet** if none exists; it does not resolve the billing owner. So on a pooled
+seat these calls mint or mutate a second wallet on the seat that nothing else ever reads, while
+`RiskService` (`risk_service.py:50`), the drawdown handler (`handlers.py`) and the grant endpoints
+(`:339,375,399`) all use the owner's wallet.
+
+Consequence to fix: a manual credit to a pooled seat currently reports success and puts money
+somewhere that can never be spent. Route all four through the resolved billing owner, exactly as
+the grant endpoints already do. Where an audit record names the customer, keep the SEAT as the
+subject of the action but record the owner whose wallet actually moved — do not silently relabel
+the actor.
+
+Note the asymmetry deliberately: **reads and money-moving writes resolve to the owner; only the
+billing-profile PUT refuses.** The difference is that crediting the owner's wallet is what the
+caller already meant (there is only one wallet in play), whereas writing floors to the owner's
+profile would silently change every sibling seat's policy.
 
 **Tests:** cover both topologies for each endpoint — an individual customer (owner == self,
 `is_pooled_seat` false, behaviour unchanged) and a pooled seat (owner == business, balance and
@@ -283,7 +301,14 @@ business (Task 3 makes the PUT 422 there, so an editable form would be a lie).
 carries `min_balance_micros` / `soft_min_balance_micros`): same treatment — hide or disable the two
 floor fields for postpaid with the reason stated.
 
-**4e — enforcement disclosure.** The soft floor is `enforcing`-only
+**4e — `Tenant.enforcement_mode` offers invented values** (found during Task 2, same defect class
+as the budget one). The settings UI offers `off | monitor | enforce`; the backend accepts
+`off | enforcing` only (`apps/platform/tenants/models.py`, and `flags.py` treats anything that is
+not `enforcing` as off). So selecting "Monitor" or "Enforce" silently leaves the tenant in `off` —
+the operator believes enforcement is on and it is not. Land the select on exactly the two real
+values, matching how Task 2 fixed the budget select.
+
+**4f — enforcement disclosure.** The soft floor is `enforcing`-only
 (`apps/billing/gating/services/risk_service.py:67`), so when `enforcement_mode === "off"` the
 wind-down floor does nothing and the past-limit view stays permanently empty. Add a hint on the
 wind-down field and an explanatory empty state on the past-limit section of
