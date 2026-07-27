@@ -379,6 +379,10 @@ all, so the two-value select and its fallback coercion are enforced only by `tsc
 - Note in `CONTEXT.md` that the per-task floor snapshot was removed in this branch and why, so the
   next reader does not reintroduce it.
 
+Also update `ubb-sdk/MIGRATION.md` for this branch's three breaking contract changes (the
+floor-snapshot removal, the `enforce_mode` value rename, and the pooled-seat fields + 422) — the
+SDK ships from this repo and the migration note is what a consumer actually reads.
+
 Per the repo's ratchet rule, this is `CONTEXT.md` and test material — not a new dated plan doc.
 Do not edit anything under `docs/plans/` or `docs/reviews/`: those are frozen history.
 
