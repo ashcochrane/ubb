@@ -129,7 +129,11 @@ def _plan_out(plan):
         "name": plan.name,
         "access_fee_micros": plan.access_fee_micros,
         "per_seat_micros": plan.per_seat_micros,
+        "markup_percentage_micros": plan.markup_percentage_micros,
+        "fixed_uplift_micros": plan.fixed_uplift_micros,
         "interval": plan.interval,
+        "pricing_version": plan.pricing_version,
+        "archived_at": plan.archived_at.isoformat() if plan.archived_at else None,
     }
 
 

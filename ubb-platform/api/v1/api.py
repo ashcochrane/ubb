@@ -21,6 +21,7 @@ from api.v1.connect_endpoints import connect_router
 from api.v1.endpoints import root_router
 from api.v1.me_endpoints import me_router
 from api.v1.metering_endpoints import metering_router
+from api.v1.plan_endpoints import plan_router
 from api.v1.platform_endpoints import platform_router
 from api.v1.sandbox_endpoints import sandbox_router
 from api.v1.tenant_endpoints import tenant_router
@@ -76,4 +77,8 @@ api.add_router("webhooks/", webhook_router)
 api.add_router("platform/", platform_router)
 api.add_router("connect/", connect_router)
 api.add_router("audit/", audit_router)
+# Mounted at the root prefix, before root_router: its concrete paths
+# (/plans, /customers/{external_id}/plan) must bind before root_router's
+# catch-alls, since django-ninja resolves routes in registration order.
+api.add_router("", plan_router)
 api.add_router("", root_router)

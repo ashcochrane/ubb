@@ -56,6 +56,10 @@ _WRITE_ROUTES = {
     ("POST", "/platform/customers/{external_id}/subscription/pause"),
     ("POST", "/platform/customers/{external_id}/subscription/resume"),
     ("POST", "/subscriptions/sync"),
+    # plan membership (#7 plan-as-kernel): putting a customer on a plan is a
+    # day-to-day lifecycle write, same footing as /subscribe beside it — it
+    # never touches Stripe or a plan's commercial terms.
+    ("POST", "/customers/{external_id}/plan"),
     # referrals: register a referrer / attribute a referral
     ("POST", "/referrals/referrers"),
     ("POST", "/referrals/attribute"),
@@ -66,8 +70,9 @@ _WRITE_ROUTES = {
 # audit feed (GET /audit/records, Read floor) + the 3 webhook lifecycle routes
 # (#83: PATCH edit, POST rotate-secret [Admin], GET deliveries [Read]) = 114,
 # less the 2 duplicate tenant billing GETs (billing-periods/invoices) removed
-# in the #86 sweep — their canonical Read-floored twins live on the tenant mount.
-_EXPECTED_FLOORED = 112
+# in the #86 sweep, plus the 6 /api/v1/plans + /customers/{id}/plan routes
+# (plan-as-kernel #7): 112 + 6 = 118.
+_EXPECTED_FLOORED = 118
 _EXPECTED_EXEMPT = 11
 
 

@@ -40,8 +40,9 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # Guards against a vacuous pass (path-resolution breakage seeing zero routes).
 # 54 recording routes + 6 exempt = the whole mutating surface today (#83 added
 # webhook PATCH + secret-rotation, both recording); a new mutation moves one of
-# these and forces a conscious update here.
-_EXPECTED_MUTATING = 60
+# these and forces a conscious update here. The plan-as-kernel #7 router adds
+# 4 recording routes (create/update/archive/assign) -> 58 + 6 = 64.
+_EXPECTED_MUTATING = 64
 _EXPECTED_EXEMPT = 6
 
 

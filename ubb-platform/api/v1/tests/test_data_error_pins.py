@@ -90,13 +90,18 @@ class IntegerOverflowTest(DataErrorPinBase):
 
 
 class LengthOverflowTest(DataErrorPinBase):
-    """Shape 3 — a doc-legal open string overflowing a varchar column:
-    the sweep's plan-creation repro (``interval`` is varchar(5))."""
+    """Shape 3 — a doc-legal open string overflowing a varchar column: the
+    postpaid-config repro (``usage_line_item_group_by`` is varchar(64)).
 
-    def test_varchar_overflow_in_plan_interval_is_a_422_problem(self):
+    This used to repro on the plan-creation ``interval`` field, but the
+    plan-as-kernel work (2026-07-27) closed that field to a
+    ``Literal["month", "year"]`` — "quarterly" is now doc-illegal and never
+    reaches the DB, so it no longer exercises this DataError lane."""
+
+    def test_varchar_overflow_in_postpaid_group_by_is_a_422_problem(self):
         response = self._request(
-            "POST", "/api/v1/platform/plans",
-            {"key": "pin-plan", "name": "Pin Plan", "interval": "quarterly"},
+            "PUT", "/api/v1/billing/postpaid-config",
+            {"usage_line_item_group_by": "x" * 65},
         )
         self.assert_data_error_problem(response)
 
