@@ -66,6 +66,19 @@ decisions are referenced below as D1–D9.
   Both are venv/lock drift, both predate this work, and neither is in scope here. Do NOT
   try to fix them — installing psycopg 3 mid-plan would swap the database driver under
   2188 passing tests.
+- **Registry-mutating routes are ADMIN floor, audited, and atomic (ruled 2026-07-27 —
+  overrides the `@role_floor(WRITE)` written in Tasks 3 and 7).** `PUT /metering/dimensions`
+  and `PUT /metering/task-types` reshape the rules used to price usage — the dimension
+  vocabulary feeds rate selection (D1) and task types carry per-job COGS ceilings (D7) — so
+  they sit with `markup.set` and `rate_card.*` at Admin, per the carve table's own rule in
+  `api/v1/tests/test_role_floors.py`: *every write floors at Admin (changes the rules or
+  moves money) except the enumerated Write routes (day-to-day data ops)*. Each such route
+  must ALSO carry `@records_audit(...)`, and must wrap its whole mutation loop plus its
+  `audit_record(...)` call in ONE `transaction.atomic()` — `ledger.record()`'s docstring
+  requires being inside the mutation's atomic block, and without it a partially-applied
+  multi-item PUT commits rows, returns 422, and writes no audit trail. `POST
+  /billing/pre-check` stays at Write: starting a job is a day-to-day data op, not a rule
+  change.
 - **`.venv` must match `requirements.lock.txt` for anything that generates committed
   artifacts.** A pydantic drift (2.12.5 installed vs 2.13.4 locked) silently stripped 9
   webhook `description` fields from every regenerated `openapi/v1.json`; that is now
@@ -779,7 +792,8 @@ class DimensionValuesOut(Schema):
 ```python
 # api/v1/metering_endpoints.py — after the pricing routes
 @metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
-@role_floor(WRITE)
+@role_floor(ADMIN)
+@records_audit("dimension.declared")
 def declare_dimensions(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -1531,7 +1545,8 @@ class TaskTypeRegistryOut(Schema):
 ```python
 # api/v1/metering_endpoints.py — after the dimension routes
 @metering_router.put("/task-types", response={200: TaskTypeRegistryOut, 422: ProblemOut})
-@role_floor(WRITE)
+@role_floor(ADMIN)
+@records_audit("task_type.declared")
 def declare_task_types(request, payload: TaskTypeRegistryIn):
     """Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
