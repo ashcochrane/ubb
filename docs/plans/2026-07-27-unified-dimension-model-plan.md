@@ -46,14 +46,32 @@ decisions are referenced below as D1–D9.
   hand-write a migration file.** A hand-written one drifts from the model (e.g. recording
   `id` as `UUIDField(default=None)` instead of `BaseModel`'s `default=uuid.uuid4`), which
   is invisible in your own tests but injects a spurious `AlterField` into every later
-  task's `makemigrations` run. Verify with:
+  task's `makemigrations` run.
+
+  **The drift check (measured, not guessed — use exactly this):**
   ```bash
-  .venv/bin/python manage.py makemigrations <app> --dry-run   # must print "No changes detected"
+  DATABASE_URL="postgresql://nope:nope@localhost:5499/nope" \
+    DJANGO_SETTINGS_MODULE=config.settings \
+    .venv/bin/python manage.py makemigrations <app> --dry-run
+  # must print: No changes detected in app '<app>'
   ```
-  Use exactly that form. **Do NOT add `--check`** — `--check` takes a code path that runs
-  the migration-history consistency check and dies on the pre-existing inconsistency
-  described above, which looks like your migration is broken when it is not. Plain
-  `--dry-run` only warns about the DB connection and reports correctly.
+  The deliberately **unreachable** `DATABASE_URL` is the whole trick, and it is safe:
+  `makemigrations` compares migration files against models and never needs a database.
+  Verified behaviour on this machine:
+
+  | invocation | database reachable | result |
+  |---|---|---|
+  | `--dry-run` | yes | dies on `InconsistentMigrationHistory` |
+  | `--dry-run` | **no** | **works — reports drift correctly** |
+  | `--check --dry-run` | yes | dies on `InconsistentMigrationHistory` |
+
+  When Django can reach the database it runs `check_consistent_history`, which trips over
+  the pre-existing dev-DB inconsistency and looks exactly like a broken migration when
+  nothing is wrong. Pointing at a dead host skips that check. Do not "fix" this recipe by
+  restoring the real `DATABASE_URL` or adding `--check`.
+
+  To *generate* a migration, use the real `DATABASE_URL` as normal — generation works
+  fine and only warns.
 - Every model inherits `core.models.BaseModel` (UUID pk, `created_at`, `updated_at`)
 - Every table name is prefixed `ubb_`
 - **ADR-001 product boundaries:** products (`apps/metering`, `apps/billing`,
