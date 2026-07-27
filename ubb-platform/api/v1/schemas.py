@@ -783,6 +783,34 @@ class PaginatedRates(Paginated[RateOut]):
     pass
 
 
+class DimensionDefIn(Schema):
+    key: str = Field(max_length=64)
+    slot: str = Field(max_length=8)
+    scope: str = "event"
+    max_cardinality: int = Field(default=100, ge=1, le=100_000)
+
+
+class DimensionRegistryIn(Schema):
+    dimensions: list[DimensionDefIn] = Field(min_length=1, max_length=6)
+
+
+class DimensionDefOut(Schema):
+    key: str
+    slot: str
+    scope: str
+    max_cardinality: int
+    retired: bool
+
+
+class DimensionRegistryOut(Schema):
+    dimensions: list[DimensionDefOut]
+
+
+class DimensionValuesOut(Schema):
+    key: str
+    values: list[str]
+
+
 class TenantConfigOut(Schema):
     name: str
     billing_mode: str

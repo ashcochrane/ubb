@@ -30,6 +30,7 @@ from api.v1.schemas import (
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
     book_out, rate_out, usage_event_out,
+    DimensionRegistryIn, DimensionRegistryOut, DimensionValuesOut,
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
@@ -815,3 +816,49 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
                       "valid_to": rate.valid_to.isoformat()},
         )
     return {"status": "deleted"}
+
+
+@metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
+@role_floor(WRITE)
+def declare_dimensions(request, payload: DimensionRegistryIn):
+    """Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8)."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import declared_dimensions
+    from apps.platform.dimensions.services import DimensionError, DimensionService
+
+    tenant = request.auth.tenant
+    try:
+        for d in payload.dimensions:
+            DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
+                                     max_cardinality=d.max_cardinality)
+    except DimensionError as exc:
+        raise Problem("validation_error", str(exc))
+    return 200, {"dimensions": declared_dimensions(tenant.id)}
+
+
+@metering_router.get("/dimensions", response=DimensionRegistryOut)
+@role_floor(READ)
+def list_dimensions(request):
+    """This tenant's declared dimension vocabulary."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import declared_dimensions
+    return {"dimensions": declared_dimensions(request.auth.tenant.id)}
+
+
+@metering_router.get("/dimensions/{key}/values",
+                     response={200: DimensionValuesOut, 404: ProblemOut})
+@role_floor(READ)
+def list_dimension_values(request, key: str):
+    """Every value admitted for one dimension — the read model a dashboard
+    filter dropdown needs. Bounded by the key's max_cardinality (D4)."""
+    _product_check(request)
+    from apps.platform.dimensions.models import DimensionDef, DimensionValue
+
+    if not DimensionDef.objects.filter(tenant=request.auth.tenant, key=key).exists():
+        raise Problem("not_found", f"dimension {key!r} is not declared")
+    values = list(DimensionValue.objects.filter(
+        tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
+    return 200, {"key": key, "values": values}
