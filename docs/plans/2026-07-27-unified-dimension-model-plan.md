@@ -30,9 +30,16 @@ decisions are referenced below as D1–D9.
   fails. The working database is the native one on :5432. Export this in every shell —
   do NOT edit `.env`:
   ```bash
-  export DATABASE_URL="postgresql://heyotis:heyotis@localhost:5432/ubb"
+  export DATABASE_URL="postgresql://heyotis:heyotis@localhost:5432/ubb_dimplan"
+  export REDIS_URL="redis://localhost:6379/1"
   export DJANGO_SETTINGS_MODULE=config.settings
   ```
+  `.env` points at a docker stack that is not running — Postgres on `:5433` and Redis on
+  `:6380` both refuse connections. The live services are native Postgres on `:5432` and
+  native Redis on `:6379`. The `ubb_dimplan` database name is deliberate: it isolates this
+  plan's `test_ubb_dimplan` database from other Claude Code sessions running against
+  `test_ubb` in sibling worktrees, which otherwise deadlock on test-database DDL locks and
+  make a 30-second suite hang for 10+ minutes.
 - **Never run `manage.py migrate`.** The dev `ubb` database has a pre-existing,
   unrelated `InconsistentMigrationHistory` (`usage.0014_add_run_fk` is recorded as
   applied before its dependency `tasks.0001_initial`). It predates this branch, is dev-DB
