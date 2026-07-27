@@ -25,6 +25,7 @@ from api.v1.schemas import (
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
     CloseTaskResponse,
+    TaskDetailOut, PaginatedTasks, task_out,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
@@ -287,6 +288,44 @@ def close_task(request, task_id: UUID):
         "total_provider_cost_micros": completed.total_provider_cost_micros,
         "event_count": completed.event_count,
     }
+
+
+@metering_router.get("/tasks", response=PaginatedTasks)
+@role_floor(READ)
+def list_tasks(request, cursor: str = None, limit: int = 50,
+               customer_id: UUIDIdentifier = None, task_type: str = None,
+               status: str = None):
+    """Top-level units of work with their materialized cost rollups.
+
+    Subtasks are omitted — they belong to their parent's detail view, so a
+    listing counts JOBS, not steps."""
+    _product_check(request)
+
+    qs = Task.objects.filter(tenant=request.auth.tenant, parent__isnull=True)
+    if customer_id:
+        qs = qs.filter(customer_id=customer_id)
+    if task_type:
+        qs = qs.filter(task_type=task_type)
+    if status:
+        qs = qs.filter(status=status)
+    return page(qs, cursor, limit, serialize=task_out, time_field="created_at")
+
+
+@metering_router.get("/tasks/{task_id}", response={200: TaskDetailOut, 404: ProblemOut})
+@role_floor(READ)
+def get_task(request, task_id: UUID):
+    """One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children."""
+    _product_check(request)
+
+    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    body = task_out(task)
+    body["subtasks"] = [task_out(s) for s in
+                        task.subtasks.all().order_by("created_at")]
+    return 200, body
 
 
 # --- Pricing Markup ---

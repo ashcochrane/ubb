@@ -75,8 +75,11 @@ _WRITE_ROUTES = {
 # = 115. +2 (unified dimension model plan, task 7): PUT /metering/task-types
 # [Admin — same ruling as dimensions: a task type's ceiling prices usage like
 # markup.set/rate_card.*, so it takes the Admin default and needs no
-# _WRITE_ROUTES entry], GET /metering/task-types [Read] = 117.
-_EXPECTED_FLOORED = 117
+# _WRITE_ROUTES entry], GET /metering/task-types [Read] = 117. +2 (unified
+# dimension model plan, task 14): GET /metering/tasks [Read], GET
+# /metering/tasks/{task_id} [Read] — the task read surface, both reads over
+# the materialized cost rollups = 119.
+_EXPECTED_FLOORED = 119
 _EXPECTED_EXEMPT = 11
 
 

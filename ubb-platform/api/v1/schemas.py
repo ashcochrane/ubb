@@ -523,6 +523,49 @@ class CloseTaskResponse(Schema):
     event_count: int
 
 
+class TaskOut(Schema):
+    task_id: str
+    parent_task_id: Optional[str] = None
+    task_type: str = ""
+    subtask_type: str = ""
+    status: str
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    event_count: int
+    provider_cost_limit_micros: Optional[int] = None
+    dimensions: dict = Field(default_factory=dict)
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+def task_out(t):
+    """TaskOut's serializer — the per-unit cost receipt, read straight off the
+    materialized rollups the accumulate primitive maintains."""
+    return {
+        "task_id": str(t.id),
+        "parent_task_id": str(t.parent_id) if t.parent_id else None,
+        "task_type": t.task_type, "subtask_type": t.subtask_type,
+        "status": t.status,
+        "total_provider_cost_micros": t.total_provider_cost_micros,
+        "total_billed_cost_micros": t.total_billed_cost_micros,
+        "event_count": t.event_count,
+        "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "dimensions": {s: getattr(t, s) for s in
+                       ("dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+                       if getattr(t, s)},
+        "created_at": t.created_at.isoformat(),
+        "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+    }
+
+
+class TaskDetailOut(TaskOut):
+    subtasks: list[TaskOut] = Field(default_factory=list)
+
+
+class PaginatedTasks(Paginated[TaskOut]):
+    pass
+
+
 class UsageAnalyticsResponse(Schema):
     total_events: int
     total_billed_cost_micros: int
