@@ -415,3 +415,41 @@ some other reason, report it — do not paper over it.
 
 **Scope:** the SDK only. If updating it reveals a genuine defect in the platform contract, report
 it — do not fix it here.
+
+---
+
+## Task 7 — Pin the billing owner on TopUpAttempt
+
+**Added mid-flight**, from Task 3's sweep. The sixth and last instance of the seat-id bug, and the
+only one that crosses an async boundary.
+
+`create_top_up` passes the raw seat into `start_top_up` / `create_checkout_session`. The resulting
+`TopUpAttempt.customer` (`apps/billing/topups/models.py:43`) is a plain FK with no owner field, and
+its `customer_id` is later handed unresolved to `wallet_ops.credit_top_up` from **two** places —
+`apps/billing/topups/services.py:82` and `apps/billing/connectors/stripe/webhooks.py:126`. So a
+top-up on a pooled seat credits the seat's phantom wallet, and it does so from a Stripe webhook
+long after the request that started it.
+
+**The design is settled by precedent — do not invent a new shape.** `Task.billing_owner_id`
+(`apps/platform/tasks/models.py:76`) already pins the resolved owner at creation, and its own
+comment says it does this "exactly like `UsageEvent.billing_owner_id`". Follow that:
+
+- Add `billing_owner_id` to `TopUpAttempt`, resolved via `resolve_billing_owner()` at creation, with
+  a migration. Match the existing two fields' shape and add the same kind of explanatory comment.
+- Keep `TopUpAttempt.customer` as the **seat** — it records who initiated the top-up. This mirrors
+  the audit decision already taken in Task 3 (seat is the subject; owner is whose wallet moved).
+- Both `credit_top_up` call sites must credit `billing_owner_id`, not `customer_id`.
+- Backfill existing rows in the migration: resolve each attempt's owner from its customer. There is
+  no live data, but a NULL `billing_owner_id` reaching the webhook path must not silently fall back
+  to the seat — decide the failure mode deliberately and say which you chose and why.
+
+**Investigate, do NOT assume — the Stripe identity question.** `Customer.stripe_customer_id`
+(`apps/platform/customers/models.py:23`) is per-customer, and `resolve_billing_owner`'s own
+docstring says the owner is "the Customer whose wallet/**card**/auto-top-up funds this customer".
+If the checkout is created against the seat's Stripe customer while the payment method belongs to
+the business, that is a second, separate defect. Trace what the checkout actually uses. **Report
+what you find; only fix it if it is unambiguous.** If it needs a product decision, say so and stop.
+
+**Tests:** the same three topologies, plus one that specifically drives the **webhook** path for a
+pooled seat and asserts the business's wallet was credited and no wallet exists on the seat. That
+async path is the reason this instance is worse than the other five.
