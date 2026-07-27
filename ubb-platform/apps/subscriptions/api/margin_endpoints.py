@@ -82,20 +82,34 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     }
 
 
-@margin_router.get("/by-dimension", response=MarginByDimensionOut)
+@margin_router.get("/by-dimension", response={200: MarginByDimensionOut, 422: ProblemOut})
 @role_floor(READ)
-def margin_by_dimension(request, provider: int = None, product: int = None,
-                        tag_key: str = None, start_date: date = None, end_date: date = None):
+def margin_by_dimension(request, group_by: str = "provider",
+                        tag_key: str = None,
+                        start_date: date = None, end_date: date = None):
+    """Margin by any declared dimension.
+
+    Replaces the old `provider: int` / `product: int` pseudo-flags, which could
+    not reach event_type at all despite get_dimensional_margin supporting it."""
     _product_check(request)
     s, e = _window(start_date, end_date)
     from apps.metering.queries import get_dimensional_margin
     if tag_key:
         rows = get_dimensional_margin(request.auth.tenant.id, tag_key=tag_key, start_date=s, end_date=e)
-    elif product:
-        rows = get_dimensional_margin(request.auth.tenant.id, group_by="dim1", start_date=s, end_date=e)
     else:
-        rows = get_dimensional_margin(request.auth.tenant.id, group_by="provider", start_date=s, end_date=e)
-    return {"period": {"start": s.isoformat(), "end": e.isoformat()}, "rows": rows}
+        from apps.platform.dimensions.queries import slot_map
+
+        col = group_by
+        if group_by not in ("provider", "event_type", "task_type", "subtask_type"):
+            col = slot_map(request.auth.tenant.id).get(group_by)
+            if col is None:
+                raise Problem("validation_error", f"unknown dimension {group_by!r}")
+        try:
+            rows = get_dimensional_margin(request.auth.tenant.id, group_by=col,
+                                          start_date=s, end_date=e)
+        except ValueError as exc:
+            raise Problem("validation_error", str(exc))
+    return 200, {"period": {"start": s.isoformat(), "end": e.isoformat()}, "rows": rows}
 
 
 @margin_router.get("/unprofitable", response=UnprofitableOut)

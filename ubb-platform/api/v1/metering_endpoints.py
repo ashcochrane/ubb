@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import date, datetime
 from uuid import UUID
 
@@ -211,6 +210,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
 @role_floor(READ)
 def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None,
+              task_id: UUIDIdentifier = None, include_subtasks: bool = False,
               past_limit: bool = None, stop_scope: str = None,
               episode_seq: int = None):
     _product_check(request)
@@ -221,6 +221,7 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
     if tag_key and tag_value:
         qs = qs.filter(tags__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
+    qs = _apply_task_filter(qs, request.auth.tenant, task_id, include_subtasks)
 
     return page(qs, cursor, limit, serialize=usage_event_out,
                 time_field="effective_at")
@@ -450,10 +451,42 @@ def delete_customer_markup(request, customer_id: UUID):
 # --- Analytics ---
 
 
-_ANALYTICS_ALLOWED_COLS = {
-    "provider", "event_type", "task_type", "subtask_type", "customer",
-    "dim1", "dim2", "dim3", "dim4", "dim5", "dim6",
-}
+# The four reserved dimensions (design D1) plus "customer", which is a column
+# on the event rather than a slot. Tenant keys come from the registry.
+_RESERVED_ANALYTICS_DIMS = ("provider", "event_type", "task_type", "subtask_type",
+                            "customer")
+
+
+def _resolve_dimension(tenant, dim):
+    """Map a requested dimension name to the column to GROUP BY.
+
+    Reserved names map to themselves; declared tenant keys map to their slot.
+    Anything else — notably a correlation id like task_id (design D9) — is a
+    422, so an unbounded key can never become a group-by.
+    """
+    from apps.platform.dimensions.queries import slot_map
+
+    if dim in _RESERVED_ANALYTICS_DIMS:
+        return "customer__external_id" if dim == "customer" else dim
+    slot = slot_map(tenant.id).get(dim)
+    if slot is None:
+        raise Problem("validation_error", f"unknown dimension {dim!r}")
+    return slot
+
+
+def _apply_task_filter(qs, tenant, task_id, include_subtasks):
+    """Correlation-id filtering (design D9). With include_subtasks the whole
+    tree is in scope — one extra indexed query for the child ids, since
+    containment is a single level."""
+    if task_id is None:
+        return qs
+    from apps.platform.tasks.models import Task
+
+    ids = [task_id]
+    if include_subtasks:
+        ids += list(Task.objects.filter(
+            tenant=tenant, parent_id=task_id).values_list("id", flat=True))
+    return qs.filter(task_id__in=ids)
 
 
 @metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
@@ -461,6 +494,7 @@ _ANALYTICS_ALLOWED_COLS = {
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: UUIDIdentifier = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
+                    task_id: UUIDIdentifier = None, include_subtasks: bool = False,
                     past_limit: bool = None, stop_scope: str = None,
                     episode_seq: int = None):
     """Usage analytics with markup margin and customer/product/tag breakdowns.
@@ -486,6 +520,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
+    qs = _apply_task_filter(qs, tenant, task_id, include_subtasks)
 
     totals = qs.aggregate(
         total_events=Count("id"),
@@ -543,58 +578,24 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         if len(dimensions) > 6:
             raise Problem("validation_error", "at most 6 dimensions")
         for dim in dimensions:
-            if dim.startswith("tag:"):
-                key = dim[4:]
-                if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", key):
-                    raise Problem("validation_error", f"invalid tag dimension {dim}")
-                # Events that have the key (non-NULL dimension value).
-                rows_with_key = list(
-                    qs.filter(tags__has_key=key)
-                    .annotate(dimension=KeyTextTransform(key, "tags"))
-                    .values("dimension")
-                    .annotate(
-                        event_count=Count("id"),
-                        total_provider_cost_micros=Sum("provider_cost_micros"),
-                        total_billed_cost_micros=Sum("billed_cost_micros"),
-                    )
-                    .order_by("-total_billed_cost_micros")
-                )
-                # Events that are MISSING the key -> bucket as "(unattributed)".
-                unattr_qs = qs.exclude(tags__has_key=key)
-                unattr_agg = unattr_qs.aggregate(
+            col = _resolve_dimension(tenant, dim)
+            # Run over the FULL qs (no exclusion) so every event is counted.
+            # customer always has an external_id so no "(unattributed)" needed there.
+            rows = list(
+                qs.values(col)
+                .annotate(
                     event_count=Count("id"),
                     total_provider_cost_micros=Sum("provider_cost_micros"),
                     total_billed_cost_micros=Sum("billed_cost_micros"),
                 )
-                if (unattr_agg["event_count"] or 0) > 0:
-                    rows_with_key.append({
-                        "dimension": "(unattributed)",
-                        "event_count": unattr_agg["event_count"] or 0,
-                        "total_provider_cost_micros": unattr_agg["total_provider_cost_micros"] or 0,
-                        "total_billed_cost_micros": unattr_agg["total_billed_cost_micros"] or 0,
-                    })
-                rows = sorted(rows_with_key, key=lambda r: -(r["total_billed_cost_micros"] or 0))
-            elif dim in _ANALYTICS_ALLOWED_COLS:
-                col = "customer__external_id" if dim == "customer" else dim
-                # Run over the FULL qs (no exclusion) so every event is counted.
-                # customer always has an external_id so no "(unattributed)" needed there.
-                rows = list(
-                    qs.values(col)
-                    .annotate(
-                        event_count=Count("id"),
-                        total_provider_cost_micros=Sum("provider_cost_micros"),
-                        total_billed_cost_micros=Sum("billed_cost_micros"),
-                    )
-                    .order_by("-total_billed_cost_micros")
-                )
-                for r in rows:
-                    raw_val = r.pop(col)
-                    # Map empty string or None to the sentinel for non-customer cols
-                    if dim != "customer" and not raw_val:
-                        raw_val = "(unattributed)"
-                    r["dimension"] = raw_val
-            else:
-                raise Problem("validation_error", f"unknown dimension {dim}")
+                .order_by("-total_billed_cost_micros")
+            )
+            for r in rows:
+                raw_val = r.pop(col)
+                # Map empty string or None to the sentinel for non-customer cols
+                if dim != "customer" and not raw_val:
+                    raw_val = "(unattributed)"
+                r["dimension"] = raw_val
             breakdowns[dim] = rows
 
     return 200, {
@@ -623,10 +624,9 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
     _product_check(request)
     if granularity not in ("hour", "day"):
         raise Problem("validation_error", "granularity must be hour or day")
-    if group_by is not None and group_by not in (
-            "provider", "event_type", "task_type", "subtask_type",
-            "dim1", "dim2", "dim3", "dim4", "dim5", "dim6"):
-        raise Problem("validation_error", "invalid group_by")
+    resolved_group_by = None
+    if group_by is not None:
+        resolved_group_by = _resolve_dimension(request.auth.tenant, group_by)
     # #78 bounds: hourly windows capped at ~92 days, daily at 366.
     if start_date and end_date:
         if end_date < start_date:
@@ -637,7 +637,7 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
             raise Problem("validation_error", "date window must not exceed 366 days")
     from apps.metering.queries import get_usage_timeseries
     series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
-        customer_id=customer_id, group_by=group_by, start_date=start_date, end_date=end_date)
+        customer_id=customer_id, group_by=resolved_group_by, start_date=start_date, end_date=end_date)
     return 200, {"granularity": granularity, "group_by": group_by or "", "series": series}
 
 

@@ -8286,38 +8286,17 @@
     },
     "/api/v1/margin/by-dimension": {
       "get": {
+        "description": "Margin by any declared dimension.\n\nReplaces the old `provider: int` / `product: int` pseudo-flags, which could\nnot reach event_type at all despite get_dimensional_margin supporting it.",
         "operationId": "apps_subscriptions_api_margin_endpoints_margin_by_dimension",
         "parameters": [
           {
             "in": "query",
-            "name": "provider",
+            "name": "group_by",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Provider"
-            }
-          },
-          {
-            "in": "query",
-            "name": "product",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Product"
+              "default": "provider",
+              "title": "Group By",
+              "type": "string"
             }
           },
           {
@@ -8381,6 +8360,16 @@
               }
             },
             "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [
@@ -9342,6 +9331,32 @@
           },
           {
             "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_subtasks",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Subtasks",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "past_limit",
             "required": false,
             "schema": {
@@ -9600,6 +9615,32 @@
                 }
               ],
               "title": "Tag Value"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_subtasks",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Subtasks",
+              "type": "boolean"
             }
           },
           {

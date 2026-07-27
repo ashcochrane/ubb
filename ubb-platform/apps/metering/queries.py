@@ -322,7 +322,10 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
                            start_date=None, end_date=None) -> list[dict]:
     """Usage-only margin (billed - provider) grouped by a column or a tag key.
 
-    group_by in {"provider", "event_type", "dim1"}; OR tag_key for tags->>key.
+    group_by in {"provider", "event_type", "task_type", "subtask_type",
+    "dim1".."dim6"} (a resolved column, not a tenant-facing key — the caller
+    resolves the tenant's declared name via the dimension registry first);
+    OR tag_key for tags->>key.
     Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
     """
     from apps.metering.usage.models import UsageEvent
@@ -352,8 +355,10 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
-    if group_by not in ("provider", "event_type", "dim1"):
-        raise ValueError("group_by must be provider, event_type, or dim1")
+    valid = ("provider", "event_type", "task_type", "subtask_type",
+             "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+    if group_by not in valid:
+        raise ValueError(f"group_by must be one of {valid}")
     grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(
         prov_sum=Sum("provider_cost_micros"), billed_sum=Sum("billed_cost_micros"),
         cnt=Count("id")).order_by())
