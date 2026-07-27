@@ -283,6 +283,65 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
                                    "event_count": 2},
         })
 
+    def test_legacy_customer_floor_tag_still_lands_in_itemization(self, _mock):
+        """`stop_context` is immutable and written once (billing-surface-
+        correctness, task 1 round 1). Rows tagged before the CUSTOMER_FLOOR
+        -> CUSTOMER_WIDE_STOP relabel carry the retired "customer_floor"
+        string, forever. The bucketing filter must itemize them under their
+        episode regardless of which historical string they carry — it must
+        NOT allow-list the current value only."""
+        from apps.billing.gating.models import StopSignalState
+
+        # Trip a real floor crossing so a genuine episode exists on the
+        # signal ledger (the episode ROW is sourced from there, not from any
+        # event tag) — balance 20M, floor 5M: one event billing 26M crosses.
+        self._record(provider_cost_micros=1_000_000, billed_cost_micros=26_000_000)
+        state = StopSignalState.objects.get(owner=self.customer, family="floor_stop")
+        self.assertEqual(state.state, "stopped")
+
+        # A hand-crafted event carrying the RETIRED tag value at the SAME
+        # episode — exactly what a pre-relabel write left behind, immutably.
+        legacy = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="legacy-1", idempotency_key="legacy-1",
+            provider_cost_micros=1_000_000, billed_cost_micros=4_000_000,
+            stop_context=[{
+                "limit": "customer_floor", "stop_scope": "customer",
+                "tripped_at": state.transitioned_at.isoformat(),
+                "episode_seq": state.episode_seq,
+                "task_id": None, "subtask_id": None, "arrived_after": True,
+            }])
+
+        report = self._report()
+        by_family = {ep["family"]: ep for ep in report["episodes"]}
+        ep = by_family["floor_stop"]
+        event_ids = {e["event_id"] for e in ep["events"]}
+        self.assertIn(str(legacy.id), event_ids)
+        self.assertIn("customer_wide_stop", report["totals_per_limit"])
+        totals = report["totals_per_limit"]["customer_wide_stop"]
+        self.assertGreaterEqual(totals["billed_cost_micros"], 4_000_000)
+
+    def test_suspended_tag_stays_excluded_from_itemization(self, _mock):
+        """`suspended` is a taggable customer-scope value but never an
+        episode — a bare suspension has nothing to itemize. It must stay
+        excluded now that the filter is a deny-list, not an allow-list."""
+        suspended_event = UsageEvent.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="susp-1", idempotency_key="susp-1",
+            provider_cost_micros=1_000_000, billed_cost_micros=1_000_000,
+            stop_context=[{
+                "limit": "suspended", "stop_scope": "customer",
+                "tripped_at": None, "episode_seq": None,
+                "task_id": None, "subtask_id": None, "arrived_after": True,
+            }])
+
+        report = self._report()
+        self.assertEqual(report["episodes"], [])
+        self.assertEqual(report["totals_per_limit"], {})
+        all_event_ids = {
+            e["event_id"] for ep in report["episodes"] for e in ep["events"]}
+        self.assertNotIn(str(suspended_event.id), all_event_ids)
+
     def test_window_filters_episodes(self, _mock):
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,

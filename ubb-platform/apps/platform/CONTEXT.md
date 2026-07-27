@@ -147,10 +147,10 @@ races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a 
 _Avoid_: "hard stop" — that vocabulary retired with the 429.
 
 **Killed (task)**:
-The stop signal fired for this unit — its limit or floor snapshot was crossed, or the reaper
-terminated it. Late events still land, bill, and count into the killed unit's totals (and its
-parent's, for a subtask); the flip is the durable record that the signal fired, not a wall.
-Killing a parent cascades the flip to its active subtasks; killing a subtask kills it alone.
+The stop signal fired for this unit — its own limit was crossed, or the reaper terminated it. Late
+events still land, bill, and count into the killed unit's totals (and its parent's, for a
+subtask); the flip is the durable record that the signal fired, not a wall. Killing a parent
+cascades the flip to its active subtasks; killing a subtask kills it alone.
 (`apps/platform/tasks/services.py:TaskService.kill_task`)
 
 **Heartbeat**:
@@ -159,10 +159,28 @@ on. (`apps/platform/tasks/models.py:Task.last_event_at`)
 
 **Stop reason**:
 The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
-`customer_floor`, `task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`, plus the
-kill-metadata-only `parent_killed` (a cascade flip, never on an ack or event). One source of truth
-for every producer and consumer; rides the ack's `stop_reason`, never an HTTP error.
+`task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`, plus the kill-metadata-only
+`parent_killed` (a cascade flip, never on an ack or event) and the stop-context-only `suspended`
+(an owner suspended with no open floor episode — taggable, but never an episode reason, so it is
+NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer and
+consumer; rides the ack's `stop_reason`, never an HTTP error.
 (`apps/platform/tasks/reasons.py`)
+_Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
+**Task floor snapshot (removed)** below); it can never be emitted by current code, though
+immutable pre-removal `UsageEvent.stop_context` rows may still carry it forever.
+
+**Task floor snapshot (removed)**:
+A per-task copy of the tenant's wallet-floor default, compared at every `accumulate_cost` call
+against the task's OWN frozen balance snapshot — an independent third floor alongside the
+customer's real floor and the postpaid budget. Deleted (billing-surface-correctness, task 1):
+it read a tenant-wide constant, never the customer's own
+`CustomerBillingProfile.min_balance_micros`, and compared against a balance frozen at task start,
+so a mid-task top-up was invisible to it and it could kill a task for a customer who had just
+paid. The durable drawdown lane already detects the real floor crossing and fires
+`customer_wide_stop`, the correct scope for a wallet-wide fact — do not reintroduce a per-task
+floor check independent of it.
+_Avoid_: adding a new reader of `Task.balance_snapshot_micros` for a floor comparison — it is kept
+only as forensics on the task record.
 
 ## Events
 

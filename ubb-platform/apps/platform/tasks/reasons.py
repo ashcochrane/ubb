@@ -31,6 +31,14 @@ STALE_MAX_AGE = "stale_max_age"
 # cascade — it crossed nothing of its own, so this never rides an ack's
 # stop_reason or a limit event; late events on it say TASK_NOT_ACTIVE.
 PARENT_KILLED = "parent_killed"
+# Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
+# customer scope) — an owner suspended with no open floor episode
+# (admin/fraud, or a money suspension whose episode already cleared).
+# Deliberately NOT an episode reason and NOT in ALL_REASONS/CROSSING_REASONS:
+# it never rides a TaskLimitExceeded/SubtaskLimitExceeded event or an ack's
+# stop_reason (those are task/subtask-scoped, never customer-scoped), and
+# the past-limit report has nothing to itemize for a bare suspension.
+SUSPENDED = "suspended"
 
 ALL_REASONS = frozenset({
     TASK_LIMIT,
@@ -70,8 +78,7 @@ def kill_plan(unit_id, parent_id, verdicts):
     cascades downward inside kill_task. When the subtask's own limit crossed
     too, the subtask kill comes FIRST: a cascade-killed subtask could no
     longer win its own transition, and its own announcement must not be
-    swallowed by the parent's cascade. Priority within one unit: the unit's
-    limit before its floor snapshot (matching the pre-#38 order).
+    swallowed by the parent's cascade.
     """
     plan = []
     if parent_id is not None:

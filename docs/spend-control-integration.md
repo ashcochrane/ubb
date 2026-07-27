@@ -45,12 +45,13 @@ Back-out is instant (set `off`).
 2. **Attribute usage.** Pass that `task_id` on **every** `record_usage(...)`
    for the task. `tags` are analytics-only labels — they never attach a limit.
 3. **Honor the stop.** Check `result.stop` on **every** ack and stop sending
-   work for the named scope: `stop_scope="task"` → stop that task
-   (`stop_reason ∈ {task_limit, customer_floor, task_not_active}`; the task is
-   already killed server-side for the first two); `stop_scope="customer"` →
-   halt all that customer's tasks at the next safe boundary. Or pass
-   `raise_on_stop=True` and catch `UBBStoppedError`. Either way the event was
-   recorded and billed — the stop is an instruction, not an error.
+   work for the named scope: `stop_scope="task"` (or `"subtask"`) → stop that
+   task (`stop_reason ∈ {task_limit, subtask_limit, task_not_active}`; the
+   task is already killed server-side for the first two); `stop_scope="customer"`
+   → halt all that customer's tasks at the next safe boundary
+   (`stop_reason = customer_wide_stop`). Or pass `raise_on_stop=True` and catch
+   `UBBStoppedError`. Either way the event was recorded and billed — the stop
+   is an instruction, not an error.
 4. **Handle the webhooks** (catches *idle*/*sibling* workers not currently
    posting): on `billing.customer_suspended` cancel **all** that customer's
    tasks; on `task.limit_exceeded` cancel the task named by `task_id` (the
@@ -73,8 +74,8 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
 
 ## The signals, in one place
 
-- **`pre_check` →** `{allowed, reason, task_id, provider_cost_limit_micros,
-  floor_snapshot_micros}` — pull, at task start (and as a poll).
+- **`pre_check` →** `{allowed, reason, task_id, provider_cost_limit_micros}` —
+  pull, at task start (and as a poll).
 - **`record_usage` result →** always 200 for a recorded event: `stop` /
   `stop_reason` / `stop_scope` (cooperative — the event *was* charged),
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both

@@ -124,7 +124,7 @@ def _customer_contexts(owner, tenant, opened_episode_seq, task_id, subtask_id):
         # Suspension without an open floor episode — admin/fraud, or a
         # money suspension whose episode already cleared. No durable
         # suspension timestamp exists, so tripped_at is honestly null.
-        return [_entry(limit="suspended", stop_scope="customer",
+        return [_entry(limit=reasons.SUSPENDED, stop_scope="customer",
                        tripped_at=None, episode_seq=None,
                        task_id=task_id, subtask_id=subtask_id,
                        arrived_after=True)]

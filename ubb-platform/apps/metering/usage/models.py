@@ -51,7 +51,7 @@ class UsageEvent(BaseModel):
     # Null = the event landed past nothing. Non-null = a JSON ARRAY of
     # contexts (an event crossing several limits simultaneously carries one
     # entry per limit), each:
-    #   {"limit": task_limit|subtask_limit|customer_floor|suspended|
+    #   {"limit": task_limit|subtask_limit|customer_wide_stop|suspended|
     #             task_not_active,
     #    "stop_scope": task|subtask|customer,
     #    "tripped_at": ISO8601|null, "episode_seq": int|null (customer only),

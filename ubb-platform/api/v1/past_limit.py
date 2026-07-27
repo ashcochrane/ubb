@@ -63,8 +63,8 @@ def _bucket_events(customer, since, until):
         for ctx in e.stop_context or []:
             limit = ctx.get("limit")
             if ctx.get("stop_scope") == "customer":
-                if limit != reasons.CUSTOMER_WIDE_STOP:
-                    continue  # `suspended` is taggable but not an episode
+                if limit == reasons.SUSPENDED:
+                    continue  # taggable but not an episode
                 key = ("floor", ctx.get("episode_seq"))
             elif limit == reasons.TASK_LIMIT:
                 key = ("unit", ctx.get("task_id"))
