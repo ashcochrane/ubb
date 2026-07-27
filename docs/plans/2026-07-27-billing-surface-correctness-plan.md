@@ -163,13 +163,22 @@ returns only migration files. Run `apps/platform/tasks`, `apps/billing/gating`, 
 - `apps/billing/gating/services/budget_service.py` — any literal mode comparisons, and the
   `BudgetThresholdReached` event's `enforce_mode` payload field (value only; keep the field name).
 - `api/v1/schemas.py` `BudgetConfigIn`/`BudgetConfigOut` and any validation of the literal set.
-- UI: `budgetEnforceModeLabel` in `apps/ui/src/lib/labels.ts`, the select options and default in
-  `apps/ui/src/features/customers/components/budget-section.tsx`, the equivalent in
-  `apps/ui/src/features/billing/components/budget-card.tsx`, the zod schema in the customers
-  feature's `lib/schemas.ts`, and the customers/billing mock data.
+- UI (paths verified against the restored console at `bac6358`). Note the console currently offers
+  **three** modes — `advisory | monitor | enforce` — of which only `advisory` exists in the
+  backend; `monitor` and `enforce` are invented and `enforcing` is missing entirely, so the form
+  can POST a value the API does not accept. This task fixes that as a side effect: the select must
+  end up offering exactly the two real values.
+  - `apps/ui/src/features/customers/lib/schema.ts:22` — `budgetSchema.enforce_mode` enum
+  - `apps/ui/src/features/customers/components/customer-billing-config.tsx` — the fallback
+    coercion (~44-46) and the three `SelectItem`s (~87-89)
+  - `apps/ui/src/features/billing/components/budget-section.tsx` — `ENFORCE_MODES` (~26-30) and
+    the fallback coercion (~36-39)
+  - `apps/ui/src/features/customers/components/customer-limits-tab.tsx:24` — the `StatusBadge`
+    that renders `enforce_mode`
+  - `apps/ui/src/mocks/fixtures.ts` / `handlers.ts` — any budget fixture carrying a mode value
 
 **Then add mode-aware copy.** Both budget surfaces must tell the operator what `blocking` actually
-does for *their* `billing_mode` (read it from `useTenantConfig`):
+does for *their* `billing_mode` (read it from `useAuth()` — see Task 4):
 
 - postpaid → blocking stops running work and fires a stop signal when month-to-date spend reaches
   the stop line.
@@ -234,52 +243,56 @@ transactions come from the business, PUT 422s). Include a non-pooled seat (paren
 **Goal:** the console only shows controls that do something for this tenant's `billing_mode`,
 `enforcement_mode`, and this customer's billing topology. Depends on Tasks 1-3.
 
-Follow the gating patterns already in the codebase — `ProductGate`
-(`apps/ui/src/components/shared/product-gate.tsx`), `useTenantConfig` / `useHasProduct`
-(`apps/ui/src/hooks/use-tenant-config.ts`), `useHasRole`, and the `billing_mode` branches in
-`apps/ui/src/features/billing/components/billing-page.tsx:31` and
-`apps/ui/src/features/dashboard/components/overview-page.tsx:33`.
+All paths below are verified against the **restored console** at `bac6358`. The gating primitive is
+`useAuth()` in `apps/ui/src/features/auth/hooks/use-auth.ts`, which already exposes `hasProduct`,
+`billingMode`, and `isBillingMode`. Follow the patterns already there — e.g.
+`customer-detail-page.tsx:33-43` builds its tab list from `hasProduct` / `isBillingMode`, and
+`usage-page.tsx:40` renders `<ProductUnavailable>` for a disabled product.
 
-**4a — customer Billing tab** (`apps/ui/src/features/customers/components/billing-tab.tsx`):
+**The core defect: `isBillingMode` conflates prepaid and postpaid.** It is
+`prepaid || postpaid || products.includes("billing")`, so every wallet surface renders identically
+for both. Add narrower derived flags to `useAuth()` — `isPrepaid` and `isPostpaid` — and branch on
+those. Do not delete `isBillingMode`; other call sites legitimately mean "billing at all".
 
-Under `billing_mode === "postpaid"`, the wallet is not the billing mechanism — drawdown skips
-postpaid (`apps/billing/handlers.py:39`) and both floors are skipped at the gate
-(`apps/billing/gating/services/risk_service.py:56,67`). So for postpaid:
+**4a — the Wallet tab** (`apps/ui/src/features/customers/components/customer-wallet-tab.tsx`, plus
+the `features/billing-ops/components/` pieces it composes: `customer-billing-panel.tsx`,
+`auto-top-up-form.tsx`, `top-up-dialog.tsx`, `withdraw-dialog.tsx`, `transactions-table.tsx`, and
+`customer-grants-section.tsx`).
 
-- Hide: `GrantsSection`, the auto-top-up card, and the two floor fields of the billing-profile card.
-- Keep: `BudgetSection` (the live control for postpaid), `TransactionsSection`,
-  `UsageInvoicesSection`, and the Balance card with its manual credit/debit actions — manual
-  adjustments still work for postpaid (`apps/billing/wallets/operations.py:218` skips only the floor
-  check, not the debit).
-- Hide the Top up / Withdraw buttons, which drive the prepaid credit flow.
-- If the billing-profile card ends up with only `topup_grant_expiry_days` under postpaid, hide the
-  whole card — top-up grants are prepaid-only too.
+Under postpaid the wallet is not the billing mechanism — drawdown skips postpaid
+(`apps/billing/handlers.py:39`) and both floors are skipped at the gate
+(`apps/billing/gating/services/risk_service.py:56,67`). So when `isPostpaid`:
 
-Explain the absence rather than silently dropping cards where a reader might look for them: a short
-line on the tab saying this workspace bills postpaid and the wallet controls do not apply.
+- Hide: grants, the auto-top-up form, and the Top up / Withdraw actions (all prepaid credit flow).
+- Keep: the transactions table and the balance figure with manual credit/debit — manual
+  adjustments still work for postpaid (`apps/billing/wallets/operations.py:218` skips only the
+  floor check, not the debit itself).
+- Say why, once, at the top of the tab rather than silently dropping cards a reader would look for.
 
-**4b — pooled-seat disclosure:** when the balance response reports `is_pooled_seat`, the Balance
-card must say whose wallet it is showing and link to that customer. `past-limit-panel.tsx:137`
-already has this pattern ("This customer draws a pooled wallet — episodes belong to billing
-owner …") — match its phrasing and its link treatment. The billing-profile card must show the
-floors as read-only in this case, with a line pointing at the business.
+**4b — the billing profile floors** (`customer-billing-config.tsx`). The two floor fields
+(`min_balance`, `soft_min_balance`) are wallet-based and inert under postpaid — hide them there,
+keeping the budget card, which IS the postpaid control. `topup_grant_expiry_days` is prepaid-only
+too.
 
-**4c — Settings spend limits** (`apps/ui/src/features/settings/components/spend-limits-form.tsx`):
-the allowed-overdraft and wind-down-floor fields are wallet-based and inert under postpaid. Hide
-them for postpaid with a one-line explanation, or disable them with the reason — match whichever
-pattern `spend-control-card.tsx` already uses for unavailable controls.
+**4c — pooled-seat disclosure.** When the balance response from Task 3 reports `is_pooled_seat`,
+the wallet tab must name the billing owner it is showing and link to that customer, and
+`customer-billing-config.tsx` must render the floors read-only with a line pointing at the
+business (Task 3 makes the PUT 422 there, so an editable form would be a lie).
 
-**4d — enforcement disclosure:** the soft floor is `enforcing`-only
-(`apps/billing/gating/services/risk_service.py:67`), so with `enforcement_mode === "off"` the
-wind-down floor field does nothing and the past-limit report stays permanently empty. Add a hint on
-the wind-down field and an explanatory empty state on `PastLimitSection` when enforcement is off.
-`spend-control-card.tsx:114-115` already has accurate prose for both postures — reuse its wording
-rather than inventing new phrasing.
+**4d — Settings spend limits** (`apps/ui/src/features/settings/components/general-tab.tsx`, which
+carries `min_balance_micros` / `soft_min_balance_micros`): same treatment — hide or disable the two
+floor fields for postpaid with the reason stated.
 
-**Tests:** the customers and settings feature test suites already render these components; extend
-them to cover each mode branch. Keep to the existing test style in
-`apps/ui/src/features/customers/components/customer-detail.test.tsx` and
-`workspace-settings-page.test.tsx`.
+**4e — enforcement disclosure.** The soft floor is `enforcing`-only
+(`apps/billing/gating/services/risk_service.py:67`), so when `enforcement_mode === "off"` the
+wind-down floor does nothing and the past-limit view stays permanently empty. Add a hint on the
+wind-down field and an explanatory empty state on the past-limit section of
+`customer-limits-tab.tsx`. Check whether the restored console surfaces `enforcement_mode` in
+`useAuth()` at all — if not, thread it through from the tenant config rather than re-fetching.
+
+**Tests:** extend the existing vitest suites (8 files, 42 tests — `pnpm test`), following the style
+of `features/billing-ops/components/customer-billing-panel.test.tsx`. Cover each mode branch:
+prepaid shows the credit flow, postpaid hides it, pooled seat shows the owner disclosure.
 
 ---
 
