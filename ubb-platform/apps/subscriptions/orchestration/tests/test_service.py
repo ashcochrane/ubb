@@ -109,3 +109,26 @@ def test_not_charge_ready_raises():
     plan = Plan.objects.create(tenant=t, key="pro", name="Pro", access_fee_micros=50_000_000)
     with pytest.raises(OrchestrationError):
         SubscriptionOrchestrator.ensure_plan_provisioned(plan)
+
+
+@pytest.mark.django_db
+class TestMarkupOnlyPlanSubscribe:
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(
+            name="T", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test", charges_enabled=True,
+            default_currency="usd")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="sam-hobby")
+
+    def test_markup_only_plan_creates_no_stripe_objects(self):
+        """Personal Lite: $0 access, $0 seat, 50% markup. There is nothing for
+        Stripe to bill, so no Product, Price, Subscription, or Customer is
+        created — and crucially Stripe is never called with items=[]."""
+        plan = Plan.objects.create(tenant=self.tenant, key="personal-lite",
+                                   name="Personal Lite",
+                                   markup_percentage_micros=50_000_000)
+        with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
+            result = SubscriptionOrchestrator.subscribe(self.customer, plan, seats=0)
+        assert result is None
+        stripe_call.assert_not_called()
+        assert not StripeSubscription.objects.filter(customer=self.customer).exists()

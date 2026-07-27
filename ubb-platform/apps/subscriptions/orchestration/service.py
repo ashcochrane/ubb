@@ -145,13 +145,22 @@ class SubscriptionOrchestrator:
         return plan
 
     @classmethod
-    def subscribe(cls, customer, plan: Plan, seats: int) -> StripeSubscription:
+    def subscribe(cls, customer, plan: Plan, seats: int) -> StripeSubscription | None:
         """Create the Stripe Subscription on the connected account + mirror it.
 
         Routes money through the billing OWNER (pooled seat -> business). Ensures
         the owner has a Stripe Customer on the connected account first, provisions
         the plan, then creates a subscription with one item per non-zero axis.
         """
+        # A markup-only plan (both Stripe axes zero) has nothing for Stripe to
+        # bill. Building items=[] and calling Subscription.create would be
+        # rejected by Stripe, which is what made such plans unsellable. Plan
+        # membership lives in CustomerPlanAssignment, not here, so returning
+        # early leaves the customer correctly on the plan with no Stripe
+        # presence at all.
+        if not plan.has_stripe_axes:
+            return None
+
         tenant = plan.tenant
         _require_charge_ready(tenant)
 
