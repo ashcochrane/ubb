@@ -211,21 +211,21 @@ class Command(BaseCommand):
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"key":"pro-monthly","name":"Pro","access_fee_micros":10000000,'
                 f'"per_seat_micros":5000000,"interval":"month"}}\' \\\n'
-                f'  http://localhost:8001/api/v1/platform/plans\n'
+                f'  http://localhost:8001/api/v1/plans\n'
             )
             self.stdout.write(
                 f'# Subscribe the test customer (5 seats)\n'
                 f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"plan_key":"pro-monthly","seats":5}}\' \\\n'
-                f'  http://localhost:8001/api/v1/platform/customers/{customer.id}/subscribe\n'
+                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.id}/subscribe\n'
             )
             self.stdout.write(
                 f'# Change seat count\n'
                 f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"seats":8}}\' \\\n'
-                f'  http://localhost:8001/api/v1/platform/customers/{customer.id}/seats\n'
+                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.id}/seats\n'
             )
             self.stdout.write(
                 f'# End-customer views their invoices (widget JWT)\n'

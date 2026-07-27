@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import timedelta
 
 import stripe
@@ -21,18 +22,24 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 
 from core.pagination import paginate
+from apps.platform.audit.ledger import record as audit_record
+from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
+from apps.platform.plans import queries as plan_queries
 from apps.subscriptions.api.schemas import (
     SyncResponse,
     StripeSubscriptionOut,
     PaginatedInvoicesResponse,
+    SeatsIn,
+    SubscribeIn,
+    SubscriptionCancelIn,
 )
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from core.auth import ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 
 subscriptions_router = Router(auth=ApiKeyAuth())
 
-_product_check = ProductAccess("subscriptions")
+_product_check = ProductAccess("billing")
 
 
 # ---------- Sync ----------
@@ -290,3 +297,187 @@ def _subscriptions_stripe_webhook(request, *, secret, is_test_endpoint):
         return HttpResponse(status=500)  # Stripe retries
 
     return JsonResponse({"status": "ok"})
+
+
+# ---------- Lifecycle (moved from platform_router, design doc §6) ----------
+
+_LIFECYCLE_AUDIT_ACTION = {
+    "cancel": "subscription.canceled",
+    "pause": "subscription.paused",
+    "resume": "subscription.resumed",
+}
+
+
+def _lifecycle_call(request, external_id, verb_kwargs):
+    """Shared problem mapping for the subscription lifecycle verbs."""
+    from apps.subscriptions.orchestration.service import (
+        NoActiveSubscription, OrchestrationError, SubscriptionOrchestrator,
+    )
+    from core.exceptions import StripeFatalError
+
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        raise Problem("not_found", "customer not found")
+
+    verb = verb_kwargs.pop("verb")
+    change_event_id = str(uuid.uuid4())
+    try:
+        mirror = getattr(SubscriptionOrchestrator, verb)(
+            tenant, customer, change_event_id=change_event_id, **verb_kwargs)
+    except NoActiveSubscription as e:
+        raise Problem("not_found", str(e))
+    except (OrchestrationError, StripeFatalError) as e:
+        raise Problem("validation_error", str(e))
+
+    audit_record(
+        action=_LIFECYCLE_AUDIT_ACTION[verb], tenant_id=tenant.id,
+        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        metadata={"external_id": customer.external_id, "status": mirror.status,
+                  "cancel_at_period_end": mirror.cancel_at_period_end,
+                  "paused": mirror.paused, "change_event_id": change_event_id})
+    return 200, {
+        "subscription_id": mirror.stripe_subscription_id,
+        "status": mirror.status,
+        "cancel_at_period_end": mirror.cancel_at_period_end,
+        "paused": mirror.paused,
+    }
+
+
+@subscriptions_router.post("/customers/{external_id}/subscribe",
+                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+@records_audit("plan.assigned", "subscription.created")
+def subscribe_customer(request, external_id: str, payload: SubscribeIn):
+    """Assign the customer to the plan and, if the plan has fee axes, start the
+    Stripe subscription.
+
+    A markup-only plan assigns and returns subscription_id=None — there is
+    nothing for Stripe to bill.
+    """
+    from apps.platform.plans.services import PlanService
+    from apps.subscriptions.orchestration.service import (
+        OrchestrationError, SubscriptionOrchestrator,
+    )
+    from core.exceptions import StripeFatalError
+
+    _product_check(request)
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        raise Problem("not_found", "customer not found")
+
+    plan = plan_queries.get_plan_by_key(tenant.id, payload.plan_key)
+    if plan is None or plan.archived_at is not None:
+        raise Problem("not_found", f"plan with key '{payload.plan_key}' not found")
+
+    # PlanService.assign is a pure-DB operation (no Stripe call): commit it and
+    # its audit entry together, before the Stripe branch runs (mirrors
+    # POST /plans/customers/{external_id}/plan). The assignment's fate must
+    # never depend on what the Stripe call below does next — a subscribe
+    # failure below must not silently drop this already-durable change from
+    # the audit trail.
+    with transaction.atomic():
+        PlanService.assign(tenant, customer, plan)
+        audit_record(
+            action="plan.assigned", tenant_id=tenant.id,
+            resource_type="customer", resource_id=customer.external_id,
+            metadata={"external_id": customer.external_id, "plan_key": plan.key})
+
+    try:
+        mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
+    except (OrchestrationError, StripeFatalError) as e:
+        raise Problem("validation_error", str(e))
+
+    if mirror is None:
+        # Markup-only plan: nothing for Stripe to bill, so there is no Stripe
+        # object to audit — the assignment above already recorded the change.
+        return 200, {"subscription_id": None, "amount_micros": 0, "quantity": 0}
+
+    # Recorded after the orchestrator commits (it owns its transaction + a
+    # Stripe call — a DB transaction can't wrap the external call).
+    audit_record(
+        action="subscription.created", tenant_id=tenant.id,
+        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        metadata={"external_id": customer.external_id, "plan_key": plan.key,
+                  "seats": payload.seats, "quantity": mirror.quantity,
+                  "amount_micros": mirror.amount_micros})
+    return 200, {
+        "subscription_id": mirror.stripe_subscription_id,
+        "amount_micros": mirror.amount_micros,
+        "quantity": mirror.quantity,
+    }
+
+
+@subscriptions_router.post("/customers/{external_id}/seats",
+                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+@records_audit("subscription.seats_changed")
+def set_customer_seats(request, external_id: str, payload: SeatsIn):
+    from apps.subscriptions.models import CustomerSubscriptionItem
+    from apps.subscriptions.orchestration.service import (
+        OrchestrationError, SubscriptionOrchestrator,
+    )
+
+    _product_check(request)
+    tenant = request.auth.tenant
+    customer = Customer.objects.filter(tenant=tenant, external_id=external_id).first()
+    if customer is None:
+        raise Problem("not_found", "customer not found")
+
+    business = customer.resolve_billing_owner()
+    seat_item = (
+        CustomerSubscriptionItem.objects.filter(customer=business, axis="seat")
+        .order_by("-created_at").first()
+    )
+    if seat_item is None or seat_item.plan is None:
+        raise Problem("not_found", "no seat subscription item for this customer")
+
+    change_event_id = str(uuid.uuid4())
+    try:
+        SubscriptionOrchestrator.set_seats(
+            business, seat_item.plan, payload.seats, change_event_id=change_event_id)
+    except OrchestrationError as e:
+        raise Problem("validation_error", str(e))
+
+    audit_record(
+        action="subscription.seats_changed", tenant_id=tenant.id,
+        resource_type="subscription", resource_id=business.external_id,
+        metadata={"external_id": business.external_id, "seats": payload.seats,
+                  "change_event_id": change_event_id})
+    return 200, {"seats": payload.seats}
+
+
+@subscriptions_router.post("/customers/{external_id}/subscription/cancel",
+                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+@records_audit("subscription.canceled")
+def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
+    """Cancel the customer's subscription (default: at period end).
+
+    Trials and coupons are deliberate non-goals: Stripe owns those levers.
+    """
+    _product_check(request)
+    at_period_end = payload.at_period_end if payload is not None else True
+    return _lifecycle_call(request, external_id,
+                           {"verb": "cancel", "at_period_end": at_period_end})
+
+
+@subscriptions_router.post("/customers/{external_id}/subscription/pause",
+                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+@records_audit("subscription.paused")
+def pause_subscription(request, external_id: str):
+    """Pause collection (void) — the subscription stays active but stops billing."""
+    _product_check(request)
+    return _lifecycle_call(request, external_id, {"verb": "pause"})
+
+
+@subscriptions_router.post("/customers/{external_id}/subscription/resume",
+                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+@records_audit("subscription.resumed")
+def resume_subscription(request, external_id: str):
+    """Resume billing: clears a pause AND any pending at-period-end cancel."""
+    _product_check(request)
+    return _lifecycle_call(request, external_id, {"verb": "resume"})

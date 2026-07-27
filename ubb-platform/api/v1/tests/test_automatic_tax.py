@@ -119,7 +119,7 @@ class SubscribeTaxErrorSurfacingTest(TestCase):
                        "automatic_tax[enabled] cannot be `true`: no origin address",
                        None)):
             resp = self.http_client.post(
-                f"/api/v1/platform/customers/{self.customer.external_id}/subscribe",
+                f"/api/v1/subscriptions/customers/{self.customer.external_id}/subscribe",
                 data=json.dumps({"plan_key": "pro", "seats": 0}),
                 content_type="application/json",
                 HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")

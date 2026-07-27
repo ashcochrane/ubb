@@ -11,7 +11,9 @@ class TestSubscriptionDataEndpoints(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="test", products=["metering", "subscriptions"],
+            # subscriptions_router now gates on billing (plan-as-kernel #8),
+            # not the (retiring, #9) "subscriptions" product value.
+            name="test", products=["metering", "billing"],
         )
         _, self.raw_key = TenantApiKey.create_key(tenant=self.tenant, label="test")
         self.customer = Customer.objects.create(

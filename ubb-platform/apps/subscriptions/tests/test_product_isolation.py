@@ -1,7 +1,11 @@
 """End-to-end product isolation tests for subscriptions (Task 14).
 
 Verifies that product-gated endpoints correctly enforce access based on
-the tenant's products field, specifically for the subscriptions product.
+the tenant's products field. Plan-as-kernel #8 moved subscriptions_router's
+gate from the "subscriptions" product to "billing" (the write routes it now
+shares were never separately gated at all); #9 retires the "subscriptions"
+product value itself. The two tests below were written against the old
+subscriptions-vs-billing split and now assert the #8 behavior instead.
 """
 import json
 
@@ -31,7 +35,9 @@ class TestSubscriptionsProductIsolation(TestCase):
         self.assertEqual(response["Content-Type"], "application/problem+json")
         self.assertEqual(response.json()["code"], "feature_not_enabled")
 
-    def test_billing_tenant_gets_403_on_subscriptions(self):
+    def test_billing_tenant_can_access_subscriptions(self):
+        """Was "gets_403" — the whole point of #8 is that billing now covers
+        the subscriptions surface it writes to, reads included."""
         tenant = Tenant.objects.create(
             name="billing-tenant", products=["metering", "billing"],
         )
@@ -42,9 +48,11 @@ class TestSubscriptionsProductIsolation(TestCase):
             f"/api/v1/subscriptions/customers/{customer.id}/subscription",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertNotEqual(response.status_code, 403)
 
-    def test_subscriptions_tenant_can_access_subscriptions(self):
+    def test_subscriptions_only_tenant_gets_403_on_subscriptions(self):
+        """Was "can_access" — the "subscriptions" product value no longer
+        grants access on its own; only "billing" does (#8)."""
         tenant = Tenant.objects.create(
             name="sub-tenant", products=["metering", "subscriptions"],
         )
@@ -55,7 +63,7 @@ class TestSubscriptionsProductIsolation(TestCase):
             f"/api/v1/subscriptions/customers/{customer.id}/subscription",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}",
         )
-        self.assertNotEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 403)
 
     def test_subscriptions_tenant_gets_403_on_billing(self):
         tenant = Tenant.objects.create(

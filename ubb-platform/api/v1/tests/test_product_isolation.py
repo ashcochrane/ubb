@@ -161,12 +161,16 @@ class TestMeteringBillingTenant(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_gets_403_on_subscriptions(self):
+    def test_can_access_subscriptions(self):
+        """Was "gets_403_on_subscriptions" — subscriptions_router now gates on
+        billing, not a separate "subscriptions" product (#8), so a billing
+        tenant reaches the handler; 404 here is "customer not found", not a
+        product-access refusal."""
         response = self.http_client.get(
             "/api/v1/subscriptions/customers/00000000-0000-0000-0000-000000000000/subscription",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)
 
 
 class TestBothProductsTenant(TestCase):

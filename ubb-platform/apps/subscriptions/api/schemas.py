@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ninja import Schema
+from ninja import Field, Schema
 
 
 class SyncResponse(Schema):
@@ -63,3 +63,22 @@ class PaginatedInvoicesResponse(Schema):
     data: list[SubscriptionInvoiceOut]
     next_cursor: Optional[str] = None
     has_more: bool
+
+
+# Lifecycle verb payloads (moved from api/v1/schemas.py with the routes —
+# apps/subscriptions/api is itself composition layer for this product, but
+# ADR-001 forbids a product importing api.v1, so these are defined locally
+# rather than imported from api.v1.schemas).
+
+
+class SubscriptionCancelIn(Schema):
+    at_period_end: bool = True
+
+
+class SubscribeIn(Schema):
+    plan_key: str = Field(min_length=1, max_length=64)
+    seats: int = Field(default=0, ge=0)
+
+
+class SeatsIn(Schema):
+    seats: int = Field(ge=0)

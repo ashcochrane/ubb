@@ -58,7 +58,7 @@ class TestSubscriptionOrchestrationAPI:
         )
 
     def _make_plan(self, key="pro"):
-        return self._post("/api/v1/platform/plans", {
+        return self._post("/api/v1/plans", {
             "key": key, "name": "Pro",
             "access_fee_micros": 50_000_000, "per_seat_micros": 8_000_000,
             "interval": "month",
@@ -108,7 +108,7 @@ class TestSubscriptionOrchestrationAPI:
         self._make_plan()
         self._make_customer("biz")
         with self._mock_stripe_subscribe():
-            resp = self._post("/api/v1/platform/customers/biz/subscribe",
+            resp = self._post("/api/v1/subscriptions/customers/biz/subscribe",
                               {"plan_key": "pro", "seats": 10})
         assert resp.status_code == 200
         data = resp.json()
@@ -122,25 +122,27 @@ class TestSubscriptionOrchestrationAPI:
 
     def test_subscribe_unknown_plan_returns_404(self):
         self._make_customer("biz")
-        resp = self._post("/api/v1/platform/customers/biz/subscribe",
+        resp = self._post("/api/v1/subscriptions/customers/biz/subscribe",
                           {"plan_key": "nope", "seats": 1})
         assert resp.status_code in (404, 422)
 
     def test_subscribe_unknown_customer_returns_404(self):
         self._make_plan()
-        resp = self._post("/api/v1/platform/customers/ghost/subscribe",
+        resp = self._post("/api/v1/subscriptions/customers/ghost/subscribe",
                           {"plan_key": "pro", "seats": 1})
         assert resp.status_code == 404
 
     def test_subscribe_not_charge_ready_returns_422(self):
-        # tenant without a connected account / charges_enabled -> OrchestrationError
-        t2 = Tenant.objects.create(name="Poor", products=["metering"])
+        # tenant without a connected account / charges_enabled -> OrchestrationError.
+        # Needs the billing product too, now that the route is gated on it —
+        # this test is about charge-readiness, not entitlement.
+        t2 = Tenant.objects.create(name="Poor", products=["metering", "billing"])
         _, raw2 = TenantApiKey.create_key(t2)
         Plan.objects.create(tenant=t2, key="pro", name="Pro",
                             access_fee_micros=50_000_000)
         Customer.objects.create(tenant=t2, external_id="biz2")
         resp = self.client.post(
-            "/api/v1/platform/customers/biz2/subscribe",
+            "/api/v1/subscriptions/customers/biz2/subscribe",
             data={"plan_key": "pro", "seats": 1},
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw2}",
@@ -153,10 +155,10 @@ class TestSubscriptionOrchestrationAPI:
         self._make_plan()
         biz = self._make_customer("biz")
         with self._mock_stripe_subscribe():
-            self._post("/api/v1/platform/customers/biz/subscribe",
+            self._post("/api/v1/subscriptions/customers/biz/subscribe",
                        {"plan_key": "pro", "seats": 10})
         with patch("apps.subscriptions.orchestration.service.stripe.SubscriptionItem.modify"):
-            resp = self._post("/api/v1/platform/customers/biz/seats", {"seats": 12})
+            resp = self._post("/api/v1/subscriptions/customers/biz/seats", {"seats": 12})
         assert resp.status_code == 200
         assert resp.json()["seats"] == 12
         item = CustomerSubscriptionItem.objects.get(customer=biz, axis="seat")
@@ -165,7 +167,7 @@ class TestSubscriptionOrchestrationAPI:
     def test_set_seats_no_subscription_returns_404(self):
         self._make_plan()
         self._make_customer("biz")
-        resp = self._post("/api/v1/platform/customers/biz/seats", {"seats": 5})
+        resp = self._post("/api/v1/subscriptions/customers/biz/seats", {"seats": 5})
         assert resp.status_code == 404
 
     # ---- PATCH /plans/{key} (F5.4) ----
@@ -180,7 +182,7 @@ class TestSubscriptionOrchestrationAPI:
 
     def test_update_plan_unprovisioned_fee_edit(self):
         self._make_plan()
-        resp = self._patch("/api/v1/platform/plans/pro", {"access_fee_micros": 60_000_000})
+        resp = self._patch("/api/v1/plans/pro", {"access_fee_micros": 60_000_000})
         assert resp.status_code == 200
         data = resp.json()
         assert data["access_fee_micros"] == 60_000_000
@@ -191,11 +193,11 @@ class TestSubscriptionOrchestrationAPI:
         self._make_plan()
         self._make_customer("biz")
         with self._mock_stripe_subscribe():
-            self._post("/api/v1/platform/customers/biz/subscribe",
+            self._post("/api/v1/subscriptions/customers/biz/subscribe",
                        {"plan_key": "pro", "seats": 10})
         svc = "apps.subscriptions.orchestration.service.stripe"
         with patch(f"{svc}.Price.create", return_value=MagicMock(id="price_s_v2")) as pc:
-            resp = self._patch("/api/v1/platform/plans/pro", {"per_seat_micros": 6_000_000})
+            resp = self._patch("/api/v1/plans/pro", {"per_seat_micros": 6_000_000})
         assert resp.status_code == 200
         data = resp.json()
         assert data["per_seat_micros"] == 6_000_000
@@ -203,7 +205,7 @@ class TestSubscriptionOrchestrationAPI:
         assert pc.call_args.kwargs["idempotency_key"].endswith("-v2")
 
     def test_update_plan_unknown_key_returns_404(self):
-        resp = self._patch("/api/v1/platform/plans/ghost", {"access_fee_micros": 1_000_000})
+        resp = self._patch("/api/v1/plans/ghost", {"access_fee_micros": 1_000_000})
         assert resp.status_code == 404
 
     # ---- subscription lifecycle endpoints (F5.4) ----
@@ -212,14 +214,14 @@ class TestSubscriptionOrchestrationAPI:
         self._make_plan()
         self._make_customer(external_id)
         with self._mock_stripe_subscribe():
-            self._post(f"/api/v1/platform/customers/{external_id}/subscribe",
+            self._post(f"/api/v1/subscriptions/customers/{external_id}/subscribe",
                        {"plan_key": "pro", "seats": 10})
 
     def test_cancel_subscription_default_at_period_end(self):
         self._subscribed_customer()
         svc = "apps.subscriptions.orchestration.service.stripe"
         with patch(f"{svc}.Subscription.modify") as mod:
-            resp = self._post("/api/v1/platform/customers/biz/subscription/cancel", {})
+            resp = self._post("/api/v1/subscriptions/customers/biz/subscription/cancel", {})
         assert resp.status_code == 200
         data = resp.json()
         assert data["cancel_at_period_end"] is True
@@ -230,7 +232,7 @@ class TestSubscriptionOrchestrationAPI:
         self._subscribed_customer()
         svc = "apps.subscriptions.orchestration.service.stripe"
         with patch(f"{svc}.Subscription.cancel") as can:
-            resp = self._post("/api/v1/platform/customers/biz/subscription/cancel",
+            resp = self._post("/api/v1/subscriptions/customers/biz/subscription/cancel",
                               {"at_period_end": False})
         assert resp.status_code == 200
         assert resp.json()["status"] == "canceled"
@@ -243,13 +245,13 @@ class TestSubscriptionOrchestrationAPI:
         self._subscribed_customer()
         svc = "apps.subscriptions.orchestration.service.stripe"
         with patch(f"{svc}.Subscription.modify") as mod:
-            resp = self._post("/api/v1/platform/customers/biz/subscription/pause", {})
+            resp = self._post("/api/v1/subscriptions/customers/biz/subscription/pause", {})
         assert resp.status_code == 200
         assert resp.json()["paused"] is True
         assert mod.call_args.kwargs["pause_collection"] == {"behavior": "void"}
 
         with patch(f"{svc}.Subscription.modify") as mod:
-            resp = self._post("/api/v1/platform/customers/biz/subscription/resume", {})
+            resp = self._post("/api/v1/subscriptions/customers/biz/subscription/resume", {})
         assert resp.status_code == 200
         data = resp.json()
         assert data["paused"] is False
@@ -261,10 +263,10 @@ class TestSubscriptionOrchestrationAPI:
         self._make_plan()
         self._make_customer("biz")  # never subscribed
         for path in ("cancel", "pause", "resume"):
-            resp = self._post(f"/api/v1/platform/customers/biz/subscription/{path}", {})
+            resp = self._post(f"/api/v1/subscriptions/customers/biz/subscription/{path}", {})
             assert resp.status_code == 404, path
 
     def test_lifecycle_verbs_404_unknown_customer(self):
         for path in ("cancel", "pause", "resume"):
-            resp = self._post(f"/api/v1/platform/customers/ghost/subscription/{path}", {})
+            resp = self._post(f"/api/v1/subscriptions/customers/ghost/subscription/{path}", {})
             assert resp.status_code == 404, path

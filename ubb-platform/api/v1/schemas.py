@@ -891,17 +891,9 @@ class AssignPlanIn(Schema):
     plan_key: str
 
 
-class SubscriptionCancelIn(Schema):
-    at_period_end: bool = True
-
-
-class SubscribeIn(Schema):
-    plan_key: str = Field(min_length=1, max_length=64)
-    seats: int = Field(default=0, ge=0)
-
-
-class SeatsIn(Schema):
-    seats: int = Field(ge=0)
+# SubscriptionCancelIn / SubscribeIn / SeatsIn moved to
+# apps/subscriptions/api/schemas.py with the lifecycle routes they serve
+# (ADR-001: a product's api/ module may not import api.v1).
 
 
 # Tenant billing periods / invoices — shared by the tenant mount and the
