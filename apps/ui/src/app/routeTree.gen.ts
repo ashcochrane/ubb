@@ -14,10 +14,10 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppWebhooksIndexRouteImport } from './routes/_app/webhooks/index'
-import { Route as AppSubscriptionsIndexRouteImport } from './routes/_app/subscriptions/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppReferralsIndexRouteImport } from './routes/_app/referrals/index'
 import { Route as AppPricingIndexRouteImport } from './routes/_app/pricing/index'
+import { Route as AppPlansIndexRouteImport } from './routes/_app/plans/index'
 import { Route as AppEventsIndexRouteImport } from './routes/_app/events/index'
 import { Route as AppDevelopersIndexRouteImport } from './routes/_app/developers/index'
 import { Route as AppCustomersIndexRouteImport } from './routes/_app/customers/index'
@@ -56,11 +56,6 @@ const AppWebhooksIndexRoute = AppWebhooksIndexRouteImport.update({
   path: '/webhooks/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSubscriptionsIndexRoute = AppSubscriptionsIndexRouteImport.update({
-  id: '/subscriptions/',
-  path: '/subscriptions/',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -74,6 +69,11 @@ const AppReferralsIndexRoute = AppReferralsIndexRouteImport.update({
 const AppPricingIndexRoute = AppPricingIndexRouteImport.update({
   id: '/pricing/',
   path: '/pricing/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlansIndexRoute = AppPlansIndexRouteImport.update({
+  id: '/plans/',
+  path: '/plans/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEventsIndexRoute = AppEventsIndexRouteImport.update({
@@ -159,10 +159,10 @@ export interface FileRoutesByFullPath {
   '/customers/': typeof AppCustomersIndexRoute
   '/developers/': typeof AppDevelopersIndexRoute
   '/events/': typeof AppEventsIndexRoute
+  '/plans/': typeof AppPlansIndexRoute
   '/pricing/': typeof AppPricingIndexRoute
   '/referrals/': typeof AppReferralsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
-  '/subscriptions/': typeof AppSubscriptionsIndexRoute
   '/webhooks/': typeof AppWebhooksIndexRoute
 }
 export interface FileRoutesByTo {
@@ -181,10 +181,10 @@ export interface FileRoutesByTo {
   '/customers': typeof AppCustomersIndexRoute
   '/developers': typeof AppDevelopersIndexRoute
   '/events': typeof AppEventsIndexRoute
+  '/plans': typeof AppPlansIndexRoute
   '/pricing': typeof AppPricingIndexRoute
   '/referrals': typeof AppReferralsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
-  '/subscriptions': typeof AppSubscriptionsIndexRoute
   '/webhooks': typeof AppWebhooksIndexRoute
 }
 export interface FileRoutesById {
@@ -206,10 +206,10 @@ export interface FileRoutesById {
   '/_app/customers/': typeof AppCustomersIndexRoute
   '/_app/developers/': typeof AppDevelopersIndexRoute
   '/_app/events/': typeof AppEventsIndexRoute
+  '/_app/plans/': typeof AppPlansIndexRoute
   '/_app/pricing/': typeof AppPricingIndexRoute
   '/_app/referrals/': typeof AppReferralsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
-  '/_app/subscriptions/': typeof AppSubscriptionsIndexRoute
   '/_app/webhooks/': typeof AppWebhooksIndexRoute
 }
 export interface FileRouteTypes {
@@ -231,10 +231,10 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/developers/'
     | '/events/'
+    | '/plans/'
     | '/pricing/'
     | '/referrals/'
     | '/settings/'
-    | '/subscriptions/'
     | '/webhooks/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -253,10 +253,10 @@ export interface FileRouteTypes {
     | '/customers'
     | '/developers'
     | '/events'
+    | '/plans'
     | '/pricing'
     | '/referrals'
     | '/settings'
-    | '/subscriptions'
     | '/webhooks'
   id:
     | '__root__'
@@ -277,10 +277,10 @@ export interface FileRouteTypes {
     | '/_app/customers/'
     | '/_app/developers/'
     | '/_app/events/'
+    | '/_app/plans/'
     | '/_app/pricing/'
     | '/_app/referrals/'
     | '/_app/settings/'
-    | '/_app/subscriptions/'
     | '/_app/webhooks/'
   fileRoutesById: FileRoutesById
 }
@@ -326,13 +326,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWebhooksIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/subscriptions/': {
-      id: '/_app/subscriptions/'
-      path: '/subscriptions'
-      fullPath: '/subscriptions/'
-      preLoaderRoute: typeof AppSubscriptionsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings/': {
       id: '/_app/settings/'
       path: '/'
@@ -352,6 +345,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing/'
       preLoaderRoute: typeof AppPricingIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/plans/': {
+      id: '/_app/plans/'
+      path: '/plans'
+      fullPath: '/plans/'
+      preLoaderRoute: typeof AppPlansIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/events/': {
@@ -480,9 +480,9 @@ interface AppRouteChildren {
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
   AppDevelopersIndexRoute: typeof AppDevelopersIndexRoute
   AppEventsIndexRoute: typeof AppEventsIndexRoute
+  AppPlansIndexRoute: typeof AppPlansIndexRoute
   AppPricingIndexRoute: typeof AppPricingIndexRoute
   AppReferralsIndexRoute: typeof AppReferralsIndexRoute
-  AppSubscriptionsIndexRoute: typeof AppSubscriptionsIndexRoute
   AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
 }
 
@@ -498,9 +498,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppCustomersIndexRoute: AppCustomersIndexRoute,
   AppDevelopersIndexRoute: AppDevelopersIndexRoute,
   AppEventsIndexRoute: AppEventsIndexRoute,
+  AppPlansIndexRoute: AppPlansIndexRoute,
   AppPricingIndexRoute: AppPricingIndexRoute,
   AppReferralsIndexRoute: AppReferralsIndexRoute,
-  AppSubscriptionsIndexRoute: AppSubscriptionsIndexRoute,
   AppWebhooksIndexRoute: AppWebhooksIndexRoute,
 }
 

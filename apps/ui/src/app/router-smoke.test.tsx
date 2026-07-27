@@ -21,7 +21,7 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/customers", expectText: /customers/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },
-  { path: "/subscriptions", expectText: /subscriptions|plans/i },
+  { path: "/plans", expectText: /plans/i },
   { path: "/referrals", expectText: /referral/i },
   { path: "/webhooks", expectText: /webhook/i },
   { path: "/developers", expectText: /api key|developers/i },
