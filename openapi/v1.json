@@ -331,6 +331,15 @@
             "title": "Balance Micros",
             "type": "integer"
           },
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -345,6 +354,10 @@
               }
             ],
             "title": "Expiring Micros"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
+            "type": "boolean"
           },
           "negative_since": {
             "anyOf": [
@@ -382,7 +395,10 @@
         },
         "required": [
           "balance_micros",
-          "currency"
+          "currency",
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
         ],
         "title": "BalanceResponse",
         "type": "object"
@@ -972,6 +988,19 @@
       },
       "CustomerBillingProfileOut": {
         "properties": {
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
+            "type": "boolean"
+          },
           "min_balance_micros": {
             "anyOf": [
               {
@@ -1006,6 +1035,11 @@
             "title": "Topup Grant Expiry Days"
           }
         },
+        "required": [
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
+        ],
         "title": "CustomerBillingProfileOut",
         "type": "object"
       },
@@ -2703,6 +2737,15 @@
       },
       "PaginatedWalletTransactions": {
         "properties": {
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
           "data": {
             "items": {
               "$ref": "#/components/schemas/WalletTransactionOut"
@@ -2712,6 +2755,10 @@
           },
           "has_more": {
             "title": "Has More",
+            "type": "boolean"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
             "type": "boolean"
           },
           "next_cursor": {
@@ -2728,7 +2775,10 @@
         },
         "required": [
           "data",
-          "has_more"
+          "has_more",
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
         ],
         "title": "PaginatedWalletTransactions",
         "type": "object"

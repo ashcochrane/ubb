@@ -177,6 +177,11 @@ class BalanceResponse(Schema):
     # UBB never acts on it (no reminders, no auto-close; collections stay
     # between the tenant, their customer, and Stripe).
     negative_since: Optional[str] = None
+    # Pooled-seat disclosure (Task 3): the resolved billing owner — equals
+    # this customer's own id/external_id when not a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class UsageEventOut(Schema):
@@ -357,7 +362,12 @@ def wallet_transaction_out(t):
 
 
 class PaginatedWalletTransactions(Paginated[WalletTransactionOut]):
-    pass
+    # Pooled-seat disclosure (Task 3): these transactions are the resolved
+    # billing owner's ledger — equals this customer's own id/external_id
+    # when not a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class ReadyResponse(Schema):
@@ -566,6 +576,12 @@ class CustomerBillingProfileOut(Schema):
     min_balance_micros: Optional[int] = None
     topup_grant_expiry_days: Optional[int] = None
     soft_min_balance_micros: Optional[int] = None
+    # Pooled-seat disclosure (Task 3): this is the resolved billing owner's
+    # effective profile — equals this customer's own id/external_id when not
+    # a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class BudgetStatusOut(Schema):

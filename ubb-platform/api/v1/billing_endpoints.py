@@ -51,22 +51,30 @@ _product_check = ProductAccess("billing")
 def get_balance(request, customer_id: UUIDIdentifier):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Pooled seats read the OWNER's wallet — that's the row every other
+    # money-aware consumer (RiskService, the drawdown handler, grants) reads.
+    owner = customer.resolve_billing_owner()
+    owner_disclosure = {"billing_owner_id": owner.id,
+                        "billing_owner_external_id": owner.external_id,
+                        "is_pooled_seat": owner.id != customer.id}
     from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet
     try:
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.get(customer=owner)
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
                 # #41 pin 10: since when the balance has been negative
                 # (null when ≥ 0). Visibility only — nothing acts on it.
                 "negative_since": (wallet.negative_since.isoformat()
                                    if wallet.negative_since else None),
-                **wallet_ops.balance_summary(wallet)}
+                **wallet_ops.balance_summary(wallet),
+                **owner_disclosure}
     except Wallet.DoesNotExist:
         # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
         return {"balance_micros": 0,
                 "currency": (request.auth.tenant.default_currency or "usd").lower(),
                 "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None,
-                "negative_since": None}
+                "negative_since": None,
+                **owner_disclosure}
 
 
 @billing_router.post("/debit", response=DebitCreditResponse)
@@ -79,12 +87,17 @@ def debit(request, payload: DebitRequest):
     customer = get_object_or_404(
         Customer, external_id=payload.customer_id, tenant=request.auth.tenant
     )
+    # Route through the billing owner (Task 3): lock_for_billing lazily
+    # mints a wallet on whatever id it's handed, so a pooled seat's own id
+    # would create a second, unread wallet instead of moving the money
+    # everything else (RiskService, drawdown, grants) actually reads.
+    owner = customer.resolve_billing_owner()
 
     # Co-commit pattern (#109 decision 8): the outer atomic makes the ADR-004
     # audit row land in the same transaction as the money movement.
     with transaction.atomic():
         result = wallet_ops.debit(
-            customer_id=customer.id, tenant=request.auth.tenant,
+            customer_id=owner.id, tenant=request.auth.tenant,
             amount_micros=payload.amount_micros,
             idempotency_key=payload.idempotency_key,
             allow_negative=payload.allow_negative,
@@ -93,10 +106,13 @@ def debit(request, payload: DebitRequest):
                                    reference=payload.reference))
         if result.outcome == "applied":
             # An idempotent replay skips this, so it fires once per real debit.
+            # resource_id/customer_id keep the SEAT as the named subject of
+            # the action; owner_id records whose wallet actually moved.
             audit_record(
                 action="wallet.debited", tenant_id=request.auth.tenant.id,
                 resource_type="wallet", resource_id=customer.id,
                 metadata={"customer_id": payload.customer_id,
+                          "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "reason_code": payload.reason_code,
                           "reference": payload.reference,
@@ -131,10 +147,14 @@ def credit(request, payload: CreditRequest):
     customer = get_object_or_404(
         Customer, external_id=payload.customer_id, tenant=request.auth.tenant
     )
+    # Route through the billing owner (Task 3) — see debit() above: crediting
+    # the owner's wallet is what the caller already meant (one wallet in
+    # play); crediting the seat's would mint money nothing else ever reads.
+    owner = customer.resolve_billing_owner()
 
     with transaction.atomic():  # co-commit: audit rides the money transaction
         result = wallet_ops.credit(
-            customer_id=customer.id, tenant=request.auth.tenant,
+            customer_id=owner.id, tenant=request.auth.tenant,
             amount_micros=payload.amount_micros,
             idempotency_key=payload.idempotency_key,
             audit=wallet_ops.Audit(actor=payload.actor,
@@ -143,10 +163,13 @@ def credit(request, payload: CreditRequest):
                                    description=f"Credit: {payload.source}"))
         if result.outcome == "applied":
             # Audit the hand-moved credit (an idempotent replay skips this).
+            # resource_id/customer_id keep the SEAT as the named subject of
+            # the action; owner_id records whose wallet actually moved.
             audit_record(
                 action="wallet.credited", tenant_id=request.auth.tenant.id,
                 resource_type="wallet", resource_id=customer.id,
                 metadata={"customer_id": payload.customer_id,
+                          "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "source": payload.source,
                           "reason_code": payload.reason_code,
@@ -162,19 +185,28 @@ def credit(request, payload: CreditRequest):
 def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Route through the billing owner (Task 3): the drawdown handler reads
+    # AutoTopUpConfig off the OWNER's wallet-lock customer (see
+    # apps/billing/wallets/operations.py's BalanceLow emission and
+    # apps/billing/connectors/stripe/handlers.py) — a config saved on a
+    # pooled seat would never be found there.
+    owner = customer.resolve_billing_owner()
     with transaction.atomic():
         AutoTopUpConfig.objects.update_or_create(
-            customer=customer,
+            customer=owner,
             defaults={
                 "is_enabled": payload.is_enabled,
                 "trigger_threshold_micros": payload.trigger_threshold_micros,
                 "top_up_amount_micros": payload.top_up_amount_micros,
             },
         )
+        # resource_id/customer_id keep the SEAT as the named subject of the
+        # action; owner_id records whose config actually took effect.
         audit_record(
             action="auto_top_up.configured", tenant_id=request.auth.tenant.id,
             resource_type="auto_top_up", resource_id=customer.id,
             metadata={"customer_id": str(customer.id),
+                      "owner_id": str(owner.id),
                       "is_enabled": payload.is_enabled,
                       "trigger_threshold_micros": payload.trigger_threshold_micros,
                       "top_up_amount_micros": payload.top_up_amount_micros})
@@ -202,20 +234,25 @@ def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
     availability is balance minus active promo remainders."""
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Route through the billing owner (Task 3) — see debit() above.
+    owner = customer.resolve_billing_owner()
     from apps.billing.wallets import operations as wallet_ops
 
     with transaction.atomic():  # co-commit: audit rides the money transaction
         result = wallet_ops.withdraw(
-            customer_id=customer.id, tenant=request.auth.tenant,
+            customer_id=owner.id, tenant=request.auth.tenant,
             amount_micros=payload.amount_micros,
             idempotency_key=payload.idempotency_key,
             audit=wallet_ops.Audit(description=payload.description))
         if result.outcome == "applied":
             # Audit the hand-moved withdrawal (an idempotent replay skips this).
+            # resource_id/customer_id keep the SEAT as the named subject of
+            # the action; owner_id records whose wallet actually moved.
             audit_record(
                 action="wallet.withdrawn", tenant_id=request.auth.tenant.id,
                 resource_type="wallet", resource_id=customer.id,
                 metadata={"customer_id": str(customer.id),
+                          "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "transaction_id": result.transaction_id})
     # Raised OUTSIDE the atomic: the refusal's lazy-expiry side effects commit
@@ -295,15 +332,21 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
 def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Pooled seats read the OWNER's ledger — same wallet get_balance() reads.
+    owner = customer.resolve_billing_owner()
+    owner_disclosure = {"billing_owner_id": owner.id,
+                        "billing_owner_external_id": owner.external_id,
+                        "is_pooled_seat": owner.id != customer.id}
 
     from apps.billing.wallets.models import Wallet
     try:
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.get(customer=owner)
     except Wallet.DoesNotExist:
-        return empty_page()
+        return {**empty_page(), **owner_disclosure}
 
-    return page(wallet.transactions.all(), cursor, limit,
-                serialize=wallet_transaction_out)
+    return {**page(wallet.transactions.all(), cursor, limit,
+                   serialize=wallet_transaction_out),
+            **owner_disclosure}
 
 
 # ---------- Credit grants (F4.3) ----------
@@ -538,11 +581,17 @@ def get_customer_billing_profile(request, customer_id: UUID):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    profile = CustomerBillingProfile.objects.filter(customer=customer).first()
+    # Return the effective profile for the OWNER — matches what
+    # get_customer_min_balance(owner.id, ...) resolves at the gate.
+    owner = customer.resolve_billing_owner()
+    owner_disclosure = {"billing_owner_id": owner.id,
+                        "billing_owner_external_id": owner.external_id,
+                        "is_pooled_seat": owner.id != customer.id}
+    profile = CustomerBillingProfile.objects.filter(customer=owner).first()
     if not profile:
         return {"min_balance_micros": None, "topup_grant_expiry_days": None,
-                "soft_min_balance_micros": None}
-    return _billing_profile_out(profile)
+                "soft_min_balance_micros": None, **owner_disclosure}
+    return {**_billing_profile_out(profile), **owner_disclosure}
 
 
 @billing_router.put("/customers/{customer_id}/billing-profile",
@@ -553,6 +602,19 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # Refuse honestly (Task 3): writing floors to the seat's own profile row
+    # would be silently ignored (the gate reads the OWNER's profile), and
+    # writing them to the owner's profile instead would silently change
+    # every sibling seat's policy — so this PUT refuses rather than doing
+    # either quietly.
+    owner = customer.resolve_billing_owner()
+    if owner.id != customer.id:
+        raise Problem(
+            "invalid_config",
+            f"{customer.external_id} is a pooled seat billed through "
+            f"'{owner.external_id}' — set overdraft/expiry floors on the "
+            "billing owner, not the seat",
+            extensions={"billing_owner_external_id": owner.external_id})
     if payload.min_balance_micros is not None and payload.min_balance_micros < 0:
         raise Problem("invalid_config",
                       "min_balance_micros must be >= 0 (allowed overdraft "
@@ -587,7 +649,12 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
                       "min_balance_micros": profile.min_balance_micros,
                       "topup_grant_expiry_days": profile.topup_grant_expiry_days,
                       "soft_min_balance_micros": profile.soft_min_balance_micros})
-    return 200, _billing_profile_out(profile)
+    # owner.id == customer.id is guaranteed here (a pooled seat was refused
+    # above), so this is always a self-owned, non-pooled response.
+    return 200, {**_billing_profile_out(profile),
+                "billing_owner_id": customer.id,
+                "billing_owner_external_id": customer.external_id,
+                "is_pooled_seat": False}
 
 
 @billing_router.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
