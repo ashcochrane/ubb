@@ -11,8 +11,8 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
 ## Contexts
 
 - [Platform kernel](./ubb-platform/apps/platform/CONTEXT.md) — tenants, customers, the
-  events/outbox, runs, auth, locking. The shared kernel; anything may depend on it. (`core/` is its
-  plumbing.)
+  events/outbox, runs, auth, locking, and the plan catalog (`apps/platform/plans/`). The shared
+  kernel; anything may depend on it. (`core/` is its plumbing.)
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
   dimensional tags, customer margin, and the RateCard pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,

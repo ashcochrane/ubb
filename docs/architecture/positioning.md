@@ -10,6 +10,20 @@ money Stripe has already collected.
 - **postpaid** — meter + period-close Stripe invoice line-item push. Requires the `billing` product.
 
 ## Boundary
-UBB owns everything up to invoice line items / credit drawdown. Stripe owns
-invoicing, payments, tax, dunning, portal, refunds, disputes, and subscription/
-seat lifecycle. Full detail: docs/plans/2026-06-05-ubb-repositioning-design.md.
+
+UBB is a **control plane** over Stripe Billing, not a reimplementation of it and not a passive
+mirror. Every piece of Stripe-owned state UBB stores is a cache: it has a refresh path, a staleness
+bound, and it never decides money on its own.
+
+| Concern | Owner | Rationale |
+|---|---|---|
+| Proration, invoicing, dunning, tax, retries | **Stripe** | Solved; never rebuild |
+| Subscription status, amounts, periods | **Stripe** | One authority. UBB caches it, refreshed by webhooks + a scheduled reconciler |
+| Seat *identity*, usage, provider cost, markup, margin | **UBB** | Stripe structurally cannot know these |
+| Plan definition + assignment | **UBB kernel** | The only object spanning both engines |
+
+UBB drives the subscription lifecycle (subscribe, seats, cancel, pause, resume, plan provisioning,
+price versioning) as calls into Stripe; it never reimplements the billing engine itself. Full
+detail: `docs/plans/2026-07-27-plan-as-kernel-design.md` §4. (The 2026-06-05 repositioning decision
+that assigned the lifecycle to Stripe alone was reversed four days later by the J2 program's
+`SubscriptionOrchestrator` — see `docs/plans/2026-06-10-program-current-state.md`.)
