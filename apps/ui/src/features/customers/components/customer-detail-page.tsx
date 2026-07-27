@@ -1,120 +1,156 @@
-import { useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { PageHeader } from "@/components/shared/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { FormField } from "@/components/shared/form-field";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link } from "@tanstack/react-router";
+import { ArrowLeft, UserRoundX } from "lucide-react";
+
+import { isNotFound } from "@/api/problem";
+import { CopyButton } from "@/components/shared/copy-button";
+import { DateRangePicker } from "@/components/shared/date-range-picker";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorCard } from "@/components/shared/error-card";
+import { ProductGate } from "@/components/shared/product-gate";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useCustomer,
-  useDeleteCustomer,
-  useUpdateCustomer,
-} from "../api/queries";
-import { CustomerBillingPanel } from "@/features/billing-ops/components/customer-billing-panel";
-import { CUSTOMER_STATUSES, type CustomerStatus } from "../api/types";
-import {
-  customerEditSchema,
-  type CustomerEditFormValues,
-} from "../lib/schema";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { resolveRange, type DateRange } from "@/lib/date-range";
+import { cn } from "@/lib/utils";
 
-export function CustomerDetailPage({ customerId }: { customerId: string }) {
-  const { data, isLoading } = useCustomer(customerId);
-  const update = useUpdateCustomer(customerId);
-  const remove = useDeleteCustomer();
-  const navigate = useNavigate();
+import { useCustomerMargin } from "../api/queries";
+import { BillingTab } from "./billing-tab";
+import { OverviewTab } from "./overview-tab";
+import { PricingTab } from "./pricing-tab";
+import { SubscriptionTab } from "./subscription-tab";
+import { UsageTab } from "./usage-tab";
 
-  const { register, handleSubmit, reset, formState: { errors } } =
-    useForm<CustomerEditFormValues>({
-      resolver: zodResolver(customerEditSchema),
-      defaultValues: { stripeCustomerId: "", status: "active" },
-    });
+const TABS = [
+  { value: "overview", label: "Overview" },
+  { value: "usage", label: "Usage" },
+  { value: "billing", label: "Billing" },
+  { value: "pricing", label: "Pricing" },
+  { value: "subscription", label: "Subscription" },
+] as const;
 
-  // Sync form with server data when the customer record loads or changes.
-  // Depend on primitive values rather than the object reference to avoid
-  // re-firing on every render when the query hook returns a new object literal.
-  const stripeId = data?.stripeCustomerId ?? "";
-  const statusVal = (data?.status as CustomerStatus) ?? "active";
-  useEffect(() => {
-    if (!data) return;
-    reset({ stripeCustomerId: stripeId, status: statusVal });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stripeId, statusVal]);
+export type CustomerTab = (typeof TABS)[number]["value"];
 
-  if (isLoading || !data) {
+export interface CustomerDetailSearch extends DateRange {
+  tab?: CustomerTab;
+}
+
+export function CustomerDetailPage({
+  customerId,
+  search,
+  onSearchChange,
+}: {
+  customerId: string;
+  search: CustomerDetailSearch;
+  onSearchChange: (next: CustomerDetailSearch) => void;
+}) {
+  const range = resolveRange(search);
+  const margin = useCustomerMargin(customerId, range);
+  // Unknown/stale ?tab= values fall back to Overview instead of rendering an
+  // empty tab panel (the route schema also coerces them to undefined).
+  const requestedTab = search.tab;
+  const tab =
+    requestedTab !== undefined && TABS.some((entry) => entry.value === requestedTab)
+      ? requestedTab
+      : "overview";
+
+  if (margin.isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full max-w-xl" />
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-8 w-96" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
-  async function onSubmit(values: CustomerEditFormValues) {
-    await update.mutateAsync({
-      stripeCustomerId: values.stripeCustomerId,
-      status: values.status,
-      minBalanceMicros: data?.minBalanceMicros ?? null,
-      metadata: data?.metadata ?? {},
-    });
+  if (margin.isError) {
+    if (isNotFound(margin.error)) {
+      return (
+        <EmptyState
+          icon={UserRoundX}
+          title="Customer not found"
+          description="This customer doesn't exist (or belongs to another workspace)."
+        />
+      );
+    }
+    return <ErrorCard error={margin.error} onRetry={() => void margin.refetch()} />;
   }
 
-  async function onDelete() {
-    if (!confirm(`Delete customer ${data?.externalId}?`)) return;
-    await remove.mutateAsync(customerId);
-    navigate({ to: "/customers" });
-  }
+  const detail = margin.data;
+  if (!detail) return null;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={data.externalId}
-        description={`Created ${new Date(data.createdAt).toLocaleString()}`}
-        actions={
-          <Button variant="destructive" onClick={onDelete} disabled={remove.isPending}>
-            Delete
-          </Button>
-        }
-      />
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <FormField label="External ID" hint="External ID is immutable.">
-              {(id) => <Input id={id} value={data.externalId} disabled />}
-            </FormField>
-            <FormField
-              label="Stripe customer ID"
-              error={errors.stripeCustomerId?.message}
-            >
-              {(id) => <Input id={id} {...register("stripeCustomerId")} />}
-            </FormField>
-            <FormField label="Status" error={errors.status?.message}>
-              {(id) => (
-                <select
-                  id={id}
-                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                  {...register("status")}
-                >
-                  {CUSTOMER_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </FormField>
-            <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? "Saving…" : "Save changes"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-      <CustomerBillingPanel customerId={customerId} />
+    // keepPreviousData keeps the page mounted across range changes; the
+    // placeholder refresh dims subtly instead of blanking to skeletons.
+    <div
+      className={cn(
+        "space-y-4 transition-opacity",
+        margin.isPlaceholderData && "opacity-60",
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            to="/customers"
+            className="mb-1 inline-flex items-center gap-1 text-[12px] text-text-secondary hover:text-text-primary"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Customers
+          </Link>
+          <h1 className="truncate text-xl font-semibold tracking-tight">
+            {detail.external_id}
+          </h1>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="font-mono text-[12px] text-text-secondary" title={customerId}>
+              {customerId}
+            </span>
+            <CopyButton value={customerId} label="Copy customer ID" />
+          </div>
+        </div>
+        <DateRangePicker
+          value={{ start_date: search.start_date, end_date: search.end_date }}
+          onChange={(next) => onSearchChange({ ...next, tab: search.tab })}
+        />
+      </div>
+
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          const entry = TABS.find((candidate) => candidate.value === value);
+          onSearchChange({
+            ...search,
+            tab: entry && entry.value !== "overview" ? entry.value : undefined,
+          });
+        }}
+      >
+        <TabsList>
+          {TABS.map((entry) => (
+            <TabsTrigger key={entry.value} value={entry.value}>
+              {entry.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="overview" className="pt-3">
+          <OverviewTab customerId={customerId} margin={detail} range={range} />
+        </TabsContent>
+        <TabsContent value="usage" className="pt-3">
+          <UsageTab customerId={customerId} range={range} />
+        </TabsContent>
+        <TabsContent value="billing" className="pt-3">
+          <ProductGate product="billing">
+            <BillingTab customerId={customerId} externalId={detail.external_id} />
+          </ProductGate>
+        </TabsContent>
+        <TabsContent value="pricing" className="pt-3">
+          <PricingTab customerId={customerId} />
+        </TabsContent>
+        <TabsContent value="subscription" className="pt-3">
+          <ProductGate product="subscriptions">
+            <SubscriptionTab
+              customerId={customerId}
+              externalId={detail.external_id}
+            />
+          </ProductGate>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

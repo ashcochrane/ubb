@@ -1,61 +1,100 @@
-// src/features/events/api/queries.ts
+// TanStack Query hooks for the events feature. ALL query keys and mutation
+// invalidation live here. First key segment = backend namespace.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toastOnError } from "@/lib/mutations";
+
+import { useCursorList } from "@/api/pagination";
+
 import { eventsApi } from "./provider";
-import type { EventFilters, StagedEvent } from "./types";
+import type {
+  AnalyticsParams,
+  RefundBody,
+  ReportWindow,
+  TimeseriesParams,
+  UsageListFilters,
+} from "./types";
 
-export function useEventFilterOptions() {
+export function useMarginCustomers() {
   return useQuery({
-    queryKey: ["event-filter-options"],
-    queryFn: () => eventsApi.getFilterOptions(),
-    staleTime: 5 * 60 * 1000,
+    queryKey: ["margin", "customers"] as const,
+    queryFn: () => eventsApi.listMarginCustomers(),
   });
 }
 
-export function useEvents(filters: EventFilters | null) {
+export function useCustomerMargin(customerId: string | undefined) {
   return useQuery({
-    queryKey: ["events", filters],
-    queryFn: () => eventsApi.getEvents(filters!),
-    enabled: filters !== null,
-    placeholderData: (prev) => prev,
+    queryKey: ["margin", "customer", customerId] as const,
+    queryFn: () => eventsApi.getCustomerMargin(customerId ?? ""),
+    enabled: customerId !== undefined,
   });
 }
 
-export function useAuditTrail() {
+export function useUsageAnalytics(params: AnalyticsParams) {
   return useQuery({
-    queryKey: ["events-audit-trail"],
-    queryFn: () => eventsApi.getAuditTrail(),
+    queryKey: ["metering", "analytics", "usage", params] as const,
+    queryFn: () => eventsApi.getUsageAnalytics(params),
+    // Window/filter changes refresh in the background without blanking.
+    placeholderData: (previous) => previous,
   });
 }
 
-export function usePushEvents() {
-  const qc = useQueryClient();
+export function useUsageTimeseries(params: TimeseriesParams) {
+  return useQuery({
+    queryKey: ["metering", "analytics", "timeseries", params] as const,
+    queryFn: () => eventsApi.getUsageTimeseries(params),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useUsageLedger(
+  customerId: string | undefined,
+  filters: UsageListFilters,
+) {
+  return useCursorList(
+    ["metering", "usage", customerId ?? "none", filters],
+    (cursor) => eventsApi.listUsage(customerId ?? "", filters, cursor),
+    { enabled: customerId !== undefined },
+  );
+}
+
+export function useUsageEvent(eventId: string) {
+  return useQuery({
+    queryKey: ["metering", "usage-event", eventId] as const,
+    queryFn: () => eventsApi.getUsageEvent(eventId),
+  });
+}
+
+/** Past-limit report — metering-scoped even though the path is root-level. */
+export function usePastLimitReport(
+  customerId: string | undefined,
+  window: ReportWindow,
+) {
+  return useQuery({
+    queryKey: ["metering", "past-limit-report", customerId, window] as const,
+    queryFn: () => eventsApi.getPastLimitReport(customerId ?? "", window),
+    enabled: customerId !== undefined,
+  });
+}
+
+/** Refund moves wallet money and shifts margin — over-invalidate all three. */
+export function useRefundUsage(customerId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ events, reason }: { events: StagedEvent[]; reason: string }) =>
-      eventsApi.pushEvents(events, reason),
+    mutationFn: (body: RefundBody) => eventsApi.refundUsage(customerId, body),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["events"] });
-      void qc.invalidateQueries({ queryKey: ["events-audit-trail"] });
+      void queryClient.invalidateQueries({ queryKey: ["billing"] });
+      void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      void queryClient.invalidateQueries({ queryKey: ["metering"] });
     },
-    onError: toastOnError("Couldn't push events"),
   });
 }
 
-export function useReverseAuditEntry() {
-  const qc = useQueryClient();
+export function useCloseTask() {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (entryId: string) => eventsApi.reverseAuditEntry(entryId),
+    mutationFn: (taskId: string) => eventsApi.closeTask(taskId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["events-audit-trail"] });
+      void queryClient.invalidateQueries({ queryKey: ["metering"] });
     },
-    onError: toastOnError("Couldn't reverse batch"),
-  });
-}
-
-export function useExportEventsCsv() {
-  return useMutation({
-    mutationFn: (filters: EventFilters) => eventsApi.exportCsv(filters),
-    onError: toastOnError("Couldn't generate export"),
   });
 }

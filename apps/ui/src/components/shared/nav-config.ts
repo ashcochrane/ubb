@@ -1,57 +1,62 @@
 import {
   LayoutDashboard,
   Users,
-  CreditCard,
-  DollarSign,
-  Download,
-  Settings,
   Activity,
+  Tags,
+  Wallet,
+  Repeat,
+  Gift,
+  Webhook,
+  Terminal,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
+
+import type { Product } from "@/lib/labels";
 
 export interface NavItem {
   title: string;
   url: string;
   icon: LucideIcon;
+  /** Only show when this product is enabled for the tenant. */
+  product?: Product;
 }
 
 export interface NavSection {
-  /** Section label (e.g. "METERING"). Omit for ungrouped top items. */
+  /** Section label (e.g. "REVENUE"). Omit for ungrouped top items. */
   label?: string;
   items: NavItem[];
-  /** Only show this section when this condition is true. Undefined = always show. */
-  visibleWhen?: "billing";
 }
 
+// Routes must exist for every entry; items are filtered by the tenant's
+// enabled products (TenantConfigOut.products) in the nav shell.
 export const navSections: NavSection[] = [
   {
     items: [
-      { title: "Dashboard", url: "/", icon: LayoutDashboard },
+      { title: "Overview", url: "/", icon: LayoutDashboard },
+      { title: "Events", url: "/events", icon: Activity },
       { title: "Customers", url: "/customers", icon: Users },
     ],
   },
   {
-    label: "METERING",
+    label: "REVENUE",
     items: [
-      { title: "Events", url: "/events", icon: Activity },
-      { title: "Pricing Cards", url: "/pricing-cards", icon: CreditCard },
+      { title: "Pricing", url: "/pricing", icon: Tags },
+      { title: "Billing", url: "/billing", icon: Wallet, product: "billing" },
+      {
+        title: "Subscriptions",
+        url: "/subscriptions",
+        icon: Repeat,
+        product: "subscriptions",
+      },
+      { title: "Referrals", url: "/referrals", icon: Gift, product: "referrals" },
     ],
   },
   {
-    label: "BILLING",
-    visibleWhen: "billing",
+    label: "PLATFORM",
     items: [
-      { title: "Billing", url: "/billing", icon: DollarSign },
-    ],
-  },
-  {
-    items: [
-      { title: "Export", url: "/export", icon: Download },
-    ],
-  },
-  {
-    label: "SETTINGS",
-    items: [
+      { title: "Webhooks", url: "/webhooks", icon: Webhook },
+      { title: "Developers", url: "/developers", icon: Terminal },
       { title: "Settings", url: "/settings", icon: Settings },
     ],
   },

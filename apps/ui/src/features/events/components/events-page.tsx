@@ -1,226 +1,202 @@
-import { useCallback, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+// The event ledger: analytics strip + daily chart for the window, a
+// per-customer ledger with past-limit/tag filters, and (when the past-limit
+// filter is on) the past-limit report. All state is URL-backed — the route
+// passes `search` down and receives changes back.
+
+import { Users } from "lucide-react";
+
+import { DateRangePicker } from "@/components/shared/date-range-picker";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorCard } from "@/components/shared/error-card";
+import { LoadMore } from "@/components/shared/load-more";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useEventFilterOptions,
-  useEvents,
-  useAuditTrail,
-  usePushEvents,
-  useReverseAuditEntry,
-  useExportEventsCsv,
-} from "../api/queries";
-import type { EventFilters, StagedEvent } from "../api/types";
-import { FilterStrip } from "./filter-strip";
-import { AddDataStrip, type AddMode } from "./add-data-strip";
-import { PasteArea } from "./paste-area";
-import { UploadZone } from "./upload-zone";
-import { StagingSection } from "./staging-section";
-import { StatusBar } from "./status-bar";
-import { EventsTable } from "./events-table";
-import { AuditTrail } from "./audit-trail";
+import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { resolveRange } from "@/lib/date-range";
+import { TIMESERIES_GROUP_BY } from "@/lib/labels";
 
-type DatePreset = "7d" | "30d" | "90d" | "all";
+import { useUsageLedger } from "../api/queries";
+import type { UsageListFilters } from "../api/types";
+import { pastLimitWindow, type EventsSearch } from "../lib/search";
+import { AnalyticsStrip } from "./analytics-strip";
+import { CustomerScopeCard } from "./customer-scope-card";
+import { EventFilters } from "./event-filters";
+import { LedgerTable } from "./ledger-table";
+import { PastLimitPanel } from "./past-limit-panel";
+import { TimeseriesCard } from "./timeseries-card";
 
-/** Empty staged event — one metric per row (usageMetrics has a single key). */
-function emptyRow(): StagedEvent {
-  return {
-    effectiveAt: "2026-03-20",
-    customerExternalId: "",
-    group: "",
-    pricingCard: "",
-    usageMetrics: {},
-  };
+export interface EventsPageProps {
+  search: EventsSearch;
+  onSearchChange: (next: EventsSearch) => void;
+  onOpenEvent: (eventId: string, customerId: string) => void;
+  onGoToCustomers?: () => void;
 }
 
-export function EventsPage() {
-  const { data: filterOptions, isLoading } = useEventFilterOptions();
+function LedgerSkeleton() {
+  return (
+    <div className="space-y-2 p-3">
+      {Array.from({ length: 8 }, (_, index) => (
+        <Skeleton key={index} className="h-9 w-full" />
+      ))}
+    </div>
+  );
+}
 
-  const [filters, setFilters] = useState<EventFilters>({
-    dateFrom: "2026-02-18",
-    dateTo: "2026-03-20",
+export function EventsPage({
+  search,
+  onSearchChange,
+  onOpenEvent,
+  onGoToCustomers,
+}: EventsPageProps) {
+  const currency = useTenantCurrency();
+  const customerId = search.customer_id;
+  const window = resolveRange({
+    start_date: search.start_date,
+    end_date: search.end_date,
   });
-  const [datePreset, setDatePreset] = useState<DatePreset | null>("30d");
+  const update = (patch: Partial<EventsSearch>) =>
+    onSearchChange({ ...search, ...patch });
 
-  const { data: eventsData } = useEvents(filterOptions ? filters : null);
-  const { data: auditEntries } = useAuditTrail();
+  // Tag filters only apply as a pair (the API ignores a lone key/value).
+  const tagPairActive =
+    search.tag_key !== undefined && search.tag_value !== undefined;
+  const filters: UsageListFilters = {
+    tag_key: tagPairActive ? search.tag_key : undefined,
+    tag_value: tagPairActive ? search.tag_value : undefined,
+    past_limit: search.past_limit,
+    stop_scope: search.stop_scope,
+    episode_seq: search.episode_seq,
+  };
+  const anyFilterActive =
+    tagPairActive ||
+    search.past_limit !== undefined ||
+    search.stop_scope !== undefined ||
+    search.episode_seq !== undefined;
 
-  const [addMode, setAddMode] = useState<AddMode>(null);
-  const [stagedEvents, setStagedEvents] = useState<StagedEvent[]>([]);
-  const [reason, setReason] = useState("");
-  const [pushResult, setPushResult] = useState<string | null>(null);
-  const [showRecorded, setShowRecorded] = useState(false);
-  const [eventOverrides, setEventOverrides] = useState<
-    Record<number, Partial<{ customerExternalId: string; group: string | null }>>
-  >({});
-
-  const pushMutation = usePushEvents();
-  const reverseMutation = useReverseAuditEntry();
-  const exportMutation = useExportEventsCsv();
-
-  const handleModeChange = useCallback((mode: AddMode) => {
-    setAddMode(mode);
-    if (mode === "row" && stagedEvents.length === 0) {
-      setStagedEvents([emptyRow()]);
-    }
-  }, [stagedEvents.length]);
-
-  /**
-   * Parse pasted/uploaded rows (TSV: effectiveAt, customerExternalId, group, cardSlug, metric, quantity).
-   * One row = one StagedEvent with a single-key usageMetrics.
-   */
-  const handlePaste = useCallback((rows: string[][]) => {
-    const parsed: StagedEvent[] = rows.map((p) => {
-      const metric = p[4] ?? "";
-      const qty = parseFloat(p[5] ?? "0") || 0;
-      return {
-        effectiveAt: p[0] ?? "",
-        customerExternalId: p[1] ?? "",
-        group: p[2] ?? "",
-        pricingCard: p[3] ?? "",
-        usageMetrics: metric ? { [metric]: qty } : {},
-      };
-    });
-    setStagedEvents((prev) => [...prev, ...parsed]);
-    setAddMode(null);
-  }, []);
-
-  const handleFileContent = useCallback((content: string) => {
-    const rows = content.trim().split("\n").filter((l) => l.trim()).map((l) => l.split("\t"));
-    handlePaste(rows);
-  }, [handlePaste]);
-
-  const handleAddRow = useCallback(() => {
-    setStagedEvents((prev) => [...prev, emptyRow()]);
-  }, []);
-
-  const handleClearStaged = useCallback(() => {
-    setStagedEvents([]);
-    setAddMode(null);
-  }, []);
-
-  const handlePush = useCallback(() => {
-    pushMutation.mutate(
-      { events: stagedEvents, reason },
-      {
-        onSuccess: (result) => {
-          setPushResult(`Pushed ${result.pushedCount} rows`);
-          setTimeout(() => {
-            setStagedEvents([]);
-            setReason("");
-            setPushResult(null);
-            setAddMode(null);
-          }, 1200);
-        },
-      },
-    );
-  }, [pushMutation, stagedEvents, reason]);
-
-  const handleExport = useCallback(() => {
-    exportMutation.mutate(filters);
-  }, [exportMutation, filters]);
-
-  const displayEvents = useMemo(() => {
-    if (!eventsData) return [];
-    return eventsData.events.map((ev, i) => ({
-      ...ev,
-      ...eventOverrides[i],
-    }));
-  }, [eventsData, eventOverrides]);
-
-  if (isLoading || !filterOptions) {
-    return (
-      <div className="space-y-5 px-10 pt-8 pb-20">
-        <PageHeader title="Events" />
-        <Skeleton className="h-12 rounded-md" />
-        <Skeleton className="h-16 rounded-md" />
-        <Skeleton className="h-64 rounded-md" />
-      </div>
-    );
-  }
-
-  const showStaging = stagedEvents.length > 0 || addMode === "row";
+  const ledger = useUsageLedger(customerId, filters);
 
   return (
-    <div className="space-y-5 px-10 pt-8 pb-20">
+    <div className="space-y-5">
       <PageHeader
         title="Events"
+        description="Everything that was tracked — what happened, what it cost, and what needs attention."
         actions={
-          <button
-            className="inline-flex items-center gap-1.5 rounded-full border border-border-mid bg-bg-surface px-3 py-[5px] text-[11px] font-medium text-text-secondary transition-colors hover:bg-bg-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={handleExport}
-            disabled={exportMutation.isPending}
-          >
-            <Download className="h-[11px] w-[11px]" />
-            {exportMutation.isPending
-              ? "Generating..."
-              : exportMutation.isSuccess
-                ? "Download ready"
-                : "Export CSV"}
-          </button>
+          <DateRangePicker
+            value={{ start_date: search.start_date, end_date: search.end_date }}
+            onChange={(range) =>
+              update({ start_date: range.start_date, end_date: range.end_date })
+            }
+          />
         }
       />
 
-      <FilterStrip
-        filterOptions={filterOptions}
-        filters={filters}
-        onFiltersChange={setFilters}
-        datePreset={datePreset}
-        onDatePresetChange={setDatePreset}
+      <AnalyticsStrip
+        params={{
+          ...window,
+          customer_id: customerId,
+          past_limit: search.past_limit,
+          stop_scope: search.stop_scope,
+          episode_seq: search.episode_seq,
+        }}
+        tagFilterActive={tagPairActive}
       />
 
-      <AddDataStrip mode={addMode} onModeChange={handleModeChange} />
+      <TimeseriesCard
+        window={window}
+        customerId={customerId}
+        groupBy={search.group_by}
+        onGroupByChange={(groupBy) =>
+          // Narrow the picker's string back into the schema's dimension enum.
+          update({
+            group_by: TIMESERIES_GROUP_BY.find(
+              (dimension) => dimension === groupBy,
+            ),
+          })
+        }
+      />
 
-      {addMode === "paste" && (
-        <PasteArea onParse={handlePaste} onCancel={() => setAddMode(null)} />
-      )}
-      {addMode === "upload" && <UploadZone onFileContent={handleFileContent} />}
+      <CustomerScopeCard
+        customerId={customerId}
+        onSelect={(next) => update({ customer_id: next })}
+        onGoToCustomers={onGoToCustomers}
+      />
 
-      {showStaging && (
-        <StagingSection
-          events={stagedEvents}
-          filterOptions={filterOptions}
-          reason={reason}
-          onReasonChange={setReason}
-          onEventsChange={setStagedEvents}
-          onAddRow={handleAddRow}
-          onClearAll={handleClearStaged}
-          onPush={handlePush}
-          isPushing={pushMutation.isPending}
-          pushResult={pushResult}
+      {customerId === undefined ? (
+        <EmptyState
+          icon={Users}
+          title="Pick a customer to see their ledger"
+          description="The event ledger is scoped to one customer at a time. Choose a customer above — the totals and chart keep covering the whole workspace until you do."
         />
-      )}
-
-      {eventsData && (
+      ) : (
         <>
-          <StatusBar
-            totalCount={eventsData.totalCount}
-            totalCostMicros={eventsData.totalCostMicros}
-            showRecorded={showRecorded}
-            onToggleRecorded={() => setShowRecorded((v) => !v)}
-          />
+          {search.past_limit === true && (
+            <PastLimitPanel
+              customerId={customerId}
+              window={pastLimitWindow(window)}
+            />
+          )}
 
-          <EventsTable
-            events={displayEvents}
-            filterOptions={filterOptions}
-            onUpdateEvent={(idx, field, value) => {
-              setEventOverrides((prev) => ({
-                ...prev,
-                [idx]: { ...prev[idx], [field]: value },
-              }));
-            }}
-          />
-          <div className="text-[10px] text-text-muted">Scroll to load more rows</div>
+          <div className="rounded-md border border-border bg-bg-surface">
+            <div className="border-b border-border px-3 py-2.5">
+              <EventFilters search={search} onChange={update} />
+            </div>
+
+            {ledger.isInitialLoading ? (
+              <LedgerSkeleton />
+            ) : ledger.isError ? (
+              <ErrorCard
+                error={ledger.error}
+                onRetry={() => void ledger.refetch()}
+                title="Couldn't load the ledger"
+                className="m-3"
+              />
+            ) : ledger.rows.length === 0 ? (
+              <EmptyState
+                className="m-3"
+                title={
+                  anyFilterActive
+                    ? "No events match these filters"
+                    : "No events recorded yet"
+                }
+                description={
+                  anyFilterActive
+                    ? "Try widening the date window or clearing a filter."
+                    : "Events appear here the moment usage is recorded for this customer via the API."
+                }
+                action={
+                  anyFilterActive
+                    ? {
+                        label: "Clear filters",
+                        onClick: () =>
+                          update({
+                            past_limit: undefined,
+                            stop_scope: undefined,
+                            episode_seq: undefined,
+                            tag_key: undefined,
+                            tag_value: undefined,
+                          }),
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <>
+                <LedgerTable
+                  rows={ledger.rows}
+                  currency={currency}
+                  onOpen={(row) => onOpenEvent(row.id, customerId)}
+                />
+                <LoadMore
+                  shownCount={ledger.rows.length}
+                  hasMore={ledger.hasMore}
+                  isFetchingNextPage={ledger.isFetchingNextPage}
+                  onLoadMore={ledger.fetchNextPage}
+                  noun="events"
+                />
+              </>
+            )}
+          </div>
         </>
-      )}
-
-      {auditEntries && (
-        <AuditTrail
-          entries={auditEntries}
-          onViewBatch={() => {}}
-          onReverseBatch={(id) => reverseMutation.mutate(id)}
-          reversingId={reverseMutation.isPending ? (reverseMutation.variables ?? null) : null}
-        />
       )}
     </div>
   );

@@ -56,5 +56,14 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test-setup.ts",
+    // Pages simulate network latency via mockDelay() and jsdom environment
+    // startup is slow under full-suite parallelism (notably on Windows) —
+    // the 5s default produces load-induced flakes, not real failures.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
+    // Uncapped workers oversubscribe this machine and starve individual
+    // jsdom environments into waitFor timeouts; a modest cap keeps the
+    // full run deterministic at a small wall-clock cost.
+    maxWorkers: 4,
   },
 });

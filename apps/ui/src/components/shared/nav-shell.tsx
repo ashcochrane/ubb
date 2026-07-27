@@ -2,7 +2,10 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { navSections } from "./nav-config";
 import { TopBar } from "./top-bar";
-import { useAuth } from "@/features/auth/hooks/use-auth";
+import { useAuthUser } from "@/hooks/use-auth";
+import { useCurrentRole } from "@/hooks/use-current-role";
+import { useTenantConfig } from "@/hooks/use-tenant-config";
+import { roleLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 interface NavShellProps {
@@ -19,19 +22,27 @@ const NAV_LINK_IDLE =
 const NAV_LINK_ACTIVE = "bg-accent-ghost text-accent-text font-semibold";
 
 export function NavShell({ children, userSlot }: NavShellProps) {
-  const { isBillingMode } = useAuth();
+  const { data: config } = useTenantConfig();
+  const user = useAuthUser();
+  const { role } = useCurrentRole();
 
-  const visibleSections = navSections.filter(
-    (section) =>
-      !section.visibleWhen ||
-      (section.visibleWhen === "billing" && isBillingMode),
-  );
+  // Product-gated navigation: never show a surface the tenant can't use.
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => !item.product || (config?.products.includes(item.product) ?? false),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  const initial = (user.name || user.email || "?").charAt(0).toUpperCase();
 
   return (
     <div className="grid h-screen grid-cols-[200px_1fr] grid-rows-[46px_1fr] bg-bg-page">
       {/* Topbar spans full width */}
       <div className="col-span-2 row-start-1">
-        <TopBar userSlot={userSlot} />
+        <TopBar userSlot={userSlot} tenantName={config?.name} />
       </div>
 
       {/* Sidebar (below topbar, fixed 200px) */}
@@ -70,11 +81,15 @@ export function NavShell({ children, userSlot }: NavShellProps) {
         <div className="mt-auto border-t border-border px-4 py-[14px]">
           <div className="flex items-center gap-2">
             <div className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-accent-light text-[10px] font-bold text-accent-text">
-              A
+              {initial}
             </div>
-            <div>
-              <div className="text-[12px] font-semibold">Ash</div>
-              <div className="text-[10px] text-text-muted">admin</div>
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold">
+                {user.name || user.email || "Signed in"}
+              </div>
+              <div className="text-[10px] text-text-muted">
+                {role ? roleLabel(role) : " "}
+              </div>
             </div>
           </div>
         </div>
