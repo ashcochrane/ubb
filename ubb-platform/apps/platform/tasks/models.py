@@ -10,6 +10,46 @@ TASK_STATUS_CHOICES = [
     ("killed", "Killed"),
 ]
 
+TASK_TYPE_KIND_CHOICES = [("task", "Task"), ("subtask", "Subtask")]
+
+
+def _empty_list():
+    return []
+
+
+class TaskType(BaseModel):
+    """The tenant's declared work vocabulary, carrying POLICY (design D7).
+
+    Before this existed, a unit's COGS ceiling came from the per-call
+    `provider_cost_limit_micros` or one tenant-wide default
+    (RiskConfig.default_task_provider_cost_limit_micros) — so every kind of job
+    shared one ceiling, and a job that legitimately costs 50x its sibling forced
+    you to either cap both at the large number or let the client declare its own
+    spending limit. The ceiling now belongs to the KIND of work, server-side: a
+    start call may request lower, never higher.
+    """
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="task_types")
+    key = models.SlugField(max_length=64)
+    kind = models.CharField(max_length=8, choices=TASK_TYPE_KIND_CHOICES,
+                            default="task")
+    # COGS-denominated, matching Task.provider_cost_limit_micros. NULL = fall
+    # back to the RiskConfig tenant default, then to uncapped.
+    default_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # Declared dimension keys a start call MUST supply for this kind of work.
+    required_dimensions = models.JSONField(default=_empty_list, blank=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_task_type"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "kind", "key"],
+                                    name="uq_task_type_key"),
+        ]
+
+    def __str__(self):
+        return f"TaskType({self.kind}:{self.key})"
+
 
 class Task(BaseModel):
     """The registered unit of agent work — groups multiple UsageEvents into a
