@@ -137,12 +137,12 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_metrics == []   # tokens HAS a matching card
-            assert res.service_id == service
-            assert res.agent_id == agent
+            assert res.dim2 == service
+            assert res.dim3 == agent
             _force_day(res.event_id, day)
 
-        # ---- 3b. One extra event for C1 with NO service tag -> service_id="" ----
-        # This event MUST appear as "(unattributed)" in the service_id breakdown
+        # ---- 3b. One extra event for C1 with NO service tag -> dim2="" ----
+        # This event MUST appear as "(unattributed)" in the dim2 breakdown
         # so that the breakdown reconciles to the new grand total.
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
@@ -151,7 +151,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # fields are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
-        assert unattr_res.service_id == ""
+        assert unattr_res.dim2 == ""
         _force_day(unattr_res.event_id, 1)  # pin to day 1 alongside other day-1 events
 
         # Expected grand-total provider cost (COGS) across all 9 events (8 matrix + 1 unattr).
@@ -175,16 +175,16 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # ---- 4. multi-dimension COGS breakdown via the SDK (no client joins) ----
         rep = client.usage_analytics(
             customer_id=str(c1.id),
-            dimensions=["product_id", "service_id", "agent_id"])
+            dimensions=["dim1", "dim2", "dim3"])
         breakdowns = rep["breakdowns"]
-        assert set(breakdowns) == {"product_id", "service_id", "agent_id"}
+        assert set(breakdowns) == {"dim1", "dim2", "dim3"}
 
         def _as_map(rows):
             return {r["dimension"]: r["total_provider_cost_micros"] for r in rows}
 
-        by_product = _as_map(breakdowns["product_id"])
-        by_service = _as_map(breakdowns["service_id"])
-        by_agent = _as_map(breakdowns["agent_id"])
+        by_product = _as_map(breakdowns["dim1"])
+        by_service = _as_map(breakdowns["dim2"])
+        by_agent = _as_map(breakdowns["dim3"])
 
         # (a) per-service totals reflect alpha=2/unit (200 each) vs beta=5/unit (500 each),
         #     PLUS an "(unattributed)" row for the event with no service tag.
@@ -203,7 +203,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
 
         # ---- 5. time-series per-day per-service reconciles to the step-4 breakdown ----
         ts = client.usage_timeseries(
-            customer_id=str(c1.id), granularity="day", group_by="service_id")
+            customer_id=str(c1.id), granularity="day", group_by="dim2")
         series = ts["series"]
         # 3 distinct day-buckets (days 1, 2, 3).
         buckets = {row["bucket"] for row in series}

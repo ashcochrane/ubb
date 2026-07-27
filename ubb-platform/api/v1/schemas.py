@@ -173,8 +173,8 @@ class RecordUsageResponse(Schema):
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
-    service_id: str = ""
-    agent_id: str = ""
+    dim2: str = ""
+    dim3: str = ""
 
 
 class BalanceResponse(Schema):
@@ -232,9 +232,9 @@ class UsageEventDetailOut(Schema):
     idempotency_key: str
     event_type: str = ""
     provider: str = ""
-    product_id: str = ""
-    service_id: str = ""
-    agent_id: str = ""
+    dim1: str = ""
+    dim2: str = ""
+    dim3: str = ""
     units: Optional[int] = None
     currency: str = "usd"
     provider_cost_micros: int
@@ -526,7 +526,7 @@ class UsageAnalyticsResponse(Schema):
     by_provider: list[dict]
     by_event_type: list[dict]
     by_customer: list[dict]
-    by_product: list[dict]
+    by_task_type: list[dict]
     by_tag: list[dict]
     breakdowns: dict = {}
 

@@ -4125,11 +4125,6 @@
       },
       "RecordUsageResponse": {
         "properties": {
-          "agent_id": {
-            "default": "",
-            "title": "Agent Id",
-            "type": "string"
-          },
           "billed_cost_micros": {
             "anyOf": [
               {
@@ -4140,6 +4135,16 @@
               }
             ],
             "title": "Billed Cost Micros"
+          },
+          "dim2": {
+            "default": "",
+            "title": "Dim2",
+            "type": "string"
+          },
+          "dim3": {
+            "default": "",
+            "title": "Dim3",
+            "type": "string"
           },
           "event_id": {
             "title": "Event Id",
@@ -4189,11 +4194,6 @@
               }
             ],
             "title": "Provider Cost Micros"
-          },
-          "service_id": {
-            "default": "",
-            "title": "Service Id",
-            "type": "string"
           },
           "stop": {
             "default": false,
@@ -5697,14 +5697,6 @@
             "title": "By Event Type",
             "type": "array"
           },
-          "by_product": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "By Product",
-            "type": "array"
-          },
           "by_provider": {
             "items": {
               "additionalProperties": true,
@@ -5719,6 +5711,14 @@
               "type": "object"
             },
             "title": "By Tag",
+            "type": "array"
+          },
+          "by_task_type": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "By Task Type",
             "type": "array"
           },
           "total_billed_cost_micros": {
@@ -5746,7 +5746,7 @@
           "by_provider",
           "by_event_type",
           "by_customer",
-          "by_product",
+          "by_task_type",
           "by_tag"
         ],
         "title": "UsageAnalyticsResponse",
@@ -5799,11 +5799,6 @@
       },
       "UsageEventDetailOut": {
         "properties": {
-          "agent_id": {
-            "default": "",
-            "title": "Agent Id",
-            "type": "string"
-          },
           "billed_cost_micros": {
             "title": "Billed Cost Micros",
             "type": "integer"
@@ -5815,6 +5810,21 @@
           "currency": {
             "default": "usd",
             "title": "Currency",
+            "type": "string"
+          },
+          "dim1": {
+            "default": "",
+            "title": "Dim1",
+            "type": "string"
+          },
+          "dim2": {
+            "default": "",
+            "title": "Dim2",
+            "type": "string"
+          },
+          "dim3": {
+            "default": "",
+            "title": "Dim3",
             "type": "string"
           },
           "effective_at": {
@@ -5847,11 +5857,6 @@
             "title": "Pricing Provenance",
             "type": "object"
           },
-          "product_id": {
-            "default": "",
-            "title": "Product Id",
-            "type": "string"
-          },
           "provider": {
             "default": "",
             "title": "Provider",
@@ -5863,11 +5868,6 @@
           },
           "request_id": {
             "title": "Request Id",
-            "type": "string"
-          },
-          "service_id": {
-            "default": "",
-            "title": "Service Id",
             "type": "string"
           },
           "stop_context": {

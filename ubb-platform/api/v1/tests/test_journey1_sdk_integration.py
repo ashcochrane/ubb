@@ -98,12 +98,12 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         assert res.uncosted_metrics == []   # input_tokens HAS a cost card
 
         # (c) analytics returns per-customer + per-product PROVIDER cost (COGS) via the SDK.
-        rep = client.usage_analytics(customer_id=str(customer.id))
+        rep = client.usage_analytics(customer_id=str(customer.id), dimensions=["dim1"])
         assert rep["total_provider_cost_micros"] == 2000
         assert any(r["customer__external_id"] == "acme" and r["total_provider_cost_micros"] == 2000
                    for r in rep["by_customer"])
-        assert any(r["product_id"] == "search" and r["total_provider_cost_micros"] == 2000
-                   for r in rep["by_product"])
+        assert any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 2000
+                   for r in rep["breakdowns"]["dim1"])
     finally:
         client.close()
         api.close()

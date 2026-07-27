@@ -59,7 +59,7 @@ class UsageEventModelTest(TestCase):
         )
         assert event.currency == "usd"
         assert event.units is None
-        assert event.product_id == ""
+        assert event.dim1 == ""
 
     def test_idempotency_constraint(self):
         UsageEvent.objects.create(

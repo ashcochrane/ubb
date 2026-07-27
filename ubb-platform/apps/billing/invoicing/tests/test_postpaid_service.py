@@ -17,10 +17,10 @@ MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 class TestAggregate:
     def _events(self, t, c):
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=600_000, billed_cost_micros=800_000, product_id="chat",
+            provider_cost_micros=600_000, billed_cost_micros=800_000, dim1="chat",
             effective_at=MID)
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r2", idempotency_key="i2",
-            provider_cost_micros=100_000, billed_cost_micros=200_000, product_id="",  # no product
+            provider_cost_micros=100_000, billed_cost_micros=200_000, dim1="",  # no product
             effective_at=MID)
 
     def test_single_line_default(self):
@@ -32,7 +32,7 @@ class TestAggregate:
 
     def test_group_by_product_with_other_bucket(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="product_id")
+        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
         self._events(t, c)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
         assert total == 1_000_000

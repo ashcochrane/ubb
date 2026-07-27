@@ -4,7 +4,7 @@ metering reads moved behind the apps.metering.queries contract.
 The pre-F3.2 per-event Python loops are inlined below VERBATIM as the
 reference implementation. Fixtures are adversarial on the label semantics:
 an EMPTY-STRING tag value, a missing tag key, NULL tags, an empty dict tags,
-and an empty product_id must ALL collapse into "(other)" (the `or` in
+and an empty dim1 must ALL collapse into "(other)" (the `or` in
 `(tags or {}).get(key) or "(other)"` maps both ''-valued and absent tags to
 the same bucket — note this differs from the analytics contract where ""
 stays a distinct dimension).
@@ -58,8 +58,8 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
         for tags, billed in qs.values_list("tags", "billed_cost_micros"):
             label = (tags or {}).get(tag_key) or "(other)"
             agg[label] += billed or 0
-    else:  # "product_id"
-        for pid, billed in qs.values_list("product_id", "billed_cost_micros"):
+    else:  # "dim1"
+        for pid, billed in qs.values_list("dim1", "billed_cost_micros"):
             agg[pid or "(other)"] += billed or 0
     lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
     return sum(a for _, a in lines), lines
@@ -128,17 +128,17 @@ class TestGroupByBranchParity:
         assert new_lines == [("alice", 500_000), ("(other)", 370_000), ("bob", 100_000)]
         assert sum(a for _, a in new_lines) == new_total == 970_000
 
-    def test_product_grouping_empty_product_id_collapses_to_other(self):
+    def test_dim1_grouping_empty_dim1_collapses_to_other(self):
         t = Tenant.objects.create(name="T", billing_mode="postpaid",
                                   products=["metering", "billing"])
         c = Customer.objects.create(tenant=t, external_id="c1")
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="product_id")
-        _ev(t, c, "i1", 800_000, product_id="chat")
-        _ev(t, c, "i2", 150_000, product_id="")           # EMPTY product_id -> (other)
-        _ev(t, c, "i3", 50_000, product_id="")            # merges into (other)
-        _ev(t, c, "i4", 200_000, product_id="api")        # ties with (other) -> label tiebreak
+        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
+        _ev(t, c, "i1", 800_000, dim1="chat")
+        _ev(t, c, "i2", 150_000, dim1="")           # EMPTY dim1 -> (other)
+        _ev(t, c, "i3", 50_000, dim1="")            # merges into (other)
+        _ev(t, c, "i4", 200_000, dim1="api")        # ties with (other) -> label tiebreak
 
-        old_total, old_lines = _old_grouped_lines(t, c, PS, PE, "product_id")
+        old_total, old_lines = _old_grouped_lines(t, c, PS, PE, "dim1")
         new_total, new_lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
         assert new_lines == old_lines
         assert new_total == old_total
@@ -156,10 +156,10 @@ class TestResidualCarryAcrossPeriods:
                                   billing_mode="postpaid",
                                   stripe_connected_account_id="acct_x", charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="product_id")
+        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
         # June: chat 15_500 (1.55c), "" 7_800 (0.78c)
-        _ev(t, c, "j1", 15_500, product_id="chat")
-        _ev(t, c, "j2", 7_800, product_id="")
+        _ev(t, c, "j1", 15_500, dim1="chat")
+        _ev(t, c, "j2", 7_800, dim1="")
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
              patch("apps.platform.events.tasks.process_single_event"):
             mock_sc.return_value = MagicMock(id="obj_1")
@@ -172,7 +172,7 @@ class TestResidualCarryAcrossPeriods:
         assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 3_300
 
         # July: chat 26_000 (2.6c) + carry 3_300 = 29_300 -> 2 cents, residual 9_300
-        ev = _ev(t, c, "y1", 26_000, product_id="chat")
+        ev = _ev(t, c, "y1", 26_000, dim1="chat")
         UsageEvent.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 7, 15)))
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \

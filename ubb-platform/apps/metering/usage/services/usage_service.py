@@ -147,8 +147,8 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "stop_context": event.stop_context,
         "usage_metrics": event.usage_metrics,
         "pricing_provenance": event.pricing_provenance,
-        "service_id": event.service_id,
-        "agent_id": event.agent_id,
+        "dim2": event.dim2,
+        "dim3": event.dim3,
     }
 
 
@@ -211,9 +211,9 @@ class RecordingInput:
     currency: str
     usage_metrics: dict
     tags: dict | None
-    product_id: str
-    service_id: str
-    agent_id: str
+    dim1: str
+    dim2: str
+    dim3: str
     task_id: UUID | None
     billing_owner_id: UUID
     # The resolved billing-owner ROW for stop-context tagging (status already
@@ -254,9 +254,14 @@ class RecordingInput:
             # Tags are analytics-only labels (#37): the task_id request field
             # is the ONLY unit attribution — no tag-fallback inference.
             # product is the one reserved-tag fallback both lanes share.
-            product_id=product_id or _tags.get("product", "") or "",
-            service_id=_tags.get("service", ""),
-            agent_id=_tags.get("agent", ""),
+            # dim1/dim2/dim3 are UsageEvent's new selector columns (Task 8);
+            # the request-side product_id keyword and the "product"/"service"/
+            # "agent" tag-lifting are unchanged here — only the storage target
+            # is renamed. Task 10 replaces this tag-lifting with declared
+            # dimension inheritance.
+            dim1=product_id or _tags.get("product", "") or "",
+            dim2=_tags.get("service", ""),
+            dim3=_tags.get("agent", ""),
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at, units=units,
             caller_provider_cost=caller_provider_cost,
@@ -354,9 +359,9 @@ class UsageService:
                     units=inp.units, currency=inp.currency,
                     usage_metrics=inp.usage_metrics,
                     pricing_provenance=provenance,
-                    product_id=inp.product_id, tags=inp.tags, task_id=inp.task_id,
+                    dim1=inp.dim1, tags=inp.tags, task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
-                    service_id=inp.service_id, agent_id=inp.agent_id,
+                    dim2=inp.dim2, dim3=inp.dim3,
                     **create_kwargs)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records

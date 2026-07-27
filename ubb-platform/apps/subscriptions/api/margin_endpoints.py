@@ -92,7 +92,7 @@ def margin_by_dimension(request, provider: int = None, product: int = None,
     if tag_key:
         rows = get_dimensional_margin(request.auth.tenant.id, tag_key=tag_key, start_date=s, end_date=e)
     elif product:
-        rows = get_dimensional_margin(request.auth.tenant.id, group_by="product_id", start_date=s, end_date=e)
+        rows = get_dimensional_margin(request.auth.tenant.id, group_by="dim1", start_date=s, end_date=e)
     else:
         rows = get_dimensional_margin(request.auth.tenant.id, group_by="provider", start_date=s, end_date=e)
     return {"period": {"start": s.isoformat(), "end": e.isoformat()}, "rows": rows}

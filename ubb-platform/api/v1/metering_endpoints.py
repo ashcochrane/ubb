@@ -234,9 +234,9 @@ def get_usage_event(request, event_id: UUID):
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,
-        "product_id": e.product_id,
-        "service_id": e.service_id,
-        "agent_id": e.agent_id,
+        "dim1": e.dim1,
+        "dim2": e.dim2,
+        "dim3": e.dim3,
         "units": e.units,
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
@@ -400,7 +400,10 @@ def delete_customer_markup(request, customer_id: UUID):
 # --- Analytics ---
 
 
-_ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "service_id", "agent_id"}
+_ANALYTICS_ALLOWED_COLS = {
+    "provider", "event_type", "task_type", "subtask_type", "customer",
+    "dim1", "dim2", "dim3", "dim4", "dim5", "dim6",
+}
 
 
 @metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
@@ -463,8 +466,8 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
-    by_product = list(
-        qs.exclude(product_id="").values("product_id").annotate(
+    by_task_type = list(
+        qs.exclude(task_type="").values("task_type").annotate(
             event_count=Count("id"),
             total_cost_micros=Sum("billed_cost_micros"),
             total_provider_cost_micros=Sum("provider_cost_micros"),
@@ -552,7 +555,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "by_provider": by_provider,
         "by_event_type": by_event_type,
         "by_customer": by_customer,
-        "by_product": by_product,
+        "by_task_type": by_task_type,
         "by_tag": by_tag,
         "breakdowns": breakdowns,
     }
@@ -570,7 +573,9 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
     _product_check(request)
     if granularity not in ("hour", "day"):
         raise Problem("validation_error", "granularity must be hour or day")
-    if group_by is not None and group_by not in ("provider", "event_type", "product_id", "service_id", "agent_id"):
+    if group_by is not None and group_by not in (
+            "provider", "event_type", "task_type", "subtask_type",
+            "dim1", "dim2", "dim3", "dim4", "dim5", "dim6"):
         raise Problem("validation_error", "invalid group_by")
     # #78 bounds: hourly windows capped at ~92 days, daily at 366.
     if start_date and end_date:

@@ -4,8 +4,6 @@ from django.utils import timezone
 
 from core.models import BaseModel
 
-RESERVED_DIM_KEYS = ("product", "service", "agent")
-
 
 class UsageEvent(BaseModel):
     """Immutable usage event record."""
@@ -21,13 +19,25 @@ class UsageEvent(BaseModel):
     metadata = models.JSONField(default=dict)
 
     # Pricing breakdown (populated when platform prices the event)
-    event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    provider = models.CharField(max_length=100, blank=True, default="")
     units = models.BigIntegerField(null=True, blank=True)
     currency = models.CharField(max_length=3, default="usd")
-    product_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    service_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    agent_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    # --- The ten selector columns (design D2/D3) ---
+    # One vocabulary for analytics grouping AND rate selection. Four reserved
+    # keys plus six tenant slots bound by the DimensionDef registry. "" means
+    # "not set" on an event and "matches anything" on a Rate; specificity =
+    # the count of non-empty selectors.
+    event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    # Indexed: /analytics/usage groups by provider unconditionally on every call.
+    provider = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    # Inherited from the event's task chain, never sent by the caller (D6).
+    task_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    subtask_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    dim1 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dim2 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dim3 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dim4 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dim5 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dim6 = models.CharField(max_length=100, blank=True, default="", db_index=True)
     provider_cost_micros = models.BigIntegerField(default=0)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
@@ -72,8 +82,10 @@ class UsageEvent(BaseModel):
         indexes = [
             models.Index(fields=["customer", "-effective_at"], name="idx_usage_customer_effective"),
             models.Index(fields=["tenant", "-effective_at"], name="idx_usage_tenant_effective"),
-            models.Index(fields=["tenant", "product_id", "service_id", "agent_id", "-effective_at"],
-                         name="idx_usage_attribution"),
+            models.Index(fields=["tenant", "task_type", "subtask_type", "-effective_at"],
+                         name="idx_usage_work_attribution"),
+            models.Index(fields=["tenant", "dim1", "dim2", "-effective_at"],
+                         name="idx_usage_dim_attribution"),
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
             models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
             # Past-limit report + query filters (#41): JSONB containment on
