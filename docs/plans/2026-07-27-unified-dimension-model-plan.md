@@ -55,8 +55,22 @@ decisions are referenced below as D1–D9.
   `ValueError` (`apps/metering/usage/models.py:91-97`)
 - Dimension slot count is **six** (`dim1`..`dim6`) plus four reserved (`provider`,
   `event_type`, `task_type`, `subtask_type`) = ten selector columns
-- 27 pre-existing test failures in `apps/billing/invoicing` and `apps/subscriptions` predate
-  this work. Judge your changes against the modules you touch, not the full-suite count
+- **Known-failing baseline (measured 2026-07-27 on this branch — supersedes the earlier,
+  stale "27 failures" figure).** A full run is `6 failed, 2188 passed, 3 skipped`. Judge by
+  CAUSE, not by count — if you see a failure that is not one of these two causes, it is
+  yours:
+  - **`attrs` is not installed** in `.venv` at all → 4 `ubb-sdk` test failures plus 1
+    excluded collection error
+  - **`psycopg2` 2.9.11 is installed where the lock pins `psycopg==3.3.4`** (psycopg 3 is
+    absent) → 2 NUL-byte tests fail
+  Both are venv/lock drift, both predate this work, and neither is in scope here. Do NOT
+  try to fix them — installing psycopg 3 mid-plan would swap the database driver under
+  2188 passing tests.
+- **`.venv` must match `requirements.lock.txt` for anything that generates committed
+  artifacts.** A pydantic drift (2.12.5 installed vs 2.13.4 locked) silently stripped 9
+  webhook `description` fields from every regenerated `openapi/v1.json`; that is now
+  corrected to 2.13.4. If a spec regeneration produces changes you did not expect, suspect
+  the toolchain before suspecting your own diff.
 - **API test convention (corrected 2026-07-27 — overrides the test signatures written in
   every task below).** There is no `conftest.py` under `api/v1/tests/` and there are no
   `client` / `tenant` / `api_headers` / `customer` / `funded_wallet` pytest fixtures. Any
