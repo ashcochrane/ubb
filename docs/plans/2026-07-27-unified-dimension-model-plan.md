@@ -57,6 +57,54 @@ decisions are referenced below as D1–D9.
   `event_type`, `task_type`, `subtask_type`) = ten selector columns
 - 27 pre-existing test failures in `apps/billing/invoicing` and `apps/subscriptions` predate
   this work. Judge your changes against the modules you touch, not the full-suite count
+- **API test convention (corrected 2026-07-27 — overrides the test signatures written in
+  every task below).** There is no `conftest.py` under `api/v1/tests/` and there are no
+  `client` / `tenant` / `api_headers` / `customer` / `funded_wallet` pytest fixtures. Any
+  task below whose test reads `def test_x(self, client, tenant, api_headers)` must be
+  written instead in the repo's established pytest-class style, modelled on
+  `api/v1/tests/test_accounts_api.py:1-30`:
+
+  ```python
+  import pytest
+  from django.test import Client
+
+  from apps.platform.tenants.models import Tenant, TenantApiKey
+
+
+  @pytest.mark.django_db
+  class TestSomething:
+      def setup_method(self):
+          # products=[...] is REQUIRED: every route below is gated by
+          # _product_check, so a tenant without the product gets 403, not 422.
+          self.tenant = Tenant.objects.create(
+              name="T", products=["metering", "billing"])
+          _, self.raw_key = TenantApiKey.create_key(self.tenant)
+          self.client = Client()
+
+      def _auth(self):
+          return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+      def _get(self, path):
+          return self.client.get(path, **self._auth())
+
+      def _put(self, path, data):
+          return self.client.put(path, data=data,
+                                 content_type="application/json", **self._auth())
+
+      def _post(self, path, data):
+          return self.client.post(path, data=data,
+                                  content_type="application/json", **self._auth())
+  ```
+
+  Conversion is mechanical: drop the fixture parameters, use `self.tenant` where the test
+  used `tenant`, and call `self._get/_put/_post` where it used `client.<verb>(...,
+  **api_headers)`. Create customers and wallets in `setup_method` where a task's tests need
+  them (`Customer.objects.create(tenant=self.tenant, external_id="c1")`;
+  `Wallet.objects.create(customer=...)` then set `balance_micros` and
+  `save(update_fields=["balance_micros"])`, as `test_metering_endpoints.py:26-29` does).
+  Every assertion, status code, and expected value in the task bodies stands unchanged —
+  only the scaffolding differs. `TenantApiKey.create_key` returns `(key_obj, raw_key)` and
+  keys default to the `admin` role, which satisfies every `@role_floor` on these routes.
 - This is pre-launch: no live data. Renames and destructive migrations are acceptable and
   preferred over compatibility shims
 
