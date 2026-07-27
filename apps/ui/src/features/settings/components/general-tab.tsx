@@ -53,9 +53,6 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
       default_task_provider_cost_limit_micros: dollarsToMicros(
         values.default_task_provider_cost_limit_micros,
       ),
-      default_task_floor_snapshot_micros: dollarsToMicros(
-        values.default_task_floor_snapshot_micros,
-      ),
       require_cost_card_coverage: values.require_cost_card_coverage,
       automatic_tax_enabled: values.automatic_tax_enabled,
       arrival_signals_enabled: values.arrival_signals_enabled,
@@ -166,12 +163,6 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
               hint="Per-task provider-cost ceiling. Leave blank for none."
               register={form.register("default_task_provider_cost_limit_micros")}
             />
-            <DollarField
-              label="Default task floor snapshot ($)"
-              error={errors.default_task_floor_snapshot_micros?.message}
-              hint="Balance floor snapshotted at task start. Leave blank for none."
-              register={form.register("default_task_floor_snapshot_micros")}
-            />
           </div>
 
           <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4">
@@ -250,9 +241,6 @@ function toDefaults(config: TenantConfig): GeneralSettingsValues {
     soft_min_balance_micros: microsToDollars(config.soft_min_balance_micros),
     default_task_provider_cost_limit_micros: microsToDollars(
       config.default_task_provider_cost_limit_micros,
-    ),
-    default_task_floor_snapshot_micros: microsToDollars(
-      config.default_task_floor_snapshot_micros,
     ),
     require_cost_card_coverage: config.require_cost_card_coverage,
     automatic_tax_enabled: config.automatic_tax_enabled,

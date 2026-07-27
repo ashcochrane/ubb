@@ -50,7 +50,7 @@ export const handlers = [
   http.put("/api/v1/billing/postpaid-config", async ({ request }) => HttpResponse.json({ ...fx.postpaidConfig, ...(await request.json() as object) })),
   http.post("/api/v1/billing/credit", () => HttpResponse.json({ new_balance_micros: fx.balance.balance_micros + fx.d(100), transaction_id: rid("wtx") })),
   http.post("/api/v1/billing/debit", () => HttpResponse.json({ new_balance_micros: fx.balance.balance_micros - fx.d(50), transaction_id: rid("wtx") })),
-  http.post("/api/v1/billing/pre-check", () => HttpResponse.json({ allowed: true, reason: null, balance_micros: fx.balance.balance_micros, task_id: null, parent_task_id: null, provider_cost_limit_micros: fx.d(2), floor_snapshot_micros: fx.d(1) })),
+  http.post("/api/v1/billing/pre-check", () => HttpResponse.json({ allowed: true, reason: null, balance_micros: fx.balance.balance_micros, task_id: null, parent_task_id: null, provider_cost_limit_micros: fx.d(2) })),
   http.get("/api/v1/billing/tenant/usage-invoices", () => HttpResponse.json(fx.page(fx.tenantUsageInvoices))),
   // billing — per customer
   http.get("/api/v1/billing/customers/:id/balance", () => HttpResponse.json(fx.balance)),

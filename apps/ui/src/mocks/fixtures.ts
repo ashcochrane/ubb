@@ -27,7 +27,6 @@ export const tenantConfig = {
   arrival_signals_enabled: true,
   min_balance_micros: d(5),
   default_task_provider_cost_limit_micros: d(2),
-  default_task_floor_snapshot_micros: d(1),
   soft_min_balance_micros: d(10),
 };
 

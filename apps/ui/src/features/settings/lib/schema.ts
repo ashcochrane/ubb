@@ -28,7 +28,6 @@ export const generalSettingsSchema = z.object({
   min_balance_micros: dollarString,
   soft_min_balance_micros: dollarString,
   default_task_provider_cost_limit_micros: dollarString,
-  default_task_floor_snapshot_micros: dollarString,
   require_cost_card_coverage: z.boolean(),
   automatic_tax_enabled: z.boolean(),
   arrival_signals_enabled: z.boolean(),

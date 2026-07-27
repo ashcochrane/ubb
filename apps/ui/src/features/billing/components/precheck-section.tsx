@@ -132,11 +132,6 @@ export function PreCheckSection() {
                   ? formatMicros(result.provider_cost_limit_micros)
                   : "—"}
               </DetailRow>
-              <DetailRow label="Floor snapshot">
-                {result.floor_snapshot_micros != null
-                  ? formatMicros(result.floor_snapshot_micros)
-                  : "—"}
-              </DetailRow>
             </DetailGrid>
           </div>
         )}
