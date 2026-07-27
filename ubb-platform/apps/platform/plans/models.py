@@ -65,6 +65,16 @@ class Plan(BaseModel):
         """
         return self.access_fee_micros > 0 or self.per_seat_micros > 0
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        _invalidate_markup_cache(self.tenant_id)
+
+    def delete(self, *args, **kwargs):
+        tenant_id = self.tenant_id
+        result = super().delete(*args, **kwargs)
+        _invalidate_markup_cache(tenant_id)
+        return result
+
 
 class CustomerPlanAssignment(BaseModel):
     """Which plan a customer is on.
@@ -90,3 +100,27 @@ class CustomerPlanAssignment(BaseModel):
 
     def __str__(self):
         return f"CustomerPlanAssignment({self.customer_id} -> {self.plan_id})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        _invalidate_markup_cache(self.tenant_id)
+
+    def delete(self, *args, **kwargs):
+        tenant_id = self.tenant_id
+        result = super().delete(*args, **kwargs)
+        _invalidate_markup_cache(tenant_id)
+        return result
+
+
+def _invalidate_markup_cache(tenant_id):
+    """Bump the tenant's markup cache version.
+
+    Lazy import: the kernel may not import a product at module scope
+    (ADR-001), and metering is an optional consumer of plans. A missing
+    metering app must not break a plan write, so the import is best-effort.
+    """
+    try:
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+    except ImportError:  # pragma: no cover - metering always installed today
+        return
+    MarkupCache.invalidate(tenant_id)
