@@ -27,6 +27,7 @@ from api.v1.schemas import (
     TaskDetailOut, PaginatedTasks, task_out,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
+    TaskAnalyticsOut,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
     book_out, rate_out, usage_event_out,
@@ -327,6 +328,34 @@ def get_task(request, task_id: UUID):
     body["subtasks"] = [task_out(s) for s in
                         task.subtasks.all().order_by("created_at")]
     return 200, body
+
+
+@metering_router.get("/analytics/tasks", response={200: TaskAnalyticsOut,
+                                                  422: ProblemOut})
+@role_floor(READ)
+def task_analytics(request, group_by: str = "task_type", start_date: date = None,
+                   end_date: date = None):
+    """Cost per KIND of job: run count, mean, p95, and limit hits.
+
+    A p95 approaching the type's ceiling is the signal that the limit is about
+    to start biting real customers."""
+    _product_check(request)
+    from apps.platform.tasks.queries import task_rollup_by_type
+
+    if start_date and end_date:
+        if end_date < start_date:
+            raise Problem("validation_error",
+                          "end_date must not precede start_date")
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error", "date window must not exceed 366 days")
+    try:
+        rows = task_rollup_by_type(
+            request.auth.tenant.id, group_by=group_by,
+            start_date=utc_day_start(start_date) if start_date else None,
+            end_date=utc_next_day_start(end_date) if end_date else None)
+    except ValueError as exc:
+        raise Problem("validation_error", str(exc))
+    return 200, {"group_by": group_by, "rows": rows}
 
 
 # --- Pricing Markup ---

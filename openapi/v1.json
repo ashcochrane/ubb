@@ -5046,6 +5046,70 @@
         "title": "SyncResponse",
         "type": "object"
       },
+      "TaskAnalyticsOut": {
+        "properties": {
+          "group_by": {
+            "title": "Group By",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TaskAnalyticsRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group_by",
+          "rows"
+        ],
+        "title": "TaskAnalyticsOut",
+        "type": "object"
+      },
+      "TaskAnalyticsRow": {
+        "properties": {
+          "avg_provider_cost_micros": {
+            "title": "Avg Provider Cost Micros",
+            "type": "integer"
+          },
+          "limit_hit_count": {
+            "title": "Limit Hit Count",
+            "type": "integer"
+          },
+          "p95_provider_cost_micros": {
+            "title": "P95 Provider Cost Micros",
+            "type": "integer"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          },
+          "total_billed_cost_micros": {
+            "title": "Total Billed Cost Micros",
+            "type": "integer"
+          },
+          "total_provider_cost_micros": {
+            "title": "Total Provider Cost Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_type",
+          "run_count",
+          "total_provider_cost_micros",
+          "total_billed_cost_micros",
+          "avg_provider_cost_micros",
+          "p95_provider_cost_micros",
+          "limit_hit_count"
+        ],
+        "title": "TaskAnalyticsRow",
+        "type": "object"
+      },
       "TaskDetailOut": {
         "properties": {
           "completed_at": {
@@ -9244,6 +9308,86 @@
           }
         ],
         "summary": "Get Usage Summary"
+      }
+    },
+    "/api/v1/metering/analytics/tasks": {
+      "get": {
+        "description": "Cost per KIND of job: run count, mean, p95, and limit hits.\n\nA p95 approaching the type's ceiling is the signal that the limit is about\nto start biting real customers.",
+        "operationId": "api_v1_metering_endpoints_task_analytics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "task_type",
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAnalyticsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Task Analytics"
       }
     },
     "/api/v1/metering/analytics/usage": {

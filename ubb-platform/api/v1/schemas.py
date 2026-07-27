@@ -592,6 +592,21 @@ class UsageTimeseriesResponse(Schema):
     series: list[dict]
 
 
+class TaskAnalyticsRow(Schema):
+    task_type: str
+    run_count: int
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    avg_provider_cost_micros: int
+    p95_provider_cost_micros: int
+    limit_hit_count: int
+
+
+class TaskAnalyticsOut(Schema):
+    group_by: str
+    rows: list[TaskAnalyticsRow]
+
+
 class BudgetConfigIn(Schema):
     cap_micros: int = Field(ge=0)
     enforce_mode: str = "advisory"
