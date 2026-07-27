@@ -358,11 +358,13 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
             "pro", "Pro", access_fee_micros=50_000_000, per_seat_micros=8_000_000,
         )
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/plans", json={
+            "post", "/api/v1/plans", json={
                 "key": "pro",
                 "name": "Pro",
                 "access_fee_micros": 50_000_000,
                 "per_seat_micros": 8_000_000,
+                "markup_percentage_micros": 0,
+                "fixed_uplift_micros": 0,
                 "interval": "month",
             },
         )
@@ -376,7 +378,7 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.subscribe_customer("biz", "pro", seats=10)
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/subscribe",
+            "post", "/api/v1/subscriptions/customers/biz/subscribe",
             json={"plan_key": "pro", "seats": 10},
         )
         self.assertEqual(result["subscription_id"], "sub_1")
@@ -387,7 +389,7 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.set_seats("biz", 12)
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/seats",
+            "post", "/api/v1/subscriptions/customers/biz/seats",
             json={"seats": 12},
         )
         self.assertEqual(result["seats"], 12)
@@ -414,7 +416,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.update_plan("pro", per_seat_micros=6_000_000)
         self.client.metering._request.assert_called_once_with(
-            "patch", "/api/v1/platform/plans/pro",
+            "patch", "/api/v1/plans/pro",
             json={"migrate_existing": False, "per_seat_micros": 6_000_000},
         )
         self.assertEqual(result["pricing_version"], 2)
@@ -424,7 +426,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         self.client.update_plan("pro", access_fee_micros=60_000_000, migrate_existing=True)
         self.client.metering._request.assert_called_once_with(
-            "patch", "/api/v1/platform/plans/pro",
+            "patch", "/api/v1/plans/pro",
             json={"migrate_existing": True, "access_fee_micros": 60_000_000},
         )
 
@@ -434,7 +436,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.cancel_subscription("biz")
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            "post", "/api/v1/subscriptions/customers/biz/subscription/cancel",
             json={"at_period_end": True},
         )
         self.assertTrue(result["cancel_at_period_end"])
@@ -445,7 +447,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.cancel_subscription("biz", at_period_end=False)
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/subscription/cancel",
+            "post", "/api/v1/subscriptions/customers/biz/subscription/cancel",
             json={"at_period_end": False},
         )
         self.assertEqual(result["status"], "canceled")
@@ -456,7 +458,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.pause_subscription("biz")
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/subscription/pause", json={},
+            "post", "/api/v1/subscriptions/customers/biz/subscription/pause", json={},
         )
         self.assertTrue(result["paused"])
 
@@ -465,7 +467,7 @@ class SubscriptionLifecycleClientTest(unittest.TestCase):
         self.client.metering._request = MagicMock(return_value=mock_resp)
         result = self.client.resume_subscription("biz")
         self.client.metering._request.assert_called_once_with(
-            "post", "/api/v1/platform/customers/biz/subscription/resume", json={},
+            "post", "/api/v1/subscriptions/customers/biz/subscription/resume", json={},
         )
         self.assertFalse(result["paused"])
         self.assertFalse(result["cancel_at_period_end"])

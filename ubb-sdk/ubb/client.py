@@ -280,17 +280,24 @@ class UBBClient:
     # ---- subscription orchestration (plan / subscribe / seats) ----
 
     def create_plan(self, key: str, name: str, *, access_fee_micros: int = 0,
-                    per_seat_micros: int = 0, interval: str = "month") -> dict:
+                    per_seat_micros: int = 0, markup_percentage_micros: int = 0,
+                    fixed_uplift_micros: int = 0, interval: str = "month") -> dict:
         """Define a tenant billing plan via the platform API.
 
-        Calls POST /api/v1/platform/plans and returns the created plan as a dict.
+        Calls POST /api/v1/plans and returns the created plan as a dict.
+
+        Units: access_fee_micros, per_seat_micros, and fixed_uplift_micros are
+        money-micros (1_000_000 == 1 major unit). markup_percentage_micros is
+        percentage-micros (1_000_000 == 1 percent), so 50% is 50_000_000.
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/platform/plans", json={
+        r = metering._request("post", "/api/v1/plans", json={
             "key": key,
             "name": name,
             "access_fee_micros": access_fee_micros,
             "per_seat_micros": per_seat_micros,
+            "markup_percentage_micros": markup_percentage_micros,
+            "fixed_uplift_micros": fixed_uplift_micros,
             "interval": interval,
         })
         return r.json()
@@ -299,12 +306,12 @@ class UBBClient:
                            seats: int = 0) -> dict:
         """Subscribe an end-customer to a plan (access fee + seats).
 
-        Calls POST /api/v1/platform/customers/{external_id}/subscribe and returns
-        the response dict (subscription_id, amount_micros, quantity).
+        Calls POST /api/v1/subscriptions/customers/{external_id}/subscribe and
+        returns the response dict (subscription_id, amount_micros, quantity).
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/platform/customers/{external_id}/subscribe",
+            "post", f"/api/v1/subscriptions/customers/{external_id}/subscribe",
             json={"plan_key": plan_key, "seats": seats},
         )
         return r.json()
@@ -312,26 +319,32 @@ class UBBClient:
     def set_seats(self, external_id: str, seats: int) -> dict:
         """Change a customer's subscribed seat count.
 
-        Calls POST /api/v1/platform/customers/{external_id}/seats and returns
-        the response dict ({"seats": seats}).
+        Calls POST /api/v1/subscriptions/customers/{external_id}/seats and
+        returns the response dict ({"seats": seats}).
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/platform/customers/{external_id}/seats",
+            "post", f"/api/v1/subscriptions/customers/{external_id}/seats",
             json={"seats": seats},
         )
         return r.json()
 
     def update_plan(self, key: str, *, access_fee_micros: int | None = None,
                     per_seat_micros: int | None = None,
+                    markup_percentage_micros: int | None = None,
+                    fixed_uplift_micros: int | None = None,
                     migrate_existing: bool = False) -> dict:
         """Edit a plan's fees (F5.4). Only non-None axes are changed.
 
         A provisioned axis gets a NEW versioned Stripe Price on the same
         Product; existing subscriptions keep their old price (grandfathered)
         unless migrate_existing=True (repointed without proration). Calls
-        PATCH /api/v1/platform/plans/{key} and returns the updated plan dict
+        PATCH /api/v1/plans/{key} and returns the updated plan dict
         (includes pricing_version).
+
+        Units: access_fee_micros, per_seat_micros, and fixed_uplift_micros are
+        money-micros (1_000_000 == 1 major unit). markup_percentage_micros is
+        percentage-micros (1_000_000 == 1 percent), so 50% is 50_000_000.
         """
         metering = self._require_metering()
         body: dict = {"migrate_existing": migrate_existing}
@@ -339,19 +352,23 @@ class UBBClient:
             body["access_fee_micros"] = access_fee_micros
         if per_seat_micros is not None:
             body["per_seat_micros"] = per_seat_micros
-        r = metering._request("patch", f"/api/v1/platform/plans/{key}", json=body)
+        if markup_percentage_micros is not None:
+            body["markup_percentage_micros"] = markup_percentage_micros
+        if fixed_uplift_micros is not None:
+            body["fixed_uplift_micros"] = fixed_uplift_micros
+        r = metering._request("patch", f"/api/v1/plans/{key}", json=body)
         return r.json()
 
     def cancel_subscription(self, external_id: str, at_period_end: bool = True) -> dict:
         """Cancel a customer's subscription (default: at period end).
 
-        Calls POST /api/v1/platform/customers/{external_id}/subscription/cancel
+        Calls POST /api/v1/subscriptions/customers/{external_id}/subscription/cancel
         and returns the response dict (subscription_id, status,
         cancel_at_period_end, paused).
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/platform/customers/{external_id}/subscription/cancel",
+            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/cancel",
             json={"at_period_end": at_period_end},
         )
         return r.json()
@@ -359,12 +376,12 @@ class UBBClient:
     def pause_subscription(self, external_id: str) -> dict:
         """Pause a customer's subscription (collection voided; sub stays active).
 
-        Calls POST /api/v1/platform/customers/{external_id}/subscription/pause
+        Calls POST /api/v1/subscriptions/customers/{external_id}/subscription/pause
         and returns the response dict.
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/platform/customers/{external_id}/subscription/pause",
+            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/pause",
             json={},
         )
         return r.json()
@@ -372,12 +389,12 @@ class UBBClient:
     def resume_subscription(self, external_id: str) -> dict:
         """Resume a customer's subscription: clears pause AND any pending cancel.
 
-        Calls POST /api/v1/platform/customers/{external_id}/subscription/resume
+        Calls POST /api/v1/subscriptions/customers/{external_id}/subscription/resume
         and returns the response dict.
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/platform/customers/{external_id}/subscription/resume",
+            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/resume",
             json={},
         )
         return r.json()
