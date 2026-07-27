@@ -1006,7 +1006,7 @@ class TestMarkupOnlyPlanSubscribe:
     def setup_method(self):
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test", stripe_charges_enabled=True,
+            stripe_connected_account_id="acct_test", charges_enabled=True,
             default_currency="usd")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="sam-hobby")
 
@@ -1506,7 +1506,7 @@ class TestLifecycleRoutesMoved:
     def setup_method(self):
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test", stripe_charges_enabled=True,
+            stripe_connected_account_id="acct_test", charges_enabled=True,
             default_currency="usd")
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
