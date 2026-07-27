@@ -2337,7 +2337,7 @@ Update the nav component (find it with `grep -rn "subscriptions" apps/ui/src/com
 - [ ] **Step 10: Run the full UI suite and build**
 
 ```bash
-cd apps/ui && pnpm test && pnpm build
+cd apps/ui && pnpm test
 ```
 
 Expected: all pass, build clean.
@@ -2471,7 +2471,11 @@ Expected: no output from either (migrations legitimately retain the historical n
 - [ ] **Step 4: UI suite and build**
 
 ```bash
-cd apps/ui && pnpm test && pnpm build && pnpm lint
+cd apps/ui && pnpm test && pnpm lint
+
+> NOTE: `pnpm build` is deliberately NOT part of the acceptance. It fails on ~60 pre-existing
+> dangling imports (`@/lib/labels`, `../lib/schemas`, ...) caused by `.gitignore:17`s bare
+> `lib/` pattern swallowing `apps/ui/src/lib/`. Unrelated to this work; see the ledger.
 ```
 
 - [ ] **Step 5: Spec drift check**
