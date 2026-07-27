@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     # UBB Apps
     "apps.platform.tenants",
     "apps.platform.customers",
+    "apps.platform.plans",
     "apps.platform.membership",
     "apps.platform.events",
     "apps.platform.audit",
