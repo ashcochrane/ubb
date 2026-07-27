@@ -86,10 +86,14 @@ def test_invalidate_forces_reread(tenant, customer, price_card_fixture):
     assert len(ctx.captured_queries) > 0
 
 
-def test_dimensioned_card_bypasses_l1_for_different_tag_sets(tenant, customer):
-    """Guard: a dimensioned card must re-match per call. If the resolved Rate
-    were cached under a dimension-less key, the first selector set's result
-    would be wrongly returned for the second (different) selector set."""
+def test_dimensioned_card_is_cached_per_selector_set(tenant, customer):
+    """A dimensioned card is still resolved correctly per selector set — but
+    now (Task 13) via L1, keyed on the full ten-selector tuple, not by
+    bypassing the cache. Dimensions are declared and cardinality-capped
+    (design D4), so the selector tuple is a bounded, safe cache key: two
+    different selector sets get separate L1 entries and never collide, and a
+    repeat resolve for the SAME selector set is served from L1 with zero
+    queries."""
     book = RateCard.objects.create(
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="dimensioned", is_default=True, version=1)
@@ -113,6 +117,15 @@ def test_dimensioned_card_bypasses_l1_for_different_tag_sets(tenant, customer):
         {"provider": "openai", "event_type": "llm_call", "dim1": "gpt-3.5"}, "tokens", "usd")
     assert got_gpt4 is not None and got_gpt4.id == rate_gpt4.id
     assert got_gpt35 is not None and got_gpt35.id == rate_gpt35.id
+
+    # Different selector sets do not collide: re-resolving the first set still
+    # returns the first rate, not the second's.
+    with CaptureQueriesContext(connection) as ctx:
+        got_gpt4_again = CardCache.resolve(
+            tenant, customer, "price",
+            {"provider": "openai", "event_type": "llm_call", "dim1": "gpt-4"}, "tokens", "usd")
+    assert got_gpt4_again is not None and got_gpt4_again.id == rate_gpt4.id
+    assert len(ctx.captured_queries) == 0, "same selector set must be served from L1"
 
 
 def test_stale_begin_request_in_other_context_does_not_clobber(tenant, customer, price_card_fixture):

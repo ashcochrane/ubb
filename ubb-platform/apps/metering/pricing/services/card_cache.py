@@ -1,20 +1,19 @@
 """In-process (L1) resolved-rate cache.
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
-cache) per dimension-LESS resolution key for TTL_SECONDS — one entry per
-(tenant, customer, card_type, provider, event_type, metric, currency), not a
-set of candidate rows to re-match. Lookups that PIN task_type/subtask_type/
-dim1..dim6 (any non-"" in ``selectors`` beyond provider/event_type) bypass L1
-entirely and re-resolve every call (those vary per event; caching a
-dimension-influenced result under a dimension-less key would wrongly
-positive/negative-cache for a different dimension set — see ``resolve``).
-Task 13 is where the L1 key itself learns to include dimensions; this cache
-still only keys on provider/event_type. Version key ubb:cardver:{tenant} is
-read at most once per request: begin_request stores the observed version in a
-contextvars.ContextVar — request/context-scoped, so a stale concurrent
-request can never clobber the version a fresher request observed — and
-resolve compares cached entries against it. A publish-time invalidation
-therefore propagates within one request boundary + TTL.
+cache) per resolution key for TTL_SECONDS — one entry per (tenant, customer,
+card_type, metric, currency, full ten-selector tuple from ``Rate.SELECTORS``:
+provider, event_type, task_type, subtask_type, dim1..dim6) — not a set of
+candidate rows to re-match. Dimensions are declared and cardinality-capped
+(design D4), so the selector tuple is a bounded, safe cache key: unlike the
+old free-text ``tags`` keyspace it once bypassed L1 for, two different
+selector sets can never collide and the keyspace itself cannot grow
+unbounded. Version key ubb:cardver:{tenant} is read at most once per request:
+begin_request stores the observed version in a contextvars.ContextVar —
+request/context-scoped, so a stale concurrent request can never clobber the
+version a fresher request observed — and resolve compares cached entries
+against it. A publish-time invalidation therefore propagates within one
+request boundary + TTL.
 """
 import contextvars
 import time
@@ -62,26 +61,24 @@ class CardCache:
 
     @staticmethod
     def resolve(tenant, customer, card_type, selectors, metric, currency):
-        """Resolve with PricingService._resolve_card semantics, via the L1
-        cache when no task_type/subtask_type/dim1..dim6 selector is pinned.
+        """Resolve with PricingService._resolve_card semantics, always via L1.
+
+        The old implementation bypassed the cache whenever a
+        task_type/subtask_type/dim1..dim6 selector was pinned, because an
+        unbounded tag keyspace would poison a dimension-less key — which
+        meant every dimension-bearing event hit Postgres. Dimensions are now
+        declared and cardinality-capped (design D4), so the full ten-selector
+        tuple is a bounded, safe cache key and the bypass is gone.
+
         Returned Rate instances are shared cache objects — callers must NOT
         mutate them."""
         from django.utils import timezone
         from apps.metering.pricing.models import Rate
         from apps.metering.pricing.services.pricing_service import PricingService
-        provider = selectors.get("provider") or ""
-        event_type = selectors.get("event_type") or ""
-        if any(selectors.get(name) for name in Rate.SELECTORS[2:]):
-            # A pinned task_type/subtask_type/dim1..dim6 selector varies per
-            # event; caching the result under a dimension-less key would
-            # wrongly negative/positive-cache for a different selector set.
-            # Bypass L1.
-            return PricingService._resolve_card(
-                tenant, customer, card_type, selectors, metric,
-                currency, timezone.now())
+        sel_tuple = tuple(selectors.get(name) or "" for name in Rate.SELECTORS)
         ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "",
-               card_type, provider, event_type, metric, currency)
+               card_type, metric, currency, sel_tuple)
         hit = _l1.get(key)
         if hit and hit[0] == ver and hit[1] > time.monotonic():
             return hit[2]
