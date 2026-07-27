@@ -101,3 +101,12 @@ class TestAdmit:
             retired_at="2026-07-27T00:00:00Z")
         with pytest.raises(DimensionError, match="retired"):
             DimensionService.admit(t, {"model": "gpt-5"}, scope="event")
+
+    def test_admit_is_atomic_on_multi_key_failure(self):
+        t = self._t()
+        # region is task scope, model is event scope
+        # Try to admit both at event scope: region will fail, model should not be recorded
+        with pytest.raises(DimensionError, match="scope"):
+            DimensionService.admit(t, {"model": "gpt-4", "region": "eu"}, scope="event")
+        # Verify model's value was NOT recorded due to atomicity
+        assert not DimensionValue.objects.filter(tenant=t, key="model", value="gpt-4").exists()

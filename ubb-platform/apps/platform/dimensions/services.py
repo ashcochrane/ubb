@@ -62,6 +62,9 @@ class DimensionService:
         would push a key past its cap (D4). The cap is a keyspace guard, not
         an invariant: concurrent novel values at the boundary may overshoot by
         the number of writers, which is harmless.
+
+        The entire operation is atomic: if any key validation or cardinality
+        check fails, no values are recorded.
         """
         values = values or {}
         if not values:
@@ -69,20 +72,21 @@ class DimensionService:
         defs = {d.key: d for d in DimensionDef.objects.filter(
             tenant=tenant, key__in=list(values))}
         out = {}
-        for key, raw in values.items():
-            d = defs.get(key)
-            if d is None:
-                raise DimensionError(f"unknown dimension {key!r}: declare it first")
-            if d.scope != scope:
-                raise DimensionError(
-                    f"{key!r} is declared at {d.scope} scope and cannot be set "
-                    f"at {scope} scope")
-            value = str(raw)
-            if len(value) > 100:
-                raise DimensionError(
-                    f"dimension {key!r} value exceeds 100 characters")
-            DimensionService._record_value(tenant, d, value)
-            out[d.slot] = value
+        with transaction.atomic():
+            for key, raw in values.items():
+                d = defs.get(key)
+                if d is None:
+                    raise DimensionError(f"unknown dimension {key!r}: declare it first")
+                if d.scope != scope:
+                    raise DimensionError(
+                        f"{key!r} is declared at {d.scope} scope and cannot be set "
+                        f"at {scope} scope")
+                value = str(raw)
+                if len(value) > 100:
+                    raise DimensionError(
+                        f"dimension {key!r} value exceeds 100 characters")
+                DimensionService._record_value(tenant, d, value)
+                out[d.slot] = value
         return out
 
     @staticmethod
