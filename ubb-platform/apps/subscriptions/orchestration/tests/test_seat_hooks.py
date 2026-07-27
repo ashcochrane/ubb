@@ -26,7 +26,7 @@ def _business_with_sub(seats=2, status="active"):
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
                                   billing_topology="pooled", stripe_customer_id="cus_biz")
     plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
-                                            per_seat_micros=8_000_000)
+                               per_seat_micros=8_000_000)
     now = timezone.now()
     sub = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         stripe_product_name="Pro", status=status, amount_micros=1, currency="usd",

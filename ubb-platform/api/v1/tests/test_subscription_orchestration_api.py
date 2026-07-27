@@ -137,7 +137,7 @@ class TestSubscriptionOrchestrationAPI:
         t2 = Tenant.objects.create(name="Poor", products=["metering"])
         _, raw2 = TenantApiKey.create_key(t2)
         Plan.objects.create(tenant=t2, key="pro", name="Pro",
-                                         access_fee_micros=50_000_000)
+                            access_fee_micros=50_000_000)
         Customer.objects.create(tenant=t2, external_id="biz2")
         resp = self.client.post(
             "/api/v1/platform/customers/biz2/subscribe",
