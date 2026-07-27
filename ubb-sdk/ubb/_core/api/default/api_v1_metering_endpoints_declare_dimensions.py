@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.pre_check_request import PreCheckRequest
-from ...models.pre_check_response import PreCheckResponse
+from ...models.dimension_registry_in import DimensionRegistryIn
+from ...models.dimension_registry_out import DimensionRegistryOut
 from ...models.problem_out import ProblemOut
 from typing import cast
 
@@ -17,7 +17,7 @@ from typing import cast
 
 def _get_kwargs(
     *,
-    body: PreCheckRequest,
+    body: DimensionRegistryIn,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -28,8 +28,8 @@ def _get_kwargs(
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/billing/pre-check",
+        "method": "put",
+        "url": "/api/v1/metering/dimensions",
     }
 
     _kwargs["json"] = body.to_dict()
@@ -41,9 +41,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionRegistryOut | ProblemOut | None:
     if response.status_code == 200:
-        response_200 = PreCheckResponse.from_dict(response.json())
+        response_200 = DimensionRegistryOut.from_dict(response.json())
 
 
 
@@ -62,7 +62,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionRegistryOut | ProblemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,20 +74,25 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: DimensionRegistryIn,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[DimensionRegistryOut | ProblemOut]:
+    """ Declare Dimensions
+
+     Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (PreCheckRequest):
+        body (DimensionRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[DimensionRegistryOut | ProblemOut]
      """
 
 
@@ -105,20 +110,25 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: DimensionRegistryIn,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> DimensionRegistryOut | ProblemOut | None:
+    """ Declare Dimensions
+
+     Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (PreCheckRequest):
+        body (DimensionRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        DimensionRegistryOut | ProblemOut
      """
 
 
@@ -131,20 +141,25 @@ body=body,
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: DimensionRegistryIn,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[DimensionRegistryOut | ProblemOut]:
+    """ Declare Dimensions
+
+     Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (PreCheckRequest):
+        body (DimensionRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[DimensionRegistryOut | ProblemOut]
      """
 
 
@@ -162,20 +177,25 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: DimensionRegistryIn,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> DimensionRegistryOut | ProblemOut | None:
+    """ Declare Dimensions
+
+     Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (PreCheckRequest):
+        body (DimensionRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        DimensionRegistryOut | ProblemOut
      """
 
 

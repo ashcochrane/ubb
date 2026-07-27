@@ -8,16 +8,16 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.pre_check_request import PreCheckRequest
-from ...models.pre_check_response import PreCheckResponse
 from ...models.problem_out import ProblemOut
+from ...models.task_type_registry_in import TaskTypeRegistryIn
+from ...models.task_type_registry_out import TaskTypeRegistryOut
 from typing import cast
 
 
 
 def _get_kwargs(
     *,
-    body: PreCheckRequest,
+    body: TaskTypeRegistryIn,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -28,8 +28,8 @@ def _get_kwargs(
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/billing/pre-check",
+        "method": "put",
+        "url": "/api/v1/metering/task-types",
     }
 
     _kwargs["json"] = body.to_dict()
@@ -41,9 +41,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TaskTypeRegistryOut | None:
     if response.status_code == 200:
-        response_200 = PreCheckResponse.from_dict(response.json())
+        response_200 = TaskTypeRegistryOut.from_dict(response.json())
 
 
 
@@ -62,7 +62,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TaskTypeRegistryOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,20 +74,26 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: TaskTypeRegistryIn,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[ProblemOut | TaskTypeRegistryOut]:
+    """ Declare Task Types
+
+     Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out.
 
     Args:
-        body (PreCheckRequest):
+        body (TaskTypeRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[ProblemOut | TaskTypeRegistryOut]
      """
 
 
@@ -105,20 +111,26 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: TaskTypeRegistryIn,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> ProblemOut | TaskTypeRegistryOut | None:
+    """ Declare Task Types
+
+     Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out.
 
     Args:
-        body (PreCheckRequest):
+        body (TaskTypeRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        ProblemOut | TaskTypeRegistryOut
      """
 
 
@@ -131,20 +143,26 @@ body=body,
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: TaskTypeRegistryIn,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[ProblemOut | TaskTypeRegistryOut]:
+    """ Declare Task Types
+
+     Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out.
 
     Args:
-        body (PreCheckRequest):
+        body (TaskTypeRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[ProblemOut | TaskTypeRegistryOut]
      """
 
 
@@ -162,20 +180,26 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
+    body: TaskTypeRegistryIn,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> ProblemOut | TaskTypeRegistryOut | None:
+    """ Declare Task Types
+
+     Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out.
 
     Args:
-        body (PreCheckRequest):
+        body (TaskTypeRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        ProblemOut | TaskTypeRegistryOut
      """
 
 

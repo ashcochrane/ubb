@@ -15,9 +15,9 @@ if TYPE_CHECKING:
   from ..models.usage_analytics_response_breakdowns import UsageAnalyticsResponseBreakdowns
   from ..models.usage_analytics_response_by_customer_item import UsageAnalyticsResponseByCustomerItem
   from ..models.usage_analytics_response_by_event_type_item import UsageAnalyticsResponseByEventTypeItem
-  from ..models.usage_analytics_response_by_product_item import UsageAnalyticsResponseByProductItem
   from ..models.usage_analytics_response_by_provider_item import UsageAnalyticsResponseByProviderItem
   from ..models.usage_analytics_response_by_tag_item import UsageAnalyticsResponseByTagItem
+  from ..models.usage_analytics_response_by_task_type_item import UsageAnalyticsResponseByTaskTypeItem
 
 
 
@@ -33,9 +33,9 @@ class UsageAnalyticsResponse:
         Attributes:
             by_customer (list[UsageAnalyticsResponseByCustomerItem]):
             by_event_type (list[UsageAnalyticsResponseByEventTypeItem]):
-            by_product (list[UsageAnalyticsResponseByProductItem]):
             by_provider (list[UsageAnalyticsResponseByProviderItem]):
             by_tag (list[UsageAnalyticsResponseByTagItem]):
+            by_task_type (list[UsageAnalyticsResponseByTaskTypeItem]):
             total_billed_cost_micros (int):
             total_events (int):
             total_provider_cost_micros (int):
@@ -45,9 +45,9 @@ class UsageAnalyticsResponse:
 
     by_customer: list[UsageAnalyticsResponseByCustomerItem]
     by_event_type: list[UsageAnalyticsResponseByEventTypeItem]
-    by_product: list[UsageAnalyticsResponseByProductItem]
     by_provider: list[UsageAnalyticsResponseByProviderItem]
     by_tag: list[UsageAnalyticsResponseByTagItem]
+    by_task_type: list[UsageAnalyticsResponseByTaskTypeItem]
     total_billed_cost_micros: int
     total_events: int
     total_provider_cost_micros: int
@@ -63,9 +63,9 @@ class UsageAnalyticsResponse:
         from ..models.usage_analytics_response_breakdowns import UsageAnalyticsResponseBreakdowns
         from ..models.usage_analytics_response_by_customer_item import UsageAnalyticsResponseByCustomerItem
         from ..models.usage_analytics_response_by_event_type_item import UsageAnalyticsResponseByEventTypeItem
-        from ..models.usage_analytics_response_by_product_item import UsageAnalyticsResponseByProductItem
         from ..models.usage_analytics_response_by_provider_item import UsageAnalyticsResponseByProviderItem
         from ..models.usage_analytics_response_by_tag_item import UsageAnalyticsResponseByTagItem
+        from ..models.usage_analytics_response_by_task_type_item import UsageAnalyticsResponseByTaskTypeItem
         by_customer = []
         for by_customer_item_data in self.by_customer:
             by_customer_item = by_customer_item_data.to_dict()
@@ -80,13 +80,6 @@ class UsageAnalyticsResponse:
 
 
 
-        by_product = []
-        for by_product_item_data in self.by_product:
-            by_product_item = by_product_item_data.to_dict()
-            by_product.append(by_product_item)
-
-
-
         by_provider = []
         for by_provider_item_data in self.by_provider:
             by_provider_item = by_provider_item_data.to_dict()
@@ -98,6 +91,13 @@ class UsageAnalyticsResponse:
         for by_tag_item_data in self.by_tag:
             by_tag_item = by_tag_item_data.to_dict()
             by_tag.append(by_tag_item)
+
+
+
+        by_task_type = []
+        for by_task_type_item_data in self.by_task_type:
+            by_task_type_item = by_task_type_item_data.to_dict()
+            by_task_type.append(by_task_type_item)
 
 
 
@@ -119,9 +119,9 @@ class UsageAnalyticsResponse:
         field_dict.update({
             "by_customer": by_customer,
             "by_event_type": by_event_type,
-            "by_product": by_product,
             "by_provider": by_provider,
             "by_tag": by_tag,
+            "by_task_type": by_task_type,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_events": total_events,
             "total_provider_cost_micros": total_provider_cost_micros,
@@ -139,9 +139,9 @@ class UsageAnalyticsResponse:
         from ..models.usage_analytics_response_breakdowns import UsageAnalyticsResponseBreakdowns
         from ..models.usage_analytics_response_by_customer_item import UsageAnalyticsResponseByCustomerItem
         from ..models.usage_analytics_response_by_event_type_item import UsageAnalyticsResponseByEventTypeItem
-        from ..models.usage_analytics_response_by_product_item import UsageAnalyticsResponseByProductItem
         from ..models.usage_analytics_response_by_provider_item import UsageAnalyticsResponseByProviderItem
         from ..models.usage_analytics_response_by_tag_item import UsageAnalyticsResponseByTagItem
+        from ..models.usage_analytics_response_by_task_type_item import UsageAnalyticsResponseByTaskTypeItem
         d = dict(src_dict)
         by_customer = []
         _by_customer = d.pop("by_customer")
@@ -163,16 +163,6 @@ class UsageAnalyticsResponse:
             by_event_type.append(by_event_type_item)
 
 
-        by_product = []
-        _by_product = d.pop("by_product")
-        for by_product_item_data in (_by_product):
-            by_product_item = UsageAnalyticsResponseByProductItem.from_dict(by_product_item_data)
-
-
-
-            by_product.append(by_product_item)
-
-
         by_provider = []
         _by_provider = d.pop("by_provider")
         for by_provider_item_data in (_by_provider):
@@ -191,6 +181,16 @@ class UsageAnalyticsResponse:
 
 
             by_tag.append(by_tag_item)
+
+
+        by_task_type = []
+        _by_task_type = d.pop("by_task_type")
+        for by_task_type_item_data in (_by_task_type):
+            by_task_type_item = UsageAnalyticsResponseByTaskTypeItem.from_dict(by_task_type_item_data)
+
+
+
+            by_task_type.append(by_task_type_item)
 
 
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
@@ -214,9 +214,9 @@ class UsageAnalyticsResponse:
         usage_analytics_response = cls(
             by_customer=by_customer,
             by_event_type=by_event_type,
-            by_product=by_product,
             by_provider=by_provider,
             by_tag=by_tag,
+            by_task_type=by_task_type,
             total_billed_cost_micros=total_billed_cost_micros,
             total_events=total_events,
             total_provider_cost_micros=total_provider_cost_micros,

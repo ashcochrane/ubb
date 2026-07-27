@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="UsageAnalyticsResponseByProductItem")
+T = TypeVar("T", bound="UsageAnalyticsResponseByTaskTypeItem")
 
 
 
 @_attrs_define
-class UsageAnalyticsResponseByProductItem:
+class UsageAnalyticsResponseByTaskTypeItem:
     """ 
      """
 
@@ -41,12 +41,12 @@ class UsageAnalyticsResponseByProductItem:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        usage_analytics_response_by_product_item = cls(
+        usage_analytics_response_by_task_type_item = cls(
         )
 
 
-        usage_analytics_response_by_product_item.additional_properties = d
-        return usage_analytics_response_by_product_item
+        usage_analytics_response_by_task_type_item.additional_properties = d
+        return usage_analytics_response_by_task_type_item
 
     @property
     def additional_keys(self) -> list[str]:

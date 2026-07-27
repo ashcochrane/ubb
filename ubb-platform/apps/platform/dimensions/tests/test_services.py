@@ -102,6 +102,11 @@ class TestAdmit:
         with pytest.raises(DimensionError, match="retired"):
             DimensionService.admit(t, {"model": "gpt-5"}, scope="event")
 
+    def test_value_over_100_chars_is_rejected(self):
+        t = self._t()
+        with pytest.raises(DimensionError, match="exceeds 100 characters"):
+            DimensionService.admit(t, {"model": "x" * 101}, scope="event")
+
     def test_admit_is_atomic_on_multi_key_failure(self):
         t = self._t()
         # region is task scope, model is event scope

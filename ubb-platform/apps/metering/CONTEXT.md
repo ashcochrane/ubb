@@ -52,10 +52,12 @@ A marker that a backfilled event landed in a prior calendar month, signalling th
 snapshot must be recomputed; produced here, consumed by subscriptions.
 (`apps/metering/usage/models.py:BackfillDirtyPeriod`)
 
-**Dimensional tags**:
-Caller-supplied dimensions on a usage event (`product`/`service`/`agent` are reserved), used for
-dimensional pricing matches and margin grouping. (`apps/metering/usage/models.py`)
-_Avoid_: "group_keys" — renamed to `tags`.
+**tags**:
+Caller-supplied, free-form labels on a usage event — never grouped, never priced, unbounded and
+undeclared by design. Grouping and pricing are the declared `Dimension` registry's job (ADR-0005),
+not tags'. (`apps/metering/usage/models.py`)
+_Avoid_: "group_keys" — renamed to `tags`; "dimensional tags" — dimensions and tags are now two
+separate mechanisms, not one.
 
 **Async ingest / settle**:
 The raw, at-least-once intake path: a raw event is accepted, then later *settled* exactly-once into
@@ -110,9 +112,23 @@ markup configured → billed equals provider. (`apps/metering/pricing/models.py:
 ## Pricing — the RateCard engine
 
 **Rate**:
-A single priced *line* — one metric's rate for a provider/event_type/dimension combination — living
-in a RateCard, versioned via `lineage_id`. (`apps/metering/pricing/models.py:Rate`)
-_Avoid_: calling a Rate a "rate card" — that name belongs to the container.
+A single priced *line* — one metric's rate for a combination of the ten declared selector columns
+— living in a RateCard, versioned via `lineage_id`. An empty selector is a wildcard; among rates
+that match within one book, the most-pinned (highest `specificity`) wins. (ADR-0005;
+`apps/metering/pricing/models.py:Rate`)
+_Avoid_: calling a Rate a "rate card" — that name belongs to the container; assuming specificity
+ranks across every book — it only ranks within the one book a resolution tier selected (ADR-0005).
+
+**Selector**:
+One of the ten indexed columns (`provider`, `event_type`, `task_type`, `subtask_type`,
+`dim1`..`dim6`) that both `UsageEvent` and `Rate` carry — the single vocabulary a `Dimension` is
+declared into and a `Rate` is matched against. `""` means "not set" on an event and "matches
+anything" on a Rate. (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
+
+**Specificity**:
+How many of a Rate's ten selectors are non-empty (pinned) — the tie-breaker among rates matching
+the same event *within one book*: most-pinned wins, ties broken by latest `valid_from`. Does not
+rank across books — book tier is resolved first (ADR-0005). (`apps/metering/pricing/models.py:Rate.specificity`)
 
 **RateCard**:
 The versioned container (informally a "book") grouping many Rates, pinned to one provider +

@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RateChangeInDimensions")
+T = TypeVar("T", bound="RecordUsageRequestDimensions")
 
 
 
 @_attrs_define
-class RateChangeInDimensions:
+class RecordUsageRequestDimensions:
     """ 
      """
 
@@ -41,12 +41,12 @@ class RateChangeInDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        rate_change_in_dimensions = cls(
+        record_usage_request_dimensions = cls(
         )
 
 
-        rate_change_in_dimensions.additional_properties = d
-        return rate_change_in_dimensions
+        record_usage_request_dimensions.additional_properties = d
+        return record_usage_request_dimensions
 
     @property
     def additional_keys(self) -> list[str]:

@@ -11,8 +11,6 @@ from ..types import UNSET, Unset
 from ..types import UNSET, Unset
 from typing import cast
 
-if TYPE_CHECKING:
-  from ..models.rate_out_dimensions import RateOutDimensions
 
 
 
@@ -28,17 +26,23 @@ class RateOut:
         Attributes:
             card_type (str):
             currency (str):
-            dimensions (RateOutDimensions):
+            dim1 (str):
+            dim2 (str):
+            dim3 (str):
+            dim4 (str):
+            dim5 (str):
+            dim6 (str):
             event_type (str):
             fixed_micros (int):
             id (str):
             lineage_id (str):
             metric_name (str):
             pricing_model (str):
-            product_id (str):
             provider (str):
             rate_card_id (str):
             rate_per_unit_micros (int):
+            subtask_type (str):
+            task_type (str):
             unit_quantity (int):
             valid_from (str):
             valid_to (None | str | Unset):
@@ -46,17 +50,23 @@ class RateOut:
 
     card_type: str
     currency: str
-    dimensions: RateOutDimensions
+    dim1: str
+    dim2: str
+    dim3: str
+    dim4: str
+    dim5: str
+    dim6: str
     event_type: str
     fixed_micros: int
     id: str
     lineage_id: str
     metric_name: str
     pricing_model: str
-    product_id: str
     provider: str
     rate_card_id: str
     rate_per_unit_micros: int
+    subtask_type: str
+    task_type: str
     unit_quantity: int
     valid_from: str
     valid_to: None | str | Unset = UNSET
@@ -67,12 +77,21 @@ class RateOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.rate_out_dimensions import RateOutDimensions
         card_type = self.card_type
 
         currency = self.currency
 
-        dimensions = self.dimensions.to_dict()
+        dim1 = self.dim1
+
+        dim2 = self.dim2
+
+        dim3 = self.dim3
+
+        dim4 = self.dim4
+
+        dim5 = self.dim5
+
+        dim6 = self.dim6
 
         event_type = self.event_type
 
@@ -86,13 +105,15 @@ class RateOut:
 
         pricing_model = self.pricing_model
 
-        product_id = self.product_id
-
         provider = self.provider
 
         rate_card_id = self.rate_card_id
 
         rate_per_unit_micros = self.rate_per_unit_micros
+
+        subtask_type = self.subtask_type
+
+        task_type = self.task_type
 
         unit_quantity = self.unit_quantity
 
@@ -110,17 +131,23 @@ class RateOut:
         field_dict.update({
             "card_type": card_type,
             "currency": currency,
-            "dimensions": dimensions,
+            "dim1": dim1,
+            "dim2": dim2,
+            "dim3": dim3,
+            "dim4": dim4,
+            "dim5": dim5,
+            "dim6": dim6,
             "event_type": event_type,
             "fixed_micros": fixed_micros,
             "id": id,
             "lineage_id": lineage_id,
             "metric_name": metric_name,
             "pricing_model": pricing_model,
-            "product_id": product_id,
             "provider": provider,
             "rate_card_id": rate_card_id,
             "rate_per_unit_micros": rate_per_unit_micros,
+            "subtask_type": subtask_type,
+            "task_type": task_type,
             "unit_quantity": unit_quantity,
             "valid_from": valid_from,
         })
@@ -133,16 +160,22 @@ class RateOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.rate_out_dimensions import RateOutDimensions
         d = dict(src_dict)
         card_type = d.pop("card_type")
 
         currency = d.pop("currency")
 
-        dimensions = RateOutDimensions.from_dict(d.pop("dimensions"))
+        dim1 = d.pop("dim1")
 
+        dim2 = d.pop("dim2")
 
+        dim3 = d.pop("dim3")
 
+        dim4 = d.pop("dim4")
+
+        dim5 = d.pop("dim5")
+
+        dim6 = d.pop("dim6")
 
         event_type = d.pop("event_type")
 
@@ -156,13 +189,15 @@ class RateOut:
 
         pricing_model = d.pop("pricing_model")
 
-        product_id = d.pop("product_id")
-
         provider = d.pop("provider")
 
         rate_card_id = d.pop("rate_card_id")
 
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
+
+        subtask_type = d.pop("subtask_type")
+
+        task_type = d.pop("task_type")
 
         unit_quantity = d.pop("unit_quantity")
 
@@ -181,17 +216,23 @@ class RateOut:
         rate_out = cls(
             card_type=card_type,
             currency=currency,
-            dimensions=dimensions,
+            dim1=dim1,
+            dim2=dim2,
+            dim3=dim3,
+            dim4=dim4,
+            dim5=dim5,
+            dim6=dim6,
             event_type=event_type,
             fixed_micros=fixed_micros,
             id=id,
             lineage_id=lineage_id,
             metric_name=metric_name,
             pricing_model=pricing_model,
-            product_id=product_id,
             provider=provider,
             rate_card_id=rate_card_id,
             rate_per_unit_micros=rate_per_unit_micros,
+            subtask_type=subtask_type,
+            task_type=task_type,
             unit_quantity=unit_quantity,
             valid_from=valid_from,
             valid_to=valid_to,

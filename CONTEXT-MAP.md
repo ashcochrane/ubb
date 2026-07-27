@@ -13,6 +13,10 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
 - [Platform kernel](./ubb-platform/apps/platform/CONTEXT.md) — tenants, customers, the
   events/outbox, runs, auth, locking. The shared kernel; anything may depend on it. (`core/` is its
   plumbing.)
+  - [`apps/platform/dimensions`](./ubb-platform/apps/platform/CONTEXT.md#dimensions) — the
+    per-tenant `DimensionDef`/`DimensionValue` registry: the single declared vocabulary for
+    analytics grouping and rate selection, read by metering via `dimensions/queries.py`
+    (ADR-0005).
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
   dimensional tags, customer margin, and the RateCard pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,

@@ -8,53 +8,47 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.pre_check_request import PreCheckRequest
-from ...models.pre_check_response import PreCheckResponse
 from ...models.problem_out import ProblemOut
+from ...models.task_detail_out import TaskDetailOut
 from typing import cast
+from uuid import UUID
 
 
 
 def _get_kwargs(
-    *,
-    body: PreCheckRequest,
+    task_id: UUID,
 
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
-
+    
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/billing/pre-check",
+        "method": "get",
+        "url": "/api/v1/metering/tasks/{task_id}".format(task_id=quote(str(task_id), safe=""),),
     }
 
-    _kwargs["json"] = body.to_dict()
 
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TaskDetailOut | None:
     if response.status_code == 200:
-        response_200 = PreCheckResponse.from_dict(response.json())
+        response_200 = TaskDetailOut.from_dict(response.json())
 
 
 
         return response_200
 
-    if response.status_code == 422:
-        response_422 = ProblemOut.from_dict(response.json())
+    if response.status_code == 404:
+        response_404 = ProblemOut.from_dict(response.json())
 
 
 
-        return response_422
+        return response_404
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -62,7 +56,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TaskDetailOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -72,27 +66,33 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
+    task_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[ProblemOut | TaskDetailOut]:
+    """ Get Task
+
+     One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children.
 
     Args:
-        body (PreCheckRequest):
+        task_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[ProblemOut | TaskDetailOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
+        task_id=task_id,
 
     )
 
@@ -103,53 +103,65 @@ def sync_detailed(
     return _build_response(client=client, response=response)
 
 def sync(
+    task_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> ProblemOut | TaskDetailOut | None:
+    """ Get Task
+
+     One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children.
 
     Args:
-        body (PreCheckRequest):
+        task_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        ProblemOut | TaskDetailOut
      """
 
 
     return sync_detailed(
-        client=client,
-body=body,
+        task_id=task_id,
+client=client,
 
     ).parsed
 
 async def asyncio_detailed(
+    task_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[ProblemOut | TaskDetailOut]:
+    """ Get Task
+
+     One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children.
 
     Args:
-        body (PreCheckRequest):
+        task_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[ProblemOut | TaskDetailOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
+        task_id=task_id,
 
     )
 
@@ -160,27 +172,33 @@ async def asyncio_detailed(
     return _build_response(client=client, response=response)
 
 async def asyncio(
+    task_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> ProblemOut | TaskDetailOut | None:
+    """ Get Task
+
+     One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children.
 
     Args:
-        body (PreCheckRequest):
+        task_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        ProblemOut | TaskDetailOut
      """
 
 
     return (await asyncio_detailed(
-        client=client,
-body=body,
+        task_id=task_id,
+client=client,
 
     )).parsed

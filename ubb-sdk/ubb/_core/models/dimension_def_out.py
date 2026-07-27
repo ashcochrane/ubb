@@ -14,15 +14,26 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RateInDimensions")
+T = TypeVar("T", bound="DimensionDefOut")
 
 
 
 @_attrs_define
-class RateInDimensions:
+class DimensionDefOut:
     """ 
+        Attributes:
+            key (str):
+            max_cardinality (int):
+            retired (bool):
+            scope (str):
+            slot (str):
      """
 
+    key: str
+    max_cardinality: int
+    retired: bool
+    scope: str
+    slot: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -30,9 +41,26 @@ class RateInDimensions:
 
 
     def to_dict(self) -> dict[str, Any]:
-        
+        key = self.key
+
+        max_cardinality = self.max_cardinality
+
+        retired = self.retired
+
+        scope = self.scope
+
+        slot = self.slot
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update({
+            "key": key,
+            "max_cardinality": max_cardinality,
+            "retired": retired,
+            "scope": scope,
+            "slot": slot,
+        })
 
         return field_dict
 
@@ -41,12 +69,27 @@ class RateInDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        rate_in_dimensions = cls(
+        key = d.pop("key")
+
+        max_cardinality = d.pop("max_cardinality")
+
+        retired = d.pop("retired")
+
+        scope = d.pop("scope")
+
+        slot = d.pop("slot")
+
+        dimension_def_out = cls(
+            key=key,
+            max_cardinality=max_cardinality,
+            retired=retired,
+            scope=scope,
+            slot=slot,
         )
 
 
-        rate_in_dimensions.additional_properties = d
-        return rate_in_dimensions
+        dimension_def_out.additional_properties = d
+        return dimension_def_out
 
     @property
     def additional_keys(self) -> list[str]:

@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RateOutDimensions")
+T = TypeVar("T", bound="TaskDetailOutDimensions")
 
 
 
 @_attrs_define
-class RateOutDimensions:
+class TaskDetailOutDimensions:
     """ 
      """
 
@@ -41,12 +41,12 @@ class RateOutDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        rate_out_dimensions = cls(
+        task_detail_out_dimensions = cls(
         )
 
 
-        rate_out_dimensions.additional_properties = d
-        return rate_out_dimensions
+        task_detail_out_dimensions.additional_properties = d
+        return task_detail_out_dimensions
 
     @property
     def additional_keys(self) -> list[str]:

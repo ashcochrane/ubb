@@ -8,53 +8,37 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.pre_check_request import PreCheckRequest
-from ...models.pre_check_response import PreCheckResponse
-from ...models.problem_out import ProblemOut
+from ...models.dimension_registry_out import DimensionRegistryOut
 from typing import cast
 
 
 
 def _get_kwargs(
-    *,
-    body: PreCheckRequest,
-
+    
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
-
+    
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/billing/pre-check",
+        "method": "get",
+        "url": "/api/v1/metering/dimensions",
     }
 
-    _kwargs["json"] = body.to_dict()
 
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionRegistryOut | None:
     if response.status_code == 200:
-        response_200 = PreCheckResponse.from_dict(response.json())
+        response_200 = DimensionRegistryOut.from_dict(response.json())
 
 
 
         return response_200
-
-    if response.status_code == 422:
-        response_422 = ProblemOut.from_dict(response.json())
-
-
-
-        return response_422
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -62,7 +46,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionRegistryOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,26 +58,23 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[DimensionRegistryOut]:
+    """ List Dimensions
 
-    Args:
-        body (PreCheckRequest):
+     This tenant's declared dimension vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[DimensionRegistryOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
-
+        
     )
 
     response = client.get_httpx_client().request(
@@ -105,52 +86,46 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> DimensionRegistryOut | None:
+    """ List Dimensions
 
-    Args:
-        body (PreCheckRequest):
+     This tenant's declared dimension vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        DimensionRegistryOut
      """
 
 
     return sync_detailed(
         client=client,
-body=body,
 
     ).parsed
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
-    """ Pre Check
+) -> Response[DimensionRegistryOut]:
+    """ List Dimensions
 
-    Args:
-        body (PreCheckRequest):
+     This tenant's declared dimension vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[DimensionRegistryOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
-
+        
     )
 
     response = await client.get_async_httpx_client().request(
@@ -162,25 +137,22 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
-    """ Pre Check
+) -> DimensionRegistryOut | None:
+    """ List Dimensions
 
-    Args:
-        body (PreCheckRequest):
+     This tenant's declared dimension vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        DimensionRegistryOut
      """
 
 
     return (await asyncio_detailed(
         client=client,
-body=body,
 
     )).parsed

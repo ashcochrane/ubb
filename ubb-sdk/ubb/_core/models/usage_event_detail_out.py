@@ -37,14 +37,14 @@ class UsageEventDetailOut:
             idempotency_key (str):
             provider_cost_micros (int):
             request_id (str):
-            agent_id (str | Unset):  Default: ''.
             currency (str | Unset):  Default: 'usd'.
+            dim1 (str | Unset):  Default: ''.
+            dim2 (str | Unset):  Default: ''.
+            dim3 (str | Unset):  Default: ''.
             event_type (str | Unset):  Default: ''.
             metadata (UsageEventDetailOutMetadata | Unset):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset):
-            product_id (str | Unset):  Default: ''.
             provider (str | Unset):  Default: ''.
-            service_id (str | Unset):  Default: ''.
             stop_context (list[Any] | None | Unset):
             tags (None | Unset | UsageEventDetailOutTagsType0):
             task_id (None | str | Unset):
@@ -59,14 +59,14 @@ class UsageEventDetailOut:
     idempotency_key: str
     provider_cost_micros: int
     request_id: str
-    agent_id: str | Unset = ''
     currency: str | Unset = 'usd'
+    dim1: str | Unset = ''
+    dim2: str | Unset = ''
+    dim3: str | Unset = ''
     event_type: str | Unset = ''
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
-    product_id: str | Unset = ''
     provider: str | Unset = ''
-    service_id: str | Unset = ''
     stop_context: list[Any] | None | Unset = UNSET
     tags: None | Unset | UsageEventDetailOutTagsType0 = UNSET
     task_id: None | str | Unset = UNSET
@@ -97,9 +97,13 @@ class UsageEventDetailOut:
 
         request_id = self.request_id
 
-        agent_id = self.agent_id
-
         currency = self.currency
+
+        dim1 = self.dim1
+
+        dim2 = self.dim2
+
+        dim3 = self.dim3
 
         event_type = self.event_type
 
@@ -111,11 +115,7 @@ class UsageEventDetailOut:
         if not isinstance(self.pricing_provenance, Unset):
             pricing_provenance = self.pricing_provenance.to_dict()
 
-        product_id = self.product_id
-
         provider = self.provider
-
-        service_id = self.service_id
 
         stop_context: list[Any] | None | Unset
         if isinstance(self.stop_context, Unset):
@@ -163,22 +163,22 @@ class UsageEventDetailOut:
             "provider_cost_micros": provider_cost_micros,
             "request_id": request_id,
         })
-        if agent_id is not UNSET:
-            field_dict["agent_id"] = agent_id
         if currency is not UNSET:
             field_dict["currency"] = currency
+        if dim1 is not UNSET:
+            field_dict["dim1"] = dim1
+        if dim2 is not UNSET:
+            field_dict["dim2"] = dim2
+        if dim3 is not UNSET:
+            field_dict["dim3"] = dim3
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
         if pricing_provenance is not UNSET:
             field_dict["pricing_provenance"] = pricing_provenance
-        if product_id is not UNSET:
-            field_dict["product_id"] = product_id
         if provider is not UNSET:
             field_dict["provider"] = provider
-        if service_id is not UNSET:
-            field_dict["service_id"] = service_id
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
         if tags is not UNSET:
@@ -218,9 +218,13 @@ class UsageEventDetailOut:
 
         request_id = d.pop("request_id")
 
-        agent_id = d.pop("agent_id", UNSET)
-
         currency = d.pop("currency", UNSET)
+
+        dim1 = d.pop("dim1", UNSET)
+
+        dim2 = d.pop("dim2", UNSET)
+
+        dim3 = d.pop("dim3", UNSET)
 
         event_type = d.pop("event_type", UNSET)
 
@@ -244,11 +248,7 @@ class UsageEventDetailOut:
 
 
 
-        product_id = d.pop("product_id", UNSET)
-
         provider = d.pop("provider", UNSET)
-
-        service_id = d.pop("service_id", UNSET)
 
         def _parse_stop_context(data: object) -> list[Any] | None | Unset:
             if data is None:
@@ -326,14 +326,14 @@ class UsageEventDetailOut:
             idempotency_key=idempotency_key,
             provider_cost_micros=provider_cost_micros,
             request_id=request_id,
-            agent_id=agent_id,
             currency=currency,
+            dim1=dim1,
+            dim2=dim2,
+            dim3=dim3,
             event_type=event_type,
             metadata=metadata,
             pricing_provenance=pricing_provenance,
-            product_id=product_id,
             provider=provider,
-            service_id=service_id,
             stop_context=stop_context,
             tags=tags,
             task_id=task_id,
