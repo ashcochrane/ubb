@@ -46,9 +46,14 @@ decisions are referenced below as D1–D9.
   hand-write a migration file.** A hand-written one drifts from the model (e.g. recording
   `id` as `UUIDField(default=None)` instead of `BaseModel`'s `default=uuid.uuid4`), which
   is invisible in your own tests but injects a spurious `AlterField` into every later
-  task's `makemigrations` run. Verify with
-  `.venv/bin/python manage.py makemigrations <app> --check --dry-run` — it must report no
-  changes once you are done.
+  task's `makemigrations` run. Verify with:
+  ```bash
+  .venv/bin/python manage.py makemigrations <app> --dry-run   # must print "No changes detected"
+  ```
+  Use exactly that form. **Do NOT add `--check`** — `--check` takes a code path that runs
+  the migration-history consistency check and dies on the pre-existing inconsistency
+  described above, which looks like your migration is broken when it is not. Plain
+  `--dry-run` only warns about the DB connection and reports correctly.
 - Every model inherits `core.models.BaseModel` (UUID pk, `created_at`, `updated_at`)
 - Every table name is prefixed `ubb_`
 - **ADR-001 product boundaries:** products (`apps/metering`, `apps/billing`,
