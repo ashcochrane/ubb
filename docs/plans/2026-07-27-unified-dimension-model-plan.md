@@ -3343,6 +3343,42 @@ Per the CLAUDE.md ratchet:
   **Reserved tag key** entry
 - `CONTEXT-MAP.md` — add the `apps/platform/dimensions` row
 
+- [ ] **Step 4b: Make the CI `contract` job green (added 2026-07-27 — the plan originally missed this entirely)**
+
+`.github/workflows/ci.yml`'s `contract` job runs five gates. Tasks 1–7 were purely
+additive so they stayed green; **Task 8 is the plan's first breaking spec change**, and
+Tasks 9/14/15/16 add more. Do this only here, at the end, once the spec has stopped
+moving — doing it earlier just means redoing it.
+
+1. **Spec drift gate** — `python scripts/export_openapi.py` then
+   `git diff --exit-code -- openapi/v1.json` must be clean.
+2. **SDK core regeneration gate** — the committed `ubb-sdk/ubb/_core` must be byte-exact
+   what the pinned generator produces from the committed spec:
+   ```bash
+   pip install "openapi-python-client==0.29.0"
+   python ubb-sdk/codegen/generate_core.py
+   git diff --exit-code -- ubb-sdk/ubb/_core ubb-sdk/ubb/_spec_revision.py
+   ```
+   This was **already stale before this plan started** (`_spec_revision.py`'s
+   `SPEC_SHA256` does not match the base spec), so expect a large diff. Commit it.
+3. **SDK exception hierarchy gate** — `python ubb-sdk/codegen/generate_exceptions.py`,
+   zero diff. Untouched by this plan; verify only.
+4. **oasdiff breaking gate** — runs `--fail-on WARN` against the **base branch's** spec.
+   This plan removes required response properties (`by_product` from
+   `UsageAnalyticsResponse`; `service_id`/`agent_id` from `RecordUsageResponse` and
+   `UsageEventDetailOut`), each of which is `response-required-property-removed`, an
+   ERROR. Add an entry per removal to `openapi/oasdiff-err-ignore.txt`, **above the LAUNCH
+   TAG BOUNDARY**, each with a one-line justification naming this plan. Read the file's
+   header for its required format before editing.
+5. **UI contract snapshot gate** — `pnpm ui:api:check` regenerates
+   `apps/ui/src/api/schema.json` from the committed spec and demands zero diff. Run
+   `pnpm install --frozen-lockfile` first. Note this file already shows working-tree
+   changes unrelated to this plan (a branch-switch artifact) — regenerate it from the
+   spec rather than reverting it, and confirm the result is what the gate expects.
+
+Each gate must pass locally before this task is done. If a gate cannot pass for a reason
+outside this plan's scope, say so explicitly rather than weakening the gate.
+
 - [ ] **Step 5: Run the boundary gate and the full suite**
 
 ```bash
