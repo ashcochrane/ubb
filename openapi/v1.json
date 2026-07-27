@@ -13926,6 +13926,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "An Admin invited a teammate. A pending Member is created alongside; the\ninvitee activates it on their first Clerk-verified login (member.activated).",
                     "properties": {
                       "email": {
                         "default": "",
@@ -14039,6 +14040,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "An Admin cancelled a still-pending invitation; its pending Member is\ndropped and can no longer activate.",
                     "properties": {
                       "email": {
                         "default": "",
@@ -14383,6 +14385,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "A pending Member joined \u2014 matched by email on first Clerk login and\nbound from then on to the Clerk user id.",
                     "properties": {
                       "clerk_user_id": {
                         "default": "",
@@ -15159,6 +15162,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "The soft floor's clearing half (#40, spec \u00a7F).\n\nFires when the owner's balance re-crosses the resolved soft line \u2014 from\nthe credit hook (``balance_recovered``) or the hourly reconcile\n(``reconciled``) \u2014 through the same transition guard, so the pair fires\nexactly once per episode. soft_min_balance_micros is None when the soft\nfloor was UNCONFIGURED while an episode was open (removing the line\nclears the state: there is no line left to be past).",
                     "properties": {
                       "balance_micros": {
                         "default": 0,
@@ -15289,6 +15293,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "The soft floor's crossing half (#40, spec \u00a7F) \u2014 the wind-down line.\n\nEmitted through the ``soft_floor`` family of the ``StopSignalState``\ntransition guard when the DURABLE drawdown lane sees the owner's wallet\ncross the resolved soft line \u2014 there is no fast Redis lane for the soft\nfamily (signal latency is outbox latency, accepted by #28). Never a stop:\nacks don't change, events are never tagged, nothing is suspended \u2014 the\ntenant's cue to refuse new top-level task starts while running work\ncompletes (the start-gate enforces the same line server-side with reason\n``soft_floor_reached``).\n\nowner_id = the billing owner (the end customer whose wallet crossed),\nmatching stop.fired. soft_min_balance_micros = the RESOLVED soft value\n(the line is -value). episode_seq = the soft_floor family's own episode\nsequence, independent of the hard floor's.",
                     "properties": {
                       "balance_micros": {
                         "default": 0,
@@ -15407,6 +15412,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``stop.fired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the stop.fired\n                 that opened it).\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
                     "properties": {
                       "balance_micros": {
                         "default": 0,
@@ -15530,6 +15536,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the fast Redis lane at arrival, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);\n              the paired ``stop.cleared`` carries the same id, and the\n              stop-context tagging / past-limit report (#41) key on it.",
                     "properties": {
                       "episode_seq": {
                         "default": 0,
@@ -15648,6 +15655,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "Subtask-kill fan-out event (#38) \u2014 the subtask sibling of\nTaskLimitExceeded, emitted exactly once per winning active->killed\ntransition of a SUBTASK (its own limit/floor crossing, or the reaper).\nThe subtask is killed ALONE: the parent keeps running and counting, so\nconsumers tear down only the named child. A parent's own crossing emits\ntask.limit_exceeded instead and cascades its kill downward silently \u2014\ncascaded children never emit this event (they crossed nothing).\n\nIds are explicit (spec \u00a7B \u2014 the run-era scope field died with the\nsplit): subtask_id = the killed child unit, parent_task_id = the parent\nwhose totals its spend rolls up into. Totals and limit are the\nSUBTASK's own, denominationally explicit; only the provider (COGS)\ntotal races the limit.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
@@ -15791,6 +15799,7 @@
               "schema": {
                 "properties": {
                   "data": {
+                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning active->killed transition \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle) and the\nstale-task reaper \u2014 so sibling/idle workers tear the task down. The task\nis a signal point, not a wall: events arriving after this still land,\nbill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.tasks.reasons (closed set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
