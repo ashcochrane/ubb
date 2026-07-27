@@ -36,3 +36,12 @@ class TestMarkupCacheInvalidation:
         with patch(target) as invalidate:
             row.delete()
         invalidate.assert_called_once_with(self.tenant.id)
+
+    def test_deleting_a_plan_invalidates_the_tenant_markup_cache(self):
+        # No assignments — CustomerPlanAssignment.plan is on_delete=PROTECT,
+        # so an assigned plan cannot be deleted at all.
+        plan = Plan.objects.create(tenant=self.tenant, key="stale", name="Stale")
+        target = "apps.metering.pricing.services.markup_cache.MarkupCache.invalidate"
+        with patch(target) as invalidate:
+            plan.delete()
+        invalidate.assert_called_once_with(self.tenant.id)
