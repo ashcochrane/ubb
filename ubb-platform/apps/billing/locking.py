@@ -19,19 +19,42 @@ def lock_for_billing(customer_id):
 
     Use for: usage recording, wallet credits/debits, suspension checks.
     MUST be called within @transaction.atomic.
+
+    Task 8c ratchet: refuses an id that is not itself a billing owner.
+    Seven instances of the same defect (Tasks 3, 7, 8) were all one shape —
+    a caller reached this function with a pooled seat's id, and the lazy
+    ``Wallet.objects.create`` below turned that into a silent phantom wallet
+    on the seat instead of a loud failure. Every legitimate caller in this
+    codebase already resolves the owner first (``customer.resolve_billing_
+    owner()``); this assertion makes skipping that step a hard error at the
+    first test run rather than a wallet nothing ever reads.
+
+    The two things that legitimately key off a SEAT rather than the owner —
+    ``BudgetConfig`` (budgets cap the seat's own spend) and audit records
+    (the seat is the named subject of an action) — never call this function;
+    they read/write their own tables directly. If that ever changes, they
+    would need to be added to a deliberate allowlist, not silently pass here.
     """
     from apps.billing.wallets.models import Wallet
     from apps.platform.customers.models import Customer
+    from core.exceptions import NotBillingOwnerError
+
+    # Plain (unlocked) read, purely to validate identity — it does not
+    # participate in the Wallet -> Customer lock order below.
+    customer_for_check = Customer.objects.select_related("parent", "tenant").get(id=customer_id)
+    owner = customer_for_check.resolve_billing_owner()
+    if owner.id != customer_for_check.id:
+        raise NotBillingOwnerError(
+            f"lock_for_billing() called with seat {customer_id} "
+            f"(external_id={customer_for_check.external_id!r}) — its billing "
+            f"owner is {owner.id} (external_id={owner.external_id!r}). "
+            "Resolve customer.resolve_billing_owner() before calling in.")
 
     wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
     if wallet is None:
         # CUR-1: a new wallet is born in the customer's tenant currency
         # (normalized lowercase), never a hardcoded USD.
-        tenant_currency = (
-            Customer.objects.filter(id=customer_id)
-            .values_list("tenant__default_currency", flat=True).first()
-            or "usd"
-        ).lower()
+        tenant_currency = (customer_for_check.tenant.default_currency or "usd").lower()
         wallet = Wallet.objects.create(
             customer_id=customer_id, balance_micros=0, currency=tenant_currency)
     elif wallet.deleted_at is not None:

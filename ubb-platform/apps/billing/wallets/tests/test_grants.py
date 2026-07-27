@@ -344,7 +344,7 @@ class TestClawbackCascade:
                                     stripe_customer_id="cus_d1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
         attempt = TopUpAttempt.objects.create(
-            customer=c, amount_micros=20_000_000, trigger="manual",
+            customer=c, billing_owner_id=c.id, amount_micros=20_000_000, trigger="manual",
             status="succeeded", stripe_charge_id="ch_d1")
         a_far = timezone.now() + timedelta(days=30)
         b_near = timezone.now() + timedelta(days=2)
@@ -411,7 +411,7 @@ class TestClawbackCascade:
                                     stripe_customer_id="cus_r1")
         w = Wallet.objects.create(customer=c, balance_micros=50_000_000)  # base 50
         attempt = TopUpAttempt.objects.create(
-            customer=c, amount_micros=20_000_000, trigger="manual",
+            customer=c, billing_owner_id=c.id, amount_micros=20_000_000, trigger="manual",
             status="succeeded", stripe_charge_id="ch_r1")
         g = _make_grant(w, t, kind="paid", amount=20_000_000,
                         source="checkout", source_reference=str(attempt.id))
