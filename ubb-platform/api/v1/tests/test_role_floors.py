@@ -72,8 +72,11 @@ _WRITE_ROUTES = {
 # selection (D1), a pricing-rule change like markup.set/rate_card.*, so it
 # takes the Admin default and needs no _WRITE_ROUTES entry], GET
 # /metering/dimensions [Read], GET /metering/dimensions/{key}/values [Read]
-# = 115.
-_EXPECTED_FLOORED = 115
+# = 115. +2 (unified dimension model plan, task 7): PUT /metering/task-types
+# [Admin — same ruling as dimensions: a task type's ceiling prices usage like
+# markup.set/rate_card.*, so it takes the Admin default and needs no
+# _WRITE_ROUTES entry], GET /metering/task-types [Read] = 117.
+_EXPECTED_FLOORED = 117
 _EXPECTED_EXEMPT = 11
 
 

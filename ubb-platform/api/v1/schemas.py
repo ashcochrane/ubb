@@ -823,6 +823,29 @@ class DimensionValuesOut(Schema):
     values: list[str]
 
 
+class TaskTypeIn(Schema):
+    key: str = Field(max_length=64)
+    kind: str = "task"
+    default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    required_dimensions: list[str] = Field(default_factory=list, max_length=6)
+
+
+class TaskTypeRegistryIn(Schema):
+    task_types: list[TaskTypeIn] = Field(min_length=1, max_length=100)
+
+
+class TaskTypeOut(Schema):
+    key: str
+    kind: str
+    default_provider_cost_limit_micros: Optional[int] = None
+    required_dimensions: list[str]
+    retired: bool
+
+
+class TaskTypeRegistryOut(Schema):
+    task_types: list[TaskTypeOut]
+
+
 class TenantConfigOut(Schema):
     name: str
     billing_mode: str

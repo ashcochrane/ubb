@@ -31,6 +31,7 @@ from api.v1.schemas import (
     PaginatedBooks, PaginatedRates,
     book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, DimensionValuesOut,
+    TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
@@ -874,3 +875,58 @@ def list_dimension_values(request, key: str):
     values = list(DimensionValue.objects.filter(
         tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
     return 200, {"key": key, "values": values}
+
+
+@metering_router.put("/task-types", response={200: TaskTypeRegistryOut, 422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("task_type.declared")
+def declare_task_types(request, payload: TaskTypeRegistryIn):
+    """Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import slot_map
+    from apps.platform.tasks.models import TaskType
+    from apps.platform.tasks.queries import declared_task_types
+
+    tenant = request.auth.tenant
+    declared = set(slot_map(tenant.id))
+    with transaction.atomic():
+        for tt in payload.task_types:
+            if tt.kind not in ("task", "subtask"):
+                raise Problem("validation_error", f"invalid kind {tt.kind!r}")
+            missing = [d for d in tt.required_dimensions if d not in declared]
+            if missing:
+                raise Problem("validation_error",
+                              f"required_dimensions not declared: {missing}")
+            TaskType.objects.update_or_create(
+                tenant=tenant, key=tt.key, kind=tt.kind,
+                defaults={
+                    "default_provider_cost_limit_micros":
+                        tt.default_provider_cost_limit_micros,
+                    "required_dimensions": tt.required_dimensions,
+                })
+        audit_record(
+            action="task_type.declared",
+            tenant_id=tenant.id,
+            resource_type="task_type_registry",
+            resource_id=tenant.id,
+            metadata={"task_types": [
+                {"key": tt.key, "kind": tt.kind,
+                 "default_provider_cost_limit_micros":
+                     tt.default_provider_cost_limit_micros,
+                 "required_dimensions": tt.required_dimensions}
+                for tt in payload.task_types]},
+        )
+    return 200, {"task_types": declared_task_types(tenant.id)}
+
+
+@metering_router.get("/task-types", response=TaskTypeRegistryOut)
+@role_floor(READ)
+def list_task_types(request):
+    """The tenant's declared work vocabulary."""
+    _product_check(request)
+    from apps.platform.tasks.queries import declared_task_types
+    return {"task_types": declared_task_types(request.auth.tenant.id)}
