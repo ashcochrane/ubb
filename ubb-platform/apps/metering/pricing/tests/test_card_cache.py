@@ -93,20 +93,20 @@ def test_dimensioned_card_bypasses_l1_for_different_tag_sets(tenant, customer):
         key="dimensioned", is_default=True, version=1)
     rate_gpt4 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dimensions={"model": "gpt-4"},
+        metric_name="tokens", currency="usd", dim1="gpt-4",
         rate_per_unit_micros=20_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     rate_gpt35 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dimensions={"model": "gpt-3.5"},
+        metric_name="tokens", currency="usd", dim1="gpt-3.5",
         rate_per_unit_micros=5_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
 
     CardCache.begin_request(tenant.id)
     got_gpt4 = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                                  "tokens", {"model": "gpt-4"}, "usd")
+                                  "tokens", {"dim1": "gpt-4"}, "usd")
     got_gpt35 = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                                   "tokens", {"model": "gpt-3.5"}, "usd")
+                                   "tokens", {"dim1": "gpt-3.5"}, "usd")
     assert got_gpt4 is not None and got_gpt4.id == rate_gpt4.id
     assert got_gpt35 is not None and got_gpt35.id == rate_gpt35.id
 
@@ -177,7 +177,7 @@ def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_c
     with django_capture_on_commit_callbacks(execute=True):
         BookService.publish(book, changes=[{
             "metric_name": "tokens", "provider": "openai", "event_type": "",
-            "dimensions": {}, "rate_per_unit_micros": 20_000_000,
+            "rate_per_unit_micros": 20_000_000,
         }])
 
     assert int(r.get(key)) == 1

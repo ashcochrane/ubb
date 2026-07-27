@@ -23,11 +23,11 @@ class TestPricing:
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", dimensions={"model": "gpt-4"},
+            metric_name="input_tokens", dim1="gpt-4",
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, event_type="chat", provider="openai",
-            usage_metrics={"input_tokens": 1000}, tags={"model": "gpt-4"}, currency="usd",
+            usage_metrics={"input_tokens": 1000}, tags={"dim1": "gpt-4"}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 5 and billed == 5
 
@@ -46,15 +46,15 @@ class TestPricing:
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            metric_name="tok", dimensions={}, rate_per_unit_micros=1_000, unit_quantity=1_000_000)
+            metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            metric_name="tok", dimensions={"model": "gpt-4"}, rate_per_unit_micros=9_000, unit_quantity=1_000_000)
+            metric_name="tok", dim1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         prov, _, _ = PricingService.price(tenant=t, customer=c, event_type="e", provider="o",
-            usage_metrics={"tok": 1_000_000}, tags={"model": "gpt-4"}, currency="usd",
+            usage_metrics={"tok": 1_000_000}, tags={"dim1": "gpt-4"}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 9_000
         prov2, _, _ = PricingService.price(tenant=t, customer=c, event_type="e", provider="o",
-            usage_metrics={"tok": 1_000_000}, tags={"model": "other"}, currency="usd",
+            usage_metrics={"tok": 1_000_000}, tags={"dim1": "other"}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov2 == 1_000
 

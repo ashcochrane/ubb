@@ -730,11 +730,14 @@ def add_rate(request, book_id: UUID, payload: RateIn):
             rate = Rate.objects.create(
                 tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
                 metric_name=payload.metric_name, provider=payload.provider,
-                event_type=payload.event_type, dimensions=payload.dimensions,
+                event_type=payload.event_type, task_type=payload.task_type,
+                subtask_type=payload.subtask_type,
+                dim1=payload.dim1, dim2=payload.dim2, dim3=payload.dim3,
+                dim4=payload.dim4, dim5=payload.dim5, dim6=payload.dim6,
                 pricing_model=payload.pricing_model,
                 rate_per_unit_micros=payload.rate_per_unit_micros,
                 unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-                currency=book.currency, product_id=payload.product_id,
+                currency=book.currency,
                 book_version_from=book.version)
             audit_record(
                 action="rate.added",

@@ -685,12 +685,18 @@ class RateIn(Schema):
     metric_name: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
     event_type: str = Field(default="", max_length=100)
-    dimensions: dict = Field(default_factory=dict)
+    task_type: str = Field(default="", max_length=64)
+    subtask_type: str = Field(default="", max_length=64)
+    dim1: str = Field(default="", max_length=100)
+    dim2: str = Field(default="", max_length=100)
+    dim3: str = Field(default="", max_length=100)
+    dim4: str = Field(default="", max_length=100)
+    dim5: str = Field(default="", max_length=100)
+    dim6: str = Field(default="", max_length=100)
     pricing_model: str = "per_unit"
     rate_per_unit_micros: int = Field(default=0, ge=0)
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
-    product_id: str = Field(default="", max_length=100)
 
 
 class BookIn(Schema):
@@ -730,13 +736,21 @@ def book_out(b):
 
 
 class RateChangeIn(Schema):
-    """One reprice in a publish. Match keys (metric_name/provider/event_type/
-    dimensions) locate the active rate; the remaining (nullable) fields, when
+    """One reprice in a publish. Match keys (metric_name plus the ten
+    selector columns — provider/event_type/task_type/subtask_type/dim1..
+    dim6) locate the active rate; the remaining (nullable) fields, when
     present, override it in the new version."""
     metric_name: str
     provider: str = ""
     event_type: str = ""
-    dimensions: dict = Field(default_factory=dict)
+    task_type: str = ""
+    subtask_type: str = ""
+    dim1: str = ""
+    dim2: str = ""
+    dim3: str = ""
+    dim4: str = ""
+    dim5: str = ""
+    dim6: str = ""
     pricing_model: Optional[str] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
@@ -759,13 +773,19 @@ class RateOut(Schema):
     metric_name: str
     provider: str
     event_type: str
-    dimensions: dict
+    task_type: str
+    subtask_type: str
+    dim1: str
+    dim2: str
+    dim3: str
+    dim4: str
+    dim5: str
+    dim6: str
     pricing_model: str
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
     currency: str
-    product_id: str
     valid_from: str
     valid_to: Optional[str] = None
 
@@ -780,13 +800,19 @@ def rate_out(r):
         "metric_name": r.metric_name,
         "provider": r.provider,
         "event_type": r.event_type,
-        "dimensions": r.dimensions,
+        "task_type": r.task_type,
+        "subtask_type": r.subtask_type,
+        "dim1": r.dim1,
+        "dim2": r.dim2,
+        "dim3": r.dim3,
+        "dim4": r.dim4,
+        "dim5": r.dim5,
+        "dim6": r.dim6,
         "pricing_model": r.pricing_model,
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
         "fixed_micros": r.fixed_micros,
         "currency": r.currency,
-        "product_id": r.product_id,
         "valid_from": r.valid_from.isoformat(),
         "valid_to": r.valid_to.isoformat() if r.valid_to else None,
     }

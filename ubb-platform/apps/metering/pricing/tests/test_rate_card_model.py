@@ -4,14 +4,14 @@ from apps.platform.tenants.models import Tenant
 
 @pytest.mark.django_db
 class TestRateCard:
-    def test_dimensions_hash_and_per_unit_compute(self):
+    def test_selectors_and_per_unit_compute(self):
         from apps.metering.pricing.models import Rate
         t = Tenant.objects.create(name="T")
         c = Rate.objects.create(
             tenant=t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", dimensions={"model": "gpt-4"},
+            metric_name="input_tokens", dim1="gpt-4",
             pricing_model="per_unit", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        assert c.dimensions_hash and len(c.dimensions_hash) == 64
+        assert c.dim1 == "gpt-4" and c.specificity == 3  # provider, event_type, dim1
         assert c.compute(1000) == 5  # (1000*5000 + 500000)//1000000 = 5
         c2 = Rate.objects.create(tenant=t, card_type="cost", metric_name="m",
                                      rate_per_unit_micros=1, unit_quantity=2)

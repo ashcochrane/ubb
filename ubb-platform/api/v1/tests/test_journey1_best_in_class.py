@@ -107,10 +107,10 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             "card_type": "cost", "key": "cogs", "provider_key": "",
             "is_default": True})["id"]
         alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dimensions": {"service": "alpha"},
+            "metric_name": "tokens", "dim1": "alpha",
             "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
         beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dimensions": {"service": "beta"},
+            "metric_name": "tokens", "dim1": "beta",
             "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
         assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
@@ -228,7 +228,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Reprice the {"service":"alpha"} rate to 99 via publish (supersedes v1,
         # opens v2, bumps the book version) — the book-scoped reprice path.
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"metric_name": "tokens", "dimensions": {"service": "alpha"},
+            "changes": [{"metric_name": "tokens", "dim1": "alpha",
                          "rate_per_unit_micros": 99}]})
         assert published["version"] == 2
 
@@ -240,7 +240,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 params["as_of"] = as_of
             rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
                         params=params or None)["data"]
-            return [r for r in rows if r["dimensions"] == {"service": "alpha"}]
+            return [r for r in rows if r["dim1"] == "alpha"]
 
         history = _alpha_rows(include_history=True)
         assert len(history) == 2                          # original + new version

@@ -1,5 +1,3 @@
-import hashlib
-import json
 import uuid
 
 from django.db import models
@@ -63,17 +61,28 @@ class Rate(BaseModel):
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="rate_cards", null=True, blank=True)
     card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
+    # --- The ten selector columns (design D3) ---
+    # "" means WILDCARD here (it means "not set" on a UsageEvent). Among rates
+    # matching an event, the winner has the most non-empty selectors. This is
+    # the ONE matching semantic — the old JSONB `dimensions` subset match and
+    # the exact-equality provider/event_type match were two different rules on
+    # one query.
     provider = models.CharField(max_length=100, blank=True, default="", db_index=True)
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    task_type = models.CharField(max_length=64, blank=True, default="")
+    subtask_type = models.CharField(max_length=64, blank=True, default="")
+    dim1 = models.CharField(max_length=100, blank=True, default="")
+    dim2 = models.CharField(max_length=100, blank=True, default="")
+    dim3 = models.CharField(max_length=100, blank=True, default="")
+    dim4 = models.CharField(max_length=100, blank=True, default="")
+    dim5 = models.CharField(max_length=100, blank=True, default="")
+    dim6 = models.CharField(max_length=100, blank=True, default="")
     metric_name = models.CharField(max_length=100)
-    dimensions = models.JSONField(default=dict)
-    dimensions_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
     rate_per_unit_micros = models.BigIntegerField(default=0)
     unit_quantity = models.BigIntegerField(default=1_000_000)
     fixed_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    product_id = models.CharField(max_length=100, blank=True, default="")
     rate_card = models.ForeignKey("pricing.RateCard", on_delete=models.PROTECT,
                                   related_name="rates", null=True, blank=True)
     book_version_from = models.PositiveIntegerField(default=1)
@@ -90,16 +99,26 @@ class Rate(BaseModel):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["rate_card", "provider", "event_type", "metric_name",
-                        "dimensions_hash", "currency"],
+                fields=["rate_card", "metric_name", "currency", "provider",
+                        "event_type", "task_type", "subtask_type",
+                        "dim1", "dim2", "dim3", "dim4", "dim5", "dim6"],
                 condition=models.Q(valid_to__isnull=True),
                 name="uq_rate_active_in_book"),
         ]
 
-    def save(self, *args, **kwargs):
-        self.dimensions_hash = hashlib.sha256(
-            json.dumps(self.dimensions or {}, sort_keys=True).encode()).hexdigest()
-        super().save(*args, **kwargs)
+    SELECTORS = ("provider", "event_type", "task_type", "subtask_type",
+                 "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+
+    @property
+    def selector_tuple(self):
+        return tuple(getattr(self, s) for s in self.SELECTORS)
+
+    @property
+    def specificity(self):
+        """How many selectors this rate pins. The resolution tie-breaker (D3):
+        a rate pinning provider+event_type+dim1 beats one pinning provider
+        alone, so a tenant writes a broad default plus narrow overrides."""
+        return sum(1 for v in self.selector_tuple if v)
 
     def compute(self, units):
         if self.pricing_model == "flat":

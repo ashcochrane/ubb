@@ -3704,12 +3704,37 @@
         "type": "object"
       },
       "RateChangeIn": {
-        "description": "One reprice in a publish. Match keys (metric_name/provider/event_type/\ndimensions) locate the active rate; the remaining (nullable) fields, when\npresent, override it in the new version.",
+        "description": "One reprice in a publish. Match keys (metric_name plus the ten\nselector columns \u2014 provider/event_type/task_type/subtask_type/dim1..\ndim6) locate the active rate; the remaining (nullable) fields, when\npresent, override it in the new version.",
         "properties": {
-          "dimensions": {
-            "additionalProperties": true,
-            "title": "Dimensions",
-            "type": "object"
+          "dim1": {
+            "default": "",
+            "title": "Dim1",
+            "type": "string"
+          },
+          "dim2": {
+            "default": "",
+            "title": "Dim2",
+            "type": "string"
+          },
+          "dim3": {
+            "default": "",
+            "title": "Dim3",
+            "type": "string"
+          },
+          "dim4": {
+            "default": "",
+            "title": "Dim4",
+            "type": "string"
+          },
+          "dim5": {
+            "default": "",
+            "title": "Dim5",
+            "type": "string"
+          },
+          "dim6": {
+            "default": "",
+            "title": "Dim6",
+            "type": "string"
           },
           "event_type": {
             "default": "",
@@ -3760,6 +3785,16 @@
             ],
             "title": "Rate Per Unit Micros"
           },
+          "subtask_type": {
+            "default": "",
+            "title": "Subtask Type",
+            "type": "string"
+          },
+          "task_type": {
+            "default": "",
+            "title": "Task Type",
+            "type": "string"
+          },
           "unit_quantity": {
             "anyOf": [
               {
@@ -3782,10 +3817,41 @@
       "RateIn": {
         "description": "A single Rate added under a book. card_type and currency are inherited\nfrom the book, so they are NOT accepted here (the book owns them).",
         "properties": {
-          "dimensions": {
-            "additionalProperties": true,
-            "title": "Dimensions",
-            "type": "object"
+          "dim1": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim1",
+            "type": "string"
+          },
+          "dim2": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim2",
+            "type": "string"
+          },
+          "dim3": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim3",
+            "type": "string"
+          },
+          "dim4": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim4",
+            "type": "string"
+          },
+          "dim5": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim5",
+            "type": "string"
+          },
+          "dim6": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Dim6",
+            "type": "string"
           },
           "event_type": {
             "default": "",
@@ -3810,12 +3876,6 @@
             "title": "Pricing Model",
             "type": "string"
           },
-          "product_id": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Product Id",
-            "type": "string"
-          },
           "provider": {
             "default": "",
             "maxLength": 100,
@@ -3827,6 +3887,18 @@
             "minimum": 0,
             "title": "Rate Per Unit Micros",
             "type": "integer"
+          },
+          "subtask_type": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Subtask Type",
+            "type": "string"
+          },
+          "task_type": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Task Type",
+            "type": "string"
           },
           "unit_quantity": {
             "default": 1000000,
@@ -3851,10 +3923,29 @@
             "title": "Currency",
             "type": "string"
           },
-          "dimensions": {
-            "additionalProperties": true,
-            "title": "Dimensions",
-            "type": "object"
+          "dim1": {
+            "title": "Dim1",
+            "type": "string"
+          },
+          "dim2": {
+            "title": "Dim2",
+            "type": "string"
+          },
+          "dim3": {
+            "title": "Dim3",
+            "type": "string"
+          },
+          "dim4": {
+            "title": "Dim4",
+            "type": "string"
+          },
+          "dim5": {
+            "title": "Dim5",
+            "type": "string"
+          },
+          "dim6": {
+            "title": "Dim6",
+            "type": "string"
           },
           "event_type": {
             "title": "Event Type",
@@ -3880,10 +3971,6 @@
             "title": "Pricing Model",
             "type": "string"
           },
-          "product_id": {
-            "title": "Product Id",
-            "type": "string"
-          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -3895,6 +3982,14 @@
           "rate_per_unit_micros": {
             "title": "Rate Per Unit Micros",
             "type": "integer"
+          },
+          "subtask_type": {
+            "title": "Subtask Type",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
           },
           "unit_quantity": {
             "title": "Unit Quantity",
@@ -3924,13 +4019,19 @@
           "metric_name",
           "provider",
           "event_type",
-          "dimensions",
+          "task_type",
+          "subtask_type",
+          "dim1",
+          "dim2",
+          "dim3",
+          "dim4",
+          "dim5",
+          "dim6",
           "pricing_model",
           "rate_per_unit_micros",
           "unit_quantity",
           "fixed_micros",
           "currency",
-          "product_id",
           "valid_from"
         ],
         "title": "RateOut",

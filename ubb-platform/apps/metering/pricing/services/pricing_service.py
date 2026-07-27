@@ -28,10 +28,19 @@ Estimate = namedtuple("Estimate", "micros exact")
 
 class PricingService:
     @staticmethod
-    def _dimensions_match(card_dimensions, tags):
+    def _selectors_match(rate, tags):
+        """Exact-equality subset match (unchanged from the pre-columns JSONB
+        `dimensions` behaviour, D9): a rate only constrains the selectors it
+        pins (non-"") — provider/event_type are already exact-filtered by the
+        caller's query, so only the remaining eight (task_type, subtask_type,
+        dim1..dim6) are checked here, keyed by their own column name in
+        `tags`. Task 12 replaces this with true wildcard resolution over the
+        full ten-column UsageEvent selector set; this task only relocates the
+        JSONB-era matching onto named columns."""
         tags = tags or {}
-        for k, v in (card_dimensions or {}).items():
-            if str(tags.get(k)) != str(v):
+        for name in Rate.SELECTORS[2:]:
+            v = getattr(rate, name)
+            if v and str(tags.get(name)) != str(v):
                 return False
         return True
 
@@ -43,10 +52,10 @@ class PricingService:
             rate_card=book, provider=provider or "", event_type=event_type or "",
             metric_name=metric_name, currency=currency, valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
-            if PricingService._dimensions_match(c.dimensions, tags)]
+            if PricingService._selectors_match(c, tags)]
         if not cands:
             return None
-        cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
+        cands.sort(key=lambda c: (c.specificity, c.valid_from), reverse=True)
         return cands[0]
 
     @staticmethod
