@@ -62,12 +62,21 @@ Every task must honour these. Reviewers: treat a violation as an Important findi
   `apps/platform/tests/test_product_boundaries.py` is the gate and must stay green. The composition
   layer (`api/v1`, `apps/*/api`) may import any product; products never import `api.*`.
 - **Local environment — export in EVERY shell; never edit `.env`.** `.env`'s `DATABASE_URL` points
-  at a docker Postgres on `:5433` whose auth fails (that port is another project's container).
-  The working database is the native one on `:5432`:
+  at `:5433`, which is another project's container and fails auth. The native `:5432` Postgres was
+  also tried and proved unstable under repeated suite runs (mid-run test-DB drops, deadlocks,
+  wildly varying results). The working setup is an isolated container:
   ```bash
-  export DATABASE_URL="postgresql://heyotis:heyotis@localhost:5432/ubb"
+  # one-time: docker run -d --name ubb-pg-test -e POSTGRES_USER=ubb \
+  #   -e POSTGRES_PASSWORD=ubb -e POSTGRES_DB=ubb -p 5434:5432 postgres:16
+  export DATABASE_URL="postgresql://ubb:ubb@localhost:5434/ubb"
   export DJANGO_SETTINGS_MODULE=config.settings
+  export UBB_TEST_REDIS_DB=14
   ```
+  `UBB_TEST_REDIS_DB` is **mandatory**: `conftest.py` FLUSHDBs the shared Redis slot, so without a
+  disjoint slot the gating/budget tests fail irreproducibly. Always pass `-p no:randomly` and
+  `--ignore=apps/platform/events/tests/test_webhook_rotation.py`.
+- **Never run two pytest processes at once.** They share one `test_ubb` database and will drop it
+  under each other, leaving a half-built schema that poisons subsequent runs too.
 - **Python is always the main checkout's venv, by absolute path:**
   `/Users/ashtoncochrane/Git/localscouta/ubb/ubb-platform/.venv/bin/python`. Never bare `python`.
 - **Never run `manage.py migrate`.** The dev `ubb` database has a pre-existing, unrelated
@@ -96,9 +105,20 @@ Every task must honour these. Reviewers: treat a violation as an Important findi
 
 ## Baseline
 
-`apps/billing/invoicing` and `apps/subscriptions` carry pre-existing failures that predate this
-branch. Record the baseline before you start and compare against it — do not chase failures your
-task did not cause, and do not claim green without stating the baseline delta.
+**6 failed, 2154 passed, 3 skipped** (as of Task 2; it was 2164 passed before Task 1 deliberately
+deleted 10 retired-behaviour pins). All 6 failures share one cause — `attrs` is missing from the
+venv, so `ubb-sdk` cannot import:
+
+    api/v1/tests/test_data_error_pins.py::NulByteTest::test_nul_byte_in_customer_external_id_is_a_422_problem
+    api/v1/tests/test_data_error_pins.py::NulByteTest::test_nul_byte_in_postpaid_config_is_a_422_problem
+    api/v1/tests/test_journey1_best_in_class.py::test_journey1_best_in_class_cost_attribution_via_sdk
+    api/v1/tests/test_journey1_sdk_integration.py::test_journey1_cost_attribution_end_to_end_via_sdk
+    api/v1/tests/test_wave3_selfserve_capstone.py::test_wave3_selfserve_config_and_connect_via_sdk
+    api/v1/tests/test_wave4_orchestration_capstone.py::test_wave4_multi_axis_orchestration_one_bill_and_margin
+
+Task 6 fixes the root cause, after which the baseline should become 0 failed. Compare against this
+exact set — do not chase failures your task did not cause, and never claim green without stating
+the delta.
 
 ---
 
@@ -315,9 +335,25 @@ wind-down field and an explanatory empty state on the past-limit section of
 `customer-limits-tab.tsx`. Check whether the restored console surfaces `enforcement_mode` in
 `useAuth()` at all — if not, thread it through from the tenant config rather than re-fetching.
 
+**4g — two Minor findings carried over from Task 2's review:**
+
+- The budget hint copy (`budget-section.tsx:36`, `customer-billing-config.tsx:35`) says blocking
+  fires "once month-to-date spend hits the cap". The real stop line is
+  `cap_micros * hard_stop_pct // 100` — configured by the field directly below it in the same form
+  (`test_crossing.py::test_blocking_cap_times_hard_stop_pct` uses `hard_stop_pct=120`). With any
+  value other than 100 the hint contradicts the adjacent field. Reword to name the adjusted line.
+- **The enum sweep.** Two independent instances of "the console offers enum values the API never
+  had" have now surfaced (budget `enforce_mode`, tenant `enforcement_mode`). Do not just patch the
+  second one — check **every** enum-backed select/radio in `apps/ui/src` against the committed
+  `openapi/v1.json`, and report the full list of mismatches you find even if you only fix the ones
+  in this task's scope. A silently-rejected or silently-ignored enum value is the worst kind of
+  console bug: the operator believes they configured something and nothing errors.
+
 **Tests:** extend the existing vitest suites (8 files, 42 tests — `pnpm test`), following the style
 of `features/billing-ops/components/customer-billing-panel.test.tsx`. Cover each mode branch:
-prepaid shows the credit flow, postpaid hides it, pooled seat shows the owner disclosure.
+prepaid shows the credit flow, postpaid hides it, pooled seat shows the owner disclosure. Also add
+the enum coverage Task 2's review found missing — no vitest currently touches `enforce_mode` at
+all, so the two-value select and its fallback coercion are enforced only by `tsc`.
 
 ---
 
@@ -345,3 +381,37 @@ prepaid shows the credit flow, postpaid hides it, pooled seat shows the owner di
 
 Per the repo's ratchet rule, this is `CONTEXT.md` and test material — not a new dated plan doc.
 Do not edit anything under `docs/plans/` or `docs/reviews/`: those are frozen history.
+
+---
+
+## Task 6 — Bring the SDK onto the changed contract
+
+**Added mid-flight.** Both reviewers independently flagged that `ubb-sdk/` was never in scope, yet
+it ships from this repo and three tasks on this branch changed the contract underneath it.
+
+**First, unblock verification.** `attrs` is not installed in `ubb-platform/.venv`, so
+`ubb-sdk`'s `ubb/_models.py` cannot import. That is the sole cause of all 6 baseline test failures
+(`test_data_error_pins` ×2, `test_journey1_best_in_class`, `test_journey1_sdk_integration`,
+`test_wave3_selfserve_capstone`, `test_wave4_orchestration_capstone`) and of
+`apps/platform/events/tests/test_webhook_rotation.py` failing to collect at all. Install the SDK's
+declared dependencies into the venv, then confirm those 6 tests and that module now run. **If they
+pass, the branch baseline becomes 0 failed** and every later claim gets sharper. If they fail for
+some other reason, report it — do not paper over it.
+
+**Then update the SDK for this branch's three contract changes:**
+
+1. **Task 1** — `floor_snapshot_micros` (pre-check response) and
+   `default_task_floor_snapshot_micros` (tenant config) no longer exist; the `customer_floor` stop
+   reason is retired in favour of `customer_wide_stop`. Remove them; do not leave a compat alias.
+2. **Task 2** — `BudgetConfig.enforce_mode` values are now `alert_only` / `blocking`. The field
+   name is unchanged.
+3. **Task 3** — the balance response gained `billing_owner_id`, `billing_owner_external_id` and
+   `is_pooled_seat`, and `PUT .../billing-profile` now 422s on a pooled seat. Surface the new
+   fields; make sure the refusal maps to whatever error type the SDK already uses for
+   `invalid_config`, rather than a bare exception.
+
+**Verify:** run the SDK's own test suite, plus the six previously-failing platform tests and
+`test_webhook_rotation.py`. State the before/after baseline explicitly.
+
+**Scope:** the SDK only. If updating it reveals a genuine defect in the platform contract, report
+it — do not fix it here.
