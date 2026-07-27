@@ -137,8 +137,11 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_metrics == []   # tokens HAS a matching card
-            assert res.dim2 == service
-            assert res.dim3 == agent
+            # dim2/dim3 are not declared fields on the (not-yet-regenerated,
+            # Task 17) SDK core's RecordUsageResponse, so they land in
+            # additional_properties — subscript access, not attribute access.
+            assert res["dim2"] == service
+            assert res["dim3"] == agent
             _force_day(res.event_id, day)
 
         # ---- 3b. One extra event for C1 with NO service tag -> dim2="" ----
@@ -151,7 +154,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # fields are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
-        assert unattr_res.dim2 == ""
+        assert unattr_res["dim2"] == ""
         _force_day(unattr_res.event_id, 1)  # pin to day 1 alongside other day-1 events
 
         # Expected grand-total provider cost (COGS) across all 9 events (8 matrix + 1 unattr).
