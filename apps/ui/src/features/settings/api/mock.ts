@@ -17,6 +17,7 @@ import {
   HAS_ACTIVE_COST_CARDS,
   INITIAL_CONNECT_STATUS,
   INITIAL_INVITATIONS,
+  INITIAL_MARGIN_THRESHOLD,
   INITIAL_MEMBERS,
   STRIPE_TAX_ACTIVE,
   TENANT_INVOICES,
@@ -28,6 +29,8 @@ import type {
   ConnectStartResult,
   ConnectStatus,
   Invitation,
+  MarginThreshold,
+  MarginThresholdInput,
   Member,
   TenantConfig,
   TenantConfigPatch,
@@ -41,6 +44,7 @@ import type {
 let members: Member[] = INITIAL_MEMBERS.map((m) => ({ ...m }));
 let invitations: Invitation[] = INITIAL_INVITATIONS.map((i) => ({ ...i }));
 const connectStatus: ConnectStatus = { ...INITIAL_CONNECT_STATUS };
+let marginThreshold: MarginThreshold = { ...INITIAL_MARGIN_THRESHOLD };
 
 function problem(status: number, code: string, title: string, detail: string): ApiProblem {
   return new ApiProblem({ status, code, title, detail });
@@ -145,9 +149,12 @@ export async function updateTenantConfig(
   if ("soft_min_balance_micros" in patch) {
     const soft = patch.soft_min_balance_micros ?? null;
     const hard = next.min_balance_micros ?? 0;
-    if (soft !== null && soft < -hard) {
+    // Server rule: the soft VALUE must not exceed the effective hard value —
+    // both are wire values whose line sits at minus the value, so a larger
+    // soft value would put the wind-down line below the hard stop line.
+    if (soft !== null && soft > hard) {
       throw invalidConfig(
-        "The wind-down floor cannot sit below the hard stop point (the allowed overdraft).",
+        "soft_min_balance_micros must not exceed the hard floor value (the allowed overdraft) — that would place the wind-down line below the hard stop line.",
       );
     }
     next.soft_min_balance_micros = soft;
@@ -166,6 +173,33 @@ export async function updateTenantConfig(
 
   writeMockTenantConfig(next);
   return readMockTenantConfig();
+}
+
+// --- Margin-alert thresholds ------------------------------------------------
+
+export async function getMarginThreshold(): Promise<MarginThreshold> {
+  await mockDelay();
+  return { ...marginThreshold };
+}
+
+export async function updateMarginThreshold(
+  input: MarginThresholdInput,
+): Promise<MarginThreshold> {
+  await mockDelay(350);
+  if (input.consecutive_periods < 1) {
+    throw problem(
+      422,
+      "validation_error",
+      "Validation error",
+      "consecutive_periods must be 1 or more.",
+    );
+  }
+  marginThreshold = {
+    min_margin_pct: input.min_margin_pct,
+    consecutive_periods: input.consecutive_periods,
+    provider_cost_spike_pct: input.provider_cost_spike_pct,
+  };
+  return { ...marginThreshold };
 }
 
 // --- Stripe Connect ---------------------------------------------------------

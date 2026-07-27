@@ -53,6 +53,7 @@ export type CustomerBillingProfileIn = BillingSchemas["CustomerBillingProfileIn"
 export type CustomerBillingProfileOut = BillingSchemas["CustomerBillingProfileOut"];
 export type ConfigureAutoTopUpRequest = BillingSchemas["ConfigureAutoTopUpRequest"];
 export type StatusResponse = BillingSchemas["StatusResponse"];
+export type UsageInvoiceOut = BillingSchemas["UsageInvoiceOut"];
 
 // ---------------------------------------------------------------------------
 // Metering (usage analytics + pricing)

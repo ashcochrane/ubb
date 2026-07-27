@@ -47,7 +47,8 @@ describe("TestEventConsole", () => {
     await sendEvent({ billedCost: "0.60" });
     expect(await screen.findByText("Usage event recorded")).toBeInTheDocument();
     expect(screen.getByText("Billed cost")).toBeInTheDocument();
-    expect(screen.getByText("$0.60")).toBeInTheDocument();
+    // Per-event amounts under 1 unit keep 4-decimal precision.
+    expect(screen.getByText("$0.6000")).toBeInTheDocument();
     expect(screen.getByLabelText("Copy event id")).toBeInTheDocument();
     // No stop verdict on an affordable event.
     expect(screen.queryByText("Stop verdict")).not.toBeInTheDocument();
@@ -79,10 +80,10 @@ describe("TestEventConsole", () => {
   it("keeps earlier responses so runs can be compared", async () => {
     renderConsole();
     await sendEvent({ billedCost: "0.25" });
-    expect(await screen.findByText("$0.25")).toBeInTheDocument();
+    expect(await screen.findByText("$0.2500")).toBeInTheDocument();
     await sendEvent({ billedCost: "0.35" });
-    expect(await screen.findByText("$0.35")).toBeInTheDocument();
+    expect(await screen.findByText("$0.3500")).toBeInTheDocument();
     // Both entries visible at once.
-    expect(screen.getByText("$0.25")).toBeInTheDocument();
+    expect(screen.getByText("$0.2500")).toBeInTheDocument();
   });
 });

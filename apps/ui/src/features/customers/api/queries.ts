@@ -5,7 +5,12 @@
 // caught in the queryFn and resolved to null so an expected absence never
 // retries or renders as an error.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
 import { isNotFound } from "@/api/problem";
@@ -43,6 +48,8 @@ export function useCustomerMargins(range: DateRange) {
   return useQuery({
     queryKey: ["margin", "customers", range],
     queryFn: () => customersApi.listCustomerMargins(range),
+    // Date-range changes refresh in the background instead of blanking.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -50,6 +57,7 @@ export function useCustomerMargin(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["margin", "customer", customerId, range],
     queryFn: () => customersApi.getCustomerMargin(customerId, range),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -57,6 +65,7 @@ export function useMarginTrend(customerId: string, periods: number) {
   return useQuery({
     queryKey: ["margin", "trend", customerId, periods],
     queryFn: () => customersApi.getMarginTrend(customerId, periods),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -80,6 +89,7 @@ export function useBusinessMargin(externalId: string | undefined, range: DateRan
     queryKey: ["margin", "business", externalId ?? "", range],
     queryFn: () => nullOn404(customersApi.getBusinessMargin(externalId ?? "", range)),
     enabled: Boolean(externalId),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -90,6 +100,7 @@ export function useUsageAnalytics(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["metering", "analytics", "usage", customerId, range],
     queryFn: () => customersApi.getUsageAnalytics(customerId, range),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -97,6 +108,7 @@ export function useUsageTimeseries(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["metering", "analytics", "timeseries", customerId, range],
     queryFn: () => customersApi.getUsageTimeseries(customerId, range),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -149,6 +161,13 @@ export function useBillingProfile(customerId: string) {
     queryKey: ["billing", "billing-profile", customerId],
     queryFn: () => customersApi.getBillingProfile(customerId),
   });
+}
+
+/** Stripe-push history for this customer's usage invoices (read floor). */
+export function useCustomerUsageInvoices(customerId: string) {
+  return useCursorList(["billing", "usage-invoices", customerId], (cursor) =>
+    customersApi.listCustomerUsageInvoices(customerId, cursor),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +253,10 @@ function useBillingMutation<TArgs, TResult>(
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["billing"] });
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      // Money movement can open/clear stop episodes — refresh the metering
+      // surfaces (past-limit report, usage lists) too. Over-invalidate
+      // rather than miss, mirroring the events feature's refund.
+      void queryClient.invalidateQueries({ queryKey: ["metering"] });
     },
   });
 }
@@ -297,6 +320,9 @@ export function useConfigureAutoTopUp(customerId: string) {
   );
 }
 
+// The three pricing mutations write audit records (markup.set /
+// markup.deleted / rate_card.assigned) — refresh the audit ledger too.
+
 export function useSaveMarkup(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -305,6 +331,7 @@ export function useSaveMarkup(customerId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }
@@ -316,6 +343,7 @@ export function useRemoveMarkup(customerId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }
@@ -328,6 +356,7 @@ export function useAssignRateCard(customerId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }

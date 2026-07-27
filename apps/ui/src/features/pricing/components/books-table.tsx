@@ -1,6 +1,7 @@
 import * as React from "react";
 import { BookOpen } from "lucide-react";
 
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { LoadMore } from "@/components/shared/load-more";
@@ -49,14 +50,11 @@ export function BooksTable({ onOpenBook }: { onOpenBook: (bookId: string) => voi
             ))}
           </TabsList>
         </Tabs>
-        <Button
-          size="sm"
-          onClick={() => setCreateOpen(true)}
-          disabled={!isAdmin}
-          title={isAdmin ? undefined : "Admin role required"}
-        >
-          New book
-        </Button>
+        <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+          <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!isAdmin}>
+            New book
+          </Button>
+        </DisabledHint>
       </div>
 
       {books.isInitialLoading ? (

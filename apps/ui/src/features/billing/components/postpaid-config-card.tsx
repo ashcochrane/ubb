@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { problemMessage } from "@/api/problem";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
@@ -125,9 +126,11 @@ function PostpaidForm({ current, isAdmin }: { current: PostpaidConfig; isAdmin: 
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={save} disabled={!isAdmin || payload === null || mutation.isPending}>
-          {mutation.isPending ? "Working…" : "Save settings"}
-        </Button>
+        <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+          <Button onClick={save} disabled={!isAdmin || payload === null || mutation.isPending}>
+            {mutation.isPending ? "Working…" : "Save settings"}
+          </Button>
+        </DisabledHint>
         <p className="text-[11px] text-text-muted">
           Only settings you change are saved — everything else keeps its stored value.
         </p>

@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 
 import { problemMessage } from "@/api/problem";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Badge } from "@/components/ui/badge";
@@ -208,9 +209,11 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
       </fieldset>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={!isAdmin || mutation.isPending}>
-          {mutation.isPending ? "Working…" : "Save budget"}
-        </Button>
+        <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+          <Button type="submit" disabled={!isAdmin || mutation.isPending}>
+            {mutation.isPending ? "Working…" : "Save budget"}
+          </Button>
+        </DisabledHint>
         <p className="text-[11px] text-text-muted">
           Saving writes the whole budget — every field above is submitted exactly as shown.
         </p>

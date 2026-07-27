@@ -73,7 +73,7 @@ export function SpendLimitsForm({
         <FormField
           label={`Wind-down floor (${currency})`}
           error={errors.softFloor?.message}
-          hint="Balance at which NEW jobs are refused while running work is allowed to finish. May be negative, but never below the hard stop point. Leave empty for no wind-down floor — clearing removes it."
+          hint="How far into the allowed overdraft a balance may go before NEW top-level work is refused (running work may finish). 0 starts the wind-down as soon as a balance goes negative; a negative value starts it early, while the balance is still positive (−10 refuses new work once the balance drops below 10). Can't be more than the allowed overdraft — that's the hard stop point, where the stop signals fire. Leave empty for no wind-down floor — clearing removes it."
         >
           {(id) => (
             <Input

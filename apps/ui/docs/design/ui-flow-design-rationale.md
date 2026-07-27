@@ -1,3 +1,7 @@
+> **Frozen history (pre-rebuild, 2026-04).** This document describes the mock-first standalone
+> app built to HTML mockups, before the 2026-07 rebuild onto the regenerated backend contract.
+> Read it for UX/decision archaeology only — `CLAUDE.md` and `README.md` are current truth.
+
 # UI flow design rationale
 
 > **Audience:** A developer or agent implementing the frontend. This document explains what each page does, why it exists, what decisions shaped it, and how the pages connect to each other. Read this before looking at the HTML mockups — it gives you the "why" so the UI makes sense.

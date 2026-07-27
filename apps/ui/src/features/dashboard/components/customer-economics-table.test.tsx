@@ -34,10 +34,10 @@ function renderWithClient(ui: ReactElement) {
 
 const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
-function firstDataRowText(): string {
+function dataRowText(index: number): string {
   const rows = screen.getAllByRole("row");
   // rows[0] is the header row.
-  return rows[1]?.textContent ?? "";
+  return rows[index + 1]?.textContent ?? "";
 }
 
 describe("CustomerEconomicsTable", () => {
@@ -46,17 +46,19 @@ describe("CustomerEconomicsTable", () => {
       <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
     );
 
-    // orbit-labs has the highest revenue in the mock story.
-    expect(await screen.findByText("3e7f0a41…")).toBeInTheDocument();
-    expect(firstDataRowText()).toContain("3e7f0a41…");
+    // acme-corp leads on every sort; the runner-up distinguishes the keys.
+    // Revenue: acme-corp:eng ($120.40) is second.
+    expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
+    expect(dataRowText(0)).toContain("1f0c9c4e…");
+    expect(dataRowText(1)).toContain("4c3f6d51…");
 
-    // helios-devtools has the best margin percentage.
+    // Margin %: acme-corp:research (20.1%) edges out :eng (20%).
     fireEvent.click(screen.getByRole("button", { name: "Margin %" }));
-    expect(firstDataRowText()).toContain("5fd0c7a2…");
+    expect(dataRowText(1)).toContain("5d4a5e62…");
 
     // Back to revenue.
     fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
-    expect(firstDataRowText()).toContain("3e7f0a41…");
+    expect(dataRowText(1)).toContain("4c3f6d51…");
   });
 
   it("marks negative margins and links every row to the customer page", async () => {
@@ -64,12 +66,12 @@ describe("CustomerEconomicsTable", () => {
       <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
     );
 
-    // atlas-fintech: negative gross margin rendered from the API's figures.
-    expect(await screen.findByText("-$249.87")).toBeInTheDocument();
-    const orbitLink = screen.getByRole("link", { name: "3e7f0a41…" });
-    expect(orbitLink).toHaveAttribute(
+    // nova-ai: negative gross margin rendered from the API's figures.
+    expect(await screen.findByText("-$88.00")).toBeInTheDocument();
+    const acmeLink = screen.getByRole("link", { name: "1f0c9c4e…" });
+    expect(acmeLink).toHaveAttribute(
       "title",
-      "3e7f0a41-5c2d-4b8e-9f10-8a64c1d2e301",
+      "1f0c9c4e-8f2a-4a1e-9d3b-6a1f00000001",
     );
   });
 });

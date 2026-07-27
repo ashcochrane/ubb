@@ -86,7 +86,7 @@ export default function RevenueChart({
             minTickGap={32}
           />
           <YAxis
-            tickFormatter={(value: number) => formatCostMicros(value)}
+            tickFormatter={(value: number) => formatCostMicros(value, currency)}
             tick={{ fill: "var(--color-text-muted)", fontSize: 11 }}
             tickLine={false}
             axisLine={false}

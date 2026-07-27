@@ -8,7 +8,7 @@ const SETTINGS_TABS: { title: string; to: string; exact?: boolean }[] = [
   { title: "Team", to: "/settings/team" },
   { title: "Products", to: "/settings/products" },
   { title: "Your UBB bill", to: "/settings/billing" },
-  { title: "Audit log", to: "/settings/audit" },
+  { title: "Audit", to: "/settings/audit" },
 ];
 
 export const Route = createFileRoute("/_app/settings")({

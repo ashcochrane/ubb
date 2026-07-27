@@ -10,6 +10,7 @@ import { ProductGate } from "@/components/shared/product-gate";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveRange, type DateRange } from "@/lib/date-range";
+import { cn } from "@/lib/utils";
 
 import { useCustomerMargin } from "../api/queries";
 import { BillingTab } from "./billing-tab";
@@ -18,10 +19,6 @@ import { PricingTab } from "./pricing-tab";
 import { SubscriptionTab } from "./subscription-tab";
 import { UsageTab } from "./usage-tab";
 
-export interface CustomerDetailSearch extends DateRange {
-  tab?: string;
-}
-
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "usage", label: "Usage" },
@@ -29,6 +26,12 @@ const TABS = [
   { value: "pricing", label: "Pricing" },
   { value: "subscription", label: "Subscription" },
 ] as const;
+
+export type CustomerTab = (typeof TABS)[number]["value"];
+
+export interface CustomerDetailSearch extends DateRange {
+  tab?: CustomerTab;
+}
 
 export function CustomerDetailPage({
   customerId,
@@ -41,7 +44,13 @@ export function CustomerDetailPage({
 }) {
   const range = resolveRange(search);
   const margin = useCustomerMargin(customerId, range);
-  const tab = search.tab ?? "overview";
+  // Unknown/stale ?tab= values fall back to Overview instead of rendering an
+  // empty tab panel (the route schema also coerces them to undefined).
+  const requestedTab = search.tab;
+  const tab =
+    requestedTab !== undefined && TABS.some((entry) => entry.value === requestedTab)
+      ? requestedTab
+      : "overview";
 
   if (margin.isLoading) {
     return (
@@ -70,7 +79,14 @@ export function CustomerDetailPage({
   if (!detail) return null;
 
   return (
-    <div className="space-y-4">
+    // keepPreviousData keeps the page mounted across range changes; the
+    // placeholder refresh dims subtly instead of blanking to skeletons.
+    <div
+      className={cn(
+        "space-y-4 transition-opacity",
+        margin.isPlaceholderData && "opacity-60",
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link
@@ -97,9 +113,13 @@ export function CustomerDetailPage({
 
       <Tabs
         value={tab}
-        onValueChange={(value) =>
-          onSearchChange({ ...search, tab: value === "overview" ? undefined : String(value) })
-        }
+        onValueChange={(value) => {
+          const entry = TABS.find((candidate) => candidate.value === value);
+          onSearchChange({
+            ...search,
+            tab: entry && entry.value !== "overview" ? entry.value : undefined,
+          });
+        }}
       >
         <TabsList>
           {TABS.map((entry) => (

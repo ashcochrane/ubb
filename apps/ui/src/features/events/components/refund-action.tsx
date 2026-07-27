@@ -25,6 +25,7 @@ import { toastSuccess } from "@/lib/mutations";
 
 import { useRefundUsage } from "../api/queries";
 import type { UsageEventDetail } from "../api/types";
+import { formatEventMicros } from "../lib/money";
 
 const refundSchema = z.object({
   reason: z.string().max(500, "Keep the reason under 500 characters."),
@@ -43,7 +44,9 @@ export function RefundAction({
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const isAdmin = useHasRole("admin");
   const refund = useRefundUsage(customerId);
-  const amount = formatMicros(detail.billed_cost_micros, detail.currency);
+  // Per-event amount — keep sub-cent precision so a micro-priced charge
+  // never shows as a rounded-up refund; the balance toast stays 2-decimal.
+  const amount = formatEventMicros(detail.billed_cost_micros, detail.currency);
 
   const form = useForm<RefundForm>({
     resolver: zodResolver(refundSchema),

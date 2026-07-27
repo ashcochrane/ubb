@@ -105,7 +105,7 @@ export function ReferralsTable({
                       {referral.referral_code_used}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={referral.status === "active" ? "outline" : "secondary"}>
+                      <Badge variant={referral.status === "active" ? "secondary" : "outline"}>
                         {humanize(referral.status)}
                       </Badge>
                     </TableCell>

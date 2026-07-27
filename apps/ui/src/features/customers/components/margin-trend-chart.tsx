@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import { formatCalendarDate, formatCostMicros, formatMicros } from "@/lib/format";
 
 import type { MarginTrendPointOut } from "../api/types";
 
@@ -29,13 +29,15 @@ export default function MarginTrendChart({
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="period_start"
-            tickFormatter={formatShortDate}
+            // period_start is a calendar date — format in UTC so the period
+            // label never shifts a day for viewers west of Greenwich.
+            tickFormatter={(value) => formatCalendarDate(String(value))}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tickFormatter={(value) => formatCostMicros(Number(value))}
+            tickFormatter={(value) => formatCostMicros(Number(value), currency)}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             axisLine={false}
             tickLine={false}
@@ -43,7 +45,7 @@ export default function MarginTrendChart({
           />
           <Tooltip
             formatter={(value) => formatMicros(Number(value), currency)}
-            labelFormatter={(label) => formatShortDate(String(label))}
+            labelFormatter={(label) => formatCalendarDate(String(label))}
             contentStyle={{ fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />

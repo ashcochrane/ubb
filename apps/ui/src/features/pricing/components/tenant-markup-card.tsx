@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { problemMessage } from "@/api/problem";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
@@ -77,15 +78,16 @@ export function TenantMarkupCard() {
               : "No markup configured — events without a price book are billed at exactly the provider cost."}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setEditOpen(true)}
-          disabled={!isAdmin}
-          title={isAdmin ? undefined : "Admin role required"}
-        >
-          Edit
-        </Button>
+        <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditOpen(true)}
+            disabled={!isAdmin}
+          >
+            Edit
+          </Button>
+        </DisabledHint>
         {!isAdmin && (
           <p className="w-full text-[11px] text-text-muted">
             Changing the markup requires the Admin role.

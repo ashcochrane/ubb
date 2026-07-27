@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DetailList } from "@/components/shared/detail-list";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
@@ -48,6 +49,10 @@ import {
   type SeatsForm,
   type SubscribeForm,
 } from "../lib/schemas";
+
+// Every lifecycle verb here (subscribe / pause / resume / cancel / set seats)
+// is floored at WRITE server-side (platform_endpoints @role_floor(WRITE)).
+const WRITE_HINT = "Requires the Write role.";
 
 export function SubscriptionTab({
   customerId,
@@ -127,9 +132,11 @@ function SubscribeCard({ externalId }: { externalId: string }) {
                 {problemMessage(mutation.error)}
               </p>
             )}
-            <Button type="submit" size="sm" disabled={mutation.isPending || !canWrite}>
-              {mutation.isPending ? "Working…" : "Subscribe"}
-            </Button>
+            <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+              <Button type="submit" size="sm" disabled={mutation.isPending || !canWrite}>
+                {mutation.isPending ? "Working…" : "Subscribe"}
+              </Button>
+            </DisabledHint>
           </form>
         </CardContent>
       </Card>
@@ -144,14 +151,13 @@ function ActiveSubscriptionCard({
   subscription: StripeSubscriptionOut;
   externalId: string;
 }) {
-  const isAdmin = useHasRole("admin");
+  const canWrite = useHasRole("write");
   const pause = usePauseSubscription(externalId);
   const resume = useResumeSubscription(externalId);
   const cancel = useCancelSubscription(externalId);
   const setSeats = useSetSeats(externalId);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const [cancelImmediately, setCancelImmediately] = React.useState(false);
-  const adminTitle = isAdmin ? undefined : "Requires the Admin role";
 
   const seatsForm = useForm<SeatsForm>({
     resolver: zodResolver(seatsSchema),
@@ -214,48 +220,51 @@ function ActiveSubscriptionCard({
         />
         <div className="flex flex-wrap items-center gap-2">
           {subscription.status === "paused" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={resume.isPending || !isAdmin}
-              title={adminTitle}
-              onClick={() =>
-                void run(
-                  () => resume.mutateAsync(),
-                  "Billing resumed — any pending cancel is cleared too",
-                )
-              }
-            >
-              {resume.isPending ? "Working…" : "Resume"}
-            </Button>
+            <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={resume.isPending || !canWrite}
+                onClick={() =>
+                  void run(
+                    () => resume.mutateAsync(),
+                    "Billing resumed — any pending cancel is cleared too",
+                  )
+                }
+              >
+                {resume.isPending ? "Working…" : "Resume"}
+              </Button>
+            </DisabledHint>
           ) : (
+            <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pause.isPending || !canWrite}
+                onClick={() =>
+                  void run(
+                    () => pause.mutateAsync(),
+                    "Collection paused — the subscription stays active but stops billing",
+                  )
+                }
+              >
+                {pause.isPending ? "Working…" : "Pause"}
+              </Button>
+            </DisabledHint>
+          )}
+          <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
             <Button
               size="sm"
-              variant="outline"
-              disabled={pause.isPending || !isAdmin}
-              title={adminTitle}
-              onClick={() =>
-                void run(
-                  () => pause.mutateAsync(),
-                  "Collection paused — the subscription stays active but stops billing",
-                )
-              }
+              variant="destructive"
+              onClick={() => {
+                setCancelImmediately(false);
+                setCancelOpen(true);
+              }}
+              disabled={cancel.isPending || !canWrite}
             >
-              {pause.isPending ? "Working…" : "Pause"}
+              Cancel…
             </Button>
-          )}
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => {
-              setCancelImmediately(false);
-              setCancelOpen(true);
-            }}
-            disabled={cancel.isPending || !isAdmin}
-            title={adminTitle}
-          >
-            Cancel…
-          </Button>
+          </DisabledHint>
         </div>
         <form
           onSubmit={(event) => void submitSeats(event)}
@@ -268,15 +277,16 @@ function ActiveSubscriptionCard({
           >
             {(id) => <Input id={id} inputMode="numeric" {...seatsForm.register("seats")} />}
           </FormField>
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={setSeats.isPending || !isAdmin}
-            title={adminTitle}
-          >
-            {setSeats.isPending ? "Working…" : "Set seats"}
-          </Button>
+          <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={setSeats.isPending || !canWrite}
+            >
+              {setSeats.isPending ? "Working…" : "Set seats"}
+            </Button>
+          </DisabledHint>
         </form>
       </CardContent>
 

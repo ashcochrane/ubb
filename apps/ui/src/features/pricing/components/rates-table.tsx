@@ -2,6 +2,7 @@ import * as React from "react";
 import { Layers } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { LoadMore } from "@/components/shared/load-more";
@@ -146,6 +147,13 @@ export function RatesTable({
                     rate={rate}
                     currency={book.currency}
                     canRetire={isAdmin && !pointInTime && rate.valid_to == null}
+                    retireHint={
+                      !isAdmin
+                        ? "Requires the Admin role."
+                        : pointInTime
+                          ? "Clear the point-in-time view to retire rates."
+                          : undefined
+                    }
                     onRetire={() => setRetireTarget(rate)}
                   />
                 ))}
@@ -195,11 +203,13 @@ function RateRow({
   rate,
   currency,
   canRetire,
+  retireHint,
   onRetire,
 }: {
   rate: Rate;
   currency: string;
   canRetire: boolean;
+  retireHint: string | undefined;
   onRetire: () => void;
 }) {
   const superseded = rate.valid_to != null;
@@ -231,7 +241,7 @@ function RateRow({
       <TableCell className="text-[12px] whitespace-nowrap">
         {rate.pricing_model === "flat"
           ? "—"
-          : formatPrice(rate.rate_per_unit_micros, rate.unit_quantity)}
+          : formatPrice(rate.rate_per_unit_micros, rate.unit_quantity, undefined, currency)}
       </TableCell>
       <TableCell className="text-[12px] whitespace-nowrap">
         {rate.fixed_micros > 0 ? formatMicros(rate.fixed_micros, currency) : "—"}
@@ -248,15 +258,11 @@ function RateRow({
       </TableCell>
       <TableCell className="text-right">
         {rate.valid_to == null && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRetire}
-            disabled={!canRetire}
-            title={canRetire ? undefined : "Admin role required"}
-          >
-            Retire
-          </Button>
+          <DisabledHint disabled={!canRetire} hint={retireHint}>
+            <Button variant="ghost" size="sm" onClick={onRetire} disabled={!canRetire}>
+              Retire
+            </Button>
+          </DisabledHint>
         )}
       </TableCell>
     </TableRow>

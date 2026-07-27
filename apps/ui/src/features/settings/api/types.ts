@@ -1,10 +1,12 @@
 // Type aliases from the generated schema map, plus local interfaces for the
 // contract's UNTYPED responses (additionalProperties: true) on this surface.
 
-import type { PlatformSchemas, TenantSchemas } from "@/api/types";
+import type { MarginSchemas, PlatformSchemas, TenantSchemas } from "@/api/types";
 
 export type TenantConfig = TenantSchemas["TenantConfigOut"];
 export type TenantConfigPatch = TenantSchemas["TenantConfigIn"];
+export type MarginThreshold = MarginSchemas["MarginThresholdOut"];
+export type MarginThresholdInput = MarginSchemas["MarginThresholdIn"];
 export type Member = TenantSchemas["MemberOut"];
 export type Invitation = TenantSchemas["InvitationOut"];
 export type BillingPeriod = TenantSchemas["TenantBillingPeriodOut"];

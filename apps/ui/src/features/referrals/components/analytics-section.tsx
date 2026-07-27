@@ -26,7 +26,7 @@ import { resolveRange, type DateRange } from "@/lib/date-range";
 import { formatMicros, formatShortDate } from "@/lib/format";
 
 import { useAnalyticsEarnings, useAnalyticsSummary } from "../api/queries";
-import { looseDate } from "../lib/dates";
+import { calendarDay, looseDate } from "../lib/dates";
 
 export function AnalyticsSection({
   onOpenReferrer,
@@ -108,8 +108,8 @@ export function AnalyticsSection({
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 text-[12px] text-text-secondary">
                   <span>
-                    {looseDate(earnings.data.period_start, formatShortDate)} –{" "}
-                    {looseDate(earnings.data.period_end, formatShortDate)}
+                    {looseDate(earnings.data.period_start, (iso) => formatShortDate(calendarDay(iso)))} –{" "}
+                    {looseDate(earnings.data.period_end, (iso) => formatShortDate(calendarDay(iso)))}
                   </span>
                   <span>
                     Total earned{" "}
@@ -133,6 +133,12 @@ export function AnalyticsSection({
                         key={row.referrer_customer_id}
                         className="cursor-pointer"
                         onClick={() => onOpenReferrer(row.referrer_customer_id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") onOpenReferrer(row.referrer_customer_id);
+                        }}
+                        tabIndex={0}
+                        role="link"
+                        aria-label={`Open referrer ${row.external_id}`}
                       >
                         <TableCell>{row.external_id}</TableCell>
                         <TableCell className="font-mono text-[12px]">{row.referral_code}</TableCell>

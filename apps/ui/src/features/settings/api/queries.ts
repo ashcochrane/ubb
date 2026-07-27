@@ -1,13 +1,19 @@
 // TanStack Query hooks over the provider. ALL query keys + invalidation for
 // the settings feature live here. First key segment = backend namespace:
-// ['tenant', …], ['connect', …], ['audit', …].
+// ['tenant', …], ['margin', …], ['connect', …], ['audit', …].
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
 
 import { settingsApi } from "./provider";
-import type { AuditFilters, TenantConfig, TenantConfigPatch } from "./types";
+import type {
+  AuditFilters,
+  MarginThreshold,
+  MarginThresholdInput,
+  TenantConfig,
+  TenantConfigPatch,
+} from "./types";
 
 const CONFIG_KEY = ["tenant", "config"] as const;
 
@@ -34,6 +40,32 @@ export function useUpdateTenantConfig() {
     onSuccess: (updated: TenantConfig) => {
       queryClient.setQueryData(CONFIG_KEY, updated);
       void queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    },
+  });
+}
+
+// --- Margin-alert thresholds ------------------------------------------------
+
+/** Caches the RAW MarginThresholdOut — the shared ['margin'] namespace prefix. */
+export function useMarginThreshold() {
+  return useQuery({
+    queryKey: ["margin", "threshold"] as const,
+    queryFn: () => settingsApi.getMarginThreshold(),
+  });
+}
+
+/**
+ * PUT /margin/threshold — the rules driving the unprofitable-customers alert
+ * and cost-spike events, so the whole ['margin'] namespace is invalidated.
+ */
+export function useUpdateMarginThreshold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MarginThresholdInput) =>
+      settingsApi.updateMarginThreshold(input),
+    onSuccess: (updated: MarginThreshold) => {
+      queryClient.setQueryData(["margin", "threshold"], updated);
+      void queryClient.invalidateQueries({ queryKey: ["margin"] });
     },
   });
 }

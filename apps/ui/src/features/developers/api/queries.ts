@@ -26,9 +26,11 @@ export function useCreateApiKey() {
       developersApi.createApiKey(input),
     onSuccess: () => {
       // A live key lands in this list; a sandbox key lands on the sandbox
-      // sibling (its prefixes surface via GET /tenant/sandbox).
+      // sibling (its prefixes surface via GET /tenant/sandbox). Key minting
+      // writes an api_key.created audit record.
       void queryClient.invalidateQueries({ queryKey: ["tenant", "api-keys"] });
       void queryClient.invalidateQueries({ queryKey: ["tenant", "sandbox"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
     // 422s (e.g. mode mismatch) surface inline in the create dialog.
   });
@@ -39,7 +41,9 @@ export function useRotateApiKey() {
   return useMutation({
     mutationFn: (keyId: string) => developersApi.rotateApiKey(keyId),
     onSuccess: () => {
+      // Rotation writes an api_key.rotated audit record.
       void queryClient.invalidateQueries({ queryKey: ["tenant", "api-keys"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
     onError: toastOnError("Couldn't rotate the key"),
   });
@@ -51,7 +55,9 @@ export function useRevokeApiKey() {
     mutationFn: (keyId: string) => developersApi.revokeApiKey(keyId),
     onSuccess: () => {
       toastSuccess("API key revoked");
+      // Revocation writes an api_key.revoked audit record.
       void queryClient.invalidateQueries({ queryKey: ["tenant", "api-keys"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
     onError: (error: unknown) => {
       if (error instanceof ApiProblem && error.code === "last_active_key") {
@@ -80,7 +86,9 @@ export function useCreateSandbox() {
   return useMutation({
     mutationFn: () => developersApi.createSandbox(),
     onSuccess: () => {
+      // Provisioning writes a sandbox.created audit record.
       void queryClient.invalidateQueries({ queryKey: ["tenant", "sandbox"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
     onError: toastOnError("Couldn't create the sandbox key"),
   });

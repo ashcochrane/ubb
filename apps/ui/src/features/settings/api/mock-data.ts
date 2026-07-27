@@ -11,6 +11,7 @@ import type {
   BillingPeriod,
   ConnectStatus,
   Invitation,
+  MarginThreshold,
   Member,
   TenantInvoice,
 } from "./types";
@@ -29,6 +30,13 @@ export const INITIAL_CONNECT_STATUS: ConnectStatus = {
   account_id: "acct_mock123",
   charges_enabled: true,
   onboarded: true,
+};
+
+/** Acme has tuned its margin alerts (server defaults would be 0 / 1 / 25). */
+export const INITIAL_MARGIN_THRESHOLD: MarginThreshold = {
+  min_margin_pct: 10,
+  consecutive_periods: 2,
+  provider_cost_spike_pct: 25,
 };
 
 export const INITIAL_MEMBERS: Member[] = [

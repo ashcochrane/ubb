@@ -97,6 +97,16 @@ export function WebhookConfigTable({
                 key={config.id}
                 className="cursor-pointer"
                 onClick={() => onOpenConfig(config.id)}
+                // Enter only when the row itself is focused, so the inner
+                // pause/resume switch never doubles as navigation.
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.target === event.currentTarget) {
+                    onOpenConfig(config.id);
+                  }
+                }}
+                tabIndex={0}
+                role="link"
+                aria-label={`Open endpoint ${config.url}`}
               >
                 <TableCell>
                   <div className="flex items-center gap-2">

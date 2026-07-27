@@ -3,6 +3,7 @@ import { Controller, useForm } from "react-hook-form";
 
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
@@ -118,9 +119,11 @@ export function DebitForm({ isAdmin }: { isAdmin: boolean }) {
           </label>
         )}
       />
-      <Button type="submit" variant="destructive" disabled={!isAdmin || mutation.isPending}>
-        {mutation.isPending ? "Working…" : "Debit…"}
-      </Button>
+      <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+        <Button type="submit" variant="destructive" disabled={!isAdmin || mutation.isPending}>
+          {mutation.isPending ? "Working…" : "Debit…"}
+        </Button>
+      </DisabledHint>
       {mutation.isError && (
         <p className="text-xs text-destructive">{problemMessage(mutation.error)}</p>
       )}

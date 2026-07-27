@@ -36,8 +36,9 @@ describe("EventDetailPage", () => {
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
     // Identity in mono with copy affordances.
     expect(screen.getByText("req_search_reindex_0042")).toBeInTheDocument();
-    // Money from the fixture: billed $0.19 (187,500 micros).
-    expect(screen.getByText("$0.19")).toBeInTheDocument();
+    // Money from the fixture: billed 187,500 micros — sub-unit amounts keep
+    // 4-decimal precision so micro-priced events never round to $0.00.
+    expect(screen.getByText("$0.1875")).toBeInTheDocument();
     // Usage metrics (the metric also appears in the provenance receipt).
     expect(screen.getAllByText("input_tokens").length).toBeGreaterThan(0);
     expect(screen.getByText("4,200")).toBeInTheDocument();

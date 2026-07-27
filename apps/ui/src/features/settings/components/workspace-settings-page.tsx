@@ -4,6 +4,7 @@ import { useHasRole } from "@/hooks/use-current-role";
 
 import { useSettingsTenantConfig } from "../api/queries";
 import { CostTaxCard } from "./cost-tax-card";
+import { MarginAlertCard } from "./margin-alert-card";
 import { SpendControlCard } from "./spend-control-card";
 import { StripeConnectCard } from "./stripe-connect-card";
 import { WorkspaceCard } from "./workspace-card";
@@ -56,6 +57,7 @@ export function WorkspaceSettingsPage({
       <WorkspaceCard config={cfg} isAdmin={isAdmin} />
       <CostTaxCard config={cfg} isAdmin={isAdmin} />
       <SpendControlCard config={cfg} isAdmin={isAdmin} />
+      <MarginAlertCard isAdmin={isAdmin} />
       {showConnect && (
         <StripeConnectCard
           isAdmin={isAdmin}

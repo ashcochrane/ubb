@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { problemMessage } from "@/api/problem";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -145,17 +146,17 @@ export function PublishDialog({
             >
               Cancel
             </Button>
-            <Button
-              onClick={onConfirm}
-              disabled={changedRows.length === 0 || hasInvalid || publish.isPending}
-              title={
-                changedRows.length === 0
-                  ? "Change at least one value to publish"
-                  : undefined
-              }
+            <DisabledHint
+              disabled={changedRows.length === 0}
+              hint="Change at least one value to publish."
             >
-              {publish.isPending ? "Working…" : `Publish v${book.version + 1}`}
-            </Button>
+              <Button
+                onClick={onConfirm}
+                disabled={changedRows.length === 0 || hasInvalid || publish.isPending}
+              >
+                {publish.isPending ? "Working…" : `Publish v${book.version + 1}`}
+              </Button>
+            </DisabledHint>
           </div>
         </DialogFooter>
       </DialogContent>

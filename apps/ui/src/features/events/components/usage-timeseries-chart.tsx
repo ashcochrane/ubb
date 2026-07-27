@@ -15,6 +15,15 @@ import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
 
 import type { ChartSeries } from "../lib/timeseries";
 
+/**
+ * Buckets arrive as day-truncated UTC datetimes ("2026-07-01T00:00:00Z").
+ * Slice to the bare calendar date so formatShortDate routes through its
+ * UTC path — otherwise viewers west of Greenwich see the previous day.
+ */
+function bucketLabel(value: unknown): string {
+  return formatShortDate(String(value).slice(0, 10));
+}
+
 export default function UsageTimeseriesChart({
   data,
   series,
@@ -31,7 +40,7 @@ export default function UsageTimeseriesChart({
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="bucket"
-            tickFormatter={(value) => formatShortDate(String(value))}
+            tickFormatter={bucketLabel}
             tick={{ fill: "var(--color-text-muted)", fontSize: 11 }}
             tickLine={false}
             axisLine={false}
@@ -39,7 +48,7 @@ export default function UsageTimeseriesChart({
           />
           <YAxis
             tickFormatter={(value) =>
-              formatCostMicros(typeof value === "number" ? value : 0)
+              formatCostMicros(typeof value === "number" ? value : 0, currency)
             }
             tick={{ fill: "var(--color-text-muted)", fontSize: 11 }}
             tickLine={false}
@@ -51,7 +60,7 @@ export default function UsageTimeseriesChart({
               formatMicros(typeof value === "number" ? value : 0, currency),
               typeof name === "string" ? name : "",
             ]}
-            labelFormatter={(label) => formatShortDate(String(label))}
+            labelFormatter={bucketLabel}
             contentStyle={{
               background: "var(--color-bg-surface)",
               border: "1px solid var(--color-border)",

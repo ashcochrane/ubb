@@ -33,7 +33,32 @@ export function formatPercent(value: number, digits = 1): string {
   return `${value.toFixed(digits).replace(/\.0+$/, "")}%`;
 }
 
+/** Bare calendar date: "2026-07-01" (length 10, no time component). */
+const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Format a calendar date — a bare "YYYY-MM-DD" string (or a UTC-midnight
+ * timestamp such as a day-truncated chart bucket) — as "Jul 1, 2026".
+ * Always renders in UTC: `new Date("2026-07-01")` parses as UTC midnight,
+ * so local-zone formatting would show Jun 30 for any viewer west of
+ * Greenwich. Use this for billing periods, invoice periods, day buckets —
+ * anything the contract declares as a date rather than an instant.
+ */
+export function formatCalendarDate(isoDate: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(isoDate));
+}
+
+/**
+ * Timestamps render in the viewer's local zone with time; bare calendar
+ * dates ("YYYY-MM-DD") route through the UTC path so the day never shifts.
+ */
 export function formatDate(isoString: string): string {
+  if (BARE_DATE_RE.test(isoString)) return formatCalendarDate(isoString);
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
@@ -43,10 +68,16 @@ export function formatDate(isoString: string): string {
   }).format(new Date(isoString));
 }
 
+/**
+ * Date-only rendering ("Jul 14, 2026" — same en-US order as formatDate).
+ * Bare calendar dates route through the UTC path (no local-tz day shift);
+ * timestamps render the viewer's local calendar day.
+ */
 export function formatShortDate(isoString: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
+  if (BARE_DATE_RE.test(isoString)) return formatCalendarDate(isoString);
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
+    day: "numeric",
     year: "numeric",
   }).format(new Date(isoString));
 }
@@ -66,19 +97,25 @@ export function formatRelativeDate(isoString: string): string {
 }
 
 /**
- * Format a rate card price for display.
- * e.g. costPerUnitMicros=100, unitQuantity=1_000_000 → "$0.10 / 1M"
- * e.g. costPerUnitMicros=35_000, unitQuantity=1 → "$0.035 / req"
+ * Format a rate card price for display, in the given currency (accepts the
+ * API's lowercase codes; defaults to USD for legacy call sites).
+ * e.g. costPerUnitMicros=100, unitQuantity=1_000_000 → "$0.0001 / 1M"
+ * e.g. costPerUnitMicros=35_000, unitQuantity=1 → "$0.035"
  */
 export function formatPrice(
   costPerUnitMicros: number,
   unitQuantity: number,
   displayUnit?: string,
+  currency = "USD",
 ): string {
   const price = costPerUnitMicros / 1_000_000;
-  const formatted = price < 0.01
-    ? `$${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`
-    : `$${price.toFixed(price < 1 ? 3 : 2).replace(/0+$/, "").replace(/\.$/, "")}`;
+  const maxDigits = price !== 0 && Math.abs(price) < 0.01 ? 6 : Math.abs(price) < 1 ? 3 : 2;
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDigits,
+  }).format(price);
 
   if (displayUnit) return `${formatted} / ${displayUnit.replace(/^per\s+/i, "")}`;
   if (unitQuantity === 1) return formatted;
@@ -88,22 +125,27 @@ export function formatPrice(
 }
 
 /**
- * Format cost in micros for dashboard display.
- * Large values: "$1,247"  Small values: "$0.0148"
+ * Format cost in micros for dashboard display, in the given currency
+ * (accepts the API's lowercase codes; defaults to USD for legacy call sites).
+ * Large values: "$1,247"  Small values (<1 unit): 4-decimal precision, "$0.0148"
  */
-export function formatCostMicros(micros: number): string {
+export function formatCostMicros(micros: number, currency = "USD"): string {
   const dollars = micros / 1_000_000;
-  if (dollars === 0) return "$0";
-  if (dollars >= 1) {
+  if (dollars === 0 || Math.abs(dollars) >= 1) {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: currency.toUpperCase(),
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(dollars);
   }
-  // Small values — show precision
-  return `$${dollars.toFixed(4)}`;
+  // Small values — keep sub-cent precision
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  }).format(dollars);
 }
 
 /**

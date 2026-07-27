@@ -1,4 +1,12 @@
-// Billing profile (balance floors + top-up grant expiry) and auto top-up.
+// Billing profile (spend floors + top-up grant expiry) and auto top-up.
+//
+// Floor wire semantics (spec-billing-margin §2.7/2.8 + tenant config):
+// min_balance_micros is the ALLOWED OVERDRAFT MAGNITUDE (≥ 0 — the stop line
+// sits at MINUS the value; the server 422s negatives), and the wind-down
+// soft_min_balance_micros is likewise negated on the wire (a negative wire
+// value places the wind-down line ABOVE zero). The inputs here take the raw
+// wire value, so the copy explains that orientation.
+//
 // Auto top-up has NO read endpoint — the form starts blank and always
 // overwrites, which the copy says out loud.
 
@@ -105,18 +113,18 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
         ) : (
           <form onSubmit={(event) => void submit(event)} className="space-y-2.5">
             <FormField
-              label={`Balance floor (${currency})`}
+              label={`Allowed overdraft (${currency})`}
               error={form.formState.errors.min_balance?.message}
-              hint="Spending stops when the balance falls below this floor. Blank = inherit the workspace default. Negative values allow a controlled overdraft."
+              hint="How far past zero this customer may spend before the customer-wide stop fires: 0 = stop at zero, 50 = stop once the balance falls below −50. Zero or more. Blank = inherit the workspace default."
             >
               {(id) => (
                 <Input id={id} inputMode="decimal" {...form.register("min_balance")} />
               )}
             </FormField>
             <FormField
-              label={`Soft floor (${currency})`}
+              label={`Wind-down floor (${currency}, depth into the overdraft)`}
               error={form.formState.errors.soft_min_balance?.message}
-              hint="Below this level, NEW tasks are refused but running work finishes. Must sit at or above the balance floor. Blank = none."
+              hint="How deep into the overdraft NEW tasks start being refused while running work finishes: 20 = wind down once the balance falls below −20; a negative value (−50) winds down early, while the balance is still at 50. Can't exceed the allowed overdraft. Blank = inherit the workspace default."
             >
               {(id) => (
                 <Input

@@ -11,6 +11,7 @@ import { formatDate, formatMicros } from "@/lib/format";
 import { humanize, stopReasonLabel, stopScopeLabel } from "@/lib/labels";
 
 import type { RecordUsageResponse } from "../api/types";
+import { formatEventMicros } from "../lib/money";
 
 export interface TestEventEntry {
   /** Local entry id (event_id can repeat on idempotent replays). */
@@ -50,7 +51,7 @@ export function TestEventResponseCard({
           label="Billed cost"
           value={
             response.billed_cost_micros != null
-              ? formatMicros(response.billed_cost_micros, currency)
+              ? formatEventMicros(response.billed_cost_micros, currency)
               : "—"
           }
         />
@@ -58,7 +59,7 @@ export function TestEventResponseCard({
           label="Provider cost"
           value={
             response.provider_cost_micros != null
-              ? formatMicros(response.provider_cost_micros, currency)
+              ? formatEventMicros(response.provider_cost_micros, currency)
               : "—"
           }
         />

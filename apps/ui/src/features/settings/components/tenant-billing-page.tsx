@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import {
+  formatCalendarDate,
   formatEventCount,
   formatMicros,
   formatShortDate,
@@ -87,8 +88,9 @@ export function TenantBillingPage() {
                     {periods.rows.map((period) => (
                       <TableRow key={period.id}>
                         <TableCell className="font-medium">
-                          {formatShortDate(period.period_start)} –{" "}
-                          {formatShortDate(period.period_end)}
+                          {/* Calendar dates (format: date) — render in UTC so the day never shifts. */}
+                          {formatCalendarDate(period.period_start)} –{" "}
+                          {formatCalendarDate(period.period_end)}
                         </TableCell>
                         <TableCell>
                           <Badge

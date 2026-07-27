@@ -1,9 +1,17 @@
 // Mock fixtures for the CFO overview — one coherent story (July 2026).
 //
-// "Acme AI" resells LLM/API usage to six customers. Month-to-date the
-// workspace has $9,370.40 total revenue ($1,250 subscriptions + $8,120.40
-// usage revenue), $8,432.55 usage billed, $5,330.42 provider cost, and one
-// unprofitable customer (atlas-fintech, a metered-only account with real
+// The margin roster mirrors src/features/customers/api/mock-data.ts
+// BYTE-FOR-BYTE (ids + economics) so the Overview → Customers drill-down is
+// coherent in mock mode: both features cache the same
+// ['margin','customers',{start_date,end_date}] key, so the fixtures must
+// agree. Cross-feature imports are forbidden — keep the two files in sync by
+// hand when either roster changes.
+//
+// The story: "Acme AI" resells LLM/API usage to acme-corp (a business with
+// two pooled seats), luna-labs, and nova-ai. Month-to-date the workspace has
+// $764.90 total revenue ($199 subscriptions + $565.90 usage revenue),
+// $653.90 usage billed, $563.60 provider cost, and two unprofitable
+// customers (luna-labs runs at a loss; nova-ai is metered-only with real
 // COGS and no recognised revenue). Every breakdown below sums exactly to
 // those totals so the page reads as one consistent business.
 
@@ -18,84 +26,82 @@ import type {
   Window,
 } from "./types";
 
+// Mirrors CUS_* in src/features/customers/api/mock-data.ts — keep in sync.
 export const CUSTOMER_IDS = {
-  orbit: "3e7f0a41-5c2d-4b8e-9f10-8a64c1d2e301",
-  quill: "9c2d5b18-7e4f-4a6b-b3c8-1f5e9d0a7b42",
-  helios: "5fd0c7a2-1b9e-4c3d-8a57-6e2f4b8d9c13",
-  nimbus: "b48e1f63-9a0d-4e7c-a2b5-3c8f7d1e6a94",
-  vector: "7a91d2c5-3e8b-4f6a-9d04-5b2c8e1f7a35",
-  atlas: "d62a9e37-4c1f-4b8d-a6e9-0f3b5d7c2e86",
+  acme: "1f0c9c4e-8f2a-4a1e-9d3b-6a1f00000001",
+  luna: "2a1d8b3f-7e19-4c2d-8e4c-7b2000000002",
+  nova: "3b2e7c40-6d08-4b3c-9f5d-8c3100000003",
+  seatEng: "4c3f6d51-5c97-4a4b-8a6e-9d4200000004",
+  seatRes: "5d4a5e62-4b86-495a-9b7f-0e5300000005",
 } as const;
 
+// Mirrors MOCK_MARGIN_ROWS in src/features/customers/api/mock-data.ts —
+// byte-identical economics, keep in sync.
 export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
-    customer_id: CUSTOMER_IDS.orbit,
-    subscription_revenue_micros: 500_000_000,
-    usage_billed_micros: 3_200_100_000,
-    usage_revenue_micros: 3_200_100_000,
-    provider_cost_micros: 1_900_550_000,
-    gross_margin_micros: 1_799_550_000,
-    margin_percentage: 48.64,
+    // acme-corp — business customer with an active subscription.
+    customer_id: CUSTOMER_IDS.acme,
+    subscription_revenue_micros: 199_000_000,
+    usage_billed_micros: 342_500_000,
+    usage_revenue_micros: 342_500_000,
+    provider_cost_micros: 274_000_000,
+    gross_margin_micros: 267_500_000,
+    margin_percentage: 49.4,
   },
   {
-    customer_id: CUSTOMER_IDS.quill,
-    subscription_revenue_micros: 250_000_000,
-    usage_billed_micros: 2_100_000_000,
-    usage_revenue_micros: 2_100_000_000,
-    provider_cost_micros: 1_450_000_000,
-    gross_margin_micros: 900_000_000,
-    margin_percentage: 38.3,
-  },
-  {
-    customer_id: CUSTOMER_IDS.helios,
+    // luna-labs — individual running at a loss this period.
+    customer_id: CUSTOMER_IDS.luna,
     subscription_revenue_micros: 0,
-    usage_billed_micros: 1_500_000_000,
-    usage_revenue_micros: 1_500_000_000,
-    provider_cost_micros: 700_000_000,
-    gross_margin_micros: 800_000_000,
-    margin_percentage: 53.33,
+    usage_billed_micros: 41_200_000,
+    usage_revenue_micros: 41_200_000,
+    provider_cost_micros: 55_900_000,
+    gross_margin_micros: -14_700_000,
+    margin_percentage: -35.7,
   },
   {
-    customer_id: CUSTOMER_IDS.nimbus,
-    subscription_revenue_micros: 300_000_000,
-    usage_billed_micros: 820_000_000,
-    usage_revenue_micros: 820_000_000,
-    provider_cost_micros: 610_000_000,
-    gross_margin_micros: 510_000_000,
-    margin_percentage: 45.54,
-  },
-  {
-    customer_id: CUSTOMER_IDS.vector,
-    subscription_revenue_micros: 200_000_000,
-    usage_billed_micros: 512_450_000,
-    usage_revenue_micros: 500_300_000,
-    provider_cost_micros: 420_000_000,
-    gross_margin_micros: 280_300_000,
-    margin_percentage: 40.03,
-  },
-  {
-    // Metered-only account: real COGS, no recognised revenue → unprofitable.
-    customer_id: CUSTOMER_IDS.atlas,
+    // nova-ai — metered-only: real COGS, no recognised revenue.
+    customer_id: CUSTOMER_IDS.nova,
     subscription_revenue_micros: 0,
-    usage_billed_micros: 300_000_000,
+    usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
-    provider_cost_micros: 249_870_000,
-    gross_margin_micros: -249_870_000,
+    provider_cost_micros: 88_000_000,
+    gross_margin_micros: -88_000_000,
     margin_percentage: 0,
+  },
+  {
+    // acme-corp:eng — seat under acme-corp.
+    customer_id: CUSTOMER_IDS.seatEng,
+    subscription_revenue_micros: 0,
+    usage_billed_micros: 120_400_000,
+    usage_revenue_micros: 120_400_000,
+    provider_cost_micros: 96_300_000,
+    gross_margin_micros: 24_100_000,
+    margin_percentage: 20,
+  },
+  {
+    // acme-corp:research — seat under acme-corp.
+    customer_id: CUSTOMER_IDS.seatRes,
+    subscription_revenue_micros: 0,
+    usage_billed_micros: 61_800_000,
+    usage_revenue_micros: 61_800_000,
+    provider_cost_micros: 49_400_000,
+    gross_margin_micros: 12_400_000,
+    margin_percentage: 20.1,
   },
 ];
 
 export function mockMarginSummary(window: Window): MarginSummary {
+  // Every figure is the exact sum over MOCK_MARGIN_CUSTOMERS.
   return {
     period: { start: window.start_date, end: window.end_date },
-    subscription_revenue_micros: 1_250_000_000,
-    usage_billed_micros: 8_432_550_000,
-    usage_revenue_micros: 8_120_400_000,
-    provider_cost_micros: 5_330_420_000,
-    total_revenue_micros: 9_370_400_000,
-    gross_margin_micros: 4_039_980_000,
-    margin_percentage: 43.11,
-    customer_count: 6,
+    subscription_revenue_micros: 199_000_000,
+    usage_billed_micros: 653_900_000,
+    usage_revenue_micros: 565_900_000,
+    provider_cost_micros: 563_600_000,
+    total_revenue_micros: 764_900_000,
+    gross_margin_micros: 201_300_000,
+    margin_percentage: 26.32,
+    customer_count: 5,
   };
 }
 
@@ -103,62 +109,69 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
   period_start: "2026-07-01",
   customers: [
     {
-      customer_id: CUSTOMER_IDS.atlas,
-      external_id: "atlas-fintech",
-      gross_margin_micros: -249_870_000,
-      margin_percentage: -83.29,
+      customer_id: CUSTOMER_IDS.nova,
+      external_id: "nova-ai",
+      gross_margin_micros: -88_000_000,
+      margin_percentage: -100,
+    },
+    {
+      customer_id: CUSTOMER_IDS.luna,
+      external_id: "luna-labs",
+      gross_margin_micros: -14_700_000,
+      margin_percentage: -35.7,
     },
   ],
 };
 
 // ---------------------------------------------------------------------------
-// Analytics — totals + per-dimension rows (uniform `breakdowns` shape)
+// Analytics — totals + per-dimension rows (uniform `breakdowns` shape).
+// Each dimension sums exactly to the same window totals.
 
 const WINDOW_TOTALS = {
-  total_events: 184_230,
-  total_billed_cost_micros: 8_432_550_000,
-  total_provider_cost_micros: 5_330_420_000,
-  usage_markup_margin_micros: 3_102_130_000,
+  total_events: 93_558,
+  total_billed_cost_micros: 653_900_000,
+  total_provider_cost_micros: 563_600_000,
+  usage_markup_margin_micros: 90_300_000,
 };
 
 type Row = [name: string, billed: number, provider: number, events: number];
 
 const BY_PROVIDER: Row[] = [
-  ["openai", 3_600_300_000, 2_450_100_000, 92_410],
-  ["anthropic", 2_602_250_000, 1_690_320_000, 41_205],
-  ["mistral", 1_100_000_000, 640_000_000, 28_114],
-  ["deepgram", 730_000_000, 380_000_000, 14_501],
-  ["elevenlabs", 400_000_000, 170_000_000, 8_000],
+  ["openai", 280_000_000, 245_000_000, 41_000],
+  ["anthropic", 180_400_000, 152_600_000, 22_300],
+  ["mistral", 96_000_000, 82_000_000, 15_258],
+  ["deepgram", 62_500_000, 51_000_000, 9_000],
+  ["elevenlabs", 35_000_000, 33_000_000, 6_000],
 ];
 
 // Ten event types so the breakdown card exercises its top-8 + "Other" fold.
 const BY_EVENT_TYPE: Row[] = [
-  ["chat.completion", 2_900_000_000, 1_950_000_000, 70_000],
-  ["embedding", 1_400_000_000, 820_000_000, 45_000],
-  ["transcription", 950_000_000, 560_000_000, 21_000],
-  ["image.generation", 830_000_000, 540_000_000, 9_400],
-  ["agent.run", 700_000_000, 430_000_000, 12_800],
-  ["rerank", 540_000_000, 310_000_000, 11_030],
-  ["tool.call", 420_000_000, 260_000_000, 8_100],
-  ["tts.synthesize", 330_000_000, 210_000_000, 4_200],
-  ["search.query", 250_000_000, 160_000_000, 2_400],
-  ["fine_tune.step", 112_550_000, 90_420_000, 300],
+  ["chat.completion", 225_000_000, 196_000_000, 37_000],
+  ["embedding", 108_000_000, 92_000_000, 22_000],
+  ["transcription", 74_000_000, 63_000_000, 10_500],
+  ["image.generation", 64_000_000, 56_000_000, 4_700],
+  ["agent.run", 54_000_000, 46_000_000, 6_400],
+  ["rerank", 42_000_000, 36_000_000, 5_500],
+  ["tool.call", 32_000_000, 27_600_000, 4_050],
+  ["tts.synthesize", 26_000_000, 21_000_000, 2_100],
+  ["search.query", 19_500_000, 16_000_000, 1_200],
+  ["fine_tune.step", 9_400_000, 10_000_000, 108],
 ];
 
 const BY_PRODUCT: Row[] = [
-  ["agent-api", 4_200_000_000, 2_700_000_000, 98_000],
-  ["copilot", 2_432_550_000, 1_530_420_000, 50_230],
-  ["batch-jobs", 1_100_000_000, 700_000_000, 26_000],
-  ["playground", 700_000_000, 400_000_000, 10_000],
+  ["agent-api", 325_000_000, 280_000_000, 48_000],
+  ["copilot", 190_900_000, 165_600_000, 26_558],
+  ["batch-jobs", 88_000_000, 76_000_000, 13_000],
+  ["playground", 50_000_000, 42_000_000, 6_000],
 ];
 
+// Billed/provider figures match MOCK_MARGIN_CUSTOMERS row-for-row.
 const BY_CUSTOMER: Row[] = [
-  ["orbit-labs", 3_200_100_000, 1_900_550_000, 71_400],
-  ["quill-ai", 2_100_000_000, 1_450_000_000, 45_800],
-  ["helios-devtools", 1_500_000_000, 700_000_000, 33_200],
-  ["nimbus-crm", 820_000_000, 610_000_000, 19_230],
-  ["vector-shop", 512_450_000, 420_000_000, 9_800],
-  ["atlas-fintech", 300_000_000, 249_870_000, 4_800],
+  ["acme-corp", 342_500_000, 274_000_000, 48_213],
+  ["acme-corp:eng", 120_400_000, 96_300_000, 17_502],
+  ["nova-ai", 88_000_000, 88_000_000, 12_882],
+  ["acme-corp:research", 61_800_000, 49_400_000, 8_907],
+  ["luna-labs", 41_200_000, 55_900_000, 6_054],
 ];
 
 const DIMENSION_ROWS = {
@@ -203,10 +216,10 @@ export function mockWindowAnalytics(
 }
 
 export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
-  total_events: 1_204_552,
-  total_billed_cost_micros: 55_310_220_000,
-  total_provider_cost_micros: 34_880_140_000,
-  usage_markup_margin_micros: 20_430_080_000,
+  total_events: 812_441,
+  total_billed_cost_micros: 7_845_300_000,
+  total_provider_cost_micros: 6_690_150_000,
+  usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],
   by_event_type: [],
   by_product: [],
@@ -237,13 +250,16 @@ export interface MockDailyPoint {
   event_count: number;
 }
 
-/** Deterministic pseudo-variation so charts look alive but tests stay stable. */
+/**
+ * Deterministic pseudo-variation so charts look alive but tests stay stable.
+ * Scaled to the monthly story: ~$24–37 billed / ~$20–27 provider per day.
+ */
 export function mockDailySeries(window: Window): MockDailyPoint[] {
   return daysInWindow(window).map((day, i) => ({
     day,
-    billed_cost_micros: (300 + ((i * 37) % 130)) * 1_000_000,
-    provider_cost_micros: (190 + ((i * 23) % 80)) * 1_000_000,
-    event_count: 5_200 + ((i * 53) % 1_900),
+    billed_cost_micros: (24 + ((i * 37) % 13)) * 1_000_000,
+    provider_cost_micros: (20 + ((i * 23) % 8)) * 1_000_000,
+    event_count: 3_700 + ((i * 53) % 800),
   }));
 }
 
@@ -282,6 +298,7 @@ export const MOCK_RATE_CARD_BOOKS: RateCardBookList = {
   next_cursor: null,
 };
 
+// Canonical mock account id across all features caching ['connect','status'].
 export const MOCK_CONNECT_STATUS: ConnectStatus = {
   account_id: "acct_mock123",
   charges_enabled: true,

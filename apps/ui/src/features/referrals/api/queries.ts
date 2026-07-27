@@ -135,8 +135,17 @@ function useInvalidateReferrals() {
   return () => queryClient.invalidateQueries({ queryKey: referralKeys.all });
 }
 
+/** Program config mutations also write audit records — refresh that ledger too. */
+function useInvalidateProgramOps() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: referralKeys.all });
+    void queryClient.invalidateQueries({ queryKey: ["audit"] });
+  };
+}
+
 export function useCreateProgram() {
-  const invalidate = useInvalidateReferrals();
+  const invalidate = useInvalidateProgramOps();
   return useMutation({
     mutationFn: (body: ProgramCreateRequest) => referralsApi.createProgram(body),
     onSuccess: invalidate,
@@ -144,7 +153,7 @@ export function useCreateProgram() {
 }
 
 export function useUpdateProgram() {
-  const invalidate = useInvalidateReferrals();
+  const invalidate = useInvalidateProgramOps();
   return useMutation({
     mutationFn: (body: ProgramUpdateRequest) => referralsApi.updateProgram(body),
     onSuccess: invalidate,
@@ -152,7 +161,7 @@ export function useUpdateProgram() {
 }
 
 export function useDeactivateProgram() {
-  const invalidate = useInvalidateReferrals();
+  const invalidate = useInvalidateProgramOps();
   return useMutation({
     mutationFn: () => referralsApi.deactivateProgram(),
     onSuccess: invalidate,
@@ -161,7 +170,7 @@ export function useDeactivateProgram() {
 }
 
 export function useReactivateProgram() {
-  const invalidate = useInvalidateReferrals();
+  const invalidate = useInvalidateProgramOps();
   return useMutation({
     mutationFn: () => referralsApi.reactivateProgram(),
     onSuccess: invalidate,

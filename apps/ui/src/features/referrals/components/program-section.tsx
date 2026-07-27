@@ -173,7 +173,8 @@ export function ProgramSection() {
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
           Referral program
-          <Badge variant={isDeactivated ? "secondary" : "outline"}>
+          {/* App-wide badge rule: Active = secondary, dormant = outline. */}
+          <Badge variant={isDeactivated ? "outline" : "secondary"}>
             {referralProgramStatusLabel(data.status)}
           </Badge>
         </CardTitle>

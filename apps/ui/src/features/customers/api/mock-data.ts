@@ -24,6 +24,7 @@ import type {
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
   TenantMarkupOut,
+  UsageInvoiceOut,
   UsageAnalyticsResponse,
   UsageTimeseriesResponse,
   WalletTransactionOut,
@@ -500,9 +501,13 @@ export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
   },
 };
 
+// Floor wire semantics: min_balance_micros = allowed overdraft MAGNITUDE
+// (stop line at −value, must be ≥ 0); soft_min_balance_micros is negated the
+// same way and must be ≤ the hard value (acme: stop at −$25, wind-down once
+// $20 into the overdraft — a state the real PUT accepts).
 export const MOCK_BILLING_PROFILES: Record<string, CustomerBillingProfileOut> = {
   [CUS_ACME]: {
-    min_balance_micros: 0,
+    min_balance_micros: 25_000_000,
     soft_min_balance_micros: 20_000_000,
     topup_grant_expiry_days: 90,
   },
@@ -511,6 +516,60 @@ export const MOCK_BILLING_PROFILES: Record<string, CustomerBillingProfileOut> = 
     soft_min_balance_micros: null,
     topup_grant_expiry_days: null,
   },
+};
+
+// Per-customer usage-invoice (Stripe push) history — newest first. Acme's
+// pushes succeed; luna exercises the failed_permanent + skipped states.
+export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
+  [CUS_ACME]: [
+    {
+      period_start: "2026-06-01",
+      period_end: "2026-07-01",
+      total_billed_micros: 356_000_000,
+      currency: "usd",
+      status: "pushed",
+      stripe_invoice_id: "in_mock_usage_2026_06",
+      skip_reason: "",
+      push_attempts: 1,
+      last_attempt_error: null,
+    },
+    {
+      period_start: "2026-05-01",
+      period_end: "2026-06-01",
+      total_billed_micros: 301_200_000,
+      currency: "usd",
+      status: "pushed",
+      stripe_invoice_id: "in_mock_usage_2026_05",
+      skip_reason: "",
+      push_attempts: 2,
+      last_attempt_error: null,
+    },
+  ],
+  [CUS_LUNA]: [
+    {
+      period_start: "2026-06-01",
+      period_end: "2026-07-01",
+      total_billed_micros: 38_600_000,
+      currency: "usd",
+      status: "failed_permanent",
+      stripe_invoice_id: "",
+      skip_reason: "",
+      push_attempts: 5,
+      last_attempt_error:
+        "Stripe: no such customer — the customer has no Stripe customer on file.",
+    },
+    {
+      period_start: "2026-05-01",
+      period_end: "2026-06-01",
+      total_billed_micros: 0,
+      currency: "usd",
+      status: "skipped",
+      skip_reason: "zero_usage",
+      stripe_invoice_id: "",
+      push_attempts: 0,
+      last_attempt_error: null,
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------

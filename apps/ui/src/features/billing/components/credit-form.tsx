@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,9 +107,11 @@ export function CreditForm({ isAdmin }: { isAdmin: boolean }) {
           reasonCode: form.formState.errors.reason_code?.message,
         }}
       />
-      <Button type="submit" disabled={!isAdmin || mutation.isPending}>
-        {mutation.isPending ? "Working…" : "Credit…"}
-      </Button>
+      <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+        <Button type="submit" disabled={!isAdmin || mutation.isPending}>
+          {mutation.isPending ? "Working…" : "Credit…"}
+        </Button>
+      </DisabledHint>
       {mutation.isError && (
         <p className="text-xs text-destructive">{problemMessage(mutation.error)}</p>
       )}

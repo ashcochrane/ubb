@@ -67,4 +67,45 @@ describe("BillingTab", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Balance at check/i)).toBeInTheDocument();
   });
+
+  it("shows the per-customer usage-invoice push history", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    expect(
+      await screen.findByText("Usage invoices", undefined, SLOW),
+    ).toBeInTheDocument();
+    // Acme's June period pushed to Stripe: UTC-safe period, status, invoice id.
+    expect(
+      await screen.findByText("in_mock_usage_2026_06", undefined, SLOW),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Pushed").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Jun 1, 2026 → Jul 1, 2026")).toBeInTheDocument();
+  });
+
+  // Keep this LAST in the file — it moves acme's mock balance.
+  it("requires a confirm step before a manual credit moves money", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Manual credit" }, SLOW),
+    );
+    fireEvent.change(await screen.findByLabelText(/Amount/, undefined, SLOW), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "goodwill-credit" },
+    });
+    // Submitting the valid form does NOT move money yet — it opens the confirm.
+    fireEvent.click(screen.getByRole("button", { name: "Credit…" }));
+    expect(
+      await screen.findByText("Credit this wallet?", undefined, SLOW),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/real money moves when you confirm/i),
+    ).toBeInTheDocument();
+    // Confirming fires the mutation; the invalidated balance card refetches
+    // to the new total ($258.40 + $10.00).
+    fireEvent.click(screen.getByRole("button", { name: "Credit wallet" }));
+    expect(
+      (await screen.findAllByText("$268.40", undefined, SLOW)).length,
+    ).toBeGreaterThanOrEqual(1);
+  });
 });

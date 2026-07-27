@@ -75,7 +75,12 @@ export function useWebhookConfig(configId: string): WebhookConfigLookup {
 
 function useInvalidateWebhooks() {
   const queryClient = useQueryClient();
-  return () => void queryClient.invalidateQueries({ queryKey: webhookKeys.all });
+  // Every webhook-config mutation (create/update/delete/rotate) also writes
+  // an audit record, so the settings audit ledger must refetch too.
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: webhookKeys.all });
+    void queryClient.invalidateQueries({ queryKey: ["audit"] });
+  };
 }
 
 export function useCreateWebhookConfig() {

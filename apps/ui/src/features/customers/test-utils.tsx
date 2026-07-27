@@ -30,6 +30,7 @@ export function renderWithProviders(ui: ReactNode) {
   const stubPaths = [
     "/customers",
     "/customers/$customerId",
+    "/events",
     "/events/$eventId",
     "/settings/products",
   ];

@@ -13,10 +13,14 @@ describe("WorkspaceSettingsPage", () => {
     expect(screen.getByText("USD — US Dollar")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
 
-    // Spend control card with explanatory copy
+    // Spend control card with explanatory copy — Off is honest about what
+    // stays (legacy suspension) and what goes (the signal suite).
     expect(screen.getByText("Spend control")).toBeInTheDocument();
     expect(
-      screen.getByText(/UBB refuses new work for customers past their limits/),
+      screen.getByText(/no stop or wind-down webhooks, no past-limit tracking/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/still suspended and refused new work/),
     ).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Enforcement" })).toBeChecked();
 
@@ -24,6 +28,14 @@ describe("WorkspaceSettingsPage", () => {
     expect(
       screen.getByText(/allowed overdraft, not a reserve/i),
     ).toBeInTheDocument();
+
+    // Wind-down floor copy matches the wire sign convention
+    expect(
+      screen.getByText(/How far into the allowed overdraft/),
+    ).toBeInTheDocument();
+
+    // Margin-alert configuration card is present on the workspace tab
+    expect(await screen.findByText("Margin alerts")).toBeInTheDocument();
   });
 
   it("shows the Stripe Connect card for a billing tenant", async () => {

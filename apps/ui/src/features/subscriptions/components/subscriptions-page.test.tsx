@@ -45,7 +45,7 @@ describe("SubscriptionsPage", () => {
     expect(screen.getByText(/can't list plans back/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sync now/i })).toBeInTheDocument();
     // Connected account id from the mock connect status.
-    expect(screen.getByText("acct_1QxTAcmeMock42")).toBeInTheDocument();
+    expect(screen.getByText("acct_mock123")).toBeInTheDocument();
   });
 });
 

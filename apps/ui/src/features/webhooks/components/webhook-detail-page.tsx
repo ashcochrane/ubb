@@ -67,10 +67,11 @@ function ConfigSummary({ config }: { config: WebhookConfig }) {
           },
           {
             label: "Status",
+            // App-wide badge rule: Active = secondary (filled), dormant = outline.
             value: config.is_active ? (
-              <Badge variant="outline">Active</Badge>
+              <Badge variant="secondary">Active</Badge>
             ) : (
-              <Badge variant="secondary">Paused</Badge>
+              <Badge variant="outline">Paused</Badge>
             ),
           },
           {

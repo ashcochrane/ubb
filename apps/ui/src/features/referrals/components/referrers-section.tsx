@@ -97,6 +97,12 @@ export function ReferrersSection({
                     key={referrer.id}
                     className="cursor-pointer"
                     onClick={() => onOpenReferrer(referrer.customer_id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") onOpenReferrer(referrer.customer_id);
+                    }}
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Open referrer ${referrer.referral_code}`}
                   >
                     <TableCell
                       className="max-w-[240px] truncate font-mono text-[12px]"
@@ -108,7 +114,8 @@ export function ReferrersSection({
                       {referrer.referral_code}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={referrer.is_active ? "outline" : "secondary"}>
+                      {/* App-wide badge rule: Active = secondary, dormant = outline. */}
+                      <Badge variant={referrer.is_active ? "secondary" : "outline"}>
                         {referrer.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>

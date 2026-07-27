@@ -1,6 +1,7 @@
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,10 @@ import { BudgetSection } from "./budget-section";
 import { GrantsSection } from "./grants-section";
 import { TopUpDialog, WithdrawDialog } from "./money-dialogs";
 import { TransactionsSection } from "./transactions-section";
+import { UsageInvoicesSection } from "./usage-invoices-section";
+
+const ADMIN_HINT = "Requires the Admin role.";
+const WRITE_HINT = "Requires the Write role.";
 
 type DialogKind = "top-up" | "withdraw" | "credit" | "debit" | "pre-check" | null;
 
@@ -31,7 +36,6 @@ export function BillingTab({
   const [dialog, setDialog] = React.useState<DialogKind>(null);
   const canWrite = useHasRole("write");
   const isAdmin = useHasRole("admin");
-  const adminTitle = isAdmin ? undefined : "Requires the Admin role";
 
   return (
     <div className="space-y-4">
@@ -90,44 +94,51 @@ export function BillingTab({
                 </Alert>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
-                  Top up
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialog("withdraw")}
-                  disabled={!isAdmin}
-                  title={adminTitle}
-                >
-                  Withdraw
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialog("credit")}
-                  disabled={!isAdmin}
-                  title={adminTitle}
-                >
-                  Manual credit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialog("debit")}
-                  disabled={!isAdmin}
-                  title={adminTitle}
-                >
-                  Manual debit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialog("pre-check")}
-                  disabled={!canWrite}
-                >
-                  Run access check
-                </Button>
+                <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+                  <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
+                    Top up
+                  </Button>
+                </DisabledHint>
+                <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog("withdraw")}
+                    disabled={!isAdmin}
+                  >
+                    Withdraw
+                  </Button>
+                </DisabledHint>
+                <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog("credit")}
+                    disabled={!isAdmin}
+                  >
+                    Manual credit
+                  </Button>
+                </DisabledHint>
+                <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog("debit")}
+                    disabled={!isAdmin}
+                  >
+                    Manual debit
+                  </Button>
+                </DisabledHint>
+                <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog("pre-check")}
+                    disabled={!canWrite}
+                  >
+                    Run access check
+                  </Button>
+                </DisabledHint>
               </div>
             </>
           ) : null}
@@ -136,6 +147,7 @@ export function BillingTab({
 
       <TransactionsSection customerId={customerId} />
       <GrantsSection customerId={customerId} />
+      <UsageInvoicesSection customerId={customerId} />
       <BudgetSection customerId={customerId} />
       <BillingConfigSection customerId={customerId} />
 

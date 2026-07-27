@@ -57,7 +57,12 @@ export function PastLimitSection({ customerId }: { customerId: string }) {
             )}
             <div className="space-y-2">
               {query.data.episodes.map((episode, index) => (
-                <EpisodeRow key={index} episode={episode} currency={currency} />
+                <EpisodeRow
+                  key={index}
+                  episode={episode}
+                  currency={currency}
+                  customerId={customerId}
+                />
               ))}
             </div>
             {Object.keys(query.data.totals_per_limit).length > 0 && (
@@ -102,9 +107,11 @@ export function PastLimitSection({ customerId }: { customerId: string }) {
 function EpisodeRow({
   episode,
   currency,
+  customerId,
 }: {
   episode: PastLimitEpisode;
   currency: string;
+  customerId: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const isSoftFloor = episode.family === "soft_floor";
@@ -175,6 +182,9 @@ function EpisodeRow({
                     <Link
                       to="/events/$eventId"
                       params={{ eventId: event.event_id }}
+                      // customer_id in search keeps the receipt's Refund
+                      // action available (the event body carries no owner id).
+                      search={{ customer_id: customerId }}
                       className="font-mono text-[12px] underline-offset-2 hover:underline"
                       title={event.event_id}
                     >

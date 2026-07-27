@@ -42,7 +42,7 @@ function referrerItems(referrer: ReferrerOut): DetailItem[] {
     {
       label: "Status",
       value: (
-        <Badge variant={referrer.is_active ? "outline" : "secondary"}>
+        <Badge variant={referrer.is_active ? "secondary" : "outline"}>
           {referrer.is_active ? "Active" : "Inactive"}
         </Badge>
       ),

@@ -1,11 +1,12 @@
 import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
 import { ChartCard } from "@/components/shared/chart-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { StatCard } from "@/components/shared/stat-card";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
@@ -32,16 +33,14 @@ export function UsageTab({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        {/* Plain href: the events ledger owns its own URL-search contract. */}
-        <Button
-          variant="outline"
-          size="sm"
-          render={
-            <a href={`/events?customer_id=${encodeURIComponent(customerId)}`} />
-          }
+        {/* Typed router Link (SPA navigation) — eventsSearchSchema accepts customer_id. */}
+        <Link
+          to="/events"
+          search={{ customer_id: customerId }}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           Open in events ledger <ArrowUpRight data-icon="inline-end" />
-        </Button>
+        </Link>
       </div>
 
       {analytics.isLoading ? (

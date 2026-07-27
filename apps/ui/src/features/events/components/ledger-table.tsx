@@ -16,10 +16,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatDate, formatMicros } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { stopReasonLabel } from "@/lib/labels";
 
 import { asStopContextEntries, type UsageEventRow } from "../api/types";
+import { formatEventMicros } from "../lib/money";
 
 function money(
   micros: number | null | undefined,
@@ -27,7 +28,7 @@ function money(
 ): string {
   return micros === null || micros === undefined
     ? "—"
-    : formatMicros(micros, currency);
+    : formatEventMicros(micros, currency);
 }
 
 function StoppedIndicator({ row }: { row: UsageEventRow }) {

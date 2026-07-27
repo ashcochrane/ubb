@@ -161,10 +161,12 @@ export function ApiKeysSection() {
                       {key.label || "—"}
                     </TableCell>
                     <TableCell>
+                      {/* App-wide badge rule: Active = secondary (filled),
+                          dormant/terminal = outline. */}
                       {key.is_active ? (
-                        <Badge variant="outline">Active</Badge>
+                        <Badge variant="secondary">Active</Badge>
                       ) : (
-                        <Badge variant="secondary">Revoked</Badge>
+                        <Badge variant="outline">Revoked</Badge>
                       )}
                     </TableCell>
                     <TableCell title={formatDate(key.created_at)}>

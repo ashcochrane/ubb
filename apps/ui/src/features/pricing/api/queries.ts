@@ -1,8 +1,9 @@
 // TanStack hooks over the pricing provider. ALL query keys and invalidation
 // for this feature live here. First key segment = backend namespace
 // ("metering" — pricing lives under /metering/pricing). Pricing changes feed
-// future billed cost, which feeds margin, so mutations over-invalidate the
-// "margin" namespace too.
+// future billed cost, which feeds margin, and every pricing mutation is
+// audited, so mutations over-invalidate the "margin" and "audit" namespaces
+// too (see usePricingInvalidation).
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -60,12 +61,22 @@ export function useTenantMarkup() {
   });
 }
 
-/** Invalidate everything pricing touches (and margin, which derives from it). */
+/**
+ * Invalidate everything pricing touches. The whole "metering" namespace, not
+ * just ["metering","pricing"]: other features cache off-prefix metering keys
+ * that pricing mutations affect (the customers feature's resolved
+ * ["metering","customer-markup",id] — GET returns the customer override OR the
+ * tenant default — and its ["metering","price-books"] assignment picker).
+ * "margin" derives from pricing; every one of these mutations also writes an
+ * audit record (rate_card.*, rate.*, markup.set), so the settings audit ledger
+ * ("audit" namespace) must refetch too. Over-invalidate rather than miss.
+ */
 function usePricingInvalidation() {
   const queryClient = useQueryClient();
   return () => {
-    void queryClient.invalidateQueries({ queryKey: ["metering", "pricing"] });
+    void queryClient.invalidateQueries({ queryKey: ["metering"] });
     void queryClient.invalidateQueries({ queryKey: ["margin"] });
+    void queryClient.invalidateQueries({ queryKey: ["audit"] });
   };
 }
 

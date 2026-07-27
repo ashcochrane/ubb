@@ -1,10 +1,12 @@
 // Business rollup — rendered only when GET /margin/business/{external_id}
 // answers 200 (the customer is a business). A 404 (individual customer) hides
-// the section silently.
+// the section silently; any OTHER failure renders a compact error with retry
+// so the seats rollup can't vanish indistinguishably from "not a business".
 
 import { Link } from "@tanstack/react-router";
 
 import { CopyButton } from "@/components/shared/copy-button";
+import { ErrorCard } from "@/components/shared/error-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -35,8 +37,26 @@ export function BusinessRollup({
   const query = useBusinessMargin(externalId, range);
 
   if (query.isLoading) return <Skeleton className="h-24 w-full" />;
-  // Errors (and 404 = not a business) hide the rollup — it's an optional lens.
-  if (query.isError || !query.data) return null;
+  // The queryFn maps the EXPECTED 404 (individual customer) to null — hide
+  // silently. Anything else is a real failure and must be visible.
+  if (query.isError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Business rollup — seats</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ErrorCard
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            title="Couldn't load the seats rollup"
+            className="py-4"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!query.data) return null;
 
   const { seats, totals } = query.data;
 

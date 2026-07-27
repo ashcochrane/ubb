@@ -22,7 +22,7 @@ import { humanize } from "@/lib/labels";
 
 import { useReferralLedger } from "../api/queries";
 import type { ReferralOut } from "../api/types";
-import { looseDate } from "../lib/dates";
+import { calendarDay, looseDate } from "../lib/dates";
 
 export function LedgerDialog({
   referral,
@@ -84,8 +84,8 @@ export function LedgerDialog({
                 {ledger.rows.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="text-[12px]">
-                      {looseDate(entry.period_start, formatShortDate)} –{" "}
-                      {looseDate(entry.period_end, formatShortDate)}
+                      {looseDate(entry.period_start, (iso) => formatShortDate(calendarDay(iso)))} –{" "}
+                      {looseDate(entry.period_end, (iso) => formatShortDate(calendarDay(iso)))}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatMicros(entry.referred_spend_micros, currency)}

@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { humanize, usageInvoiceStatusLabel } from "@/lib/labels";
-import { formatMicros, formatShortDate } from "@/lib/format";
+import { formatCalendarDate, formatMicros } from "@/lib/format";
 
 import { useTenantUsageInvoices } from "../api/queries";
 import type { TenantUsageInvoice } from "../api/types";
@@ -136,7 +136,9 @@ function InvoiceRow({
         </span>
       </TableCell>
       <TableCell className="whitespace-nowrap text-[12px] text-text-secondary">
-        {formatShortDate(invoice.period_start)}
+        {/* period_start is a calendar date ("YYYY-MM-DD") — format in UTC so
+            the period never shifts a day for viewers west of Greenwich. */}
+        {formatCalendarDate(invoice.period_start)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-right font-medium">
         {formatMicros(invoice.total_billed_micros, currency)}

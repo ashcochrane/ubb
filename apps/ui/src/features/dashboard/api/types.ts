@@ -68,9 +68,14 @@ export interface BreakdownRow {
   total_billed_cost_micros: number;
 }
 
-/** GET /connect/status — untyped `dict` in the schema. */
+/**
+ * GET /connect/status — untyped `dict` in the schema.
+ * Canonical shape shared by every feature caching ['connect','status']:
+ * `account_id` is always a string — the backend field is a CharField
+ * defaulting to "" (never null), so a missing/absent id narrows to "".
+ */
 export interface ConnectStatus {
-  account_id: string | null;
+  account_id: string;
   charges_enabled: boolean;
   onboarded: boolean;
 }
@@ -153,11 +158,10 @@ export function toBreakdownRows(
   });
 }
 
-/** Narrow the untyped connect-status body. */
+/** Narrow the untyped connect-status body ("" sentinel = no account). */
 export function toConnectStatus(raw: Record<string, unknown>): ConnectStatus {
   return {
-    account_id:
-      typeof raw["account_id"] === "string" ? raw["account_id"] : null,
+    account_id: str(raw["account_id"]),
     charges_enabled: raw["charges_enabled"] === true,
     onboarded: raw["onboarded"] === true,
   };

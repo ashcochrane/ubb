@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BookDetailPage } from "./book-detail-page";
 
 const OPENAI_COST_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e01";
 const EMPTY_PRICE_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e04";
+
+const onShowAuditTrail = vi.fn();
 
 function renderPage(bookId: string) {
   const client = new QueryClient({
@@ -16,7 +18,7 @@ function renderPage(bookId: string) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <BookDetailPage bookId={bookId} />
+      <BookDetailPage bookId={bookId} onShowAuditTrail={onShowAuditTrail} />
     </QueryClientProvider>,
   );
 }
@@ -34,12 +36,12 @@ describe("BookDetailPage", () => {
     expect(screen.getByText("Flat")).toBeInTheDocument();
     // The superseded $5/1M version is history — hidden in the default view.
     expect(screen.queryByText("$5 / 1M")).not.toBeInTheDocument();
-    // Audit trail link points at the audit feed filtered to this book.
-    const auditLink = screen.getByRole("link", { name: "Who changed this book?" });
-    expect(auditLink).toHaveAttribute(
-      "href",
-      `/settings/audit?resource_type=rate_card&resource_id=${OPENAI_COST_BOOK}`,
+    // Audit-trail affordance fires the injected navigation callback (the
+    // route file wires it to /settings/audit filtered to this book).
+    fireEvent.click(
+      screen.getByRole("button", { name: "Who changed this book?" }),
     );
+    expect(onShowAuditTrail).toHaveBeenCalled();
   });
 
   it("shows an empty state for a book without rates", async () => {

@@ -55,6 +55,7 @@ import {
   type TenantMarkupOut,
   type TopUpCheckoutResponse,
   type UsageAnalyticsResponse,
+  type UsageInvoiceOut,
   type UsageTimeseriesResponse,
   type WalletTransactionOut,
   type WithdrawRequest,
@@ -334,6 +335,18 @@ export async function putBillingProfile(
     await billingApi.PUT("/customers/{customer_id}/billing-profile", {
       params: { path: { customer_id: customerId } },
       body,
+    }),
+  );
+}
+
+/** Per-customer usage-invoice (Stripe push) history — one row per period. */
+export async function listCustomerUsageInvoices(
+  customerId: string,
+  cursor?: string,
+): Promise<CursorPage<UsageInvoiceOut>> {
+  return unwrap(
+    await billingApi.GET("/customers/{customer_id}/usage-invoices", {
+      params: { path: { customer_id: customerId }, query: { cursor } },
     }),
   );
 }

@@ -14,7 +14,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros, formatPercent } from "@/lib/format";
+import {
+  formatCalendarDate,
+  formatEventCount,
+  formatMicros,
+  formatPercent,
+} from "@/lib/format";
 import { revenueModeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +77,8 @@ export function OverviewTab({
             </span>
           }
           variant="raised"
-          subtitle={`${margin.period.start} → ${margin.period.end}`}
+          // Period bounds are calendar dates — UTC-safe formatting, no raw ISO.
+          subtitle={`${formatCalendarDate(margin.period.start)} → ${formatCalendarDate(margin.period.end)}`}
         />
       </div>
 

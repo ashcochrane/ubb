@@ -30,6 +30,7 @@ import {
   MOCK_TRANSACTIONS,
   MOCK_TREND_POINTS,
   MOCK_USAGE_ANALYTICS,
+  MOCK_USAGE_INVOICES,
   type MockCustomer,
 } from "./mock-data";
 import type {
@@ -67,6 +68,7 @@ import type {
   TenantMarkupOut,
   TopUpCheckoutResponse,
   UsageAnalyticsResponse,
+  UsageInvoiceOut,
   UsageTimeseriesResponse,
   WalletTransactionOut,
   WithdrawRequest,
@@ -597,6 +599,30 @@ export async function putBillingProfile(
 ): Promise<CustomerBillingProfileOut> {
   await mockDelay();
   requireCustomer(customerId);
+  // Mirror the server's floor validation (billing_endpoints put_billing_profile):
+  // the hard value is an allowed-overdraft MAGNITUDE ≥ 0, and the soft wire
+  // value must not exceed the effective hard value (tenant default = 0).
+  const min = body.min_balance_micros ?? null;
+  if (min !== null && min < 0) {
+    throw new ApiProblem({
+      status: 422,
+      code: "invalid_config",
+      title: "Invalid billing profile",
+      detail:
+        "min_balance_micros must be >= 0 (allowed overdraft magnitude), or null to inherit the tenant default",
+    });
+  }
+  const soft = body.soft_min_balance_micros ?? null;
+  const effectiveHard = min ?? billingProfiles[customerId]?.min_balance_micros ?? 0;
+  if (soft !== null && soft > effectiveHard) {
+    throw new ApiProblem({
+      status: 422,
+      code: "invalid_config",
+      title: "Invalid billing profile",
+      detail:
+        "soft_min_balance_micros must not exceed the hard floor value (the allowed overdraft)",
+    });
+  }
   const saved: CustomerBillingProfileOut = {
     min_balance_micros: body.min_balance_micros ?? null,
     soft_min_balance_micros: body.soft_min_balance_micros ?? null,
@@ -604,6 +630,15 @@ export async function putBillingProfile(
   };
   billingProfiles[customerId] = saved;
   return saved;
+}
+
+export async function listCustomerUsageInvoices(
+  customerId: string,
+  _cursor?: string,
+): Promise<CursorPage<UsageInvoiceOut>> {
+  await mockDelay();
+  requireCustomer(customerId);
+  return page(MOCK_USAGE_INVOICES[customerId] ?? []);
 }
 
 export async function configureAutoTopUp(

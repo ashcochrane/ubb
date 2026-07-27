@@ -1,7 +1,7 @@
 // Real API implementation. Every call goes through unwrap() so failures
 // always reject with a typed ApiProblem.
 
-import { connectApi, rootApi, tenantApi } from "@/api/client";
+import { connectApi, marginApi, rootApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
 
@@ -14,6 +14,8 @@ import {
   type ConnectStartResult,
   type ConnectStatus,
   type Invitation,
+  type MarginThreshold,
+  type MarginThresholdInput,
   type Member,
   type TenantConfig,
   type TenantConfigPatch,
@@ -36,6 +38,19 @@ export async function updateTenantConfig(
   patch: TenantConfigPatch,
 ): Promise<TenantConfig> {
   return unwrap(await tenantApi.PATCH("/config", { body: patch }));
+}
+
+// --- Margin-alert thresholds ------------------------------------------------
+
+/** Server returns defaults {min_margin_pct: 0, consecutive_periods: 1, provider_cost_spike_pct: 25} when unset. */
+export async function getMarginThreshold(): Promise<MarginThreshold> {
+  return unwrap(await marginApi.GET("/threshold"));
+}
+
+export async function updateMarginThreshold(
+  input: MarginThresholdInput,
+): Promise<MarginThreshold> {
+  return unwrap(await marginApi.PUT("/threshold", { body: input }));
 }
 
 // --- Stripe Connect ---------------------------------------------------------

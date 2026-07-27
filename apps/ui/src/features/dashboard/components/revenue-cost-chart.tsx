@@ -12,10 +12,10 @@ import {
 } from "recharts";
 
 import {
+  formatCalendarDate,
   formatCostMicros,
   formatEventCount,
   formatMicros,
-  formatShortDate,
 } from "@/lib/format";
 
 import type { RevenueCostPoint } from "../lib/economics";
@@ -44,7 +44,9 @@ function ChartTip({
   return (
     <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
       <div className="mb-1 font-medium text-text-primary">
-        {typeof label === "string" ? formatShortDate(label) : label}
+        {/* Day buckets are calendar dates (YYYY-MM-DD) — format in UTC so
+            the day never shifts for viewers west of Greenwich. */}
+        {typeof label === "string" ? formatCalendarDate(label) : label}
       </div>
       {payload.map((entry) => (
         <div
@@ -92,14 +94,14 @@ export default function RevenueCostChart({
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="day"
-            tickFormatter={formatShortDate}
+            tickFormatter={formatCalendarDate}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             tickLine={false}
             axisLine={false}
             minTickGap={28}
           />
           <YAxis
-            tickFormatter={(value: number) => formatCostMicros(value)}
+            tickFormatter={(value: number) => formatCostMicros(value, currency)}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             tickLine={false}
             axisLine={false}

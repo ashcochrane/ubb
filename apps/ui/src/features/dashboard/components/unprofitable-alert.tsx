@@ -46,7 +46,15 @@ export function UnprofitableAlert({ currency }: { currency: string }) {
               : `${rows.length} customers are unprofitable this period`}
           </p>
           <p className="mt-0.5 text-[12px] text-text-secondary">
-            Their provider cost exceeded the revenue they generated.
+            Their margin fell below your workspace margin threshold for this
+            period.{" "}
+            <Link
+              to="/settings"
+              className="underline underline-offset-2 hover:text-text-primary"
+            >
+              Review the threshold in settings
+            </Link>
+            .
           </p>
           <ul className="mt-2 space-y-1">
             {listed.map((row) => (

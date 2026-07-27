@@ -3,8 +3,10 @@
 
 import type { ConnectStatus, PlanOut, SyncResponse } from "./types";
 
+// Shared fixture id: every feature caching ['connect','status'] uses the same
+// account so mock mode shows one coherent Stripe account across pages.
 export const MOCK_CONNECT_STATUS: ConnectStatus = {
-  account_id: "acct_1QxTAcmeMock42",
+  account_id: "acct_mock123",
   charges_enabled: true,
   onboarded: true,
 };

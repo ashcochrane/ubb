@@ -130,7 +130,13 @@ export function CustomersPage({
           action={{ label: "Clear search", onClick: () => setFilter("") }}
         />
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border bg-bg-surface">
+        <div
+          className={cn(
+            "overflow-x-auto rounded-md border border-border bg-bg-surface transition-opacity",
+            // keepPreviousData: range changes dim the old rows instead of blanking.
+            query.isPlaceholderData && "opacity-60",
+          )}
+        >
           <Table>
             <TableHeader>
               <TableRow>

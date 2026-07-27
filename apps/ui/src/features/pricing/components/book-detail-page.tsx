@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { isNotFound } from "@/api/problem";
 import { CopyButton } from "@/components/shared/copy-button";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +18,20 @@ import { RatesTable } from "./rates-table";
 /**
  * /pricing/$bookId — one rate-card book: identity header, its rates (active /
  * history / point-in-time), add rate, retire rate, and the publish (atomic
- * reprice) flow. Plain anchors are used for cross-page links so the page
- * renders without router context in tests.
+ * reprice) flow. Cross-page navigation arrives via injected callbacks so the
+ * page renders without router context in tests.
  */
-export function BookDetailPage({ bookId }: { bookId: string }) {
+export function BookDetailPage({
+  bookId,
+  onBackToPricing,
+  onShowAuditTrail,
+}: {
+  bookId: string;
+  /** SPA navigation back to /pricing, injected by the route file. */
+  onBackToPricing?: () => void;
+  /** Opens the audit trail filtered to this book, injected by the route file. */
+  onShowAuditTrail?: () => void;
+}) {
   const book = useBook(bookId);
   const isAdmin = useHasRole("admin");
   const [addOpen, setAddOpen] = React.useState(false);
@@ -43,9 +54,7 @@ export function BookDetailPage({ bookId }: { bookId: string }) {
           description="This rate-card book doesn't exist (or was created in another workspace)."
           action={{
             label: "Back to pricing",
-            onClick: () => {
-              window.location.href = "/pricing";
-            },
+            onClick: onBackToPricing ?? (() => undefined),
           }}
         />
       );
@@ -63,12 +72,13 @@ export function BookDetailPage({ bookId }: { bookId: string }) {
 
   return (
     <div className="space-y-4">
-      <a
-        href="/pricing"
+      <button
+        type="button"
+        onClick={onBackToPricing}
         className="text-[12px] text-text-secondary underline-offset-2 hover:underline"
       >
         ← All pricing
-      </a>
+      </button>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold tracking-tight">
@@ -95,35 +105,36 @@ export function BookDetailPage({ bookId }: { bookId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAddOpen(true)}
-            disabled={!isAdmin}
-            title={isAdmin ? undefined : "Admin role required"}
-          >
-            Add rate
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setPublishOpen(true)}
-            disabled={!isAdmin}
-            title={isAdmin ? undefined : "Admin role required"}
-          >
-            Publish new prices
-          </Button>
+          <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddOpen(true)}
+              disabled={!isAdmin}
+            >
+              Add rate
+            </Button>
+          </DisabledHint>
+          <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+            <Button size="sm" onClick={() => setPublishOpen(true)} disabled={!isAdmin}>
+              Publish new prices
+            </Button>
+          </DisabledHint>
         </div>
       </div>
       <p className="text-[12px] text-text-muted">
         {data.card_type === "price"
           ? "A price card: these rates set what customers are billed."
           : "A cost card: these rates derive what providers charge you (your COGS)."}{" "}
-        <a
-          href={`/settings/audit?resource_type=rate_card&resource_id=${encodeURIComponent(bookId)}`}
-          className="underline underline-offset-2 hover:text-text-primary"
-        >
-          Who changed this book?
-        </a>
+        {onShowAuditTrail && (
+          <button
+            type="button"
+            onClick={onShowAuditTrail}
+            className="underline underline-offset-2 hover:text-text-primary"
+          >
+            Who changed this book?
+          </button>
+        )}
       </p>
 
       <RatesTable book={data} isAdmin={isAdmin} onAddRate={() => setAddOpen(true)} />

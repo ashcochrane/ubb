@@ -4,8 +4,12 @@ import { z } from "zod";
 import { CustomerDetailPage } from "@/features/customers/components/customer-detail-page";
 import { dateRangeSearchSchema } from "@/lib/date-range";
 
+// Unknown ?tab= values coerce to undefined → the Overview tab, never a blank panel.
 const detailSearchSchema = dateRangeSearchSchema.extend({
-  tab: z.string().optional().catch(undefined),
+  tab: z
+    .enum(["overview", "usage", "billing", "pricing", "subscription"])
+    .optional()
+    .catch(undefined),
 });
 
 export const Route = createFileRoute("/_app/customers/$customerId")({

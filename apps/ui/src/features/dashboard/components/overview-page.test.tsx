@@ -38,31 +38,37 @@ describe("OverviewPage", () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
     // Total revenue / COGS / margin% from the mock margin summary.
-    expect(await screen.findByText("$9,370.40")).toBeInTheDocument();
-    expect(screen.getByText("$5,330.42")).toBeInTheDocument();
-    expect(screen.getByText("43.1% margin")).toBeInTheDocument();
+    expect(await screen.findByText("$764.90")).toBeInTheDocument();
+    expect(screen.getByText("$563.60")).toBeInTheDocument();
+    expect(screen.getByText("26.3% margin")).toBeInTheDocument();
     expect(screen.getByText("Customers with usage")).toBeInTheDocument();
     // Events total from the windowed usage analytics.
-    expect(await screen.findByText("184.2k")).toBeInTheDocument();
+    expect(await screen.findByText("93.6k")).toBeInTheDocument();
   });
 
   it("lists top customers with shortened ids and a view-all link", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
-    // Margin list rows have no external_id — the table shows short UUIDs.
-    expect(await screen.findByText("3e7f0a41…")).toBeInTheDocument();
+    // Margin list rows have no external_id — the table shows short UUIDs
+    // (acme-corp has the highest revenue in the shared mock roster).
+    expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
     expect(screen.getByText("View all customers")).toBeInTheDocument();
-    // The unprofitable customer's negative margin renders signed.
-    expect(screen.getByText("-$249.87")).toBeInTheDocument();
+    // nova-ai's negative gross margin renders signed in the table.
+    expect(screen.getByText("-$88.00")).toBeInTheDocument();
   });
 
-  it("surfaces the unprofitable-customers alert when the API reports one", async () => {
+  it("surfaces the unprofitable-customers alert when the API reports them", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
     expect(
-      await screen.findByText("1 customer is unprofitable this period"),
+      await screen.findByText("2 customers are unprofitable this period"),
     ).toBeInTheDocument();
-    expect(screen.getByText("atlas-fintech")).toBeInTheDocument();
+    expect(screen.getByText("nova-ai")).toBeInTheDocument();
+    expect(screen.getByText("luna-labs")).toBeInTheDocument();
+    // Threshold-aware copy links to the margin-alert settings.
+    expect(
+      screen.getByRole("link", { name: "Review the threshold in settings" }),
+    ).toHaveAttribute("href", "/settings");
   });
 
   it("renders the provider breakdown and no getting-started card for an active workspace", async () => {

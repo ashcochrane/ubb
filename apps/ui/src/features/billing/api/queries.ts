@@ -68,15 +68,26 @@ export function useSavePostpaidConfig() {
   });
 }
 
+/**
+ * Manual credit/debit moves real money: over-invalidate every affected
+ * namespace (convention: over-invalidate rather than miss). Beyond the
+ * billing surfaces themselves, money movement shifts customer economics
+ * (['margin']), can clear or trip a floor stop so stop-state surfaces like
+ * the past-limit report refresh (['metering']), and appends to the audit
+ * ledger (['audit']). Mirrors customers/api/queries.ts useBillingMutation.
+ */
+function invalidateMoneyMovement(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: billingKeys.all });
+  void queryClient.invalidateQueries({ queryKey: ["margin"] });
+  void queryClient.invalidateQueries({ queryKey: ["metering"] });
+  void queryClient.invalidateQueries({ queryKey: ["audit"] });
+}
+
 export function useCreditWallet() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreditRequest) => billingFeatureApi.creditWallet(body),
-    onSuccess: () => {
-      // Moves real money: over-invalidate the whole billing namespace so
-      // balances/transactions elsewhere in the console refresh.
-      void queryClient.invalidateQueries({ queryKey: billingKeys.all });
-    },
+    onSuccess: () => invalidateMoneyMovement(queryClient),
   });
 }
 
@@ -84,8 +95,6 @@ export function useDebitWallet() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: DebitRequest) => billingFeatureApi.debitWallet(body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: billingKeys.all });
-    },
+    onSuccess: () => invalidateMoneyMovement(queryClient),
   });
 }

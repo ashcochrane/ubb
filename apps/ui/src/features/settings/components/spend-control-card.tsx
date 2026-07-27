@@ -45,8 +45,12 @@ export function SpendControlCard({
           <div>
             <p className="text-sm font-medium">Enforcement</p>
             <p className="max-w-sm text-[13px] text-muted-foreground">
-              Enforcing: UBB refuses new work for customers past their limits.
-              Off: limits only produce signals — nothing is ever interrupted.
+              Enforcing: real-time spend control — limit crossings fire stop
+              and wind-down webhooks and are tracked, and work past a limit is
+              refused or stopped. Off: that whole suite is disabled — no stop
+              or wind-down webhooks, no past-limit tracking — but customers
+              past the hard stop point are still suspended and refused new
+              work.
             </p>
           </div>
           <Switch
@@ -108,7 +112,7 @@ export function SpendControlCard({
         description={
           pendingMode === "enforcing"
             ? "UBB will start refusing new work for customers past their limits. Customers at a balance floor or over a task limit will be interrupted until they're back within bounds."
-            : "UBB will stop interrupting anyone. Limits keep producing signals (webhooks and reports), but no customer's work is refused."
+            : "UBB stops the real-time spend-control suite: no stop or wind-down-floor webhooks, no past-limit report entries, and running work is never stopped mid-flight. Customers past the hard stop point are instead suspended outright and refused new work — with no advance stop signal — until they top up or you unsuspend them. Budget caps and alerts keep working."
         }
         confirmLabel={pendingMode === "enforcing" ? "Turn on" : "Turn off"}
         pending={enforcement.isPending}

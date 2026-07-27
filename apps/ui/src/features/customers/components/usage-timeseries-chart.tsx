@@ -11,9 +11,15 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import { formatCalendarDate, formatCostMicros, formatMicros } from "@/lib/format";
 
 import type { TimeseriesPoint } from "../api/types";
+
+/** Buckets are day-truncated UTC datetimes ("2026-07-10T00:00:00Z") — slice
+ * to the calendar day and format in UTC so the day never shifts locally. */
+function bucketDay(bucket: unknown): string {
+  return formatCalendarDate(String(bucket).slice(0, 10));
+}
 
 export default function UsageTimeseriesChart({
   points,
@@ -29,13 +35,13 @@ export default function UsageTimeseriesChart({
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="bucket"
-            tickFormatter={formatShortDate}
+            tickFormatter={bucketDay}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tickFormatter={(value) => formatCostMicros(Number(value))}
+            tickFormatter={(value) => formatCostMicros(Number(value), currency)}
             tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             axisLine={false}
             tickLine={false}
@@ -43,7 +49,7 @@ export default function UsageTimeseriesChart({
           />
           <Tooltip
             formatter={(value) => formatMicros(Number(value), currency)}
-            labelFormatter={(label) => formatShortDate(String(label))}
+            labelFormatter={bucketDay}
             contentStyle={{ fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />

@@ -13,10 +13,11 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasProduct } from "@/hooks/use-tenant-config";
-import { formatDate, formatMicros, formatSignedMicros } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 import { useUsageEvent } from "../api/queries";
 import { asStopContextEntries, type UsageEventDetail } from "../api/types";
+import { formatEventMicros, formatSignedEventMicros } from "../lib/money";
 import { shortId } from "../lib/search";
 import { KeyValueTree } from "./key-value-tree";
 import { RefundAction } from "./refund-action";
@@ -139,15 +140,15 @@ export function EventDetailPage({
   const moneyItems: DetailItem[] = [
     {
       label: "Billed",
-      value: formatMicros(detail.billed_cost_micros, detail.currency),
+      value: formatEventMicros(detail.billed_cost_micros, detail.currency),
     },
     {
       label: "Provider cost",
-      value: formatMicros(detail.provider_cost_micros, detail.currency),
+      value: formatEventMicros(detail.provider_cost_micros, detail.currency),
     },
     {
       label: "Margin on this event",
-      value: formatSignedMicros(margin, detail.currency),
+      value: formatSignedEventMicros(margin, detail.currency),
     },
     { label: "Currency", value: detail.currency.toUpperCase() },
     ...(detail.units !== null && detail.units !== undefined
@@ -208,7 +209,7 @@ export function EventDetailPage({
         {stopEntries.length > 0 && (
           <Section
             title="Stop context"
-            description="This event landed past a spend stop. It was still recorded and billed — the one-rule contract."
+            description="This event landed past a spend stop. It was still recorded and billed — every event that reaches UBB is."
           >
             <StopContextTimeline entries={stopEntries} />
           </Section>

@@ -2,6 +2,7 @@ import * as React from "react";
 import { Users } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { LoadMore } from "@/components/shared/load-more";
@@ -123,32 +124,37 @@ export function MembersSection() {
                         {member.email}
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={member.role}
-                          onValueChange={(role: string | null) => {
-                            if (role !== null) changeRole(member, role);
-                          }}
+                        <DisabledHint
+                          disabled={!isAdmin}
+                          hint="Requires the Admin role."
                         >
-                          <SelectTrigger
-                            size="sm"
-                            aria-label={`Role for ${member.email}`}
-                            disabled={!isAdmin || mutatingId === member.id}
-                            className="w-[110px]"
+                          <Select
+                            value={member.role}
+                            onValueChange={(role: string | null) => {
+                              if (role !== null) changeRole(member, role);
+                            }}
                           >
-                            <SelectValue>
-                              {mutatingId === member.id
-                                ? "Working…"
-                                : roleLabel(member.role)}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ROLES.map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {roleLabel(role)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            <SelectTrigger
+                              size="sm"
+                              aria-label={`Role for ${member.email}`}
+                              disabled={!isAdmin || mutatingId === member.id}
+                              className="w-[110px]"
+                            >
+                              <SelectValue>
+                                {mutatingId === member.id
+                                  ? "Working…"
+                                  : roleLabel(member.role)}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLES.map((role) => (
+                                <SelectItem key={role} value={role}>
+                                  {roleLabel(role)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </DisabledHint>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -163,15 +169,20 @@ export function MembersSection() {
                         {formatShortDate(member.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
-                          disabled={!isAdmin || removeMutation.isPending}
-                          onClick={() => setRemoveTarget(member)}
+                        <DisabledHint
+                          disabled={!isAdmin}
+                          hint="Requires the Admin role."
                         >
-                          Remove
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            disabled={!isAdmin || removeMutation.isPending}
+                            onClick={() => setRemoveTarget(member)}
+                          >
+                            Remove
+                          </Button>
+                        </DisabledHint>
                       </TableCell>
                     </TableRow>
                   ))}

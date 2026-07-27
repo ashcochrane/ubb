@@ -4,12 +4,14 @@
 // assignment back).
 
 import * as React from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
@@ -195,6 +197,7 @@ function MarkupCard({ customerId }: { customerId: string }) {
 }
 
 function PriceBookCard({ customerId }: { customerId: string }) {
+  const navigate = useNavigate();
   const isAdmin = useHasRole("admin");
   const hasBilling = useHasProduct("billing");
   const books = usePriceBooks(hasBilling);
@@ -230,6 +233,10 @@ function PriceBookCard({ customerId }: { customerId: string }) {
           <EmptyState
             title="No price books yet"
             description="Create a price-type rate card under Pricing first, then assign it here."
+            action={{
+              label: "Open Pricing",
+              onClick: () => void navigate({ to: "/pricing" }),
+            }}
           />
         ) : (
           <>
@@ -254,14 +261,15 @@ function PriceBookCard({ customerId }: { customerId: string }) {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                onClick={() => void onAssign()}
-                disabled={!selected || assign.isPending || !isAdmin}
-                title={isAdmin ? undefined : ADMIN_HINT}
-              >
-                {assign.isPending ? "Working…" : "Assign book"}
-              </Button>
+              <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                <Button
+                  size="sm"
+                  onClick={() => void onAssign()}
+                  disabled={!selected || assign.isPending || !isAdmin}
+                >
+                  {assign.isPending ? "Working…" : "Assign book"}
+                </Button>
+              </DisabledHint>
             </div>
             <p className="text-[11px] text-text-muted">
               Resolution order for billed cost: assigned price book → provider

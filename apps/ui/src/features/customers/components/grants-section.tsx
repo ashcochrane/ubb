@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
@@ -93,14 +94,11 @@ export function GrantsSection({ customerId }: { customerId: string }) {
             </SelectContent>
           </Select>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              disabled={!isAdmin}
-              title={isAdmin ? undefined : "Requires the Admin role"}
-            >
-              Create grant
-            </Button>
+            <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+              <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!isAdmin}>
+                Create grant
+              </Button>
+            </DisabledHint>
           </div>
         </div>
 
@@ -154,15 +152,16 @@ export function GrantsSection({ customerId }: { customerId: string }) {
                     </TableCell>
                     <TableCell className="text-right">
                       {grant.status === "active" && (
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => setVoidTarget(grant)}
-                          disabled={!isAdmin}
-                          title={isAdmin ? undefined : "Requires the Admin role"}
-                        >
-                          Void
-                        </Button>
+                        <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setVoidTarget(grant)}
+                            disabled={!isAdmin}
+                          >
+                            Void
+                          </Button>
+                        </DisabledHint>
                       )}
                     </TableCell>
                   </TableRow>

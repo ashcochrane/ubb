@@ -1,6 +1,11 @@
 // Manual credit / debit (which take the EXTERNAL id in the body — prefilled
 // and shown read-only here) and the pre-check dialog (denials are HTTP 200
 // with allowed:false — the UI branches on the body, never the status).
+//
+// Money moves on these forms, so submit goes through a ConfirmDialog with
+// the same consequence copy as the /billing page's credit/debit forms. The
+// idempotency key is minted per dialog-open and REUSED across the confirm
+// step and any retry after failure (replay-safe).
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +14,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { problemMessage } from "@/api/problem";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -67,8 +73,14 @@ export function AdjustDialog({
     },
   });
   const allowNegative = form.watch("allow_negative");
+  const amount = form.watch("amount");
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  const submit = form.handleSubmit(async (values) => {
+  // Valid form → confirm step; money only moves from the ConfirmDialog.
+  const submit = form.handleSubmit(() => setConfirmOpen(true));
+
+  const submitConfirmed = async () => {
+    const values = form.getValues();
     try {
       const result = isCredit
         ? await credit.mutateAsync({
@@ -89,17 +101,21 @@ export function AdjustDialog({
             reason_code: values.reason_code,
             allow_negative: values.allow_negative,
           });
+      setConfirmOpen(false);
       toast.success(
         `${isCredit ? "Credited" : "Debited"} — new balance ${formatMicros(result.new_balance_micros, currency)}`,
       );
       form.reset();
       onOpenChange(false);
     } catch {
-      // surfaced below; retry reuses the idempotency key
+      // Surfaced below in the form dialog; a retry through the same confirm
+      // reuses the idempotency key (replay-safe).
+      setConfirmOpen(false);
     }
-  });
+  };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
@@ -107,7 +123,7 @@ export function AdjustDialog({
           <DialogDescription>
             {isCredit
               ? "Adds non-expiring base credit (no grant lot). Use a credit grant instead for promo or expiring credit."
-              : "Removes money from the wallet as a DEBIT ledger entry."}{" "}
+              : "Removes money from the wallet, recorded as a debit on the wallet ledger."}{" "}
             This endpoint identifies the customer by external ID.
           </DialogDescription>
         </DialogHeader>
@@ -181,12 +197,27 @@ export function AdjustDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Working…" : isCredit ? "Credit" : "Debit"}
+              {mutation.isPending ? "Working…" : isCredit ? "Credit…" : "Debit…"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title={isCredit ? "Credit this wallet?" : "Debit this wallet?"}
+      destructive={!isCredit}
+      description={
+        isCredit
+          ? `Credit ${externalId} with ${formatMicros(toMicros(amount || "0"), currency)}. This immediately increases their spendable balance — real money moves when you confirm.`
+          : `Take ${formatMicros(toMicros(amount || "0"), currency)} from ${externalId}${allowNegative ? " — their balance is allowed to go negative" : ""}. Real money moves when you confirm.`
+      }
+      confirmLabel={isCredit ? "Credit wallet" : "Debit wallet"}
+      onConfirm={() => void submitConfirmed()}
+      pending={mutation.isPending}
+    />
+    </>
   );
 }
 
