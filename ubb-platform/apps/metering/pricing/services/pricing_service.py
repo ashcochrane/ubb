@@ -200,15 +200,25 @@ class PricingService:
         """Accept-time cost estimation for async ingestion: the SAME compute
         spine as ``price``, over CardCache current-card resolution and the
         cached markup — read-only, never charges a wallet, and the receipt is
-        discarded (no event row exists yet to carry it). The one remaining
+        discarded (no event row exists yet to carry it).
+
+        ``selectors`` is the same full ten-key map ``price`` takes (see
+        ``price``'s docstring) — the CALLER is responsible for making it the
+        SAME inherited selector set ``price`` will resolve at settle
+        (ingest_accept.py's ``_inherited_selectors_for_estimate`` mirrors
+        usage_service.py's ``_inherit_dimensions`` for exactly this reason;
+        Task 12 closed a gap where accept wildcarded task_type/dim1..dim6
+        while settle resolved them for real, letting the two instants match
+        different rates). Given equal selectors, the one remaining
         accept-vs-settle difference is WHICH cards resolve — CURRENT cards
         here (the hot accept path keeps its L1 cache), as_of-exact cards at
         settle — i.e. rate-card config drift between the two instants. With
         per_unit/flat-only pricing (ADR-0003 deleted tiered pricing), every
-        estimate therefore equals what price() will charge by construction.
-
-        ``selectors`` is the same full ten-key map ``price`` takes (see
-        ``price``'s docstring).
+        estimate therefore equals what price() will charge by construction,
+        MODULO that config-drift window and the caller keeping selectors in
+        sync — this method cannot verify either from here, so ``exact=True``
+        below is a claim about the compute spine, not a guarantee over
+        every possible caller.
 
         Unpriceable is raised exactly where price() raises PricingError
         (strict cost coverage — one spine, one failure surface), so the

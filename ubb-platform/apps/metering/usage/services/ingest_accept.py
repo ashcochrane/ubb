@@ -30,6 +30,7 @@ from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
     SLOTS, EffectiveAtError, UsageService, validate_effective_at)
 from apps.platform.customers.models import Customer
+from apps.platform.dimensions.queries import slot_map
 from apps.platform.dimensions.services import DimensionError, DimensionService
 from apps.platform.tasks.models import Task
 
@@ -209,6 +210,62 @@ def _task_meta_for(tenant, task_ids):
                          now_mono + _TASK_META_TTL_SECONDS)
                 _TASK_META_CACHE[tid] = entry
                 out[tid] = entry
+    return out
+
+
+def _inherited_selectors_for_estimate(item, task_meta, all_task_meta, dim_slot_map):
+    """Accept-time mirror of usage_service._inherit_dimensions (D6/Task 10),
+    built entirely from already-batched data (task_meta/all_task_meta — the
+    L1 task-meta cache, extended below with the batch's parent rows — and
+    dim_slot_map, one slot_map() read per accept_batch call) instead of a
+    per-event Task query or a write. Task 12 fix: without this, an
+    accept-time estimate wildcarded task_type/subtask_type/dim1..dim6 while
+    settle (usage_service.py, via RecordingInput.gather -> _inherit_
+    dimensions) resolved the real inherited values — a rate pinning any of
+    those columns could then resolve a DIFFERENT rate at accept than at
+    settle, so the hold taken could be smaller than the real charge (a
+    spend-control bypass, not just a ledger wobble).
+
+    Event-scope dims come from item.dimensions via the read-only
+    dimensions.queries.slot_map contract — NOT DimensionService.admit, which
+    stays exactly where it was (after estimate, a WRITE, run once per item so
+    a settle retry never double-admits). A key slot_map can't resolve, or a
+    scope mismatch (event.dimensions holding a task/subtask-scoped key), is
+    silently ignored here and caught for real by the admit() call a few
+    lines below in the caller — which rejects the item before it ever
+    becomes a hold, so a wrong estimate for such an item is never actually
+    charged.
+
+    task_meta / all_task_meta entries are the ``_TASK_META_CACHE`` tuple
+    shape: (customer_id_str_or_None, parent_id_str_or_None, task_type,
+    subtask_type, dim1..dim6, expires_monotonic) — index 0 customer_id
+    (existence sentinel), 1 parent_id, 2 task_type, 3 subtask_type, 4-9
+    dim1..dim6."""
+    event_dims = {dim_slot_map[k]: str(v) for k, v in (item.dimensions or {}).items()
+                  if k in dim_slot_map}
+    out = {"task_type": "", "subtask_type": ""}
+    out.update({s: event_dims.get(s, "") for s in SLOTS})
+    if item.task_id is None:
+        return out
+    leaf = task_meta.get(str(item.task_id))
+    if leaf is None or leaf[0] is None:  # sentinel: no such task
+        return out
+    parent_id = leaf[1]
+    if parent_id is None:
+        out["task_type"] = leaf[2]
+        chain = (leaf,)
+    else:
+        out["subtask_type"] = leaf[3]
+        parent = all_task_meta.get(parent_id)
+        out["task_type"] = parent[2] if parent else ""
+        chain = (leaf, parent) if parent else (leaf,)
+    for idx, slot in enumerate(SLOTS):
+        if out[slot]:
+            continue  # the event's own value wins
+        for unit in chain:
+            if unit and unit[4 + idx]:
+                out[slot] = unit[4 + idx]
+                break
     return out
 
 
@@ -438,6 +495,16 @@ def accept_batch(tenant, items):
                        if results[i] is None and i not in forced_replay
                        and items[i].task_id is not None}
     task_meta = _task_meta_for(tenant, task_ids_needed)
+    # Task 12 fix: accept-time estimation (below) needs the SAME task
+    # inheritance settle uses (_inherit_dimensions walks the leaf AND its
+    # parent) — one extra batched, cached read for this batch's parent_ids,
+    # not a query per event. Containment is one level (tasks/models.py),
+    # so this never recurses.
+    parent_ids_needed = {meta[1] for meta in task_meta.values()
+                         if meta[1] and meta[1] not in task_meta}
+    all_task_meta = task_meta
+    if parent_ids_needed:
+        all_task_meta = {**task_meta, **_task_meta_for(tenant, parent_ids_needed)}
     for i in range(n):
         # forced_replay items (effective_at replay-wins above) are already
         # known replays of accepted items — their task passed this check at
@@ -472,6 +539,10 @@ def accept_batch(tenant, items):
     hold_candidates: list = []   # (i, item, customer, owner_id, Estimate)
     append_only: list = []       # (i, item, customer, owner_id) idem-hit rows
     owner_stop_cache: dict = {}
+    # One read for the whole batch (Task 12 fix input #2): {declared key:
+    # slot}, so accept-time estimation can map item.dimensions the same way
+    # DimensionService.admit will a few lines below — without writing.
+    dim_slot_map = slot_map(tenant.id)
     for i in range(n):
         if results[i] is not None:  # forced_replay items are still None here
             continue
@@ -487,18 +558,19 @@ def accept_batch(tenant, items):
             append_only.append((i, item, customer, owner_id))
             continue
         try:
-            # task_type/subtask_type/dim1..dim6 aren't resolved yet at accept
-            # time (DimensionService.admit + task inheritance run below/at
-            # settle, Task 9/10) — only provider/event_type are known here, so
-            # those ten selectors wildcard at estimate. Settle re-prices with
-            # the full inherited selector set via usage_service.py, so a rate
-            # pinning task_type/dim1..dim6 is still applied correctly by the
-            # time money is actually charged; this estimate is a provisional
-            # hold amount, not the final price.
-            selectors = {"provider": item.provider or "", "event_type": item.event_type or "",
-                         "task_type": "", "subtask_type": "",
-                         "dim1": "", "dim2": "", "dim3": "",
-                         "dim4": "", "dim5": "", "dim6": ""}
+            # Task 12 fix: task_type/subtask_type/dim1..dim6 are resolved
+            # here the SAME way settle resolves them (usage_service.
+            # _inherit_dimensions) — from the batched task_meta/all_task_meta
+            # cache plus a read-only dimensions.queries.slot_map lookup for
+            # item.dimensions — so accept-time estimation and settle-time
+            # pricing agree on which rate matches. See
+            # _inherited_selectors_for_estimate's docstring for exactly what
+            # can still legitimately diverge (an unresolvable/scope-mismatched
+            # dimension key, caught by the real admit() call below, before
+            # the item ever becomes a hold).
+            selectors = {"provider": item.provider or "", "event_type": item.event_type or ""}
+            selectors.update(_inherited_selectors_for_estimate(
+                item, task_meta, all_task_meta, dim_slot_map))
             est = PricingService.estimate(
                 tenant, customer, selectors=selectors,
                 usage_metrics=item.usage_metrics,

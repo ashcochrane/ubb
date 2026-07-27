@@ -104,6 +104,66 @@ class NetsToExactTest(SettlementTestBase):
         self.assertEqual(OutboxEvent.objects.filter(event_type="usage.recorded").count(), 1)
 
 
+class AcceptSettleSelectorParityTest(SettlementTestBase):
+    """Task 12 regression, added on review: accept-time estimation and
+    settle-time pricing must resolve the SAME rate when a rate pins
+    task_type — not merely net to the same amount by coincidence of
+    per_unit/flat-only pricing.
+
+    Before the fix (ingest_accept.py wildcarding task_type/subtask_type/
+    dim1..dim6 at accept while usage_service.py resolved them for real at
+    settle), a rate pinning task_type could match a DIFFERENT rate at accept
+    than at settle — e.g. accept resolving a cheap provider-only wildcard
+    rate and holding too little while settle charges the real, more
+    expensive, task_type-pinned rate. That's an accept-time hard-stop gate
+    decision made on the wrong number — a spend-control bypass, not a ledger
+    wobble the hold true-up quietly absorbs.
+    """
+
+    def test_task_type_pinned_rate_matches_at_accept_and_settle(self):
+        task = Task.objects.create(
+            tenant=self.tenant, customer=self.customer, status="active",
+            balance_snapshot_micros=20_000_000, billing_owner_id=self.customer.id,
+            task_type="year_end_close")
+        # A broad provider-pinned rate a task_type-blind accept-time
+        # estimate would wrongly match instead of the specific one below.
+        rate_in_default_book(
+            self.tenant, card_type="price", provider="openai",
+            metric_name="tokens", pricing_model="per_unit",
+            rate_per_unit_micros=5_000_000)
+        # The rate that actually applies to this KIND of work (D3
+        # specificity: provider+task_type beats provider alone) — must win
+        # at BOTH accept (estimate) and settle (price).
+        rate_in_default_book(
+            self.tenant, card_type="price", provider="openai",
+            task_type="year_end_close", metric_name="tokens",
+            pricing_model="per_unit", rate_per_unit_micros=1_000_000)
+
+        resp = self._post([self._event(
+            task_id=str(task.id), provider="openai", billed_cost_micros=None,
+            usage_metrics={"tokens": 1_000_000})])
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["results"][0]["accepted"])
+
+        raw = RawIngestEvent.objects.get()
+        self.assertTrue(raw.held)
+        # The held ESTIMATE must already reflect the task_type-specific
+        # rate, not the generic one: 1,000,000, not 5,000,000. This is the
+        # accept-time number the hard-stop gate decision is made on.
+        self.assertEqual(raw.estimate_micros, 1_000_000)
+        self.assertTrue(raw.estimate_exact)
+
+        result = UsageService.settle_raw(raw)
+        self.assertEqual(result, "settled")
+        event = UsageEvent.objects.get()
+        self.assertEqual(event.billed_cost_micros, 1_000_000)
+
+        # The core async-design guarantee: what was held equals what was
+        # charged — not just both landing on 1,000,000 by inspection above,
+        # but the two numbers pinned equal to each other directly.
+        self.assertEqual(raw.estimate_micros, event.billed_cost_micros)
+
+
 class DuplicateSettleTest(SettlementTestBase):
     """(b) A second, independently-HELD raw sharing an idempotency_key (e.g.
     the Redis idem key expired between two accept requests, so the second one
