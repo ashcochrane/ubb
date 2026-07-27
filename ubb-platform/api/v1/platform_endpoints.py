@@ -137,11 +137,11 @@ def _plan_out(plan):
 @role_floor(ADMIN)
 @records_audit("plan.created")
 def create_plan(request, payload: PlanIn):
-    from apps.subscriptions.models import TenantBillingPlan
+    from apps.platform.plans.models import Plan
 
     try:
         with transaction.atomic():
-            plan = TenantBillingPlan.objects.create(
+            plan = Plan.objects.create(
                 tenant=request.auth.tenant,
                 key=payload.key,
                 name=payload.name,
@@ -171,7 +171,7 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
     """
-    from apps.subscriptions.models import TenantBillingPlan
+    from apps.platform.plans.models import Plan
     from apps.subscriptions.orchestration.service import (
         SubscriptionOrchestrator,
         OrchestrationError,
@@ -179,7 +179,7 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
     from core.exceptions import StripeFatalError
 
     tenant = request.auth.tenant
-    if not TenantBillingPlan.objects.filter(tenant=tenant, key=key).exists():
+    if not Plan.objects.filter(tenant=tenant, key=key).exists():
         raise Problem("not_found", f"plan with key '{key}' not found")
 
     try:
@@ -307,7 +307,7 @@ def resume_subscription(request, external_id: str):
 @role_floor(WRITE)
 @records_audit("subscription.created")
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
-    from apps.subscriptions.models import TenantBillingPlan
+    from apps.platform.plans.models import Plan
     from apps.subscriptions.orchestration.service import (
         SubscriptionOrchestrator,
         OrchestrationError,
@@ -318,7 +318,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     if customer is None:
         raise Problem("not_found", "customer not found")
 
-    plan = TenantBillingPlan.objects.filter(tenant=tenant, key=payload.plan_key).first()
+    plan = Plan.objects.filter(tenant=tenant, key=payload.plan_key).first()
     if plan is None:
         raise Problem("not_found", f"plan with key '{payload.plan_key}' not found")
 

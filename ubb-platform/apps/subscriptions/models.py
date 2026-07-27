@@ -81,28 +81,6 @@ class SubscriptionInvoice(BaseModel):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"
 
 
-class TenantBillingPlan(BaseModel):
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="billing_plans")
-    key = models.CharField(max_length=64)
-    name = models.CharField(max_length=255)
-    access_fee_micros = models.BigIntegerField(default=0)
-    per_seat_micros = models.BigIntegerField(default=0)
-    interval = models.CharField(max_length=5, default="month")  # month|year
-    stripe_access_product_id = models.CharField(max_length=255, blank=True, default="")
-    stripe_access_price_id = models.CharField(max_length=255, blank=True, default="")
-    stripe_seat_product_id = models.CharField(max_length=255, blank=True, default="")
-    stripe_seat_price_id = models.CharField(max_length=255, blank=True, default="")
-    provisioned_at = models.DateTimeField(null=True, blank=True)
-    # F5.4: bumped once per update_plan_prices call that re-prices a provisioned
-    # axis. New Stripe Prices are keyed plan-price-{axis}-{plan.id}-v{version};
-    # existing subscriptions keep their old price (grandfathered) unless migrated.
-    pricing_version = models.PositiveIntegerField(default=1)
-
-    class Meta:
-        db_table = "ubb_billing_plan"
-        constraints = [models.UniqueConstraint(fields=["tenant", "key"], name="uq_billing_plan_tenant_key")]
-
-
 class CustomerSubscriptionItem(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="sub_items")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="sub_items")
@@ -114,7 +92,7 @@ class CustomerSubscriptionItem(BaseModel):
     stripe_price_id = models.CharField(max_length=255)
     unit_amount_micros = models.BigIntegerField(default=0)
     quantity = models.IntegerField(default=1)
-    plan = models.ForeignKey(TenantBillingPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    plan = models.ForeignKey("plans.Plan", on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         db_table = "ubb_customer_sub_item"

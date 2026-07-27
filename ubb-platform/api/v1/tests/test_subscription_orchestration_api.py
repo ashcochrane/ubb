@@ -13,8 +13,8 @@ from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.plans.models import Plan
 from apps.subscriptions.models import (
-    TenantBillingPlan,
     CustomerSubscriptionItem,
     StripeSubscription,
 )
@@ -93,7 +93,7 @@ class TestSubscriptionOrchestrationAPI:
         assert data["key"] == "pro"
         assert data["access_fee_micros"] == 50_000_000
         assert data["per_seat_micros"] == 8_000_000
-        assert TenantBillingPlan.objects.filter(tenant=self.tenant, key="pro").exists()
+        assert Plan.objects.filter(tenant=self.tenant, key="pro").exists()
 
     def test_create_plan_duplicate_key_returns_409_conflict(self):
         assert self._make_plan().status_code == 201
@@ -136,7 +136,7 @@ class TestSubscriptionOrchestrationAPI:
         # tenant without a connected account / charges_enabled -> OrchestrationError
         t2 = Tenant.objects.create(name="Poor", products=["metering"])
         _, raw2 = TenantApiKey.create_key(t2)
-        TenantBillingPlan.objects.create(tenant=t2, key="pro", name="Pro",
+        Plan.objects.create(tenant=t2, key="pro", name="Pro",
                                          access_fee_micros=50_000_000)
         Customer.objects.create(tenant=t2, external_id="biz2")
         resp = self.client.post(

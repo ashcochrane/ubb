@@ -106,8 +106,8 @@ class SubscribeTaxErrorSurfacingTest(TestCase):
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1")
-        from apps.subscriptions.models import TenantBillingPlan
-        self.plan = TenantBillingPlan.objects.create(
+        from apps.platform.plans.models import Plan
+        self.plan = Plan.objects.create(
             tenant=self.tenant, key="pro", name="Pro",
             access_fee_micros=50_000_000, interval="month",
             stripe_access_price_id="price_a",

@@ -12,10 +12,10 @@ from django.utils import timezone
 
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from apps.platform.plans.models import Plan
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
-    TenantBillingPlan,
 )
 from apps.subscriptions.orchestration.seats import seat_count
 
@@ -25,7 +25,7 @@ def _business_with_sub(seats=2, status="active"):
                               stripe_connected_account_id="acct_x", charges_enabled=True)
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
                                   billing_topology="pooled", stripe_customer_id="cus_biz")
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
                                             per_seat_micros=8_000_000)
     now = timezone.now()
     sub = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",

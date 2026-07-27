@@ -487,11 +487,12 @@ def _currency_locked_reason(t):
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.wallets.models import WalletTransaction
     from apps.metering.pricing.models import Rate
-    from apps.subscriptions.models import StripeSubscription, TenantBillingPlan
+    from apps.platform.plans.models import Plan
+    from apps.subscriptions.models import StripeSubscription
 
     if WalletTransaction.objects.filter(wallet__customer__tenant=t).exists():
         return "wallet transactions exist"
-    if TenantBillingPlan.objects.filter(tenant=t).exclude(
+    if Plan.objects.filter(tenant=t).exclude(
             stripe_access_price_id="", stripe_seat_price_id="").exists():
         return "a billing plan has provisioned Stripe Prices"
     if CustomerUsageInvoice.objects.filter(tenant=t).filter(

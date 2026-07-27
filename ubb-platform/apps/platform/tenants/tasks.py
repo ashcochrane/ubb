@@ -35,7 +35,7 @@ _SKIP_LABELS = frozenset({
 CONFIG_MODEL_LABELS = frozenset({
     "pricing.Rate",
     "pricing.TenantMarkup",
-    "subscriptions.TenantBillingPlan",
+    "plans.Plan",
     "subscriptions.MarginThresholdConfig",
     "gating.BudgetConfig",
     "gating.RiskConfig",

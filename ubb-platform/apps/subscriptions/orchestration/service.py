@@ -27,11 +27,11 @@ from apps.billing.stripe.services.stripe_service import (
     micros_to_cents,
     stripe_call,
 )
+from apps.platform.plans.models import Plan
 from apps.platform.queries import get_tenant_stripe_account
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
-    TenantBillingPlan,
 )
 from apps.subscriptions.stripe.items import (
     _period_end,
@@ -84,7 +84,7 @@ class SubscriptionOrchestrator:
     """Stateless orchestration entrypoints (all classmethods)."""
 
     @classmethod
-    def ensure_plan_provisioned(cls, plan: TenantBillingPlan):
+    def ensure_plan_provisioned(cls, plan: Plan):
         """Idempotently create a Stripe Product + Price per non-zero axis.
 
         Each axis (access, seat) gets its own Product/Price on the connected
@@ -145,7 +145,7 @@ class SubscriptionOrchestrator:
         return plan
 
     @classmethod
-    def subscribe(cls, customer, plan: TenantBillingPlan, seats: int) -> StripeSubscription:
+    def subscribe(cls, customer, plan: Plan, seats: int) -> StripeSubscription:
         """Create the Stripe Subscription on the connected account + mirror it.
 
         Routes money through the billing OWNER (pooled seat -> business). Ensures
@@ -206,7 +206,7 @@ class SubscriptionOrchestrator:
         return cls._persist_mirror(tenant, owner, plan, sub)
 
     @classmethod
-    def set_seats(cls, business, plan: TenantBillingPlan, new_seats: int, *, change_event_id):
+    def set_seats(cls, business, plan: Plan, new_seats: int, *, change_event_id):
         """Push a new seat quantity to Stripe with proration + update the mirror row."""
         tenant = plan.tenant
         _require_charge_ready(tenant)
@@ -370,7 +370,7 @@ class SubscriptionOrchestrator:
         lazy provisioning (ensure_plan_provisioned) reads the current fee.
         Replaying with the same fees is a no-op (no Price, no version bump).
         """
-        plan = TenantBillingPlan.objects.filter(tenant=tenant, key=plan_key).first()
+        plan = Plan.objects.filter(tenant=tenant, key=plan_key).first()
         if plan is None:
             raise OrchestrationError(f"plan with key '{plan_key}' not found")
 

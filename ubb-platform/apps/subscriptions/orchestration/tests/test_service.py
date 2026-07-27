@@ -2,7 +2,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import TenantBillingPlan, CustomerSubscriptionItem, StripeSubscription
+from apps.platform.plans.models import Plan
+from apps.subscriptions.models import CustomerSubscriptionItem, StripeSubscription
 from apps.subscriptions.orchestration.service import SubscriptionOrchestrator, OrchestrationError
 
 
@@ -13,7 +14,7 @@ def _charge_ready_tenant():
 @pytest.mark.django_db
 def test_ensure_plan_provisioned_creates_products_prices_once():
     t = _charge_ready_tenant()
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month")
     with patch("apps.subscriptions.orchestration.service.stripe.Product.create",
                side_effect=[MagicMock(id="prod_a"), MagicMock(id="prod_s")]) as mp, \
@@ -32,7 +33,7 @@ def test_ensure_plan_provisioned_creates_products_prices_once():
 def test_subscribe_creates_two_items_and_mirror():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month",
         stripe_access_price_id="price_a", stripe_seat_price_id="price_s", provisioned_at="2026-01-01T00:00:00Z")
     fake_sub = {"id": "sub_1", "status": "active", "currency": "usd",
@@ -49,7 +50,7 @@ def test_subscribe_creates_two_items_and_mirror():
 def test_set_seats_modifies_quantity_with_proration():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro", per_seat_micros=8_000_000)
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro", per_seat_micros=8_000_000)
     sub = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=80_000_000, quantity=10, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
@@ -66,7 +67,7 @@ def test_set_seats_modifies_quantity_with_proration():
 def test_set_seats_refreshes_mirror_without_webhook():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro", per_seat_micros=2_000_000)
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro", per_seat_micros=2_000_000)
     mirror = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=5_000_000, quantity=2, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
@@ -90,7 +91,7 @@ def test_set_seats_refreshes_mirror_without_webhook():
 def test_ensure_plan_provisioned_uses_tenant_currency():
     t = Tenant.objects.create(name="EUR", products=["metering", "billing"],
         stripe_connected_account_id="acct_T", charges_enabled=True, default_currency="eur")
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month")
     with patch("apps.subscriptions.orchestration.service.stripe.Product.create",
                side_effect=[MagicMock(id="prod_a"), MagicMock(id="prod_s")]), \
@@ -105,6 +106,6 @@ def test_ensure_plan_provisioned_uses_tenant_currency():
 @pytest.mark.django_db
 def test_not_charge_ready_raises():
     t = Tenant.objects.create(name="T", products=["metering"])  # no connected acct / charges_enabled
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro", access_fee_micros=50_000_000)
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro", access_fee_micros=50_000_000)
     with pytest.raises(OrchestrationError):
         SubscriptionOrchestrator.ensure_plan_provisioned(plan)

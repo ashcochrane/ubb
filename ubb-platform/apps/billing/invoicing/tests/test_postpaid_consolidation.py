@@ -54,8 +54,9 @@ def _customer(t, external_id="c1", stripe_customer_id="cus_1"):
 
 
 def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
+    from apps.platform.plans.models import Plan
     from apps.subscriptions.models import (
-        CustomerSubscriptionItem, StripeSubscription, TenantBillingPlan)
+        CustomerSubscriptionItem, StripeSubscription)
     now = timezone.now()
     sub = StripeSubscription.objects.create(
         tenant=t, customer=c, stripe_subscription_id=sub_id,
@@ -64,7 +65,7 @@ def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
         current_period_end=now, last_synced_at=now, paused=paused)
     plan = None
     if with_plan:
-        plan = TenantBillingPlan.objects.create(
+        plan = Plan.objects.create(
             tenant=t, key=f"pro-{sub_id}", name="Pro", access_fee_micros=49_000_000)
     CustomerSubscriptionItem.objects.create(
         tenant=t, customer=c, stripe_subscription=sub,
