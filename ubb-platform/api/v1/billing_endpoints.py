@@ -231,20 +231,26 @@ def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
             "balance_micros": result.balance_micros}
 
 
-@billing_router.post("/pre-check", response=PreCheckResponse)
+@billing_router.post("/pre-check", response={200: PreCheckResponse, 422: ProblemOut})
 @role_floor(WRITE)
 def pre_check(request, payload: PreCheckRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    result = RiskService.check(
-        customer,
-        create_task=payload.start_task,
-        task_metadata=payload.task_metadata,
-        external_task_id=payload.external_task_id,
-        provider_cost_limit_micros=payload.provider_cost_limit_micros,
-        parent_task_id=payload.parent_task_id,
-    )
-    return result
+    try:
+        result = RiskService.check(
+            customer,
+            create_task=payload.start_task,
+            task_metadata=payload.task_metadata,
+            external_task_id=payload.external_task_id,
+            provider_cost_limit_micros=payload.provider_cost_limit_micros,
+            parent_task_id=payload.parent_task_id,
+            task_type=payload.task_type,
+            subtask_type=payload.subtask_type,
+            dimensions=payload.dimensions,
+        )
+    except ValueError as exc:
+        raise Problem("validation_error", str(exc))
+    return 200, result
 
 
 @billing_router.post("/customers/{customer_id}/refund", response=RefundResponse)

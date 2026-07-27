@@ -29,6 +29,16 @@ class PreCheckRequest(Schema):
     # default_subtask_provider_cost_limit_micros when parent_task_id is set);
     # absent both, the unit is uncapped and no signal ever fires.
     provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    # The declared KIND of work (design D7). Resolves the server-side COGS
+    # ceiling; a caller may request lower via provider_cost_limit_micros but
+    # never higher.
+    task_type: Optional[str] = Field(default=None, max_length=64)
+    # Set instead of task_type when parent_task_id is present.
+    subtask_type: Optional[str] = Field(default=None, max_length=64)
+    # Declared dimension values at task/subtask scope, inherited by every event
+    # in the tree (design D6). Keys must be declared; values are cardinality-
+    # capped on write.
+    dimensions: dict = Field(default_factory=dict)
 
 
 class PreCheckResponse(Schema):
@@ -48,6 +58,8 @@ class PreCheckResponse(Schema):
     parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
     floor_snapshot_micros: Optional[int] = None
+    task_type: Optional[str] = None
+    subtask_type: Optional[str] = None
 
 
 class RecordUsageRequest(Schema):

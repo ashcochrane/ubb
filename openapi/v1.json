@@ -3165,6 +3165,11 @@
             "title": "Customer Id",
             "type": "string"
           },
+          "dimensions": {
+            "additionalProperties": true,
+            "title": "Dimensions",
+            "type": "object"
+          },
           "external_task_id": {
             "default": "",
             "title": "External Task Id",
@@ -3199,6 +3204,18 @@
             "title": "Start Task",
             "type": "boolean"
           },
+          "subtask_type": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtask Type"
+          },
           "task_metadata": {
             "anyOf": [
               {
@@ -3210,6 +3227,18 @@
               }
             ],
             "title": "Task Metadata"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Type"
           }
         },
         "required": [
@@ -3279,6 +3308,17 @@
             ],
             "title": "Reason"
           },
+          "subtask_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtask Type"
+          },
           "task_id": {
             "anyOf": [
               {
@@ -3289,6 +3329,17 @@
               }
             ],
             "title": "Task Id"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Type"
           }
         },
         "required": [
@@ -7481,6 +7532,16 @@
               }
             },
             "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [

@@ -6,8 +6,58 @@ from apps.billing.gating.models import RiskConfig
 
 class RiskService:
     @staticmethod
+    def resolve_type_policy(tenant, *, task_type, subtask_type, dimensions,
+                            requested_limit_micros, is_subtask):
+        """Validate the declared type + dimensions and resolve the ceiling.
+
+        Precedence (design D7): caller request (only if <= the type default) ->
+        type default -> RiskConfig tenant default -> uncapped. Returns
+        (key, slot_values, limit_micros); a None limit means "no type-level
+        opinion" — the caller applies the existing RiskConfig fallback.
+        """
+        from apps.platform.dimensions.services import DimensionError, DimensionService
+        from apps.platform.tasks.queries import task_type_policy
+
+        kind = "subtask" if is_subtask else "task"
+        key = (subtask_type if is_subtask else task_type) or ""
+        policy = None
+        if key:
+            policy = task_type_policy(tenant.id, key, kind)
+            if policy is None:
+                raise ValueError(f"{kind}_type {key!r} is not declared")
+            if policy["retired"]:
+                raise ValueError(f"{kind}_type {key!r} is retired")
+
+        scope = "subtask" if is_subtask else "task"
+        try:
+            slot_values = DimensionService.admit(tenant, dimensions or {}, scope=scope)
+        except DimensionError as exc:
+            raise ValueError(str(exc)) from exc
+
+        if policy:
+            supplied = set((dimensions or {}).keys())
+            missing = [d for d in policy["required_dimensions"] if d not in supplied]
+            if missing:
+                raise ValueError(
+                    f"{kind}_type {key!r} missing required dimension(s): {missing}")
+
+        type_default = policy["default_provider_cost_limit_micros"] if policy else None
+        if requested_limit_micros is not None:
+            if type_default is not None and requested_limit_micros > type_default:
+                raise ValueError(
+                    f"provider_cost_limit_micros {requested_limit_micros} exceeds "
+                    f"the {kind}_type ceiling {type_default}")
+            limit = requested_limit_micros
+        elif type_default is not None:
+            limit = type_default
+        else:
+            limit = None  # the existing RiskConfig fallback applies downstream
+        return key, slot_values, limit
+
+    @staticmethod
     def check(customer, create_task=False, task_metadata=None, external_task_id="",
-              provider_cost_limit_micros=None, parent_task_id=None):
+              provider_cost_limit_micros=None, parent_task_id=None,
+              task_type=None, subtask_type=None, dimensions=None):
         from apps.billing.accounts import resolve_billing_owner
         owner = resolve_billing_owner(customer)
         # Status: gate if the seat OR its billing-owner (business) is suspended/closed
@@ -129,10 +179,22 @@ class RiskService:
                     if active_tasks >= config.max_concurrent_requests:
                         return {"allowed": False, "reason": "concurrency_limit",
                                 "balance_micros": balance, "task_id": None}
+                # Design D7: the ceiling belongs to the declared KIND of work,
+                # server-side — a caller may request lower, never higher.
+                # Raises ValueError (caught by the endpoint) on an undeclared/
+                # retired type, a missing required dimension, or a request
+                # above the type's ceiling.
+                resolved_key, slot_values, provider_cost_limit_micros = (
+                    RiskService.resolve_type_policy(
+                        customer.tenant, task_type=task_type,
+                        subtask_type=subtask_type, dimensions=dimensions,
+                        requested_limit_micros=provider_cost_limit_micros,
+                        is_subtask=parent is not None))
                 # One-rule (#37): the limit is COGS-denominated — passed at
-                # start, tenant default as fallback (#38: subtasks fall back
-                # to the subtask default); absent both, the unit is uncapped
-                # and no signal ever fires.
+                # start (or resolved from the task type above), tenant default
+                # as fallback (#38: subtasks fall back to the subtask
+                # default); absent all three, the unit is uncapped and no
+                # signal ever fires.
                 if provider_cost_limit_micros is None and config is not None:
                     provider_cost_limit_micros = (
                         config.default_subtask_provider_cost_limit_micros
@@ -163,10 +225,18 @@ class RiskService:
                     external_task_id=external_task_id,
                     # Tier-2 (D4/I6): pin the resolved billing owner on the task.
                     billing_owner_id=owner.id,
+                    # Design D7/D6: the root's type is what events inherit
+                    # (Task 10), so only ONE of task_type/subtask_type is
+                    # ever non-empty on a given row.
+                    task_type=resolved_key if parent is None else "",
+                    subtask_type=resolved_key if parent is not None else "",
+                    dimension_slots=slot_values,
                 )
             result["task_id"] = str(task.id)
             result["parent_task_id"] = str(parent.id) if parent else None
             result["provider_cost_limit_micros"] = task.provider_cost_limit_micros
             result["floor_snapshot_micros"] = task.floor_snapshot_micros
+            result["task_type"] = task.task_type or None
+            result["subtask_type"] = task.subtask_type or None
 
         return result
