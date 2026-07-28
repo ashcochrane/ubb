@@ -35,3 +35,22 @@ class BudgetEndpointsTest(TestCase):
         assert r.status_code == 200
         b = r.json()
         assert "spend_micros" in b and "cap_micros" in b and "pct" in b and "period" in b
+
+    def test_put_customer_budget_rejects_unknown_enforce_mode(self):
+        # Pre-fix, an old/foreign vocabulary value (e.g. "enforcing") wrote
+        # straight through update_or_create with no choices validation on
+        # save() — 200, silently stored, and crossing.py's
+        # budget_stop_threshold treats anything != "blocking" as non-
+        # blocking, so the budget could never fire. Must be a 422, not a 200.
+        r = self.http.put(f"/api/v1/billing/customers/{self.customer.id}/budget",
+                          data=json.dumps({"cap_micros": 1_000_000, "enforce_mode": "enforcing"}),
+                          content_type="application/json", **self._auth())
+        assert r.status_code == 422
+        from apps.billing.gating.models import BudgetConfig
+        assert not BudgetConfig.objects.filter(tenant=self.tenant, customer=self.customer).exists()
+
+    def test_put_tenant_budget_rejects_unknown_enforce_mode(self):
+        r = self.http.put("/api/v1/billing/budget",
+                          data=json.dumps({"cap_micros": 1_000_000, "enforce_mode": "bogus"}),
+                          content_type="application/json", **self._auth())
+        assert r.status_code == 422

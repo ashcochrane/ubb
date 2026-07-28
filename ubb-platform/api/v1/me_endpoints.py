@@ -39,6 +39,13 @@ class MeBalanceResponse(Schema):
     promo_micros: Optional[int] = None
     expiring_micros: Optional[int] = None
     next_expiry_at: Optional[str] = None
+    # Pooled-seat disclosure (Task 9 finding B): this balance is the
+    # RESOLVED BILLING OWNER's — reuses the same two fields the tenant
+    # surface's GET /billing/customers/{id}/balance already discloses, so a
+    # pooled seat's widget can label the number "your business's balance"
+    # instead of implying it is the seat's own.
+    is_pooled_seat: bool = False
+    billing_owner_external_id: str = ""
 
 
 class GrantSummaryOut(Schema):
@@ -203,19 +210,45 @@ class UsageSummaryResponse(Schema):
 
 @me_router.get("/balance", response=MeBalanceResponse)
 def get_balance(request):
+    """A pooled seat's balance IS the billing owner's (Task 9 finding B):
+    Task 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on
+    a seat id at all, and ``start_top_up`` pins every top-up's credit to
+    ``customer.resolve_billing_owner()`` — so a seat's OWN wallet row can
+    never exist, even right after that seat pays. Reading ``customer``
+    directly here used to 404 into a fabricated ``balance_micros: 0`` that
+    never changed no matter how much the seat topped up. Resolve to the
+    owner instead, exactly like the tenant surface's GET
+    /billing/customers/{id}/balance, and disclose ownership
+    (``is_pooled_seat`` / ``billing_owner_external_id``, the same two
+    fields that surface already returns) so the widget can label the number
+    "your business's balance" rather than implying it is the seat's own.
+
+    This does NOT extend to /me/grants or /me/transactions below: those are
+    ITEMIZED lists (individual lots/lines with amounts and timing), and
+    resolving them to the owner would show one seat every sibling seat's
+    financial activity — the exact leak their docstrings are written to
+    avoid. A balance is one aggregate number, not sibling-attributed detail,
+    so disclosing it does not cross the same privacy line.
+    """
     _check_billing_product(request)
     customer = request.widget_customer
+    owner = customer.resolve_billing_owner()
+    owner_disclosure = {"is_pooled_seat": owner.id != customer.id,
+                        "billing_owner_external_id": owner.external_id}
     from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet
     try:
-        wallet = Wallet.objects.get(customer=customer)
+        wallet = Wallet.objects.get(customer=owner)
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
-                **wallet_ops.balance_summary(wallet)}
+                **wallet_ops.balance_summary(wallet), **owner_disclosure}
     except Wallet.DoesNotExist:
         # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
+        # A genuinely untouched owner (never topped up) legitimately has no
+        # wallet yet — this 0 is honest, not the seat-vs-owner defect above.
         return {"balance_micros": 0,
                 "currency": (request.widget_tenant.default_currency or "usd").lower(),
-                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None}
+                "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None,
+                **owner_disclosure}
 
 
 @me_router.get("/grants", response=GrantListResponse)
@@ -226,10 +259,14 @@ def list_grants(request, cursor: str = None, limit: int = 50):
     from soonest-expiring to the standard creation keyset so the cursor is
     real).
 
-    Seat-scoping decision: own-wallet basis, matching the /me/balance
-    precedent — a pooled seat (whose money lives on the business owner's
-    wallet) sees an empty list here rather than the shared business lots,
-    exactly as /me/balance shows the seat's own (empty) wallet.
+    Seat-scoping decision: own-wallet basis — deliberately NOT resolved to
+    the billing owner the way /me/balance now is (Task 9 finding B). A grant
+    list is ITEMIZED (individual lots, each with its own amount/expiry); a
+    pooled seat reading the owner's grants would see every sibling seat's
+    lots, not just an aggregate figure. So this stays seat-scoped and,
+    since Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's
+    own wallet can never exist, always answers an honest empty page for a
+    seat — never the shared business lots.
     """
     _check_billing_product(request)
     customer = request.widget_customer
@@ -243,6 +280,14 @@ def list_grants(request, cursor: str = None, limit: int = 50):
 
 @me_router.get("/transactions", response=PaginatedTransactions)
 def get_transactions(request, cursor: str = None, limit: int = 50):
+    """Ledger lines on the customer's OWN wallet — same seat-scoping call as
+    /me/grants, for the same reason: a transaction list is line-by-line
+    itemized detail, so resolving it to the billing owner would show a
+    pooled seat every sibling seat's individual top-ups/debits. Stays
+    seat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's
+    own wallet can never exist, so this always answers an honest empty page
+    for a seat rather than the shared business ledger.
+    """
     _check_billing_product(request)
     customer = request.widget_customer
 

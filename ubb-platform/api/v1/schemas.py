@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
+from typing import Literal, Optional
 
 from ninja import Schema, Field
 from pydantic import field_validator
@@ -543,7 +543,12 @@ class UsageTimeseriesResponse(Schema):
 
 class BudgetConfigIn(Schema):
     cap_micros: int = Field(ge=0)
-    enforce_mode: str = "alert_only"
+    # Must match apps.billing.gating.models.BUDGET_ENFORCE_MODES — the model
+    # field's `choices` alone never gets enforced (Django doesn't validate
+    # choices on save()), so an out-of-vocabulary value used to persist
+    # silently and could never cross (crossing.py's budget_stop_threshold
+    # treats anything != "blocking" as non-blocking).
+    enforce_mode: Literal["alert_only", "blocking"] = "alert_only"
     hard_stop_pct: int = Field(default=100, ge=1, le=1000)
     alert_levels: Optional[list[int]] = None
     fail_closed: bool = False
