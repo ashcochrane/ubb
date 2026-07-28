@@ -72,3 +72,18 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required pr
 # may raise, never lower). A bare removal or rename below this line is a contract
 # breach, not a CI escape hatch. See docs/api-compatibility.md.
 # ============================================================================
+
+# 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE, not a deprecation:
+# the api-v1-launch tag (2026-07-22) exists, but no tenant is integrated against
+# v1, so these are hand-coordinated pre-launch breaks. That status is recorded
+# explicitly in docs/api-compatibility.md, which also names the day the note is
+# deleted — from the first live tenant, §4's deprecate-then-remove cycle governs
+# and entries below this boundary need real deprecation evidence.
+#
+# enforce_mode is constrained to its two real values. The model's `choices` was
+# never enforced (Django does not validate choices on save()), so an
+# out-of-vocabulary value persisted silently and could never cross —
+# crossing.py treats anything != "blocking" as non-blocking. Narrowing the
+# schema turns that silent no-op into a 422:
+PUT /api/v1/billing/budget request property `enforce_mode` was restricted to a list of enum values
+PUT /api/v1/billing/customers/{customer_id}/budget request property `enforce_mode` was restricted to a list of enum values

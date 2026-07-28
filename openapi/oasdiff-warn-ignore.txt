@@ -52,3 +52,17 @@ POST /api/v1/metering/usage/ingest removed the request property `events/items/pr
 # may raise, never lower). A bare removal or rename below this line is a contract
 # breach, not a CI escape hatch. See docs/api-compatibility.md.
 # ============================================================================
+
+# 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE — see the matching
+# header in oasdiff-err-ignore.txt for the api-v1-launch status and its rationale.
+#
+# The per-task floor snapshot is removed outright. It read a tenant-wide constant
+# rather than the customer's own min_balance_micros, and compared it against a
+# balance frozen at task start — so a mid-task top-up was invisible to it and it
+# could kill a task for a customer who had just paid. The durable drawdown lane
+# already detects the real floor crossing and fires customer_wide_stop, which is
+# the correct scope for a wallet-wide fact:
+POST /api/v1/billing/pre-check removed the optional property `floor_snapshot_micros` from the response with the `200` status
+GET /api/v1/tenant/config removed the optional property `default_task_floor_snapshot_micros` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the request property `default_task_floor_snapshot_micros`
+PATCH /api/v1/tenant/config removed the optional property `default_task_floor_snapshot_micros` from the response with the `200` status

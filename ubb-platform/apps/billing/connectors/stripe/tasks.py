@@ -46,13 +46,28 @@ def charge_auto_topup_task(attempt_id):
     from apps.billing.topups.models import AutoTopUpConfig
     from apps.billing.topups.services import AutoTopUpService
 
+    # Task 8b (sweep): lock/read the PINNED billing owner, not attempt.customer_id.
+    # For every auto-topup attempt today `customer_id == billing_owner_id` by
+    # construction (create_pending_attempt is only ever called from
+    # handle_balance_low_stripe, which locks the owner id off the BalanceLow
+    # event) — so this was never reachable with a seat id. But every other
+    # money-adjacent read in this codebase now trusts the pinned field rather
+    # than an invariant living two call frames away, and lock_for_billing's
+    # Task 8c guard would refuse a seat id here anyway. Same NULL-refusal
+    # failure mode as the credit/clawback call sites.
+    if attempt.billing_owner_id is None:
+        raise RuntimeError(
+            f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+            "refusing to lock/charge rather than risk touching the seat's wallet")
+    owner_id = attempt.billing_owner_id
+
     # Pre-charge guard (under lock): skip if already processed OR already funded past the trigger.
     with transaction.atomic():
-        wallet, customer = lock_for_billing(attempt.customer_id)
+        wallet, customer = lock_for_billing(owner_id)
         attempt = lock_top_up_attempt(attempt.id)
         if attempt.status != "pending":
             return
-        cfg = AutoTopUpConfig.objects.filter(customer_id=attempt.customer_id, is_enabled=True).first()
+        cfg = AutoTopUpConfig.objects.filter(customer_id=owner_id, is_enabled=True).first()
         threshold = cfg.trigger_threshold_micros if cfg else 0
         if wallet.balance_micros >= threshold:
             attempt.status = "superseded"

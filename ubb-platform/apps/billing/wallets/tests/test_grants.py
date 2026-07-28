@@ -259,7 +259,8 @@ class TestTopUpGrants:
                                   billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        a = TopUpAttempt.objects.create(customer=c, amount_micros=20_000_000,
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=20_000_000,
                                         trigger="auto_topup", status="pending")
         pi = MagicMock(id="pi_g1", latest_charge=MagicMock(id="ch_g1"))
         assert AutoTopUpService.apply_topup_credit(a, pi) is True
@@ -284,7 +285,8 @@ class TestTopUpGrants:
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
         CustomerBillingProfile.objects.create(customer=c, topup_grant_expiry_days=30)
-        a = TopUpAttempt.objects.create(customer=c, amount_micros=5_000_000,
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=5_000_000,
                                         trigger="auto_topup", status="pending")
         pi = MagicMock(id="pi_g2", latest_charge=MagicMock(id="ch_g2"))
         before = timezone.now()
@@ -301,7 +303,8 @@ class TestTopUpGrants:
         c = Customer.objects.create(tenant=t, external_id="c1",
                                     stripe_customer_id="cus_g1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        a = TopUpAttempt.objects.create(customer=c, amount_micros=1_000_000,
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=1_000_000,
                                         trigger="manual", status="pending")
         event = MagicMock()
         event.account = "acct_g1"
@@ -341,7 +344,7 @@ class TestClawbackCascade:
                                     stripe_customer_id="cus_d1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
         attempt = TopUpAttempt.objects.create(
-            customer=c, amount_micros=20_000_000, trigger="manual",
+            customer=c, billing_owner_id=c.id, amount_micros=20_000_000, trigger="manual",
             status="succeeded", stripe_charge_id="ch_d1")
         a_far = timezone.now() + timedelta(days=30)
         b_near = timezone.now() + timedelta(days=2)
@@ -408,7 +411,7 @@ class TestClawbackCascade:
                                     stripe_customer_id="cus_r1")
         w = Wallet.objects.create(customer=c, balance_micros=50_000_000)  # base 50
         attempt = TopUpAttempt.objects.create(
-            customer=c, amount_micros=20_000_000, trigger="manual",
+            customer=c, billing_owner_id=c.id, amount_micros=20_000_000, trigger="manual",
             status="succeeded", stripe_charge_id="ch_r1")
         g = _make_grant(w, t, kind="paid", amount=20_000_000,
                         source="checkout", source_reference=str(attempt.id))

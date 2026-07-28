@@ -93,6 +93,7 @@ class WebhookDispatcherTest(TestCase):
         wallet = Wallet.objects.create(customer=customer)
         attempt = TopUpAttempt.objects.create(
             customer=customer,
+            billing_owner_id=customer.id,
             amount_micros=1_000_000,
             trigger=attempt_trigger,
             status=attempt_status,
@@ -180,7 +181,8 @@ class HandleCheckoutCompletedTest(TestCase):
         )
         self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=0)
         self.attempt = TopUpAttempt.objects.create(
-            customer=self.customer, amount_micros=1_000_000,
+            customer=self.customer, billing_owner_id=self.customer.id,
+            amount_micros=1_000_000,
             trigger="manual", status="pending",
         )
 
@@ -248,6 +250,136 @@ class HandleCheckoutCompletedTest(TestCase):
         )
 
 
+class PooledSeatTopUpWebhookTest(TestCase):
+    """Task 7 — checkout.session.completed must credit the billing OWNER's
+    wallet, never the seat's, even though the credit lands via a webhook
+    long after the request that started the top-up. This async boundary is
+    what makes this instance worse than the five synchronous writes Task 3
+    already fixed: a synchronous test would not catch a regression here."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.tenant = Tenant.objects.create(
+            name="Pooled Webhook Tenant", stripe_connected_account_id="acct_pooled",
+        )
+
+    def _pooled_seat(self, stripe_customer_id):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id=f"biz_{stripe_customer_id}",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id=f"seat_{stripe_customer_id}",
+            account_type="seat", parent=biz, stripe_customer_id=stripe_customer_id)
+        return biz, seat
+
+    def _event(self, customer_stripe_id, attempt, amount_total=100, session_id="cs_pooled_1"):
+        event = MagicMock()
+        event.account = self.tenant.stripe_connected_account_id
+        event.data.object.payment_status = "paid"
+        event.data.object.customer = customer_stripe_id
+        event.data.object.client_reference_id = str(attempt.id) if attempt else ""
+        event.data.object.amount_total = amount_total
+        event.data.object.id = session_id
+        event.data.object.payment_intent = None
+        return event
+
+    def test_webhook_credits_business_wallet_not_seat(self):
+        """The load-bearing assertion: the business's wallet moves, and no
+        phantom wallet is ever created on the seat."""
+        biz, seat = self._pooled_seat("cus_seat_1")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=0)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=biz.id,
+            amount_micros=1_000_000, trigger="manual", status="pending")
+
+        event = self._event("cus_seat_1", attempt, session_id="cs_pooled_1")
+        handle_checkout_completed(event)
+
+        biz_wallet.refresh_from_db()
+        self.assertEqual(biz_wallet.balance_micros, 1_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, "succeeded")
+
+    def test_webhook_via_full_dispatcher_credits_business_wallet(self):
+        """Same assertion, driven through the actual HTTP webhook endpoint
+        (signature verification mocked) — the most faithful rendition of
+        "the webhook path", matching WebhookDispatcherTest's own harness."""
+        biz, seat = self._pooled_seat("cus_seat_2")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=0)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=biz.id,
+            amount_micros=2_000_000, trigger="manual", status="pending")
+
+        event = self._event("cus_seat_2", attempt, amount_total=200,
+                            session_id="cs_pooled_dispatch")
+        event.type = "checkout.session.completed"
+        event.id = "evt_pooled_dispatch"
+
+        with patch("api.v1.webhooks.stripe.Webhook.construct_event", return_value=event):
+            request = self.factory.post(
+                "/api/v1/webhooks/stripe/", content_type="application/json")
+            response = stripe_webhook(request)
+
+        self.assertEqual(response.status_code, 200)
+        biz_wallet.refresh_from_db()
+        self.assertEqual(biz_wallet.balance_micros, 2_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+    def test_webhook_allocated_seat_resolves_to_self(self):
+        """Non-pooled ("allocated") seat: resolves to self, same as an
+        individual customer — unchanged behaviour."""
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc", account_type="seat",
+            parent=biz, stripe_customer_id="cus_seat_alloc")
+        seat_wallet = Wallet.objects.create(customer=seat, balance_micros=0)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=seat.id,
+            amount_micros=1_000_000, trigger="manual", status="pending")
+
+        event = self._event("cus_seat_alloc", attempt, session_id="cs_alloc_1")
+        handle_checkout_completed(event)
+
+        seat_wallet.refresh_from_db()
+        self.assertEqual(seat_wallet.balance_micros, 1_000_000)
+
+    def test_webhook_missing_billing_owner_id_refuses_loudly(self):
+        """Data-integrity gap: an attempt somehow lacking its pinned owner
+        must not silently default to the seat. Task 7's deliberate failure
+        mode is to raise (visible in error tracking; Stripe retries a non-2xx
+        response) rather than answer 200 having credited nothing, or worse,
+        having credited the seat."""
+        biz, seat = self._pooled_seat("cus_seat_null")
+        Wallet.objects.create(customer=biz, balance_micros=0)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, amount_micros=1_000_000,  # billing_owner_id left NULL
+            trigger="manual", status="pending")
+
+        event = self._event("cus_seat_null", attempt, session_id="cs_null_owner")
+        with self.assertRaises(RuntimeError):
+            handle_checkout_completed(event)
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+    def test_webhook_no_correlating_attempt_resolves_owner_fresh(self):
+        """An out-of-band Checkout Session this codebase never created (no
+        client_reference_id, so no TopUpAttempt to correlate) has nothing
+        pinned to consult — resolves the CURRENT owner fresh via the same
+        resolver every other read/write in this bug's fix uses, rather than
+        crediting the seat's raw Customer id."""
+        biz, seat = self._pooled_seat("cus_seat_noattempt")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=0)
+
+        event = self._event("cus_seat_noattempt", None, session_id="cs_no_attempt_1")
+        handle_checkout_completed(event)
+
+        biz_wallet.refresh_from_db()
+        self.assertEqual(biz_wallet.balance_micros, 1_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+
 class ChargeDisputeCreatedTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
@@ -297,7 +429,7 @@ class ChargeDisputeClosedTest(TestCase):
         )
         self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=10_000_000)
         self.attempt = TopUpAttempt.objects.create(
-            customer=self.customer, amount_micros=5_000_000,
+            customer=self.customer, billing_owner_id=self.customer.id, amount_micros=5_000_000,
             trigger="manual", status="succeeded", stripe_charge_id="ch_dispute_2",
         )
 
@@ -424,7 +556,7 @@ class ChargeRefundedTest(TestCase):
         )
         self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=10_000_000)
         self.attempt = TopUpAttempt.objects.create(
-            customer=self.customer, amount_micros=5_000_000,
+            customer=self.customer, billing_owner_id=self.customer.id, amount_micros=5_000_000,
             trigger="manual", status="succeeded", stripe_charge_id="ch_refund_1",
         )
 
@@ -516,6 +648,167 @@ class ChargeRefundedTest(TestCase):
         self.assertEqual(self.wallet.balance_micros, 8_000_000)  # BUG TODAY: stays 9_000_000
         self.assertEqual(WalletTransaction.objects.filter(transaction_type="STRIPE_REFUND").count(), 2)
         self.assertTrue(WalletTransaction.objects.filter(idempotency_key="stripe_refund:re_2").exists())
+
+
+class PooledSeatClawbackWebhookTest(TestCase):
+    """Task 8a — the seventh instance of the seat/owner defect: dispute-lost
+    and Stripe-refund clawbacks (`handle_charge_dispute_closed`,
+    `handle_charge_refunded`) passed `attempt.customer_id` (the SEAT) into
+    the wallet ops instead of `attempt.billing_owner_id` (pinned at creation
+    by Task 7). This clawback moves money OUT: on a pooled seat the original
+    credit landed on the business (Task 7), so debiting the seat instead
+    mints a phantom seat wallet, drives it negative, and leaves the business
+    holding a credit that was never actually reversed. Same shape and same
+    three-topology coverage as PooledSeatTopUpWebhookTest above."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Clawback Tenant", stripe_connected_account_id="acct_clawback",
+        )
+
+    def _pooled_seat(self, suffix):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id=f"biz_{suffix}",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id=f"seat_{suffix}",
+            account_type="seat", parent=biz, stripe_customer_id=f"cus_{suffix}")
+        return biz, seat
+
+    def _dispute_event(self, charge_id, dispute_id, amount=500, status="lost"):
+        event = MagicMock()
+        event.data.object.id = dispute_id
+        event.data.object.charge = charge_id
+        event.data.object.status = status
+        event.data.object.amount = amount
+        event.account = "acct_clawback"
+        return event
+
+    def _refund_event(self, charge_id, refund_id, amount=300):
+        event = MagicMock()
+        event.data.object.id = charge_id
+        event.data.object.amount_refunded = amount
+        event.account = "acct_clawback"
+        r = MagicMock()
+        r.id = refund_id
+        r.amount = amount
+        event.data.object.refunds.data = [r]
+        return event
+
+    # ---- dispute-lost clawback ----
+
+    def test_dispute_closed_debits_business_wallet_not_seat(self):
+        biz, seat = self._pooled_seat("dispute_pooled")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=biz.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_pooled_dispute")
+
+        handle_charge_dispute_closed(
+            self._dispute_event("ch_pooled_dispute", "dp_pooled_1", amount=500))
+
+        biz_wallet.refresh_from_db()
+        self.assertEqual(biz_wallet.balance_micros, 5_000_000)  # 10M - 5M
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+    def test_dispute_closed_suspends_business_owner_not_seat(self):
+        """A clawback that crosses the floor suspends the OWNER — the row
+        RiskService.check actually reads for every seat funded by this
+        wallet — never the seat."""
+        biz, seat = self._pooled_seat("dispute_suspend")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=3_000_000)
+        attempt = TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=biz.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_pooled_suspend")
+
+        # 500 cents = 5_000_000 micros; 3M - 5M = -2M, below the default 0 floor.
+        handle_charge_dispute_closed(
+            self._dispute_event("ch_pooled_suspend", "dp_pooled_2", amount=500))
+
+        biz.refresh_from_db()
+        seat.refresh_from_db()
+        self.assertEqual(biz.status, "suspended")
+        self.assertEqual(seat.status, "active")  # the seat itself is untouched
+
+    def test_dispute_closed_allocated_seat_resolves_to_self(self):
+        """Non-pooled ("allocated") seat: resolves to self, unchanged
+        behaviour — same as an individual customer."""
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc_dispute",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc_dispute", account_type="seat",
+            parent=biz, stripe_customer_id="cus_alloc_dispute")
+        seat_wallet = Wallet.objects.create(customer=seat, balance_micros=10_000_000)
+        TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=seat.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_alloc_dispute")
+
+        handle_charge_dispute_closed(
+            self._dispute_event("ch_alloc_dispute", "dp_alloc_1", amount=500))
+
+        seat_wallet.refresh_from_db()
+        self.assertEqual(seat_wallet.balance_micros, 5_000_000)
+
+    def test_dispute_closed_missing_billing_owner_id_refuses_loudly(self):
+        """Same deliberate failure mode as the credit path (Task 7): a NULL
+        billing_owner_id must raise rather than silently debit the seat."""
+        biz, seat = self._pooled_seat("dispute_null")
+        Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        TopUpAttempt.objects.create(
+            customer=seat, amount_micros=5_000_000,  # billing_owner_id left NULL
+            trigger="manual", status="succeeded", stripe_charge_id="ch_null_dispute")
+
+        with self.assertRaises(RuntimeError):
+            handle_charge_dispute_closed(
+                self._dispute_event("ch_null_dispute", "dp_null_1", amount=500))
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+    # ---- Stripe-initiated refund clawback ----
+
+    def test_refund_debits_business_wallet_not_seat(self):
+        biz, seat = self._pooled_seat("refund_pooled")
+        biz_wallet = Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=biz.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_pooled_refund")
+
+        handle_charge_refunded(
+            self._refund_event("ch_pooled_refund", "re_pooled_1", amount=300))
+
+        biz_wallet.refresh_from_db()
+        self.assertEqual(biz_wallet.balance_micros, 7_000_000)  # 10M - 3M
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
+
+    def test_refund_allocated_seat_resolves_to_self(self):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc_refund",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc_refund", account_type="seat",
+            parent=biz, stripe_customer_id="cus_alloc_refund")
+        seat_wallet = Wallet.objects.create(customer=seat, balance_micros=10_000_000)
+        TopUpAttempt.objects.create(
+            customer=seat, billing_owner_id=seat.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_alloc_refund")
+
+        handle_charge_refunded(
+            self._refund_event("ch_alloc_refund", "re_alloc_1", amount=300))
+
+        seat_wallet.refresh_from_db()
+        self.assertEqual(seat_wallet.balance_micros, 7_000_000)
+
+    def test_refund_missing_billing_owner_id_refuses_loudly(self):
+        biz, seat = self._pooled_seat("refund_null")
+        Wallet.objects.create(customer=biz, balance_micros=10_000_000)
+        TopUpAttempt.objects.create(
+            customer=seat, amount_micros=5_000_000,  # billing_owner_id left NULL
+            trigger="manual", status="succeeded", stripe_charge_id="ch_null_refund")
+
+        with self.assertRaises(RuntimeError):
+            handle_charge_refunded(
+                self._refund_event("ch_null_refund", "re_null_1", amount=300))
+        self.assertFalse(Wallet.objects.filter(customer=seat).exists())
 
 
 class InvoicePaidTenantInvoiceTest(TestCase):

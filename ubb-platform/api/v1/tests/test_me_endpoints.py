@@ -53,6 +53,87 @@ class WidgetBalanceTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class WidgetPooledSeatBalanceTest(TestCase):
+    """Task 9 finding B: a pooled seat's own wallet can never exist (Task
+    8c's lock_for_billing ratchet refuses one), and every top-up this seat
+    makes credits the business owner's wallet (start_top_up pins
+    billing_owner_id to resolve_billing_owner()). Pre-fix, /me/balance read
+    Wallet.objects.get(customer=<the seat>) and 404'd into a fabricated
+    balance_micros: 0 that never changed no matter how much the seat
+    actually topped up."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Test", stripe_connected_account_id="acct_test",
+            products=["metering", "billing"],
+        )
+        self.business = Customer.objects.create(
+            tenant=self.tenant, external_id="biz", account_type="business",
+            billing_topology="pooled",
+        )
+        self.seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat1", account_type="seat",
+            parent=self.business,
+        )
+        # The pool's money lives on the BUSINESS wallet, credited by a
+        # top-up some seat (not necessarily this one) made.
+        self.wallet = Wallet.objects.create(customer=self.business)
+        self.wallet.balance_micros = 50_000_000
+        self.wallet.save()
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.seat.id), str(self.tenant.id)
+        )
+
+    def test_pooled_seat_balance_reflects_the_owners_wallet(self):
+        response = self.http_client.get(
+            "/api/v1/me/balance",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Pre-fix this was 0 forever — the seat's own wallet row can never
+        # exist, so Wallet.objects.get(customer=seat) always 404'd.
+        self.assertEqual(body["balance_micros"], 50_000_000)
+        self.assertTrue(body["is_pooled_seat"])
+        self.assertEqual(body["billing_owner_external_id"], "biz")
+
+    def test_non_pooled_customer_balance_discloses_self_ownership(self):
+        individual = Customer.objects.create(
+            tenant=self.tenant, external_id="indiv1", account_type="individual",
+        )
+        Wallet.objects.create(customer=individual, balance_micros=1_000_000)
+        token = create_widget_token(
+            self.tenant.widget_secret, str(individual.id), str(self.tenant.id)
+        )
+        response = self.http_client.get(
+            "/api/v1/me/balance",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["is_pooled_seat"])
+        self.assertEqual(body["billing_owner_external_id"], "indiv1")
+
+    def test_pooled_seat_grants_and_transactions_stay_seat_scoped(self):
+        # Deliberately unchanged (Task 9 finding B reasoning): these are
+        # itemized lists, not an aggregate number, so they stay seat-scoped
+        # and answer an honest empty page rather than the shared ledger.
+        grants_resp = self.http_client.get(
+            "/api/v1/me/grants",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(grants_resp.status_code, 200)
+        self.assertEqual(grants_resp.json()["data"], [])
+
+        txn_resp = self.http_client.get(
+            "/api/v1/me/transactions",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(txn_resp.status_code, 200)
+        self.assertEqual(txn_resp.json()["data"], [])
+
+
 class WidgetTransactionsTest(TestCase):
     def setUp(self):
         self.http_client = Client()

@@ -132,10 +132,6 @@ class BillingTenantConfig(BaseModel):
     # orientation as min_balance_micros (the line is -value). NULL = no soft
     # floor. Customer override: CustomerBillingProfile.soft_min_balance_micros.
     soft_min_balance_micros = models.BigIntegerField(null=True, blank=True)
-    # Tenant default for Task.floor_snapshot_micros, copied at task creation
-    # (a wallet-balance line, e.g. -5_000_000; billed denomination). NULL = no
-    # per-task floor snapshot.
-    default_task_floor_snapshot_micros = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_billing_tenant_config"

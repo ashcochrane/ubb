@@ -26,14 +26,18 @@ class MeBalanceResponse:
         Attributes:
             balance_micros (int):
             currency (str):
+            billing_owner_external_id (str | Unset):  Default: ''.
             expiring_micros (int | None | Unset):
+            is_pooled_seat (bool | Unset):  Default: False.
             next_expiry_at (None | str | Unset):
             promo_micros (int | None | Unset):
      """
 
     balance_micros: int
     currency: str
+    billing_owner_external_id: str | Unset = ''
     expiring_micros: int | None | Unset = UNSET
+    is_pooled_seat: bool | Unset = False
     next_expiry_at: None | str | Unset = UNSET
     promo_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -47,11 +51,15 @@ class MeBalanceResponse:
 
         currency = self.currency
 
+        billing_owner_external_id = self.billing_owner_external_id
+
         expiring_micros: int | None | Unset
         if isinstance(self.expiring_micros, Unset):
             expiring_micros = UNSET
         else:
             expiring_micros = self.expiring_micros
+
+        is_pooled_seat = self.is_pooled_seat
 
         next_expiry_at: None | str | Unset
         if isinstance(self.next_expiry_at, Unset):
@@ -72,8 +80,12 @@ class MeBalanceResponse:
             "balance_micros": balance_micros,
             "currency": currency,
         })
+        if billing_owner_external_id is not UNSET:
+            field_dict["billing_owner_external_id"] = billing_owner_external_id
         if expiring_micros is not UNSET:
             field_dict["expiring_micros"] = expiring_micros
+        if is_pooled_seat is not UNSET:
+            field_dict["is_pooled_seat"] = is_pooled_seat
         if next_expiry_at is not UNSET:
             field_dict["next_expiry_at"] = next_expiry_at
         if promo_micros is not UNSET:
@@ -90,6 +102,8 @@ class MeBalanceResponse:
 
         currency = d.pop("currency")
 
+        billing_owner_external_id = d.pop("billing_owner_external_id", UNSET)
+
         def _parse_expiring_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -99,6 +113,8 @@ class MeBalanceResponse:
 
         expiring_micros = _parse_expiring_micros(d.pop("expiring_micros", UNSET))
 
+
+        is_pooled_seat = d.pop("is_pooled_seat", UNSET)
 
         def _parse_next_expiry_at(data: object) -> None | str | Unset:
             if data is None:
@@ -123,7 +139,9 @@ class MeBalanceResponse:
         me_balance_response = cls(
             balance_micros=balance_micros,
             currency=currency,
+            billing_owner_external_id=billing_owner_external_id,
             expiring_micros=expiring_micros,
+            is_pooled_seat=is_pooled_seat,
             next_expiry_at=next_expiry_at,
             promo_micros=promo_micros,
         )

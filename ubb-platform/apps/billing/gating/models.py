@@ -28,7 +28,7 @@ def default_alert_levels():
     return [50, 80, 100, 110]
 
 
-BUDGET_ENFORCE_MODES = [("advisory", "Advisory"), ("enforcing", "Enforcing")]
+BUDGET_ENFORCE_MODES = [("alert_only", "Alert only"), ("blocking", "Blocking")]
 
 
 STOP_SIGNAL_FAMILIES = [("floor_stop", "Floor stop"), ("soft_floor", "Soft floor")]
@@ -179,7 +179,7 @@ class BudgetConfig(BaseModel):
                                  related_name="budget_configs", null=True, blank=True)
     cap_micros = models.BigIntegerField(default=0)  # <= 0 means "no cap" (overlay inert)
     period = models.CharField(max_length=10, default="month")
-    enforce_mode = models.CharField(max_length=10, choices=BUDGET_ENFORCE_MODES, default="advisory")
+    enforce_mode = models.CharField(max_length=10, choices=BUDGET_ENFORCE_MODES, default="alert_only")
     hard_stop_pct = models.IntegerField(default=100)
     alert_levels = models.JSONField(default=default_alert_levels)
     fail_closed = models.BooleanField(default=False)

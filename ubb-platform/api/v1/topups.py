@@ -18,16 +18,19 @@ from core.problems import Problem
 from core.responses import json_response
 
 
-def _audit_top_up(customer, tenant, attempt, payload, trigger):
+def _audit_top_up(customer, owner, tenant, attempt, payload, trigger):
     """Audit a newly-started top-up (ADR-004). Fires once per fresh attempt —
     a replay re-uses the existing attempt and never reaches here. Actor is the
     auth-seam principal: ``end_customer`` for the widget twin, the tenant
-    principal for the manual one."""
+    principal for the manual one. resource_id/customer_id keep the SEAT as
+    the named subject of the action (who initiated); owner_id records whose
+    wallet the eventual credit will land on (Task 7)."""
     audit_record(
         action="top_up.requested", tenant_id=tenant.id,
         resource_type="wallet", resource_id=customer.id,
         metadata={"customer_id": str(customer.id),
                   "external_id": customer.external_id,
+                  "owner_id": str(owner.id),
                   "amount_micros": payload.amount_micros,
                   "trigger": trigger, "attempt_id": str(attempt.id)})
 
@@ -35,6 +38,13 @@ def _audit_top_up(customer, tenant, attempt, payload, trigger):
 def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
     from apps.billing.topups.models import TopUpAttempt
     from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
+
+    # Task 7: pin the billing owner at creation, exactly like
+    # Task.billing_owner_id / UsageEvent.billing_owner_id — `customer` stays
+    # the SEAT that initiated (both the tenant-admin and widget callers), but
+    # the credit this attempt eventually produces (apply_topup_credit / the
+    # checkout webhook) must land on the owner's wallet, not the seat's.
+    owner = customer.resolve_billing_owner()
 
     if get_tenant_stripe_account(tenant.id):
         # Stripe connector is active — create checkout session
@@ -49,12 +59,13 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
                 with transaction.atomic():  # attempt + audit land together
                     attempt = TopUpAttempt.objects.create(
                         customer=customer,
+                        billing_owner_id=owner.id,
                         amount_micros=payload.amount_micros,
                         trigger=trigger,
                         status="pending",
                         idempotency_key=payload.idempotency_key,
                     )
-                    _audit_top_up(customer, tenant, attempt, payload, trigger)
+                    _audit_top_up(customer, owner, tenant, attempt, payload, trigger)
             except IntegrityError:  # concurrent replay lost the race
                 attempt = TopUpAttempt.objects.get(
                     customer=customer, idempotency_key=payload.idempotency_key)
@@ -79,12 +90,13 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
             with transaction.atomic():  # attempt + event + audit land together
                 attempt = TopUpAttempt.objects.create(
                     customer=customer,
+                    billing_owner_id=owner.id,
                     amount_micros=payload.amount_micros,
                     trigger=trigger,
                     status="pending",
                     idempotency_key=payload.idempotency_key,
                 )
-                _audit_top_up(customer, tenant, attempt, payload, trigger)
+                _audit_top_up(customer, owner, tenant, attempt, payload, trigger)
                 write_event(TopUpRequested(
                     tenant_id=str(tenant.id),
                     customer_id=str(customer.id),

@@ -66,7 +66,7 @@ class BudgetService:
                         "spend_micros": None, "cap_micros": cfg.cap_micros}
             return {"allowed": True, "reason": None, "spend_micros": None, "cap_micros": cfg.cap_micros}
         # The crossing module owns the stop line + enforce_mode semantics
-        # (#110): advisory -> None -> never past.
+        # (#110): alert_only -> None -> never past.
         if past_budget_stop(spend, budget_stop_threshold(cfg)):
             return {"allowed": False, "reason": "budget_exceeded",
                     "spend_micros": spend, "cap_micros": cfg.cap_micros}

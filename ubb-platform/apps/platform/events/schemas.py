@@ -250,7 +250,7 @@ class BudgetThresholdReached(EventSchema):
     level: int = 0
     spend_micros: int = 0
     cap_micros: int = 0
-    enforce_mode: str = "advisory"
+    enforce_mode: str = "alert_only"
 
 
 @dataclass(frozen=True)

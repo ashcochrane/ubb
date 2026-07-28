@@ -112,6 +112,7 @@ class ConcurrentTopUpCreditRace(TransactionTestCase):
 
         attempt = TopUpAttempt.objects.create(
             customer=customer,
+            billing_owner_id=customer.id,
             amount_micros=20_000_000,
             trigger="auto_topup",
             status="pending",

@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..types import UNSET, Unset
 from typing import cast
+from uuid import UUID
 
 if TYPE_CHECKING:
   from ..models.wallet_transaction_out import WalletTransactionOut
@@ -26,13 +27,19 @@ T = TypeVar("T", bound="PaginatedWalletTransactions")
 class PaginatedWalletTransactions:
     """ 
         Attributes:
+            billing_owner_external_id (str):
+            billing_owner_id (UUID):
             data (list[WalletTransactionOut]):
             has_more (bool):
+            is_pooled_seat (bool):
             next_cursor (None | str | Unset):
      """
 
+    billing_owner_external_id: str
+    billing_owner_id: UUID
     data: list[WalletTransactionOut]
     has_more: bool
+    is_pooled_seat: bool
     next_cursor: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -42,6 +49,10 @@ class PaginatedWalletTransactions:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.wallet_transaction_out import WalletTransactionOut
+        billing_owner_external_id = self.billing_owner_external_id
+
+        billing_owner_id = str(self.billing_owner_id)
+
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -50,6 +61,8 @@ class PaginatedWalletTransactions:
 
 
         has_more = self.has_more
+
+        is_pooled_seat = self.is_pooled_seat
 
         next_cursor: None | str | Unset
         if isinstance(self.next_cursor, Unset):
@@ -61,8 +74,11 @@ class PaginatedWalletTransactions:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "billing_owner_external_id": billing_owner_external_id,
+            "billing_owner_id": billing_owner_id,
             "data": data,
             "has_more": has_more,
+            "is_pooled_seat": is_pooled_seat,
         })
         if next_cursor is not UNSET:
             field_dict["next_cursor"] = next_cursor
@@ -75,6 +91,13 @@ class PaginatedWalletTransactions:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.wallet_transaction_out import WalletTransactionOut
         d = dict(src_dict)
+        billing_owner_external_id = d.pop("billing_owner_external_id")
+
+        billing_owner_id = UUID(d.pop("billing_owner_id"))
+
+
+
+
         data = []
         _data = d.pop("data")
         for data_item_data in (_data):
@@ -87,6 +110,8 @@ class PaginatedWalletTransactions:
 
         has_more = d.pop("has_more")
 
+        is_pooled_seat = d.pop("is_pooled_seat")
+
         def _parse_next_cursor(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -98,8 +123,11 @@ class PaginatedWalletTransactions:
 
 
         paginated_wallet_transactions = cls(
+            billing_owner_external_id=billing_owner_external_id,
+            billing_owner_id=billing_owner_id,
             data=data,
             has_more=has_more,
+            is_pooled_seat=is_pooled_seat,
             next_cursor=next_cursor,
         )
 

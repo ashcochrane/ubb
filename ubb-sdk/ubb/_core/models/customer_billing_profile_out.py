@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..types import UNSET, Unset
 from typing import cast
+from uuid import UUID
 
 
 
@@ -24,11 +25,17 @@ T = TypeVar("T", bound="CustomerBillingProfileOut")
 class CustomerBillingProfileOut:
     """ 
         Attributes:
+            billing_owner_external_id (str):
+            billing_owner_id (UUID):
+            is_pooled_seat (bool):
             min_balance_micros (int | None | Unset):
             soft_min_balance_micros (int | None | Unset):
             topup_grant_expiry_days (int | None | Unset):
      """
 
+    billing_owner_external_id: str
+    billing_owner_id: UUID
+    is_pooled_seat: bool
     min_balance_micros: int | None | Unset = UNSET
     soft_min_balance_micros: int | None | Unset = UNSET
     topup_grant_expiry_days: int | None | Unset = UNSET
@@ -39,6 +46,12 @@ class CustomerBillingProfileOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        billing_owner_external_id = self.billing_owner_external_id
+
+        billing_owner_id = str(self.billing_owner_id)
+
+        is_pooled_seat = self.is_pooled_seat
+
         min_balance_micros: int | None | Unset
         if isinstance(self.min_balance_micros, Unset):
             min_balance_micros = UNSET
@@ -61,6 +74,9 @@ class CustomerBillingProfileOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "billing_owner_external_id": billing_owner_external_id,
+            "billing_owner_id": billing_owner_id,
+            "is_pooled_seat": is_pooled_seat,
         })
         if min_balance_micros is not UNSET:
             field_dict["min_balance_micros"] = min_balance_micros
@@ -76,6 +92,15 @@ class CustomerBillingProfileOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        billing_owner_external_id = d.pop("billing_owner_external_id")
+
+        billing_owner_id = UUID(d.pop("billing_owner_id"))
+
+
+
+
+        is_pooled_seat = d.pop("is_pooled_seat")
+
         def _parse_min_balance_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -107,6 +132,9 @@ class CustomerBillingProfileOut:
 
 
         customer_billing_profile_out = cls(
+            billing_owner_external_id=billing_owner_external_id,
+            billing_owner_id=billing_owner_id,
+            is_pooled_seat=is_pooled_seat,
             min_balance_micros=min_balance_micros,
             soft_min_balance_micros=soft_min_balance_micros,
             topup_grant_expiry_days=topup_grant_expiry_days,

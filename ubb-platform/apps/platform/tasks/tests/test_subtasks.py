@@ -24,10 +24,10 @@ class SubtaskTestBase(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1")
 
-    def _task(self, limit=None, floor=None, balance=100_000_000, parent=None):
+    def _task(self, limit=None, balance=100_000_000, parent=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit, floor_snapshot_micros=floor,
+            provider_cost_limit_micros=limit,
             billing_owner_id=self.customer.id, parent=parent)
 
     def _events(self, event_type):
@@ -130,7 +130,6 @@ class SubtaskVerdictTest(SubtaskTestBase):
             sub.id, billed_cost_micros=0, provider_cost_micros=6_000_000)
         self.assertTrue(verdicts["crossed_subtask_limit"])
         self.assertFalse(verdicts["crossed_task_limit"])
-        self.assertFalse(verdicts["crossed_floor_snapshot"])
         self.assertFalse(verdicts["task_not_active"])
 
     def test_parent_limit_fires_crossed_task_limit_on_a_subtask_event(self):
@@ -159,16 +158,6 @@ class SubtaskVerdictTest(SubtaskTestBase):
         self.assertFalse(any(verdicts.values()))
         self.assertEqual(unit.total_billed_cost_micros, 50_000_000)
         self.assertEqual(unit.total_provider_cost_micros, 1_000_000)
-
-    def test_subtask_floor_snapshot_is_its_own(self):
-        # The floor snapshot stays own-row: a subtask races the snapshot it
-        # took at ITS start; only the LIMIT rolls up to the parent.
-        parent = self._task(floor=0, balance=100_000_000)
-        sub = self._task(floor=0, balance=5_000_000, parent=parent)
-        _, verdicts = TaskService.accumulate_cost(
-            sub.id, billed_cost_micros=6_000_000, provider_cost_micros=0)
-        self.assertTrue(verdicts["crossed_floor_snapshot"])
-        self.assertFalse(verdicts["crossed_task_limit"])
 
     def test_top_level_verdicts_carry_the_subtask_key(self):
         # The verdict dict has ONE shape everywhere (spec §B) — a top-level
@@ -300,20 +289,11 @@ class KillPlanTest(SubtaskTestBase):
     def _plan(self, verdicts, parent_id=None):
         unit_id = uuid.uuid4()
         defaults = {"crossed_task_limit": False, "crossed_subtask_limit": False,
-                    "crossed_floor_snapshot": False, "task_not_active": False}
+                    "task_not_active": False}
         return unit_id, reasons.kill_plan(unit_id, parent_id, {**defaults, **verdicts})
 
     def test_top_level_task_limit(self):
         unit_id, plan = self._plan({"crossed_task_limit": True})
-        self.assertEqual(plan, [(unit_id, reasons.TASK_LIMIT)])
-
-    def test_top_level_floor(self):
-        unit_id, plan = self._plan({"crossed_floor_snapshot": True})
-        self.assertEqual(plan, [(unit_id, reasons.CUSTOMER_FLOOR)])
-
-    def test_top_level_limit_beats_floor(self):
-        unit_id, plan = self._plan(
-            {"crossed_task_limit": True, "crossed_floor_snapshot": True})
         self.assertEqual(plan, [(unit_id, reasons.TASK_LIMIT)])
 
     def test_subtask_own_limit_kills_it_alone(self):
@@ -347,7 +327,7 @@ class StopFieldsTest(SubtaskTestBase):
 
     def _fields(self, verdicts, is_subtask=False):
         defaults = {"crossed_task_limit": False, "crossed_subtask_limit": False,
-                    "crossed_floor_snapshot": False, "task_not_active": False}
+                    "task_not_active": False}
         return reasons.stop_fields({**defaults, **verdicts}, is_subtask=is_subtask)
 
     def test_task_limit_scope_task(self):
@@ -364,13 +344,6 @@ class StopFieldsTest(SubtaskTestBase):
             self._fields({"crossed_subtask_limit": True,
                           "crossed_task_limit": True}, is_subtask=True),
             (reasons.TASK_LIMIT, "task"))
-
-    def test_floor_scope_follows_the_unit(self):
-        self.assertEqual(self._fields({"crossed_floor_snapshot": True}),
-                         (reasons.CUSTOMER_FLOOR, "task"))
-        self.assertEqual(
-            self._fields({"crossed_floor_snapshot": True}, is_subtask=True),
-            (reasons.CUSTOMER_FLOOR, "subtask"))
 
     def test_not_active_scope_follows_the_unit(self):
         self.assertEqual(self._fields({"task_not_active": True}),

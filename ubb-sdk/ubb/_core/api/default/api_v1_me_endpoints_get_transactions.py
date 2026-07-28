@@ -82,6 +82,14 @@ def sync_detailed(
 ) -> Response[PaginatedTransactions]:
     """ Get Transactions
 
+     Ledger lines on the customer's OWN wallet — same seat-scoping call as
+    /me/grants, for the same reason: a transaction list is line-by-line
+    itemized detail, so resolving it to the billing owner would show a
+    pooled seat every sibling seat's individual top-ups/debits. Stays
+    seat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's
+    own wallet can never exist, so this always answers an honest empty page
+    for a seat rather than the shared business ledger.
+
     Args:
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
@@ -116,6 +124,14 @@ def sync(
 ) -> PaginatedTransactions | None:
     """ Get Transactions
 
+     Ledger lines on the customer's OWN wallet — same seat-scoping call as
+    /me/grants, for the same reason: a transaction list is line-by-line
+    itemized detail, so resolving it to the billing owner would show a
+    pooled seat every sibling seat's individual top-ups/debits. Stays
+    seat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's
+    own wallet can never exist, so this always answers an honest empty page
+    for a seat rather than the shared business ledger.
+
     Args:
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
@@ -144,6 +160,14 @@ async def asyncio_detailed(
 
 ) -> Response[PaginatedTransactions]:
     """ Get Transactions
+
+     Ledger lines on the customer's OWN wallet — same seat-scoping call as
+    /me/grants, for the same reason: a transaction list is line-by-line
+    itemized detail, so resolving it to the billing owner would show a
+    pooled seat every sibling seat's individual top-ups/debits. Stays
+    seat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's
+    own wallet can never exist, so this always answers an honest empty page
+    for a seat rather than the shared business ledger.
 
     Args:
         cursor (None | str | Unset):
@@ -178,6 +202,14 @@ async def asyncio(
 
 ) -> PaginatedTransactions | None:
     """ Get Transactions
+
+     Ledger lines on the customer's OWN wallet — same seat-scoping call as
+    /me/grants, for the same reason: a transaction list is line-by-line
+    itemized detail, so resolving it to the billing owner would show a
+    pooled seat every sibling seat's individual top-ups/debits. Stays
+    seat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's
+    own wallet can never exist, so this always answers an honest empty page
+    for a seat rather than the shared business ledger.
 
     Args:
         cursor (None | str | Unset):

@@ -6,6 +6,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.tasks.models import Task
+from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.wallets.models import Wallet
 from apps.billing.tenant_billing.models import BillingTenantConfig
 
@@ -653,10 +654,7 @@ class PreCheckTaskTest(TestCase):
             name="Task Tenant",
             products=["metering", "billing"],
         )
-        BillingTenantConfig.objects.create(
-            tenant=self.tenant,
-            default_task_floor_snapshot_micros=-5_000_000,
-        )
+        BillingTenantConfig.objects.create(tenant=self.tenant)
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_task_1"
@@ -678,22 +676,19 @@ class PreCheckTaskTest(TestCase):
     def test_pre_check_start_task_returns_task_id(self):
         # Uncapped start (no provider_cost_limit_micros anywhere) — the
         # coverage gate only fires for a RESOLVED limit, so no coverage
-        # setup is needed here. The floor snapshot comes from the tenant's
-        # BillingTenantConfig default.
+        # setup is needed here.
         resp = self._pre_check(start_task=True)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["allowed"])
         self.assertIsNotNone(body["task_id"])
         self.assertIsNone(body["provider_cost_limit_micros"])
-        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
 
         # Task exists in DB
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.status, "active")
         self.assertEqual(task.balance_snapshot_micros, 20_000_000)
         self.assertIsNone(task.provider_cost_limit_micros)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
     def test_pre_check_capped_start_refused_without_coverage(self):
         # A COGS limit over uncovered events would silently count 0 — with
@@ -718,7 +713,6 @@ class PreCheckTaskTest(TestCase):
         body = resp.json()
         self.assertTrue(body["allowed"])
         self.assertEqual(body["provider_cost_limit_micros"], 10_000_000)
-        self.assertEqual(body["floor_snapshot_micros"], -5_000_000)
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
 
@@ -810,6 +804,69 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response["Content-Type"], "application/problem+json")
         self.assertEqual(response.json()["code"], "validation_error")
+
+
+class TopUpAttemptBillingOwnerPinTest(TestCase):
+    """Task 7 — create_top_up must pin TopUpAttempt.billing_owner_id at
+    creation, across all three topologies. `customer` on the row always
+    stays the SEAT (who initiated); this test asserts what actually gets
+    pinned into billing_owner_id, the value both credit_top_up call sites
+    key on later."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="No Stripe Pin Tenant", products=["metering", "billing"],
+            stripe_connected_account_id="",
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+    def _topup(self, customer, idempotency_key):
+        return self.http_client.post(
+            f"/api/v1/billing/customers/{customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": 10_000_000,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+                "idempotency_key": idempotency_key,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def test_individual_pins_self(self):
+        from apps.billing.topups.models import TopUpAttempt
+        customer = Customer.objects.create(tenant=self.tenant, external_id="ind_pin")
+        resp = self._topup(customer, "pin_ind_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=customer)
+        self.assertEqual(attempt.billing_owner_id, customer.id)
+
+    def test_pooled_seat_pins_the_business(self):
+        from apps.billing.topups.models import TopUpAttempt
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_pin",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_pin",
+            account_type="seat", parent=biz)
+        resp = self._topup(seat, "pin_pooled_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=seat)
+        self.assertEqual(attempt.billing_owner_id, biz.id)
+
+    def test_allocated_seat_pins_self(self):
+        from apps.billing.topups.models import TopUpAttempt
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc_pin",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc_pin",
+            account_type="seat", parent=biz)
+        resp = self._topup(seat, "pin_alloc_1")
+        self.assertEqual(resp.status_code, 202)
+        attempt = TopUpAttempt.objects.get(customer=seat)
+        self.assertEqual(attempt.billing_owner_id, seat.id)
 
 
 class TopUpWithConnectorTest(TestCase):
@@ -916,3 +973,330 @@ class TenantUsageInvoicePeriodValidationTest(TestCase):
     def test_period_valid_returns_200(self):
         response = self._get("2026-06")
         self.assertEqual(response.status_code, 200)
+
+
+class PooledSeatBillingSurfaceTest(TestCase):
+    """Task 3 — uniform billing-owner resolution.
+
+    Covers all three topologies for every touched endpoint:
+    - individual customer: owner == self, is_pooled_seat False, unchanged
+    - pooled seat: parent business with billing_topology="pooled" — reads
+      and money-moving writes must hit the BUSINESS's wallet
+    - non-pooled (allocated) seat: parent exists but billing_topology is not
+      "pooled" — resolves to self, same as an individual
+
+    The load-bearing assertion throughout is that a pooled seat NEVER grows
+    its own wallet/config row — that's the bug this task fixes.
+    """
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Pooled Tenant", products=["metering", "billing"]
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+
+        self.individual = Customer.objects.create(tenant=self.tenant, external_id="ind_1")
+
+        self.pooled_biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_pooled",
+            account_type="business", billing_topology="pooled")
+        self.pooled_seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_pooled",
+            account_type="seat", parent=self.pooled_biz)
+
+        self.alloc_biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz_alloc",
+            account_type="business", billing_topology="allocated")
+        self.alloc_seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat_alloc",
+            account_type="seat", parent=self.alloc_biz)
+
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    # ---------- balance ----------
+
+    def test_balance_individual_reports_self_as_owner(self):
+        Wallet.objects.create(customer=self.individual, balance_micros=1_000_000)
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.individual.id}/balance", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.individual.id))
+        self.assertEqual(b["billing_owner_external_id"], "ind_1")
+        self.assertEqual(b["balance_micros"], 1_000_000)
+
+    def test_balance_pooled_seat_reads_business_wallet(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/balance", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertTrue(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.pooled_biz.id))
+        self.assertEqual(b["billing_owner_external_id"], "biz_pooled")
+        self.assertEqual(b["balance_micros"], 5_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_balance_pooled_seat_no_wallet_still_reports_owner(self):
+        # No wallet on either row: no-wallet fallback branch, still discloses
+        # the owner rather than defaulting to the seat.
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/balance", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertEqual(b["balance_micros"], 0)
+        self.assertTrue(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.pooled_biz.id))
+
+    def test_balance_allocated_seat_resolves_to_self(self):
+        Wallet.objects.create(customer=self.alloc_seat, balance_micros=2_000_000)
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/balance", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.alloc_seat.id))
+        self.assertEqual(b["balance_micros"], 2_000_000)
+
+    # ---------- transactions ----------
+
+    def test_transactions_pooled_seat_reads_business_ledger(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=0)
+        from apps.billing.wallets import operations as wallet_ops
+        wallet_ops.credit(customer_id=self.pooled_biz.id, tenant=self.tenant,
+                          amount_micros=1_000_000, idempotency_key="seed_k1")
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/transactions", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body["is_pooled_seat"])
+        self.assertEqual(body["billing_owner_id"], str(self.pooled_biz.id))
+        self.assertEqual(len(body["data"]), 1)
+
+    def test_transactions_individual_reports_self_and_unchanged_shape(self):
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.individual.id}/transactions", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.individual.id))
+        self.assertEqual(b["data"], [])
+        self.assertIn("has_more", b)
+
+    def test_transactions_allocated_seat_resolves_to_self(self):
+        r = self.http_client.get(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/transactions", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        b = r.json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.alloc_seat.id))
+
+    # ---------- debit ----------
+
+    def test_debit_pooled_seat_moves_business_wallet_no_second_wallet(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
+        r = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 2_000_000,
+                             "reference": "r1", "idempotency_key": "dk1"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.pooled_biz).balance_micros, 8_000_000)
+        # The pin: no second, unread wallet is minted on the seat.
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_debit_allocated_seat_unchanged(self):
+        Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
+        r = self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "seat_alloc", "amount_micros": 1_000_000,
+                             "reference": "r1", "idempotency_key": "dk_alloc"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.alloc_seat).balance_micros, 4_000_000)
+
+    def test_debit_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
+        self.http_client.post(
+            "/api/v1/billing/debit",
+            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 1_000_000,
+                             "reference": "r1", "idempotency_key": "dk_audit"}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="wallet.debited")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], "seat_pooled")
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
+    # ---------- credit ----------
+
+    def test_credit_pooled_seat_moves_business_wallet_no_second_wallet(self):
+        r = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 3_000_000,
+                             "source": "manual", "reference": "r1",
+                             "idempotency_key": "ck1"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.pooled_biz).balance_micros, 3_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_credit_allocated_seat_unchanged(self):
+        r = self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "seat_alloc", "amount_micros": 2_000_000,
+                             "source": "manual", "reference": "r1",
+                             "idempotency_key": "ck_alloc"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.alloc_seat).balance_micros, 2_000_000)
+
+    def test_credit_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        self.http_client.post(
+            "/api/v1/billing/credit",
+            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 1_000_000,
+                             "source": "manual", "reference": "r1",
+                             "idempotency_key": "ck_audit"}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="wallet.credited")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], "seat_pooled")
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
+    # ---------- withdraw ----------
+
+    def test_withdraw_pooled_seat_moves_business_wallet_no_second_wallet(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/withdraw",
+            data=json.dumps({"amount_micros": 4_000_000, "idempotency_key": "wk1"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.pooled_biz).balance_micros, 6_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_withdraw_allocated_seat_unchanged(self):
+        Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/withdraw",
+            data=json.dumps({"amount_micros": 1_000_000, "idempotency_key": "wk_alloc"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.alloc_seat).balance_micros, 4_000_000)
+
+    def test_withdraw_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
+        self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/withdraw",
+            data=json.dumps({"amount_micros": 1_000_000, "idempotency_key": "wk_audit"}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="wallet.withdrawn")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
+    # ---------- refund_usage ----------
+
+    def _usage_event(self, customer, amount=1_000_000, request_id="r1"):
+        from apps.metering.usage.models import UsageEvent
+        return UsageEvent.objects.create(
+            tenant=self.tenant, customer=customer, request_id=request_id,
+            idempotency_key=f"idem_{request_id}",
+            provider_cost_micros=amount, billed_cost_micros=amount)
+
+    def test_refund_pooled_seat_moves_business_wallet_no_second_wallet(self):
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
+        event = self._usage_event(self.pooled_seat, amount=1_000_000)
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk1"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.pooled_biz).balance_micros, 6_000_000)
+        self.assertFalse(Wallet.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_refund_allocated_seat_unchanged(self):
+        Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
+        event = self._usage_event(self.alloc_seat, amount=1_000_000, request_id="r2")
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_alloc"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.alloc_seat).balance_micros, 6_000_000)
+
+    def test_refund_individual_unchanged(self):
+        Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
+        event = self._usage_event(self.individual, amount=1_000_000, request_id="r3")
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.individual.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_ind"}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Wallet.objects.get(customer=self.individual).balance_micros, 6_000_000)
+
+    def test_refund_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
+        event = self._usage_event(self.pooled_seat, amount=1_000_000, request_id="r4")
+        self.http_client.post(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_audit"}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="usage.refunded")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
+    # ---------- configure_auto_top_up ----------
+
+    def test_configure_auto_top_up_pooled_seat_configures_business_only(self):
+        r = self.http_client.put(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/auto-top-up",
+            data=json.dumps({"is_enabled": True, "trigger_threshold_micros": 1_000_000,
+                             "top_up_amount_micros": 5_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(
+            AutoTopUpConfig.objects.filter(customer=self.pooled_biz, is_enabled=True).exists())
+        self.assertFalse(AutoTopUpConfig.objects.filter(customer=self.pooled_seat).exists())
+
+    def test_configure_auto_top_up_allocated_seat_unchanged(self):
+        r = self.http_client.put(
+            f"/api/v1/billing/customers/{self.alloc_seat.id}/auto-top-up",
+            data=json.dumps({"is_enabled": True, "trigger_threshold_micros": 1_000_000,
+                             "top_up_amount_micros": 5_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(
+            AutoTopUpConfig.objects.filter(customer=self.alloc_seat, is_enabled=True).exists())
+
+    def test_configure_auto_top_up_audit_keeps_seat_as_subject_and_records_owner(self):
+        from apps.platform.audit.models import AuditRecord
+        self.http_client.put(
+            f"/api/v1/billing/customers/{self.pooled_seat.id}/auto-top-up",
+            data=json.dumps({"is_enabled": True, "trigger_threshold_micros": 1_000_000,
+                             "top_up_amount_micros": 5_000_000}),
+            content_type="application/json", **self._auth())
+        rec = AuditRecord.objects.get(action="auto_top_up.configured")
+        self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
+        self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))

@@ -47,3 +47,15 @@ class StripePaymentError(UBBError):
 class StripeFatalError(UBBError):
     """Non-retryable fatal errors (auth, config, idempotency mismatch)."""
     pass
+
+
+class NotBillingOwnerError(UBBError):
+    """Task 8c ratchet: raised by ``apps.billing.locking.lock_for_billing``
+    when handed a customer id that is not itself a billing owner (i.e.
+    ``resolve_billing_owner(customer).id != customer.id``). Every one of the
+    seven seat/owner defects found across Tasks 3/7/8 was the same shape: a
+    caller reached the wallet layer with a seat id, and the lazy
+    wallet-creation in ``lock_for_billing`` turned that into a silent phantom
+    wallet instead of a loud failure. Callers must resolve the owner
+    (``customer.resolve_billing_owner()``) before calling in."""
+    pass

@@ -3,8 +3,12 @@
 Pin 1  — the tipping event lands and bills: sync task limit, async task limit
          at settle.
 Pin 2  — events on a killed task land, bill, and count into both totals.
-Pin 3  — a below-floor event lands and bills; Wallet carries no floor CHECK
-         (ADR-002 pin).
+Pin 3  — Wallet carries no floor CHECK constraint (ADR-002 pin): spend policy
+         is enforced in application code, never a DB constraint on the ledger.
+         (The per-task floor snapshot this pin used to also cover was deleted
+         — see the billing-surface-correctness plan, task 1 — in favor of the
+         durable drawdown lane's customer_wide_stop, the correct scope for a
+         wallet-wide fact.)
 Pin 7  — every recorded event answers 200; no code path returns 429/409 for a
          usage report.
 Pin 14 — only the provider (COGS) total races the task limit; both totals on
@@ -58,10 +62,10 @@ class OneRulePinTestBase(TestCase):
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def _task(self, limit=10_000_000, floor=None, balance=100_000_000):
+    def _task(self, limit=10_000_000, balance=100_000_000):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit, floor_snapshot_micros=floor,
+            provider_cost_limit_micros=limit,
             billing_owner_id=self.customer.id)
 
     def _record(self, **extra):
@@ -195,29 +199,7 @@ class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin3BelowFloorLandsTest(OneRulePinTestBase):
-    def test_below_floor_event_lands_bills_and_signals(self, _mock):
-        # Floor snapshot: balance snapshot 5M, floor 0 — a 6M event drives
-        # the estimated balance below the floor.
-        task = self._task(limit=None, floor=0, balance=5_000_000)
-        with self.captureOnCommitCallbacks(execute=True):
-            resp = self._record(task_id=str(task.id),
-                                provider_cost_micros=6_000_000,
-                                billed_cost_micros=6_000_000)
-
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], "customer_floor")
-        self.assertEqual(body["stop_scope"], "task")
-        # Landed and billed — the ledger records what was spent, not what a
-        # wall wished had been spent.
-        event = UsageEvent.objects.get(id=body["event_id"])
-        self.assertEqual(event.billed_cost_micros, 6_000_000)
-        task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
-        self.assertEqual(task.metadata["kill_reason"], "customer_floor")
-
+class Pin3WalletNoFloorCheckTest(OneRulePinTestBase):
     def test_wallet_carries_no_floor_check(self, _mock):
         # ADR-002: DB constraints enforce accounting facts, never spend
         # policy — the wallet must accept a negative balance.
@@ -422,7 +404,10 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
         btc_fields = {f.name for f in BillingTenantConfig._meta.get_fields()}
         self.assertNotIn("run_cost_limit_micros", btc_fields)
         self.assertNotIn("hard_stop_balance_micros", btc_fields)
-        self.assertIn("default_task_floor_snapshot_micros", btc_fields)
+        # The per-task floor snapshot (this pin used to require its presence)
+        # was itself deleted — billing-surface-correctness plan, task 1: an
+        # independent third floor that never read the customer's real floor.
+        self.assertNotIn("default_task_floor_snapshot_micros", btc_fields)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_neither_retired_redis_key_family_is_ever_written(self, _mock):

@@ -28,7 +28,6 @@ class TenantConfigIn:
             automatic_tax_enabled (bool | None | Unset):
             billing_mode (None | str | Unset):
             default_currency (None | str | Unset):
-            default_task_floor_snapshot_micros (int | None | Unset):
             default_task_provider_cost_limit_micros (int | None | Unset):
             enforcement_mode (None | str | Unset):
             min_balance_micros (int | None | Unset):
@@ -41,7 +40,6 @@ class TenantConfigIn:
     automatic_tax_enabled: bool | None | Unset = UNSET
     billing_mode: None | str | Unset = UNSET
     default_currency: None | str | Unset = UNSET
-    default_task_floor_snapshot_micros: int | None | Unset = UNSET
     default_task_provider_cost_limit_micros: int | None | Unset = UNSET
     enforcement_mode: None | str | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
@@ -78,12 +76,6 @@ class TenantConfigIn:
             default_currency = UNSET
         else:
             default_currency = self.default_currency
-
-        default_task_floor_snapshot_micros: int | None | Unset
-        if isinstance(self.default_task_floor_snapshot_micros, Unset):
-            default_task_floor_snapshot_micros = UNSET
-        else:
-            default_task_floor_snapshot_micros = self.default_task_floor_snapshot_micros
 
         default_task_provider_cost_limit_micros: int | None | Unset
         if isinstance(self.default_task_provider_cost_limit_micros, Unset):
@@ -138,8 +130,6 @@ class TenantConfigIn:
             field_dict["billing_mode"] = billing_mode
         if default_currency is not UNSET:
             field_dict["default_currency"] = default_currency
-        if default_task_floor_snapshot_micros is not UNSET:
-            field_dict["default_task_floor_snapshot_micros"] = default_task_floor_snapshot_micros
         if default_task_provider_cost_limit_micros is not UNSET:
             field_dict["default_task_provider_cost_limit_micros"] = default_task_provider_cost_limit_micros
         if enforcement_mode is not UNSET:
@@ -198,16 +188,6 @@ class TenantConfigIn:
             return cast(None | str | Unset, data)
 
         default_currency = _parse_default_currency(d.pop("default_currency", UNSET))
-
-
-        def _parse_default_task_floor_snapshot_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        default_task_floor_snapshot_micros = _parse_default_task_floor_snapshot_micros(d.pop("default_task_floor_snapshot_micros", UNSET))
 
 
         def _parse_default_task_provider_cost_limit_micros(data: object) -> int | None | Unset:
@@ -283,7 +263,6 @@ class TenantConfigIn:
             automatic_tax_enabled=automatic_tax_enabled,
             billing_mode=billing_mode,
             default_currency=default_currency,
-            default_task_floor_snapshot_micros=default_task_floor_snapshot_micros,
             default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
             enforcement_mode=enforcement_mode,
             min_balance_micros=min_balance_micros,

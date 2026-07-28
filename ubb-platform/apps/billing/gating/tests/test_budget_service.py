@@ -51,7 +51,7 @@ class TestBudgetService:
 
     def test_check_fail_open_when_redis_down(self):
         from unittest.mock import patch
-        c = self._cust(cap_micros=1_000, enforce_mode="enforcing")  # default fail-open
+        c = self._cust(cap_micros=1_000, enforce_mode="blocking")  # default fail-open
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = BudgetService.check(c)
@@ -59,24 +59,24 @@ class TestBudgetService:
 
     def test_check_fail_closed_when_redis_down(self):
         from unittest.mock import patch
-        c = self._cust(cap_micros=1_000, enforce_mode="enforcing", fail_closed=True)
+        c = self._cust(cap_micros=1_000, enforce_mode="blocking", fail_closed=True)
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = BudgetService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_unavailable"
 
     def test_check_zero_cap_inert(self):
-        c = self._cust(cap_micros=0, enforce_mode="enforcing")
+        c = self._cust(cap_micros=0, enforce_mode="blocking")
         LiveCounter.budget_incr(c.tenant_id, c.id, 999_999_999)
         assert BudgetService.check(c)["allowed"] is True
 
-    def test_advisory_never_denies(self):
-        c = self._cust(cap_micros=1_000, enforce_mode="advisory")
+    def test_alert_only_never_denies(self):
+        c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
         LiveCounter.budget_incr(c.tenant_id, c.id, 5_000)
         assert BudgetService.check(c)["allowed"] is True
 
-    def test_enforcing_denies_at_cap(self):
-        c = self._cust(cap_micros=1_000, enforce_mode="enforcing", hard_stop_pct=100)
+    def test_blocking_denies_at_cap(self):
+        c = self._cust(cap_micros=1_000, enforce_mode="blocking", hard_stop_pct=100)
         self._usage(c, 999, 1)  # durable event backs the first (miss → rebuild) increment
         LiveCounter.budget_incr(c.tenant_id, c.id, 999)
         assert BudgetService.check(c)["allowed"] is True   # 999 < 1000
@@ -86,7 +86,7 @@ class TestBudgetService:
 
     def test_threshold_alert_emitted_once_on_crossing(self):
         from apps.platform.events.models import OutboxEvent
-        c = self._cust(cap_micros=1_000, enforce_mode="advisory")
+        c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
         self._usage(c, 850, 1)                 # durable event backs the spend
         BudgetService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
         assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2

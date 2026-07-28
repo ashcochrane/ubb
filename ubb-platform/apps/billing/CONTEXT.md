@@ -66,6 +66,19 @@ showing reality.
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
 not the floor's meaning.
 
+**Floor snapshot (removed)**:
+A per-task snapshot (`Task.floor_snapshot_micros`, fed by
+`BillingTenantConfig.default_task_floor_snapshot_micros`) that used to kill an individual task when
+the balance FROZEN AT TASK START fell past it — deleted on `feat/billing-surface-correctness` in
+favor of the existing **customer-wide stop flag**. Two problems, not one: it compared against a
+tenant-wide CONSTANT, never the customer's real `CustomerBillingProfile.min_balance_micros`, and it
+compared against a balance snapshot that never moved — so it was blind to a mid-task top-up and
+could kill a task for a customer who had just paid. The durable drawdown lane already detects the
+real floor crossing and fires `customer_wide_stop`, the correct wallet-wide scope for what is a
+wallet-wide fact; there is no per-task floor line to reintroduce.
+_Avoid_: re-deriving a task-scoped floor check anywhere — one floor, one crossing, one scope (see
+**Customer-wide stop flag**).
+
 **Negative since (aged negatives)**:
 `Wallet.negative_since` — when the balance last crossed ≥0 → <0; null whenever the balance is ≥ 0.
 Maintained as a sign-consistency invariant by the wallet's own save (every mutation path keeps it
@@ -86,6 +99,36 @@ crossing, events are never tagged, and work slipping past the gate lands and bil
 (`apps/billing/queries.py:get_customer_soft_min_balance`)
 _Avoid_: treating it as a stop signal — `stop=true` keeps meaning exactly one thing (hard-floor
 family only).
+
+## Pooled billing (seats & owners)
+
+**Billing owner**:
+The Customer whose Wallet/card/auto-top-up actually funds a given customer's spend — itself,
+unless the customer is a pooled SEAT (`account_type="seat"` with a `parent` business whose
+`billing_topology` is `"pooled"`), in which case it is the parent business.
+(`apps/platform/customers/models.py:Customer.resolve_billing_owner`) A pooled seat has no wallet of
+its own; every wallet-mutating path (debit, credit, withdraw, auto-top-up, grants, dispute/refund
+clawback) resolves the owner first and moves money there, while the seat stays the named subject of
+the request/audit trail.
+_Avoid_: passing a seat's id into anything that locks or mutates a Wallet — resolve the owner first.
+
+**NotBillingOwnerError (the seat/owner guard)**:
+`lock_for_billing(customer_id)` — the Wallet → Customer lock every money-moving wallet op takes —
+refuses any id that is not itself a billing owner, raising `core.exceptions.NotBillingOwnerError`
+before taking any lock or lazily minting a wallet.
+(`apps/billing/locking.py:lock_for_billing`) Added after the same defect shape turned up seven times
+across earlier fixes on this branch: a caller reached the lock with a pooled seat's id, and the
+lazy `Wallet.objects.create` silently minted a second, unread phantom wallet on the seat instead of
+failing loudly. The guard makes the whole class of bug a hard failure at the first test run instead
+of a wallet nothing ever reads.
+
+Two things deliberately still key off the SEAT and never call `lock_for_billing` at all, so the
+guard does not (and must not) touch them: **`BudgetConfig`** — budgets cap the seat's own spend, on
+purpose (see **Budget**) — and **audit records**, where the seat stays the named subject of the
+action even when the money moved on the owner's wallet. Anything else that legitimately needs a
+seat id would need a deliberate, named allowlist entry, not a silent pass.
+_Avoid_: adding a new exception to the guard without recording it here and in the guard's own
+docstring — the guard's whole value is that its exception set is small, named, and closed.
 
 ## Spend control
 
@@ -178,7 +221,41 @@ a middle "compute but never act" mode — the one honest question is whether the
 
 **Budget**:
 A per-tenant (optionally per-customer) monthly spend cap with alert levels.
-(`apps/billing/gating/models.py:BudgetConfig`)
+(`apps/billing/gating/models.py:BudgetConfig`) Two DIFFERENT month-to-date counters read a
+`BudgetConfig`, resolved two different ways, and they are deliberately not merged:
+
+- `ubb:budget:{seat}:{YYYY-MM}` — SEAT-keyed. Drives the start-gate (`BudgetService.check`) and the
+  threshold alerts. Its config is resolved SEAT-first, tenant-default second
+  (`BudgetService.resolve_config_for`) — a seat's own cap always governs the seat's own start-gate,
+  never its business's.
+- `ubb:livespend:{owner}:{YYYY-MM}` — OWNER-keyed. Drives the postpaid LIVE crossing (the
+  customer-wide stop flag). Its config is resolved for the OWNER (`LiveCounter._threshold`) — a
+  pooled business's own `BudgetConfig` row, falling back to the tenant default when the business has
+  none, but NEVER a seat's row: a business customer's own budget row is what governs the aggregate.
+
+For a standalone customer (owner == seat) these compute the same number twice. For a pooled
+business they diverge on purpose: per-seat start caps plus one owner-aggregate stop line. They were
+not collapsed when owner == seat because conditional key identity is a footgun — a seat adopted into
+a business mid-month would silently change which key its spend lives under, splitting the counter
+with no migration path — and because they are different aggregates with different merge semantics:
+`livespend` MAX-merges toward the owner-aggregated durable billed total; `budget` MAX-merges toward
+the seat's own ledger. They coincide only in the degenerate case.
+
+**Mode split** — why a budget crossing is a wall on postpaid but not on prepaid/meter_only (the
+reasoning is who carries the credit risk, which is what makes the asymmetry legible rather than an
+inconsistency):
+
+- **postpaid** — the tenant is extending credit, so the budget IS the live stop line: crossing it
+  fires the stop flag, the `stop.fired` webhook, and suspension
+  (`crossing.budget_stop_threshold`, wired into `LiveCounter._crossed`/`_threshold`).
+- **prepaid / meter_only** — the money is already collected and the tenant carries no credit risk,
+  so the budget is start-gate only: it refuses NEW task starts and never interrupts running work
+  (the live counter's `_threshold` for these modes uses the wallet floor, never the budget, so a
+  budget cap cannot enter the live crossing at all in these modes). The wallet floor is the real
+  wall here, and it is self-correcting: top up and continue.
+_Avoid_: assuming a budget crossing stops anything on prepaid/meter_only — it never does; only the
+wallet floor does. "Fixing" the seat/owner divergence by pointing both counters at the same key —
+that reintroduces the mid-month-adoption footgun this design deliberately avoided.
 
 **Hold**:
 The arrival-time reservation of one async event's estimated price on the live counter, taken
@@ -194,7 +271,8 @@ The instant a debit or hold pushes an owner's live counter past its threshold (w
 budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
 The compare itself — both sign orientations (wallet balance FALLS below the line, budget spend
 RISES over it), the transition/level/recovery forms, the budget stop line's `enforce_mode`
-semantics (an advisory budget alerts but can never cross, in every lane), and the month
+semantics (an `alert_only` budget alerts but can never cross, in every lane; a `blocking`
+budget both alerts and can cross), and the month
 label/bounds the postpaid crossing is scoped by — has ONE owner:
 `apps/billing/gating/crossing.py` (#110). Every lane (fast, durable, start-gate, reconcile,
 repair, budget gate, dispute clawback) imports those predicates rather than re-deriving the

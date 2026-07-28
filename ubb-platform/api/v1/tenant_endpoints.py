@@ -463,8 +463,6 @@ def _config_out(t):
         "default_task_provider_cost_limit_micros":
             rc.default_task_provider_cost_limit_micros if rc else None,
         "min_balance_micros": bc.min_balance_micros,
-        "default_task_floor_snapshot_micros":
-            bc.default_task_floor_snapshot_micros,
         "soft_min_balance_micros": bc.soft_min_balance_micros,
     }
 
@@ -659,17 +657,6 @@ def update_tenant_config(request, payload: TenantConfigIn):
         if bc.min_balance_micros != payload.min_balance_micros:
             bc.min_balance_micros = payload.min_balance_micros
             bc.save(update_fields=["min_balance_micros", "updated_at"])
-    # The task-default floor snapshot lives on BillingTenantConfig (the row
-    # RiskService reads at task creation).
-    if "default_task_floor_snapshot_micros" in fields_set:
-        from apps.billing.queries import get_billing_config
-        bc = get_billing_config(t.id)
-        if (bc.default_task_floor_snapshot_micros
-                != payload.default_task_floor_snapshot_micros):
-            bc.default_task_floor_snapshot_micros = (
-                payload.default_task_floor_snapshot_micros)
-            bc.save(update_fields=["default_task_floor_snapshot_micros",
-                                   "updated_at"])
     # Soft floor tenant default (#40, spec §F) — lands on BillingTenantConfig
     # (the row get_customer_soft_min_balance reads). Validated against the
     # effective hard floor above, before any write.

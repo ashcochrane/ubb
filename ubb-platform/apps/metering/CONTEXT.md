@@ -28,20 +28,35 @@ queries take an explicit `basis`.
 
 **Stop context**:
 The immutable, system-owned array a usage event carries when it landed past a stop — one entry per
-limit (`task_limit` / `subtask_limit` / `customer_floor` / `suspended` / `task_not_active`), each
-naming the scope, the trip time, the stop episode (customer scope), and whether the event *tipped*
-the limit (`arrived_after: false`) or arrived after it. Written once at record (sync) / settle
-(async) inside the recording transaction; never from tenant tags or metadata. Soft-floor crossings
-never tag events. (`apps/metering/usage/services/stop_context.py`)
-_Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row.
+limit (`task_limit` / `subtask_limit` / `customer_wide_stop` / `suspended` / `task_not_active`),
+each naming the scope, the trip time, the stop episode (customer scope), and whether the event
+*tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record (sync) /
+settle (async) inside the recording transaction; never from tenant tags or metadata. Soft-floor
+crossings never tag events. (`apps/metering/usage/services/stop_context.py`)
+_Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row;
+a value's meaning can be renamed later (`customer_floor` → `customer_wide_stop`,
+billing-surface-correctness task 1) but the historical row itself never changes, so a reader keyed
+on a single current string will silently under-count older events — key on scope/intent, not on an
+allow-listed literal.
+
+Note: `stop_context` used to carry a unit-scoped `crossed_floor_snapshot` verdict too — a per-task
+copy of the tenant's wallet-floor default, raced against the task's own frozen balance snapshot.
+Deleted (billing-surface-correctness, task 1): it was blind to mid-task top-ups and independent of
+the customer's real floor. Do not reintroduce a unit-scoped floor check in
+`apps/metering/usage/services/stop_context.py` — the durable drawdown lane's `customer_wide_stop`
+customer-scope tag is the one correct signal for a wallet-wide fact; see **Task floor snapshot
+(removed)** in `apps/platform/CONTEXT.md` for the full reasoning.
 
 **Past-limit report**:
 The per-customer answer to "exactly what was spent past the limit and why" in one call
-(`GET /api/v1/customers/{id}/past-limit-report`): episodes — customer-floor stops from the signal
+(`GET /api/v1/customers/{id}/past-limit-report`): episodes — customer-wide stops from the signal
 ledger's history, task/subtask limit kills, soft-floor crossed/cleared marker rows — each with the
 tripping limit, trip/resume times, itemized tagged events, and totals per limit in both
 denominations. (`api/v1/past_limit.py`)
-_Avoid_: itemizing events under a soft-floor row — nothing is "past limit" under a soft floor.
+_Avoid_: itemizing events under a soft-floor row — nothing is "past limit" under a soft floor;
+allow-listing a specific customer-scope `limit` string when bucketing events — deny-list the one
+value that is taggable but never an episode (`suspended`) instead, so a renamed-but-still-episodic
+value (or a historical string predating a rename) is never silently dropped.
 
 **Backfill**:
 Recording usage with a past `effective_at` inside the tenant's backfill window. Reaching into an
