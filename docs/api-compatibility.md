@@ -7,6 +7,14 @@
 > rationale lives in [ADR-003](adr/0003-versioning-and-deprecation.md); this page is the
 > version we make to you.
 
+> **Status, as of 2026-07-28: no tenant is live on v1 yet.** The `api-v1-launch` tag was
+> cut on 2026-07-22 in preparation for self-serve launch, but nothing is integrated
+> against it. Until the first live tenant, breaking edges are still coordinated by hand
+> rather than run through §4's deprecation cycle — the pre-launch allowance described in
+> `openapi/oasdiff-err-ignore.txt`. **The existence of the tag is not, by itself, the
+> thing that binds; a consumer depending on the contract is.** Delete this note the day
+> the first tenant goes live, and §4 governs from then on with no further judgement calls.
+
 You are putting UBB between your agents and your Stripe account. You need to know the
 ground won't move under an integration you can't redeploy on our schedule. Here is the
 deal.

@@ -261,13 +261,18 @@ against a v3.0 server and will be deleted in the launch sweep (#86). Use
 
 ---
 
-## 8. Pooled-seat billing + the retired per-task floor (folded into v3.0, pre-tag)
+## 8. Pooled-seat billing + the retired per-task floor (folded into v3.0, pre-live)
 
-Three more breaking edges landed on the same not-yet-tagged `openapi/v1.json` contract
+Three more breaking edges landed on the same pre-live `openapi/v1.json` contract
 v3.0 is cut from — since v3.0 hasn't shipped, these are **part of the one coordinated
 cut**, not a second release. If you're integrating against v3.0 for the first time,
 just read them as more of the same guide; if you already adapted to an earlier
-pre-tag snapshot, these are the delta.
+pre-live snapshot, these are the delta.
+
+> The `api-v1-launch` tag (2026-07-22) exists, but no tenant is integrated against v1
+> yet, so these remain hand-coordinated pre-launch breaks rather than §4 deprecations.
+> See `docs/api-compatibility.md` — from the first live tenant, removals get the full
+> deprecate-then-remove cycle instead.
 
 ### The per-task floor snapshot is gone
 
