@@ -12,12 +12,16 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Info } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
 
 import { problemMessage } from "@/api/problem";
+import { DetailList } from "@/components/shared/detail-list";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,7 +29,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { formatMicros } from "@/lib/format";
 
 import {
   useBillingProfile,
@@ -54,7 +59,8 @@ export function BillingConfigSection({ customerId }: { customerId: string }) {
 function BillingProfileCard({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency().toUpperCase();
   const isAdmin = useHasRole("admin");
-  const query = useBillingProfile(customerId);
+  const postpaid = useIsPostpaid();
+  const query = useBillingProfile(customerId, !postpaid);
   const mutation = useSaveBillingProfile(customerId);
   const form = useForm<BillingProfileForm>({
     resolver: zodResolver(billingProfileSchema),
@@ -106,10 +112,64 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
         <CardTitle>Billing profile</CardTitle>
       </CardHeader>
       <CardContent>
-        {query.isLoading ? (
+        {postpaid ? (
+          <Alert>
+            <Info />
+            <AlertDescription>
+              Overdraft and wind-down floors aren't used under postpaid
+              billing — usage drawdown skips the wallet entirely, so there's
+              no balance floor to configure here. The monthly budget below is
+              the live spend control instead.
+            </AlertDescription>
+          </Alert>
+        ) : query.isLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : query.isError ? (
           <ErrorCard error={query.error} onRetry={() => void query.refetch()} />
+        ) : profile?.is_pooled_seat ? (
+          <div className="space-y-3">
+            <Alert>
+              <Info />
+              <AlertDescription>
+                This seat has no wallet of its own — spend floors are set on
+                the billing owner,{" "}
+                <Link
+                  to="/customers/$customerId"
+                  params={{ customerId: profile.billing_owner_id }}
+                  className="font-medium underline-offset-2 hover:underline"
+                >
+                  {profile.billing_owner_external_id}
+                </Link>
+                . Edit them there — the API refuses (422) writing floors to a
+                pooled seat's own profile.
+              </AlertDescription>
+            </Alert>
+            <DetailList
+              items={[
+                {
+                  label: `Allowed overdraft (${currency})`,
+                  value:
+                    profile.min_balance_micros != null
+                      ? formatMicros(profile.min_balance_micros, currency)
+                      : "Inherits the workspace default",
+                },
+                {
+                  label: `Wind-down floor (${currency})`,
+                  value:
+                    profile.soft_min_balance_micros != null
+                      ? formatMicros(profile.soft_min_balance_micros, currency)
+                      : "Inherits the workspace default",
+                },
+                {
+                  label: "Top-up credit expires after",
+                  value:
+                    profile.topup_grant_expiry_days != null
+                      ? `${profile.topup_grant_expiry_days} days`
+                      : "Never",
+                },
+              ]}
+            />
+          </div>
         ) : (
           <form onSubmit={(event) => void submit(event)} className="space-y-2.5">
             <FormField
@@ -168,6 +228,7 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
 function AutoTopUpCard({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency().toUpperCase();
   const isAdmin = useHasRole("admin");
+  const postpaid = useIsPostpaid();
   const mutation = useConfigureAutoTopUp(customerId);
   const form = useForm<AutoTopUpForm>({
     resolver: zodResolver(autoTopUpSchema),
@@ -186,6 +247,26 @@ function AutoTopUpCard({ customerId }: { customerId: string }) {
       // surfaced below
     }
   });
+
+  if (postpaid) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Auto top-up</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <Info />
+            <AlertDescription>
+              Auto top-up isn't used under postpaid billing — there's no
+              prepaid wallet to top up. Usage is invoiced through Stripe at
+              period close instead.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
