@@ -74,6 +74,9 @@ class TestUsageDimensions:
         assert r.status_code == 200
         e = UsageEvent.objects.get(id=r.json()["event_id"])
         assert e.dim1 == "" and e.dim2 == ""
+        # ...and reserved-NAMED tags still reach storage unchanged. Nothing else
+        # asserts this: test_tags.py only covers non-reserved keys.
+        assert e.tags == {"service": "extract", "agent": "textract-v2"}
 
     def test_product_id_is_gone_from_the_wire_contract(self):
         """Final-fixes wave, Critical 1+2: the legacy `product_id` field is
