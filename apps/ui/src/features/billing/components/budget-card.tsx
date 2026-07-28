@@ -114,8 +114,8 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="advisory">Advisory — alert only</SelectItem>
-                    <SelectItem value="enforcing">Enforcing — refuse new work</SelectItem>
+                    <SelectItem value="alert_only">Alert only — never blocks</SelectItem>
+                    <SelectItem value="blocking">Blocking — refuse new work</SelectItem>
                   </SelectContent>
                 </Select>
               )}

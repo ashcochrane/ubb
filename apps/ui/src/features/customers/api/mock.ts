@@ -539,7 +539,7 @@ export async function getCustomerBudget(customerId: string): Promise<BudgetConfi
   return (
     budgets[customerId] ?? {
       cap_micros: 0,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: 100,
       alert_levels: [],
       fail_closed: false,
@@ -574,7 +574,7 @@ export async function getBudgetStatus(customerId: string): Promise<BudgetStatusO
       spend_micros: 0,
       cap_micros: config?.cap_micros ?? 0,
       pct: 0,
-      enforce_mode: config?.enforce_mode ?? "advisory",
+      enforce_mode: config?.enforce_mode ?? "alert_only",
     }
   );
 }
