@@ -288,5 +288,11 @@ jobs:
       - name: UI contract snapshot gate — committed spec produces zero diff
         run: pnpm ui:api:check
 
+      - name: UI typecheck gate — the committed console compiles
+        run: pnpm --dir apps/ui exec tsc -b
+
+      - name: UI test gate
+        run: pnpm --dir apps/ui test
+
       - name: TypeScript smoke gate — committed spec generates clean types
         run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts

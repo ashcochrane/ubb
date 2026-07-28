@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: the unanchored Python-template `lib/` was silently
+# ignoring every apps/ui/src/**/lib/ module (gitignore patterns without a slash
+# match at any depth).
+/lib/
+/lib64/
 parts/
 sdist/
 var/
