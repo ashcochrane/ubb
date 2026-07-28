@@ -278,7 +278,8 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         # sibling endpoints resolve the same date inputs identically.
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
-    valid_group_by = ("provider", "event_type", "product_id", "service_id", "agent_id")
+    valid_group_by = ("provider", "event_type", "task_type", "subtask_type",
+                      "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
     cols = ["bucket"]
     if group_by in valid_group_by:
         cols.append(group_by)
@@ -321,7 +322,10 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
                            start_date=None, end_date=None) -> list[dict]:
     """Usage-only margin (billed - provider) grouped by a column or a tag key.
 
-    group_by in {"provider", "event_type", "product_id"}; OR tag_key for tags->>key.
+    group_by in {"provider", "event_type", "task_type", "subtask_type",
+    "dim1".."dim6"} (a resolved column, not a tenant-facing key — the caller
+    resolves the tenant's declared name via the dimension registry first);
+    OR tag_key for tags->>key.
     Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
     """
     from apps.metering.usage.models import UsageEvent
@@ -351,8 +355,10 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
-    if group_by not in ("provider", "event_type", "product_id"):
-        raise ValueError("group_by must be provider, event_type, or product_id")
+    valid = ("provider", "event_type", "task_type", "subtask_type",
+             "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+    if group_by not in valid:
+        raise ValueError(f"group_by must be one of {valid}")
     grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(
         prov_sum=Sum("provider_cost_micros"), billed_sum=Sum("billed_cost_micros"),
         cnt=Count("id")).order_by())
@@ -417,12 +423,12 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
 
 def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
                                   period_end: date, group_by: str) -> list[tuple]:
-    """Billed totals for ONE customer grouped by "tag:<key>" or "product_id".
+    """Billed totals for ONE customer grouped by "tag:<key>" or "dim1".
 
     Returns UNSORTED, aggregated [(label, billed_micros), ...] pairs (the
     caller owns presentation order). Postpaid invoice-line label semantics:
     a missing tag key, NULL tags, a JSON-null or EMPTY-STRING tag value, and
-    an empty product_id ALL collapse into "(other)" — unlike the analytics
+    an empty dim1 ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
     distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
     into "(other)" post-query.
@@ -438,10 +444,10 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
         rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "tags"))
                 .values("label").annotate(total=Sum("billed_cost_micros")).order_by())
         raw_key = "label"
-    else:  # "product_id"
-        rows = (qs.values("product_id")
+    else:  # "dim1"
+        rows = (qs.values("dim1")
                 .annotate(total=Sum("billed_cost_micros")).order_by())
-        raw_key = "product_id"
+        raw_key = "dim1"
     merged: dict = {}
     for r in rows:
         label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge

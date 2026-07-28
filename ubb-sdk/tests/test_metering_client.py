@@ -72,6 +72,32 @@ class MeteringClientTest(unittest.TestCase):
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["tags"], {"project": "proj_1"})
 
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_with_dimensions(self, mock_post):
+        """dimensions is distinct from tags: declared, rate-card/analytics-
+        selecting values, not free-form labels — plumbed the same way."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_3b", "new_balance_micros": 7_000_000, "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r3b", idempotency_key="i3b",
+            provider_cost_micros=1_000_000, dimensions={"service": "alpha"},
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["dimensions"], {"service": "alpha"})
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_omitted_dimensions_not_in_body(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_3c", "new_balance_micros": 7_000_000, "suspended": False,
+        })
+        self.client.record_usage(
+            customer_id="cust_1", request_id="r3c", idempotency_key="i3c",
+            provider_cost_micros=1_000_000,
+        )
+        body = mock_post.call_args.kwargs["json"]
+        self.assertNotIn("dimensions", body)
+
     # ---- recorded_at (F4.2) ----
 
     @patch("ubb.metering.httpx.Client.post")

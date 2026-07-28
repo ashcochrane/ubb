@@ -51,6 +51,12 @@ def _get(api, path, params=None):
     return r.json()
 
 
+def _put(api, path, body):
+    r = api.put(path, json=body)
+    r.raise_for_status()
+    return r.json()
+
+
 @pytest.fixture
 def _no_outbox_dispatch():
     """Neutralize the transactional-outbox Celery dispatch for this test.
@@ -75,7 +81,7 @@ def _no_outbox_dispatch():
 # cards below. Asserted exactly so every reconciliation below is precise.
 COST_ALPHA = 200   # rate 2/unit * 100 units, unit_quantity=1
 COST_BETA = 500    # rate 5/unit * 100 units, unit_quantity=1
-# Unattributed event: recorded with an explicit provider_cost_micros (no service tag).
+# Unattributed event: recorded with an explicit provider_cost_micros (no service dimension).
 COST_UNATTR = 300
 
 
@@ -99,23 +105,43 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
     api = httpx.Client(base_url=live_server.url,
                        headers={"Authorization": f"Bearer {raw_key}"})
     try:
+        # ---- 1b. declare this tenant's slicing axes (design D1) — the ONE
+        # vocabulary that rate selection AND analytics grouping both read.
+        # "service"/"agent" are event-scoped dimensions bound to dim2/dim3 and
+        # are sent as `dimensions=` on each usage call (Task 9 retired the old
+        # tag-lifting; tags are now free-form labels only). "product" is bound
+        # to dim1 the same way — declared and sent via `dimensions=` (the
+        # legacy product_id wire field is gone; the only path onto dim1 is a
+        # declared dimension) — and GROUPING speaks declared keys (Task 15),
+        # so dim1 needs a key to be addressable. Driven over the real HTTP
+        # route, matching this test's style for every route the SDK doesn't
+        # wrap yet. ----
+        _put(api, "/api/v1/metering/dimensions", {"dimensions": [
+            {"key": "product", "slot": "dim1", "scope": "event"},
+            {"key": "service", "slot": "dim2", "scope": "event"},
+            {"key": "agent", "slot": "dim3", "scope": "event"},
+        ]})
+
         # ---- 2. create a default cost BOOK, then add TWO dimensional rates for
-        # metric "tokens" that differ ONLY by the {"service": ...} dimension. The
-        # pricing engine matches a rate's dimensions against the event's tags.
-        # Every rate lives under a book -> book-scoped resolution can find it. ----
+        # metric "tokens" that differ ONLY by the declared "service" dimension
+        # (dim2). The pricing engine matches a rate's selector columns against
+        # the event's OWN columns (design D3: "" wildcards, a pinned value must
+        # match exactly). Every rate lives under a book -> book-scoped
+        # resolution can find it. ----
         book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "cogs", "provider_key": "",
             "is_default": True})["id"]
         alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dimensions": {"service": "alpha"},
+            "metric_name": "tokens", "dim2": "alpha",
             "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
         beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dimensions": {"service": "beta"},
+            "metric_name": "tokens", "dim2": "beta",
             "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
         assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
         # ---- 3. record 8 events for C1: 2 products x 2 services x 2 agents,
-        # spread across 3 days; ONE event carries a mis-typed agent tag. ----
+        # spread across 3 days; ONE event carries a mis-typed agent dimension
+        # value. ----
         # Each tuple: (product, service, agent, day). Expected cost derives purely
         # from `service`. The matrix is balanced so each dimension reconciles.
         matrix = [
@@ -132,26 +158,37 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         for i, (product, service, agent, day) in enumerate(matrix):
             res = client.record_usage(
                 customer_id=str(c1.id), request_id=f"r{i}", idempotency_key=f"i{i}",
-                product_id=product, usage_metrics={"tokens": 100},
-                tags={"service": service, "agent": agent})
+                usage_metrics={"tokens": 100},
+                # "product"/"service"/"agent" are all DECLARED dimensions
+                # (dim1/dim2/dim3) — what the cost card selects on and the
+                # breakdown below groups by. `tags` (free-form labels, never
+                # priced/grouped, still stored) is covered directly by
+                # apps/metering/usage/tests/test_tags.py and
+                # api/v1/tests/test_usage_dimensions.py::
+                # test_tags_no_longer_become_dimensions -- no response field
+                # exposes tags here to assert against, so this journey test
+                # does not duplicate that coverage.
+                dimensions={"product": product, "service": service, "agent": agent})
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_metrics == []   # tokens HAS a matching card
-            assert res.service_id == service
-            assert res.agent_id == agent
+            # dim2/dim3 are declared fields on RecordUsageResponse post-Task-17
+            # SDK regeneration — attribute access, not additional_properties.
+            assert res.dim2 == service
+            assert res.dim3 == agent
             _force_day(res.event_id, day)
 
-        # ---- 3b. One extra event for C1 with NO service tag -> service_id="" ----
-        # This event MUST appear as "(unattributed)" in the service_id breakdown
+        # ---- 3b. One extra event for C1 with NO service dimension -> dim2="" ----
+        # This event MUST appear as "(unattributed)" in the dim2 breakdown
         # so that the breakdown reconciles to the new grand total.
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
             provider_cost_micros=COST_UNATTR,
-            # Deliberately no service/agent/product tags so all three dimension
-            # fields are empty strings on the stored event.
+            # Deliberately no product/service/agent dimensions, so all three
+            # dimension fields are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
-        assert unattr_res.service_id == ""
+        assert unattr_res.dim2 == ""
         _force_day(unattr_res.event_id, 1)  # pin to day 1 alongside other day-1 events
 
         # Expected grand-total provider cost (COGS) across all 9 events (8 matrix + 1 unattr).
@@ -175,16 +212,16 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # ---- 4. multi-dimension COGS breakdown via the SDK (no client joins) ----
         rep = client.usage_analytics(
             customer_id=str(c1.id),
-            dimensions=["product_id", "service_id", "agent_id"])
+            dimensions=["product", "service", "agent"])
         breakdowns = rep["breakdowns"]
-        assert set(breakdowns) == {"product_id", "service_id", "agent_id"}
+        assert set(breakdowns) == {"product", "service", "agent"}
 
         def _as_map(rows):
             return {r["dimension"]: r["total_provider_cost_micros"] for r in rows}
 
-        by_product = _as_map(breakdowns["product_id"])
-        by_service = _as_map(breakdowns["service_id"])
-        by_agent = _as_map(breakdowns["agent_id"])
+        by_product = _as_map(breakdowns["product"])
+        by_service = _as_map(breakdowns["service"])
+        by_agent = _as_map(breakdowns["agent"])
 
         # (a) per-service totals reflect alpha=2/unit (200 each) vs beta=5/unit (500 each),
         #     PLUS an "(unattributed)" row for the event with no service tag.
@@ -203,7 +240,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
 
         # ---- 5. time-series per-day per-service reconciles to the step-4 breakdown ----
         ts = client.usage_timeseries(
-            customer_id=str(c1.id), granularity="day", group_by="service_id")
+            customer_id=str(c1.id), granularity="day", group_by="service")
         series = ts["series"]
         # 3 distinct day-buckets (days 1, 2, 3).
         buckets = {row["bucket"] for row in series}
@@ -222,10 +259,11 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Capture a timestamp strictly BEFORE the reprice (old rate active then).
         before_update = timezone.now()
 
-        # Reprice the {"service":"alpha"} rate to 99 via publish (supersedes v1,
-        # opens v2, bumps the book version) — the book-scoped reprice path.
+        # Reprice the {"service":"alpha"} rate (dim2="alpha") to 99 via
+        # publish (supersedes v1, opens v2, bumps the book version) — the
+        # book-scoped reprice path.
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"metric_name": "tokens", "dimensions": {"service": "alpha"},
+            "changes": [{"metric_name": "tokens", "dim2": "alpha",
                          "rate_per_unit_micros": 99}]})
         assert published["version"] == 2
 
@@ -237,7 +275,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 params["as_of"] = as_of
             rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
                         params=params or None)["data"]
-            return [r for r in rows if r["dimensions"] == {"service": "alpha"}]
+            return [r for r in rows if r["dim2"] == "alpha"]
 
         history = _alpha_rows(include_history=True)
         assert len(history) == 2                          # original + new version
@@ -262,7 +300,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             client.record_usage(
                 customer_id=str(c1.id), request_id="r_strict",
                 idempotency_key="i_strict", usage_metrics={"unmatched_metric": 5},
-                tags={"service": "alpha"})
+                dimensions={"service": "alpha"})
         assert exc.value.status_code == 422
     finally:
         client.close()

@@ -17,6 +17,7 @@ import pytest
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.dimensions.models import DimensionDef
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 
@@ -64,6 +65,10 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     tenant = Tenant.objects.create(name="J1", products=["metering"])
     _, raw_key = TenantApiKey.create_key(tenant)
     customer = Customer.objects.create(tenant=tenant, external_id="acme")
+    # dimensions= now resolves through the registry (#128 rework); an
+    # identity declaration (key == slot) lets a declared dim1 value stay
+    # groupable by "dim1".
+    DimensionDef.objects.create(tenant=tenant, key="dim1", slot="dim1", scope="event")
     # 2 micros per input token: per_unit, unit_quantity=1 token == 1 unit.
     # Rate.compute(units) == (units * rate + unit_quantity // 2) // unit_quantity + fixed
     #                         == (1000 * 2 + 0) // 1 + 0 == 2000.
@@ -91,19 +96,19 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
         #     contract, real (tolerant) deserialization into RecordUsageResult.
         res = client.record_usage(customer_id=str(customer.id), request_id="r1",
-                                  idempotency_key="i1", product_id="search",
+                                  idempotency_key="i1", dimensions={"dim1": "search"},
                                   usage_metrics={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2
         assert res.uncosted_metrics == []   # input_tokens HAS a cost card
 
         # (c) analytics returns per-customer + per-product PROVIDER cost (COGS) via the SDK.
-        rep = client.usage_analytics(customer_id=str(customer.id))
+        rep = client.usage_analytics(customer_id=str(customer.id), dimensions=["dim1"])
         assert rep["total_provider_cost_micros"] == 2000
         assert any(r["customer__external_id"] == "acme" and r["total_provider_cost_micros"] == 2000
                    for r in rep["by_customer"])
-        assert any(r["product_id"] == "search" and r["total_provider_cost_micros"] == 2000
-                   for r in rep["by_product"])
+        assert any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 2000
+                   for r in rep["breakdowns"]["dim1"])
     finally:
         client.close()
         api.close()

@@ -11,8 +11,6 @@ from ..types import UNSET, Unset
 from ..types import UNSET, Unset
 from typing import cast
 
-if TYPE_CHECKING:
-  from ..models.rate_change_in_dimensions import RateChangeInDimensions
 
 
 
@@ -24,28 +22,43 @@ T = TypeVar("T", bound="RateChangeIn")
 
 @_attrs_define
 class RateChangeIn:
-    """ One reprice in a publish. Match keys (metric_name/provider/event_type/
-    dimensions) locate the active rate; the remaining (nullable) fields, when
+    """ One reprice in a publish. Match keys (metric_name plus the ten
+    selector columns — provider/event_type/task_type/subtask_type/dim1..
+    dim6) locate the active rate; the remaining (nullable) fields, when
     present, override it in the new version.
 
         Attributes:
             metric_name (str):
-            dimensions (RateChangeInDimensions | Unset):
+            dim1 (str | Unset):  Default: ''.
+            dim2 (str | Unset):  Default: ''.
+            dim3 (str | Unset):  Default: ''.
+            dim4 (str | Unset):  Default: ''.
+            dim5 (str | Unset):  Default: ''.
+            dim6 (str | Unset):  Default: ''.
             event_type (str | Unset):  Default: ''.
             fixed_micros (int | None | Unset):
             pricing_model (None | str | Unset):
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
+            subtask_type (str | Unset):  Default: ''.
+            task_type (str | Unset):  Default: ''.
             unit_quantity (int | None | Unset):
      """
 
     metric_name: str
-    dimensions: RateChangeInDimensions | Unset = UNSET
+    dim1: str | Unset = ''
+    dim2: str | Unset = ''
+    dim3: str | Unset = ''
+    dim4: str | Unset = ''
+    dim5: str | Unset = ''
+    dim6: str | Unset = ''
     event_type: str | Unset = ''
     fixed_micros: int | None | Unset = UNSET
     pricing_model: None | str | Unset = UNSET
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
+    subtask_type: str | Unset = ''
+    task_type: str | Unset = ''
     unit_quantity: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -54,12 +67,19 @@ class RateChangeIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.rate_change_in_dimensions import RateChangeInDimensions
         metric_name = self.metric_name
 
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
+        dim1 = self.dim1
+
+        dim2 = self.dim2
+
+        dim3 = self.dim3
+
+        dim4 = self.dim4
+
+        dim5 = self.dim5
+
+        dim6 = self.dim6
 
         event_type = self.event_type
 
@@ -83,6 +103,10 @@ class RateChangeIn:
         else:
             rate_per_unit_micros = self.rate_per_unit_micros
 
+        subtask_type = self.subtask_type
+
+        task_type = self.task_type
+
         unit_quantity: int | None | Unset
         if isinstance(self.unit_quantity, Unset):
             unit_quantity = UNSET
@@ -95,8 +119,18 @@ class RateChangeIn:
         field_dict.update({
             "metric_name": metric_name,
         })
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
+        if dim1 is not UNSET:
+            field_dict["dim1"] = dim1
+        if dim2 is not UNSET:
+            field_dict["dim2"] = dim2
+        if dim3 is not UNSET:
+            field_dict["dim3"] = dim3
+        if dim4 is not UNSET:
+            field_dict["dim4"] = dim4
+        if dim5 is not UNSET:
+            field_dict["dim5"] = dim5
+        if dim6 is not UNSET:
+            field_dict["dim6"] = dim6
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if fixed_micros is not UNSET:
@@ -107,6 +141,10 @@ class RateChangeIn:
             field_dict["provider"] = provider
         if rate_per_unit_micros is not UNSET:
             field_dict["rate_per_unit_micros"] = rate_per_unit_micros
+        if subtask_type is not UNSET:
+            field_dict["subtask_type"] = subtask_type
+        if task_type is not UNSET:
+            field_dict["task_type"] = task_type
         if unit_quantity is not UNSET:
             field_dict["unit_quantity"] = unit_quantity
 
@@ -116,19 +154,20 @@ class RateChangeIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.rate_change_in_dimensions import RateChangeInDimensions
         d = dict(src_dict)
         metric_name = d.pop("metric_name")
 
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: RateChangeInDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
-        else:
-            dimensions = RateChangeInDimensions.from_dict(_dimensions)
+        dim1 = d.pop("dim1", UNSET)
 
+        dim2 = d.pop("dim2", UNSET)
 
+        dim3 = d.pop("dim3", UNSET)
 
+        dim4 = d.pop("dim4", UNSET)
+
+        dim5 = d.pop("dim5", UNSET)
+
+        dim6 = d.pop("dim6", UNSET)
 
         event_type = d.pop("event_type", UNSET)
 
@@ -164,6 +203,10 @@ class RateChangeIn:
         rate_per_unit_micros = _parse_rate_per_unit_micros(d.pop("rate_per_unit_micros", UNSET))
 
 
+        subtask_type = d.pop("subtask_type", UNSET)
+
+        task_type = d.pop("task_type", UNSET)
+
         def _parse_unit_quantity(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -176,12 +219,19 @@ class RateChangeIn:
 
         rate_change_in = cls(
             metric_name=metric_name,
-            dimensions=dimensions,
+            dim1=dim1,
+            dim2=dim2,
+            dim3=dim3,
+            dim4=dim4,
+            dim5=dim5,
+            dim6=dim6,
             event_type=event_type,
             fixed_micros=fixed_micros,
             pricing_model=pricing_model,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
+            subtask_type=subtask_type,
+            task_type=task_type,
             unit_quantity=unit_quantity,
         )
 

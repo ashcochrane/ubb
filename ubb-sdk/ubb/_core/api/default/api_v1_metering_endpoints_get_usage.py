@@ -21,6 +21,8 @@ def _get_kwargs(
     limit: int | Unset = 50,
     tag_key: None | str | Unset = UNSET,
     tag_value: None | str | Unset = UNSET,
+    task_id: None | str | Unset = UNSET,
+    include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
     stop_scope: None | str | Unset = UNSET,
     episode_seq: int | None | Unset = UNSET,
@@ -54,6 +56,15 @@ def _get_kwargs(
     else:
         json_tag_value = tag_value
     params["tag_value"] = json_tag_value
+
+    json_task_id: None | str | Unset
+    if isinstance(task_id, Unset):
+        json_task_id = UNSET
+    else:
+        json_task_id = task_id
+    params["task_id"] = json_task_id
+
+    params["include_subtasks"] = include_subtasks
 
     json_past_limit: bool | None | Unset
     if isinstance(past_limit, Unset):
@@ -122,6 +133,8 @@ def sync_detailed(
     limit: int | Unset = 50,
     tag_key: None | str | Unset = UNSET,
     tag_value: None | str | Unset = UNSET,
+    task_id: None | str | Unset = UNSET,
+    include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
     stop_scope: None | str | Unset = UNSET,
     episode_seq: int | None | Unset = UNSET,
@@ -135,6 +148,8 @@ def sync_detailed(
         limit (int | Unset):  Default: 50.
         tag_key (None | str | Unset):
         tag_value (None | str | Unset):
+        task_id (None | str | Unset):
+        include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
         stop_scope (None | str | Unset):
         episode_seq (int | None | Unset):
@@ -154,6 +169,8 @@ cursor=cursor,
 limit=limit,
 tag_key=tag_key,
 tag_value=tag_value,
+task_id=task_id,
+include_subtasks=include_subtasks,
 past_limit=past_limit,
 stop_scope=stop_scope,
 episode_seq=episode_seq,
@@ -174,6 +191,8 @@ def sync(
     limit: int | Unset = 50,
     tag_key: None | str | Unset = UNSET,
     tag_value: None | str | Unset = UNSET,
+    task_id: None | str | Unset = UNSET,
+    include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
     stop_scope: None | str | Unset = UNSET,
     episode_seq: int | None | Unset = UNSET,
@@ -187,6 +206,8 @@ def sync(
         limit (int | Unset):  Default: 50.
         tag_key (None | str | Unset):
         tag_value (None | str | Unset):
+        task_id (None | str | Unset):
+        include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
         stop_scope (None | str | Unset):
         episode_seq (int | None | Unset):
@@ -207,6 +228,8 @@ cursor=cursor,
 limit=limit,
 tag_key=tag_key,
 tag_value=tag_value,
+task_id=task_id,
+include_subtasks=include_subtasks,
 past_limit=past_limit,
 stop_scope=stop_scope,
 episode_seq=episode_seq,
@@ -221,6 +244,8 @@ async def asyncio_detailed(
     limit: int | Unset = 50,
     tag_key: None | str | Unset = UNSET,
     tag_value: None | str | Unset = UNSET,
+    task_id: None | str | Unset = UNSET,
+    include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
     stop_scope: None | str | Unset = UNSET,
     episode_seq: int | None | Unset = UNSET,
@@ -234,6 +259,8 @@ async def asyncio_detailed(
         limit (int | Unset):  Default: 50.
         tag_key (None | str | Unset):
         tag_value (None | str | Unset):
+        task_id (None | str | Unset):
+        include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
         stop_scope (None | str | Unset):
         episode_seq (int | None | Unset):
@@ -253,6 +280,8 @@ cursor=cursor,
 limit=limit,
 tag_key=tag_key,
 tag_value=tag_value,
+task_id=task_id,
+include_subtasks=include_subtasks,
 past_limit=past_limit,
 stop_scope=stop_scope,
 episode_seq=episode_seq,
@@ -273,6 +302,8 @@ async def asyncio(
     limit: int | Unset = 50,
     tag_key: None | str | Unset = UNSET,
     tag_value: None | str | Unset = UNSET,
+    task_id: None | str | Unset = UNSET,
+    include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
     stop_scope: None | str | Unset = UNSET,
     episode_seq: int | None | Unset = UNSET,
@@ -286,6 +317,8 @@ async def asyncio(
         limit (int | Unset):  Default: 50.
         tag_key (None | str | Unset):
         tag_value (None | str | Unset):
+        task_id (None | str | Unset):
+        include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
         stop_scope (None | str | Unset):
         episode_seq (int | None | Unset):
@@ -306,6 +339,8 @@ cursor=cursor,
 limit=limit,
 tag_key=tag_key,
 tag_value=tag_value,
+task_id=task_id,
+include_subtasks=include_subtasks,
 past_limit=past_limit,
 stop_scope=stop_scope,
 episode_seq=episode_seq,

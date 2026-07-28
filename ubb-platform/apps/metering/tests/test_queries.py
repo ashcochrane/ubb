@@ -220,11 +220,11 @@ class GetCostTotalsTest(TestCase):
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r1", idempotency_key="i1",
             provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai",
-            product_id="chat", tags={"model": "gpt-4"})
+            dim1="chat", tags={"model": "gpt-4"})
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r2", idempotency_key="i2",
             provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai",
-            product_id="chat", tags={"model": "gpt-4"})
+            dim1="chat", tags={"model": "gpt-4"})
 
     def test_customer_cost_totals(self):
         from apps.metering.queries import get_customer_cost_totals
@@ -324,16 +324,16 @@ class CrossProductReadContractTest(TestCase):
             self.tenant.id, self.customer.id, self.start, self.end, "tag:seat")
         self.assertEqual(dict(pairs), {"alice": 100, "(other)": 23})
 
-    def test_billed_breakdown_product_empty_to_other(self):
+    def test_billed_breakdown_dim1_empty_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
         UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1",
-                                  billed_cost_micros=100, product_id="chat")
+                                  billed_cost_micros=100, dim1="chat")
         UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2",
-                                  billed_cost_micros=20, product_id="")
+                                  billed_cost_micros=20, dim1="")
         pairs = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, self.start, self.end, "product_id")
+            self.tenant.id, self.customer.id, self.start, self.end, "dim1")
         self.assertEqual(dict(pairs), {"chat": 100, "(other)": 20})
 
     def test_iter_billable_usage_events_shape_and_basis(self):

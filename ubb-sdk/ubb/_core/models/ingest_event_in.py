@@ -14,6 +14,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.ingest_event_in_dimensions import IngestEventInDimensions
   from ..models.ingest_event_in_metadata import IngestEventInMetadata
   from ..models.ingest_event_in_tags_type_0 import IngestEventInTagsType0
   from ..models.ingest_event_in_usage_metrics_type_0 import IngestEventInUsageMetricsType0
@@ -38,10 +39,10 @@ class IngestEventIn:
             request_id (str):
             billed_cost_micros (int | None | Unset):
             currency (None | str | Unset):
+            dimensions (IngestEventInDimensions | Unset):
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
             metadata (IngestEventInMetadata | Unset):
-            product_id (None | str | Unset):
             provider (None | str | Unset):
             provider_cost_micros (int | None | Unset):
             tags (IngestEventInTagsType0 | None | Unset):
@@ -55,10 +56,10 @@ class IngestEventIn:
     request_id: str
     billed_cost_micros: int | None | Unset = UNSET
     currency: None | str | Unset = UNSET
+    dimensions: IngestEventInDimensions | Unset = UNSET
     effective_at: datetime.datetime | None | Unset = UNSET
     event_type: None | str | Unset = UNSET
     metadata: IngestEventInMetadata | Unset = UNSET
-    product_id: None | str | Unset = UNSET
     provider: None | str | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     tags: IngestEventInTagsType0 | None | Unset = UNSET
@@ -72,6 +73,7 @@ class IngestEventIn:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.ingest_event_in_dimensions import IngestEventInDimensions
         from ..models.ingest_event_in_metadata import IngestEventInMetadata
         from ..models.ingest_event_in_tags_type_0 import IngestEventInTagsType0
         from ..models.ingest_event_in_usage_metrics_type_0 import IngestEventInUsageMetricsType0
@@ -93,6 +95,10 @@ class IngestEventIn:
         else:
             currency = self.currency
 
+        dimensions: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.dimensions, Unset):
+            dimensions = self.dimensions.to_dict()
+
         effective_at: None | str | Unset
         if isinstance(self.effective_at, Unset):
             effective_at = UNSET
@@ -110,12 +116,6 @@ class IngestEventIn:
         metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.metadata, Unset):
             metadata = self.metadata.to_dict()
-
-        product_id: None | str | Unset
-        if isinstance(self.product_id, Unset):
-            product_id = UNSET
-        else:
-            product_id = self.product_id
 
         provider: None | str | Unset
         if isinstance(self.provider, Unset):
@@ -171,14 +171,14 @@ class IngestEventIn:
             field_dict["billed_cost_micros"] = billed_cost_micros
         if currency is not UNSET:
             field_dict["currency"] = currency
+        if dimensions is not UNSET:
+            field_dict["dimensions"] = dimensions
         if effective_at is not UNSET:
             field_dict["effective_at"] = effective_at
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
-        if product_id is not UNSET:
-            field_dict["product_id"] = product_id
         if provider is not UNSET:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
@@ -198,6 +198,7 @@ class IngestEventIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.ingest_event_in_dimensions import IngestEventInDimensions
         from ..models.ingest_event_in_metadata import IngestEventInMetadata
         from ..models.ingest_event_in_tags_type_0 import IngestEventInTagsType0
         from ..models.ingest_event_in_usage_metrics_type_0 import IngestEventInUsageMetricsType0
@@ -229,6 +230,16 @@ class IngestEventIn:
             return cast(None | str | Unset, data)
 
         currency = _parse_currency(d.pop("currency", UNSET))
+
+
+        _dimensions = d.pop("dimensions", UNSET)
+        dimensions: IngestEventInDimensions | Unset
+        if isinstance(_dimensions,  Unset):
+            dimensions = UNSET
+        else:
+            dimensions = IngestEventInDimensions.from_dict(_dimensions)
+
+
 
 
         def _parse_effective_at(data: object) -> datetime.datetime | None | Unset:
@@ -269,16 +280,6 @@ class IngestEventIn:
             metadata = IngestEventInMetadata.from_dict(_metadata)
 
 
-
-
-        def _parse_product_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        product_id = _parse_product_id(d.pop("product_id", UNSET))
 
 
         def _parse_provider(data: object) -> None | str | Unset:
@@ -377,10 +378,10 @@ class IngestEventIn:
             request_id=request_id,
             billed_cost_micros=billed_cost_micros,
             currency=currency,
+            dimensions=dimensions,
             effective_at=effective_at,
             event_type=event_type,
             metadata=metadata,
-            product_id=product_id,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             tags=tags,

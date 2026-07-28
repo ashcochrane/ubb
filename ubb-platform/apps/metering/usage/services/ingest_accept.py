@@ -28,8 +28,10 @@ from django.utils import timezone
 
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
-    EffectiveAtError, UsageService, validate_effective_at)
+    SLOTS, EffectiveAtError, UsageService, validate_effective_at)
 from apps.platform.customers.models import Customer
+from apps.platform.dimensions.queries import slot_map
+from apps.platform.dimensions.services import DimensionError, DimensionService
 from apps.platform.tasks.models import Task
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,6 @@ def usage_kwargs(item):
         billed_cost_micros=item.billed_cost_micros,
         units=item.units,
         currency=item.currency,
-        product_id=item.product_id,
         metadata=item.metadata,
         event_type=item.event_type,
         provider=item.provider,
@@ -119,9 +120,17 @@ def record_sync_item(tenant, item, customers, task_exists):
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
             return _rejected("not_found", "Task not found")
+    # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
+    # dimension is THIS item's rejection, same as any other validation
+    # failure below, and never reaches record_usage.
+    try:
+        dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+    except DimensionError as exc:
+        return _rejected("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
-            tenant=tenant, customer=customer, **usage_kwargs(item))
+            tenant=tenant, customer=customer, dimension_slots=dimension_slots,
+            **usage_kwargs(item))
     except (PricingError, ValueError) as e:
         return _rejected(*usage_error(e))
     return {"accepted": True, **with_uncosted(result)}
@@ -129,21 +138,33 @@ def record_sync_item(tenant, item, customers, task_exists):
 
 # --- Async accept (estimate -> atomic hold -> durable append) ---
 
-# 30s L1 cache: {task_id: (customer_id_str_or_None, expires_monotonic)} — ONE
-# batched Task.objects.values() read per ingest call for any task_ids not
-# already cached/fresh, instead of a query per event. Existence/ownership
-# ONLY (one-rule #37): a task's STATUS never gates acceptance — events for a
-# non-active task are accepted, held, and get their task_not_active verdict
-# at settle. customer_id None = no such task (sentinel for retry storms).
+# 30s L1 cache: {task_id: (customer_id_str_or_None, parent_id_str_or_None,
+# task_type, subtask_type, dim1..dim6, expires_monotonic)} — ONE batched
+# Task.objects.values() read per ingest call for any task_ids not already
+# cached/fresh, instead of a query per event. Existence/ownership (one-rule
+# #37: a task's STATUS never gates acceptance — events for a non-active task
+# are accepted, held, and get their task_not_active verdict at settle) PLUS
+# the containment/dimension shape Task 10 needs so accept-time estimation can
+# eventually price on the same inherited dimensions settle resolves via
+# _inherit_dimensions (usage_service.py) — kept in lockstep here rather than
+# behind a second, drifting read. customer_id None = no such task (sentinel
+# for retry storms); the rest of a sentinel entry is empty/None to match.
 # Clear-on-full bound mirrors CardCache._l1 (not an LRU).
 _TASK_META_CACHE: dict = {}
 _TASK_META_TTL_SECONDS = 30
 _TASK_META_MAX = 4096
 
+_TASK_META_COLS = ("id", "customer_id", "parent_id", "task_type", "subtask_type") + SLOTS
+
 
 def reset_task_meta_cache():
     """The cache's OWNED reset surface (#113): test fixtures (and any future
-    ops hook) call this instead of clearing the private dict."""
+    ops hook) call this instead of clearing the private dict.
+
+    Entry shape (Task 10): ``(customer_id_str_or_None, parent_id_str_or_None,
+    task_type, subtask_type, dim1, dim2, dim3, dim4, dim5, dim6,
+    expires_monotonic)`` — customer_id at index 0 (existence/ownership,
+    unchanged), expiry last."""
     _TASK_META_CACHE.clear()
 
 
@@ -159,18 +180,24 @@ def _task_meta_for(tenant, task_ids):
     missing = []
     for tid in task_ids:
         hit = _TASK_META_CACHE.get(tid)
-        if hit is not None and hit[1] > now_mono:
+        if hit is not None and hit[-1] > now_mono:
             out[tid] = hit  # captured before any clear-on-full can wipe it
         else:
             missing.append(tid)
     if missing:
-        rows = Task.objects.filter(tenant=tenant, id__in=missing).values(
-            "id", "customer_id")
+        rows = Task.objects.filter(tenant=tenant, id__in=missing).values(*_TASK_META_COLS)
         if len(_TASK_META_CACHE) >= _TASK_META_MAX:
             _TASK_META_CACHE.clear()  # crude bound; `out` already holds this call's hits
         for row in rows:
             tid = str(row["id"])
-            entry = (str(row["customer_id"]), now_mono + _TASK_META_TTL_SECONDS)
+            entry = (
+                str(row["customer_id"]),
+                str(row["parent_id"]) if row["parent_id"] else None,
+                row["task_type"], row["subtask_type"],
+                row["dim1"], row["dim2"], row["dim3"],
+                row["dim4"], row["dim5"], row["dim6"],
+                now_mono + _TASK_META_TTL_SECONDS,
+            )
             _TASK_META_CACHE[tid] = entry
             out[tid] = entry
         for tid in missing:
@@ -178,9 +205,66 @@ def _task_meta_for(tenant, task_ids):
                 # No such task (wrong tenant / never existed) — cache a
                 # sentinel so a hot retry-storm of a bad task_id still costs
                 # one query per TTL window, not one per event.
-                entry = (None, now_mono + _TASK_META_TTL_SECONDS)
+                entry = (None, None, "", "", "", "", "", "", "", "",
+                         now_mono + _TASK_META_TTL_SECONDS)
                 _TASK_META_CACHE[tid] = entry
                 out[tid] = entry
+    return out
+
+
+def _inherited_selectors_for_estimate(item, task_meta, all_task_meta, dim_slot_map):
+    """Accept-time mirror of usage_service._inherit_dimensions (D6/Task 10),
+    built entirely from already-batched data (task_meta/all_task_meta — the
+    L1 task-meta cache, extended below with the batch's parent rows — and
+    dim_slot_map, one slot_map() read per accept_batch call) instead of a
+    per-event Task query or a write. Task 12 fix: without this, an
+    accept-time estimate wildcarded task_type/subtask_type/dim1..dim6 while
+    settle (usage_service.py, via RecordingInput.gather -> _inherit_
+    dimensions) resolved the real inherited values — a rate pinning any of
+    those columns could then resolve a DIFFERENT rate at accept than at
+    settle, so the hold taken could be smaller than the real charge (a
+    spend-control bypass, not just a ledger wobble).
+
+    Event-scope dims come from item.dimensions via the read-only
+    dimensions.queries.slot_map contract — NOT DimensionService.admit, which
+    stays exactly where it was (after estimate, a WRITE, run once per item so
+    a settle retry never double-admits). A key slot_map can't resolve, or a
+    scope mismatch (event.dimensions holding a task/subtask-scoped key), is
+    silently ignored here and caught for real by the admit() call a few
+    lines below in the caller — which rejects the item before it ever
+    becomes a hold, so a wrong estimate for such an item is never actually
+    charged.
+
+    task_meta / all_task_meta entries are the ``_TASK_META_CACHE`` tuple
+    shape: (customer_id_str_or_None, parent_id_str_or_None, task_type,
+    subtask_type, dim1..dim6, expires_monotonic) — index 0 customer_id
+    (existence sentinel), 1 parent_id, 2 task_type, 3 subtask_type, 4-9
+    dim1..dim6."""
+    event_dims = {dim_slot_map[k]: str(v) for k, v in (item.dimensions or {}).items()
+                  if k in dim_slot_map}
+    out = {"task_type": "", "subtask_type": ""}
+    out.update({s: event_dims.get(s, "") for s in SLOTS})
+    if item.task_id is None:
+        return out
+    leaf = task_meta.get(str(item.task_id))
+    if leaf is None or leaf[0] is None:  # sentinel: no such task
+        return out
+    parent_id = leaf[1]
+    if parent_id is None:
+        out["task_type"] = leaf[2]
+        chain = (leaf,)
+    else:
+        out["subtask_type"] = leaf[3]
+        parent = all_task_meta.get(parent_id)
+        out["task_type"] = parent[2] if parent else ""
+        chain = (leaf, parent) if parent else (leaf,)
+    for idx, slot in enumerate(SLOTS):
+        if out[slot]:
+            continue  # the event's own value wins
+        for unit in chain:
+            if unit and unit[4 + idx]:
+                out[slot] = unit[4 + idx]
+                break
     return out
 
 
@@ -410,6 +494,16 @@ def accept_batch(tenant, items):
                        if results[i] is None and i not in forced_replay
                        and items[i].task_id is not None}
     task_meta = _task_meta_for(tenant, task_ids_needed)
+    # Task 12 fix: accept-time estimation (below) needs the SAME task
+    # inheritance settle uses (_inherit_dimensions walks the leaf AND its
+    # parent) — one extra batched, cached read for this batch's parent_ids,
+    # not a query per event. Containment is one level (tasks/models.py),
+    # so this never recurses.
+    parent_ids_needed = {meta[1] for meta in task_meta.values()
+                         if meta[1] and meta[1] not in task_meta}
+    all_task_meta = task_meta
+    if parent_ids_needed:
+        all_task_meta = {**task_meta, **_task_meta_for(tenant, parent_ids_needed)}
     for i in range(n):
         # forced_replay items (effective_at replay-wins above) are already
         # known replays of accepted items — their task passed this check at
@@ -444,6 +538,10 @@ def accept_batch(tenant, items):
     hold_candidates: list = []   # (i, item, customer, owner_id, Estimate)
     append_only: list = []       # (i, item, customer, owner_id) idem-hit rows
     owner_stop_cache: dict = {}
+    # One read for the whole batch (Task 12 fix input #2): {declared key:
+    # slot}, so accept-time estimation can map item.dimensions the same way
+    # DimensionService.admit will a few lines below — without writing.
+    dim_slot_map = slot_map(tenant.id)
     for i in range(n):
         if results[i] is not None:  # forced_replay items are still None here
             continue
@@ -459,10 +557,23 @@ def accept_batch(tenant, items):
             append_only.append((i, item, customer, owner_id))
             continue
         try:
+            # Task 12 fix: task_type/subtask_type/dim1..dim6 are resolved
+            # here the SAME way settle resolves them (usage_service.
+            # _inherit_dimensions) — from the batched task_meta/all_task_meta
+            # cache plus a read-only dimensions.queries.slot_map lookup for
+            # item.dimensions — so accept-time estimation and settle-time
+            # pricing agree on which rate matches. See
+            # _inherited_selectors_for_estimate's docstring for exactly what
+            # can still legitimately diverge (an unresolvable/scope-mismatched
+            # dimension key, caught by the real admit() call below, before
+            # the item ever becomes a hold).
+            selectors = {"provider": item.provider or "", "event_type": item.event_type or ""}
+            selectors.update(_inherited_selectors_for_estimate(
+                item, task_meta, all_task_meta, dim_slot_map))
             est = PricingService.estimate(
-                tenant, customer, event_type=item.event_type or "",
-                provider=item.provider or "", usage_metrics=item.usage_metrics,
-                tags=item.tags, currency=tenant_currency,
+                tenant, customer, selectors=selectors,
+                usage_metrics=item.usage_metrics,
+                currency=tenant_currency,
                 caller_billed=item.billed_cost_micros,
                 caller_provider_cost=item.provider_cost_micros,
                 units=item.units)
@@ -485,11 +596,28 @@ def accept_batch(tenant, items):
                     tenant.id,
                     [_idem_key(tenant.id, item.customer_id, item.idempotency_key)])
             continue
-        hold_candidates.append((i, item, customer, owner_id, est))
+        # Task 9: admission is a WRITE (records DimensionValue rows), run
+        # HERE — the accept-time boundary for this lane — rather than at
+        # settle, so a settle retry never re-admits (see settle_raw's
+        # dimension_slots consumption). A bad dimension rejects ONLY this
+        # item, matching every other per-item verdict in this loop; the idem
+        # key this item's prefilter already SET must be unwound too, or a
+        # retry (after the caller fixes its dimensions) would misread as an
+        # idem-hit and bypass the estimate+hold gate entirely.
+        try:
+            dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+        except DimensionError as exc:
+            results[i] = _ingest_verdict(accepted=False, code="validation_error",
+                                         detail=str(exc), mode="async")
+            _ingest_idem_unwind(
+                tenant.id,
+                [_idem_key(tenant.id, item.customer_id, item.idempotency_key)])
+            continue
+        hold_candidates.append((i, item, customer, owner_id, est, dimension_slots))
 
     acquire_by_owner: dict = {}
-    for i, item, customer, owner_id, est in hold_candidates:
-        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est))
+    for i, item, customer, owner_id, est, dimension_slots in hold_candidates:
+        acquire_by_owner.setdefault(owner_id, []).append((i, item, customer, est, dimension_slots))
 
     # ---- acquire holds (one pipelined redis round trip per owner). One-rule
     # (#37): the acquire ALWAYS holds, against the wallet only — the
@@ -516,9 +644,9 @@ def accept_batch(tenant, items):
     for owner_id, entries in acquire_by_owner.items():
         acquire_payload = [{"estimate_micros": est.micros,
                             "effective_at": item.effective_at}
-                           for (_, item, _, est) in entries]
+                           for (_, item, _, est, _) in entries]
         verdicts = acquire_ingest_holds(owner_id, tenant, acquire_payload)
-        for (i, item, customer, est), v in zip(entries, verdicts):
+        for (i, item, customer, est, dimension_slots), v in zip(entries, verdicts):
             results[i] = _ingest_verdict(accepted=True, estimated_cost_micros=est.micros,
                                          mode="async", stop=v["stop"],
                                          stop_reason=v["stop_reason"], stop_scope=v["stop_scope"])
@@ -527,10 +655,16 @@ def accept_batch(tenant, items):
             # accept does no live-counter Redis work), so settle trues up
             # only holds that were really taken and the append-failure
             # unwind below releases nothing that was never reserved.
+            # dimension_slots (Task 9) rides the raw payload — already
+            # admitted here at accept, so settle consumes it instead of
+            # re-admitting (idempotency: a settle retry must not double-count
+            # cardinality).
+            payload = item.model_dump(mode="json")
+            payload["dimension_slots"] = dimension_slots
             raw_objs.append(RawIngestEvent(
                 tenant=tenant, customer=customer, billing_owner_id=owner_id,
                 task_id=item.task_id, idempotency_key=item.idempotency_key,
-                payload=item.model_dump(mode="json"), estimate_micros=est.micros,
+                payload=payload, estimate_micros=est.micros,
                 estimate_exact=est.exact, held=v["held"]))
             if v["held"]:
                 release_list.append((owner_id, est.micros, item.effective_at))

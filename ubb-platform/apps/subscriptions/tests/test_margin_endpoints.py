@@ -63,10 +63,16 @@ class MarginEndpointsTest(TestCase):
         self.assertIn("points", r.json())
 
     def test_by_dimension_provider(self):
-        r = self.http.get("/api/v1/margin/by-dimension?provider=1", **self._auth())
+        # Ported off the old `provider: int` pseudo-flag (#128 rework) to the
+        # real group_by string.
+        r = self.http.get("/api/v1/margin/by-dimension?group_by=provider", **self._auth())
         assert r.status_code == 200
         rows = r.json()["rows"]
         assert any(row["dimension"] == "openai" and row["margin_micros"] == 300_000 for row in rows)
+
+    def test_by_dimension_unknown_group_by_is_422(self):
+        r = self.http.get("/api/v1/margin/by-dimension?group_by=nope", **self._auth())
+        assert r.status_code == 422
 
     def test_threshold_get_default_and_put(self):
         r = self.http.get("/api/v1/margin/threshold", **self._auth())

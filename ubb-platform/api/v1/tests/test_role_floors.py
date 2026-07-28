@@ -70,12 +70,26 @@ _WRITE_ROUTES = {
 # audit feed (GET /audit/records, Read floor) + the 3 webhook lifecycle routes
 # (#83: PATCH edit, POST rotate-secret [Admin], GET deliveries [Read]) = 114,
 # less the 2 duplicate tenant billing GETs (billing-periods/invoices) removed
-# in the #86 sweep, plus the 6 /api/v1/plans + /customers/{id}/plan routes
-# (plan-as-kernel #7): 112 + 6 = 118. Task 8 deletes platform_router's
-# duplicate POST /platform/plans + PATCH /platform/plans/{key} (superseded
-# by plan_router's #7 routes above) and moves the 5 lifecycle verbs onto
-# subscriptions_router (a rename, not a net add/remove): 118 - 2 = 116.
-_EXPECTED_FLOORED = 116
+# in the #86 sweep — their canonical Read-floored twins live on the tenant
+# mount.
+#
+# plan-as-kernel (#7): +6 for the /api/v1/plans + /customers/{id}/plan routes
+# = 118; then task 8 deletes platform_router's duplicate POST /platform/plans
+# + PATCH /platform/plans/{key} (superseded by plan_router's #7 routes) and
+# moves the 5 lifecycle verbs onto subscriptions_router (a rename, not a net
+# add/remove): 118 - 2 = 116.
+#
+# unified dimension model: +3 (task 3) PUT /metering/dimensions [Admin — the
+# plan owner's ruling: the dimension vocabulary feeds rate selection (D1), a
+# pricing-rule change like markup.set/rate_card.*, so it takes the Admin
+# default and needs no _WRITE_ROUTES entry], GET /metering/dimensions [Read],
+# GET /metering/dimensions/{key}/values [Read]. +2 (task 7) PUT
+# /metering/task-types [Admin — same ruling: a task type's ceiling prices
+# usage], GET /metering/task-types [Read]. +2 (task 14) GET /metering/tasks
+# and GET /metering/tasks/{task_id} [Read] — the task read surface over the
+# materialized cost rollups. +1 (task 16) GET /metering/analytics/tasks
+# [Read] — the per-task-type unit economics rollup. 116 + 8 = 124.
+_EXPECTED_FLOORED = 124
 _EXPECTED_EXEMPT = 11
 
 

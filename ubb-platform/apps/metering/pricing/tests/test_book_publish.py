@@ -24,9 +24,9 @@ def test_publish_supersedes_and_bumps_version_atomically():
     t, book, ri, ro = _book_with_two_rates()
     BookService.publish(book, changes=[
         {"metric_name": "input_tokens", "provider": "gemini", "event_type": "",
-         "dimensions": {}, "rate_per_unit_micros": 12},
+         "rate_per_unit_micros": 12},
         {"metric_name": "output_tokens", "provider": "gemini", "event_type": "",
-         "dimensions": {}, "rate_per_unit_micros": 33},
+         "rate_per_unit_micros": 33},
     ])
     book.refresh_from_db(); ri.refresh_from_db(); ro.refresh_from_db()
     assert book.version == 2
@@ -45,9 +45,9 @@ def test_publish_is_all_or_nothing_on_error():
     with pytest.raises(Exception):
         BookService.publish(book, changes=[
             {"metric_name": "input_tokens", "provider": "gemini", "event_type": "",
-             "dimensions": {}, "rate_per_unit_micros": 12},
+             "rate_per_unit_micros": 12},
             {"metric_name": "MISSING", "provider": "gemini", "event_type": "",
-             "dimensions": {}, "rate_per_unit_micros": 1},  # no active rate -> error
+             "rate_per_unit_micros": 1},  # no active rate -> error
         ])
     book.refresh_from_db()
     assert book.version == 1  # rolled back
@@ -70,7 +70,7 @@ def test_publish_preserves_lineage_across_reprice():
     old_lineage = r.lineage_id
     BookService.publish(book, changes=[{
         "metric_name": "input_tokens", "provider": "gemini", "event_type": "",
-        "dimensions": {}, "pricing_model": "per_unit",
+        "pricing_model": "per_unit",
         "rate_per_unit_micros": 12}])
     new = Rate.objects.get(rate_card=book, valid_to__isnull=True)
     assert new.lineage_id == old_lineage  # price-history linkage intact

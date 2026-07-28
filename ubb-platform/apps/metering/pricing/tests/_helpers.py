@@ -1,7 +1,10 @@
 from apps.metering.pricing.models import Rate, RateCard
 
 
-def rate_in_default_book(tenant, *, card_type="price", provider="", customer=None, **fields):
+def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="",
+                         task_type="", subtask_type="",
+                         dim1="", dim2="", dim3="", dim4="", dim5="", dim6="",
+                         customer=None, **fields):
     """Create a Rate attached to the tenant's is_default book for its
     (card_type, provider, currency). If customer is given, attach to a
     customer book + assignment instead. Mirrors the backfill's grouping so
@@ -21,5 +24,9 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", customer=Non
                 tenant=tenant, customer=customer, currency=currency,
                 defaults={"rate_card": book})
     return Rate.objects.create(tenant=tenant, card_type=card_type, provider=provider,
+                               event_type=event_type, task_type=task_type,
+                               subtask_type=subtask_type,
+                               dim1=dim1, dim2=dim2, dim3=dim3,
+                               dim4=dim4, dim5=dim5, dim6=dim6,
                                customer=customer, rate_card=book,
                                book_version_from=book.version, **fields)

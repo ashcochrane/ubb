@@ -5,6 +5,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.dimensions.models import DimensionDef
 from apps.platform.tasks.services import TaskService
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.models import TenantMarkup
@@ -501,14 +502,19 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         from apps.metering.pricing.models import TenantMarkup
         # a tenant-default markup so billed > provider (margin is non-zero)
         TenantMarkup.objects.create(tenant=self.tenant, customer=None, markup_percentage_micros=20_000_000)  # 20%
+        # dimensions= now resolves through the registry (#128 rework); an
+        # identity declaration (key == slot) is the porting move for tests
+        # that grouped by a raw column name before the rework.
+        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         other = Customer.objects.create(tenant=self.tenant, external_id="c_other")
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
             request_id="req_dim_1", idempotency_key="idem_dim_1",
-            provider_cost_micros=2_000_000, tags={"model": "gpt-4"}, product_id="chat",
+            provider_cost_micros=2_000_000, tags={"model": "gpt-4"},
+            dimension_slots={"dim1": "chat"},
         )
         response = self.http_client.get(
-            "/api/v1/metering/analytics/usage?tag_key=model", **self._auth(),
+            "/api/v1/metering/analytics/usage?tag_key=model&dimensions=dim1", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -518,10 +524,13 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             body["total_billed_cost_micros"] - body["total_provider_cost_micros"],
         )
         self.assertTrue(body["by_customer"])      # non-empty
-        self.assertTrue(body["by_product"])       # non-empty (the product_id="chat" event)
+        # by_task_type stays empty until Task 10 populates task_type at record time.
+        self.assertEqual(body["by_task_type"], [])
         self.assertTrue(body["by_tag"])           # non-empty (tag_key=model)
-        product_ids = {row["product_id"] for row in body["by_product"]}
-        self.assertIn("chat", product_ids)
+        # dim1 is a declared dimension value ("chat"), reachable via the
+        # generic dimensions= breakdown mechanism now that by_product is gone.
+        dim1_values = {row["dimension"] for row in body["breakdowns"]["dim1"]}
+        self.assertIn("chat", dim1_values)
         tag_values = {row["tag_value"] for row in body["by_tag"]}
         self.assertIn("gpt-4", tag_values)
 
@@ -536,33 +545,39 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
     def test_usage_analytics_multi_dimension_breakdown(self):
         from apps.platform.customers.models import Customer
         from apps.metering.usage.models import UsageEvent
+        # dimensions= now resolves through the registry (#128 rework); the
+        # tag:region escape hatch is gone (tags are no longer groupable), so
+        # this ports "region" to a declared dimension bound to dim4.
+        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        DimensionDef.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
+        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim4", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
         UsageEvent.objects.create(
             tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
-            provider_cost_micros=300_000, billed_cost_micros=500_000, product_id="search",
-            service_id="svcA", agent_id="ag1", tags={"region": "us"},
+            provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
+            dim2="svcA", dim3="ag1", dim4="us",
         )
         resp = self.http_client.get(
             f"/api/v1/metering/analytics/usage?customer_id={c.id}"
-            "&dimensions=product_id&dimensions=service_id&dimensions=tag:region",
+            "&dimensions=dim1&dimensions=dim2&dimensions=region",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(resp.status_code, 200)
         b = resp.json()["breakdowns"]
         self.assertTrue(
             any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 300_000
-                for r in b["product_id"]),
-            f"product_id rows: {b.get('product_id')}",
+                for r in b["dim1"]),
+            f"dim1 rows: {b.get('dim1')}",
         )
         self.assertTrue(
             any(r["dimension"] == "svcA" and r["total_provider_cost_micros"] == 300_000
-                for r in b["service_id"]),
-            f"service_id rows: {b.get('service_id')}",
+                for r in b["dim2"]),
+            f"dim2 rows: {b.get('dim2')}",
         )
         self.assertTrue(
             any(r["dimension"] == "us" and r["total_provider_cost_micros"] == 300_000
-                for r in b["tag:region"]),
-            f"tag:region rows: {b.get('tag:region')}",
+                for r in b["region"]),
+            f"region rows: {b.get('region')}",
         )
 
     def test_usage_analytics_rejects_unknown_dimension(self):
@@ -574,13 +589,14 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
     def test_usage_analytics_breakdowns_include_provider_cost(self):
         from apps.metering.usage.models import UsageEvent
+        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         UsageEvent.objects.create(
             tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=300_000, billed_cost_micros=500_000, product_id="search",
+            provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
         )
         resp = self.http_client.get(
-            f"/api/v1/metering/analytics/usage?customer_id={c.id}",
+            f"/api/v1/metering/analytics/usage?customer_id={c.id}&dimensions=dim1",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
@@ -591,9 +607,9 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             f"by_customer rows: {body['by_customer']}",
         )
         self.assertTrue(
-            any(r["product_id"] == "search" and r["total_provider_cost_micros"] == 300_000
-                for r in body["by_product"]),
-            f"by_product rows: {body['by_product']}",
+            any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 300_000
+                for r in body["breakdowns"]["dim1"]),
+            f"dim1 rows: {body['breakdowns'].get('dim1')}",
         )
 
 
@@ -736,7 +752,7 @@ class UsageTimeseriesEndpointTest(TestCase):
 class DimensionBreakdownReconciliationTest(TestCase):
     """Breakdowns using dimensions=[...] must reconcile to the grand total.
 
-    An event with an empty service_id must NOT be silently excluded; it must
+    An event with an empty dim2 must NOT be silently excluded; it must
     appear as a '(unattributed)' row so that the sum of the breakdown equals
     the top-line total_provider_cost_micros.
     """
@@ -749,33 +765,34 @@ class DimensionBreakdownReconciliationTest(TestCase):
             name="Reconcile Tenant", products=["metering"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        DimensionDef.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_reconcile"
         )
-        # Event 1: has a service tag -> service_id = "svcA"
+        # Event 1: has a service tag -> dim2 = "svcA"
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_1", idempotency_key="i_rec_1",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
-            service_id="svcA",
+            dim2="svcA",
         )
-        # Event 2: NO service tag -> service_id is empty string (the default)
+        # Event 2: NO service tag -> dim2 is empty string (the default)
         UsageEvent.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_2", idempotency_key="i_rec_2",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
-            service_id="",
+            dim2="",
         )
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def test_empty_service_id_bucketed_as_unattributed(self):
-        """The breakdown must contain an '(unattributed)' row for the empty service_id
+    def test_empty_dim2_bucketed_as_unattributed(self):
+        """The breakdown must contain an '(unattributed)' row for the empty dim2
         event, and the row totals must sum to the overall total_provider_cost_micros."""
         resp = self.http_client.get(
             f"/api/v1/metering/analytics/usage"
-            f"?customer_id={self.customer.id}&dimensions=service_id",
+            f"?customer_id={self.customer.id}&dimensions=dim2",
             **self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
@@ -785,7 +802,7 @@ class DimensionBreakdownReconciliationTest(TestCase):
         grand_total = body["total_provider_cost_micros"]
         self.assertEqual(grand_total, 200_000)
 
-        breakdown = body["breakdowns"]["service_id"]
+        breakdown = body["breakdowns"]["dim2"]
         dim_map = {row["dimension"]: row["total_provider_cost_micros"] for row in breakdown}
 
         # The named-service event must still appear

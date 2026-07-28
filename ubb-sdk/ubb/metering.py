@@ -83,7 +83,8 @@ class MeteringClient:
                      provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
-                     product_id: str = "", metadata: dict | None = None,
+                     dimensions: dict | None = None,
+                     metadata: dict | None = None,
                      task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
@@ -95,6 +96,11 @@ class MeteringClient:
         stop sending work for the named scope (``result.stop_scope``: the
         task, or the whole customer). A non-200 always means "this was not
         recorded".
+
+        ``dimensions``: declared EVENT-scoped dimension values (the tenant's
+        registry, ``PUT /api/v1/metering/dimensions``) — what rate cards
+        select on and analytics group by. Distinct from ``tags``, which are
+        free-form labels never consulted for pricing or grouping.
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
         datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
@@ -128,8 +134,8 @@ class MeteringClient:
             body["currency"] = currency
         if tags is not None:
             body["tags"] = tags
-        if product_id:
-            body["product_id"] = product_id
+        if dimensions is not None:
+            body["dimensions"] = dimensions
         if event_type:
             body["event_type"] = event_type
         if provider:

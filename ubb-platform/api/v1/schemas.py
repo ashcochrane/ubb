@@ -29,6 +29,16 @@ class PreCheckRequest(Schema):
     # default_subtask_provider_cost_limit_micros when parent_task_id is set);
     # absent both, the unit is uncapped and no signal ever fires.
     provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    # The declared KIND of work (design D7). Resolves the server-side COGS
+    # ceiling; a caller may request lower via provider_cost_limit_micros but
+    # never higher.
+    task_type: Optional[str] = Field(default=None, max_length=64)
+    # Set instead of task_type when parent_task_id is present.
+    subtask_type: Optional[str] = Field(default=None, max_length=64)
+    # Declared dimension values at task/subtask scope, inherited by every event
+    # in the tree (design D6). Keys must be declared; values are cardinality-
+    # capped on write.
+    dimensions: dict = Field(default_factory=dict)
 
 
 class PreCheckResponse(Schema):
@@ -48,6 +58,8 @@ class PreCheckResponse(Schema):
     parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
     floor_snapshot_micros: Optional[int] = None
+    task_type: Optional[str] = None
+    subtask_type: Optional[str] = None
 
 
 class RecordUsageRequest(Schema):
@@ -71,13 +83,17 @@ class RecordUsageRequest(Schema):
                 f"usage_metrics values must be >= 0; negative metrics: {negative}")
         return v
     currency: Optional[str] = Field(default=None, max_length=3)
-    # Free-form analytics labels — never unit attribution (task_id below is
-    # the only one; there is no tag-fallback inference).
+    # Free-form analytics labels. Never grouped, never priced, never unit
+    # attribution — see `dimensions` for anything you want to slice or price on.
     tags: Optional[dict[str, str]] = None
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
-    product_id: Optional[str] = Field(default=None, max_length=100)
+    # Declared EVENT-scoped dimension values (design D1/D6). Keys must be in the
+    # tenant's DimensionDef registry and declared at event scope; task- and
+    # subtask-scoped values are set at the start-gate and inherited, not sent
+    # here. Values are cardinality-capped on write.
+    dimensions: dict = Field(default_factory=dict)
     # When the usage economically happened. Must be timezone-aware; bounded by
     # the tenant's backfill window. Omitted = now (server clock).
     effective_at: Optional[datetime] = None
@@ -161,8 +177,8 @@ class RecordUsageResponse(Schema):
     usage_metrics: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
-    service_id: str = ""
-    agent_id: str = ""
+    dim2: str = ""
+    dim3: str = ""
 
 
 class BalanceResponse(Schema):
@@ -220,9 +236,9 @@ class UsageEventDetailOut(Schema):
     idempotency_key: str
     event_type: str = ""
     provider: str = ""
-    product_id: str = ""
-    service_id: str = ""
-    agent_id: str = ""
+    dim1: str = ""
+    dim2: str = ""
+    dim3: str = ""
     units: Optional[int] = None
     currency: str = "usd"
     provider_cost_micros: int
@@ -506,6 +522,49 @@ class CloseTaskResponse(Schema):
     event_count: int
 
 
+class TaskOut(Schema):
+    task_id: str
+    parent_task_id: Optional[str] = None
+    task_type: str = ""
+    subtask_type: str = ""
+    status: str
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    event_count: int
+    provider_cost_limit_micros: Optional[int] = None
+    dimensions: dict = Field(default_factory=dict)
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+def task_out(t):
+    """TaskOut's serializer — the per-unit cost receipt, read straight off the
+    materialized rollups the accumulate primitive maintains."""
+    return {
+        "task_id": str(t.id),
+        "parent_task_id": str(t.parent_id) if t.parent_id else None,
+        "task_type": t.task_type, "subtask_type": t.subtask_type,
+        "status": t.status,
+        "total_provider_cost_micros": t.total_provider_cost_micros,
+        "total_billed_cost_micros": t.total_billed_cost_micros,
+        "event_count": t.event_count,
+        "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "dimensions": {s: getattr(t, s) for s in
+                       ("dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+                       if getattr(t, s)},
+        "created_at": t.created_at.isoformat(),
+        "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+    }
+
+
+class TaskDetailOut(TaskOut):
+    subtasks: list[TaskOut] = Field(default_factory=list)
+
+
+class PaginatedTasks(Paginated[TaskOut]):
+    pass
+
+
 class UsageAnalyticsResponse(Schema):
     total_events: int
     total_billed_cost_micros: int
@@ -514,7 +573,7 @@ class UsageAnalyticsResponse(Schema):
     by_provider: list[dict]
     by_event_type: list[dict]
     by_customer: list[dict]
-    by_product: list[dict]
+    by_task_type: list[dict]
     by_tag: list[dict]
     breakdowns: dict = {}
 
@@ -530,6 +589,21 @@ class UsageTimeseriesResponse(Schema):
     granularity: str
     group_by: str = ""
     series: list[dict]
+
+
+class TaskAnalyticsRow(Schema):
+    task_type: str
+    run_count: int
+    total_provider_cost_micros: int
+    total_billed_cost_micros: int
+    avg_provider_cost_micros: int
+    p95_provider_cost_micros: int
+    limit_hit_count: int
+
+
+class TaskAnalyticsOut(Schema):
+    group_by: str
+    rows: list[TaskAnalyticsRow]
 
 
 class BudgetConfigIn(Schema):
@@ -668,12 +742,18 @@ class RateIn(Schema):
     metric_name: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
     event_type: str = Field(default="", max_length=100)
-    dimensions: dict = Field(default_factory=dict)
+    task_type: str = Field(default="", max_length=64)
+    subtask_type: str = Field(default="", max_length=64)
+    dim1: str = Field(default="", max_length=100)
+    dim2: str = Field(default="", max_length=100)
+    dim3: str = Field(default="", max_length=100)
+    dim4: str = Field(default="", max_length=100)
+    dim5: str = Field(default="", max_length=100)
+    dim6: str = Field(default="", max_length=100)
     pricing_model: str = "per_unit"
     rate_per_unit_micros: int = Field(default=0, ge=0)
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
-    product_id: str = Field(default="", max_length=100)
 
 
 class BookIn(Schema):
@@ -713,13 +793,21 @@ def book_out(b):
 
 
 class RateChangeIn(Schema):
-    """One reprice in a publish. Match keys (metric_name/provider/event_type/
-    dimensions) locate the active rate; the remaining (nullable) fields, when
+    """One reprice in a publish. Match keys (metric_name plus the ten
+    selector columns — provider/event_type/task_type/subtask_type/dim1..
+    dim6) locate the active rate; the remaining (nullable) fields, when
     present, override it in the new version."""
     metric_name: str
     provider: str = ""
     event_type: str = ""
-    dimensions: dict = Field(default_factory=dict)
+    task_type: str = ""
+    subtask_type: str = ""
+    dim1: str = ""
+    dim2: str = ""
+    dim3: str = ""
+    dim4: str = ""
+    dim5: str = ""
+    dim6: str = ""
     pricing_model: Optional[str] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
@@ -742,13 +830,19 @@ class RateOut(Schema):
     metric_name: str
     provider: str
     event_type: str
-    dimensions: dict
+    task_type: str
+    subtask_type: str
+    dim1: str
+    dim2: str
+    dim3: str
+    dim4: str
+    dim5: str
+    dim6: str
     pricing_model: str
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
     currency: str
-    product_id: str
     valid_from: str
     valid_to: Optional[str] = None
 
@@ -763,13 +857,19 @@ def rate_out(r):
         "metric_name": r.metric_name,
         "provider": r.provider,
         "event_type": r.event_type,
-        "dimensions": r.dimensions,
+        "task_type": r.task_type,
+        "subtask_type": r.subtask_type,
+        "dim1": r.dim1,
+        "dim2": r.dim2,
+        "dim3": r.dim3,
+        "dim4": r.dim4,
+        "dim5": r.dim5,
+        "dim6": r.dim6,
         "pricing_model": r.pricing_model,
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
         "fixed_micros": r.fixed_micros,
         "currency": r.currency,
-        "product_id": r.product_id,
         "valid_from": r.valid_from.isoformat(),
         "valid_to": r.valid_to.isoformat() if r.valid_to else None,
     }
@@ -781,6 +881,57 @@ class PaginatedBooks(Paginated[BookOut]):
 
 class PaginatedRates(Paginated[RateOut]):
     pass
+
+
+class DimensionDefIn(Schema):
+    key: str = Field(max_length=64)
+    slot: str = Field(max_length=8)
+    scope: str = "event"
+    max_cardinality: int = Field(default=100, ge=1, le=100_000)
+
+
+class DimensionRegistryIn(Schema):
+    dimensions: list[DimensionDefIn] = Field(min_length=1, max_length=6)
+
+
+class DimensionDefOut(Schema):
+    key: str
+    slot: str
+    scope: str
+    max_cardinality: int
+    retired: bool
+
+
+class DimensionRegistryOut(Schema):
+    dimensions: list[DimensionDefOut]
+
+
+class DimensionValuesOut(Schema):
+    key: str
+    values: list[str]
+
+
+class TaskTypeIn(Schema):
+    key: str = Field(max_length=64)
+    kind: str = "task"
+    default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    required_dimensions: list[str] = Field(default_factory=list, max_length=6)
+
+
+class TaskTypeRegistryIn(Schema):
+    task_types: list[TaskTypeIn] = Field(min_length=1, max_length=100)
+
+
+class TaskTypeOut(Schema):
+    key: str
+    kind: str
+    default_provider_cost_limit_micros: Optional[int] = None
+    required_dimensions: list[str]
+    retired: bool
+
+
+class TaskTypeRegistryOut(Schema):
+    task_types: list[TaskTypeOut]
 
 
 class TenantConfigOut(Schema):

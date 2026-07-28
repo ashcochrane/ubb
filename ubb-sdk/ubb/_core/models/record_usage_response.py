@@ -29,13 +29,13 @@ class RecordUsageResponse:
         Attributes:
             event_id (str):
             suspended (bool):
-            agent_id (str | Unset):  Default: ''.
             billed_cost_micros (int | None | Unset):
+            dim2 (str | Unset):  Default: ''.
+            dim3 (str | Unset):  Default: ''.
             new_balance_micros (int | None | Unset):
             parent_task_id (None | str | Unset):
             pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset):
             provider_cost_micros (int | None | Unset):
-            service_id (str | Unset):  Default: ''.
             stop (bool | Unset):  Default: False.
             stop_context (list[Any] | None | Unset):
             stop_reason (None | str | Unset):
@@ -50,13 +50,13 @@ class RecordUsageResponse:
 
     event_id: str
     suspended: bool
-    agent_id: str | Unset = ''
     billed_cost_micros: int | None | Unset = UNSET
+    dim2: str | Unset = ''
+    dim3: str | Unset = ''
     new_balance_micros: int | None | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_provenance: None | RecordUsageResponsePricingProvenanceType0 | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
-    service_id: str | Unset = ''
     stop: bool | Unset = False
     stop_context: list[Any] | None | Unset = UNSET
     stop_reason: None | str | Unset = UNSET
@@ -80,13 +80,15 @@ class RecordUsageResponse:
 
         suspended = self.suspended
 
-        agent_id = self.agent_id
-
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
             billed_cost_micros = UNSET
         else:
             billed_cost_micros = self.billed_cost_micros
+
+        dim2 = self.dim2
+
+        dim3 = self.dim3
 
         new_balance_micros: int | None | Unset
         if isinstance(self.new_balance_micros, Unset):
@@ -113,8 +115,6 @@ class RecordUsageResponse:
             provider_cost_micros = UNSET
         else:
             provider_cost_micros = self.provider_cost_micros
-
-        service_id = self.service_id
 
         stop = self.stop
 
@@ -185,10 +185,12 @@ class RecordUsageResponse:
             "event_id": event_id,
             "suspended": suspended,
         })
-        if agent_id is not UNSET:
-            field_dict["agent_id"] = agent_id
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
+        if dim2 is not UNSET:
+            field_dict["dim2"] = dim2
+        if dim3 is not UNSET:
+            field_dict["dim3"] = dim3
         if new_balance_micros is not UNSET:
             field_dict["new_balance_micros"] = new_balance_micros
         if parent_task_id is not UNSET:
@@ -197,8 +199,6 @@ class RecordUsageResponse:
             field_dict["pricing_provenance"] = pricing_provenance
         if provider_cost_micros is not UNSET:
             field_dict["provider_cost_micros"] = provider_cost_micros
-        if service_id is not UNSET:
-            field_dict["service_id"] = service_id
         if stop is not UNSET:
             field_dict["stop"] = stop
         if stop_context is not UNSET:
@@ -233,8 +233,6 @@ class RecordUsageResponse:
 
         suspended = d.pop("suspended")
 
-        agent_id = d.pop("agent_id", UNSET)
-
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -244,6 +242,10 @@ class RecordUsageResponse:
 
         billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
 
+
+        dim2 = d.pop("dim2", UNSET)
+
+        dim3 = d.pop("dim3", UNSET)
 
         def _parse_new_balance_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -294,8 +296,6 @@ class RecordUsageResponse:
 
         provider_cost_micros = _parse_provider_cost_micros(d.pop("provider_cost_micros", UNSET))
 
-
-        service_id = d.pop("service_id", UNSET)
 
         stop = d.pop("stop", UNSET)
 
@@ -403,13 +403,13 @@ class RecordUsageResponse:
         record_usage_response = cls(
             event_id=event_id,
             suspended=suspended,
-            agent_id=agent_id,
             billed_cost_micros=billed_cost_micros,
+            dim2=dim2,
+            dim3=dim3,
             new_balance_micros=new_balance_micros,
             parent_task_id=parent_task_id,
             pricing_provenance=pricing_provenance,
             provider_cost_micros=provider_cost_micros,
-            service_id=service_id,
             stop=stop,
             stop_context=stop_context,
             stop_reason=stop_reason,

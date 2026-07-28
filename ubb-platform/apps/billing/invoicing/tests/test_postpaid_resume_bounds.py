@@ -292,7 +292,7 @@ class TestFrozenLineSnapshot:
         for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
             ev = UsageEvent.objects.create(
                 tenant=t, customer=c, request_id=f"r{i}", idempotency_key=f"i{i}",
-                provider_cost_micros=1, billed_cost_micros=micros, product_id=pid)
+                provider_cost_micros=1, billed_cost_micros=micros, dim1=pid)
             UsageEvent.objects.filter(id=ev.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
 
@@ -313,7 +313,7 @@ class TestFrozenLineSnapshot:
         assert m.item_create.call_count == 1
         # Tenant flips grouping mid-retry: re-aggregating would now yield TWO
         # lines and shift every line_index.
-        cfg.usage_line_item_group_by = "product_id"
+        cfg.usage_line_item_group_by = "dim1"
         cfg.save()
         # Resume: frozen lines, the pinned item recovered — ZERO new items.
         with _stripe(retrieve=_stripe_invoice(id="in_new", status="draft", rec=rec),
@@ -333,7 +333,7 @@ class TestFrozenLineSnapshot:
         from apps.billing.invoicing.models import PostpaidUsageConfig
         t = _charge_ready_tenant()
         c = _customer(t)
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="product_id")
+        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
         self._events(t, c)
         with _stripe() as m:
             PostpaidUsageService.push_customer_period(t, c, PS, PE)

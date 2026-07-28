@@ -18,7 +18,7 @@ COST_RATE = {
     "metric_name": "input_tokens",
     "provider": "openai",
     "event_type": "chat",
-    "dimensions": {"model": "gpt-4"},
+    "dim1": "gpt-4",
     "pricing_model": "per_unit",
     "rate_per_unit_micros": 5000,
     "unit_quantity": 1000000,
@@ -26,7 +26,7 @@ COST_RATE = {
 
 # The publish change that re-prices COST_RATE (must carry its match keys).
 _RATE_MATCH = {"metric_name": "input_tokens", "provider": "openai",
-               "event_type": "chat", "dimensions": {"model": "gpt-4"}}
+               "event_type": "chat", "dim1": "gpt-4"}
 
 
 class RateCardCRUDTest(TestCase):

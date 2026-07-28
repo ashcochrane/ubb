@@ -28,11 +28,20 @@ review.
      a new response-enum value is additive under our contract, whatever the
      tool default says.
    - `oasdiff-err-ignore.txt` / `oasdiff-warn-ignore.txt` are the committed
-     suppression files: accepting a break means adding a line here in the
+     suppression files: `--err-ignore` suppresses ONLY ERR-level findings and
+     `--warn-ignore` ONLY WARN-level findings (oasdiff's `checker/ignore.go`
+     filters by level before matching text) — a WARN-level line dropped into
+     the err-ignore file (or vice versa) silently suppresses nothing, so file
+     a finding by the level oasdiff actually reports it at, not by which file
+     is more convenient. Accepting a break means adding a line here in the
      same PR — a visible, deliberate, reviewed change. Lines are free-text
-     matches against oasdiff's reported error text.
-     - The err-ignore file carries a **`LAUNCH TAG BOUNDARY`** marker
-       (added in #86). Every entry **above** it is a pre-launch free break,
+     matches against oasdiff's reported error text. **Don't hand-derive these
+     entries** — install the pinned `OASDIFF_VERSION` binary
+     (`.github/workflows/ci.yml`) and run `oasdiff breaking` against the base
+     spec locally, then paste its reported text verbatim.
+     - **Both files** carry a **`LAUNCH TAG BOUNDARY`** marker (err-ignore
+       since #86; warn-ignore since the 2026-07-27 unified-dimension-model
+       final-fixes wave). Every entry **above** it is a pre-launch free break,
        hand-coordinated with the one known tenant. From the launch tag onward,
        a **new** entry **below** the marker is permitted **only as evidence of
        an ADR-003 §4 deprecation already in flight** — `deprecated: true` on

@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
 
 
 
@@ -23,19 +25,27 @@ class PlanOut:
     """ 
         Attributes:
             access_fee_micros (int):
+            fixed_uplift_micros (int):
             id (str):
             interval (str):
             key (str):
+            markup_percentage_micros (int):
             name (str):
             per_seat_micros (int):
+            pricing_version (int):
+            archived_at (None | str | Unset):
      """
 
     access_fee_micros: int
+    fixed_uplift_micros: int
     id: str
     interval: str
     key: str
+    markup_percentage_micros: int
     name: str
     per_seat_micros: int
+    pricing_version: int
+    archived_at: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -45,27 +55,44 @@ class PlanOut:
     def to_dict(self) -> dict[str, Any]:
         access_fee_micros = self.access_fee_micros
 
+        fixed_uplift_micros = self.fixed_uplift_micros
+
         id = self.id
 
         interval = self.interval
 
         key = self.key
 
+        markup_percentage_micros = self.markup_percentage_micros
+
         name = self.name
 
         per_seat_micros = self.per_seat_micros
+
+        pricing_version = self.pricing_version
+
+        archived_at: None | str | Unset
+        if isinstance(self.archived_at, Unset):
+            archived_at = UNSET
+        else:
+            archived_at = self.archived_at
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
             "access_fee_micros": access_fee_micros,
+            "fixed_uplift_micros": fixed_uplift_micros,
             "id": id,
             "interval": interval,
             "key": key,
+            "markup_percentage_micros": markup_percentage_micros,
             "name": name,
             "per_seat_micros": per_seat_micros,
+            "pricing_version": pricing_version,
         })
+        if archived_at is not UNSET:
+            field_dict["archived_at"] = archived_at
 
         return field_dict
 
@@ -76,23 +103,43 @@ class PlanOut:
         d = dict(src_dict)
         access_fee_micros = d.pop("access_fee_micros")
 
+        fixed_uplift_micros = d.pop("fixed_uplift_micros")
+
         id = d.pop("id")
 
         interval = d.pop("interval")
 
         key = d.pop("key")
 
+        markup_percentage_micros = d.pop("markup_percentage_micros")
+
         name = d.pop("name")
 
         per_seat_micros = d.pop("per_seat_micros")
 
+        pricing_version = d.pop("pricing_version")
+
+        def _parse_archived_at(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        archived_at = _parse_archived_at(d.pop("archived_at", UNSET))
+
+
         plan_out = cls(
             access_fee_micros=access_fee_micros,
+            fixed_uplift_micros=fixed_uplift_micros,
             id=id,
             interval=interval,
             key=key,
+            markup_percentage_micros=markup_percentage_micros,
             name=name,
             per_seat_micros=per_seat_micros,
+            pricing_version=pricing_version,
+            archived_at=archived_at,
         )
 
 

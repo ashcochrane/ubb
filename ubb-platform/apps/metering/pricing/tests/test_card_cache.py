@@ -57,58 +57,75 @@ def _clean_ubb_redis_keys():
 
 def test_resolve_matches_pricing_service(tenant, customer, price_card_fixture):
     now = timezone.now()
+    selectors = {"provider": "openai", "event_type": "llm_call"}
     expected = PricingService._resolve_card(
-        tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd", now)
+        tenant, customer, "price", selectors, "tokens", "usd", now)
     CardCache.begin_request(tenant.id)
-    got = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                             "tokens", {}, "usd")
+    got = CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     assert expected is not None
     assert got is not None and got.id == expected.id
 
 
 def test_second_resolve_hits_cache(tenant, customer, price_card_fixture):
+    selectors = {"provider": "openai", "event_type": "llm_call"}
     CardCache.begin_request(tenant.id)
-    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+    CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     with CaptureQueriesContext(connection) as ctx:
-        CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+        CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     assert len(ctx.captured_queries) == 0
 
 
 def test_invalidate_forces_reread(tenant, customer, price_card_fixture):
+    selectors = {"provider": "openai", "event_type": "llm_call"}
     CardCache.begin_request(tenant.id)
-    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+    CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     CardCache.invalidate(tenant.id)
     CardCache.begin_request(tenant.id)   # new request observes the bump
     with CaptureQueriesContext(connection) as ctx:
-        CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+        CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     assert len(ctx.captured_queries) > 0
 
 
-def test_dimensioned_card_bypasses_l1_for_different_tag_sets(tenant, customer):
-    """Guard: a dimensioned card must re-match per call. If the resolved Rate
-    were cached under a tag-less key, the first tag set's result would be
-    wrongly returned for the second (different) tag set."""
+def test_dimensioned_card_is_cached_per_selector_set(tenant, customer):
+    """A dimensioned card is still resolved correctly per selector set — but
+    now (Task 13) via L1, keyed on the full ten-selector tuple, not by
+    bypassing the cache. Dimensions are declared and cardinality-capped
+    (design D4), so the selector tuple is a bounded, safe cache key: two
+    different selector sets get separate L1 entries and never collide, and a
+    repeat resolve for the SAME selector set is served from L1 with zero
+    queries."""
     book = RateCard.objects.create(
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="dimensioned", is_default=True, version=1)
     rate_gpt4 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dimensions={"model": "gpt-4"},
+        metric_name="tokens", currency="usd", dim1="gpt-4",
         rate_per_unit_micros=20_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     rate_gpt35 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dimensions={"model": "gpt-3.5"},
+        metric_name="tokens", currency="usd", dim1="gpt-3.5",
         rate_per_unit_micros=5_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
 
     CardCache.begin_request(tenant.id)
-    got_gpt4 = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                                  "tokens", {"model": "gpt-4"}, "usd")
-    got_gpt35 = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                                   "tokens", {"model": "gpt-3.5"}, "usd")
+    got_gpt4 = CardCache.resolve(
+        tenant, customer, "price",
+        {"provider": "openai", "event_type": "llm_call", "dim1": "gpt-4"}, "tokens", "usd")
+    got_gpt35 = CardCache.resolve(
+        tenant, customer, "price",
+        {"provider": "openai", "event_type": "llm_call", "dim1": "gpt-3.5"}, "tokens", "usd")
     assert got_gpt4 is not None and got_gpt4.id == rate_gpt4.id
     assert got_gpt35 is not None and got_gpt35.id == rate_gpt35.id
+
+    # Different selector sets do not collide: re-resolving the first set still
+    # returns the first rate, not the second's.
+    with CaptureQueriesContext(connection) as ctx:
+        got_gpt4_again = CardCache.resolve(
+            tenant, customer, "price",
+            {"provider": "openai", "event_type": "llm_call", "dim1": "gpt-4"}, "tokens", "usd")
+    assert got_gpt4_again is not None and got_gpt4_again.id == rate_gpt4.id
+    assert len(ctx.captured_queries) == 0, "same selector set must be served from L1"
 
 
 def test_stale_begin_request_in_other_context_does_not_clobber(tenant, customer, price_card_fixture):
@@ -117,8 +134,9 @@ def test_stale_begin_request_in_other_context_does_not_clobber(tenant, customer,
     own thread) must not clobber it — the fresh context must still re-read.
     With a shared module-level dict this test fails (stale write wins and the
     stale L1 entry is served with zero queries)."""
+    selectors = {"provider": "openai", "event_type": "llm_call"}
     CardCache.begin_request(tenant.id)
-    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+    CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
 
     CardCache.invalidate(tenant.id)
     CardCache.begin_request(tenant.id)  # fresh: observes the bumped version
@@ -142,23 +160,22 @@ def test_stale_begin_request_in_other_context_does_not_clobber(tenant, customer,
     # The L1 entry was cached at the pre-publish version; the fresh context's
     # observation survived the stale store, so resolve re-reads the DB.
     with CaptureQueriesContext(connection) as ctx:
-        got = CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                                "tokens", {}, "usd")
+        got = CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     assert got is not None
     assert len(ctx.captured_queries) > 0
 
 
 def test_l1_cap_clears_instead_of_growing_unbounded(tenant, customer, price_card_fixture):
     """An insert at the cap clears the L1 (crude bound) rather than growing it."""
+    selectors = {"provider": "openai", "event_type": "llm_call"}
     CardCache.begin_request(tenant.id)
-    CardCache.resolve(tenant, customer, "price", "openai", "llm_call", "tokens", {}, "usd")
+    CardCache.resolve(tenant, customer, "price", selectors, "tokens", "usd")
     # Pad to the cap with synthetic entries.
     while len(card_cache_module._l1) < card_cache_module._L1_MAX:
         card_cache_module._l1[("pad", len(card_cache_module._l1))] = (
             0, time.monotonic() + 30, None)
     # A resolve miss (different metric) inserts one entry -> triggers the clear.
-    CardCache.resolve(tenant, customer, "price", "openai", "llm_call",
-                      "other_metric", {}, "usd")
+    CardCache.resolve(tenant, customer, "price", selectors, "other_metric", "usd")
     assert len(card_cache_module._l1) == 1
 
 
@@ -177,7 +194,7 @@ def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_c
     with django_capture_on_commit_callbacks(execute=True):
         BookService.publish(book, changes=[{
             "metric_name": "tokens", "provider": "openai", "event_type": "",
-            "dimensions": {}, "rate_per_unit_micros": 20_000_000,
+            "rate_per_unit_micros": 20_000_000,
         }])
 
     assert int(r.get(key)) == 1

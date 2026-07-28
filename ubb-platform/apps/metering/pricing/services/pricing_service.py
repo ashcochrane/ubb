@@ -28,25 +28,25 @@ Estimate = namedtuple("Estimate", "micros exact")
 
 class PricingService:
     @staticmethod
-    def _dimensions_match(card_dimensions, tags):
-        tags = tags or {}
-        for k, v in (card_dimensions or {}).items():
-            if str(tags.get(k)) != str(v):
-                return False
-        return True
+    def _resolve_rate_within(book, selectors, metric_name, currency, as_of):
+        """One matching semantic for all ten selectors (design D3).
 
-    @staticmethod
-    def _resolve_rate_within(book, provider, event_type, metric_name, tags, currency, as_of):
+        A rate's "" selector is a WILDCARD; a pinned selector must equal the
+        event's value. Among matches the most-pinned rate wins, tie-broken by
+        latest valid_from. `metric_name` alone keeps exact-match semantics —
+        pricing is per-metric and a metric wildcard would be meaningless."""
         if book is None:
             return None
-        cands = [c for c in Rate.objects.filter(
-            rate_card=book, provider=provider or "", event_type=event_type or "",
-            metric_name=metric_name, currency=currency, valid_from__lte=as_of,
+        qs = Rate.objects.filter(
+            rate_card=book, metric_name=metric_name, currency=currency,
+            valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
-            if PricingService._dimensions_match(c.dimensions, tags)]
+        for name in Rate.SELECTORS:
+            qs = qs.filter(Q(**{name: selectors.get(name) or ""}) | Q(**{name: ""}))
+        cands = list(qs)
         if not cands:
             return None
-        cands.sort(key=lambda c: (len(c.dimensions or {}), c.valid_from), reverse=True)
+        cands.sort(key=lambda c: (c.specificity, c.valid_from), reverse=True)
         return cands[0]
 
     @staticmethod
@@ -65,16 +65,31 @@ class PricingService:
             currency=currency, is_default=True).first()
 
     @staticmethod
-    def _resolve_card(tenant, customer, card_type, provider, event_type, metric_name, tags, currency, as_of):
+    def _resolve_card(tenant, customer, card_type, selectors, metric_name, currency, as_of):
         book = PricingService._assigned_book(tenant, customer, card_type, currency)
         if book is not None:
             rate = PricingService._resolve_rate_within(
-                book, provider, event_type, metric_name, tags, currency, as_of)
+                book, selectors, metric_name, currency, as_of)
             if rate is not None:
                 return rate
+        provider = selectors.get("provider") or ""
         default_book = PricingService._default_book(tenant, card_type, provider, currency)
+        if default_book is not None:
+            rate = PricingService._resolve_rate_within(
+                default_book, selectors, metric_name, currency, as_of)
+            if rate is not None:
+                return rate
+        # Book-selection (provider_key) is a separate layer from the Rate-level
+        # selector wildcarding above: a "" provider_key book is the tenant's
+        # provider-AGNOSTIC default book (D3's headline fix applied at the book
+        # layer too), so a non-empty provider that found no book, or a book
+        # with no matching rate, falls back to it. Skipped when the request was
+        # already provider-less — that IS the "" bucket, already tried above.
+        if not provider:
+            return None
+        wildcard_book = PricingService._default_book(tenant, card_type, "", currency)
         return PricingService._resolve_rate_within(
-            default_book, provider, event_type, metric_name, tags, currency, as_of)
+            wildcard_book, selectors, metric_name, currency, as_of)
 
     @staticmethod
     def _compute(*, tenant, usage_metrics, caller_provider_cost, caller_billed,
@@ -156,17 +171,18 @@ class PricingService:
         return provider_cost, billed, prov
 
     @staticmethod
-    def price(*, tenant, customer, event_type, provider, usage_metrics, tags, currency,
+    def price(*, tenant, customer, selectors, usage_metrics, currency,
               caller_provider_cost, caller_billed, units=None, as_of=None):
         """Exact pricing: the compute spine over as_of-exact ORM card
         resolution (the full provenance receipt is persisted with the event)
-        and live-ORM markup."""
+        and live-ORM markup. ``selectors`` is the full {provider, event_type,
+        task_type, subtask_type, dim1..dim6} map (Rate.SELECTORS keys) — an
+        absent/"" value wildcards against a rate that leaves it unpinned."""
         as_of = as_of or timezone.now()
 
         def resolve_card(card_type, metric):
             return PricingService._resolve_card(
-                tenant, customer, card_type, provider, event_type, metric,
-                tags, currency, as_of)
+                tenant, customer, card_type, selectors, metric, currency, as_of)
 
         def apply_markup(provider_cost):
             from apps.metering.pricing.services.markup_service import MarkupService
@@ -179,17 +195,30 @@ class PricingService:
             resolve_card=resolve_card, apply_markup=apply_markup)
 
     @staticmethod
-    def estimate(tenant, customer, *, event_type, provider, usage_metrics,
-                 tags, currency, caller_billed, caller_provider_cost, units):
+    def estimate(tenant, customer, *, selectors, usage_metrics,
+                 currency, caller_billed, caller_provider_cost, units):
         """Accept-time cost estimation for async ingestion: the SAME compute
         spine as ``price``, over CardCache current-card resolution and the
         cached markup — read-only, never charges a wallet, and the receipt is
-        discarded (no event row exists yet to carry it). The one remaining
+        discarded (no event row exists yet to carry it).
+
+        ``selectors`` is the same full ten-key map ``price`` takes (see
+        ``price``'s docstring) — the CALLER is responsible for making it the
+        SAME inherited selector set ``price`` will resolve at settle
+        (ingest_accept.py's ``_inherited_selectors_for_estimate`` mirrors
+        usage_service.py's ``_inherit_dimensions`` for exactly this reason;
+        Task 12 closed a gap where accept wildcarded task_type/dim1..dim6
+        while settle resolved them for real, letting the two instants match
+        different rates). Given equal selectors, the one remaining
         accept-vs-settle difference is WHICH cards resolve — CURRENT cards
         here (the hot accept path keeps its L1 cache), as_of-exact cards at
         settle — i.e. rate-card config drift between the two instants. With
         per_unit/flat-only pricing (ADR-0003 deleted tiered pricing), every
-        estimate therefore equals what price() will charge by construction.
+        estimate therefore equals what price() will charge by construction,
+        MODULO that config-drift window and the caller keeping selectors in
+        sync — this method cannot verify either from here, so ``exact=True``
+        below is a claim about the compute spine, not a guarantee over
+        every possible caller.
 
         Unpriceable is raised exactly where price() raises PricingError
         (strict cost coverage — one spine, one failure surface), so the
@@ -199,8 +228,8 @@ class PricingService:
         from apps.metering.pricing.services.markup_cache import MarkupCache
 
         def resolve_card(card_type, metric):
-            return CardCache.resolve(tenant, customer, card_type, provider,
-                                     event_type, metric, tags, currency)
+            return CardCache.resolve(tenant, customer, card_type, selectors,
+                                     metric, currency)
 
         def apply_markup(provider_cost):
             return MarkupCache.apply(provider_cost, tenant=tenant, customer=customer)

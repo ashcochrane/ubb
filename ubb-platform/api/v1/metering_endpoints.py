@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import date, datetime
 from uuid import UUID
 
@@ -25,11 +24,15 @@ from api.v1.schemas import (
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
     CloseTaskResponse,
+    TaskDetailOut, PaginatedTasks, task_out,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
+    TaskAnalyticsOut,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
     book_out, rate_out, usage_event_out,
+    DimensionRegistryIn, DimensionRegistryOut, DimensionValuesOut,
+    TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
     Rate, RateCard, RateCardAssignment,
@@ -46,6 +49,7 @@ from apps.metering.usage.services.ingest_accept import (
     usage_kwargs, with_uncosted)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
+from apps.platform.dimensions.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +72,19 @@ def record_usage(request, payload: RecordUsageRequest):
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
+    # Task 9: admission is a WRITE (records DimensionValue rows), so it runs
+    # BEFORE the recording core, outside record_usage's own retry/replay
+    # machinery — a bad dimension is a whole-request 422, never a partial
+    # record.
+    try:
+        dimension_slots = DimensionService.admit(
+            request.auth.tenant, payload.dimensions, scope="event")
+    except DimensionError as exc:
+        raise Problem("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
             tenant=request.auth.tenant, customer=customer,
+            dimension_slots=dimension_slots,
             **usage_kwargs(payload))
     except (PricingError, ValueError) as e:
         code, detail = usage_error(e)
@@ -197,6 +211,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
 @role_floor(READ)
 def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50,
               tag_key: str = None, tag_value: str = None,
+              task_id: UUIDIdentifier = None, include_subtasks: bool = False,
               past_limit: bool = None, stop_scope: str = None,
               episode_seq: int = None):
     _product_check(request)
@@ -207,6 +222,7 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
     if tag_key and tag_value:
         qs = qs.filter(tags__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
+    qs = _apply_task_filter(qs, request.auth.tenant, task_id, include_subtasks)
 
     return page(qs, cursor, limit, serialize=usage_event_out,
                 time_field="effective_at")
@@ -232,9 +248,9 @@ def get_usage_event(request, event_id: UUID):
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,
-        "product_id": e.product_id,
-        "service_id": e.service_id,
-        "agent_id": e.agent_id,
+        "dim1": e.dim1,
+        "dim2": e.dim2,
+        "dim3": e.dim3,
         "units": e.units,
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
@@ -274,6 +290,72 @@ def close_task(request, task_id: UUID):
         "total_provider_cost_micros": completed.total_provider_cost_micros,
         "event_count": completed.event_count,
     }
+
+
+@metering_router.get("/tasks", response=PaginatedTasks)
+@role_floor(READ)
+def list_tasks(request, cursor: str = None, limit: int = 50,
+               customer_id: UUIDIdentifier = None, task_type: str = None,
+               status: str = None):
+    """Top-level units of work with their materialized cost rollups.
+
+    Subtasks are omitted — they belong to their parent's detail view, so a
+    listing counts JOBS, not steps."""
+    _product_check(request)
+
+    qs = Task.objects.filter(tenant=request.auth.tenant, parent__isnull=True)
+    if customer_id:
+        qs = qs.filter(customer_id=customer_id)
+    if task_type:
+        qs = qs.filter(task_type=task_type)
+    if status:
+        qs = qs.filter(status=status)
+    return page(qs, cursor, limit, serialize=task_out, time_field="created_at")
+
+
+@metering_router.get("/tasks/{task_id}", response={200: TaskDetailOut, 404: ProblemOut})
+@role_floor(READ)
+def get_task(request, task_id: UUID):
+    """One unit's cost receipt plus its subtask tree.
+
+    Reads the rollups `TaskService.accumulate_cost` maintains — including
+    events that landed after a kill — so this never aggregates
+    ubb_usage_event. One indexed row read plus its children."""
+    _product_check(request)
+
+    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    body = task_out(task)
+    body["subtasks"] = [task_out(s) for s in
+                        task.subtasks.all().order_by("created_at")]
+    return 200, body
+
+
+@metering_router.get("/analytics/tasks", response={200: TaskAnalyticsOut,
+                                                  422: ProblemOut})
+@role_floor(READ)
+def task_analytics(request, group_by: str = "task_type", start_date: date = None,
+                   end_date: date = None):
+    """Cost per KIND of job: run count, mean, p95, and limit hits.
+
+    A p95 approaching the type's ceiling is the signal that the limit is about
+    to start biting real customers."""
+    _product_check(request)
+    from apps.platform.tasks.queries import task_rollup_by_type
+
+    if start_date and end_date:
+        if end_date < start_date:
+            raise Problem("validation_error",
+                          "end_date must not precede start_date")
+        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error", "date window must not exceed 366 days")
+    try:
+        rows = task_rollup_by_type(
+            request.auth.tenant.id, group_by=group_by,
+            start_date=utc_day_start(start_date) if start_date else None,
+            end_date=utc_next_day_start(end_date) if end_date else None)
+    except ValueError as exc:
+        raise Problem("validation_error", str(exc))
+    return 200, {"group_by": group_by, "rows": rows}
 
 
 # --- Pricing Markup ---
@@ -398,7 +480,42 @@ def delete_customer_markup(request, customer_id: UUID):
 # --- Analytics ---
 
 
-_ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "service_id", "agent_id"}
+# The four reserved dimensions (design D1) plus "customer", which is a column
+# on the event rather than a slot. Tenant keys come from the registry.
+_RESERVED_ANALYTICS_DIMS = ("provider", "event_type", "task_type", "subtask_type",
+                            "customer")
+
+
+def _resolve_dimension(tenant, dim):
+    """Map a requested dimension name to the column to GROUP BY.
+
+    Reserved names map to themselves; declared tenant keys map to their slot.
+    Anything else — notably a correlation id like task_id (design D9) — is a
+    422, so an unbounded key can never become a group-by.
+    """
+    from apps.platform.dimensions.queries import slot_map
+
+    if dim in _RESERVED_ANALYTICS_DIMS:
+        return "customer__external_id" if dim == "customer" else dim
+    slot = slot_map(tenant.id).get(dim)
+    if slot is None:
+        raise Problem("validation_error", f"unknown dimension {dim!r}")
+    return slot
+
+
+def _apply_task_filter(qs, tenant, task_id, include_subtasks):
+    """Correlation-id filtering (design D9). With include_subtasks the whole
+    tree is in scope — one extra indexed query for the child ids, since
+    containment is a single level."""
+    if task_id is None:
+        return qs
+    from apps.platform.tasks.models import Task
+
+    ids = [task_id]
+    if include_subtasks:
+        ids += list(Task.objects.filter(
+            tenant=tenant, parent_id=task_id).values_list("id", flat=True))
+    return qs.filter(task_id__in=ids)
 
 
 @metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
@@ -406,6 +523,7 @@ _ANALYTICS_ALLOWED_COLS = {"provider", "event_type", "product_id", "customer", "
 def usage_analytics(request, start_date: date = None, end_date: date = None,
                     customer_id: UUIDIdentifier = None, tag_key: str = None,
                     dimensions: list[str] = Query(None),
+                    task_id: UUIDIdentifier = None, include_subtasks: bool = False,
                     past_limit: bool = None, stop_scope: str = None,
                     episode_seq: int = None):
     """Usage analytics with markup margin and customer/product/tag breakdowns.
@@ -431,6 +549,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
+    qs = _apply_task_filter(qs, tenant, task_id, include_subtasks)
 
     totals = qs.aggregate(
         total_events=Count("id"),
@@ -461,8 +580,8 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             total_provider_cost_micros=Sum("provider_cost_micros"),
         ).order_by("-total_cost_micros")
     )
-    by_product = list(
-        qs.exclude(product_id="").values("product_id").annotate(
+    by_task_type = list(
+        qs.exclude(task_type="").values("task_type").annotate(
             event_count=Count("id"),
             total_cost_micros=Sum("billed_cost_micros"),
             total_provider_cost_micros=Sum("provider_cost_micros"),
@@ -488,58 +607,24 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         if len(dimensions) > 6:
             raise Problem("validation_error", "at most 6 dimensions")
         for dim in dimensions:
-            if dim.startswith("tag:"):
-                key = dim[4:]
-                if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", key):
-                    raise Problem("validation_error", f"invalid tag dimension {dim}")
-                # Events that have the key (non-NULL dimension value).
-                rows_with_key = list(
-                    qs.filter(tags__has_key=key)
-                    .annotate(dimension=KeyTextTransform(key, "tags"))
-                    .values("dimension")
-                    .annotate(
-                        event_count=Count("id"),
-                        total_provider_cost_micros=Sum("provider_cost_micros"),
-                        total_billed_cost_micros=Sum("billed_cost_micros"),
-                    )
-                    .order_by("-total_billed_cost_micros")
-                )
-                # Events that are MISSING the key -> bucket as "(unattributed)".
-                unattr_qs = qs.exclude(tags__has_key=key)
-                unattr_agg = unattr_qs.aggregate(
+            col = _resolve_dimension(tenant, dim)
+            # Run over the FULL qs (no exclusion) so every event is counted.
+            # customer always has an external_id so no "(unattributed)" needed there.
+            rows = list(
+                qs.values(col)
+                .annotate(
                     event_count=Count("id"),
                     total_provider_cost_micros=Sum("provider_cost_micros"),
                     total_billed_cost_micros=Sum("billed_cost_micros"),
                 )
-                if (unattr_agg["event_count"] or 0) > 0:
-                    rows_with_key.append({
-                        "dimension": "(unattributed)",
-                        "event_count": unattr_agg["event_count"] or 0,
-                        "total_provider_cost_micros": unattr_agg["total_provider_cost_micros"] or 0,
-                        "total_billed_cost_micros": unattr_agg["total_billed_cost_micros"] or 0,
-                    })
-                rows = sorted(rows_with_key, key=lambda r: -(r["total_billed_cost_micros"] or 0))
-            elif dim in _ANALYTICS_ALLOWED_COLS:
-                col = "customer__external_id" if dim == "customer" else dim
-                # Run over the FULL qs (no exclusion) so every event is counted.
-                # customer always has an external_id so no "(unattributed)" needed there.
-                rows = list(
-                    qs.values(col)
-                    .annotate(
-                        event_count=Count("id"),
-                        total_provider_cost_micros=Sum("provider_cost_micros"),
-                        total_billed_cost_micros=Sum("billed_cost_micros"),
-                    )
-                    .order_by("-total_billed_cost_micros")
-                )
-                for r in rows:
-                    raw_val = r.pop(col)
-                    # Map empty string or None to the sentinel for non-customer cols
-                    if dim != "customer" and not raw_val:
-                        raw_val = "(unattributed)"
-                    r["dimension"] = raw_val
-            else:
-                raise Problem("validation_error", f"unknown dimension {dim}")
+                .order_by("-total_billed_cost_micros")
+            )
+            for r in rows:
+                raw_val = r.pop(col)
+                # Map empty string or None to the sentinel for non-customer cols
+                if dim != "customer" and not raw_val:
+                    raw_val = "(unattributed)"
+                r["dimension"] = raw_val
             breakdowns[dim] = rows
 
     return 200, {
@@ -550,7 +635,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "by_provider": by_provider,
         "by_event_type": by_event_type,
         "by_customer": by_customer,
-        "by_product": by_product,
+        "by_task_type": by_task_type,
         "by_tag": by_tag,
         "breakdowns": breakdowns,
     }
@@ -568,8 +653,9 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
     _product_check(request)
     if granularity not in ("hour", "day"):
         raise Problem("validation_error", "granularity must be hour or day")
-    if group_by is not None and group_by not in ("provider", "event_type", "product_id", "service_id", "agent_id"):
-        raise Problem("validation_error", "invalid group_by")
+    resolved_group_by = None
+    if group_by is not None:
+        resolved_group_by = _resolve_dimension(request.auth.tenant, group_by)
     # #78 bounds: hourly windows capped at ~92 days, daily at 366.
     if start_date and end_date:
         if end_date < start_date:
@@ -580,7 +666,7 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
             raise Problem("validation_error", "date window must not exceed 366 days")
     from apps.metering.queries import get_usage_timeseries
     series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
-        customer_id=customer_id, group_by=group_by, start_date=start_date, end_date=end_date)
+        customer_id=customer_id, group_by=resolved_group_by, start_date=start_date, end_date=end_date)
     return 200, {"granularity": granularity, "group_by": group_by or "", "series": series}
 
 
@@ -712,11 +798,14 @@ def add_rate(request, book_id: UUID, payload: RateIn):
             rate = Rate.objects.create(
                 tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
                 metric_name=payload.metric_name, provider=payload.provider,
-                event_type=payload.event_type, dimensions=payload.dimensions,
+                event_type=payload.event_type, task_type=payload.task_type,
+                subtask_type=payload.subtask_type,
+                dim1=payload.dim1, dim2=payload.dim2, dim3=payload.dim3,
+                dim4=payload.dim4, dim5=payload.dim5, dim6=payload.dim6,
                 pricing_model=payload.pricing_model,
                 rate_per_unit_micros=payload.rate_per_unit_micros,
                 unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-                currency=book.currency, product_id=payload.product_id,
+                currency=book.currency,
                 book_version_from=book.version)
             audit_record(
                 action="rate.added",
@@ -815,3 +904,116 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
                       "valid_to": rate.valid_to.isoformat()},
         )
     return {"status": "deleted"}
+
+
+@metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("dimension.declared")
+def declare_dimensions(request, payload: DimensionRegistryIn):
+    """Declare this tenant's slicing axes — the ONE vocabulary used by both
+    analytics grouping and rate selection (design D1). Idempotent: re-PUTting
+    an identical declaration is a no-op. `slot` and `scope` are immutable once
+    bound and `max_cardinality` may only be raised (D8)."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import declared_dimensions
+    from apps.platform.dimensions.services import DimensionError, DimensionService
+
+    tenant = request.auth.tenant
+    try:
+        with transaction.atomic():
+            for d in payload.dimensions:
+                DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
+                                         max_cardinality=d.max_cardinality)
+            audit_record(
+                action="dimension.declared",
+                tenant_id=tenant.id,
+                resource_type="dimension_registry",
+                resource_id=tenant.id,
+                metadata={"dimensions": [
+                    {"key": d.key, "slot": d.slot, "scope": d.scope,
+                     "max_cardinality": d.max_cardinality}
+                    for d in payload.dimensions]},
+            )
+    except DimensionError as exc:
+        raise Problem("validation_error", str(exc))
+    return 200, {"dimensions": declared_dimensions(tenant.id)}
+
+
+@metering_router.get("/dimensions", response=DimensionRegistryOut)
+@role_floor(READ)
+def list_dimensions(request):
+    """This tenant's declared dimension vocabulary."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import declared_dimensions
+    return {"dimensions": declared_dimensions(request.auth.tenant.id)}
+
+
+@metering_router.get("/dimensions/{key}/values",
+                     response={200: DimensionValuesOut, 404: ProblemOut})
+@role_floor(READ)
+def list_dimension_values(request, key: str):
+    """Every value admitted for one dimension — the read model a dashboard
+    filter dropdown needs. Bounded by the key's max_cardinality (D4)."""
+    _product_check(request)
+    from apps.platform.dimensions.models import DimensionDef, DimensionValue
+
+    if not DimensionDef.objects.filter(tenant=request.auth.tenant, key=key).exists():
+        raise Problem("not_found", f"dimension {key!r} is not declared")
+    values = list(DimensionValue.objects.filter(
+        tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
+    return 200, {"key": key, "values": values}
+
+
+@metering_router.put("/task-types", response={200: TaskTypeRegistryOut, 422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("task_type.declared")
+def declare_task_types(request, payload: TaskTypeRegistryIn):
+    """Declare the tenant's work vocabulary and its per-kind COGS ceilings
+    (design D7). Idempotent; the ceiling and required_dimensions may be updated
+    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
+    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    than a Write carve-out."""
+    _product_check(request)
+    from apps.platform.dimensions.queries import slot_map
+    from apps.platform.tasks.models import TaskType
+    from apps.platform.tasks.queries import declared_task_types
+
+    tenant = request.auth.tenant
+    declared = set(slot_map(tenant.id))
+    with transaction.atomic():
+        for tt in payload.task_types:
+            if tt.kind not in ("task", "subtask"):
+                raise Problem("validation_error", f"invalid kind {tt.kind!r}")
+            missing = [d for d in tt.required_dimensions if d not in declared]
+            if missing:
+                raise Problem("validation_error",
+                              f"required_dimensions not declared: {missing}")
+            TaskType.objects.update_or_create(
+                tenant=tenant, key=tt.key, kind=tt.kind,
+                defaults={
+                    "default_provider_cost_limit_micros":
+                        tt.default_provider_cost_limit_micros,
+                    "required_dimensions": tt.required_dimensions,
+                })
+        audit_record(
+            action="task_type.declared",
+            tenant_id=tenant.id,
+            resource_type="task_type_registry",
+            resource_id=tenant.id,
+            metadata={"task_types": [
+                {"key": tt.key, "kind": tt.kind,
+                 "default_provider_cost_limit_micros":
+                     tt.default_provider_cost_limit_micros,
+                 "required_dimensions": tt.required_dimensions}
+                for tt in payload.task_types]},
+        )
+    return 200, {"task_types": declared_task_types(tenant.id)}
+
+
+@metering_router.get("/task-types", response=TaskTypeRegistryOut)
+@role_floor(READ)
+def list_task_types(request):
+    """The tenant's declared work vocabulary."""
+    _product_check(request)
+    from apps.platform.tasks.queries import declared_task_types
+    return {"task_types": declared_task_types(request.auth.tenant.id)}

@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import PRICING_MODEL_CHOICES, Rate, RateCard
@@ -7,8 +6,9 @@ from apps.metering.pricing.services.card_cache import CardCache
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
-    "metric_name", "dimensions", "pricing_model", "rate_per_unit_micros",
-    "unit_quantity", "fixed_micros", "currency", "product_id",
+    "task_type", "subtask_type", "dim1", "dim2", "dim3", "dim4", "dim5", "dim6",
+    "metric_name", "pricing_model", "rate_per_unit_micros",
+    "unit_quantity", "fixed_micros", "currency",
     "lineage_id", "rate_card_id",
 )
 
@@ -17,8 +17,9 @@ class BookService:
     @staticmethod
     def publish(book, changes, as_of=None):
         """Atomically reprice a set of the book's rates. Each change must match
-        exactly one ACTIVE rate in the book by (metric_name, provider,
-        event_type, dimensions). Supersedes it (valid_to=T, book_version_to=old
+        exactly one ACTIVE rate in the book by (metric_name, plus the ten
+        selector columns — provider, event_type, task_type, subtask_type,
+        dim1..dim6). Supersedes it (valid_to=T, book_version_to=old
         version) and inserts a new active rate (same lineage_id, valid_from>=T,
         book_version_from=new version). Bumps book.version once. All-or-nothing.
 
@@ -34,9 +35,8 @@ class BookService:
                 old = Rate.objects.select_for_update().filter(
                     rate_card=locked, valid_to__isnull=True,
                     metric_name=ch["metric_name"],
-                    provider=ch.get("provider", ""),
-                    event_type=ch.get("event_type", ""),
-                ).filter(Q(dimensions=ch.get("dimensions", {}))).first()
+                    **{s: ch.get(s, "") for s in Rate.SELECTORS},
+                ).first()
                 if old is None:
                     raise ValueError(
                         f"publish: no active rate for {ch['metric_name']!r} in book {locked.key}")

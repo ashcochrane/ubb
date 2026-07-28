@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.pre_check_request import PreCheckRequest
 from ...models.pre_check_response import PreCheckResponse
+from ...models.problem_out import ProblemOut
 from typing import cast
 
 
@@ -40,7 +41,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
     if response.status_code == 200:
         response_200 = PreCheckResponse.from_dict(response.json())
 
@@ -48,13 +49,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 422:
+        response_422 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_422
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,7 +76,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> Response[PreCheckResponse]:
+) -> Response[PreCheckResponse | ProblemOut]:
     """ Pre Check
 
     Args:
@@ -79,7 +87,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse]
+        Response[PreCheckResponse | ProblemOut]
      """
 
 
@@ -99,7 +107,7 @@ def sync(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> PreCheckResponse | None:
+) -> PreCheckResponse | ProblemOut | None:
     """ Pre Check
 
     Args:
@@ -110,7 +118,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse
+        PreCheckResponse | ProblemOut
      """
 
 
@@ -125,7 +133,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> Response[PreCheckResponse]:
+) -> Response[PreCheckResponse | ProblemOut]:
     """ Pre Check
 
     Args:
@@ -136,7 +144,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse]
+        Response[PreCheckResponse | ProblemOut]
      """
 
 
@@ -156,7 +164,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> PreCheckResponse | None:
+) -> PreCheckResponse | ProblemOut | None:
     """ Pre Check
 
     Args:
@@ -167,7 +175,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse
+        PreCheckResponse | ProblemOut
      """
 
 

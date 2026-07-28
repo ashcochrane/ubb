@@ -33,6 +33,30 @@ PATCH /api/v1/webhooks/config/configs/{config_id} api path removed without depre
 GET /api/v1/webhooks/config/configs/{config_id}/deliveries api path removed without deprecation
 POST /api/v1/webhooks/config/configs/{config_id}/rotate-secret api path removed without deprecation
 
+# 2026-07-27 unified dimension model (pre-launch lane; no external consumers —
+# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005). Three
+# competing spend-attribution mechanisms collapse into one declared, slot-bound
+# vocabulary; `product_id`/`service_id`/`agent_id` and `Rate.dimensions` are
+# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`.
+#
+# ERR-level entries ONLY belong in this file (--err-ignore suppresses ERR
+# findings only; WARN-level findings for this same rework live in the sibling
+# oasdiff-warn-ignore.txt — final-fixes wave, 2026-07-27 unified dimension
+# model plan, Critical 3: this file previously misfiled 7 WARN-level lines
+# here, where --err-ignore silently did nothing for them, and was missing 2
+# ERR-level findings entirely — both corrected by installing oasdiff and
+# running it for real instead of hand-deriving the entry list).
+#
+# Usage analytics groups by declared dimensions/task_type, not the old by_product bucket:
+GET /api/v1/metering/analytics/usage removed the required property `by_product` from the response with the `200` status
+# Rate write/read contract moves from a JSONB `dimensions` blob + `product_id` to
+# the ten named selector columns (dim1..dim6, task_type, subtask_type already covered above) —
+# both the single-rate create route and the book's rate LIST route carry this:
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/dimensions` from the response with the `200` status
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/product_id` from the response with the `200` status
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `dimensions` from the response with the `200` status
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `product_id` from the response with the `200` status
+
 # ============================================================================
 # ===== LAUNCH TAG BOUNDARY — the v1 compatibility contract binds here =====
 # ============================================================================

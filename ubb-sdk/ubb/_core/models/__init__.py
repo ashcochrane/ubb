@@ -8,13 +8,8 @@ from .api_key_out import ApiKeyOut
 from .api_v1_connect_endpoints_connect_start_response import ApiV1ConnectEndpointsConnectStartResponse
 from .api_v1_connect_endpoints_connect_status_response import ApiV1ConnectEndpointsConnectStatusResponse
 from .api_v1_metering_endpoints_assign_book_response import ApiV1MeteringEndpointsAssignBookResponse
-from .api_v1_platform_endpoints_cancel_subscription_response import ApiV1PlatformEndpointsCancelSubscriptionResponse
+from .api_v1_plan_endpoints_assign_plan_response import ApiV1PlanEndpointsAssignPlanResponse
 from .api_v1_platform_endpoints_get_business_response import ApiV1PlatformEndpointsGetBusinessResponse
-from .api_v1_platform_endpoints_pause_subscription_response import ApiV1PlatformEndpointsPauseSubscriptionResponse
-from .api_v1_platform_endpoints_resume_subscription_response import ApiV1PlatformEndpointsResumeSubscriptionResponse
-from .api_v1_platform_endpoints_set_customer_seats_response import ApiV1PlatformEndpointsSetCustomerSeatsResponse
-from .api_v1_platform_endpoints_subscribe_customer_response import ApiV1PlatformEndpointsSubscribeCustomerResponse
-from .api_v1_platform_endpoints_update_plan_response import ApiV1PlatformEndpointsUpdatePlanResponse
 from .api_v1_sandbox_endpoints_reset_sandbox_response import ApiV1SandboxEndpointsResetSandboxResponse
 from .api_v1_tenant_endpoints_create_api_key_response import ApiV1TenantEndpointsCreateApiKeyResponse
 from .api_v1_tenant_endpoints_create_sandbox_response import ApiV1TenantEndpointsCreateSandboxResponse
@@ -23,7 +18,13 @@ from .api_v1_tenant_endpoints_remove_member_response import ApiV1TenantEndpoints
 from .api_v1_tenant_endpoints_revoke_api_key_response import ApiV1TenantEndpointsRevokeApiKeyResponse
 from .api_v1_tenant_endpoints_revoke_invitation_response import ApiV1TenantEndpointsRevokeInvitationResponse
 from .api_v1_tenant_endpoints_rotate_api_key_response import ApiV1TenantEndpointsRotateApiKeyResponse
+from .apps_subscriptions_api_endpoints_cancel_subscription_response import AppsSubscriptionsApiEndpointsCancelSubscriptionResponse
+from .apps_subscriptions_api_endpoints_pause_subscription_response import AppsSubscriptionsApiEndpointsPauseSubscriptionResponse
+from .apps_subscriptions_api_endpoints_resume_subscription_response import AppsSubscriptionsApiEndpointsResumeSubscriptionResponse
+from .apps_subscriptions_api_endpoints_set_customer_seats_response import AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse
+from .apps_subscriptions_api_endpoints_subscribe_customer_response import AppsSubscriptionsApiEndpointsSubscribeCustomerResponse
 from .assign_in import AssignIn
+from .assign_plan_in import AssignPlanIn
 from .attribute_request import AttributeRequest
 from .attribute_response import AttributeResponse
 from .audit_record_list_response import AuditRecordListResponse
@@ -52,7 +53,12 @@ from .customer_margin_out import CustomerMarginOut
 from .customer_response import CustomerResponse
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
+from .dimension_def_in import DimensionDefIn
+from .dimension_def_out import DimensionDefOut
 from .dimension_margin_row import DimensionMarginRow
+from .dimension_registry_in import DimensionRegistryIn
+from .dimension_registry_out import DimensionRegistryOut
+from .dimension_values_out import DimensionValuesOut
 from .earnings_out import EarningsOut
 from .grant_list_response import GrantListResponse
 from .grant_out import GrantOut
@@ -61,6 +67,7 @@ from .ingest_batch_request import IngestBatchRequest
 from .ingest_batch_response import IngestBatchResponse
 from .ingest_batch_response_results_item import IngestBatchResponseResultsItem
 from .ingest_event_in import IngestEventIn
+from .ingest_event_in_dimensions import IngestEventInDimensions
 from .ingest_event_in_metadata import IngestEventInMetadata
 from .ingest_event_in_tags_type_0 import IngestEventInTagsType0
 from .ingest_event_in_usage_metrics_type_0 import IngestEventInUsageMetricsType0
@@ -91,6 +98,7 @@ from .paginated_rates import PaginatedRates
 from .paginated_referrals import PaginatedReferrals
 from .paginated_referrers import PaginatedReferrers
 from .paginated_subscription_invoices import PaginatedSubscriptionInvoices
+from .paginated_tasks import PaginatedTasks
 from .paginated_transactions import PaginatedTransactions
 from .paginated_usage_invoices import PaginatedUsageInvoices
 from .paginated_usage_response import PaginatedUsageResponse
@@ -102,11 +110,14 @@ from .payout_export_out import PayoutExportOut
 from .payout_row import PayoutRow
 from .period_window import PeriodWindow
 from .plan_in import PlanIn
+from .plan_in_interval import PlanInInterval
+from .plan_list_out import PlanListOut
 from .plan_out import PlanOut
 from .plan_update_in import PlanUpdateIn
 from .postpaid_config_in import PostpaidConfigIn
 from .postpaid_config_out import PostpaidConfigOut
 from .pre_check_request import PreCheckRequest
+from .pre_check_request_dimensions import PreCheckRequestDimensions
 from .pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
 from .pre_check_response import PreCheckResponse
 from .problem_out import ProblemOut
@@ -116,14 +127,12 @@ from .program_out import ProgramOut
 from .program_update_request import ProgramUpdateRequest
 from .publish_in import PublishIn
 from .rate_change_in import RateChangeIn
-from .rate_change_in_dimensions import RateChangeInDimensions
 from .rate_in import RateIn
-from .rate_in_dimensions import RateInDimensions
 from .rate_out import RateOut
-from .rate_out_dimensions import RateOutDimensions
 from .ready_response import ReadyResponse
 from .ready_response_checks import ReadyResponseChecks
 from .record_usage_request import RecordUsageRequest
+from .record_usage_request_dimensions import RecordUsageRequestDimensions
 from .record_usage_request_metadata import RecordUsageRequestMetadata
 from .record_usage_request_tags_type_0 import RecordUsageRequestTagsType0
 from .record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
@@ -151,6 +160,16 @@ from .subscribe_in import SubscribeIn
 from .subscription_cancel_in import SubscriptionCancelIn
 from .subscription_invoice_out import SubscriptionInvoiceOut
 from .sync_response import SyncResponse
+from .task_analytics_out import TaskAnalyticsOut
+from .task_analytics_row import TaskAnalyticsRow
+from .task_detail_out import TaskDetailOut
+from .task_detail_out_dimensions import TaskDetailOutDimensions
+from .task_out import TaskOut
+from .task_out_dimensions import TaskOutDimensions
+from .task_type_in import TaskTypeIn
+from .task_type_out import TaskTypeOut
+from .task_type_registry_in import TaskTypeRegistryIn
+from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
 from .tenant_billing_period_out import TenantBillingPeriodOut
 from .tenant_config_in import TenantConfigIn
@@ -171,9 +190,9 @@ from .usage_analytics_response import UsageAnalyticsResponse
 from .usage_analytics_response_breakdowns import UsageAnalyticsResponseBreakdowns
 from .usage_analytics_response_by_customer_item import UsageAnalyticsResponseByCustomerItem
 from .usage_analytics_response_by_event_type_item import UsageAnalyticsResponseByEventTypeItem
-from .usage_analytics_response_by_product_item import UsageAnalyticsResponseByProductItem
 from .usage_analytics_response_by_provider_item import UsageAnalyticsResponseByProviderItem
 from .usage_analytics_response_by_tag_item import UsageAnalyticsResponseByTagItem
+from .usage_analytics_response_by_task_type_item import UsageAnalyticsResponseByTaskTypeItem
 from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
 from .usage_batch_response_results_item import UsageBatchResponseResultsItem
@@ -210,13 +229,8 @@ __all__ = (
     "ApiV1ConnectEndpointsConnectStartResponse",
     "ApiV1ConnectEndpointsConnectStatusResponse",
     "ApiV1MeteringEndpointsAssignBookResponse",
-    "ApiV1PlatformEndpointsCancelSubscriptionResponse",
+    "ApiV1PlanEndpointsAssignPlanResponse",
     "ApiV1PlatformEndpointsGetBusinessResponse",
-    "ApiV1PlatformEndpointsPauseSubscriptionResponse",
-    "ApiV1PlatformEndpointsResumeSubscriptionResponse",
-    "ApiV1PlatformEndpointsSetCustomerSeatsResponse",
-    "ApiV1PlatformEndpointsSubscribeCustomerResponse",
-    "ApiV1PlatformEndpointsUpdatePlanResponse",
     "ApiV1SandboxEndpointsResetSandboxResponse",
     "ApiV1TenantEndpointsCreateApiKeyResponse",
     "ApiV1TenantEndpointsCreateSandboxResponse",
@@ -225,7 +239,13 @@ __all__ = (
     "ApiV1TenantEndpointsRevokeApiKeyResponse",
     "ApiV1TenantEndpointsRevokeInvitationResponse",
     "ApiV1TenantEndpointsRotateApiKeyResponse",
+    "AppsSubscriptionsApiEndpointsCancelSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsPauseSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsResumeSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse",
+    "AppsSubscriptionsApiEndpointsSubscribeCustomerResponse",
     "AssignIn",
+    "AssignPlanIn",
     "AttributeRequest",
     "AttributeResponse",
     "AuditRecordListResponse",
@@ -254,7 +274,12 @@ __all__ = (
     "CustomerResponse",
     "DebitCreditResponse",
     "DebitRequest",
+    "DimensionDefIn",
+    "DimensionDefOut",
     "DimensionMarginRow",
+    "DimensionRegistryIn",
+    "DimensionRegistryOut",
+    "DimensionValuesOut",
     "EarningsOut",
     "GrantListResponse",
     "GrantOut",
@@ -263,6 +288,7 @@ __all__ = (
     "IngestBatchResponse",
     "IngestBatchResponseResultsItem",
     "IngestEventIn",
+    "IngestEventInDimensions",
     "IngestEventInMetadata",
     "IngestEventInTagsType0",
     "IngestEventInUsageMetricsType0",
@@ -293,6 +319,7 @@ __all__ = (
     "PaginatedReferrals",
     "PaginatedReferrers",
     "PaginatedSubscriptionInvoices",
+    "PaginatedTasks",
     "PaginatedTransactions",
     "PaginatedUsageInvoices",
     "PaginatedUsageResponse",
@@ -304,11 +331,14 @@ __all__ = (
     "PayoutRow",
     "PeriodWindow",
     "PlanIn",
+    "PlanInInterval",
+    "PlanListOut",
     "PlanOut",
     "PlanUpdateIn",
     "PostpaidConfigIn",
     "PostpaidConfigOut",
     "PreCheckRequest",
+    "PreCheckRequestDimensions",
     "PreCheckRequestTaskMetadataType0",
     "PreCheckResponse",
     "ProblemOut",
@@ -318,14 +348,12 @@ __all__ = (
     "ProgramUpdateRequest",
     "PublishIn",
     "RateChangeIn",
-    "RateChangeInDimensions",
     "RateIn",
-    "RateInDimensions",
     "RateOut",
-    "RateOutDimensions",
     "ReadyResponse",
     "ReadyResponseChecks",
     "RecordUsageRequest",
+    "RecordUsageRequestDimensions",
     "RecordUsageRequestMetadata",
     "RecordUsageRequestTagsType0",
     "RecordUsageRequestUsageMetricsType0",
@@ -353,6 +381,16 @@ __all__ = (
     "SubscriptionCancelIn",
     "SubscriptionInvoiceOut",
     "SyncResponse",
+    "TaskAnalyticsOut",
+    "TaskAnalyticsRow",
+    "TaskDetailOut",
+    "TaskDetailOutDimensions",
+    "TaskOut",
+    "TaskOutDimensions",
+    "TaskTypeIn",
+    "TaskTypeOut",
+    "TaskTypeRegistryIn",
+    "TaskTypeRegistryOut",
     "TenantBillingPeriodListResponse",
     "TenantBillingPeriodOut",
     "TenantConfigIn",
@@ -373,9 +411,9 @@ __all__ = (
     "UsageAnalyticsResponseBreakdowns",
     "UsageAnalyticsResponseByCustomerItem",
     "UsageAnalyticsResponseByEventTypeItem",
-    "UsageAnalyticsResponseByProductItem",
     "UsageAnalyticsResponseByProviderItem",
     "UsageAnalyticsResponseByTagItem",
+    "UsageAnalyticsResponseByTaskTypeItem",
     "UsageBatchRequest",
     "UsageBatchResponse",
     "UsageBatchResponseResultsItem",

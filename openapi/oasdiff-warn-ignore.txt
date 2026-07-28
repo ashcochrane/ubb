@@ -1,0 +1,54 @@
+# 2026-07-27 unified dimension model (pre-launch lane; no external consumers —
+# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005). Three
+# competing spend-attribution mechanisms collapse into one declared, slot-bound
+# vocabulary; `product_id`/`service_id`/`agent_id` and `Rate.dimensions` are
+# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`.
+#
+# WARN-level entries ONLY belong in this file (--warn-ignore suppresses WARN
+# findings only; ERR-level findings for this same rework live in the sibling
+# oasdiff-err-ignore.txt — this file was empty until the final-fixes wave,
+# 2026-07-27 unified dimension model plan, Critical 3: the original hand-
+# derivation put 7 of these WARN-level lines in the ERR file instead, where
+# --err-ignore silently did nothing for them — corrected by installing
+# oasdiff and running it for real.
+#
+# Rate write/read contract moves from a JSONB `dimensions` blob + `product_id`
+# to the ten named selector columns — the create/publish request bodies too,
+# not just the response shapes covered in oasdiff-err-ignore.txt:
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `dimensions`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `product_id`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/dimensions`
+# service_id/agent_id (magic-tag-lifted, never sendable) are retired in favor of
+# the declared dim1/dim2/dim3 selectors sent directly on the write contract:
+POST /api/v1/metering/usage removed the optional property `agent_id` from the response with the `200` status
+POST /api/v1/metering/usage removed the optional property `service_id` from the response with the `200` status
+GET /api/v1/metering/usage/{event_id} removed the optional property `agent_id` from the response with the `200` status
+GET /api/v1/metering/usage/{event_id} removed the optional property `product_id` from the response with the `200` status
+GET /api/v1/metering/usage/{event_id} removed the optional property `service_id` from the response with the `200` status
+# /margin/by-dimension's provider/product boolean pseudo-flags are replaced by
+# one real `group_by` parameter (design doc "What this deletes"):
+GET /api/v1/margin/by-dimension deleted the `query` request parameter `provider`
+GET /api/v1/margin/by-dimension deleted the `query` request parameter `product`
+# Final-fixes wave, 2026-07-27 unified dimension model plan, Critical 1+2: the
+# legacy `product_id` wire field is deleted from the usage write contract
+# entirely — it broke accept/settle price parity and bypassed the dimension
+# cardinality cap (no admit, no declaration required):
+POST /api/v1/metering/usage removed the request property `product_id`
+POST /api/v1/metering/usage/batch removed the request property `events/items/product_id`
+POST /api/v1/metering/usage/ingest removed the request property `events/items/product_id`
+
+# ============================================================================
+# ===== LAUNCH TAG BOUNDARY — the v1 compatibility contract binds here =====
+# ============================================================================
+# The openapi/v1.json revision tagged at launch (ADR-003 §5) is the public v1
+# contract. Every entry ABOVE this line is a pre-launch free break, coordinated
+# by hand with the one known tenant.
+#
+# From the launch tag onward, a NEW entry BELOW this line is permitted ONLY as
+# evidence of an ADR-003 §4 deprecation already in flight — which requires, in
+# the same or a prior change: `deprecated: true` on the operation in the spec, a
+# runtime `Sunset` header (register the route in api/v1/deprecation.py), a dated
+# changelog entry + email announcement, and at least 90 days' notice (a floor we
+# may raise, never lower). A bare removal or rename below this line is a contract
+# breach, not a CI escape hatch. See docs/api-compatibility.md.
+# ============================================================================

@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.platform.events",
     "apps.platform.audit",
     "apps.platform.tasks",
+    "apps.platform.dimensions",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",

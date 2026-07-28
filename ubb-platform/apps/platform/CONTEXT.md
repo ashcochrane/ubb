@@ -122,6 +122,33 @@ A Clerk session JWT presented as a bearer token, verified server-side and offlin
 a pending Member. Unconfigured Clerk => member auth is off and the API is
 API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
 
+## Dimensions
+
+**Dimension**:
+A bounded, declared slicing axis usable for both analytics grouping and rate selection — the
+tenant's `DimensionDef` registry is the single vocabulary for both, so nothing may be grouped by
+or priced on that was not declared. Unlike a `tags` value, a dimension's keyspace is capped on
+write. (ADR-0005; `apps/platform/dimensions/models.py:DimensionDef`)
+
+**Slot**:
+The physical column (`dim1`..`dim6`) a declared dimension key is bound to on both `UsageEvent`
+and `Rate` — immutable once set, since re-slotting would silently change the meaning of every
+historical row in that column. (ADR-0005)
+
+**Scope**:
+The level at which a dimension's value is constant — `task`, `subtask`, or `event` — governing
+inheritance down the task tree; immutable once declared, since re-scoping would make old and new
+rows disagree about where a value came from. (ADR-0005)
+
+**Task type**:
+A tenant's declared kind of top-level work, carrying server-side policy (a COGS ceiling, required
+dimensions) rather than being a bare label; immutable on a `Task` once created. (ADR-0005;
+`apps/platform/tasks/models.py:TaskType`)
+
+**Subtask type**:
+The `Subtask`-kind counterpart to task type — a declared kind of step work, with its own policy.
+(ADR-0005; `apps/platform/tasks/models.py:TaskType`)
+
 ## Tasks
 
 **Task**:
