@@ -54,12 +54,26 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
   const isPostpaid = useWatch({ control: form.control, name: "billing_mode" }) === "postpaid";
 
   const onSubmit = form.handleSubmit(async (values) => {
+    // The two floor fields are hidden (not merely disabled) under postpaid,
+    // but react-hook-form's default shouldUnregister:false keeps their last
+    // value in form state — the loaded default, or anything typed before
+    // switching modes in this same session — so they can't be read off
+    // `values` here without resubmitting stale, hidden state. Omit the keys
+    // entirely rather than sending a computed value: the PATCH endpoint
+    // distinguishes an omitted key from an explicit one via
+    // `payload.model_fields_set` (api/v1/tenant_endpoints.py) specifically so
+    // omitting means "leave the stored value alone," never "clear it."
+    const submittingPostpaid = values.billing_mode === "postpaid";
     await update.mutateAsync({
       billing_mode: values.billing_mode,
       default_currency: values.default_currency.toUpperCase(),
       enforcement_mode: values.enforcement_mode,
-      min_balance_micros: dollarsToMicros(values.min_balance_micros) ?? 0,
-      soft_min_balance_micros: dollarsToMicros(values.soft_min_balance_micros),
+      ...(submittingPostpaid
+        ? {}
+        : {
+            min_balance_micros: dollarsToMicros(values.min_balance_micros) ?? 0,
+            soft_min_balance_micros: dollarsToMicros(values.soft_min_balance_micros),
+          }),
       default_task_provider_cost_limit_micros: dollarsToMicros(
         values.default_task_provider_cost_limit_micros,
       ),
