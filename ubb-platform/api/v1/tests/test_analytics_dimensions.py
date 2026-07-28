@@ -20,7 +20,9 @@ class TestAnalyticsDimensions:
         # products=[...] is REQUIRED — routes are gated by _product_check.
         # /margin/* needs "subscriptions" as well as "metering".
         self.tenant = Tenant.objects.create(
-            name="T", products=["metering", "billing", "subscriptions"])
+            # No "subscriptions": plan-as-kernel (#129) retired it from
+            # VALID_PRODUCTS, and margin_endpoints is gated on "metering".
+            name="T", products=["metering", "billing"])
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.client = Client()

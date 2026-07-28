@@ -178,3 +178,27 @@ def sync_tenant_subscriptions_task(tenant_id):
         extra={"data": {"tenant_id": str(tenant_id), **result}},
     )
     return result
+
+
+@shared_task(queue="ubb_subscriptions")
+def reconcile_subscription_mirrors():
+    """Hourly repair of the Stripe subscription mirror.
+
+    The mirror is a pure cache of Stripe's state, refreshed by
+    customer.subscription.* webhooks. A missed webhook would otherwise leave a
+    canceled subscription displayed as active indefinitely — every other cache
+    in this codebase has a scheduled reconciler; this one did not until
+    2026-07-27 (sync_tenant_subscriptions_task existed but was never wired).
+
+    Fans out one task per tenant with a connected account; tenants without one
+    have no subscriptions to mirror.
+    """
+    from apps.platform.tenants.models import Tenant
+
+    tenant_ids = Tenant.objects.exclude(
+        stripe_connected_account_id="",
+    ).exclude(
+        stripe_connected_account_id__isnull=True,
+    ).values_list("id", flat=True)
+    for tenant_id in tenant_ids:
+        sync_tenant_subscriptions_task.delay(str(tenant_id))

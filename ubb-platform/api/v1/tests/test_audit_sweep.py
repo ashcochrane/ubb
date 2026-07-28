@@ -40,13 +40,20 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # Guards against a vacuous pass (path-resolution breakage seeing zero routes).
 # 54 recording routes + 6 exempt = the whole mutating surface today (#83 added
 # webhook PATCH + secret-rotation, both recording); a new mutation moves one of
-# these and forces a conscious update here. +1 (unified dimension model plan,
-# task 3): PUT /metering/dimensions records dimension.declared — declaring a
-# tenant's slicing vocabulary is governance/config, not telemetry. +1 (unified
-# dimension model plan, task 7): PUT /metering/task-types records
-# task_type.declared — a task type's COGS ceiling is a pricing-rule change,
-# not telemetry.
-_EXPECTED_MUTATING = 62
+# these and forces a conscious update here.
+#
+# plan-as-kernel: the #7 router adds 4 recording routes
+# (create/update/archive/assign) -> 58 + 6 = 64; task 8 deletes
+# platform_router's duplicate plan.created/plan.updated routes (superseded by
+# #7's plan_router) and moves the 5 lifecycle verbs onto subscriptions_router
+# (a rename, not a net add/remove): 58 - 2 = 56 + 6 = 62.
+#
+# unified dimension model: +1 (task 3) PUT /metering/dimensions records
+# dimension.declared — declaring a tenant's slicing vocabulary is
+# governance/config, not telemetry. +1 (task 7) PUT /metering/task-types
+# records task_type.declared — a task type's COGS ceiling is a pricing-rule
+# change, not telemetry. 62 + 2 = 64.
+_EXPECTED_MUTATING = 64
 _EXPECTED_EXEMPT = 6
 
 

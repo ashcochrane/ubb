@@ -66,7 +66,7 @@ class UUIDIdentifierPinBase(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="UUIDPins",
-            products=["metering", "billing", "subscriptions", "referrals"],
+            products=["metering", "billing", "referrals"],
         )
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.auth = {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

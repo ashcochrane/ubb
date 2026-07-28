@@ -16,7 +16,7 @@ from apps.subscriptions.models import StripeSubscription
 @pytest.mark.django_db
 class TestGetCustomerEconomics:
     def test_returns_none_when_no_data(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         result = get_customer_economics(
             tenant.id, customer.id,
@@ -28,7 +28,7 @@ class TestGetCustomerEconomics:
 @pytest.mark.django_db
 class TestGetEconomicsSummary:
     def test_returns_zeros_when_no_data(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         result = get_economics_summary(
             tenant.id,
             date(2026, 1, 1), date(2026, 2, 1),
@@ -44,7 +44,7 @@ class TestGetEconomicsSummary:
     def test_aggregates_multiple_customers(self):
         from apps.subscriptions.economics.models import CustomerEconomics
 
-        tenant = Tenant.objects.create(name="Test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         c1 = Customer.objects.create(tenant=tenant, external_id="c1")
         c2 = Customer.objects.create(tenant=tenant, external_id="c2")
 
@@ -83,13 +83,13 @@ class TestGetEconomicsSummary:
 @pytest.mark.django_db
 class TestGetCustomerSubscription:
     def test_returns_none_when_no_subscription(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         result = get_customer_subscription(tenant.id, customer.id)
         assert result is None
 
     def test_returns_latest_subscription(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         now = timezone.now()
         sub = StripeSubscription.objects.create(

@@ -14,10 +14,10 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.platform.plans.models import Plan
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
-    TenantBillingPlan,
 )
 from apps.subscriptions.orchestration.service import (
     SubscriptionOrchestrator,
@@ -41,7 +41,7 @@ def _provisioned_plan(t, **overrides):
         provisioned_at=timezone.now(),
     )
     defaults.update(overrides)
-    return TenantBillingPlan.objects.create(**defaults)
+    return Plan.objects.create(**defaults)
 
 
 def _subscribed(t, plan, *, external_id="biz", sub_id="sub_1", seat_qty=10):
@@ -233,7 +233,7 @@ def test_persist_mirror_quantity_fallback_preserved_for_unknown_prices():
 @pytest.mark.django_db
 def test_unprovisioned_fee_edit_updates_fee_without_stripe_or_version_bump():
     t = _charge_ready_tenant()
-    plan = TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month")
     with patch(f"{SVC}.Price.create") as pc, patch(f"{SVC}.Product.create") as prc:
         SubscriptionOrchestrator.update_plan_prices(
@@ -259,7 +259,7 @@ def test_unprovisioned_fee_edit_updates_fee_without_stripe_or_version_bump():
 def test_unprovisioned_fee_edit_does_not_require_charge_ready():
     """Plans can be re-priced before Stripe onboarding (no Stripe call needed)."""
     t = Tenant.objects.create(name="T", products=["metering"])  # NOT charge-ready
-    TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000)
     plan = SubscriptionOrchestrator.update_plan_prices(t, "pro", access_fee_micros=70_000_000)
     assert plan.access_fee_micros == 70_000_000
@@ -268,7 +268,7 @@ def test_unprovisioned_fee_edit_does_not_require_charge_ready():
 @pytest.mark.django_db
 def test_provisioned_fee_edit_requires_charge_ready():
     t = Tenant.objects.create(name="T", products=["metering"])  # NOT charge-ready
-    TenantBillingPlan.objects.create(tenant=t, key="pro", name="Pro",
+    Plan.objects.create(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, stripe_access_product_id="prod_a",
         stripe_access_price_id="price_a_v1", provisioned_at=timezone.now())
     with pytest.raises(OrchestrationError):

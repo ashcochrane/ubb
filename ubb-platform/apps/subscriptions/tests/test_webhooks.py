@@ -24,7 +24,7 @@ class TestHandleSubscriptionCreated:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_123",
         )
         customer = Customer.objects.create(
@@ -53,7 +53,7 @@ class TestHandleSubscriptionCreated:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_dup",
         )
         Customer.objects.create(
@@ -77,7 +77,7 @@ class TestHandleSubscriptionUpdated:
         from apps.subscriptions.models import StripeSubscription
 
         tenant = Tenant.objects.create(
-            name="test", products=["metering", "subscriptions"],
+            name="test", products=["metering", "billing"],
         )
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
@@ -109,7 +109,7 @@ class TestHandleSubscriptionUpdated:
         from apps.subscriptions.api.webhooks import handle_subscription_updated
         from apps.subscriptions.models import StripeSubscription
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
         sub = StripeSubscription.objects.create(
@@ -152,7 +152,7 @@ class TestHandleSubscriptionDeleted:
         from apps.subscriptions.models import StripeSubscription
 
         tenant = Tenant.objects.create(
-            name="test", products=["metering", "subscriptions"],
+            name="test", products=["metering", "billing"],
         )
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
@@ -186,7 +186,7 @@ class TestSubscriptionCreatedUnknownCustomer:
 
         Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_no_cust",
         )
 

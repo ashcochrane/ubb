@@ -50,12 +50,16 @@ _WRITE_ROUTES = {
     ("POST", "/billing/customers/{customer_id}/top-up"),
     # customers, accounts & subscription lifecycle
     ("POST", "/platform/customers"),
-    ("POST", "/platform/customers/{external_id}/subscribe"),
-    ("POST", "/platform/customers/{external_id}/seats"),
-    ("POST", "/platform/customers/{external_id}/subscription/cancel"),
-    ("POST", "/platform/customers/{external_id}/subscription/pause"),
-    ("POST", "/platform/customers/{external_id}/subscription/resume"),
+    ("POST", "/subscriptions/customers/{external_id}/subscribe"),
+    ("POST", "/subscriptions/customers/{external_id}/seats"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/cancel"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/pause"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/resume"),
     ("POST", "/subscriptions/sync"),
+    # plan membership (#7 plan-as-kernel): putting a customer on a plan is a
+    # day-to-day lifecycle write, same footing as /subscribe beside it — it
+    # never touches Stripe or a plan's commercial terms.
+    ("POST", "/customers/{external_id}/plan"),
     # referrals: register a referrer / attribute a referral
     ("POST", "/referrals/referrers"),
     ("POST", "/referrals/attribute"),
@@ -67,21 +71,25 @@ _WRITE_ROUTES = {
 # (#83: PATCH edit, POST rotate-secret [Admin], GET deliveries [Read]) = 114,
 # less the 2 duplicate tenant billing GETs (billing-periods/invoices) removed
 # in the #86 sweep — their canonical Read-floored twins live on the tenant
-# mount. +3 (unified dimension model plan, task 3): PUT /metering/dimensions
-# [Admin — the plan owner's ruling: the dimension vocabulary feeds rate
-# selection (D1), a pricing-rule change like markup.set/rate_card.*, so it
-# takes the Admin default and needs no _WRITE_ROUTES entry], GET
-# /metering/dimensions [Read], GET /metering/dimensions/{key}/values [Read]
-# = 115. +2 (unified dimension model plan, task 7): PUT /metering/task-types
-# [Admin — same ruling as dimensions: a task type's ceiling prices usage like
-# markup.set/rate_card.*, so it takes the Admin default and needs no
-# _WRITE_ROUTES entry], GET /metering/task-types [Read] = 117. +2 (unified
-# dimension model plan, task 14): GET /metering/tasks [Read], GET
-# /metering/tasks/{task_id} [Read] — the task read surface, both reads over
-# the materialized cost rollups = 119. +1 (unified dimension model plan, task
-# 16): GET /metering/analytics/tasks [Read] — the per-task-type unit
-# economics rollup, aggregated over ubb_task = 120.
-_EXPECTED_FLOORED = 120
+# mount.
+#
+# plan-as-kernel (#7): +6 for the /api/v1/plans + /customers/{id}/plan routes
+# = 118; then task 8 deletes platform_router's duplicate POST /platform/plans
+# + PATCH /platform/plans/{key} (superseded by plan_router's #7 routes) and
+# moves the 5 lifecycle verbs onto subscriptions_router (a rename, not a net
+# add/remove): 118 - 2 = 116.
+#
+# unified dimension model: +3 (task 3) PUT /metering/dimensions [Admin — the
+# plan owner's ruling: the dimension vocabulary feeds rate selection (D1), a
+# pricing-rule change like markup.set/rate_card.*, so it takes the Admin
+# default and needs no _WRITE_ROUTES entry], GET /metering/dimensions [Read],
+# GET /metering/dimensions/{key}/values [Read]. +2 (task 7) PUT
+# /metering/task-types [Admin — same ruling: a task type's ceiling prices
+# usage], GET /metering/task-types [Read]. +2 (task 14) GET /metering/tasks
+# and GET /metering/tasks/{task_id} [Read] — the task read surface over the
+# materialized cost rollups. +1 (task 16) GET /metering/analytics/tasks
+# [Read] — the per-task-type unit economics rollup. 116 + 8 = 124.
+_EXPECTED_FLOORED = 124
 _EXPECTED_EXEMPT = 11
 
 

@@ -29,7 +29,7 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_wh_test",
         )
         customer = Customer.objects.create(

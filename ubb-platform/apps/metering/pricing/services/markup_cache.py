@@ -1,6 +1,6 @@
 """In-process (L1) resolved-markup cache, mirroring card_cache.py as-built.
 
-L1 caches the single RESOLVED ``TenantMarkup`` instance (or ``None``, a
+L1 caches the single resolved ``ResolvedMarkup`` instance (or ``None``, a
 negative cache — "no markup configured" is the common case and must also be
 one dict hit) per (tenant, customer) key for TTL_SECONDS. Version key
 ubb:markupver:{tenant} is read at most once per request: begin_request pins
@@ -23,7 +23,7 @@ from django.conf import settings
 
 TTL_SECONDS = 30
 _L1_MAX = 4096   # crude bound: clear-on-full (not an LRU), mirrors CardCache
-_l1 = {}         # (tenant_id, customer_id) -> (version, expires_monotonic, TenantMarkup | None)
+_l1 = {}         # (tenant_id, customer_id) -> (version, expires_monotonic, ResolvedMarkup | None)
 _ctx_versions = contextvars.ContextVar("markup_cache_versions")
 
 _redis = None  # lazy singleton; bound to settings.REDIS_URL at first use
@@ -60,8 +60,10 @@ class MarkupCache:
 
     @staticmethod
     def resolve(tenant, customer):
-        """MarkupService.resolve via the L1 cache. Returned TenantMarkup
-        instances are shared cache objects — callers must NOT mutate them."""
+        """MarkupService.resolve via the L1 cache. Returns a ResolvedMarkup
+        (frozen) or None. Instances are shared cache objects; the frozen
+        dataclass makes accidental mutation an error rather than a silent
+        cross-request bug."""
         from apps.metering.pricing.services.markup_service import MarkupService
         ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "")

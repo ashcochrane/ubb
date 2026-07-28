@@ -171,6 +171,19 @@
         "title": "AssignIn",
         "type": "object"
       },
+      "AssignPlanIn": {
+        "properties": {
+          "plan_key": {
+            "title": "Plan Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_key"
+        ],
+        "title": "AssignPlanIn",
+        "type": "object"
+      },
       "AttributeRequest": {
         "properties": {
           "code": {
@@ -3033,8 +3046,18 @@
             "title": "Access Fee Micros",
             "type": "integer"
           },
+          "fixed_uplift_micros": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Fixed Uplift Micros",
+            "type": "integer"
+          },
           "interval": {
             "default": "month",
+            "enum": [
+              "month",
+              "year"
+            ],
             "title": "Interval",
             "type": "string"
           },
@@ -3043,6 +3066,13 @@
             "minLength": 1,
             "title": "Key",
             "type": "string"
+          },
+          "markup_percentage_micros": {
+            "default": 0,
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Markup Percentage Micros",
+            "type": "integer"
           },
           "name": {
             "maxLength": 255,
@@ -3064,10 +3094,41 @@
         "title": "PlanIn",
         "type": "object"
       },
+      "PlanListOut": {
+        "properties": {
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanOut"
+            },
+            "title": "Plans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plans"
+        ],
+        "title": "PlanListOut",
+        "type": "object"
+      },
       "PlanOut": {
         "properties": {
           "access_fee_micros": {
             "title": "Access Fee Micros",
+            "type": "integer"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "fixed_uplift_micros": {
+            "title": "Fixed Uplift Micros",
             "type": "integer"
           },
           "id": {
@@ -3082,12 +3143,20 @@
             "title": "Key",
             "type": "string"
           },
+          "markup_percentage_micros": {
+            "title": "Markup Percentage Micros",
+            "type": "integer"
+          },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "per_seat_micros": {
             "title": "Per Seat Micros",
+            "type": "integer"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
             "type": "integer"
           }
         },
@@ -3097,7 +3166,10 @@
           "name",
           "access_fee_micros",
           "per_seat_micros",
-          "interval"
+          "markup_percentage_micros",
+          "fixed_uplift_micros",
+          "interval",
+          "pricing_version"
         ],
         "title": "PlanOut",
         "type": "object"
@@ -3116,10 +3188,48 @@
             ],
             "title": "Access Fee Micros"
           },
+          "fixed_uplift_micros": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Uplift Micros"
+          },
+          "markup_percentage_micros": {
+            "anyOf": [
+              {
+                "maximum": 1000000000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markup Percentage Micros"
+          },
           "migrate_existing": {
             "default": false,
             "title": "Migrate Existing",
             "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "per_seat_micros": {
             "anyOf": [
@@ -8237,6 +8347,63 @@
         "summary": "Past Limit Report"
       }
     },
+    "/api/v1/customers/{external_id}/plan": {
+      "post": {
+        "description": "Put a customer on a plan.\n\nThis is the plan-membership write and it never touches Stripe. Starting the\nStripe subscription for a plan's fee axes is a separate call\n(POST /subscriptions/customers/{external_id}/subscribe), because a\nmarkup-only plan has no Stripe subscription to start.",
+        "operationId": "api_v1_plan_endpoints_assign_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Assign Plan"
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "api_v1_endpoints_health",
@@ -10978,6 +11145,236 @@
         "summary": "Get Usage Event"
       }
     },
+    "/api/v1/plans": {
+      "get": {
+        "operationId": "api_v1_plan_endpoints_list_plans",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Plans"
+      },
+      "post": {
+        "operationId": "api_v1_plan_endpoints_create_plan",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Create Plan"
+      }
+    },
+    "/api/v1/plans/{key}": {
+      "delete": {
+        "description": "Archive a plan. Refused while customers are still assigned \u2014 archiving\nan assigned plan would silently drop their markup to the tenant default.",
+        "operationId": "api_v1_plan_endpoints_archive_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Archive Plan"
+      },
+      "get": {
+        "operationId": "api_v1_plan_endpoints_get_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Plan"
+      },
+      "patch": {
+        "description": "Edit a plan.\n\nThe two axis families reprice differently, deliberately:\n  - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit\n    mints a new versioned Price and existing subscribers keep the old one\n    unless migrate_existing=true.\n  - MARKUP is live. It has no Stripe object, so an edit applies to the next\n    rated event for every customer on the plan.\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
+        "operationId": "api_v1_plan_endpoints_update_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Update Plan"
+      }
+    },
     "/api/v1/platform/accounts/business/{external_id}": {
       "get": {
         "operationId": "api_v1_platform_endpoints_get_business",
@@ -11076,437 +11473,6 @@
           }
         ],
         "summary": "Create Customer"
-      }
-    },
-    "/api/v1/platform/customers/{external_id}/seats": {
-      "post": {
-        "operationId": "api_v1_platform_endpoints_set_customer_seats",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "external_id",
-            "required": true,
-            "schema": {
-              "title": "External Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SeatsIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Set Customer Seats"
-      }
-    },
-    "/api/v1/platform/customers/{external_id}/subscribe": {
-      "post": {
-        "operationId": "api_v1_platform_endpoints_subscribe_customer",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "external_id",
-            "required": true,
-            "schema": {
-              "title": "External Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubscribeIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Subscribe Customer"
-      }
-    },
-    "/api/v1/platform/customers/{external_id}/subscription/cancel": {
-      "post": {
-        "description": "Cancel the customer's subscription (default: at period end).\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
-        "operationId": "api_v1_platform_endpoints_cancel_subscription",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "external_id",
-            "required": true,
-            "schema": {
-              "title": "External Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/SubscriptionCancelIn"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Cancel Subscription"
-      }
-    },
-    "/api/v1/platform/customers/{external_id}/subscription/pause": {
-      "post": {
-        "description": "Pause collection (void) \u2014 the subscription stays active but stops billing.\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
-        "operationId": "api_v1_platform_endpoints_pause_subscription",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "external_id",
-            "required": true,
-            "schema": {
-              "title": "External Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Pause Subscription"
-      }
-    },
-    "/api/v1/platform/customers/{external_id}/subscription/resume": {
-      "post": {
-        "description": "Resume billing: clears a pause AND any pending at-period-end cancel.\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
-        "operationId": "api_v1_platform_endpoints_resume_subscription",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "external_id",
-            "required": true,
-            "schema": {
-              "title": "External Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Resume Subscription"
-      }
-    },
-    "/api/v1/platform/plans": {
-      "post": {
-        "operationId": "api_v1_platform_endpoints_create_plan",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlanIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlanOut"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Conflict"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Create Plan"
-      }
-    },
-    "/api/v1/platform/plans/{key}": {
-      "patch": {
-        "description": "Edit plan fees (F5.4). Provisioned axes get a NEW versioned Stripe Price;\nexisting subscriptions are grandfathered on their old price unless\nmigrate_existing=true (repointed with proration_behavior=\"none\").\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
-        "operationId": "api_v1_platform_endpoints_update_plan",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "key",
-            "required": true,
-            "schema": {
-              "title": "Key",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlanUpdateIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Update Plan"
       }
     },
     "/api/v1/ready": {
@@ -12282,6 +12248,327 @@
           }
         ],
         "summary": "Get Subscription"
+      }
+    },
+    "/api/v1/subscriptions/customers/{external_id}/seats": {
+      "post": {
+        "operationId": "apps_subscriptions_api_endpoints_set_customer_seats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Set Customer Seats"
+      }
+    },
+    "/api/v1/subscriptions/customers/{external_id}/subscribe": {
+      "post": {
+        "description": "Assign the customer to the plan and, if the plan has fee axes, start the\nStripe subscription.\n\nA markup-only plan assigns and returns subscription_id=None \u2014 there is\nnothing for Stripe to bill.",
+        "operationId": "apps_subscriptions_api_endpoints_subscribe_customer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Subscribe Customer"
+      }
+    },
+    "/api/v1/subscriptions/customers/{external_id}/subscription/cancel": {
+      "post": {
+        "description": "Cancel the customer's subscription (default: at period end).\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
+        "operationId": "apps_subscriptions_api_endpoints_cancel_subscription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SubscriptionCancelIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Cancel Subscription"
+      }
+    },
+    "/api/v1/subscriptions/customers/{external_id}/subscription/pause": {
+      "post": {
+        "description": "Pause collection (void) \u2014 the subscription stays active but stops billing.",
+        "operationId": "apps_subscriptions_api_endpoints_pause_subscription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Pause Subscription"
+      }
+    },
+    "/api/v1/subscriptions/customers/{external_id}/subscription/resume": {
+      "post": {
+        "description": "Resume billing: clears a pause AND any pending at-period-end cancel.",
+        "operationId": "apps_subscriptions_api_endpoints_resume_subscription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Resume Subscription"
       }
     },
     "/api/v1/subscriptions/sync": {

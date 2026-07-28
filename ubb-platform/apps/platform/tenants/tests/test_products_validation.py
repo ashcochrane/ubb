@@ -36,6 +36,6 @@ class TestTenantProductsValidation:
         """All known product names pass validation."""
         tenant = Tenant(
             name="Test",
-            products=["metering", "billing", "subscriptions", "referrals"],
+            products=["metering", "billing", "referrals"],
         )
         tenant.full_clean(exclude=["branding_config", "metadata"])  # Should not raise

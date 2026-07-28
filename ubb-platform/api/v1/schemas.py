@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
+from typing import List, Literal, Optional
 
 from ninja import Schema, Field
 from pydantic import field_validator
@@ -1004,7 +1004,11 @@ class PlanIn(Schema):
     name: str = Field(min_length=1, max_length=255)
     access_fee_micros: int = Field(default=0, ge=0)
     per_seat_micros: int = Field(default=0, ge=0)
-    interval: str = "month"
+    # 1_000_000 == 1%. Capped at 1000% — a higher value is far more likely a
+    # unit error (percent passed as micros) than a real commercial term.
+    markup_percentage_micros: int = Field(default=0, ge=0, le=1_000_000_000)
+    fixed_uplift_micros: int = Field(default=0, ge=0)
+    interval: Literal["month", "year"] = "month"
 
 
 class PlanOut(Schema):
@@ -1013,27 +1017,34 @@ class PlanOut(Schema):
     name: str
     access_fee_micros: int
     per_seat_micros: int
+    markup_percentage_micros: int
+    fixed_uplift_micros: int
     interval: str
+    pricing_version: int
+    archived_at: Optional[str] = None
+
+
+class PlanListOut(Schema):
+    plans: List[PlanOut]
 
 
 class PlanUpdateIn(Schema):
     # None = leave the axis alone (0 is a meaningful value, not an omission).
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     access_fee_micros: Optional[int] = Field(default=None, ge=0)
     per_seat_micros: Optional[int] = Field(default=None, ge=0)
+    markup_percentage_micros: Optional[int] = Field(default=None, ge=0, le=1_000_000_000)
+    fixed_uplift_micros: Optional[int] = Field(default=None, ge=0)
     migrate_existing: bool = False
 
 
-class SubscriptionCancelIn(Schema):
-    at_period_end: bool = True
+class AssignPlanIn(Schema):
+    plan_key: str
 
 
-class SubscribeIn(Schema):
-    plan_key: str = Field(min_length=1, max_length=64)
-    seats: int = Field(default=0, ge=0)
-
-
-class SeatsIn(Schema):
-    seats: int = Field(ge=0)
+# SubscriptionCancelIn / SubscribeIn / SeatsIn moved to
+# apps/subscriptions/api/schemas.py with the lifecycle routes they serve
+# (ADR-001: a product's api/ module may not import api.v1).
 
 
 # Tenant billing periods / invoices — shared by the tenant mount and the

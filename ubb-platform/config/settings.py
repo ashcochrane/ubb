@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     # UBB Apps
     "apps.platform.tenants",
     "apps.platform.customers",
+    "apps.platform.plans",
     "apps.platform.membership",
     "apps.platform.events",
     "apps.platform.audit",
@@ -242,6 +243,12 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-live-ledgers": {
         "task": "apps.billing.gating.tasks.reconcile_live_ledgers",
         "schedule": crontab(minute=25),  # hourly at :25 (free slot; D16)
+    },
+    "reconcile-subscription-mirrors": {
+        "task": "apps.subscriptions.tasks.reconcile_subscription_mirrors",
+        # hourly at :35 — a free slot between reconcile-live-ledgers (:25) and
+        # reconcile-usage-drawdowns (:40).
+        "schedule": crontab(minute=35),
     },
     "close-postpaid-usage-periods": {
         "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",

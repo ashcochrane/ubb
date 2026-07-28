@@ -11,8 +11,8 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
 ## Contexts
 
 - [Platform kernel](./ubb-platform/apps/platform/CONTEXT.md) — tenants, customers, the
-  events/outbox, runs, auth, locking. The shared kernel; anything may depend on it. (`core/` is its
-  plumbing.)
+  events/outbox, runs, auth, locking, and the plan catalog (`apps/platform/plans/`). The shared
+  kernel; anything may depend on it. (`core/` is its plumbing.)
   - [`apps/platform/dimensions`](./ubb-platform/apps/platform/CONTEXT.md#dimensions) — the
     per-tenant `DimensionDef`/`DimensionValue` registry: the single declared vocabulary for
     analytics grouping and rate selection, read by metering via `dimensions/queries.py`

@@ -474,8 +474,8 @@ class TenantConfigCurrencyTest(TestCase):
         self._assert_locked()
 
     def test_409_after_provisioned_plan_price(self):
-        from apps.subscriptions.models import TenantBillingPlan
-        TenantBillingPlan.objects.create(
+        from apps.platform.plans.models import Plan
+        Plan.objects.create(
             tenant=self.tenant, key="pro", name="Pro",
             access_fee_micros=10_000_000,
             stripe_access_price_id="price_123")
@@ -524,8 +524,8 @@ class TenantConfigCurrencyTest(TestCase):
 
     def test_unprovisioned_plan_does_not_lock(self):
         """A plan with NO provisioned Stripe prices is not money yet."""
-        from apps.subscriptions.models import TenantBillingPlan
-        TenantBillingPlan.objects.create(
+        from apps.platform.plans.models import Plan
+        Plan.objects.create(
             tenant=self.tenant, key="draft", name="Draft",
             access_fee_micros=10_000_000)
         resp = self._patch({"default_currency": "eur"})

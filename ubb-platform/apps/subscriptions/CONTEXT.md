@@ -1,8 +1,9 @@
 # Subscriptions
 
-The read-only Stripe subscription **mirror** plus per-customer **margin / unit economics**. Stripe
-owns subscription invoicing, collection, dunning, and lifecycle; UBB mirrors it for revenue
-attribution and drives seat quantity. Code anchors are relative to `ubb-platform/`.
+The Stripe subscription **control plane** — UBB drives the lifecycle (subscribe, seats, cancel,
+pause, resume) as calls into Stripe and mirrors Stripe's resulting status/amount/period read-only —
+plus per-customer **margin / unit economics**. Stripe stays the invoicing, collection, dunning, and
+tax authority throughout. Code anchors are relative to `ubb-platform/`.
 
 ## Subscription mirror
 
@@ -22,13 +23,12 @@ quantity = seat count). (`apps/subscriptions/models.py:CustomerSubscriptionItem.
 **Grandfathered price**:
 Because Stripe Prices are immutable, a fee edit mints a *new* Price; existing subscriptions keep
 their old one unless explicitly migrated.
-(`apps/subscriptions/models.py:TenantBillingPlan.pricing_version`)
+(`apps/platform/plans/models.py:Plan.pricing_version`)
 
 ## Plans & provisioning
 
-**Billing plan**:
-A tenant-defined template — an access fee plus a per-seat fee — with its provisioned Stripe
-Product/Price ids per axis. (`apps/subscriptions/models.py:TenantBillingPlan`)
+**Billing plan**: moved to the platform kernel — see `apps/platform/CONTEXT.md` → Plans.
+Subscriptions realizes a plan's *fee* axes as Stripe Prices; it does not own the plan.
 
 **Charge-ready**:
 The precondition that a tenant has a connected Stripe account with charges enabled; provisioning and

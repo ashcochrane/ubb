@@ -20,7 +20,7 @@ from apps.subscriptions.tasks import (
 
 
 def _setup():
-    t = Tenant.objects.create(name="T", products=["metering", "subscriptions"])
+    t = Tenant.objects.create(name="T", products=["metering", "billing"])
     c = Customer.objects.create(tenant=t, external_id="c1")
     cur_start = timezone.now().date().replace(day=1)
     prior_start = (cur_start - datetime.timedelta(days=1)).replace(day=1)

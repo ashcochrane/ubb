@@ -15,8 +15,10 @@ A tenant's test-mode sibling that inherits its shape but never any real Stripe l
 `ubb_test_` keys can only ever reach test-mode Stripe. (`apps/platform/tenants/models.py:Tenant.is_sandbox`)
 
 **Product**:
-An enabled product app on a tenant, drawn from `{metering, billing, subscriptions, referrals}`;
-`metering` is always present.
+An enabled product app on a tenant, drawn from `{metering, billing, referrals, metering_async}`;
+`metering_async` is a metering sub-feature flag, not a peer product, and `metering` is always
+present. `subscriptions` was retired as a product flag — plans and subscription lifecycle now gate
+on `billing`. (`apps/platform/tenants/models.py:VALID_PRODUCTS`)
 _Avoid_: "module", "service" when you mean an enabled product.
 
 **billing_mode**:
@@ -280,6 +282,32 @@ a display snapshot taken at action time**, so a later rename or deletion never c
 request's principal into the next. (`apps/platform/audit/actors.py`)
 _Avoid_: passing "who" from the mutation site; storing a live FK to the principal instead of the
 snapshot; auditing reads or usage ingestion (telemetry, not governance).
+
+## Plans
+
+**Plan**:
+A tenant's commercial offer, with three axes — access fee, per-seat fee, and markup on metered
+compute. A kernel concept because subscriptions realizes the first two (as Stripe Prices) and
+metering realizes the third (at rating time), and neither owns it.
+(`apps/platform/plans/models.py:Plan`)
+
+**Markup-only plan**:
+A plan whose fee axes are both zero, e.g. $0 access + 50% markup. It has no Stripe Product, Price,
+or Subscription at all — plan membership lives in `CustomerPlanAssignment`, so such a customer is
+on a real plan with zero presence in Stripe Billing. (`Plan.has_stripe_axes`)
+
+**Repricing asymmetry**:
+Fee edits are **grandfathered** (Stripe Prices are immutable, so a new versioned Price is minted and
+existing subscribers keep the old one unless migrated); markup edits are **live** (no Stripe object
+exists, so the change applies to the next rated event).
+
+**Markup precedence**:
+`customer TenantMarkup override -> customer's Plan -> tenant default -> none`. The plan rung is what
+stops a Personal Lite customer silently billing at the tenant default. A plan with an explicit
+zero markup (fee-only; the UI labels this "Blank = no markup") shadows the tenant default the same
+way a zero customer override does — it pins the customer at provider cost rather than falling
+through.
+(`apps/metering/pricing/services/markup_service.py`)
 
 ## Cross-cutting primitives
 

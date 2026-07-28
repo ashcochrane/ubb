@@ -12,7 +12,7 @@ class TestHandleUsageRecorded:
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
         from apps.subscriptions.economics.models import CustomerCostAccumulator
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         handle_usage_recorded_subscriptions("evt-outbox-1", asdict(UsageRecorded(
@@ -34,7 +34,7 @@ class TestHandleUsageRecorded:
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
         from apps.subscriptions.economics.models import CustomerCostAccumulator
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         for i in range(3):
@@ -57,7 +57,7 @@ class TestHandleUsageRecorded:
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
         from apps.subscriptions.economics.models import CustomerCostAccumulator
 
-        tenant = Tenant.objects.create(name="test", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         handle_usage_recorded_subscriptions("evt-outbox-0", asdict(UsageRecorded(
@@ -76,7 +76,7 @@ class TestHandleUsageRecorded:
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
         from apps.subscriptions.economics.models import CustomerCostAccumulator
 
-        tenant = Tenant.objects.create(name="test2", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test2", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-2")
 
         handle_usage_recorded_subscriptions("evt1", asdict(UsageRecorded(
@@ -92,7 +92,7 @@ class TestHandleUsageRecorded:
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
         from apps.subscriptions.economics.models import CustomerCostAccumulator
 
-        tenant = Tenant.objects.create(name="test3", products=["metering", "subscriptions"])
+        tenant = Tenant.objects.create(name="test3", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-3")
 
         for _ in range(2):

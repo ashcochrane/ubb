@@ -8,13 +8,8 @@ from .api_key_out import ApiKeyOut
 from .api_v1_connect_endpoints_connect_start_response import ApiV1ConnectEndpointsConnectStartResponse
 from .api_v1_connect_endpoints_connect_status_response import ApiV1ConnectEndpointsConnectStatusResponse
 from .api_v1_metering_endpoints_assign_book_response import ApiV1MeteringEndpointsAssignBookResponse
-from .api_v1_platform_endpoints_cancel_subscription_response import ApiV1PlatformEndpointsCancelSubscriptionResponse
+from .api_v1_plan_endpoints_assign_plan_response import ApiV1PlanEndpointsAssignPlanResponse
 from .api_v1_platform_endpoints_get_business_response import ApiV1PlatformEndpointsGetBusinessResponse
-from .api_v1_platform_endpoints_pause_subscription_response import ApiV1PlatformEndpointsPauseSubscriptionResponse
-from .api_v1_platform_endpoints_resume_subscription_response import ApiV1PlatformEndpointsResumeSubscriptionResponse
-from .api_v1_platform_endpoints_set_customer_seats_response import ApiV1PlatformEndpointsSetCustomerSeatsResponse
-from .api_v1_platform_endpoints_subscribe_customer_response import ApiV1PlatformEndpointsSubscribeCustomerResponse
-from .api_v1_platform_endpoints_update_plan_response import ApiV1PlatformEndpointsUpdatePlanResponse
 from .api_v1_sandbox_endpoints_reset_sandbox_response import ApiV1SandboxEndpointsResetSandboxResponse
 from .api_v1_tenant_endpoints_create_api_key_response import ApiV1TenantEndpointsCreateApiKeyResponse
 from .api_v1_tenant_endpoints_create_sandbox_response import ApiV1TenantEndpointsCreateSandboxResponse
@@ -23,7 +18,13 @@ from .api_v1_tenant_endpoints_remove_member_response import ApiV1TenantEndpoints
 from .api_v1_tenant_endpoints_revoke_api_key_response import ApiV1TenantEndpointsRevokeApiKeyResponse
 from .api_v1_tenant_endpoints_revoke_invitation_response import ApiV1TenantEndpointsRevokeInvitationResponse
 from .api_v1_tenant_endpoints_rotate_api_key_response import ApiV1TenantEndpointsRotateApiKeyResponse
+from .apps_subscriptions_api_endpoints_cancel_subscription_response import AppsSubscriptionsApiEndpointsCancelSubscriptionResponse
+from .apps_subscriptions_api_endpoints_pause_subscription_response import AppsSubscriptionsApiEndpointsPauseSubscriptionResponse
+from .apps_subscriptions_api_endpoints_resume_subscription_response import AppsSubscriptionsApiEndpointsResumeSubscriptionResponse
+from .apps_subscriptions_api_endpoints_set_customer_seats_response import AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse
+from .apps_subscriptions_api_endpoints_subscribe_customer_response import AppsSubscriptionsApiEndpointsSubscribeCustomerResponse
 from .assign_in import AssignIn
+from .assign_plan_in import AssignPlanIn
 from .attribute_request import AttributeRequest
 from .attribute_response import AttributeResponse
 from .audit_record_list_response import AuditRecordListResponse
@@ -109,6 +110,8 @@ from .payout_export_out import PayoutExportOut
 from .payout_row import PayoutRow
 from .period_window import PeriodWindow
 from .plan_in import PlanIn
+from .plan_in_interval import PlanInInterval
+from .plan_list_out import PlanListOut
 from .plan_out import PlanOut
 from .plan_update_in import PlanUpdateIn
 from .postpaid_config_in import PostpaidConfigIn
@@ -226,13 +229,8 @@ __all__ = (
     "ApiV1ConnectEndpointsConnectStartResponse",
     "ApiV1ConnectEndpointsConnectStatusResponse",
     "ApiV1MeteringEndpointsAssignBookResponse",
-    "ApiV1PlatformEndpointsCancelSubscriptionResponse",
+    "ApiV1PlanEndpointsAssignPlanResponse",
     "ApiV1PlatformEndpointsGetBusinessResponse",
-    "ApiV1PlatformEndpointsPauseSubscriptionResponse",
-    "ApiV1PlatformEndpointsResumeSubscriptionResponse",
-    "ApiV1PlatformEndpointsSetCustomerSeatsResponse",
-    "ApiV1PlatformEndpointsSubscribeCustomerResponse",
-    "ApiV1PlatformEndpointsUpdatePlanResponse",
     "ApiV1SandboxEndpointsResetSandboxResponse",
     "ApiV1TenantEndpointsCreateApiKeyResponse",
     "ApiV1TenantEndpointsCreateSandboxResponse",
@@ -241,7 +239,13 @@ __all__ = (
     "ApiV1TenantEndpointsRevokeApiKeyResponse",
     "ApiV1TenantEndpointsRevokeInvitationResponse",
     "ApiV1TenantEndpointsRotateApiKeyResponse",
+    "AppsSubscriptionsApiEndpointsCancelSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsPauseSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsResumeSubscriptionResponse",
+    "AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse",
+    "AppsSubscriptionsApiEndpointsSubscribeCustomerResponse",
     "AssignIn",
+    "AssignPlanIn",
     "AttributeRequest",
     "AttributeResponse",
     "AuditRecordListResponse",
@@ -327,6 +331,8 @@ __all__ = (
     "PayoutRow",
     "PeriodWindow",
     "PlanIn",
+    "PlanInInterval",
+    "PlanListOut",
     "PlanOut",
     "PlanUpdateIn",
     "PostpaidConfigIn",
