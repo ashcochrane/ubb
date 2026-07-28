@@ -32,7 +32,6 @@ let mockTenantConfig: TenantConfig = {
   min_balance_micros: 0,
   soft_min_balance_micros: null,
   default_task_provider_cost_limit_micros: null,
-  default_task_floor_snapshot_micros: null,
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */

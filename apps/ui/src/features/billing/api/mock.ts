@@ -64,7 +64,7 @@ export async function putTenantBudget(body: BudgetConfigIn): Promise<BudgetConfi
   // Full upsert with schema defaults — mirrors the server precisely.
   budget = {
     cap_micros: body.cap_micros,
-    enforce_mode: body.enforce_mode ?? "advisory",
+    enforce_mode: body.enforce_mode ?? "alert_only",
     hard_stop_pct: body.hard_stop_pct ?? 100,
     alert_levels: body.alert_levels ? [...body.alert_levels] : [],
     fail_closed: body.fail_closed ?? false,

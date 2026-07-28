@@ -146,8 +146,8 @@ export const billingPeriodStatusLabel = label({
 });
 
 export const budgetEnforceModeLabel = label({
-  advisory: "Advisory",
-  enforcing: "Enforcing",
+  alert_only: "Alert only",
+  blocking: "Blocking",
 });
 
 export const preCheckReasonLabel = label({
@@ -224,26 +224,26 @@ export const revenueModeLabel = label({
 export const ANALYTICS_DIMENSIONS = [
   "provider",
   "event_type",
-  "product_id",
   "customer",
-  "service_id",
-  "agent_id",
+  "dim1",
+  "dim2",
+  "dim3",
 ] as const;
 export const TIMESERIES_GROUP_BY = [
   "provider",
   "event_type",
-  "product_id",
-  "service_id",
-  "agent_id",
+  "dim1",
+  "dim2",
+  "dim3",
 ] as const;
 
 export const dimensionLabel = label({
   provider: "Provider",
   event_type: "Event type",
-  product_id: "Product",
   customer: "Customer",
-  service_id: "Service",
-  agent_id: "Agent",
+  dim1: "Dimension 1",
+  dim2: "Dimension 2",
+  dim3: "Dimension 3",
 });
 
 // ---------------------------------------------------------------------------

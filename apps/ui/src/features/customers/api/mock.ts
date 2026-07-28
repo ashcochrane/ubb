@@ -111,12 +111,43 @@ function requireCustomer(customerId: string): MockCustomer {
   return found;
 }
 
+/**
+ * A pooled seat's balance IS the billing owner's (a seat never carries its
+ * own wallet) — mirror that here so seat ids resolve to their parent
+ * business rather than a fabricated standalone balance.
+ */
+function resolveBillingOwner(customerId: string): {
+  billing_owner_id: string;
+  billing_owner_external_id: string;
+  is_pooled_seat: boolean;
+} {
+  const customer = directory.find((entry) => entry.id === customerId);
+  if (customer?.parent_external_id) {
+    const owner = directory.find(
+      (entry) => entry.external_id === customer.parent_external_id,
+    );
+    if (owner) {
+      return {
+        billing_owner_id: owner.id,
+        billing_owner_external_id: owner.external_id,
+        is_pooled_seat: true,
+      };
+    }
+  }
+  return {
+    billing_owner_id: customerId,
+    billing_owner_external_id: customer?.external_id ?? "",
+    is_pooled_seat: false,
+  };
+}
+
 function balanceOf(customerId: string): BalanceResponse {
   const existing = balances[customerId];
   if (existing) return existing;
   const fresh: BalanceResponse = {
     balance_micros: 0,
     currency: "usd",
+    ...resolveBillingOwner(customerId),
     promo_micros: 0,
     expiring_micros: 0,
     next_expiry_at: null,
@@ -323,7 +354,7 @@ export async function getUsageAnalytics(
       by_provider: [],
       by_event_type: [],
       by_customer: [],
-      by_product: [],
+      by_task_type: [],
       by_tag: [],
       breakdowns: {},
     }
@@ -539,7 +570,7 @@ export async function getCustomerBudget(customerId: string): Promise<BudgetConfi
   return (
     budgets[customerId] ?? {
       cap_micros: 0,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: 100,
       alert_levels: [],
       fail_closed: false,
@@ -574,7 +605,7 @@ export async function getBudgetStatus(customerId: string): Promise<BudgetStatusO
       spend_micros: 0,
       cap_micros: config?.cap_micros ?? 0,
       pct: 0,
-      enforce_mode: config?.enforce_mode ?? "advisory",
+      enforce_mode: config?.enforce_mode ?? "alert_only",
     }
   );
 }
@@ -586,6 +617,7 @@ export async function getBillingProfile(
   requireCustomer(customerId);
   return (
     billingProfiles[customerId] ?? {
+      ...resolveBillingOwner(customerId),
       min_balance_micros: null,
       soft_min_balance_micros: null,
       topup_grant_expiry_days: null,
@@ -624,6 +656,7 @@ export async function putBillingProfile(
     });
   }
   const saved: CustomerBillingProfileOut = {
+    ...resolveBillingOwner(customerId),
     min_balance_micros: body.min_balance_micros ?? null,
     soft_min_balance_micros: body.soft_min_balance_micros ?? null,
     topup_grant_expiry_days: body.topup_grant_expiry_days ?? null,

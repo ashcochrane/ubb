@@ -43,11 +43,31 @@ function requireBook(bookId: string): Book {
   return book;
 }
 
-function sameDimensions(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  const aKeys = Object.keys(a).sort();
-  const bKeys = Object.keys(b).sort();
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key, index) => key === bKeys[index] && a[key] === b[key]);
+/** The ten selector columns (provider/event_type handled by the caller). */
+interface Selectors {
+  task_type?: string | null;
+  subtask_type?: string | null;
+  dim1?: string | null;
+  dim2?: string | null;
+  dim3?: string | null;
+  dim4?: string | null;
+  dim5?: string | null;
+  dim6?: string | null;
+}
+
+const SELECTOR_KEYS = [
+  "task_type",
+  "subtask_type",
+  "dim1",
+  "dim2",
+  "dim3",
+  "dim4",
+  "dim5",
+  "dim6",
+] as const;
+
+function sameSelectors(a: Selectors, b: Selectors): boolean {
+  return SELECTOR_KEYS.every((key) => (a[key] ?? "") === (b[key] ?? ""));
 }
 
 export async function listBooks(params?: ListBooksParams): Promise<PaginatedBooks> {
@@ -128,7 +148,6 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
       `This book is the default for "${book.provider_key}" — rates must use that provider.`,
     );
   }
-  const dimensions = body.dimensions ?? {};
   const duplicate = rates.some(
     (rate) =>
       rate.rate_card_id === bookId &&
@@ -136,8 +155,7 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
       rate.metric_name === body.metric_name &&
       rate.provider === provider &&
       rate.event_type === (body.event_type ?? "") &&
-      rate.product_id === (body.product_id ?? "") &&
-      sameDimensions(rate.dimensions, dimensions),
+      sameSelectors(rate, body),
   );
   if (duplicate) {
     throw problem(
@@ -156,8 +174,14 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
     metric_name: body.metric_name,
     provider,
     event_type: body.event_type ?? "",
-    product_id: body.product_id ?? "",
-    dimensions,
+    task_type: body.task_type ?? "",
+    subtask_type: body.subtask_type ?? "",
+    dim1: body.dim1 ?? "",
+    dim2: body.dim2 ?? "",
+    dim3: body.dim3 ?? "",
+    dim4: body.dim4 ?? "",
+    dim5: body.dim5 ?? "",
+    dim6: body.dim6 ?? "",
     pricing_model: body.pricing_model ?? "per_unit",
     rate_per_unit_micros: body.rate_per_unit_micros ?? 0,
     unit_quantity: body.unit_quantity ?? 1_000_000,
@@ -198,7 +222,7 @@ export async function publishBook(bookId: string, body: PublishIn): Promise<Book
         rate.metric_name === change.metric_name &&
         rate.provider === (change.provider ?? "") &&
         rate.event_type === (change.event_type ?? "") &&
-        sameDimensions(rate.dimensions, change.dimensions ?? {}),
+        sameSelectors(rate, change),
     );
     if (!active) {
       throw problem(

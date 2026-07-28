@@ -38,7 +38,7 @@ const currencyAmountField = (opts: { min: number }) =>
 
 export const budgetFormSchema = z.object({
   cap: currencyAmountField({ min: 0 }),
-  enforce_mode: z.string(),
+  enforce_mode: z.enum(["alert_only", "blocking"]),
   hard_stop_pct: z
     .string()
     .min(1, "Required")
@@ -50,10 +50,20 @@ export const budgetFormSchema = z.object({
 
 export type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 
+/**
+ * `BudgetConfigOut.enforce_mode` is an open string (ADR-003) — the PUT side
+ * constrains it to these two values, but GET never guarantees the stored
+ * value is one of them. Unrecognized values fall back to the non-blocking
+ * mode rather than silently editing a config as more restrictive than it is.
+ */
+function narrowEnforceMode(value: string): "alert_only" | "blocking" {
+  return value === "blocking" ? "blocking" : "alert_only";
+}
+
 export function budgetToFormValues(budget: BudgetConfig): BudgetFormValues {
   return {
     cap: microsToCurrencyInput(budget.cap_micros),
-    enforce_mode: budget.enforce_mode,
+    enforce_mode: narrowEnforceMode(budget.enforce_mode),
     hard_stop_pct: String(budget.hard_stop_pct),
     alert_levels: [...budget.alert_levels].sort((a, b) => a - b),
     fail_closed: budget.fail_closed,

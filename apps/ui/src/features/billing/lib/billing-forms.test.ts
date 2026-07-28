@@ -35,7 +35,7 @@ describe("budget form (full upsert)", () => {
   it("round-trips the GET payload and always submits every field", () => {
     const values = budgetToFormValues({
       cap_micros: 2_500_000_000,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: 120,
       alert_levels: [80, 50, 100],
       fail_closed: false,
@@ -47,7 +47,7 @@ describe("budget form (full upsert)", () => {
     // A full upsert: every field present, even ones the user never touched.
     expect(payload).toEqual({
       cap_micros: 2_500_000_000,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: 120,
       alert_levels: [50, 80, 100],
       fail_closed: false,

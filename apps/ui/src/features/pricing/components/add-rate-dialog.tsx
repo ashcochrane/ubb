@@ -51,7 +51,7 @@ export function AddRateDialog({
     metric_name: "",
     provider: book.provider_key,
     event_type: "",
-    product_id: "",
+    task_type: "",
     pricing_model: "per_unit",
     rate: "",
     unit_choice: "1000000",
@@ -87,7 +87,14 @@ export function AddRateDialog({
         metric_name: formValues.metric_name,
         provider: formValues.provider,
         event_type: formValues.event_type,
-        product_id: formValues.product_id,
+        task_type: formValues.task_type,
+        subtask_type: "",
+        dim1: "",
+        dim2: "",
+        dim3: "",
+        dim4: "",
+        dim5: "",
+        dim6: "",
         pricing_model: formValues.pricing_model,
         rate_per_unit_micros:
           formValues.pricing_model === "flat" ? 0 : toMicros(formValues.rate),
@@ -167,12 +174,12 @@ export function AddRateDialog({
             </FormField>
           </div>
           <FormField
-            label="Product (optional)"
-            error={form.formState.errors.product_id?.message}
-            hint="Narrow the match to one of your products."
+            label="Task type (optional)"
+            error={form.formState.errors.task_type?.message}
+            hint="Narrow the match to one task type."
           >
             {(id) => (
-              <Input id={id} className="font-mono" {...form.register("product_id")} />
+              <Input id={id} className="font-mono" {...form.register("task_type")} />
             )}
           </FormField>
 

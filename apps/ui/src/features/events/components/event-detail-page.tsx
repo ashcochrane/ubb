@@ -126,14 +126,14 @@ export function EventDetailPage({
     ...(detail.provider !== ""
       ? [{ label: "Provider", value: detail.provider }]
       : []),
-    ...(detail.product_id !== ""
-      ? [{ label: "Product", value: detail.product_id }]
+    ...(detail.dim1 !== ""
+      ? [{ label: "Dimension 1", value: detail.dim1 }]
       : []),
-    ...(detail.service_id !== ""
-      ? [{ label: "Service", value: detail.service_id }]
+    ...(detail.dim2 !== ""
+      ? [{ label: "Dimension 2", value: detail.dim2 }]
       : []),
-    ...(detail.agent_id !== ""
-      ? [{ label: "Agent", value: detail.agent_id }]
+    ...(detail.dim3 !== ""
+      ? [{ label: "Dimension 3", value: detail.dim3 }]
       : []),
   ];
 

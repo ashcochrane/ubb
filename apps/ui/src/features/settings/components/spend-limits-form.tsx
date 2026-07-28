@@ -102,22 +102,6 @@ export function SpendLimitsForm({
             />
           )}
         </FormField>
-        <FormField
-          label={`Default task floor snapshot (${currency})`}
-          error={errors.taskFloorSnapshot?.message}
-          hint="Advanced: balance floor recorded on each task at start when the start call doesn't provide one. Leave empty for none."
-        >
-          {(id) => (
-            <Input
-              id={id}
-              type="number"
-              step="any"
-              disabled={!isAdmin}
-              placeholder="None"
-              {...form.register("taskFloorSnapshot")}
-            />
-          )}
-        </FormField>
       </div>
 
       {mutation.isError && (

@@ -67,3 +67,13 @@ export function parseAlertLevels(input: string): number[] {
 export function formatAlertLevels(levels: number[]): string {
   return levels.join(", ");
 }
+
+/**
+ * `BudgetConfigOut.enforce_mode` is an open string (ADR-003) — the PUT side
+ * constrains it to these two values, but GET never guarantees the stored
+ * value is one of them. Unrecognized values fall back to the non-blocking
+ * mode rather than silently editing a config as more restrictive than it is.
+ */
+export function narrowEnforceMode(value: string): "alert_only" | "blocking" {
+  return value === "blocking" ? "blocking" : "alert_only";
+}

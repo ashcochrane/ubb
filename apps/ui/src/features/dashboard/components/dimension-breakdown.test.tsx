@@ -75,7 +75,7 @@ describe("DimensionBreakdown", () => {
       usage_markup_margin_micros: 0,
       by_provider: [],
       by_event_type: [],
-      by_product: [],
+      by_task_type: [],
       by_customer: [],
       by_tag: [],
       breakdowns: { provider: [] },

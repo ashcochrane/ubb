@@ -84,7 +84,6 @@ export const spendControlSchema = z
       .refine((v) => v === "" || (!Number.isNaN(Number(v)) && Number(v) > 0), {
         message: "Must be more than zero, or empty for no default limit.",
       }),
-    taskFloorSnapshot: numericOrEmpty("Enter an amount, or leave empty."),
   })
   .superRefine((values, ctx) => {
     if (values.softFloor === "") return;
@@ -109,7 +108,6 @@ export function configToSpendValues(config: TenantConfig): SpendControlValues {
     allowedOverdraft: microsToInput(config.min_balance_micros ?? 0),
     softFloor: microsToInput(config.soft_min_balance_micros),
     taskLimit: microsToInput(config.default_task_provider_cost_limit_micros),
-    taskFloorSnapshot: microsToInput(config.default_task_floor_snapshot_micros),
   };
 }
 
@@ -137,12 +135,6 @@ export function buildSpendPatch(
   const taskLimit = values.taskLimit === "" ? null : inputToMicros(values.taskLimit);
   if (taskLimit !== (config.default_task_provider_cost_limit_micros ?? null)) {
     patch.default_task_provider_cost_limit_micros = taskLimit;
-  }
-
-  const floorSnapshot =
-    values.taskFloorSnapshot === "" ? null : inputToMicros(values.taskFloorSnapshot);
-  if (floorSnapshot !== (config.default_task_floor_snapshot_micros ?? null)) {
-    patch.default_task_floor_snapshot_micros = floorSnapshot;
   }
 
   return patch;

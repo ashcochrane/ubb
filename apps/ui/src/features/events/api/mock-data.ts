@@ -44,9 +44,9 @@ interface DetailSeed {
   created_at?: string;
   event_type?: string;
   provider?: string;
-  product_id?: string;
-  service_id?: string;
-  agent_id?: string;
+  dim1?: string;
+  dim2?: string;
+  dim3?: string;
   billed_cost_micros: number;
   provider_cost_micros: number;
   units?: number | null;
@@ -72,9 +72,9 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     currency: "usd",
     event_type: seed.event_type ?? "chat.completion",
     provider: seed.provider ?? "openai",
-    product_id: seed.product_id ?? "",
-    service_id: seed.service_id ?? "",
-    agent_id: seed.agent_id ?? "",
+    dim1: seed.dim1 ?? "",
+    dim2: seed.dim2 ?? "",
+    dim3: seed.dim3 ?? "",
     units: seed.units ?? null,
     usage_metrics: seed.usage_metrics ?? {},
     pricing_provenance: seed.pricing_provenance ?? {},
@@ -110,9 +110,9 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-23T09:41:29Z",
       event_type: "chat.completion",
       provider: "openai",
-      product_id: "copilot",
-      service_id: "realtime-api",
-      agent_id: "agent-7",
+      dim1: "copilot",
+      dim2: "realtime-api",
+      dim3: "agent-7",
       billed_cost_micros: 187_500,
       provider_cost_micros: 142_300,
       units: 1,
@@ -235,8 +235,8 @@ const FEATURE_EVENTS: MockEvent[] = [
       id: EVENT_TASK_KILL_ID,
       effective_at: "2026-07-21T09:16:05Z",
       created_at: "2026-07-21T09:16:06Z",
-      product_id: "batch",
-      service_id: "batch-worker",
+      dim1: "batch",
+      dim2: "batch-worker",
       billed_cost_micros: 64_000,
       provider_cost_micros: 50_000,
       units: 1,
@@ -264,7 +264,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       effective_at: "2026-07-06T18:22:40Z",
       created_at: "2026-07-20T10:04:15Z",
       event_type: "embedding.create",
-      product_id: "search-api",
+      dim1: "search-api",
       billed_cost_micros: 22_400,
       provider_cost_micros: 17_500,
       units: 4,
@@ -299,9 +299,9 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       created_at: effective,
       provider,
       event_type: eventType,
-      product_id: PRODUCT_IDS[index % PRODUCT_IDS.length] ?? "copilot",
-      service_id: index % 4 === 0 ? "batch-worker" : "realtime-api",
-      agent_id: index % 5 === 0 ? "agent-7" : "",
+      dim1: PRODUCT_IDS[index % PRODUCT_IDS.length] ?? "copilot",
+      dim2: index % 4 === 0 ? "batch-worker" : "realtime-api",
+      dim3: index % 5 === 0 ? "agent-7" : "",
       billed_cost_micros: billed,
       provider_cost_micros: providerCost,
       units: 1,

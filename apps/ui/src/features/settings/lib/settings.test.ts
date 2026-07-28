@@ -26,7 +26,6 @@ const baseConfig: TenantConfig = {
   min_balance_micros: 25_000_000,
   soft_min_balance_micros: -10_000_000,
   default_task_provider_cost_limit_micros: 5_000_000,
-  default_task_floor_snapshot_micros: null,
 };
 
 describe("inputToMicros", () => {
@@ -44,7 +43,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
         allowedOverdraft: "25",
         softFloor: "-10",
         taskLimit: "5",
-        taskFloorSnapshot: "",
       }),
     ).toEqual({});
   });
@@ -54,7 +52,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
       allowedOverdraft: "50",
       softFloor: "-10",
       taskLimit: "5",
-      taskFloorSnapshot: "",
     });
     expect(patch).toEqual({ min_balance_micros: 50_000_000 });
   });
@@ -64,7 +61,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
       allowedOverdraft: "25",
       softFloor: "",
       taskLimit: "",
-      taskFloorSnapshot: "",
     });
     expect(patch).toEqual({
       soft_min_balance_micros: null,
@@ -72,7 +68,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
     });
     // Explicit nulls, not absent keys — the server treats them differently.
     expect("soft_min_balance_micros" in patch).toBe(true);
-    expect("default_task_floor_snapshot_micros" in patch).toBe(false);
   });
 });
 
@@ -84,7 +79,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
       allowedOverdraft: "25",
       softFloor: "-30",
       taskLimit: "",
-      taskFloorSnapshot: "",
     });
     expect(result.success).toBe(true);
   });
@@ -94,7 +88,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
       allowedOverdraft: "25",
       softFloor: "25",
       taskLimit: "",
-      taskFloorSnapshot: "",
     });
     expect(result.success).toBe(true);
   });
@@ -106,7 +99,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
       allowedOverdraft: "25",
       softFloor: "30",
       taskLimit: "",
-      taskFloorSnapshot: "",
     });
     expect(result.success).toBe(false);
   });
@@ -117,7 +109,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
         allowedOverdraft: "0",
         softFloor: "",
         taskLimit: "0",
-        taskFloorSnapshot: "",
       }).success,
     ).toBe(false);
     expect(
@@ -125,7 +116,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
         allowedOverdraft: "0",
         softFloor: "",
         taskLimit: "",
-        taskFloorSnapshot: "",
       }).success,
     ).toBe(true);
   });

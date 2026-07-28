@@ -393,7 +393,7 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     correlation_id: "corr-63f7",
     metadata: {
       cap_micros: 2_000_000_000,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       alert_levels: [50, 80, 100],
     },
   },

@@ -120,7 +120,7 @@ export type GrantForm = z.infer<typeof grantSchema>;
 
 export const budgetSchema = z.object({
   cap: nonNegativeMoney,
-  enforce_mode: z.string().min(1),
+  enforce_mode: z.enum(["alert_only", "blocking"]),
   hard_stop_pct: z
     .string()
     .trim()

@@ -34,7 +34,7 @@ export type RateCardBookList = MeteringSchemas["PaginatedBooks"];
 export const BREAKDOWN_DIMENSIONS = [
   "provider",
   "event_type",
-  "product_id",
+  "task_type",
   "customer",
 ] as const;
 export type BreakdownDimension = (typeof BREAKDOWN_DIMENSIONS)[number];
@@ -136,13 +136,13 @@ export function toBreakdownRows(
     });
   }
 
-  const legacyRows =
+  const legacyRows: Array<Record<string, unknown>> =
     dimension === "provider"
       ? analytics.by_provider
       : dimension === "event_type"
         ? analytics.by_event_type
-        : dimension === "product_id"
-          ? analytics.by_product
+        : dimension === "task_type"
+          ? analytics.by_task_type
           : analytics.by_customer;
   const valueKey =
     dimension === "customer" ? "customer__external_id" : dimension;
