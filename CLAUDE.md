@@ -1,9 +1,11 @@
 # UBB — Agent Orientation
 
-Usage, spend-control, and margin infrastructure in front of Stripe. **UBB owns** metering,
-real-time spend control, provider/billed-cost tracking, customer margin, and (for billing tenants)
-prepaid credit drawdown / period-close Stripe line-item push. **Stripe owns** invoicing, payment
-collection, tax, dunning, portal, refunds, disputes, and subscription/seat lifecycle.
+Usage, spend-control, and margin infrastructure in front of Stripe. **UBB owns** metering, real-time
+spend control, provider/billed-cost tracking, customer margin, the **plan catalog** (access fee +
+per-seat fee + markup), and (for billing tenants) prepaid credit drawdown / period-close Stripe
+line-item push. **Stripe owns** the subscription billing *engine* — invoicing, payment collection,
+tax, dunning, portal, refunds, disputes, proration — which UBB drives as a control plane but never
+reimplements.
 
 This directory (`ubb/`) is the git root; the Django project is `ubb-platform/`. Full positioning:
 `docs/architecture/positioning.md`.
@@ -11,7 +13,10 @@ This directory (`ubb/`) is the git root; the Django project is `ubb-platform/`. 
 ## The golden rule — read before changing any product
 
 Four products — **metering, billing, subscriptions, referrals** — sit on a shared platform kernel
-(`apps/platform` + `core/`). Products communicate ONLY via four named channels:
+(`apps/platform` + `core/`), which also owns the tenant's **plan catalog** (access fee + per-seat
+fee + markup) — a kernel concept because subscriptions realizes the first two axes (as Stripe
+Prices) and metering realizes the third (at rating time), and neither owns it. Products
+communicate ONLY via four named channels:
 
 1. **Outbox events** — `apps.platform.events.outbox.write_event` + the handler registry (async default).
 2. **`queries.py` read contracts** — module-level functions returning plain data, never ORM objects
@@ -25,7 +30,10 @@ lazy function-body imports too. Full matrix + rationale:
 `docs/architecture/2026-06-12-adr-001-product-boundaries.md`. The composition layer (`api/v1`,
 `apps/*/api`) may import any product; products never import `api.*`.
 
-Tenant billing modes (`Tenant.billing_mode`): `meter_only` · `prepaid` · `postpaid`.
+Tenant billing modes (`Tenant.billing_mode`): `meter_only` · `prepaid` · `postpaid`. Tenant-enabled
+products (`Tenant.products`): `metering`, `billing`, `referrals`, `metering_async` —
+`subscriptions` was retired as a gating flag; plans and subscription lifecycle now gate on
+`billing`.
 Domain vocabulary: `CONTEXT-MAP.md` → per-product `CONTEXT.md`.
 
 ## Running the suite

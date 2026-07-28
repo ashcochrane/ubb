@@ -50,12 +50,16 @@ _WRITE_ROUTES = {
     ("POST", "/billing/customers/{customer_id}/top-up"),
     # customers, accounts & subscription lifecycle
     ("POST", "/platform/customers"),
-    ("POST", "/platform/customers/{external_id}/subscribe"),
-    ("POST", "/platform/customers/{external_id}/seats"),
-    ("POST", "/platform/customers/{external_id}/subscription/cancel"),
-    ("POST", "/platform/customers/{external_id}/subscription/pause"),
-    ("POST", "/platform/customers/{external_id}/subscription/resume"),
+    ("POST", "/subscriptions/customers/{external_id}/subscribe"),
+    ("POST", "/subscriptions/customers/{external_id}/seats"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/cancel"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/pause"),
+    ("POST", "/subscriptions/customers/{external_id}/subscription/resume"),
     ("POST", "/subscriptions/sync"),
+    # plan membership (#7 plan-as-kernel): putting a customer on a plan is a
+    # day-to-day lifecycle write, same footing as /subscribe beside it — it
+    # never touches Stripe or a plan's commercial terms.
+    ("POST", "/customers/{external_id}/plan"),
     # referrals: register a referrer / attribute a referral
     ("POST", "/referrals/referrers"),
     ("POST", "/referrals/attribute"),
@@ -66,8 +70,12 @@ _WRITE_ROUTES = {
 # audit feed (GET /audit/records, Read floor) + the 3 webhook lifecycle routes
 # (#83: PATCH edit, POST rotate-secret [Admin], GET deliveries [Read]) = 114,
 # less the 2 duplicate tenant billing GETs (billing-periods/invoices) removed
-# in the #86 sweep — their canonical Read-floored twins live on the tenant mount.
-_EXPECTED_FLOORED = 112
+# in the #86 sweep, plus the 6 /api/v1/plans + /customers/{id}/plan routes
+# (plan-as-kernel #7): 112 + 6 = 118. Task 8 deletes platform_router's
+# duplicate POST /platform/plans + PATCH /platform/plans/{key} (superseded
+# by plan_router's #7 routes above) and moves the 5 lifecycle verbs onto
+# subscriptions_router (a rename, not a net add/remove): 118 - 2 = 116.
+_EXPECTED_FLOORED = 116
 _EXPECTED_EXEMPT = 11
 
 

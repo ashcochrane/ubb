@@ -4,7 +4,7 @@ import {
   Activity,
   Tags,
   Wallet,
-  Repeat,
+  Layers,
   Gift,
   Webhook,
   Terminal,
@@ -43,12 +43,7 @@ export const navSections: NavSection[] = [
     items: [
       { title: "Pricing", url: "/pricing", icon: Tags },
       { title: "Billing", url: "/billing", icon: Wallet, product: "billing" },
-      {
-        title: "Subscriptions",
-        url: "/subscriptions",
-        icon: Repeat,
-        product: "subscriptions",
-      },
+      { title: "Plans", url: "/plans", icon: Layers, product: "billing" },
       { title: "Referrals", url: "/referrals", icon: Gift, product: "referrals" },
     ],
   },

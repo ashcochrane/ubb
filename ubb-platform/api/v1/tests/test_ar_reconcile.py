@@ -88,7 +88,7 @@ class TestBasilSubscriptionRouting:
 
     def _fixtures(self, acct="acct_basil_1"):
         tenant = Tenant.objects.create(
-            name="t", products=["metering", "subscriptions"],
+            name="t", products=["metering", "billing"],
             stripe_connected_account_id=acct,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
@@ -249,7 +249,7 @@ class TestUsageInvoiceReconcile:
 class TestSubscriptionInvoiceReconcile:
     def _fixtures(self, acct="acct_sub_1"):
         tenant = Tenant.objects.create(
-            name="t", products=["metering", "subscriptions"],
+            name="t", products=["metering", "billing"],
             stripe_connected_account_id=acct,
         )
         customer = Customer.objects.create(tenant=tenant, external_id="c1")

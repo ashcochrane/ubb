@@ -64,7 +64,7 @@ def _event(event_id, event_type, account, obj):
 
 def _fixtures(name, acct, sub_id):
     tenant = Tenant.objects.create(
-        name=name, products=["metering", "subscriptions"],
+        name=name, products=["metering", "billing"],
         stripe_connected_account_id=acct,
     )
     customer = Customer.objects.create(tenant=tenant, external_id=f"{name}_c1")

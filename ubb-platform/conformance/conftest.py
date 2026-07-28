@@ -63,7 +63,7 @@ def conformance_principal(db):
         name="Conformance",
         stripe_connected_account_id="acct_conformance",
         products=[
-            "metering", "billing", "subscriptions", "referrals",
+            "metering", "billing", "referrals",
             "metering_async",
         ],
         billing_mode="prepaid",

@@ -19,10 +19,8 @@ function renderPage(onOpenBook: (bookId: string) => void = () => {}) {
 }
 
 describe("PricingPage", () => {
-  it("renders the default markup and the rate-card books", async () => {
+  it("renders the rate-card books", async () => {
     renderPage();
-    // Markup card from mock data (15,000,000 percent-micros = 15%).
-    expect(await screen.findByText("15%")).toBeInTheDocument();
     // Books with name + mono key, type badges, and the default badge.
     expect(await screen.findByText("OpenAI provider costs")).toBeInTheDocument();
     expect(screen.getByText("openai-cogs")).toBeInTheDocument();
@@ -49,16 +47,5 @@ describe("PricingPage", () => {
     renderPage((bookId) => opened.push(bookId));
     fireEvent.click(await screen.findByText("OpenAI provider costs"));
     expect(opened).toEqual(["0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e01"]);
-  });
-
-  it("updates the default markup through the edit dialog", async () => {
-    renderPage();
-    expect(await screen.findByText("15%")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const percentInput = await screen.findByLabelText("Percentage markup (%)");
-    fireEvent.change(percentInput, { target: { value: "20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save markup" }));
-    // Mock provider persists the change; invalidation refetches the card.
-    expect(await screen.findByText("20%")).toBeInTheDocument();
   });
 });

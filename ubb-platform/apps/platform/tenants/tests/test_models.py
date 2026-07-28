@@ -1,6 +1,8 @@
+import pytest
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import VALID_PRODUCTS, Tenant, TenantApiKey
 
 
 class TenantModelTest(TestCase):
@@ -53,3 +55,14 @@ class TenantProductsFieldTest(TestCase):
         tenant.refresh_from_db()
         # Products are sorted alphabetically on save
         self.assertEqual(tenant.products, ["billing", "metering"])
+
+
+@pytest.mark.django_db
+class TestSubscriptionsFlagRetired:
+    def test_subscriptions_is_not_a_valid_product(self):
+        assert "subscriptions" not in VALID_PRODUCTS
+
+    def test_configuring_subscriptions_is_rejected(self):
+        t = Tenant(name="T", products=["metering", "subscriptions"])
+        with pytest.raises(ValidationError):
+            t.full_clean()

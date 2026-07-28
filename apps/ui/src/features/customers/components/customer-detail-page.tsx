@@ -143,7 +143,7 @@ export function CustomerDetailPage({
           <PricingTab customerId={customerId} />
         </TabsContent>
         <TabsContent value="subscription" className="pt-3">
-          <ProductGate product="subscriptions">
+          <ProductGate product="billing">
             <SubscriptionTab
               customerId={customerId}
               externalId={detail.external_id}

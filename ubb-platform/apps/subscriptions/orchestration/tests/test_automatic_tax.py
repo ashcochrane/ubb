@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import TenantBillingPlan
+from apps.platform.plans.models import Plan
 from apps.subscriptions.orchestration.service import SubscriptionOrchestrator
 
 FAKE_SUB = {"id": "sub_1", "status": "active", "currency": "usd",
@@ -21,7 +21,7 @@ def _tenant(**extra):
 def _subscribe(tenant):
     biz = Customer.objects.create(tenant=tenant, external_id="biz",
                                   stripe_customer_id="cus_biz")
-    plan = TenantBillingPlan.objects.create(tenant=tenant, key="pro", name="Pro",
+    plan = Plan.objects.create(tenant=tenant, key="pro", name="Pro",
         access_fee_micros=50_000_000, interval="month",
         stripe_access_price_id="price_a", provisioned_at="2026-01-01T00:00:00Z")
     with patch("apps.subscriptions.orchestration.service.stripe.Subscription.create",

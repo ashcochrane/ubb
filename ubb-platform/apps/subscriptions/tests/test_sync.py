@@ -43,7 +43,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(
@@ -74,7 +74,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_test2",
         )
 
@@ -99,7 +99,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_test3",
         )
         customer = Customer.objects.create(
@@ -140,7 +140,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_qty",
         )
         Customer.objects.create(
@@ -170,7 +170,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_api_err",
         )
 
@@ -190,7 +190,7 @@ class TestFullSync:
 
         tenant = Tenant.objects.create(
             name="test",
-            products=["metering", "subscriptions"],
+            products=["metering", "billing"],
             stripe_connected_account_id="acct_auth_err",
         )
 

@@ -70,6 +70,8 @@ AUDIT_ACTIONS = (
     "customer.created",
     "plan.created",
     "plan.updated",
+    "plan.archived",
+    "plan.assigned",
     "subscription.created",
     "subscription.canceled",
     "subscription.paused",

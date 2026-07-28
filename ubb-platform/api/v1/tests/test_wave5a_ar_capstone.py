@@ -85,7 +85,7 @@ class TestWave5aARCapstone(TestCase):
         self.client = Client()
         self.tenant = Tenant.objects.create(
             name="Capstone",
-            products=["metering", "subscriptions", "billing"],
+            products=["metering", "billing"],
             stripe_connected_account_id=self.ACCT,
         )
         # Billing owner = an individual customer (owns its own bill).
@@ -324,7 +324,7 @@ class TestSubscriptionPaymentFailed(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="PFSub", products=["metering", "subscriptions"],
+            name="PFSub", products=["metering", "billing"],
             stripe_connected_account_id=self.ACCT,
         )
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
