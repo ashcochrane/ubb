@@ -136,9 +136,15 @@ export function useTransactionsList(customerId: string) {
   );
 }
 
-export function useGrantsList(customerId: string, status: string | undefined) {
-  return useCursorList(["billing", "grants", customerId, { status }], (cursor) =>
-    customersApi.listGrants(customerId, { status, cursor }),
+export function useGrantsList(
+  customerId: string,
+  status: string | undefined,
+  enabled = true,
+) {
+  return useCursorList(
+    ["billing", "grants", customerId, { status }],
+    (cursor) => customersApi.listGrants(customerId, { status, cursor }),
+    { enabled },
   );
 }
 
@@ -156,10 +162,11 @@ export function useBudgetStatus(customerId: string) {
   });
 }
 
-export function useBillingProfile(customerId: string) {
+export function useBillingProfile(customerId: string, enabled = true) {
   return useQuery({
     queryKey: ["billing", "billing-profile", customerId],
     queryFn: () => customersApi.getBillingProfile(customerId),
+    enabled,
   });
 }
 

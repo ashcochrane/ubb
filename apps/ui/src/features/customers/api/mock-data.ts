@@ -301,6 +301,9 @@ export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   [CUS_ACME]: {
     balance_micros: 258_400_000,
     currency: "usd",
+    billing_owner_id: CUS_ACME,
+    billing_owner_external_id: "acme-corp",
+    is_pooled_seat: false,
     promo_micros: 25_000_000,
     expiring_micros: 25_000_000,
     next_expiry_at: "2026-08-15T00:00:00Z",
@@ -309,6 +312,9 @@ export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   [CUS_LUNA]: {
     balance_micros: -12_500_000,
     currency: "usd",
+    billing_owner_id: CUS_LUNA,
+    billing_owner_external_id: "luna-labs",
+    is_pooled_seat: false,
     promo_micros: 0,
     expiring_micros: 0,
     next_expiry_at: null,
@@ -317,6 +323,9 @@ export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   [CUS_NOVA]: {
     balance_micros: 0,
     currency: "usd",
+    billing_owner_id: CUS_NOVA,
+    billing_owner_external_id: "nova-ai",
+    is_pooled_seat: false,
     promo_micros: null,
     expiring_micros: null,
     next_expiry_at: null,
@@ -477,7 +486,7 @@ export const MOCK_GRANTS: Record<string, GrantOut[]> = {
 export const MOCK_BUDGETS: Record<string, BudgetConfigOut> = {
   [CUS_ACME]: {
     cap_micros: 500_000_000,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
     hard_stop_pct: 100,
     alert_levels: [50, 80, 100],
     fail_closed: false,
@@ -490,14 +499,14 @@ export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
     spend_micros: 231_400_000,
     cap_micros: 500_000_000,
     pct: 46.3,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
   },
   [CUS_LUNA]: {
     period: "2026-07",
     spend_micros: 55_900_000,
     cap_micros: 0,
     pct: 0,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
   },
 };
 
@@ -507,11 +516,17 @@ export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
 // $20 into the overdraft — a state the real PUT accepts).
 export const MOCK_BILLING_PROFILES: Record<string, CustomerBillingProfileOut> = {
   [CUS_ACME]: {
+    billing_owner_id: CUS_ACME,
+    billing_owner_external_id: "acme-corp",
+    is_pooled_seat: false,
     min_balance_micros: 25_000_000,
     soft_min_balance_micros: 20_000_000,
     topup_grant_expiry_days: 90,
   },
   [CUS_LUNA]: {
+    billing_owner_id: CUS_LUNA,
+    billing_owner_external_id: "luna-labs",
+    is_pooled_seat: false,
     min_balance_micros: null,
     soft_min_balance_micros: null,
     topup_grant_expiry_days: null,
@@ -597,7 +612,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     ],
     by_event_type: [],
     by_customer: [],
-    by_product: [],
+    by_task_type: [],
     by_tag: [],
     breakdowns: {},
   },
@@ -609,7 +624,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     by_provider: [],
     by_event_type: [],
     by_customer: [],
-    by_product: [],
+    by_task_type: [],
     by_tag: [],
     breakdowns: {},
   },

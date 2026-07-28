@@ -197,7 +197,7 @@ export async function getUsageAnalytics(
     by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
     by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),
     by_customer: [],
-    by_product: legacyRows(groupBy(events, (d) => d.product_id), "product_id"),
+    by_task_type: legacyRows(groupBy(events, (d) => d.dim1), "task_type"),
     by_tag: [],
     breakdowns: {},
   };
@@ -209,12 +209,12 @@ function dimensionValue(detail: UsageEventDetail, groupKey: string): string {
       ? detail.provider
       : groupKey === "event_type"
         ? detail.event_type
-        : groupKey === "product_id"
-          ? detail.product_id
-          : groupKey === "service_id"
-            ? detail.service_id
-            : groupKey === "agent_id"
-              ? detail.agent_id
+        : groupKey === "dim1"
+          ? detail.dim1
+          : groupKey === "dim2"
+            ? detail.dim2
+            : groupKey === "dim3"
+              ? detail.dim3
               : "";
   return value === "" ? "(unattributed)" : value;
 }

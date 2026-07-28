@@ -4,7 +4,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Gift } from "lucide-react";
+import { Gift, Info } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { LoadMore } from "@/components/shared/load-more";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -43,7 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { grantKindLabel, grantSourceLabel, grantStatusLabel } from "@/lib/labels";
 
@@ -57,10 +58,15 @@ const STATUS_FILTERS = ["all", "active", "depleted", "expired", "voided"];
 export function GrantsSection({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency();
   const isAdmin = useHasRole("admin");
+  const postpaid = useIsPostpaid();
   const [status, setStatus] = React.useState("all");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [voidTarget, setVoidTarget] = React.useState<GrantOut | null>(null);
-  const list = useGrantsList(customerId, status === "all" ? undefined : status);
+  const list = useGrantsList(
+    customerId,
+    status === "all" ? undefined : status,
+    !postpaid,
+  );
   const voidMutation = useVoidGrant(customerId);
 
   const confirmVoid = async () => {
@@ -73,6 +79,27 @@ export function GrantsSection({ customerId }: { customerId: string }) {
       toast.error(problemMessage(error));
     }
   };
+
+  if (postpaid) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Credit grants</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <Info />
+            <AlertDescription>
+              Credit grants aren't used under postpaid billing — there's no
+              prepaid wallet for a grant to top up. Usage is invoiced through
+              Stripe at period close instead; switch to prepaid in Settings →
+              Billing to use grants again.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

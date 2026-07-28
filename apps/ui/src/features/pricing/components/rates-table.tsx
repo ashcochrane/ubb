@@ -213,7 +213,11 @@ function RateRow({
   onRetire: () => void;
 }) {
   const superseded = rate.valid_to != null;
-  const dimensionEntries = Object.entries(rate.dimensions);
+  const dimensionEntries = (
+    ["dim1", "dim2", "dim3", "dim4", "dim5", "dim6"] as const
+  )
+    .map((key) => [key, rate[key]] as const)
+    .filter(([, value]) => value !== "");
   return (
     <TableRow className={cn(superseded && "opacity-55")}>
       <TableCell className="font-mono text-[12px]" title={rate.metric_name}>
@@ -223,15 +227,17 @@ function RateRow({
         <div className="flex max-w-[260px] flex-wrap items-center gap-1">
           {rate.provider && <Matcher label="provider" value={rate.provider} />}
           {rate.event_type && <Matcher label="event" value={rate.event_type} />}
-          {rate.product_id && <Matcher label="product" value={rate.product_id} />}
+          {rate.task_type && <Matcher label="task" value={rate.task_type} />}
+          {rate.subtask_type && <Matcher label="subtask" value={rate.subtask_type} />}
           {dimensionEntries.map(([key, value]) => (
             <Badge key={key} variant="outline" className="font-mono text-[10px]">
-              {key}={String(value)}
+              {key}={value}
             </Badge>
           ))}
           {!rate.provider &&
             !rate.event_type &&
-            !rate.product_id &&
+            !rate.task_type &&
+            !rate.subtask_type &&
             dimensionEntries.length === 0 && (
               <span className="text-[11px] text-text-muted">Any event</span>
             )}

@@ -187,8 +187,8 @@ export async function sendTestEvent(
   return {
     event_id: crypto.randomUUID(),
     suspended: false,
-    agent_id: "",
-    service_id: "",
+    dim2: "",
+    dim3: "",
     billed_cost_micros: billed,
     provider_cost_micros: provider,
     new_balance_micros: balanceMicros,

@@ -32,7 +32,6 @@ let mockTenantConfig: TenantConfig = {
   min_balance_micros: 0,
   soft_min_balance_micros: null,
   default_task_provider_cost_limit_micros: null,
-  default_task_floor_snapshot_micros: null,
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */
@@ -80,4 +79,26 @@ export function useHasProduct(product: Product): boolean {
 export function useTenantCurrency(): string {
   const { data } = useTenantConfig();
   return data?.default_currency ?? "usd";
+}
+
+/**
+ * Postpaid: usage drawdown skips the wallet entirely and both balance floors
+ * (`min_balance_micros` / `soft_min_balance_micros`) are ignored by the spend
+ * gate (apps/billing/gating risk_service; apps/billing/wallets/operations
+ * debit()). Wallet-only surfaces — top-up, withdraw, auto-top-up, credit
+ * grants, and the floor fields themselves — are inert under this mode and
+ * should explain their absence rather than render as live controls.
+ *
+ * Deliberately a NARROWER flag than `billing_mode` itself (which other call
+ * sites branch on directly, e.g. `=== "meter_only"`) — this only ever means
+ * "the wallet isn't the billing mechanism," never anything about meter_only.
+ */
+export function isPostpaid(config: TenantConfig | undefined): boolean {
+  return config?.billing_mode === "postpaid";
+}
+
+/** Postpaid gate as a hook; false while config is loading. */
+export function useIsPostpaid(): boolean {
+  const { data } = useTenantConfig();
+  return isPostpaid(data);
 }

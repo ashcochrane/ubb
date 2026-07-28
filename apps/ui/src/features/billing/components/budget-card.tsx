@@ -102,7 +102,7 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
 
         <FormField
           label="When the cap is reached"
-          hint="Advisory only sends alerts. Enforcing refuses new work once spending passes the cap."
+          hint="Alert only sends alerts. Blocking refuses new work once spending passes the cap."
         >
           {(id) => (
             <Controller
@@ -114,8 +114,8 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="advisory">Advisory — alert only</SelectItem>
-                    <SelectItem value="enforcing">Enforcing — refuse new work</SelectItem>
+                    <SelectItem value="alert_only">Alert only</SelectItem>
+                    <SelectItem value="blocking">Blocking — refuse new work</SelectItem>
                   </SelectContent>
                 </Select>
               )}

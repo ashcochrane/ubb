@@ -1,7 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CUS_ACME } from "../api/mock-data";
+import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
+
+import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
 import { CustomerDetailPage } from "./customer-detail-page";
@@ -79,6 +81,138 @@ describe("BillingTab", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("Pushed").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Jun 1, 2026 → Jul 1, 2026")).toBeInTheDocument();
+  });
+
+  it("discloses the billing owner for a pooled seat's balance, with a link", async () => {
+    renderWithProviders(
+      <BillingTab customerId={CUS_SEAT_ENG} externalId="acme-corp:eng" />,
+    );
+    // The seat's balance IS the owner's ($258.40 — acme's fixture balance).
+    expect(
+      await screen.findAllByText("$258.40", undefined, SLOW),
+    ).not.toHaveLength(0);
+    // The billing-profile card's own read-only disclosure repeats similar
+    // wording, so this must resolve to more than zero, not exactly one.
+    expect(
+      (await screen.findAllByText(/this seat has no wallet of its own/i, undefined, SLOW))
+        .length,
+    ).toBeGreaterThan(0);
+    const ownerLinks = screen.getAllByRole("link", { name: "acme-corp" });
+    expect(ownerLinks.length).toBeGreaterThan(0);
+    for (const link of ownerLinks) {
+      expect(link).toHaveAttribute("href", expect.stringContaining(CUS_ACME));
+    }
+  });
+
+  it("does not show the billing-owner disclosure for an ordinary customer", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    await screen.findByText("Total spendable", undefined, SLOW);
+    expect(
+      screen.queryByText(/this seat has no wallet of its own/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("makes the billing profile read-only for a pooled seat, explaining why", async () => {
+    renderWithProviders(
+      <BillingTab customerId={CUS_SEAT_ENG} externalId="acme-corp:eng" />,
+    );
+    expect(
+      await screen.findByText("Billing profile", undefined, SLOW),
+    ).toBeInTheDocument();
+    // The read-only floors are the OWNER's real values (acme's fixture: $25
+    // overdraft, $20 wind-down, 90-day top-up expiry) — never a fabricated
+    // null, and the PUT would 422 so there's no editable form or save button.
+    // ($25.00 also appears in the balance card's promo/expiring figures.)
+    expect(
+      (await screen.findAllByText("$25.00", undefined, SLOW)).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("$20.00")).toBeInTheDocument();
+    expect(screen.getByText("90 days")).toBeInTheDocument();
+    expect(
+      screen.getByText(/the API refuses \(422\) writing floors/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save profile" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the billing profile editable for an ordinary customer", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    expect(
+      await screen.findByRole("button", { name: "Save profile" }, SLOW),
+    ).toBeInTheDocument();
+  });
+
+  describe("mode-aware wallet surfaces", () => {
+    const withBillingMode = async (mode: "prepaid" | "postpaid", run: () => Promise<void>) => {
+      const original = readMockTenantConfig();
+      writeMockTenantConfig({ ...original, billing_mode: mode });
+      try {
+        await run();
+      } finally {
+        writeMockTenantConfig(original);
+      }
+    };
+
+    it("hides top-up, withdraw, auto-top-up, and credit grants under postpaid — with an explanation", async () => {
+      await withBillingMode("postpaid", async () => {
+        renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+        await screen.findByText("Total spendable", undefined, SLOW);
+
+        expect(screen.queryByRole("button", { name: "Top up" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
+        // Kept under postpaid: manual credit/debit and the access check.
+        expect(screen.getByRole("button", { name: "Manual credit" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Manual debit" })).toBeInTheDocument();
+        expect(
+          screen.getByText(/top-up and withdraw are hidden under postpaid/i),
+        ).toBeInTheDocument();
+
+        expect(
+          await screen.findByText(/credit grants aren't used under postpaid/i, undefined, SLOW),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Create grant" }),
+        ).not.toBeInTheDocument();
+
+        expect(
+          screen.getByText(/auto top-up isn't used under postpaid/i),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Save auto top-up" }),
+        ).not.toBeInTheDocument();
+
+        expect(
+          screen.getByText(/overdraft and wind-down floors aren't used under postpaid/i),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Save profile" }),
+        ).not.toBeInTheDocument();
+
+        // Kept under postpaid: the monthly budget stays a live control.
+        expect(screen.getByText("Monthly budget")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Save budget" })).toBeInTheDocument();
+      });
+    });
+
+    it("shows top-up, withdraw, auto-top-up, and credit grants under prepaid", async () => {
+      await withBillingMode("prepaid", async () => {
+        renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+        expect(
+          await screen.findByRole("button", { name: "Top up" }, SLOW),
+        ).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+        expect(
+          await screen.findByRole("button", { name: "Create grant" }, SLOW),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "Save auto top-up" }),
+        ).toBeInTheDocument();
+        expect(
+          await screen.findByRole("button", { name: "Save profile" }, SLOW),
+        ).toBeInTheDocument();
+      });
+    });
   });
 
   // Keep this LAST in the file — it moves acme's mock balance.

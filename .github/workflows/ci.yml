@@ -290,3 +290,15 @@ jobs:
 
       - name: TypeScript smoke gate — committed spec generates clean types
         run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts
+
+      # The gates above only prove the SPEC is self-consistent and that a client
+      # can be generated from it. Neither compiles the console, which is how the
+      # app drifted three contract changes behind the API (#129, #131, #132)
+      # without anything going red — and how .gitignore's unanchored `lib/`
+      # silently dropped 22 imported modules for weeks. A clean checkout could
+      # not build at all. These two steps are what make that impossible.
+      - name: UI typecheck — the console compiles against the committed contract
+        run: pnpm --dir apps/ui exec tsc -b
+
+      - name: UI tests
+        run: pnpm --dir apps/ui test

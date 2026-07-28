@@ -1,6 +1,8 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
+
 import { renderWithQuery } from "../test-utils";
 import { WorkspaceSettingsPage } from "./workspace-settings-page";
 
@@ -55,5 +57,34 @@ describe("WorkspaceSettingsPage", () => {
     expect(
       screen.getByText(/canceled or failed on Stripe's side/),
     ).toBeInTheDocument();
+  });
+
+  it("hides the tenant-default wallet floors under postpaid, with an explanation", async () => {
+    const original = readMockTenantConfig();
+    writeMockTenantConfig({ ...original, billing_mode: "postpaid" });
+    try {
+      renderWithQuery(<WorkspaceSettingsPage />);
+      expect(
+        await screen.findByText(
+          /allowed-overdraft and wind-down floors below aren't used under postpaid/i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Allowed overdraft/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Wind-down floor/)).not.toBeInTheDocument();
+      // Kept under postpaid — it's a task-level spend limit, not a wallet floor.
+      expect(
+        await screen.findByLabelText(/Default task spend limit/),
+      ).toBeInTheDocument();
+    } finally {
+      writeMockTenantConfig(original);
+    }
+  });
+
+  it("shows the tenant-default wallet floors under prepaid", async () => {
+    renderWithQuery(<WorkspaceSettingsPage />);
+    expect(
+      await screen.findByLabelText(/Allowed overdraft/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Wind-down floor/)).toBeInTheDocument();
   });
 });

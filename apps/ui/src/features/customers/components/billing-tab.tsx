@@ -1,5 +1,6 @@
 import * as React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 import { DisabledHint } from "@/components/shared/disabled-hint";
 import { ErrorCard } from "@/components/shared/error-card";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
+import { useIsPostpaid } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +38,7 @@ export function BillingTab({
   const [dialog, setDialog] = React.useState<DialogKind>(null);
   const canWrite = useHasRole("write");
   const isAdmin = useHasRole("admin");
+  const postpaid = useIsPostpaid();
 
   return (
     <div className="space-y-4">
@@ -50,6 +53,20 @@ export function BillingTab({
             <ErrorCard error={balance.error} onRetry={() => void balance.refetch()} />
           ) : balance.data ? (
             <>
+              {balance.data.is_pooled_seat && (
+                <p className="text-[12px] text-text-secondary">
+                  This balance belongs to the billing owner,{" "}
+                  <Link
+                    to="/customers/$customerId"
+                    params={{ customerId: balance.data.billing_owner_id }}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {balance.data.billing_owner_external_id}
+                  </Link>
+                  {" "}— this seat has no wallet of its own; every spend draws
+                  down the business's balance.
+                </p>
+              )}
               <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
                 <div>
                   <div className="text-label text-text-muted">Total spendable</div>
@@ -94,21 +111,25 @@ export function BillingTab({
                 </Alert>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
-                  <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
-                    Top up
-                  </Button>
-                </DisabledHint>
-                <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialog("withdraw")}
-                    disabled={!isAdmin}
-                  >
-                    Withdraw
-                  </Button>
-                </DisabledHint>
+                {!postpaid && (
+                  <>
+                    <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+                      <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
+                        Top up
+                      </Button>
+                    </DisabledHint>
+                    <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setDialog("withdraw")}
+                        disabled={!isAdmin}
+                      >
+                        Withdraw
+                      </Button>
+                    </DisabledHint>
+                  </>
+                )}
                 <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
                   <Button
                     size="sm"
@@ -140,6 +161,17 @@ export function BillingTab({
                   </Button>
                 </DisabledHint>
               </div>
+              {postpaid && (
+                <Alert>
+                  <Info />
+                  <AlertDescription>
+                    Top-up and withdraw are hidden under postpaid — usage
+                    isn't drawn from a prepaid wallet here; it's invoiced
+                    through Stripe at period close instead. Manual credit and
+                    debit above still move the ledger directly.
+                  </AlertDescription>
+                </Alert>
+              )}
             </>
           ) : null}
         </CardContent>

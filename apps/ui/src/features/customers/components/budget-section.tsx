@@ -33,6 +33,7 @@ import { useBudgetStatus, useCustomerBudget, useSaveBudget } from "../api/querie
 import {
   formatAlertLevels,
   microsToUnits,
+  narrowEnforceMode,
   parseAlertLevels,
   toMicros,
 } from "../lib/helpers";
@@ -49,7 +50,7 @@ export function BudgetSection({ customerId }: { customerId: string }) {
     resolver: zodResolver(budgetSchema),
     defaultValues: {
       cap: "",
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: "100",
       alert_levels: "",
       fail_closed: false,
@@ -61,7 +62,7 @@ export function BudgetSection({ customerId }: { customerId: string }) {
     if (config) {
       form.reset({
         cap: microsToUnits(config.cap_micros),
-        enforce_mode: config.enforce_mode,
+        enforce_mode: narrowEnforceMode(config.enforce_mode),
         hard_stop_pct: String(config.hard_stop_pct),
         alert_levels: formatAlertLevels(config.alert_levels),
         fail_closed: config.fail_closed,
@@ -154,21 +155,21 @@ export function BudgetSection({ customerId }: { customerId: string }) {
               </FormField>
               <FormField
                 label="Mode"
-                hint="Advisory alerts only; Enforcing can stop spend at the cap."
+                hint="Alert only sends alerts; Blocking can stop spend at the cap."
               >
                 {() => (
                   <Select
                     value={form.watch("enforce_mode")}
                     onValueChange={(value) =>
-                      form.setValue("enforce_mode", value ?? "advisory")
+                      form.setValue("enforce_mode", value ?? "alert_only")
                     }
                   >
                     <SelectTrigger className="w-full" aria-label="Enforce mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="advisory">Advisory</SelectItem>
-                      <SelectItem value="enforcing">Enforcing</SelectItem>
+                      <SelectItem value="alert_only">Alert only</SelectItem>
+                      <SelectItem value="blocking">Blocking</SelectItem>
                     </SelectContent>
                   </Select>
                 )}

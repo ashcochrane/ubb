@@ -158,7 +158,7 @@ const BY_EVENT_TYPE: Row[] = [
   ["fine_tune.step", 9_400_000, 10_000_000, 108],
 ];
 
-const BY_PRODUCT: Row[] = [
+const BY_TASK_TYPE: Row[] = [
   ["agent-api", 325_000_000, 280_000_000, 48_000],
   ["copilot", 190_900_000, 165_600_000, 26_558],
   ["batch-jobs", 88_000_000, 76_000_000, 13_000],
@@ -177,7 +177,7 @@ const BY_CUSTOMER: Row[] = [
 const DIMENSION_ROWS = {
   provider: BY_PROVIDER,
   event_type: BY_EVENT_TYPE,
-  product_id: BY_PRODUCT,
+  task_type: BY_TASK_TYPE,
   customer: BY_CUSTOMER,
 } as const;
 
@@ -208,7 +208,7 @@ export function mockWindowAnalytics(
     ...WINDOW_TOTALS,
     by_provider: legacyRows(BY_PROVIDER, "provider"),
     by_event_type: legacyRows(BY_EVENT_TYPE, "event_type"),
-    by_product: legacyRows(BY_PRODUCT, "product_id"),
+    by_task_type: legacyRows(BY_TASK_TYPE, "task_type"),
     by_customer: legacyRows(BY_CUSTOMER, "customer__external_id"),
     by_tag: [],
     breakdowns: { [dimension]: breakdownRows(DIMENSION_ROWS[dimension]) },
@@ -222,7 +222,7 @@ export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
   usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],
   by_event_type: [],
-  by_product: [],
+  by_task_type: [],
   by_customer: [],
   by_tag: [],
   breakdowns: {},

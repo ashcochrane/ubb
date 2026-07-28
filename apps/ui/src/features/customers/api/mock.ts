@@ -111,17 +111,55 @@ function requireCustomer(customerId: string): MockCustomer {
   return found;
 }
 
+/**
+ * A pooled seat's balance IS the billing owner's (a seat never carries its
+ * own wallet) — mirror that here so seat ids resolve to their parent
+ * business rather than a fabricated standalone balance.
+ */
+function resolveBillingOwner(customerId: string): {
+  billing_owner_id: string;
+  billing_owner_external_id: string;
+  is_pooled_seat: boolean;
+} {
+  const customer = directory.find((entry) => entry.id === customerId);
+  if (customer?.parent_external_id) {
+    const owner = directory.find(
+      (entry) => entry.external_id === customer.parent_external_id,
+    );
+    if (owner) {
+      return {
+        billing_owner_id: owner.id,
+        billing_owner_external_id: owner.external_id,
+        is_pooled_seat: true,
+      };
+    }
+  }
+  return {
+    billing_owner_id: customerId,
+    billing_owner_external_id: customer?.external_id ?? "",
+    is_pooled_seat: false,
+  };
+}
+
 function balanceOf(customerId: string): BalanceResponse {
   const existing = balances[customerId];
   if (existing) return existing;
-  const fresh: BalanceResponse = {
-    balance_micros: 0,
-    currency: "usd",
-    promo_micros: 0,
-    expiring_micros: 0,
-    next_expiry_at: null,
-    negative_since: null,
-  };
+  const owner = resolveBillingOwner(customerId);
+  // A pooled seat has no wallet of its own — the real GET reads the OWNER's
+  // wallet, so a fresh seat balance seeds from the owner's actual figures
+  // (never a fabricated zero) when the owner already has one on record.
+  const ownerBalance = owner.is_pooled_seat ? balances[owner.billing_owner_id] : undefined;
+  const fresh: BalanceResponse = ownerBalance
+    ? { ...ownerBalance, ...owner }
+    : {
+        balance_micros: 0,
+        currency: "usd",
+        ...owner,
+        promo_micros: 0,
+        expiring_micros: 0,
+        next_expiry_at: null,
+        negative_since: null,
+      };
   balances[customerId] = fresh;
   return fresh;
 }
@@ -323,7 +361,7 @@ export async function getUsageAnalytics(
       by_provider: [],
       by_event_type: [],
       by_customer: [],
-      by_product: [],
+      by_task_type: [],
       by_tag: [],
       breakdowns: {},
     }
@@ -539,7 +577,7 @@ export async function getCustomerBudget(customerId: string): Promise<BudgetConfi
   return (
     budgets[customerId] ?? {
       cap_micros: 0,
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: 100,
       alert_levels: [],
       fail_closed: false,
@@ -574,7 +612,7 @@ export async function getBudgetStatus(customerId: string): Promise<BudgetStatusO
       spend_micros: 0,
       cap_micros: config?.cap_micros ?? 0,
       pct: 0,
-      enforce_mode: config?.enforce_mode ?? "advisory",
+      enforce_mode: config?.enforce_mode ?? "alert_only",
     }
   );
 }
@@ -584,13 +622,17 @@ export async function getBillingProfile(
 ): Promise<CustomerBillingProfileOut> {
   await mockDelay();
   requireCustomer(customerId);
-  return (
-    billingProfiles[customerId] ?? {
-      min_balance_micros: null,
-      soft_min_balance_micros: null,
-      topup_grant_expiry_days: null,
-    }
-  );
+  // Mirrors the real GET (billing_endpoints get_customer_billing_profile):
+  // it always answers the OWNER's effective profile — a pooled seat reads
+  // real floor values from its business, never fabricated nulls.
+  const owner = resolveBillingOwner(customerId);
+  const ownerProfile = billingProfiles[owner.billing_owner_id];
+  return {
+    ...owner,
+    min_balance_micros: ownerProfile?.min_balance_micros ?? null,
+    soft_min_balance_micros: ownerProfile?.soft_min_balance_micros ?? null,
+    topup_grant_expiry_days: ownerProfile?.topup_grant_expiry_days ?? null,
+  };
 }
 
 export async function putBillingProfile(
@@ -599,6 +641,21 @@ export async function putBillingProfile(
 ): Promise<CustomerBillingProfileOut> {
   await mockDelay();
   requireCustomer(customerId);
+  // Mirrors the server's pooled-seat refusal (billing_endpoints
+  // put_customer_billing_profile): writing floors to a seat's own profile row
+  // would be silently ignored (the gate reads the OWNER's row), and writing
+  // them to the owner's row instead would silently change every sibling
+  // seat's policy — so the real PUT 422s rather than doing either quietly.
+  const owner = resolveBillingOwner(customerId);
+  if (owner.is_pooled_seat) {
+    throw new ApiProblem({
+      status: 422,
+      code: "invalid_config",
+      title: "Invalid billing profile",
+      detail: `This customer is a pooled seat billed through '${owner.billing_owner_external_id}' — set overdraft/expiry floors on the billing owner, not the seat.`,
+      extensions: { billing_owner_external_id: owner.billing_owner_external_id },
+    });
+  }
   // Mirror the server's floor validation (billing_endpoints put_billing_profile):
   // the hard value is an allowed-overdraft MAGNITUDE ≥ 0, and the soft wire
   // value must not exceed the effective hard value (tenant default = 0).
@@ -624,6 +681,7 @@ export async function putBillingProfile(
     });
   }
   const saved: CustomerBillingProfileOut = {
+    ...resolveBillingOwner(customerId),
     min_balance_micros: body.min_balance_micros ?? null,
     soft_min_balance_micros: body.soft_min_balance_micros ?? null,
     topup_grant_expiry_days: body.topup_grant_expiry_days ?? null,

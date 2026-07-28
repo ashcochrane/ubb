@@ -166,10 +166,6 @@ export async function updateTenantConfig(
     }
     next.default_task_provider_cost_limit_micros = limit;
   }
-  if ("default_task_floor_snapshot_micros" in patch) {
-    next.default_task_floor_snapshot_micros =
-      patch.default_task_floor_snapshot_micros ?? null;
-  }
 
   writeMockTenantConfig(next);
   return readMockTenantConfig();
