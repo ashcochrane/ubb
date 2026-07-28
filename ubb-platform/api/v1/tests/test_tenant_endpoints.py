@@ -141,15 +141,17 @@ class TenantConfigEndpointTest(TestCase):
 
     # --- PATCH: spend-safety knobs (one-rule #37: the run-era
     # run_cost_limit_micros / hard_stop_balance_micros / max_cost_per_task_micros
-    # knobs are retired; the per-task defaults are
-    # default_task_provider_cost_limit_micros (RiskConfig-backed) and
-    # default_task_floor_snapshot_micros (BillingTenantConfig-backed)) ---
+    # knobs are retired; the per-task default is
+    # default_task_provider_cost_limit_micros (RiskConfig-backed). The
+    # per-task floor snapshot (BillingTenantConfig-backed) that used to sit
+    # alongside it was itself deleted — billing-surface-correctness plan,
+    # task 1: an independent third floor that never read the customer's real
+    # floor and could fire on a customer who just topped up.) ---
 
     def test_get_config_includes_task_default_knobs(self):
         body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
         self.assertEqual(body["min_balance_micros"], 0)
         self.assertIsNone(body["default_task_provider_cost_limit_micros"])
-        self.assertIsNone(body["default_task_floor_snapshot_micros"])
 
     def test_patch_sets_min_balance_and_task_defaults(self):
         response = self.http_client.patch(
@@ -157,7 +159,6 @@ class TenantConfigEndpointTest(TestCase):
             data=json.dumps({
                 "min_balance_micros": 5_000_000,
                 "default_task_provider_cost_limit_micros": 50_000_000,
-                "default_task_floor_snapshot_micros": -5_000_000,
             }),
             content_type="application/json", **self._auth(),
         )
@@ -169,11 +170,9 @@ class TenantConfigEndpointTest(TestCase):
         bc = BillingTenantConfig.objects.get(tenant=self.tenant)
         # #52: the hard floor lands on BillingTenantConfig, like its siblings.
         self.assertEqual(bc.min_balance_micros, 5_000_000)
-        self.assertEqual(bc.default_task_floor_snapshot_micros, -5_000_000)
         body = response.json()
         self.assertEqual(body["min_balance_micros"], 5_000_000)
         self.assertEqual(body["default_task_provider_cost_limit_micros"], 50_000_000)
-        self.assertEqual(body["default_task_floor_snapshot_micros"], -5_000_000)
 
     def test_patch_task_default_limit_zero_or_negative_returns_422(self):
         for bad in (0, -1):
@@ -295,35 +294,6 @@ class TenantConfigEndpointTest(TestCase):
         self.assertIsNone(rc.default_task_provider_cost_limit_micros)
         self.assertIsNone(response.json()["default_task_provider_cost_limit_micros"])
 
-    def test_patch_task_default_floor_lands_on_billing_config(self):
-        # Negative is ALLOWED (it is a wallet-balance line, e.g. an overdraft
-        # cushion), unlike the strictly-positive COGS limit.
-        response = self.http_client.patch(
-            "/api/v1/tenant/config",
-            data=json.dumps({"default_task_floor_snapshot_micros": -5_000_000}),
-            content_type="application/json", **self._auth(),
-        )
-        self.assertEqual(response.status_code, 200)
-        from apps.billing.tenant_billing.models import BillingTenantConfig
-        bc = BillingTenantConfig.objects.get(tenant=self.tenant)
-        self.assertEqual(bc.default_task_floor_snapshot_micros, -5_000_000)
-        self.assertEqual(response.json()["default_task_floor_snapshot_micros"], -5_000_000)
-
-    def test_patch_null_clears_task_default_floor(self):
-        from apps.billing.queries import get_billing_config
-        bc = get_billing_config(self.tenant.id)
-        bc.default_task_floor_snapshot_micros = -5_000_000
-        bc.save(update_fields=["default_task_floor_snapshot_micros"])
-        response = self.http_client.patch(
-            "/api/v1/tenant/config",
-            data=json.dumps({"default_task_floor_snapshot_micros": None}),
-            content_type="application/json", **self._auth(),
-        )
-        self.assertEqual(response.status_code, 200)
-        bc.refresh_from_db()
-        self.assertIsNone(bc.default_task_floor_snapshot_micros)
-        self.assertIsNone(response.json()["default_task_floor_snapshot_micros"])
-
     def test_get_config_includes_null_soft_floor_default(self):
         body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
         self.assertIsNone(body["soft_min_balance_micros"])
@@ -389,9 +359,7 @@ class TenantConfigEndpointTest(TestCase):
             tenant=self.tenant, default_task_provider_cost_limit_micros=42_000_000)
         bc = get_billing_config(self.tenant.id)
         bc.min_balance_micros = 7_000_000
-        bc.default_task_floor_snapshot_micros = -3_000_000
-        bc.save(update_fields=["min_balance_micros",
-                               "default_task_floor_snapshot_micros"])
+        bc.save(update_fields=["min_balance_micros"])
         response = self.http_client.patch(
             "/api/v1/tenant/config",
             data=json.dumps({"billing_mode": "meter_only"}),
@@ -402,7 +370,6 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(rc.default_task_provider_cost_limit_micros, 42_000_000)
         bc.refresh_from_db()
         self.assertEqual(bc.min_balance_micros, 7_000_000)
-        self.assertEqual(bc.default_task_floor_snapshot_micros, -3_000_000)
 
 
 class TenantConfigCurrencyTest(TestCase):

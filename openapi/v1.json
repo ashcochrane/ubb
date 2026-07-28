@@ -344,6 +344,15 @@
             "title": "Balance Micros",
             "type": "integer"
           },
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -358,6 +367,10 @@
               }
             ],
             "title": "Expiring Micros"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
+            "type": "boolean"
           },
           "negative_since": {
             "anyOf": [
@@ -395,7 +408,10 @@
         },
         "required": [
           "balance_micros",
-          "currency"
+          "currency",
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
         ],
         "title": "BalanceResponse",
         "type": "object"
@@ -519,7 +535,11 @@
             "type": "integer"
           },
           "enforce_mode": {
-            "default": "advisory",
+            "default": "alert_only",
+            "enum": [
+              "alert_only",
+              "blocking"
+            ],
             "title": "Enforce Mode",
             "type": "string"
           },
@@ -985,6 +1005,19 @@
       },
       "CustomerBillingProfileOut": {
         "properties": {
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
+            "type": "boolean"
+          },
           "min_balance_micros": {
             "anyOf": [
               {
@@ -1019,6 +1052,11 @@
             "title": "Topup Grant Expiry Days"
           }
         },
+        "required": [
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
+        ],
         "title": "CustomerBillingProfileOut",
         "type": "object"
       },
@@ -2167,6 +2205,11 @@
             "title": "Balance Micros",
             "type": "integer"
           },
+          "billing_owner_external_id": {
+            "default": "",
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -2181,6 +2224,11 @@
               }
             ],
             "title": "Expiring Micros"
+          },
+          "is_pooled_seat": {
+            "default": false,
+            "title": "Is Pooled Seat",
+            "type": "boolean"
           },
           "next_expiry_at": {
             "anyOf": [
@@ -2861,6 +2909,15 @@
       },
       "PaginatedWalletTransactions": {
         "properties": {
+          "billing_owner_external_id": {
+            "title": "Billing Owner External Id",
+            "type": "string"
+          },
+          "billing_owner_id": {
+            "format": "uuid",
+            "title": "Billing Owner Id",
+            "type": "string"
+          },
           "data": {
             "items": {
               "$ref": "#/components/schemas/WalletTransactionOut"
@@ -2870,6 +2927,10 @@
           },
           "has_more": {
             "title": "Has More",
+            "type": "boolean"
+          },
+          "is_pooled_seat": {
+            "title": "Is Pooled Seat",
             "type": "boolean"
           },
           "next_cursor": {
@@ -2886,7 +2947,10 @@
         },
         "required": [
           "data",
-          "has_more"
+          "has_more",
+          "billing_owner_id",
+          "billing_owner_external_id",
+          "is_pooled_seat"
         ],
         "title": "PaginatedWalletTransactions",
         "type": "object"
@@ -3398,17 +3462,6 @@
               }
             ],
             "title": "Balance Micros"
-          },
-          "floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Floor Snapshot Micros"
           },
           "parent_task_id": {
             "anyOf": [
@@ -5613,17 +5666,6 @@
             ],
             "title": "Default Currency"
           },
-          "default_task_floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Task Floor Snapshot Micros"
-          },
           "default_task_provider_cost_limit_micros": {
             "anyOf": [
               {
@@ -5715,17 +5757,6 @@
           "default_currency": {
             "title": "Default Currency",
             "type": "string"
-          },
-          "default_task_floor_snapshot_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Task Floor Snapshot Micros"
           },
           "default_task_provider_cost_limit_micros": {
             "anyOf": [
@@ -9115,6 +9146,7 @@
     },
     "/api/v1/me/balance": {
       "get": {
+        "description": "A pooled seat's balance IS the billing owner's (Task 9 finding B):\nTask 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on\na seat id at all, and ``start_top_up`` pins every top-up's credit to\n``customer.resolve_billing_owner()`` \u2014 so a seat's OWN wallet row can\nnever exist, even right after that seat pays. Reading ``customer``\ndirectly here used to 404 into a fabricated ``balance_micros: 0`` that\nnever changed no matter how much the seat topped up. Resolve to the\nowner instead, exactly like the tenant surface's GET\n/billing/customers/{id}/balance, and disclose ownership\n(``is_pooled_seat`` / ``billing_owner_external_id``, the same two\nfields that surface already returns) so the widget can label the number\n\"your business's balance\" rather than implying it is the seat's own.\n\nThis does NOT extend to /me/grants or /me/transactions below: those are\nITEMIZED lists (individual lots/lines with amounts and timing), and\nresolving them to the owner would show one seat every sibling seat's\nfinancial activity \u2014 the exact leak their docstrings are written to\navoid. A balance is one aggregate number, not sibling-attributed detail,\nso disclosing it does not cross the same privacy line.",
         "operationId": "api_v1_me_endpoints_get_balance",
         "parameters": [],
         "responses": {
@@ -9139,7 +9171,7 @@
     },
     "/api/v1/me/grants": {
       "get": {
-        "description": "Active credit grant lots on the customer's own wallet (kind,\nremaining, expiry), newest first in the one cursor envelope (#78 \u2014 the\nenvelope-less capped list died with the contract big-bang; ordering moved\nfrom soonest-expiring to the standard creation keyset so the cursor is\nreal).\n\nSeat-scoping decision: own-wallet basis, matching the /me/balance\nprecedent \u2014 a pooled seat (whose money lives on the business owner's\nwallet) sees an empty list here rather than the shared business lots,\nexactly as /me/balance shows the seat's own (empty) wallet.",
+        "description": "Active credit grant lots on the customer's own wallet (kind,\nremaining, expiry), newest first in the one cursor envelope (#78 \u2014 the\nenvelope-less capped list died with the contract big-bang; ordering moved\nfrom soonest-expiring to the standard creation keyset so the cursor is\nreal).\n\nSeat-scoping decision: own-wallet basis \u2014 deliberately NOT resolved to\nthe billing owner the way /me/balance now is (Task 9 finding B). A grant\nlist is ITEMIZED (individual lots, each with its own amount/expiry); a\npooled seat reading the owner's grants would see every sibling seat's\nlots, not just an aggregate figure. So this stays seat-scoped and,\nsince Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's\nown wallet can never exist, always answers an honest empty page for a\nseat \u2014 never the shared business lots.",
         "operationId": "api_v1_me_endpoints_list_grants",
         "parameters": [
           {
@@ -9328,6 +9360,7 @@
     },
     "/api/v1/me/transactions": {
       "get": {
+        "description": "Ledger lines on the customer's OWN wallet \u2014 same seat-scoping call as\n/me/grants, for the same reason: a transaction list is line-by-line\nitemized detail, so resolving it to the billing owner would show a\npooled seat every sibling seat's individual top-ups/debits. Stays\nseat-scoped; per Task 8c's ``lock_for_billing`` ratchet a pooled seat's\nown wallet can never exist, so this always answers an honest empty page\nfor a seat rather than the shared business ledger.",
         "operationId": "api_v1_me_endpoints_get_transactions",
         "parameters": [
           {
@@ -14876,7 +14909,7 @@
                         "type": "string"
                       },
                       "enforce_mode": {
-                        "default": "advisory",
+                        "default": "alert_only",
                         "title": "Enforce Mode",
                         "type": "string"
                       },

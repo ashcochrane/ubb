@@ -43,6 +43,19 @@ class TopUpAttempt(BaseModel):
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="top_up_attempts"
     )
+    # Task 7 (billing-surface-correctness): the billing owner PINNED at
+    # attempt creation (resolve_billing_owner), exactly like
+    # Task.billing_owner_id / UsageEvent.billing_owner_id. `customer` above
+    # stays the SEAT that initiated the top-up (mirrors the audit decision
+    # in Task 3: seat is the subject, owner is whose wallet moves) — both
+    # credit_top_up call sites (apply_topup_credit and the Stripe checkout
+    # webhook) read THIS column rather than re-resolving, so a seat that
+    # gets re-parented between request and webhook can never split the
+    # charge from the credit. Nullable for symmetry with the two precedent
+    # fields; every creation path in this codebase sets it, and a NULL
+    # reaching either credit call site is refused loudly rather than
+    # silently defaulted to `customer_id` (see those call sites).
+    billing_owner_id = models.UUIDField(null=True, blank=True, db_index=True)
     amount_micros = models.PositiveBigIntegerField()
     trigger = models.CharField(max_length=20, choices=TOP_UP_ATTEMPT_TRIGGERS)
     status = models.CharField(

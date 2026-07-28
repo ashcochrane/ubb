@@ -18,7 +18,7 @@ The rules:
   trip). Non-limit terminal states (completed, failed, reaped) tag
   ``task_not_active``.
 - Customer scope reads the durable ledger, never the Redis flag: an open
-  ``floor_stop`` episode tags ``customer_floor`` carrying the episode id;
+  ``floor_stop`` episode tags ``customer_wide_stop`` carrying the episode id;
   the entry is the tipping one (``arrived_after=false``) only when THIS
   event's live debit won the stop transition (``opened_episode_seq``).
   An owner suspended with NO open episode (admin/fraud) tags ``suspended``
@@ -36,8 +36,7 @@ be JSON-storable and byte-stable on replay reads.
 from apps.platform.tasks import reasons
 
 # Kill reasons that name a limit episode a late event should point back at.
-_EPISODE_KILL_REASONS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT,
-                         reasons.CUSTOMER_FLOOR)
+_EPISODE_KILL_REASONS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 
 
 def _iso(dt):
@@ -70,9 +69,6 @@ def _unit_contexts(task, verdicts, now):
                           task_id=top_id, subtask_id=sub_id, **tip))
     if verdicts.get("crossed_subtask_limit"):
         out.append(_entry(limit=reasons.SUBTASK_LIMIT, stop_scope="subtask",
-                          task_id=top_id, subtask_id=sub_id, **tip))
-    if verdicts.get("crossed_floor_snapshot"):
-        out.append(_entry(limit=reasons.CUSTOMER_FLOOR, stop_scope=unit_scope,
                           task_id=top_id, subtask_id=sub_id, **tip))
 
     # Late arrival on a non-active unit: point back at the episode that
@@ -119,7 +115,7 @@ def _customer_contexts(owner, tenant, opened_episode_seq, task_id, subtask_id):
     state = get_stop_signal_state(owner.id, tenant.id)
     if state is not None and state["state"] == "stopped":
         return [_entry(
-            limit=reasons.CUSTOMER_FLOOR, stop_scope="customer",
+            limit=reasons.CUSTOMER_WIDE_STOP, stop_scope="customer",
             tripped_at=_iso(state["transitioned_at"]),
             episode_seq=state["episode_seq"],
             task_id=task_id, subtask_id=subtask_id,
@@ -128,7 +124,7 @@ def _customer_contexts(owner, tenant, opened_episode_seq, task_id, subtask_id):
         # Suspension without an open floor episode — admin/fraud, or a
         # money suspension whose episode already cleared. No durable
         # suspension timestamp exists, so tripped_at is honestly null.
-        return [_entry(limit="suspended", stop_scope="customer",
+        return [_entry(limit=reasons.SUSPENDED, stop_scope="customer",
                        tripped_at=None, episode_seq=None,
                        task_id=task_id, subtask_id=subtask_id,
                        arrived_after=True)]

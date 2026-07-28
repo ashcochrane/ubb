@@ -88,10 +88,14 @@ def sync_detailed(
     from soonest-expiring to the standard creation keyset so the cursor is
     real).
 
-    Seat-scoping decision: own-wallet basis, matching the /me/balance
-    precedent — a pooled seat (whose money lives on the business owner's
-    wallet) sees an empty list here rather than the shared business lots,
-    exactly as /me/balance shows the seat's own (empty) wallet.
+    Seat-scoping decision: own-wallet basis — deliberately NOT resolved to
+    the billing owner the way /me/balance now is (Task 9 finding B). A grant
+    list is ITEMIZED (individual lots, each with its own amount/expiry); a
+    pooled seat reading the owner's grants would see every sibling seat's
+    lots, not just an aggregate figure. So this stays seat-scoped and,
+    since Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's
+    own wallet can never exist, always answers an honest empty page for a
+    seat — never the shared business lots.
 
     Args:
         cursor (None | str | Unset):
@@ -133,10 +137,14 @@ def sync(
     from soonest-expiring to the standard creation keyset so the cursor is
     real).
 
-    Seat-scoping decision: own-wallet basis, matching the /me/balance
-    precedent — a pooled seat (whose money lives on the business owner's
-    wallet) sees an empty list here rather than the shared business lots,
-    exactly as /me/balance shows the seat's own (empty) wallet.
+    Seat-scoping decision: own-wallet basis — deliberately NOT resolved to
+    the billing owner the way /me/balance now is (Task 9 finding B). A grant
+    list is ITEMIZED (individual lots, each with its own amount/expiry); a
+    pooled seat reading the owner's grants would see every sibling seat's
+    lots, not just an aggregate figure. So this stays seat-scoped and,
+    since Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's
+    own wallet can never exist, always answers an honest empty page for a
+    seat — never the shared business lots.
 
     Args:
         cursor (None | str | Unset):
@@ -173,10 +181,14 @@ async def asyncio_detailed(
     from soonest-expiring to the standard creation keyset so the cursor is
     real).
 
-    Seat-scoping decision: own-wallet basis, matching the /me/balance
-    precedent — a pooled seat (whose money lives on the business owner's
-    wallet) sees an empty list here rather than the shared business lots,
-    exactly as /me/balance shows the seat's own (empty) wallet.
+    Seat-scoping decision: own-wallet basis — deliberately NOT resolved to
+    the billing owner the way /me/balance now is (Task 9 finding B). A grant
+    list is ITEMIZED (individual lots, each with its own amount/expiry); a
+    pooled seat reading the owner's grants would see every sibling seat's
+    lots, not just an aggregate figure. So this stays seat-scoped and,
+    since Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's
+    own wallet can never exist, always answers an honest empty page for a
+    seat — never the shared business lots.
 
     Args:
         cursor (None | str | Unset):
@@ -218,10 +230,14 @@ async def asyncio(
     from soonest-expiring to the standard creation keyset so the cursor is
     real).
 
-    Seat-scoping decision: own-wallet basis, matching the /me/balance
-    precedent — a pooled seat (whose money lives on the business owner's
-    wallet) sees an empty list here rather than the shared business lots,
-    exactly as /me/balance shows the seat's own (empty) wallet.
+    Seat-scoping decision: own-wallet basis — deliberately NOT resolved to
+    the billing owner the way /me/balance now is (Task 9 finding B). A grant
+    list is ITEMIZED (individual lots, each with its own amount/expiry); a
+    pooled seat reading the owner's grants would see every sibling seat's
+    lots, not just an aggregate figure. So this stays seat-scoped and,
+    since Task 8c's ``lock_for_billing`` ratchet guarantees a pooled seat's
+    own wallet can never exist, always answers an honest empty page for a
+    seat — never the shared business lots.
 
     Args:
         cursor (None | str | Unset):

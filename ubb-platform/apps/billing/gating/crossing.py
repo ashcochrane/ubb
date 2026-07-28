@@ -22,7 +22,7 @@ The two orientations:
   BUDGET (postpaid — the spend RISES). The stop line is
   ``cap_micros * hard_stop_pct // 100`` and past = spend AT/OVER it.
   ``budget_stop_threshold`` resolves the line from a BudgetConfig and owns
-  the ``enforce_mode`` semantics: an advisory (non-enforcing) budget can
+  the ``enforce_mode`` semantics: an ``alert_only`` (non-blocking) budget can
   NEVER cross — it alerts (``BudgetService.emit_threshold_alerts``, which is
   level-based and deliberately not this module's concern) but never stops.
   Pre-#110 the live lanes ignored ``enforce_mode`` (the drift this module
@@ -80,11 +80,11 @@ def recovered_floor(balance_micros, min_balance_micros) -> bool:
 def budget_stop_threshold(cfg):
     """The postpaid stop line for a resolved BudgetConfig, or None when the
     owner can never cross: no config, cap <= 0, or — the #110 unification —
-    ``enforce_mode`` not 'enforcing' (an advisory budget alerts, never
+    ``enforce_mode`` not 'blocking' (an alert_only budget alerts, never
     stops; the ``BudgetService.check`` semantics, now shared by every lane)."""
     if cfg is None or cfg.cap_micros <= 0:
         return None
-    if cfg.enforce_mode != "enforcing":
+    if cfg.enforce_mode != "blocking":
         return None
     return cfg.cap_micros * cfg.hard_stop_pct // 100
 

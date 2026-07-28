@@ -111,10 +111,7 @@ class RiskServiceTaskTest(TestCase):
             tenant=self.tenant, external_id="u1"
         )
         RiskConfig.objects.create(tenant=self.tenant)
-        BillingTenantConfig.objects.create(
-            tenant=self.tenant,
-            default_task_floor_snapshot_micros=-5_000_000,
-        )
+        BillingTenantConfig.objects.create(tenant=self.tenant)
 
     def _enable_coverage(self):
         # The tenant-config API requires an active cost rate card to flip
@@ -123,14 +120,12 @@ class RiskServiceTaskTest(TestCase):
         self.tenant.save(update_fields=["require_cost_card_coverage"])
 
     def test_check_with_create_task_returns_task_id(self):
-        # No explicit limit and no RiskConfig default -> uncapped task; the
-        # floor snapshot comes from the tenant billing config.
+        # No explicit limit and no RiskConfig default -> uncapped task.
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
         result = RiskService.check(self.customer, create_task=True)
         self.assertTrue(result["allowed"])
         self.assertIsNotNone(result["task_id"])
         self.assertIsNone(result["provider_cost_limit_micros"])
-        self.assertEqual(result["floor_snapshot_micros"], -5_000_000)
 
         # Verify the Task was created in DB
         task = Task.objects.get(id=result["task_id"])
@@ -138,7 +133,6 @@ class RiskServiceTaskTest(TestCase):
         self.assertEqual(task.balance_snapshot_micros, 20_000_000)
         self.assertEqual(task.customer_id, self.customer.id)
         self.assertIsNone(task.provider_cost_limit_micros)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
     def test_explicit_limit_refused_without_coverage(self):
         # A resolved non-null COGS limit with require_cost_card_coverage off
@@ -172,10 +166,8 @@ class RiskServiceTaskTest(TestCase):
         )
         self.assertTrue(result["allowed"])
         self.assertEqual(result["provider_cost_limit_micros"], 10_000_000)
-        self.assertEqual(result["floor_snapshot_micros"], -5_000_000)
         task = Task.objects.get(id=result["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
 
     def test_tenant_default_limit_applies_when_no_explicit_limit(self):
         self._enable_coverage()
@@ -257,22 +249,22 @@ class TestRiskServiceBudget:
         c = self._funded()
         assert RiskService.check(c)["allowed"] is True
 
-    def test_enforcing_over_cap_denies(self):
-        c = self._funded(cap_micros=1_000, enforce_mode="enforcing", hard_stop_pct=100)
+    def test_blocking_over_cap_denies(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="blocking", hard_stop_pct=100)
         self._spend(c, 1_000)  # at cap
         res = RiskService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
 
-    def test_advisory_over_cap_allows(self):
-        c = self._funded(cap_micros=1_000, enforce_mode="advisory")
+    def test_alert_only_over_cap_allows(self):
+        c = self._funded(cap_micros=1_000, enforce_mode="alert_only")
         self._spend(c, 5_000)  # way over
         assert RiskService.check(c)["allowed"] is True
 
     def test_gate_fail_open_when_redis_down_with_budget_config(self):
-        # Even with an enforcing budget config, a Redis outage must NOT block the
+        # Even with a blocking budget config, a Redis outage must NOT block the
         # pre-call gate — the money is still guarded by the Postgres credit check.
         from unittest.mock import patch
-        c = self._funded(cap_micros=1_000, enforce_mode="enforcing")
+        c = self._funded(cap_micros=1_000, enforce_mode="blocking")
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = RiskService.check(c)
@@ -293,7 +285,7 @@ class TestRiskServiceBudget:
         from apps.metering.usage.models import UsageEvent
         t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="pp")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="enforcing")
+        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
         UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
         LiveCounter.budget_incr(t.id, c.id, 1_000)

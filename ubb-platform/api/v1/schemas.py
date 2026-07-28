@@ -57,7 +57,6 @@ class PreCheckResponse(Schema):
     # Set when the started unit is a subtask — the parent it registered under.
     parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
-    floor_snapshot_micros: Optional[int] = None
     task_type: Optional[str] = None
     subtask_type: Optional[str] = None
 
@@ -159,7 +158,7 @@ class RecordUsageResponse(Schema):
     # simultaneous customer-wide stop, and among unit verdicts the WIDEST
     # tripped scope wins (a parent trip beats a subtask trip — stop the whole
     # tree); the losers surface on the next ack and via the pushed events.
-    # stop_reason ∈ task_limit | subtask_limit | customer_floor |
+    # stop_reason ∈ task_limit | subtask_limit |
     # task_not_active | customer_wide_stop; stop_scope ∈ task | subtask |
     # customer. On a subtask's ack, scope `task` names the PARENT
     # (parent_task_id above) — the whole tree is stopped, not just the named
@@ -170,7 +169,7 @@ class RecordUsageResponse(Schema):
     # The itemized past-limit story (#41, spec §H): null when the event
     # landed past nothing, else the event's immutable stop-context ARRAY —
     # one entry per limit it landed past (a simultaneous task-limit +
-    # customer-floor crossing carries both, nothing lost). Each entry:
+    # customer-wide-stop crossing carries both, nothing lost). Each entry:
     # {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
     # arrived_after} — arrived_after=false marks the tipping event.
     stop_context: Optional[list] = None
@@ -194,6 +193,11 @@ class BalanceResponse(Schema):
     # UBB never acts on it (no reminders, no auto-close; collections stay
     # between the tenant, their customer, and Stripe).
     negative_since: Optional[str] = None
+    # Pooled-seat disclosure (Task 3): the resolved billing owner — equals
+    # this customer's own id/external_id when not a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class UsageEventOut(Schema):
@@ -374,7 +378,12 @@ def wallet_transaction_out(t):
 
 
 class PaginatedWalletTransactions(Paginated[WalletTransactionOut]):
-    pass
+    # Pooled-seat disclosure (Task 3): these transactions are the resolved
+    # billing owner's ledger — equals this customer's own id/external_id
+    # when not a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class ReadyResponse(Schema):
@@ -608,7 +617,12 @@ class TaskAnalyticsOut(Schema):
 
 class BudgetConfigIn(Schema):
     cap_micros: int = Field(ge=0)
-    enforce_mode: str = "advisory"
+    # Must match apps.billing.gating.models.BUDGET_ENFORCE_MODES — the model
+    # field's `choices` alone never gets enforced (Django doesn't validate
+    # choices on save()), so an out-of-vocabulary value used to persist
+    # silently and could never cross (crossing.py's budget_stop_threshold
+    # treats anything != "blocking" as non-blocking).
+    enforce_mode: Literal["alert_only", "blocking"] = "alert_only"
     hard_stop_pct: int = Field(default=100, ge=1, le=1000)
     alert_levels: Optional[list[int]] = None
     fail_closed: bool = False
@@ -641,6 +655,12 @@ class CustomerBillingProfileOut(Schema):
     min_balance_micros: Optional[int] = None
     topup_grant_expiry_days: Optional[int] = None
     soft_min_balance_micros: Optional[int] = None
+    # Pooled-seat disclosure (Task 3): this is the resolved billing owner's
+    # effective profile — equals this customer's own id/external_id when not
+    # a pooled seat.
+    billing_owner_id: UUID
+    billing_owner_external_id: str
+    is_pooled_seat: bool
 
 
 class BudgetStatusOut(Schema):
@@ -958,9 +978,6 @@ class TenantConfigOut(Schema):
     # Default COGS limit for new tasks (RiskConfig); null = no default —
     # absent an explicit start-call limit too, the task is uncapped.
     default_task_provider_cost_limit_micros: Optional[int] = None
-    # Default wallet-floor snapshot for new tasks (BillingTenantConfig, a
-    # balance line, e.g. -5_000_000); null = no per-task floor snapshot.
-    default_task_floor_snapshot_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): the wind-down
     # line (-value; negative places it above zero); null = no soft floor.
     soft_min_balance_micros: Optional[int] = None
@@ -990,9 +1007,6 @@ class TenantConfigIn(Schema):
     # Default COGS limit for new tasks (RiskConfig). Omit = unchanged;
     # null = no default.
     default_task_provider_cost_limit_micros: Optional[int] = None
-    # Default wallet-floor snapshot for new tasks (BillingTenantConfig; may
-    # be negative — it is a balance line). Omit = unchanged; null = none.
-    default_task_floor_snapshot_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): may be negative
     # (a wind-down line above zero); must keep the soft line at or above the
     # hard floor's. Omit = unchanged; null = no soft floor.

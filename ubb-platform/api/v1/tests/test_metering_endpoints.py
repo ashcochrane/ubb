@@ -298,14 +298,13 @@ class MeteringTaskEndpointTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
     def _task(self, tenant=None, customer=None, balance=20_000_000,
-              limit=None, floor=None):
+              limit=None):
         # One-rule (#37): the tenant-level run-era knobs are gone — limits are
         # passed explicitly at task creation (as billing pre-check does).
         return TaskService.create_task(
             tenant or self.tenant, customer or self.customer,
             balance_snapshot_micros=balance,
             provider_cost_limit_micros=limit,
-            floor_snapshot_micros=floor,
             billing_owner_id=(customer or self.customer).id,
         )
 
@@ -344,7 +343,7 @@ class MeteringTaskEndpointTest(TestCase):
         from apps.metering.usage.models import UsageEvent
         from apps.platform.events.models import OutboxEvent
 
-        task = self._task(limit=10_000_000, floor=-5_000_000)
+        task = self._task(limit=10_000_000)
         # First event under limit
         resp = self._record(
             task_id=str(task.id),

@@ -190,7 +190,7 @@ class BillingClient:
         txns = [from_wire(WalletTransactionOut, item) for item in body["data"]]
         return PaginatedResponse(data=txns, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
 
-    def set_budget(self, customer_id, cap_micros, enforce_mode="advisory",
+    def set_budget(self, customer_id, cap_micros, enforce_mode="alert_only",
                    hard_stop_pct=100, alert_levels=None, fail_closed=False):
         body = {"cap_micros": cap_micros, "enforce_mode": enforce_mode,
                 "hard_stop_pct": hard_stop_pct, "fail_closed": fail_closed}

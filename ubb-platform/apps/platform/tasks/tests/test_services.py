@@ -26,12 +26,10 @@ class TaskServiceCreateTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=3_000_000,
             provider_cost_limit_micros=10_000_000,
-            floor_snapshot_micros=-5_000_000,
         )
         self.assertEqual(task.status, "active")
         self.assertEqual(task.balance_snapshot_micros, 3_000_000)
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
-        self.assertEqual(task.floor_snapshot_micros, -5_000_000)
         self.assertEqual(task.total_billed_cost_micros, 0)
         self.assertEqual(task.total_provider_cost_micros, 0)
         self.assertEqual(task.event_count, 0)
@@ -43,7 +41,6 @@ class TaskServiceCreateTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0,
         )
         self.assertIsNone(task.provider_cost_limit_micros)
-        self.assertIsNone(task.floor_snapshot_micros)
 
     def test_create_task_with_metadata_and_external_id(self):
         task = TaskService.create_task(
@@ -64,16 +61,15 @@ class TaskServiceAccumulateTest(TestCase):
             tenant=self.tenant, external_id="cust-1"
         )
         self.limit = 10_000_000
-        self.floor = -5_000_000
 
-    def _task(self, balance=20_000_000, limit=None, floor=None):
+    def _task(self, balance=20_000_000, limit=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit, floor_snapshot_micros=floor,
+            provider_cost_limit_micros=limit,
         )
 
     def test_accumulate_cost_increments_both_totals_and_count(self):
-        task = self._task(limit=self.limit, floor=self.floor)
+        task = self._task(limit=self.limit)
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=3_000_000, provider_cost_micros=2_000_000)
         self.assertEqual(result.total_billed_cost_micros, 3_000_000)
@@ -82,7 +78,6 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertIsNotNone(result.last_event_at)
         self.assertEqual(verdicts, {"crossed_task_limit": False,
                                     "crossed_subtask_limit": False,
-                                    "crossed_floor_snapshot": False,
                                     "task_not_active": False})
 
         result, verdicts = TaskService.accumulate_cost(
@@ -93,7 +88,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertFalse(any(verdicts.values()))
 
     def test_crossing_provider_limit_returns_verdict_and_persists(self):
-        task = self._task(balance=100_000_000, limit=self.limit, floor=self.floor)
+        task = self._task(balance=100_000_000, limit=self.limit)
         _, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=1_000_000, provider_cost_micros=9_000_000)
         self.assertFalse(verdicts["crossed_task_limit"])
@@ -104,7 +99,6 @@ class TaskServiceAccumulateTest(TestCase):
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=1_000_000, provider_cost_micros=2_000_000)
         self.assertTrue(verdicts["crossed_task_limit"])
-        self.assertFalse(verdicts["crossed_floor_snapshot"])
         self.assertFalse(verdicts["task_not_active"])
         self.assertEqual(result.total_provider_cost_micros, 11_000_000)
         self.assertEqual(result.total_billed_cost_micros, 2_000_000)
@@ -123,26 +117,6 @@ class TaskServiceAccumulateTest(TestCase):
             task.id, billed_cost_micros=50_000_000, provider_cost_micros=1_000_000)
         self.assertFalse(verdicts["crossed_task_limit"])
 
-    def test_crossing_floor_snapshot_returns_verdict_and_persists(self):
-        # balance=3M, floor=-5M: the BILLED total may reach 8M before the
-        # estimated balance (3M - total_billed) drops below the floor.
-        task = self._task(balance=3_000_000, floor=self.floor)
-        _, verdicts = TaskService.accumulate_cost(
-            task.id, billed_cost_micros=7_000_000, provider_cost_micros=0)
-        self.assertFalse(verdicts["crossed_floor_snapshot"])  # est -4M >= -5M
-
-        # Next 2M: est balance = 3M - 9M = -6M < -5M floor.
-        result, verdicts = TaskService.accumulate_cost(
-            task.id, billed_cost_micros=2_000_000, provider_cost_micros=0)
-        self.assertTrue(verdicts["crossed_floor_snapshot"])
-        self.assertFalse(verdicts["crossed_task_limit"])
-        self.assertEqual(result.total_billed_cost_micros, 9_000_000)
-
-        task.refresh_from_db()
-        self.assertEqual(task.total_billed_cost_micros, 9_000_000)
-        self.assertEqual(task.event_count, 2)
-        self.assertEqual(task.status, "active")
-
     def test_accumulate_cost_null_limits_never_flags(self):
         task = self._task(balance=1_000_000)
         result, verdicts = TaskService.accumulate_cost(
@@ -154,7 +128,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertFalse(any(verdicts.values()))
 
     def test_accumulate_cost_exact_limit_not_crossed(self):
-        task = self._task(limit=self.limit, floor=self.floor)
+        task = self._task(limit=self.limit)
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=0, provider_cost_micros=10_000_000)
         self.assertEqual(result.total_provider_cost_micros, 10_000_000)
@@ -162,7 +136,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertEqual(result.status, "active")
 
     def test_accumulate_cost_one_over_limit_crosses(self):
-        task = self._task(limit=self.limit, floor=self.floor)
+        task = self._task(limit=self.limit)
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=0, provider_cost_micros=10_000_001)
         self.assertTrue(verdicts["crossed_task_limit"])
@@ -172,14 +146,13 @@ class TaskServiceAccumulateTest(TestCase):
     def test_accumulate_cost_on_killed_task_returns_not_active_and_persists(self):
         # Limit of 1: any attributed event would cross it — but on a killed
         # task NO limit verdict fires (the signal already announced itself).
-        task = self._task(limit=1, floor=self.floor)
+        task = self._task(limit=1)
         TaskService.kill_task(task.id)
 
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=1_000, provider_cost_micros=5_000_000)
         self.assertTrue(verdicts["task_not_active"])
         self.assertFalse(verdicts["crossed_task_limit"])
-        self.assertFalse(verdicts["crossed_floor_snapshot"])
 
         # The late event still landed, billed, and counted into BOTH totals.
         self.assertEqual(result.status, "killed")
@@ -189,7 +162,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertEqual(task.event_count, 1)
 
     def test_accumulate_cost_on_completed_task_returns_not_active_and_persists(self):
-        task = self._task(limit=self.limit, floor=self.floor)
+        task = self._task(limit=self.limit)
         TaskService.complete_task(task.id)
 
         result, verdicts = TaskService.accumulate_cost(

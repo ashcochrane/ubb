@@ -61,6 +61,30 @@ def handle_checkout_completed(event):
         return
     amount_micros = session.amount_total * 10_000
 
+    # Task 7: the credit must land on the billing OWNER, never the
+    # Stripe-matched `customer` above (which can be a pooled seat). When a
+    # TopUpAttempt correlates (the normal path — every checkout session UBB
+    # creates carries client_reference_id=attempt.id), its PINNED
+    # billing_owner_id is authoritative: a NULL there is a data-integrity
+    # gap this webhook must refuse rather than silently credit the seat.
+    # When there is NO correlating attempt (an out-of-band Checkout Session
+    # this codebase didn't create), there is nothing pinned to trust or
+    # distrust, so this resolves the CURRENT owner fresh — the same
+    # resolver every other read/write in this bug's fix uses, and not a
+    # "fall back to the seat".
+    if attempt is not None:
+        if attempt.billing_owner_id is None:
+            logger.error(
+                "TopUpAttempt missing billing_owner_id — refusing to credit",
+                extra={"data": {"attempt_id": str(attempt.id), "session_id": session.id}},
+            )
+            raise RuntimeError(
+                f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+                "refusing to credit rather than risk crediting the seat")
+        credit_customer_id = attempt.billing_owner_id
+    else:
+        credit_customer_id = customer.resolve_billing_owner().id
+
     # Pre-fetch PaymentIntent and charge ID outside transaction (no network inside DB locks)
     pi_id = getattr(session, "payment_intent", None)
     charge_id_from_pi = None
@@ -92,9 +116,12 @@ def handle_checkout_completed(event):
         # The wallet lock is taken FIRST (canonical Wallet -> TopUpAttempt
         # order); the read-only replay probe keeps a redelivery from touching
         # the attempt at all (parity with the pre-#109 shape). The wallet op
-        # below re-enters the same lock and re-probes under it.
+        # below re-enters the same lock and re-probes under it. Locks the
+        # OWNER (Task 7) — `customer` is deliberately left unshadowed: the
+        # receipt dispatch below still needs the SEAT (whoever's Stripe
+        # customer/card was actually charged).
         from apps.billing.wallets.models import WalletTransaction
-        wallet, customer = lock_for_billing(customer.id)
+        wallet, owner = lock_for_billing(credit_customer_id)
         if WalletTransaction.objects.filter(
                 wallet=wallet, idempotency_key=f"topup:{session.id}").exists():
             return
@@ -124,7 +151,7 @@ def handle_checkout_completed(event):
         # The credit, its PAID lot, and the Tier-2 live mirror land behind the
         # wallet seam (#109), co-committed with the attempt walk above.
         wallet_ops.credit_top_up(
-            customer_id=customer.id, tenant=customer.tenant,
+            customer_id=owner.id, tenant=customer.tenant,
             amount_micros=amount_micros,
             idempotency_key=f"topup:{session.id}",
             source="checkout",
@@ -279,38 +306,57 @@ def handle_charge_dispute_closed(event):
 
     from apps.billing.wallets import operations as wallet_ops
 
-    customer = attempt.customer
+    tenant = attempt.customer.tenant
+
+    # Task 8a: this clawback moves money OUT. The original top-up's credit
+    # landed on the billing OWNER (Task 7); clawing it back from the seat
+    # instead would mint a phantom seat wallet, drive it negative, and leave
+    # the business holding a credit that was never actually reversed. Same
+    # NULL-refusal failure mode as the credit path — never silently fall
+    # back to attempt.customer_id (the seat).
+    if attempt.billing_owner_id is None:
+        logger.error(
+            "TopUpAttempt missing billing_owner_id — refusing to claw back",
+            extra={"data": {"attempt_id": str(attempt.id), "dispute_id": dispute_id}},
+        )
+        raise RuntimeError(
+            f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+            "refusing to claw back rather than risk debiting the seat")
+    owner_id = attempt.billing_owner_id
+
     with transaction.atomic():
         # Deduct + clawback cascade behind the wallet seam (#109), keyed on
         # the dispute id (not charge id) so each distinct dispute is tracked.
         result = wallet_ops.claw_back_dispute(
-            customer_id=attempt.customer_id, tenant=customer.tenant,
+            customer_id=owner_id, tenant=tenant,
             amount_micros=amount_micros, dispute_id=dispute_id,
             charge_id=charge_id, attempt_id=attempt.id)
         if result.outcome != "applied":
             return
 
-        # Suspend customer if balance dropped below min_balance threshold —
+        # Suspend the OWNER if balance dropped below min_balance threshold —
         # a Customer-status policy, so it stays with the webhook (the op's
         # customer-row lock is held until this outer transaction commits).
+        # Suspending the owner (not the seat) is what RiskService.check
+        # actually reads for every seat funded by this wallet.
         from apps.billing.queries import get_customer_min_balance
         from apps.billing.gating.crossing import past_floor
-        customer = Customer.objects.select_for_update().get(id=attempt.customer_id)
-        threshold = get_customer_min_balance(customer.id, customer.tenant_id)
-        if past_floor(result.balance_micros, threshold) and customer.status == "active":
-            customer.status = "suspended"
-            customer.save(update_fields=["status", "updated_at"])
+        owner = Customer.objects.select_for_update().get(id=owner_id)
+        threshold = get_customer_min_balance(owner.id, owner.tenant_id)
+        if past_floor(result.balance_micros, threshold) and owner.status == "active":
+            owner.status = "suspended"
+            owner.save(update_fields=["status", "updated_at"])
             logger.warning(
                 "Customer suspended after dispute deduction",
                 extra={"data": {
-                    "customer_id": str(customer.id),
+                    "customer_id": str(owner.id),
                     "balance_micros": result.balance_micros,
                     "threshold": threshold,
                 }},
             )
             # A suspended seat leaves the active roster: decrement the business sub.
-            if customer.account_type == "seat" and customer.parent_id:
-                notify_seat_roster_changed(customer.parent)
+            if owner.account_type == "seat" and owner.parent_id:
+                notify_seat_roster_changed(owner.parent)
 
 
 def handle_charge_refunded(event):
@@ -348,6 +394,21 @@ def handle_charge_refunded(event):
     from apps.billing.wallets import operations as wallet_ops
 
     tenant = attempt.customer.tenant
+
+    # Task 8a: same shape and same failure mode as handle_charge_dispute_closed
+    # above — this clawback must debit whichever wallet the original top-up
+    # credit landed on (the billing OWNER, pinned at attempt creation), never
+    # the seat. See that handler's comment for the full reasoning.
+    if attempt.billing_owner_id is None:
+        logger.error(
+            "TopUpAttempt missing billing_owner_id — refusing to claw back",
+            extra={"data": {"attempt_id": str(attempt.id), "charge_id": charge_id}},
+        )
+        raise RuntimeError(
+            f"TopUpAttempt {attempt.id} has no billing_owner_id — "
+            "refusing to claw back rather than risk debiting the seat")
+    owner_id = attempt.billing_owner_id
+
     with transaction.atomic():
         # One commit for the whole refund list (parity with the pre-#109
         # single transaction); each refund is its own exactly-once wallet op
@@ -359,7 +420,7 @@ def handle_charge_refunded(event):
             if not refund_id or not refund_amount:
                 continue
             wallet_ops.claw_back_stripe_refund(
-                customer_id=attempt.customer_id, tenant=tenant,
+                customer_id=owner_id, tenant=tenant,
                 amount_micros=refund_amount * 10_000, refund_id=refund_id,
                 attempt_id=attempt.id)
 

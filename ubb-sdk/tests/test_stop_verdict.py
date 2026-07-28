@@ -93,18 +93,6 @@ class StopVerdictTest(unittest.TestCase):
         self.assertEqual(cm.exception.task_id, "task_1")
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_raise_on_stop_raises_for_customer_floor(self, mock_post):
-        """crossed_floor_snapshot: reason customer_floor, scope task."""
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "customer_floor",
-            "stop_scope": "task", "task_id": "task_1"})
-        with self.assertRaises(UBBStoppedError) as cm:
-            self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
-                                     task_id="task_1", raise_on_stop=True)
-        self.assertEqual(cm.exception.reason, "customer_floor")
-        self.assertEqual(cm.exception.scope, "task")
-
-    @patch("ubb.metering.httpx.Client.post")
     def test_raise_on_stop_no_raise_when_not_stopped(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False, "stop": False})

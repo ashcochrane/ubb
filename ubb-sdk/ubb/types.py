@@ -14,7 +14,6 @@ class PreCheckResult:
     # Set when the started unit is a subtask — the parent it registered under.
     parent_task_id: str | None = None
     provider_cost_limit_micros: int | None = None
-    floor_snapshot_micros: int | None = None
 
 @dataclass(frozen=True)
 class BatchItemResult:

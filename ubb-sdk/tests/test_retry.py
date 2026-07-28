@@ -322,7 +322,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_fail.headers = {"Retry-After": "1.5"}
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {
-                "cap_micros": 1000, "enforce_mode": "advisory",
+                "cap_micros": 1000, "enforce_mode": "alert_only",
                 "hard_stop_pct": 100, "alert_levels": [], "fail_closed": False,
             }
             mock_put.side_effect = [resp_fail, resp_ok]

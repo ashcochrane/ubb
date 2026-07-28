@@ -49,7 +49,7 @@ class TestPostpaidDurableSuspend:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    enforce_mode="enforcing")
+                                    enforce_mode="blocking")
         # The fast lane's crossing wins the stop transition and suspends there
         # (#39) — the handler drain adds nothing for postpaid.
         LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
@@ -63,7 +63,7 @@ class TestPostpaidDurableSuspend:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    enforce_mode="enforcing")
+                                    enforce_mode="blocking")
         LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 5_000_000, now=timezone.now())
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))
@@ -130,7 +130,7 @@ class TestP6bReviewFixes:
         c = Customer.objects.create(tenant=t, external_id="c1",
                                     status="suspended", suspension_reason="budget_exceeded")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    enforce_mode="enforcing")
+                                    enforce_mode="blocking")
         reconcile_live_ledgers()
         c.refresh_from_db()
         assert c.status == "active"

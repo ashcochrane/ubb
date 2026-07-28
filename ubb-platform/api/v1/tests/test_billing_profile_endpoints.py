@@ -133,3 +133,87 @@ class CustomerBillingProfileEndpointTest(TestCase):
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
         self.assertIsNone(r.json()["soft_min_balance_micros"])
+
+    # --- pooled-seat disclosure + refusal (Task 3) ---
+
+    def test_get_individual_discloses_self_as_owner(self):
+        b = self.http.get(self._url(), **self._auth()).json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(self.customer.id))
+        self.assertEqual(b["billing_owner_external_id"], "c1")
+
+    def test_get_pooled_seat_returns_business_effective_profile(self):
+        from apps.billing.wallets.models import CustomerBillingProfile
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz1",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat1",
+            account_type="seat", parent=biz)
+        CustomerBillingProfile.objects.create(customer=biz, min_balance_micros=9_000_000)
+
+        b = self.http.get(self._url(seat), **self._auth()).json()
+        self.assertTrue(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(biz.id))
+        self.assertEqual(b["billing_owner_external_id"], "biz1")
+        self.assertEqual(b["min_balance_micros"], 9_000_000)
+
+    def test_get_allocated_seat_resolves_to_self(self):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz2",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat2",
+            account_type="seat", parent=biz)
+
+        b = self.http.get(self._url(seat), **self._auth()).json()
+        self.assertFalse(b["is_pooled_seat"])
+        self.assertEqual(b["billing_owner_id"], str(seat.id))
+
+    def test_put_pooled_seat_refuses_with_422_naming_the_business(self):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz3",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat3",
+            account_type="seat", parent=biz)
+
+        r = self.http.put(
+            self._url(seat),
+            data=json.dumps({"min_balance_micros": 1_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 422)
+        body = r.json()
+        self.assertEqual(body["code"], "invalid_config")
+        self.assertIn("biz3", body["detail"])
+
+    def test_put_pooled_seat_does_not_silently_write_the_business_profile(self):
+        from apps.billing.wallets.models import CustomerBillingProfile
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz4",
+            account_type="business", billing_topology="pooled")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat4",
+            account_type="seat", parent=biz)
+
+        self.http.put(
+            self._url(seat),
+            data=json.dumps({"min_balance_micros": 1_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertFalse(CustomerBillingProfile.objects.filter(customer=biz).exists())
+        self.assertFalse(CustomerBillingProfile.objects.filter(customer=seat).exists())
+
+    def test_put_allocated_seat_writes_its_own_profile(self):
+        biz = Customer.objects.create(
+            tenant=self.tenant, external_id="biz5",
+            account_type="business", billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat5",
+            account_type="seat", parent=biz)
+
+        r = self.http.put(
+            self._url(seat),
+            data=json.dumps({"min_balance_micros": 2_000_000}),
+            content_type="application/json", **self._auth())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["min_balance_micros"], 2_000_000)

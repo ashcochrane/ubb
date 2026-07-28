@@ -13,7 +13,7 @@ class TaskService:
 
     @staticmethod
     def create_task(tenant, customer, balance_snapshot_micros,
-                    provider_cost_limit_micros=None, floor_snapshot_micros=None,
+                    provider_cost_limit_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
                     parent=None, task_type="", subtask_type="",
                     dimension_slots=None):
@@ -44,7 +44,6 @@ class TaskService:
             parent=parent,
             balance_snapshot_micros=balance_snapshot_micros,
             provider_cost_limit_micros=provider_cost_limit_micros,
-            floor_snapshot_micros=floor_snapshot_micros,
             metadata=metadata or {},
             external_task_id=external_task_id,
             billing_owner_id=billing_owner_id,
@@ -80,11 +79,6 @@ class TaskService:
         - ``crossed_subtask_limit``: THIS call pushed the subtask's own
           provider total past its own limit while the subtask was still
           active (always False for a top-level event).
-        - ``crossed_floor_snapshot``: THIS call pushed the named unit's
-          estimated balance (balance snapshot minus billed total —
-          wallet-shaped, so billed) below its own ``floor_snapshot_micros``
-          while the unit was still active. Floor snapshots stay own-row;
-          only the limit rolls up.
         - ``task_not_active``: the named unit was already
           killed/completed/failed. The event still landed, billed, and
           counted into both totals (and the parent's).
@@ -148,14 +142,8 @@ class TaskService:
             "crossed_task_limit": top_was_active and _crossed_limit(top),
             "crossed_subtask_limit": (parent is not None and was_active
                                       and _crossed_limit(task)),
-            "crossed_floor_snapshot": False,
             "task_not_active": not was_active,
         }
-        if was_active:
-            floor = task.floor_snapshot_micros
-            if floor is not None and (task.balance_snapshot_micros
-                                      - task.total_billed_cost_micros) < floor:
-                verdicts["crossed_floor_snapshot"] = True
         return task, verdicts
 
     @staticmethod

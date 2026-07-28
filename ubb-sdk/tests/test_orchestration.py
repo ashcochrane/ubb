@@ -233,13 +233,12 @@ class TestOrchestratedPreCheck(unittest.TestCase):
     @patch.object(BillingClient, "_request")
     def test_pre_check_start_task_threads_task_fields(self, mock_bill_request):
         """start_task=True sends the task keys on the wire and threads the
-        created task's id/limit/floor back into PreCheckResult."""
+        created task's id/limit back into PreCheckResult."""
         mock_bill_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "allowed": True, "reason": None, "balance_micros": 10_000_000,
                 "task_id": "task_1",
                 "provider_cost_limit_micros": 5_000_000,
-                "floor_snapshot_micros": 1_000_000,
             }
         )
         result = self.client.pre_check(
@@ -250,7 +249,6 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.assertEqual(result.task_id, "task_1")
         self.assertEqual(result.provider_cost_limit_micros, 5_000_000)
-        self.assertEqual(result.floor_snapshot_micros, 1_000_000)
         call = mock_bill_request.call_args
         self.assertEqual(call.args[0], "post")
         self.assertEqual(call.args[1], "/api/v1/billing/pre-check")

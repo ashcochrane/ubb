@@ -192,20 +192,20 @@ class TestStopFlag:
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    hard_stop_pct=100, enforce_mode="enforcing")
+                                    hard_stop_pct=100, enforce_mode="blocking")
         out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000
         assert out["stop"] is True
 
-    def test_postpaid_advisory_budget_never_stops_the_live_lane(self):
+    def test_postpaid_alert_only_budget_never_stops_the_live_lane(self):
         """#110 drift resolution: enforce_mode is honored by EVERY lane via
-        crossing.budget_stop_threshold — an advisory budget (also the model
+        crossing.budget_stop_threshold — an alert_only budget (also the model
         default) alerts but can never stop. Pre-#110 the live fast lane
         ignored enforce_mode and would have stopped here."""
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    hard_stop_pct=100, enforce_mode="advisory")
+                                    hard_stop_pct=100, enforce_mode="alert_only")
         out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000  # the counter still tracks
         assert out["stop"] is False
@@ -215,7 +215,7 @@ class TestStopFlag:
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
-                                    enforce_mode="enforcing")
+                                    enforce_mode="blocking")
         now = timezone.now()
         LiveCounter.debit(c.id, t, 12_000_000, now=now)  # flag set
         assert LiveCounter.read(c.id, t)["stop"] is True
