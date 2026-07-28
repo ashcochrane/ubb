@@ -55,7 +55,6 @@ def usage_kwargs(item):
         billed_cost_micros=item.billed_cost_micros,
         units=item.units,
         currency=item.currency,
-        product_id=item.product_id,
         metadata=item.metadata,
         event_type=item.event_type,
         provider=item.provider,

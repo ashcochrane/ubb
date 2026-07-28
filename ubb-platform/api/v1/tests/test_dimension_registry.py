@@ -56,6 +56,24 @@ class TestDimensionRegistry:
         assert r.status_code == 422
         assert "correlation" in r.json()["detail"]
 
+    def test_slot_collision_on_a_new_key_is_422_not_500(self):
+        """Important 4 (final-fixes wave): declaring a second key on a slot
+        already bound to a DIFFERENT key used to hit uq_dimension_def_slot's
+        IntegrityError uncaught (500) — DimensionService.declare only ever
+        looked an existing def up by `key`, never by `slot`. An admin's
+        copy-paste mistake (reusing dim1 for a second axis) must be a 422
+        DimensionError instead."""
+        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+                                    scope="task")
+        r = self._put("/api/v1/metering/dimensions",
+                       {"dimensions": [
+                           {"key": "product", "slot": "dim1", "scope": "event"}]})
+        assert r.status_code == 422
+        assert "dim1" in r.json()["detail"]
+        assert "region" in r.json()["detail"]
+        # The collision is rejected whole — no partial write.
+        assert not DimensionDef.objects.filter(tenant=self.tenant, key="product").exists()
+
     def test_values_endpoint_lists_admitted_values(self):
         DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task")

@@ -40,7 +40,6 @@ class RecordUsageRequest:
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
             metadata (RecordUsageRequestMetadata | Unset):
-            product_id (None | str | Unset):
             provider (None | str | Unset):
             provider_cost_micros (int | None | Unset):
             tags (None | RecordUsageRequestTagsType0 | Unset):
@@ -58,7 +57,6 @@ class RecordUsageRequest:
     effective_at: datetime.datetime | None | Unset = UNSET
     event_type: None | str | Unset = UNSET
     metadata: RecordUsageRequestMetadata | Unset = UNSET
-    product_id: None | str | Unset = UNSET
     provider: None | str | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     tags: None | RecordUsageRequestTagsType0 | Unset = UNSET
@@ -115,12 +113,6 @@ class RecordUsageRequest:
         metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.metadata, Unset):
             metadata = self.metadata.to_dict()
-
-        product_id: None | str | Unset
-        if isinstance(self.product_id, Unset):
-            product_id = UNSET
-        else:
-            product_id = self.product_id
 
         provider: None | str | Unset
         if isinstance(self.provider, Unset):
@@ -184,8 +176,6 @@ class RecordUsageRequest:
             field_dict["event_type"] = event_type
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
-        if product_id is not UNSET:
-            field_dict["product_id"] = product_id
         if provider is not UNSET:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
@@ -289,16 +279,6 @@ class RecordUsageRequest:
 
 
 
-        def _parse_product_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        product_id = _parse_product_id(d.pop("product_id", UNSET))
-
-
         def _parse_provider(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -399,7 +379,6 @@ class RecordUsageRequest:
             effective_at=effective_at,
             event_type=event_type,
             metadata=metadata,
-            product_id=product_id,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             tags=tags,

@@ -1696,18 +1696,6 @@
             "title": "Metadata",
             "type": "object"
           },
-          "product_id": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
-          },
           "provider": {
             "anyOf": [
               {
@@ -4161,18 +4149,6 @@
             "additionalProperties": true,
             "title": "Metadata",
             "type": "object"
-          },
-          "product_id": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
           },
           "provider": {
             "anyOf": [

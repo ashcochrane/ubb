@@ -66,8 +66,8 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     _, raw_key = TenantApiKey.create_key(tenant)
     customer = Customer.objects.create(tenant=tenant, external_id="acme")
     # dimensions= now resolves through the registry (#128 rework); an
-    # identity declaration (key == slot) lets the legacy product_id -> dim1
-    # convention below stay groupable by "dim1".
+    # identity declaration (key == slot) lets a declared dim1 value stay
+    # groupable by "dim1".
     DimensionDef.objects.create(tenant=tenant, key="dim1", slot="dim1", scope="event")
     # 2 micros per input token: per_unit, unit_quantity=1 token == 1 unit.
     # Rate.compute(units) == (units * rate + unit_quantity // 2) // unit_quantity + fixed
@@ -96,7 +96,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
         #     contract, real (tolerant) deserialization into RecordUsageResult.
         res = client.record_usage(customer_id=str(customer.id), request_id="r1",
-                                  idempotency_key="i1", product_id="search",
+                                  idempotency_key="i1", dimensions={"dim1": "search"},
                                   usage_metrics={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2

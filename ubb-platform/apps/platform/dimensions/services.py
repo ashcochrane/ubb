@@ -31,6 +31,17 @@ class DimensionService:
 
         existing = DimensionDef.objects.filter(tenant=tenant, key=key).first()
         if existing is None:
+            # uq_dimension_def_slot is (tenant, slot) — a slot binds to ONE
+            # key at a time, regardless of scope. Check for that collision
+            # here (a different key already bound to this slot) so a
+            # copy-paste mistake is a 422 DimensionError, not a raw
+            # IntegrityError the endpoint doesn't catch (500).
+            slot_holder = DimensionDef.objects.filter(tenant=tenant, slot=slot).first()
+            if slot_holder is not None:
+                raise DimensionError(
+                    f"slot {slot!r} is already bound to key {slot_holder.key!r}: "
+                    f"cannot also bind {key!r} to it — a slot holds exactly one "
+                    "key at a time")
             return DimensionDef.objects.create(
                 tenant=tenant, key=key, slot=slot, scope=scope,
                 max_cardinality=max_cardinality)

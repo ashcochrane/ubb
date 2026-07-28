@@ -281,7 +281,7 @@ class RecordingInput:
     @classmethod
     def gather(cls, *, tenant, customer, request_id, idempotency_key,
                metadata, event_type, provider, usage_metrics, tags,
-               product_id, task_id, units, caller_provider_cost,
+               task_id, units, caller_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, debit_live_counter, dimension_slots=None):
         """The shared normalization both lanes run: tenant-currency stamp,
@@ -299,16 +299,13 @@ class RecordingInput:
         retired.
 
         Dimensions are DECLARED and INHERITED (design D1/D6) — there is no
-        tag-fallback inference. ``_inherit_dimensions`` resolves the ten
-        selector columns per slot: this event's own value wins, else the
-        leaf task's, else its parent's, else "". The legacy ``product_id``
-        wire field folds into the EVENT-scoped dim1 input alongside any
-        declared dim1 slot (an explicit declared dim1 wins when both are
-        sent — unchanged from Task 9), so it participates at the same
-        precedence tier as a declared dimension, ahead of task inheritance."""
+        tag-fallback inference and no legacy ``product_id`` wire field: the
+        write contract's only path onto dim1 is a declared dimension bound
+        to that slot (DimensionService.admit), same as any other dimension.
+        ``_inherit_dimensions`` resolves the ten selector columns per slot:
+        this event's own value wins, else the leaf task's, else its
+        parent's, else ""."""
         slots = dict(dimension_slots or {})
-        if not slots.get("dim1") and product_id:
-            slots["dim1"] = product_id
         dims = _inherit_dimensions(task_id, slots)
         return cls(
             tenant=tenant, customer=customer,
@@ -506,10 +503,10 @@ class UsageService:
     def record_usage(tenant, customer, request_id, idempotency_key, *,
                      provider_cost_micros=None, billed_cost_micros=None, units=None,
                      provider="", event_type="", currency=None, tags=None,
-                     product_id="", metadata=None, task_id=None, usage_metrics=None,
+                     metadata=None, task_id=None, usage_metrics=None,
                      effective_at=None, dimension_slots=None):
         """The sync lane (#112): validation + replay + owner resolve, then
-        the ONE recording core. The 16-param keyword surface is kept verbatim
+        the ONE recording core. The 15-param keyword surface is kept verbatim
         — this is the input adapter every service-level call site and both
         sync endpoints already speak.
 
@@ -550,7 +547,7 @@ class UsageService:
             tenant=tenant, customer=customer, request_id=request_id,
             idempotency_key=idempotency_key, metadata=metadata,
             event_type=event_type, provider=provider,
-            usage_metrics=usage_metrics, tags=tags, product_id=product_id,
+            usage_metrics=usage_metrics, tags=tags,
             task_id=task_id, units=units,
             caller_provider_cost=provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,
@@ -659,7 +656,7 @@ class UsageService:
                     event_type=p.get("event_type"),
                     provider=p.get("provider"),
                     usage_metrics=p.get("usage_metrics"), tags=p.get("tags"),
-                    product_id=p.get("product_id"), task_id=raw.task_id,
+                    task_id=raw.task_id,
                     units=p.get("units"),
                     caller_provider_cost=p.get("provider_cost_micros"),
                     caller_billed=p.get("billed_cost_micros"),

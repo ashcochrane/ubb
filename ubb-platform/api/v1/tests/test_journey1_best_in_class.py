@@ -110,10 +110,12 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # "service"/"agent" are event-scoped dimensions bound to dim2/dim3 and
         # are sent as `dimensions=` on each usage call (Task 9 retired the old
         # tag-lifting; tags are now free-form labels only). "product" is bound
-        # to dim1: the legacy product_id wire field still writes dim1 directly,
-        # but GROUPING speaks declared keys (Task 15), so dim1 needs a key to be
-        # addressable. Driven over the real HTTP route, matching this test's
-        # style for every route the SDK doesn't wrap yet. ----
+        # to dim1 the same way — declared and sent via `dimensions=` (the
+        # legacy product_id wire field is gone; the only path onto dim1 is a
+        # declared dimension) — and GROUPING speaks declared keys (Task 15),
+        # so dim1 needs a key to be addressable. Driven over the real HTTP
+        # route, matching this test's style for every route the SDK doesn't
+        # wrap yet. ----
         _put(api, "/api/v1/metering/dimensions", {"dimensions": [
             {"key": "product", "slot": "dim1", "scope": "event"},
             {"key": "service", "slot": "dim2", "scope": "event"},
@@ -156,16 +158,17 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         for i, (product, service, agent, day) in enumerate(matrix):
             res = client.record_usage(
                 customer_id=str(c1.id), request_id=f"r{i}", idempotency_key=f"i{i}",
-                product_id=product, usage_metrics={"tokens": 100},
-                # "service"/"agent" are DECLARED dimensions (dim2/dim3) — what
-                # the cost card selects on and the breakdown below groups by.
-                # `tags` (free-form labels, never priced/grouped, still
-                # stored) is covered directly by apps/metering/usage/tests/
-                # test_tags.py and api/v1/tests/test_usage_dimensions.py::
+                usage_metrics={"tokens": 100},
+                # "product"/"service"/"agent" are all DECLARED dimensions
+                # (dim1/dim2/dim3) — what the cost card selects on and the
+                # breakdown below groups by. `tags` (free-form labels, never
+                # priced/grouped, still stored) is covered directly by
+                # apps/metering/usage/tests/test_tags.py and
+                # api/v1/tests/test_usage_dimensions.py::
                 # test_tags_no_longer_become_dimensions -- no response field
                 # exposes tags here to assert against, so this journey test
                 # does not duplicate that coverage.
-                dimensions={"service": service, "agent": agent})
+                dimensions={"product": product, "service": service, "agent": agent})
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_metrics == []   # tokens HAS a matching card
@@ -181,8 +184,8 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
             provider_cost_micros=COST_UNATTR,
-            # Deliberately no service/agent dimensions and no product_id, so
-            # all three dimension fields are empty strings on the stored event.
+            # Deliberately no product/service/agent dimensions, so all three
+            # dimension fields are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
         assert unattr_res.dim2 == ""

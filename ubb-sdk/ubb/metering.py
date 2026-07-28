@@ -84,7 +84,7 @@ class MeteringClient:
                      units: int | None = None, provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      dimensions: dict | None = None,
-                     product_id: str = "", metadata: dict | None = None,
+                     metadata: dict | None = None,
                      task_id: str | None = None,
                      usage_metrics: dict | None = None,
                      recorded_at: datetime | str | None = None,
@@ -136,8 +136,6 @@ class MeteringClient:
             body["tags"] = tags
         if dimensions is not None:
             body["dimensions"] = dimensions
-        if product_id:
-            body["product_id"] = product_id
         if event_type:
             body["event_type"] = event_type
         if provider:

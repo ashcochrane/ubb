@@ -510,7 +510,8 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
             request_id="req_dim_1", idempotency_key="idem_dim_1",
-            provider_cost_micros=2_000_000, tags={"model": "gpt-4"}, product_id="chat",
+            provider_cost_micros=2_000_000, tags={"model": "gpt-4"},
+            dimension_slots={"dim1": "chat"},
         )
         response = self.http_client.get(
             "/api/v1/metering/analytics/usage?tag_key=model&dimensions=dim1", **self._auth(),
@@ -526,7 +527,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # by_task_type stays empty until Task 10 populates task_type at record time.
         self.assertEqual(body["by_task_type"], [])
         self.assertTrue(body["by_tag"])           # non-empty (tag_key=model)
-        # dim1 is the renamed product_id="chat" event, reachable via the
+        # dim1 is a declared dimension value ("chat"), reachable via the
         # generic dimensions= breakdown mechanism now that by_product is gone.
         dim1_values = {row["dimension"] for row in body["breakdowns"]["dim1"]}
         self.assertIn("chat", dim1_values)

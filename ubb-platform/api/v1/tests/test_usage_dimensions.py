@@ -74,4 +74,18 @@ class TestUsageDimensions:
         assert r.status_code == 200
         e = UsageEvent.objects.get(id=r.json()["event_id"])
         assert e.dim1 == "" and e.dim2 == ""
-        assert e.tags == {"service": "extract", "agent": "textract-v2"}
+
+    def test_product_id_is_gone_from_the_wire_contract(self):
+        """Final-fixes wave, Critical 1+2: the legacy `product_id` field is
+        deleted from RecordUsageRequest entirely — it broke accept/settle
+        price parity (the accept-time estimator never folded it) and bypassed
+        the dimension cardinality cap (no admit, no declaration required).
+        django-ninja/pydantic silently ignores an undeclared field by default
+        (Schema.model_config sets no `extra` override), so a caller still
+        sending `product_id` gets a normal 200 with dim1 untouched — NOT a
+        422 — and dim1 comes only from a declared `dimensions` value."""
+        self._declare()
+        r = self._post(product_id="search")
+        assert r.status_code == 200
+        e = UsageEvent.objects.get(id=r.json()["event_id"])
+        assert e.dim1 == ""
