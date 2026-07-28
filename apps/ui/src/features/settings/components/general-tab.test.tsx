@@ -56,3 +56,25 @@ describe("GeneralTab enforcement_mode select", () => {
     expect(screen.getByLabelText(/enforcement mode/i)).toHaveTextContent("off");
   });
 });
+
+describe("GeneralTab tenant-default wallet floors (4d)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the editable minimum-balance floors for prepaid", () => {
+    render(React.createElement(GeneralTab, { config: config({ billing_mode: "prepaid" }) }));
+    expect(screen.getByLabelText(/^minimum balance/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/soft minimum balance/i)).toBeInTheDocument();
+    expect(screen.queryByText(/wallet floors not used under postpaid/i)).not.toBeInTheDocument();
+  });
+
+  it("hides the minimum-balance floors and explains why for postpaid — the 4d gap this fixes", () => {
+    render(React.createElement(GeneralTab, { config: config({ billing_mode: "postpaid" }) }));
+    expect(screen.queryByLabelText(/^minimum balance/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/soft minimum balance/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/wallet floors not used under postpaid/i)).toBeInTheDocument();
+    // The provider-cost limit is unrelated to the wallet floor and stays visible.
+    expect(screen.getByLabelText(/provider-cost limit/i)).toBeInTheDocument();
+  });
+});

@@ -1,5 +1,6 @@
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,6 +10,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { FormField } from "@/components/shared/form-field";
 import { Section, DetailGrid, DetailRow } from "@/components/shared/data-states";
 import { BoolBadge, StatusBadge } from "@/components/shared/status-badge";
@@ -46,6 +48,10 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
     defaultValues: toDefaults(config),
   });
   const { errors } = form.formState;
+  // Live-tracks the billing-mode field (not just the saved config) so the
+  // floor fields react immediately if the operator switches to postpaid in
+  // this same form, before saving.
+  const isPostpaid = useWatch({ control: form.control, name: "billing_mode" }) === "postpaid";
 
   const onSubmit = form.handleSubmit(async (values) => {
     await update.mutateAsync({
@@ -149,18 +155,22 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
               )}
             </FormField>
 
-            <DollarField
-              label="Minimum balance ($)"
-              error={errors.min_balance_micros?.message}
-              hint="Hard floor — spend is blocked below this."
-              register={form.register("min_balance_micros")}
-            />
-            <DollarField
-              label="Soft minimum balance ($)"
-              error={errors.soft_min_balance_micros?.message}
-              hint="Advisory floor for low-balance signals. Leave blank to disable."
-              register={form.register("soft_min_balance_micros")}
-            />
+            {!isPostpaid && (
+              <>
+                <DollarField
+                  label="Minimum balance ($)"
+                  error={errors.min_balance_micros?.message}
+                  hint="Hard floor — spend is blocked below this."
+                  register={form.register("min_balance_micros")}
+                />
+                <DollarField
+                  label="Soft minimum balance ($)"
+                  error={errors.soft_min_balance_micros?.message}
+                  hint="Advisory floor for low-balance signals. Leave blank to disable."
+                  register={form.register("soft_min_balance_micros")}
+                />
+              </>
+            )}
             <DollarField
               label="Default task provider-cost limit ($)"
               error={errors.default_task_provider_cost_limit_micros?.message}
@@ -168,6 +178,20 @@ export function GeneralTab({ config }: { config: TenantConfig }) {
               register={form.register("default_task_provider_cost_limit_micros")}
             />
           </div>
+
+          {isPostpaid && (
+            <Alert className="mt-4">
+              <Info />
+              <AlertTitle>Wallet floors not used under postpaid</AlertTitle>
+              <AlertDescription>
+                Postpaid billing invoices usage at period close rather than gating on a wallet
+                floor — the tenant-default minimum and soft-minimum balance fields are hidden
+                because they'd have no effect (<code>RiskService.check</code> skips both floor
+                checks for postpaid). Per-customer overrides on this tenant's billing profiles are
+                inert for the same reason.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4">
             <Controller
