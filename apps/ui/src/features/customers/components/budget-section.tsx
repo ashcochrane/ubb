@@ -49,7 +49,7 @@ export function BudgetSection({ customerId }: { customerId: string }) {
     resolver: zodResolver(budgetSchema),
     defaultValues: {
       cap: "",
-      enforce_mode: "advisory",
+      enforce_mode: "alert_only",
       hard_stop_pct: "100",
       alert_levels: "",
       fail_closed: false,
@@ -160,15 +160,15 @@ export function BudgetSection({ customerId }: { customerId: string }) {
                   <Select
                     value={form.watch("enforce_mode")}
                     onValueChange={(value) =>
-                      form.setValue("enforce_mode", value ?? "advisory")
+                      form.setValue("enforce_mode", value ?? "alert_only")
                     }
                   >
                     <SelectTrigger className="w-full" aria-label="Enforce mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="advisory">Advisory</SelectItem>
-                      <SelectItem value="enforcing">Enforcing</SelectItem>
+                      <SelectItem value="alert_only">Alert only</SelectItem>
+                      <SelectItem value="blocking">Blocking</SelectItem>
                     </SelectContent>
                   </Select>
                 )}

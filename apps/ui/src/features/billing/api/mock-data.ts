@@ -37,7 +37,7 @@ export function buildDailyRows(): RevenueDailyRow[] {
 
 export const INITIAL_BUDGET: BudgetConfig = {
   cap_micros: 2_500_000_000, // $2,500 monthly cap
-  enforce_mode: "advisory",
+  enforce_mode: "alert_only",
   hard_stop_pct: 120,
   alert_levels: [50, 80, 100],
   fail_closed: false,

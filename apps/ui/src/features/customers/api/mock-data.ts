@@ -477,7 +477,7 @@ export const MOCK_GRANTS: Record<string, GrantOut[]> = {
 export const MOCK_BUDGETS: Record<string, BudgetConfigOut> = {
   [CUS_ACME]: {
     cap_micros: 500_000_000,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
     hard_stop_pct: 100,
     alert_levels: [50, 80, 100],
     fail_closed: false,
@@ -490,14 +490,14 @@ export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
     spend_micros: 231_400_000,
     cap_micros: 500_000_000,
     pct: 46.3,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
   },
   [CUS_LUNA]: {
     period: "2026-07",
     spend_micros: 55_900_000,
     cap_micros: 0,
     pct: 0,
-    enforce_mode: "advisory",
+    enforce_mode: "alert_only",
   },
 };
 
