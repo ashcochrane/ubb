@@ -52,10 +52,25 @@ any provider-book rate on the same metric — not a bug, but a sharp edge worth 
 writing overrides. Pinned by
 `test_dimension_invariants.py::test_book_tier_dominates_rate_specificity`.
 
+**D8's `key` is renameable in principle, but there is no rename path.** The design doc (D8)
+declares `key` a mutable display label — "the slot is identity" — but `DimensionService.declare`
+never implements a rename: it looks an existing def up **by key**, so a genuinely new key always
+takes the create branch, not an update-in-place. There is no `PATCH`/`PUT` verb, no service
+method, no anything that says "keep this slot's history, just call it something else now."
+Attempting to *simulate* a rename by declaring a fresh key bound to a slot an old key still holds
+hits the same-slot collision Important-4 (final-fixes wave, 2026-07-27) fixed: previously an
+uncaught `IntegrityError` on `uq_dimension_def_slot` (500), now a `DimensionError` (422) —
+loud and correct, but still a rejection, not a rename. A real rename path is unbuilt work, not
+a design gap covered by an existing invariant.
+
 ## Consequences
 
-- `tags` becomes what its docstring always claimed: free-form labels, never grouped, never
-  priced.
+- `tags` is never a pricing selector — the dimension registry (`dim1`..`dim6`) is the only
+  thing a `Rate` can select on. Tags remain available as ad-hoc labels in three live places
+  that predate and survive this ADR: `?tag_key=` on `/analytics/usage`, `tag_key` on
+  `/margin/by-dimension`, and `usage_line_item_group_by="tag:<key>"` driving postpaid invoice
+  line labels (`apps/metering/queries.py:443`) — "never grouped" was never quite true; "never
+  priced" is the invariant that actually holds.
 - A bounded keyspace lets `CardCache` key on dimensions, so dimension-bearing events are
   cacheable for the first time.
 - A seventh tenant axis requires a migration. Deliberate: six is generous, and adding
@@ -86,8 +101,11 @@ so they don't vanish silently (see task-17 report for full triage):
   unrecognized scope string is accepted rather than rejected at the door.
 - `TaskType.key` is a `SlugField` on the model but `TaskTypeIn.key` is a plain `str` in the
   API schema, so slug format is enforced nowhere on the write path.
-- The SDK's hand-written pricing methods still POST the pre-reshape `dimensions=`/
-  `product_id` shape when creating a rate. Pydantic silently drops unknown fields, so an
-  SDK-created rate lands with all-wildcard selectors instead of erroring — the failure mode
-  changed from loud (415/422) to silent (a rate that matches everything). Fixing the SDK's
-  pricing surface for the new selector shape is real debt, out of scope here.
+- The SDK's hand-written pricing methods (`MeteringClient.create_rate_card`) still POST the
+  pre-reshape `dimensions=`/`product_id` shape when creating a rate. Pydantic does silently
+  drop the unknown `dimensions`/`product_id` fields, but the call still 422s loudly, because
+  `BookIn.key` is a required field the SDK method never sends — not a silent match-everything
+  rate. The ship gate is the same (an SDK caller on the old shape cannot create a book-scoped
+  rate at all today), but the failure mode is loud-and-immediate (422 on every call), not a
+  quietly wrong rate landing in production. Fixing the SDK's pricing surface for the new
+  book/rate/publish/assign shape is real debt, out of scope here.
