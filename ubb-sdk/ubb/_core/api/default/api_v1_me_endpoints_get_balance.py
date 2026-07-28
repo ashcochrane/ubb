@@ -60,7 +60,27 @@ def sync_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[MeBalanceResponse]:
-    """ Get Balance
+    r""" Get Balance
+
+     A pooled seat's balance IS the billing owner's (Task 9 finding B):
+    Task 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on
+    a seat id at all, and ``start_top_up`` pins every top-up's credit to
+    ``customer.resolve_billing_owner()`` — so a seat's OWN wallet row can
+    never exist, even right after that seat pays. Reading ``customer``
+    directly here used to 404 into a fabricated ``balance_micros: 0`` that
+    never changed no matter how much the seat topped up. Resolve to the
+    owner instead, exactly like the tenant surface's GET
+    /billing/customers/{id}/balance, and disclose ownership
+    (``is_pooled_seat`` / ``billing_owner_external_id``, the same two
+    fields that surface already returns) so the widget can label the number
+    \"your business's balance\" rather than implying it is the seat's own.
+
+    This does NOT extend to /me/grants or /me/transactions below: those are
+    ITEMIZED lists (individual lots/lines with amounts and timing), and
+    resolving them to the owner would show one seat every sibling seat's
+    financial activity — the exact leak their docstrings are written to
+    avoid. A balance is one aggregate number, not sibling-attributed detail,
+    so disclosing it does not cross the same privacy line.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -86,7 +106,27 @@ def sync(
     client: AuthenticatedClient,
 
 ) -> MeBalanceResponse | None:
-    """ Get Balance
+    r""" Get Balance
+
+     A pooled seat's balance IS the billing owner's (Task 9 finding B):
+    Task 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on
+    a seat id at all, and ``start_top_up`` pins every top-up's credit to
+    ``customer.resolve_billing_owner()`` — so a seat's OWN wallet row can
+    never exist, even right after that seat pays. Reading ``customer``
+    directly here used to 404 into a fabricated ``balance_micros: 0`` that
+    never changed no matter how much the seat topped up. Resolve to the
+    owner instead, exactly like the tenant surface's GET
+    /billing/customers/{id}/balance, and disclose ownership
+    (``is_pooled_seat`` / ``billing_owner_external_id``, the same two
+    fields that surface already returns) so the widget can label the number
+    \"your business's balance\" rather than implying it is the seat's own.
+
+    This does NOT extend to /me/grants or /me/transactions below: those are
+    ITEMIZED lists (individual lots/lines with amounts and timing), and
+    resolving them to the owner would show one seat every sibling seat's
+    financial activity — the exact leak their docstrings are written to
+    avoid. A balance is one aggregate number, not sibling-attributed detail,
+    so disclosing it does not cross the same privacy line.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -107,7 +147,27 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[MeBalanceResponse]:
-    """ Get Balance
+    r""" Get Balance
+
+     A pooled seat's balance IS the billing owner's (Task 9 finding B):
+    Task 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on
+    a seat id at all, and ``start_top_up`` pins every top-up's credit to
+    ``customer.resolve_billing_owner()`` — so a seat's OWN wallet row can
+    never exist, even right after that seat pays. Reading ``customer``
+    directly here used to 404 into a fabricated ``balance_micros: 0`` that
+    never changed no matter how much the seat topped up. Resolve to the
+    owner instead, exactly like the tenant surface's GET
+    /billing/customers/{id}/balance, and disclose ownership
+    (``is_pooled_seat`` / ``billing_owner_external_id``, the same two
+    fields that surface already returns) so the widget can label the number
+    \"your business's balance\" rather than implying it is the seat's own.
+
+    This does NOT extend to /me/grants or /me/transactions below: those are
+    ITEMIZED lists (individual lots/lines with amounts and timing), and
+    resolving them to the owner would show one seat every sibling seat's
+    financial activity — the exact leak their docstrings are written to
+    avoid. A balance is one aggregate number, not sibling-attributed detail,
+    so disclosing it does not cross the same privacy line.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -133,7 +193,27 @@ async def asyncio(
     client: AuthenticatedClient,
 
 ) -> MeBalanceResponse | None:
-    """ Get Balance
+    r""" Get Balance
+
+     A pooled seat's balance IS the billing owner's (Task 9 finding B):
+    Task 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on
+    a seat id at all, and ``start_top_up`` pins every top-up's credit to
+    ``customer.resolve_billing_owner()`` — so a seat's OWN wallet row can
+    never exist, even right after that seat pays. Reading ``customer``
+    directly here used to 404 into a fabricated ``balance_micros: 0`` that
+    never changed no matter how much the seat topped up. Resolve to the
+    owner instead, exactly like the tenant surface's GET
+    /billing/customers/{id}/balance, and disclose ownership
+    (``is_pooled_seat`` / ``billing_owner_external_id``, the same two
+    fields that surface already returns) so the widget can label the number
+    \"your business's balance\" rather than implying it is the seat's own.
+
+    This does NOT extend to /me/grants or /me/transactions below: those are
+    ITEMIZED lists (individual lots/lines with amounts and timing), and
+    resolving them to the owner would show one seat every sibling seat's
+    financial activity — the exact leak their docstrings are written to
+    avoid. A balance is one aggregate number, not sibling-attributed detail,
+    so disclosing it does not cross the same privacy line.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

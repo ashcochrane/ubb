@@ -33,6 +33,7 @@ from .balance_response import BalanceResponse
 from .book_in import BookIn
 from .book_out import BookOut
 from .budget_config_in import BudgetConfigIn
+from .budget_config_in_enforce_mode import BudgetConfigInEnforceMode
 from .budget_config_out import BudgetConfigOut
 from .budget_status_out import BudgetStatusOut
 from .business_margin_out import BusinessMarginOut
@@ -235,6 +236,7 @@ __all__ = (
     "BookIn",
     "BookOut",
     "BudgetConfigIn",
+    "BudgetConfigInEnforceMode",
     "BudgetConfigOut",
     "BudgetStatusOut",
     "BusinessMarginOut",

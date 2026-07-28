@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.budget_config_in_enforce_mode import BudgetConfigInEnforceMode
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -26,14 +27,14 @@ class BudgetConfigIn:
         Attributes:
             cap_micros (int):
             alert_levels (list[int] | None | Unset):
-            enforce_mode (str | Unset):  Default: 'alert_only'.
+            enforce_mode (BudgetConfigInEnforceMode | Unset):  Default: BudgetConfigInEnforceMode.ALERT_ONLY.
             fail_closed (bool | Unset):  Default: False.
             hard_stop_pct (int | Unset):  Default: 100.
      """
 
     cap_micros: int
     alert_levels: list[int] | None | Unset = UNSET
-    enforce_mode: str | Unset = 'alert_only'
+    enforce_mode: BudgetConfigInEnforceMode | Unset = BudgetConfigInEnforceMode.ALERT_ONLY
     fail_closed: bool | Unset = False
     hard_stop_pct: int | Unset = 100
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -55,7 +56,10 @@ class BudgetConfigIn:
         else:
             alert_levels = self.alert_levels
 
-        enforce_mode = self.enforce_mode
+        enforce_mode: str | Unset = UNSET
+        if not isinstance(self.enforce_mode, Unset):
+            enforce_mode = self.enforce_mode.value
+
 
         fail_closed = self.fail_closed
 
@@ -103,7 +107,15 @@ class BudgetConfigIn:
         alert_levels = _parse_alert_levels(d.pop("alert_levels", UNSET))
 
 
-        enforce_mode = d.pop("enforce_mode", UNSET)
+        _enforce_mode = d.pop("enforce_mode", UNSET)
+        enforce_mode: BudgetConfigInEnforceMode | Unset
+        if isinstance(_enforce_mode,  Unset):
+            enforce_mode = UNSET
+        else:
+            enforce_mode = BudgetConfigInEnforceMode(_enforce_mode)
+
+
+
 
         fail_closed = d.pop("fail_closed", UNSET)
 
