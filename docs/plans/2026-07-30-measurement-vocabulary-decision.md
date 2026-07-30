@@ -648,6 +648,9 @@ per-slot single-column indexes dropped in favour of composites (§9).
   new slot columns, six index drops, and the `usage_metrics` → `measurements` wire rename.
 - **#156/#157 (Code Builder)** — the generator now has an enumerable contract per Event Type, and
   `source_path` is its input for emitting the provider-response mapping.
+- **#165 (`UsageEvent` does two jobs)** — raised by this decision. §7.2's rule is what exposes the
+  seam: currency belongs to the economic posting, not to the record of what happened. Until #165
+  lands, §7.3's restoration of `UsageEvent.currency` stands.
 
 ---
 
@@ -657,9 +660,10 @@ per-slot single-column indexes dropped in favour of composites (§9).
   cost and earned* (`provider_cost_micros`, `billed_cost_micros` — monetary). §7.2's rule exposes the
   seam: the currency belongs to the economic posting, not to the measurement record. #139 already
   created a first-class `Charge` projected onto a marked usage posting, so half the seam exists.
-  **Splitting measurement-record from economic-posting is a larger structural move than #145 should
-  decide, and it needs its own ticket.** Until it exists, `UsageEvent` owns money and therefore stores
-  its currency.
+  Splitting measurement-record from economic-posting is a larger structural move than #145 should
+  decide, and it is **raised as [#165](https://github.com/ashcochrane/ubb/issues/165)** (blocked by
+  #147, since what a posting must say about *unknown* revenue determines whether a separate record is
+  needed at all). Until that lands, `UsageEvent` owns money and therefore stores its currency per §7.2.
 - **FX is deferred, not designed.** A tenant whose supplier bills in a foreign currency maintains
   converted rates by hand, and recorded COGS drifts from actual as rates move. The future feature
   needs native *and* reporting amounts plus a snapshotted conversion — not a currency column on every
