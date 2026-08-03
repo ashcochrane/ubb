@@ -549,7 +549,7 @@ than proposed freely.
 | Name | Assessment |
 |---|---|
 | **`Posting`** (model, replacing `UsageEvent`) | **R2 — one canonical public term per concept.** See §11.1. |
-| **`PostingMeasurement`** (model) | Repo convention is singular model names (`UsageEvent`, `Refund`, `WalletTransaction`, `RawIngestEvent`). Table `ubb_posting_measurement` under #154 §6.3's rule; 24 chars, well inside the 63 limit; no collision across the 58 existing models. |
+| **`PostingMeasurement`** (model) | Repo convention is singular model names (`UsageEvent`, `Refund`, `WalletTransaction`, `RawIngestEvent`). Table `ubb_posting_measurement` under #154 §6.3's rule; **23 chars**, well inside Postgres's 63; **verified: no `ubb_posting*` table exists today**, so neither it nor `ubb_posting` collides with any of the 60 `db_table` declarations in the tree. |
 | **`measurements_status`** | R1 — no unit suffix involved. Parallels `costing_status` and `pricing_status` exactly, which is the point: three statuses, one naming shape. |
 | `available` / `pruned` / `not_applicable` | `not_applicable` deliberately reuses #148 §4.4's word for the same meaning — *this was never going to have one* — rather than coining a synonym. |
 | **`prunable_at`** | R6 does not apply (not a configured maximum). It is a timestamp naming the moment a permission begins, matching `effective_at`/`recorded_at`. |
