@@ -15,7 +15,10 @@ LocMemCache — gating/budget tests need cross-process cache semantics). Run eve
 ## Layout
 
 - Tests live in `apps/<app>/tests/test_*.py` (and nested module dirs, e.g.
-  `apps/platform/customers/tests/`). No top-level `tests.py`.
+  `apps/platform/customers/tests/`). No top-level `tests.py`. The composition
+  layer has its own home, `api/v1/tests/`, for what belongs to the assembled
+  surface rather than to one product — the committed spec, the problem+json
+  envelope, the contract gate.
 - Shared setup helpers live in `tests/_helpers.py` next to the tests that use them (e.g.
   `apps/metering/pricing/tests/_helpers.py:rate_in_default_book`). Reuse them rather than
   re-scaffolding tenants/customers/wallets by hand.

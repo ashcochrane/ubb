@@ -3,17 +3,15 @@
 # The sibling of oasdiff-err-ignore.txt, which carries the full rules; read that
 # header first. In short: the gate (`python openapi/contract_gate.py`) compares
 # the immutable `api-v1-launch` tag against the working tree, entries are
-# GENERATED and never hand-typed (`--baseline main --emit`), human metadata
+# GENERATED and never hand-typed (`--baseline origin/main --emit`), human metadata
 # belongs on `#` comment lines, and this file cannot reach zero until slice 8
 # tags a new baseline — which makes it the opposite of the implementation-rule
 # migration ledgers, not another one of them.
 #
 # WARN-level findings ONLY. `--warn-ignore` filters by level before matching
-# text, so an ERR-level line here suppresses nothing at all. That is not
-# hypothetical: this file was empty until the 2026-07-27 final-fixes wave
-# because the original hand-derivation put seven of the WARN-level lines below
-# into the ERR file instead, where they silently did nothing. The gate now
-# reports any entry that suppresses nothing.
+# text, so an ERR-level line here suppresses nothing at all — and this file was
+# empty until 2026-07-27 precisely because the lines below were misfiled that
+# way. The gate now reports any entry that suppresses nothing.
 
 # 2026-07-27 unified dimension model (#131). PRE-LIVE LANE —
 # docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005. Three

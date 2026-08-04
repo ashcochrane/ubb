@@ -32,6 +32,9 @@ _SPEC.loader.exec_module(contract_gate)
 
 ERR, WARN = contract_gate.LEVEL_ERR, contract_gate.LEVEL_WARN
 
+HTTP_METHODS = frozenset(
+    {"GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"})
+
 
 def finding(operation="GET", path="/api/v1/margin/", text="api path removed "
             "without deprecation", level=ERR):
@@ -169,8 +172,20 @@ class TestReview:
         baseline can judge an entry dead."""
         report = contract_gate.review(
             [], err_entries=[(1, "GET /api/v1/margin/ api path removed")],
-            warn_entries=[], check_entries=False)
+            warn_entries=[], report_inert=False)
         assert report.inert == []
+        assert report.ok
+
+    def test_findings_below_warn_are_not_breaking_changes(self):
+        """`oasdiff breaking` reports nothing below WARN, and there is no
+        ignore file at a lower level — so a finding the severity-levels file
+        downgraded to `info` (the ADR-003 open-enum stance: a new response-enum
+        value is additive) must be skipped, never treated as an unreviewed
+        break the gate can never be made to pass."""
+        report = contract_gate.review(
+            [finding(text="added the new optional response property `x`",
+                     level=1)], err_entries=[], warn_entries=[])
+        assert report.unreviewed == []
         assert report.ok
 
     def test_one_entry_may_cover_several_findings(self):
@@ -197,7 +212,7 @@ class TestCommittedSuppressionFiles:
         assert entries, f"{name} has no entries — did the baseline move?"
         for lineno, entry in entries:
             operation, _, rest = entry.partition(" ")
-            assert operation in contract_gate.HTTP_METHODS, (
+            assert operation in HTTP_METHODS, (
                 f"{name}:{lineno} is not a generated finding — human metadata "
                 f"belongs on a `#` comment line: {entry!r}")
             assert rest.startswith("/api/v1/"), f"{name}:{lineno}: {entry!r}"
@@ -220,19 +235,32 @@ class TestCiWiring:
     """
 
     def setup_method(self):
-        self.ci = (GIT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-            encoding="utf-8")
+        """The `contract:` job only.
+
+        Scoped by indentation rather than parsed: PyYAML is not in
+        requirements.lock.txt, and another job may legitimately mention
+        `base_ref` or carry its own tool pin without reddening this gate.
+        """
+        lines = (GIT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8").splitlines()
+        start = lines.index("  contract:")
+        rest = lines[start + 1:]
+        end = next((i for i, line in enumerate(rest)
+                    if line.startswith("  ") and not line.startswith("   ")
+                    and line.strip()), len(rest))
+        self.job = "\n".join(lines[start:start + 1 + end])
 
     def test_the_breaking_gate_runs_through_the_committed_script(self):
-        assert "openapi/contract_gate.py" in self.ci
+        assert "python openapi/contract_gate.py" in self.job
 
-    def test_ci_does_not_pin_its_own_oasdiff_version(self):
+    def test_the_contract_job_does_not_pin_its_own_oasdiff_version(self):
         """The pin lives in contract_gate.py; CI reads it from there, so the
         version CI installs cannot drift from the version the gate expects."""
-        assert "OASDIFF_VERSION: " not in self.ci
+        assert "OASDIFF_VERSION:" not in self.job
 
     def test_the_breaking_gate_does_not_compare_against_the_base_branch(self):
-        assert "github.base_ref" not in self.ci
+        assert "base_ref" not in self.job
 
     def test_tags_are_fetched_so_the_baseline_resolves(self):
-        assert "fetch-tags: true" in self.ci
+        assert "fetch-tags: true" in self.job
+        assert "fetch-depth: 0" in self.job

@@ -5,11 +5,11 @@
 # answers one question: has every break since the contract was published been
 # reviewed? Each entry below is one break that has.
 #
-# THREE RULES. Each has already been broken once, at real cost:
+# THREE RULES — the reasoning behind each is in openapi/README.md:
 #
 #  1. Entries are GENERATED, never hand-typed:
-#         python openapi/contract_gate.py --baseline main --emit
-#     Hand-derivation put seven WARN-level lines in this file, where
+#         python openapi/contract_gate.py --baseline origin/main --emit
+#     Hand-derivation once put seven WARN-level lines in this file, where
 #     `--err-ignore` silently did nothing for them, and missed two ERR findings
 #     entirely. An entry that suppresses nothing now turns the gate red.
 #  2. ERR-level findings ONLY — WARN-level ones live in the sibling
@@ -26,7 +26,11 @@
 # never moved or deleted. This is a DIFFERENT MECHANISM from the
 # implementation-rule migration ledgers, which are seeded with today's known
 # violations and must shrink to empty by slice 8. Growing-and-intentional vs
-# shrinking-and-defective — do not conflate them, and do not "tidy" this file.
+# shrinking-and-defective — do not conflate them.
+#
+# So never delete an entry to make this file shorter. Delete one only when the
+# gate reports it INERT, which means it no longer describes a real break and has
+# become a lie; regenerate rather than edit it by hand.
 #
 # WHAT MAY BE ADDED. Because the baseline *is* the launch tag, every entry here
 # is by construction a post-launch break; the pre-launch lane that the old
