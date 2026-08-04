@@ -1,84 +1,91 @@
-# 78 contract big-bang (pre-launch lane; no external consumers — #63).
-# Money-moving top-ups gain a required idempotency_key body field:
-POST /api/v1/billing/customers/{customer_id}/top-up added the new required request property `idempotency_key`
-POST /api/v1/me/top-up added the new required request property `idempotency_key`
-# Bare-array entity lists adopt the one cursor envelope {data, next_cursor, has_more}:
-GET /api/v1/billing/customers/{customer_id}/usage-invoices the response's body `type` changed from `array<object>` to `object` for status `200`
-GET /api/v1/metering/pricing/rate-cards the response's body `type` changed from `array<object>` to `object` for status `200`
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates the response's body `type` changed from `array<object>` to `object` for status `200`
-# Batch + async ingest converge on one verdict field set (accepted/rejected counters):
-POST /api/v1/metering/usage/batch removed the required property `failed` from the response with the `200` status
-POST /api/v1/metering/usage/batch removed the required property `succeeded` from the response with the `200` status
+# Reviewed contract breaks, ERR level — cumulative since `api-v1-launch`.
+#
+# The gate (`python openapi/contract_gate.py`, run by CI) compares the spec at
+# the immutable `api-v1-launch` tag against the working tree. So this file
+# answers one question: has every break since the contract was published been
+# reviewed? Each entry below is one break that has.
+#
+# THREE RULES. Each has already been broken once, at real cost:
+#
+#  1. Entries are GENERATED, never hand-typed:
+#         python openapi/contract_gate.py --baseline main --emit
+#     Hand-derivation put seven WARN-level lines in this file, where
+#     `--err-ignore` silently did nothing for them, and missed two ERR findings
+#     entirely. An entry that suppresses nothing now turns the gate red.
+#  2. ERR-level findings ONLY — WARN-level ones live in the sibling
+#     oasdiff-warn-ignore.txt. The two flags filter by level before matching
+#     text, so a line in the wrong file is a no-op, not a near-miss.
+#  3. Human metadata belongs on `#` comment lines: slice, date, pull request,
+#     decision references, and why the break is accepted. A non-comment line
+#     that is not a generated finding matches nothing, and the gate says so.
+#
+# THIS FILE CANNOT REACH ZERO while the baseline is `api-v1-launch`. The
+# differences from that tag are real and intentional, and they accumulate as
+# each slice lands. It clears only when slice 8 tags a NEW baseline and the gate
+# is pointed at it (migration/cutover decision §7.5); `api-v1-launch` itself is
+# never moved or deleted. This is a DIFFERENT MECHANISM from the
+# implementation-rule migration ledgers, which are seeded with today's known
+# violations and must shrink to empty by slice 8. Growing-and-intentional vs
+# shrinking-and-defective — do not conflate them, and do not "tidy" this file.
+#
+# WHAT MAY BE ADDED. Because the baseline *is* the launch tag, every entry here
+# is by construction a post-launch break; the pre-launch lane that the old
+# `LAUNCH TAG BOUNDARY` marker separated cannot appear in this comparison at
+# all, so the marker is gone. Its 20 pre-tag entries (#78, #86) went with it:
+# the tag already contains those changes, so they matched nothing and the gate
+# reported them inert. They remain in git history (see #195, which installed the
+# cumulative comparison). A NEW entry is permitted only:
+#   - in the PRE-LIVE LANE — no tenant is integrated against v1, so the break is
+#     hand-coordinated with the one known consumer. docs/api-compatibility.md
+#     carries the dated note and names the day it is deleted; the re-model's
+#     licence is #137 constraint 1, reaffirmed by migration/cutover §7.1; or
+#   - as evidence of an ADR-003 §4 DEPRECATION already in flight: `deprecated:
+#     true` on the operation, a runtime `Sunset` header (register the route in
+#     api/v1/deprecation.py), a dated changelog entry + email announcement, and
+#     at least 90 days' notice (a floor we may raise, never lower).
+# From the first live tenant, only the second remains. A bare removal or rename
+# is a contract breach, not a CI escape hatch. See docs/api-compatibility.md.
 
-# 86 Stage-5 final sweep (pre-launch lane; the last free breaks — ADR-003 §5).
-# Duplicate tenant billing routes removed; canonical home is the tenant mount
-# (GET /api/v1/tenant/billing-periods, .../invoices):
-GET /api/v1/billing/tenant/billing-periods api path removed without deprecation
-GET /api/v1/billing/tenant/invoices api path removed without deprecation
-# Margin routes gain an explicit /customers segment, ending the root-path and
-# bare-{customer_id} shadowing of the mount's named subpaths:
-GET /api/v1/margin/ api path removed without deprecation
-GET /api/v1/margin/{customer_id} api path removed without deprecation
-GET /api/v1/margin/{customer_id}/trend api path removed without deprecation
-# Rate retire route re-nested under its book so the path noun (rates) agrees
-# with the identifier it takes (a rate id), matching GET/POST .../{book_id}/rates:
-DELETE /api/v1/metering/pricing/rate-cards/{card_id} api path removed without deprecation
-# Webhook config surface de-stuttered: the legacy "webhooks/config/" mount plus
-# the router's own /configs collection made /webhooks/config/configs; now
-# /api/v1/webhooks/configs:
-GET /api/v1/webhooks/config/configs api path removed without deprecation
-POST /api/v1/webhooks/config/configs api path removed without deprecation
-DELETE /api/v1/webhooks/config/configs/{config_id} api path removed without deprecation
-PATCH /api/v1/webhooks/config/configs/{config_id} api path removed without deprecation
-GET /api/v1/webhooks/config/configs/{config_id}/deliveries api path removed without deprecation
-POST /api/v1/webhooks/config/configs/{config_id}/rotate-secret api path removed without deprecation
+# 2026-07-28 plan as a kernel concept (#129, PR ca4f40b). PRE-LIVE LANE.
+#
+# RECORDED RETROSPECTIVELY BY #195, and the reason that ticket exists. These
+# seven breaks were never reviewed: CI's `contract` job went red on #129 with
+# exactly these findings, the pull request was merged anyway, and no later
+# comparison could ever see them again — each one only looked at the commit
+# before it. Only the cumulative baseline surfaces them.
+#
+# The paths were relocated, not deleted. The plan catalog became a kernel
+# concept mounted at the root and subscription lifecycle moved to the
+# subscriptions mount, so the surface below is live at new addresses:
+#   /api/v1/platform/plans                       -> /api/v1/plans
+#   /api/v1/platform/plans/{key}                 -> /api/v1/plans/{key}
+#   /api/v1/platform/customers/{external_id}/... -> /api/v1/subscriptions/customers/{external_id}/...
+PATCH /api/v1/platform/plans/{key} api path removed without deprecation
+POST /api/v1/platform/customers/{external_id}/seats api path removed without deprecation
+POST /api/v1/platform/customers/{external_id}/subscribe api path removed without deprecation
+POST /api/v1/platform/customers/{external_id}/subscription/cancel api path removed without deprecation
+POST /api/v1/platform/customers/{external_id}/subscription/pause api path removed without deprecation
+POST /api/v1/platform/customers/{external_id}/subscription/resume api path removed without deprecation
+POST /api/v1/platform/plans api path removed without deprecation
 
-# 2026-07-27 unified dimension model (pre-launch lane; no external consumers —
-# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005). Three
+# 2026-07-27 unified dimension model (#131). PRE-LIVE LANE —
+# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005. Three
 # competing spend-attribution mechanisms collapse into one declared, slot-bound
 # vocabulary; `product_id`/`service_id`/`agent_id` and `Rate.dimensions` are
-# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`.
-#
-# ERR-level entries ONLY belong in this file (--err-ignore suppresses ERR
-# findings only; WARN-level findings for this same rework live in the sibling
-# oasdiff-warn-ignore.txt — final-fixes wave, 2026-07-27 unified dimension
-# model plan, Critical 3: this file previously misfiled 7 WARN-level lines
-# here, where --err-ignore silently did nothing for them, and was missing 2
-# ERR-level findings entirely — both corrected by installing oasdiff and
-# running it for real instead of hand-deriving the entry list).
+# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`. The WARN-level findings
+# for this same rework live in oasdiff-warn-ignore.txt.
 #
 # Usage analytics groups by declared dimensions/task_type, not the old by_product bucket:
 GET /api/v1/metering/analytics/usage removed the required property `by_product` from the response with the `200` status
 # Rate write/read contract moves from a JSONB `dimensions` blob + `product_id` to
-# the ten named selector columns (dim1..dim6, task_type, subtask_type already covered above) —
-# both the single-rate create route and the book's rate LIST route carry this:
+# the ten named selector columns (dim1..dim6, task_type, subtask_type) — both the
+# single-rate create route and the book's rate LIST route carry this:
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/dimensions` from the response with the `200` status
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/product_id` from the response with the `200` status
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `dimensions` from the response with the `200` status
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `product_id` from the response with the `200` status
 
-# ============================================================================
-# ===== LAUNCH TAG BOUNDARY — the v1 compatibility contract binds here =====
-# ============================================================================
-# The openapi/v1.json revision tagged at launch (ADR-003 §5) is the public v1
-# contract. Every entry ABOVE this line is a pre-launch free break, coordinated
-# by hand with the one known tenant.
-#
-# From the launch tag onward, a NEW entry BELOW this line is permitted ONLY as
-# evidence of an ADR-003 §4 deprecation already in flight — which requires, in
-# the same or a prior change: `deprecated: true` on the operation in the spec, a
-# runtime `Sunset` header (register the route in api/v1/deprecation.py), a dated
-# changelog entry + email announcement, and at least 90 days' notice (a floor we
-# may raise, never lower). A bare removal or rename below this line is a contract
-# breach, not a CI escape hatch. See docs/api-compatibility.md.
-# ============================================================================
-
-# 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE, not a deprecation:
-# the api-v1-launch tag (2026-07-22) exists, but no tenant is integrated against
-# v1, so these are hand-coordinated pre-launch breaks. That status is recorded
-# explicitly in docs/api-compatibility.md, which also names the day the note is
-# deleted — from the first live tenant, §4's deprecate-then-remove cycle governs
-# and entries below this boundary need real deprecation evidence.
+# 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE, not a deprecation.
 #
 # enforce_mode is constrained to its two real values. The model's `choices` was
 # never enforced (Django does not validate choices on save()), so an
