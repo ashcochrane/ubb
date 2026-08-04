@@ -27,12 +27,12 @@
     --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --mono: ui-monospace, "Cascadia Code", "SF Mono", "Menlo", Consolas, monospace;
 
-    --step--1: 0.75rem;
-    --step-0:  0.875rem;
-    --step-1:  1.0625rem;
-    --step-2:  1.375rem;
-    --step-3:  1.875rem;
-    --step-4:  2.5rem;
+    --fs--1: 0.75rem;
+    --fs-0:  0.875rem;
+    --fs-1:  1.0625rem;
+    --fs-2:  1.375rem;
+    --fs-3:  1.875rem;
+    --fs-4:  2.5rem;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -116,7 +116,7 @@
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: var(--step-0);
+    font-size: var(--fs-0);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
@@ -133,7 +133,7 @@
 
   .eyebrow {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--annot);
@@ -141,7 +141,7 @@
   }
 
   h1 {
-    font-size: var(--step-4);
+    font-size: var(--fs-4);
     line-height: 1.1;
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -150,7 +150,7 @@
   }
 
   .standfirst {
-    font-size: var(--step-1);
+    font-size: var(--fs-1);
     color: var(--ink-2);
     max-width: 62ch;
     margin: 0;
@@ -158,7 +158,7 @@
 
   .meta {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     color: var(--ink-3);
     margin-top: 1.25rem;
     display: flex;
@@ -171,7 +171,7 @@
   section { margin-top: 3.5rem; }
 
   h2 {
-    font-size: var(--step-2);
+    font-size: var(--fs-2);
     font-weight: 600;
     letter-spacing: -0.01em;
     text-wrap: balance;
@@ -179,7 +179,7 @@
   }
 
   h3 {
-    font-size: var(--step-1);
+    font-size: var(--fs-1);
     font-weight: 600;
     margin: 2rem 0 0.5rem;
   }
@@ -229,7 +229,7 @@
   table.contract {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--step-0);
+    font-size: var(--fs-0);
     min-width: 640px;
   }
   table.contract th,
@@ -241,14 +241,14 @@
   }
   table.contract th {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-3);
     border-bottom: 1px solid var(--rule);
     font-weight: 500;
   }
-  table.contract td.never { color: var(--st-stop); font-family: var(--mono); font-size: var(--step--1); }
+  table.contract td.never { color: var(--st-stop); font-family: var(--mono); font-size: var(--fs--1); }
 
   /* ---------- screen switcher ---------- */
 
@@ -267,7 +267,7 @@
 
   .switcher button {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     letter-spacing: 0.02em;
     color: var(--ink-2);
     background: transparent;
@@ -288,14 +288,14 @@
   .screen-head { margin-bottom: 1.25rem; }
   .screen-head .route {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     color: var(--annot);
     letter-spacing: 0.02em;
   }
   .screen-head h2 { margin-top: 0.35rem; }
   .screen-head .answers {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     color: var(--ink-3);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -328,7 +328,7 @@
     border-bottom: 1px solid var(--rule-soft);
     background: var(--fill);
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     color: var(--ink-3);
   }
   .mock-chrome .dot {
@@ -387,13 +387,13 @@
     padding-bottom: 0.75rem;
     margin-bottom: 1rem;
   }
-  .pane-title { font-size: var(--step-1); font-weight: 600; margin: 0; }
-  .pane-sub { font-family: var(--mono); font-size: var(--step--1); color: var(--ink-3); }
+  .pane-title { font-size: var(--fs-1); font-weight: 600; margin: 0; }
+  .pane-sub { font-family: var(--mono); font-size: var(--fs--1); color: var(--ink-3); }
 
   .btn {
     display: inline-block;
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     border: 1px solid var(--rule);
     border-radius: 2px;
     padding: 0.25rem 0.55rem;
@@ -426,7 +426,7 @@
   }
   .tile .value {
     font-family: var(--mono);
-    font-size: var(--step-1);
+    font-size: var(--fs-1);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
@@ -584,7 +584,7 @@
   }
   .rail h4 {
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--annot);
@@ -638,7 +638,7 @@
     text-transform: uppercase;
     color: var(--annot);
   }
-  .q h3 { margin: 0.35rem 0 0.6rem; font-size: var(--step-1); }
+  .q h3 { margin: 0.35rem 0 0.6rem; font-size: var(--fs-1); }
   .q .pos {
     font-family: var(--mono);
     font-size: 0.75rem;
@@ -655,6 +655,16 @@
     margin-top: 0.6rem;
     display: block;
   }
+  .q .verdict {
+    font-family: var(--mono);
+    font-size: 0.71rem;
+    color: var(--st-known);
+    border-top: 1px solid var(--rule-soft);
+    margin-top: 0.7rem;
+    padding-top: 0.5rem;
+    display: block;
+  }
+  .q .verdict strong { letter-spacing: 0.04em; text-transform: uppercase; }
 
   ul.tight { padding-left: 1.1rem; }
   ul.tight li { margin-bottom: 0.35rem; color: var(--ink-2); }
@@ -671,7 +681,7 @@
     border-top: 1px solid var(--rule);
     padding-top: 1.25rem;
     font-family: var(--mono);
-    font-size: var(--step--1);
+    font-size: var(--fs--1);
     color: var(--ink-3);
   }
 
@@ -691,9 +701,10 @@
       pointing at the decision that forces it to be there.
     </p>
     <div class="meta">
-      <span>2026-08-04</span>
+      <span>2026-08-04 · revision 2</span>
       <span>Renders the model decided in #138–#155 + #165</span>
       <span>Contracts: #153 · Rendering: #152</span>
+      <span>Q1–Q4, Q6 accepted · Q5 ruled: declared kinds, explicit instances, observed composition</span>
     </div>
   </header>
 
@@ -767,16 +778,17 @@
 
   <section>
     <h2>The screens</h2>
-    <p class="lede">Six screens. Two are configuration, three are reporting, one is the moment a kind of
-    work is declared.</p>
+    <p class="lede">Seven screens. Three are configuration, three are reporting, one is the moment a kind
+    of work is declared.</p>
 
     <div class="switcher" role="tablist" aria-label="Screens">
       <button role="tab" id="tab-1" aria-controls="screen-1" aria-selected="true">1 · Kinds of work</button>
-      <button role="tab" id="tab-2" aria-controls="screen-2" aria-selected="false">2 · Kind detail</button>
-      <button role="tab" id="tab-3" aria-controls="screen-3" aria-selected="false">3 · Declare</button>
-      <button role="tab" id="tab-4" aria-controls="screen-4" aria-selected="false">4 · Task runs</button>
-      <button role="tab" id="tab-5" aria-controls="screen-5" aria-selected="false">5 · Run detail</button>
-      <button role="tab" id="tab-6" aria-controls="screen-6" aria-selected="false">6 · Spend controls</button>
+      <button role="tab" id="tab-2" aria-controls="screen-2" aria-selected="false">2 · Task kind</button>
+      <button role="tab" id="tab-7" aria-controls="screen-7" aria-selected="false">3 · Subtask kind</button>
+      <button role="tab" id="tab-3" aria-controls="screen-3" aria-selected="false">4 · Declare</button>
+      <button role="tab" id="tab-4" aria-controls="screen-4" aria-selected="false">5 · Task runs</button>
+      <button role="tab" id="tab-5" aria-controls="screen-5" aria-selected="false">6 · Run detail</button>
+      <button role="tab" id="tab-6" aria-controls="screen-6" aria-selected="false">7 · Spend controls</button>
     </div>
 
     <!-- ============ SCREEN 1 ============ -->
@@ -843,11 +855,16 @@
                 </div>
               </div>
 
+              <div class="filters">
+                <span class="f on">Task kinds · 6 <span class="mk">11</span></span>
+                <span class="f">Subtask kinds · 5</span>
+              </div>
+
               <div class="scroller">
                 <table class="grid">
                   <thead>
                     <tr>
-                      <th>Kind of work</th>
+                      <th>Task kind</th>
                       <th>Charging <span class="mk">5</span></th>
                       <th>Ceilings <span class="mk">6</span></th>
                       <th class="num">Tasks</th>
@@ -919,6 +936,64 @@
                 image-render · 12 events waived — a margin rule could not resolve its supplier cost, so
                 no customer was charged and the cost lands as a reported loss. <span class="mk">10</span>
               </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.4rem;">Subtask kinds — the other segment <span class="mk">12</span></p>
+              <div class="scroller">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>Subtask kind</th>
+                      <th>Charging</th>
+                      <th>Ceilings</th>
+                      <th class="num">Subtasks</th>
+                      <th class="num">p95 COGS</th>
+                      <th>Observed inside</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="key">summarise</td>
+                      <td class="dim">inherits parent</td>
+                      <td class="dim">£1.00 · 15m · 1h</td>
+                      <td class="num">3,702</td>
+                      <td class="num">£0.44</td>
+                      <td class="dim">report-generation +2</td>
+                    </tr>
+                    <tr>
+                      <td class="key">enrich-entities</td>
+                      <td class="dim">inherits parent</td>
+                      <td class="dim">£0.75 · 15m · 1h</td>
+                      <td class="num">1,196</td>
+                      <td class="num">£0.31</td>
+                      <td class="dim">report-generation</td>
+                    </tr>
+                    <tr>
+                      <td class="key">render-charts</td>
+                      <td class="dim">inherits parent</td>
+                      <td class="dim">£0.50 · 15m · 1h</td>
+                      <td class="num">1,130</td>
+                      <td class="num">£0.18</td>
+                      <td class="dim">report-generation</td>
+                    </tr>
+                    <tr>
+                      <td class="key">translate</td>
+                      <td class="dim">inherits parent</td>
+                      <td class="dim">£0.60 · 15m · 1h</td>
+                      <td class="num">243</td>
+                      <td class="num">£0.22</td>
+                      <td class="dim">report-generation</td>
+                    </tr>
+                    <tr>
+                      <td class="key">agent_work</td>
+                      <td class="dim">inherits parent</td>
+                      <td><span class="chip s-unknown">£5.00 dominated</span> <span class="mk">13</span></td>
+                      <td class="num">514</td>
+                      <td class="num">£1.04</td>
+                      <td class="dim">report-generation +3</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -927,7 +1002,7 @@
           <h4>Why each element is here</h4>
           <ol>
             <li><span class="n">1</span><div>The aggregate lands, not the run list. A kind of work is the unit a tenant makes decisions about — price, ceiling, whether it is worth selling. A run list answers no question until you already have one.<cite>Q2 · position taken</cite></div></li>
-            <li><span class="n">2</span><div>Synthetic charge postings excluded from every count: a job must not count its own invoice as a unit of work. The measure is <em>recorded operations</em>, never “events”.<cite>#153 §7.2</cite></div></li>
+            <li><span class="n">2</span><div>Synthetic charge postings excluded from every count: a task must not count its own invoice as a unit of work. The measure is <em>recorded operations</em>, never “events”.<cite>#153 §7.2</cite></div></li>
             <li><span class="n">3</span><div>The tenant-wide COGS total is a lower bound whenever any contributing cost is unresolved. “≥” plus the unresolved count, never a bare number.<cite>#151 §10 · #153 §10.5</cite></div></li>
             <li><span class="n">4</span><div>No confident margin may be computed from an incomplete cost total. The tile says <em>Incomplete</em> rather than subtracting a lower bound from revenue and printing the difference.<cite>#153 §8.5</cite></div></li>
             <li><span class="n">5</span><div><code>charging_summary</code> is derived at read time for display only. It is a chip, never a field — nothing on this screen may look editable.<cite>#151 §2.4</cite></div></li>
@@ -936,6 +1011,9 @@
             <li><span class="n">8</span><div>Margin is a bucket-level subtraction and must be able to say four different things. Three of the four appear in this one column deliberately.<cite>#153 §2, §8.5</cite></div></li>
             <li><span class="n">9</span><div>This tenant supplies revenue at customer-period grain, so it is not attributable to a kind of work. That is <code>unavailable_at_requested_grain</code> — a different fact from unknown, and it must not read as zero.<cite>#153 §4 · #141 §8</cite></div></li>
             <li><span class="n">10</span><div>Waived revenue is a visible exposure, not a silent zero. #147 requires it be highly visible; a footer callout is the cheapest place that satisfies that.<cite>#147 §7.3</cite></div></li>
+            <li><span class="n">11</span><div>Task kinds and Subtask kinds are two segments of <em>one</em> registry — <code>TaskType.kind ∈ {task, subtask}</code>, unique on <code>(tenant, kind, key)</code>. Separated in configuration because they are declared, ceilinged and reported independently; not split into two pages, because they are one table.<cite>#154 §3.1 · <code>tasks/models.py:34,45-46</code></cite></div></li>
+            <li><span class="n">12</span><div>A Subtask kind is declared, with its own COGS ceiling and its own required grouping fields. This is where a Subtask ceiling is set — there is no second configuration surface, and the resolution ladder is identical.<cite>owner ruling 2026-08-04 · <code>risk_service.py:21,44-54</code></cite></div></li>
+            <li><span class="n">13</span><div>Advisory dominance warning: this Subtask kind’s default ceiling (£5.00) is at or above the ceiling of a parent kind it runs inside (report-generation, £4.00), so it can never fire — the parent stops the work first. Advisory only; it never refuses.<cite>C′ · rollup is one hop (#140 §6.1, #150 §6.3)</cite></div></li>
           </ol>
         </aside>
       </div>
@@ -984,7 +1062,7 @@
                 <span class="fl">Charging</span>
                 <span class="fv">
                   <span class="input">fixed</span> <span class="dim">· sold once per delivered task</span>
-                  <span class="hint">Steps inherit this and cannot override it.</span>
+                  <span class="hint">Subtasks inherit this and cannot override it.</span>
                 </span>
               </div>
               <div class="callout">
@@ -1051,6 +1129,46 @@
                 supplier cost, so the final p95 may be higher. This describes what the work costs — it is
                 not a recommendation about what to charge. <span class="mk">8</span>
               </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.4rem;">Observed subtask kinds <span class="mk">9</span></p>
+              <span class="pane-sub">Last 30 days · derived from real runtime relationships, never declared</span>
+              <div class="scroller" style="margin-top:0.6rem">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>Subtask kind</th>
+                      <th class="num">Ceiling</th>
+                      <th class="num">Avg per task</th>
+                      <th class="num">Tasks containing</th>
+                      <th class="num">Share of COGS</th>
+                      <th>Dominance <span class="mk">10</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td class="key">summarise</td><td class="num">£1.00</td><td class="num">3.0</td><td class="num">98%</td><td class="num">41%</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">enrich-entities</td><td class="num">£0.75</td><td class="num">1.0</td><td class="num">72%</td><td class="num">12%</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">render-charts</td><td class="num">£0.50</td><td class="num">1.0</td><td class="num">88%</td><td class="num">7%</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">translate</td><td class="num">£0.60</td><td class="num">0.2</td><td class="num">9%</td><td class="num">3%</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">agent_work</td><td class="num">£5.00</td><td class="num">0.4</td><td class="num">18%</td><td class="num">9%</td><td><span class="chip s-unknown">never fires</span></td></tr>
+                    <tr class="rollup"><td>Events attached directly to the task <span class="mk">11</span></td><td class="num dim">—</td><td class="num dim">—</td><td class="num">100%</td><td class="num">28%</td><td class="dim">parent ceiling only</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout">
+                <strong>agent_work</strong> has a £5.00 ceiling inside a task capped at £4.00. Subtask spend
+                rolls up one hop, so the parent stops the work first and this subtask ceiling can never
+                fire. Advisory — nothing is refused. <span class="mk">12</span>
+              </div>
+              <div class="callout info">
+                Σ observed subtask ceilings = £7.85 against a £4.00 task ceiling, so the task ceiling is
+                the binding constraint in aggregate. Were the sum below £4.00, subtask spend alone could
+                never reach the task ceiling.
+              </div>
+              <div class="callout info">
+                No composition is declared. This table is what actually ran — a new subtask kind appearing
+                here is an agent working as intended, not a configuration error. <span class="mk">13</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1059,13 +1177,144 @@
           <h4>Why each element is here</h4>
           <ol>
             <li><span class="n">1</span><div>A first-class object with its own route, not a settings row. It now carries a pricing mode that is snapshotted onto every task, three ceilings with their own inheritance, required grouping fields, and its own economics. A settings table cannot hold a warning, a distribution and a book cross-reference.<cite>Q1 · position taken</cite></div></li>
-            <li><span class="n">2</span><div>The declaration has no publish record and no effective dating — pricing rules got one, this did not. Flipping a live kind of work silently changes the revenue shape of all future jobs, so the surface has to say so at the point of change.<cite>#151 residue, left open deliberately</cite></div></li>
+            <li><span class="n">2</span><div>The declaration has no publish record and no effective dating — pricing rules got one, this did not. Flipping a live kind of work silently changes the revenue shape of all future tasks, so the surface has to say so at the point of change.<cite>#151 residue, left open deliberately</cite></div></li>
             <li><span class="n">3</span><div>The kind of work declares that it is priced as a whole; it never holds the amount. The amount is a work-level line in the customer’s pricing book. Rendering it as an editable field here would be a second home for one number.<cite>#139 §3.1 · #138</cite></div></li>
             <li><span class="n">4</span><div>Q3, answered structurally: the ceiling bounds one unit of work, so it is declared on the kind of work. The other three families bound other subjects and live with them — there is no Limits page.<cite>#150 §2.2, §8.3</cite></div></li>
             <li><span class="n">5</span><div>COGS-denominated only. Customer price is not an invariant of the work, and a fixed-price counter sits at zero until delivery, so it cannot control anything while cost accumulates.<cite>#150 §3.1</cite></div></li>
             <li><span class="n">6</span><div>Ceiling shown against price for fixed kinds — the relative-tightening residue #150 handed here explicitly. This is the only place a tenant can see that their ceiling permits a loss-making delivery.<cite>#150 §17 → #152</cite></div></li>
             <li><span class="n">7</span><div>The distribution answers “what does this kind of task tend to cost us?” and nothing else. One distribution, not a resolved-only series beside a lower-bound series.<cite>#153 §11</cite></div></li>
             <li><span class="n">8</span><div>The sentence is close to verbatim from the decision, because the failure mode is a tenant reading p95 = £3.92 and setting a £4 price while the unresolved 0.7% are exactly the expensive, badly-mapped calls.<cite>#153 §11.2–11.3</cite></div></li>
+            <li><span class="n">9</span><div>Composition is <strong>observed, never declared</strong>. UBB already stores every parent→child pair, so this is derived from what ran. There is no permitted-subtask-kind allowlist in v1, deliberately — an allowlist would make an agent improvising a new subtask kind into a configuration error.<cite>owner ruling 2026-08-04</cite></div></li>
+            <li><span class="n">10</span><div>The dominance column is the reason this panel earns its place. It is arithmetic over two configured numbers, not a new mechanism.<cite>C′</cite></div></li>
+            <li><span class="n">11</span><div>Events may be attached directly to the task without creating a subtask, and that path is a first-class row here rather than a gap. 28% of this kind’s COGS never belongs to a subtask at all.<cite>owner ruling 2026-08-04</cite></div></li>
+            <li><span class="n">12</span><div>Because subtask spend rolls up one hop into the parent, a subtask ceiling at or above its parent’s can never be reached — the parent kills first and cascades downward. Advisory, because the tenant may be about to raise the parent.<cite>#140 §6.1 · #150 §2.5, §6.3</cite></div></li>
+            <li><span class="n">13</span><div>Stated on the surface so nobody reads the table as a contract. It is a lagging indicator: a brand-new kind of work shows nothing here until work has run, which is the accepted cost of not declaring composition.<cite>C′ residue</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 7 (Subtask kind) ============ -->
+    <div class="screen" id="screen-7" role="tabpanel" aria-labelledby="tab-7" hidden>
+      <div class="screen-head">
+        <span class="route">/tasks/kinds/subtask/agent_work</span>
+        <h2>Subtask kind — detail</h2>
+        <span class="answers">Where a Subtask COGS ceiling is set · the generic-kind escape hatch</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks/kinds/subtask/agent_work</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">agent_work <span class="chip s-neutral plain">subtask kind</span> <span class="mk">1</span></p>
+                  <span class="pane-sub">Generic agent work · declared 2026-05-19 · 514 subtasks in July</span>
+                </div>
+                <div><span class="btn">View subtasks →</span></div>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;">Declaration</p>
+              <div class="field">
+                <span class="fl">Charging</span>
+                <span class="fv">
+                  <span class="input locked">inherited from the parent task</span>
+                  <span class="hint">A subtask kind cannot declare a charging mode, and
+                  <code>fixed</code> is refused here at declaration time. <span class="mk">2</span></span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Grouping fields</span>
+                <span class="fv">
+                  <span class="input">agent</span> <span class="btn">+ add</span>
+                  <span class="hint">Required on every subtask of this kind, independently of the parent’s.</span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Display label</span>
+                <span class="fv">
+                  <span class="input locked">optional, per instance</span>
+                  <span class="hint">Free text supplied at start so one generic kind stays readable in a
+                  run. Display only — never grouped, never a filter. <span class="mk">3</span></span>
+                </span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Ceilings <span class="mk">4</span></p>
+              <div class="field">
+                <span class="fl">Supplier COGS</span>
+                <span class="fv">
+                  <span class="input">£5.00</span> <span class="chip s-unknown">dominated</span>
+                  <span class="hint">Tenant default is £10.00.</span>
+                </span>
+              </div>
+              <div class="callout">
+                This ceiling is at or above the ceiling of every task kind it has been observed inside —
+                report-generation £4.00, image-render £1.00. It can never fire: the parent stops the work
+                first. Consider £1.00 or lower, or raise the parents. <span class="mk">5</span>
+              </div>
+              <div class="field">
+                <span class="fl">Silence</span>
+                <span class="fv"><span class="input locked">15 min</span> <span class="chip s-neutral plain">inherited</span></span>
+              </div>
+              <div class="field">
+                <span class="fl">Duration</span>
+                <span class="fv"><span class="input">1 h</span> <span class="chip s-neutral plain">set here</span></span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Observed inside <span class="mk">6</span></p>
+              <div class="scroller">
+                <table class="grid">
+                  <thead><tr><th>Task kind</th><th class="num">Task ceiling</th><th class="num">Subtasks</th><th class="num">Avg per task</th><th>Dominance</th></tr></thead>
+                  <tbody>
+                    <tr><td class="key">report-generation</td><td class="num">£4.00</td><td class="num">231</td><td class="num">0.4</td><td><span class="chip s-unknown">never fires</span></td></tr>
+                    <tr><td class="key">bulk-enrichment</td><td class="num dim">uncapped</td><td class="num">198</td><td class="num">0.5</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">nightly-sync</td><td class="num">£25.00</td><td class="num">62</td><td class="num">4.4</td><td><span class="chip s-known plain">can fire</span></td></tr>
+                    <tr><td class="key">image-render</td><td class="num">£1.00</td><td class="num">23</td><td class="num">0.1</td><td><span class="chip s-unknown">never fires</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="callout info">
+                A generic kind is the sanctioned escape hatch for unpredictable agent work — it keeps the
+                subtask explicit and ceilinged without pretending the shape was known in advance. The
+                alternative is attaching the events straight to the parent task. <span class="mk">7</span>
+              </div>
+              <div class="callout stop">
+                UBB never infers a subtask. If the orchestrator does not start one, the work is the
+                parent’s — no boundary is guessed from event timing or provider calls. <span class="mk">8</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>A subtask kind is a registry row in the same table as a task kind, discriminated by <code>TaskType.kind</code> and unique on <code>(tenant, kind, key)</code>. It gets its own page for the same reason a task kind does — it carries a ceiling, grouping fields and its own economics.<cite><code>tasks/models.py:34,45-46</code></cite></div></li>
+            <li><span class="n">2</span><div><code>pricing_mode</code> is one immutable column, parent-resolved and child-copied, so a subtask never has a say. #151 moved the priced-subtask refusal from the start gate to <em>declaration time</em>, which is exactly what makes this field a locked restatement rather than a control.<cite>#151 §3, §5.4 · narrows #139 §3.3</cite></div></li>
+            <li><span class="n">3</span><div>The optional per-instance display label is what makes one generic kind survive contact with a run detail — without it, six <code>agent_work</code> rows are indistinguishable. Display-only on <code>reason_detail</code>’s precedent, because a free-text value that can be grouped is a cardinality explosion.<cite>owner ruling · #140 §3.3 precedent</cite></div></li>
+            <li><span class="n">4</span><div>Ceilings resolve through the identical ladder as a task’s: the start call may request lower but never higher, else this kind’s default, else the tenant fallback.<cite><code>risk_service.py:21,44-54</code> · #150 §8.3</cite></div></li>
+            <li><span class="n">5</span><div>The dominance warning delivered at the point of configuration rather than in a report — this is the whole of C′. It is advisory and never refuses, because the tenant may be about to raise the parent ceiling instead.<cite>C′ · owner ruling</cite></div></li>
+            <li><span class="n">6</span><div>The inverse of the task kind’s composition panel, and the more useful direction when setting a ceiling: one subtask kind runs inside several parents with different ceilings, so “dominated” is per-parent, not global.<cite>C′</cite></div></li>
+            <li><span class="n">7</span><div>Requiring a registered kind is a declaration-validity rule, not a composition rule — no allowlist decides <em>which</em> kind may run <em>where</em>. The generic kind is what keeps that requirement from fighting dynamic agent behaviour.<cite>owner ruling 2026-08-04</cite></div></li>
+            <li><span class="n">8</span><div>Stated as a hard product rule because the inferring version is the tempting one: UBB can see provider calls and timing, and could guess boundaries. Guessed boundaries would put spend enforcement on a structure the tenant never asserted.<cite>owner ruling 2026-08-04</cite></div></li>
           </ol>
         </aside>
       </div>
@@ -1109,6 +1358,14 @@
               </div>
 
               <div class="field">
+                <span class="fl">Registering <span class="mk">1</span></span>
+                <span class="fv">
+                  <span class="input">task kind</span> <span class="dim">/ subtask kind</span>
+                  <span class="hint">One registry, two kinds. Choosing <strong>subtask kind</strong>
+                  removes the charging question below — a subtask inherits its parent’s.</span>
+                </span>
+              </div>
+              <div class="field">
                 <span class="fl">Key</span>
                 <span class="fv"><span class="input">competitor-scan</span></span>
               </div>
@@ -1118,7 +1375,7 @@
               </div>
 
               <div class="field">
-                <span class="fl">Charging <span class="mk">1</span></span>
+                <span class="fl">Charging <span class="mk">2</span></span>
                 <span class="fv">
                   <span class="input">— choose —</span>
                   <span class="hint">
@@ -1129,12 +1386,12 @@
               </div>
               <div class="callout stop">
                 Required. There is no defensible default for a tenant that bills through UBB: “per event”
-                charges every child call of a job that was meant to be sold once, and “fixed” with no
-                resolvable price refuses the start. <span class="mk">2</span>
+                charges every child call of a task that was meant to be sold once, and “fixed” with no
+                resolvable price refuses the start. <span class="mk">3</span>
               </div>
 
               <div class="field">
-                <span class="fl">Supplier COGS ceiling <span class="mk">3</span></span>
+                <span class="fl">Supplier COGS ceiling <span class="mk">4</span></span>
                 <span class="fv">
                   <span class="input">— empty —</span>
                   <span class="hint">or <span class="btn">Declare uncapped</span></span>
@@ -1143,7 +1400,7 @@
               <div class="callout stop">
                 <strong>422 · uncapped_not_declared</strong><br>
                 A kind of work must either carry a ceiling or declare itself uncapped. Leaving it blank is
-                not an answer — it used to mean “unlimited spend” silently. <span class="mk">4</span>
+                not an answer — it used to mean “unlimited spend” silently. <span class="mk">5</span>
               </div>
 
               <div class="field">
@@ -1163,10 +1420,11 @@
         <aside class="rail">
           <h4>Why each element is here</h4>
           <ol>
-            <li><span class="n">1</span><div>The kind of work is where a job learns it is fixed-price. #147 said the mode is snapshotted but never said where it comes from; #151 put it here.<cite>#151 §4.1</cite></div></li>
-            <li><span class="n">2</span><div>#155 recorded that there is no defensible default for a full-billing tenant. A form that pre-selects one is making a commercial decision on the tenant’s behalf.<cite>#155 → #152 · #151 §4</cite></div></li>
-            <li><span class="n">3</span><div>The coverage gate that used to force this question was deleted with the whole <code>Unpriceable</code> path, so this declaration is the only thing left asking it.<cite>#146 · #150 §8.2</cite></div></li>
-            <li><span class="n">4</span><div>Uncapped stays legal but must be declared. Rendering the refusal in the wireframe because it is the one place the console gains a hard stop the API did not previously have.<cite>#150 §8.1</cite></div></li>
+            <li><span class="n">1</span><div>One registry, two kinds — so the choice is the first field, not a separate page. It is also the field that decides whether the charging question is asked at all, and <code>fixed</code> is refused outright on a subtask kind.<cite><code>TaskType.kind</code> · #151 §5.4</cite></div></li>
+            <li><span class="n">2</span><div>The kind of work is where a task learns it is fixed-price. #147 said the mode is snapshotted but never said where it comes from; #151 put it here.<cite>#151 §4.1</cite></div></li>
+            <li><span class="n">3</span><div>#155 recorded that there is no defensible default for a full-billing tenant. A form that pre-selects one is making a commercial decision on the tenant’s behalf.<cite>#155 → #152 · #151 §4</cite></div></li>
+            <li><span class="n">4</span><div>The coverage gate that used to force this question was deleted with the whole <code>Unpriceable</code> path, so this declaration is the only thing left asking it.<cite>#146 · #150 §8.2</cite></div></li>
+            <li><span class="n">5</span><div>Uncapped stays legal but must be declared. Rendering the refusal in the wireframe because it is the one place the console gains a hard stop the API did not previously have.<cite>#150 §8.1</cite></div></li>
           </ol>
         </aside>
       </div>
@@ -1327,10 +1585,10 @@
         <aside class="rail">
           <h4>Why each element is here</h4>
           <ol>
-            <li><span class="n">1</span><div>Attempts group under the free-text label, because retries are separate attempts under one job label and UBB deliberately does not enforce one charge per label. The parent row is a grouping, not a task.<cite>#140 §7, §11</cite></div></li>
+            <li><span class="n">1</span><div>Attempts group under the free-text label, because retries are separate attempts under one task label and UBB deliberately does not enforce one charge per label. The parent row is a grouping, not a task.<cite>#140 §7, §11</cite></div></li>
             <li><span class="n">2</span><div>Bucket by <code>reason_code</code> from the UBB-shipped closed list. <code>reason_detail</code> is display-only and is never a filter or a group — it is free text and would explode cardinality.<cite>#140 §3.3, §11</cite></div></li>
             <li><span class="n">3</span><div>Six states, each visually distinct. <code>completed</code> now means only “the tenant declared delivery”, and <code>killed</code> means only “UBB stopped it on a spend signal” — so the colour can carry meaning honestly.<cite>#140 §1.1, I1–I2</cite></div></li>
-            <li><span class="n">4</span><div><code>charge_created</code> surfaced per job. It keys on how the job ended, never on status alone.<cite>#140 §11 · #139 §4</cite></div></li>
+            <li><span class="n">4</span><div><code>charge_created</code> surfaced per task. It keys on how the task ended, never on status alone.<cite>#140 §11 · #139 §4</cite></div></li>
             <li><span class="n">5</span><div>Known COGS is below the ceiling but one event is unresolved, so the ceiling state is <code>indeterminate</code> — not “under limit”. The hatched fill is deliberately neither the safe colour nor the breach colour.<cite>#146 §5 · #150 §17</cite></div></li>
             <li><span class="n">6</span><div>Stated on the surface because the temptation is structural: three of the six states are non-delivery and only one of them is a failure.<cite>#140 §11 · #153 §10.4</cite></div></li>
           </ol>
@@ -1423,32 +1681,38 @@
                 <span class="fv"><span class="input locked">nw-weekly-31-a3f9</span> <span class="dim">· claimed permanently</span></span>
               </div>
 
-              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Steps <span class="mk">6</span></p>
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Subtasks · 10 <span class="mk">6</span></p>
               <div class="scroller">
                 <table class="grid">
                   <thead>
                     <tr>
-                      <th>Step</th><th>State</th><th class="num">Known COGS</th><th>Ceiling</th><th>Revenue <span class="mk">7</span></th>
+                      <th>Subtask</th><th>Declared kind <span class="mk">7</span></th><th>State</th><th class="num">Known COGS</th><th>Ceiling</th><th>Revenue <span class="mk">9</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr class="child"><td>fetch-sources</td><td><span class="chip s-known">completed</span></td><td class="num">£0.41</td><td class="dim">—</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>summarise-a</td><td><span class="chip s-known">completed</span></td><td class="num">£0.88</td><td class="dim">44%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>summarise-b</td><td><span class="chip s-known">completed</span></td><td class="num">£0.91</td><td class="dim">46%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>summarise-c</td><td><span class="chip s-known">completed</span></td><td class="num">£0.79</td><td class="dim">40%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>enrich-entities</td><td><span class="chip s-known">completed</span></td><td class="num">≥ £0.44</td><td><span class="chip s-indet">indeterminate</span></td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>translate</td><td><span class="chip s-na">cancelled</span></td><td class="num">£0.12</td><td class="dim">6%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>render-charts</td><td><span class="chip s-known">completed</span></td><td class="num">£0.30</td><td class="dim">15%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>compose</td><td><span class="chip s-known">completed</span></td><td class="num">£0.19</td><td class="dim">10%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>proofread</td><td><span class="chip s-known">completed</span></td><td class="num">£0.11</td><td class="dim">6%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="child"><td>deliver</td><td><span class="chip s-known">completed</span></td><td class="num">£0.05</td><td class="dim">3%</td><td><span class="chip s-na">not applicable</span></td></tr>
-                    <tr class="rollup"><td>Rolled up into tsk_71cd</td><td>—</td><td class="num">≥ £4.20</td><td>84% · indeterminate</td><td>£5.00 on the parent</td></tr>
+                    <tr class="child"><td>sub_a1</td><td class="dim">summarise</td><td><span class="chip s-known">completed</span></td><td class="num">£0.80</td><td class="dim">80%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_a2</td><td class="dim">summarise</td><td><span class="chip s-known">completed</span></td><td class="num">£0.65</td><td class="dim">65%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_a3</td><td class="dim">summarise</td><td><span class="chip s-known">completed</span></td><td class="num">£0.55</td><td class="dim">55%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_b1</td><td class="dim">enrich-entities</td><td><span class="chip s-known">completed</span></td><td class="num">≥ £0.44</td><td><span class="chip s-indet">indeterminate</span></td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_c1</td><td class="dim">render-charts</td><td><span class="chip s-known">completed</span></td><td class="num">£0.30</td><td class="dim">60%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_c2</td><td class="dim">render-charts</td><td><span class="chip s-known">completed</span></td><td class="num">£0.11</td><td class="dim">22%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_d1</td><td class="dim">translate</td><td><span class="chip s-na">cancelled</span></td><td class="num">£0.12</td><td class="dim">20%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_e1 <span class="dim">“competitor cross-check”</span> <span class="mk">8</span></td><td class="dim">agent_work</td><td><span class="chip s-known">completed</span></td><td class="num">£0.41</td><td><span class="chip s-unknown">8% · dominated</span></td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_e2 <span class="dim">“tone pass”</span></td><td class="dim">agent_work</td><td><span class="chip s-known">completed</span></td><td class="num">£0.19</td><td><span class="chip s-unknown">4% · dominated</span></td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>sub_g1</td><td class="dim">summarise</td><td><span class="chip s-known">completed</span></td><td class="num">£0.08</td><td class="dim">8%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>— <span class="dim">attached directly to the task</span> <span class="mk">10</span></td><td class="dim">no subtask</td><td class="dim">—</td><td class="num">£0.55</td><td class="dim">parent only</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="rollup"><td>Rolled up into tsk_71cd</td><td>—</td><td>—</td><td class="num">≥ £4.20</td><td>84% · indeterminate</td><td>£5.00 on the parent</td></tr>
                   </tbody>
                 </table>
               </div>
               <div class="callout info">
-                Containment is exactly one level. A step cannot have steps, so this is a two-level table and
-                never a tree widget. <span class="mk">8</span>
+                Containment is exactly one level. A subtask cannot contain subtasks, so this is a two-level
+                table and never a tree widget. <span class="mk">11</span>
+              </div>
+              <div class="callout stop">
+                Every subtask here was <strong>explicitly started</strong> by the orchestrator against a
+                registered kind, with its own idempotency identity. The £0.55 attached directly to the task
+                is not an unnamed subtask — UBB never infers a boundary that was not declared.
               </div>
 
               <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Recorded operations</p>
@@ -1458,7 +1722,7 @@
                   <tbody>
                     <tr><td>pst_4a71</td><td class="dim">gemini-flash-standard</td><td class="num">£0.19</td><td><span class="chip s-known">available</span></td></tr>
                     <tr><td>pst_4a6f</td><td class="dim">gemini-flash-standard</td><td class="num">£0.22</td><td><span class="chip s-known">available</span></td></tr>
-                    <tr><td>pst_3110</td><td class="dim">serp-lookup</td><td class="num">£0.04</td><td><span class="chip s-na">pruned (retention)</span> <span class="mk">9</span></td></tr>
+                    <tr><td>pst_3110</td><td class="dim">serp-lookup</td><td class="num">£0.04</td><td><span class="chip s-na">pruned (retention)</span> <span class="mk">12</span></td></tr>
                     <tr><td>pst_4a55</td><td class="dim">vendor-ocr</td><td class="num dim">unknown</td><td><span class="chip s-known">available</span></td></tr>
                   </tbody>
                 </table>
@@ -1471,14 +1735,17 @@
           <h4>Why each element is here</h4>
           <ol>
             <li><span class="n">1</span><div>“At least £4.20” — the known total is a true lower bound. This is the presentation rule applied at task grain rather than at aggregate grain.<cite>#151 §10 · #150 §4.2</cite></div></li>
-            <li><span class="n">2</span><div>Cost £4.20 known, ceiling £5.00, one unresolved event: the ceiling cannot honestly be called safe, so it is <code>indeterminate</code>. Note enforcement did <em>not</em> fire — UBB will not stop a job it cannot fully cost.<cite>#146 §5 · #150 §4</cite></div></li>
+            <li><span class="n">2</span><div>Cost £4.20 known, ceiling £5.00, one unresolved event: the ceiling cannot honestly be called safe, so it is <code>indeterminate</code>. Note enforcement did <em>not</em> fire — UBB will not stop a task it cannot fully cost.<cite>#146 §5 · #150 §4</cite></div></li>
             <li><span class="n">3</span><div>Revenue is pinned and cost is a floor, so margin is an <em>upper</em> bound. The direction of the inequality flips relative to the cost tile, and getting it backwards is an easy and invisible defect.<cite>#148 §9 · #153 §8.5</cite></div></li>
             <li><span class="n">4</span><div><code>charging_summary</code> is derived at read time and never stored — so it renders locked. #154 rule 4: a derived fact may be served, never written.<cite>#151 §2.4 · ADR-0006 §4</cite></div></li>
             <li><span class="n">5</span><div>Owner’s wording correction, carried onto the surface: mixed provenance is not unhealthy; only unresolved makes a total incomplete. A drill-down, never a caveat.<cite>#151 §10</cite></div></li>
-            <li><span class="n">6</span><div>Ten steps, which is the case the ticket asked about. It is a flat table with a roll-up row — the roll-up is where the ceiling comparison actually happens.<cite>Q5 · #150 §2.5</cite></div></li>
-            <li><span class="n">7</span><div>Every step reads <em>not applicable</em> because revenue lives on the parent’s charge. The reason matters: <code>fixed_task_pricing</code> here versus <code>tenant_not_billing</code> for a metering-only tenant. Render them identically and a fixed job’s cost-only calls look exactly like a tenant that never bills at all.<cite>#151 §8 → #152</cite></div></li>
-            <li><span class="n">8</span><div>Unlimited depth was rejected on hot-path grounds. Drawing a tree widget would imply a model that does not exist.<cite>#140 §6.1</cite></div></li>
-            <li><span class="n">9</span><div>The measurement payload has passed its retention horizon while the posting survives on the six-year clock. The named defect is <code>measurements ?? {}</code> rendering this as “no usage”.<cite>#165 → #152 · #153 §12</cite></div></li>
+            <li><span class="n">6</span><div>Ten subtasks, which is the case the ticket asked about. A flat table with a roll-up row — the roll-up is where the parent’s ceiling comparison actually happens.<cite>Q5 · #150 §2.5</cite></div></li>
+            <li><span class="n">7</span><div>Each subtask shows its <strong>declared kind</strong>, because that is what carries the ceiling and the grouping requirements. Without this column the instances read as free text, which was the original complaint about this screen.<cite>owner ruling 2026-08-04 (D)</cite></div></li>
+            <li><span class="n">8</span><div>An optional per-instance display label, so two <code>agent_work</code> subtasks are distinguishable in a run. Display only — never grouped, never filtered.<cite>owner ruling · <code>reason_detail</code> precedent, #140 §3.3</cite></div></li>
+            <li><span class="n">9</span><div>Every subtask reads <em>not applicable</em> because revenue lives on the parent’s charge. The reason matters: <code>fixed_task_pricing</code> here versus <code>tenant_not_billing</code> for a metering-only tenant. Render them identically and a fixed-price task’s cost-only calls look exactly like a tenant that never bills at all.<cite>#151 §8 → #152</cite></div></li>
+            <li><span class="n">10</span><div>Events attached straight to the task are a first-class row, not a gap. This path is always available, and it is the alternative to a generic kind when the work has no useful shape.<cite>owner ruling 2026-08-04</cite></div></li>
+            <li><span class="n">11</span><div>Unlimited depth was rejected on hot-path grounds — every event would lock every ancestor. Drawing a tree widget would imply a model that does not exist.<cite>#140 §6.1</cite></div></li>
+            <li><span class="n">12</span><div>The measurement payload has passed its retention horizon while the posting survives on the six-year clock. The named defect is <code>measurements ?? {}</code> rendering this as “no usage”.<cite>#165 → #152 · #153 §12</cite></div></li>
           </ol>
         </aside>
       </div>
@@ -1622,7 +1889,7 @@
         inheritance, required grouping fields, a cross-reference into a pricing book, and its own cost
         distribution. A settings table row cannot hold a change-warning, a distribution, or a
         ceiling-against-price gauge.</p>
-        <span class="react">React to: whether the price belongs on this page at all, or stays a link into the book.</span>
+        <span class="verdict"><strong>Accepted</strong> · owner review 2026-08-04. The price stays a read-only link into the book.</span>
       </div>
 
       <div class="q">
@@ -1632,7 +1899,7 @@
         <p>A tenant opens this surface to make a decision — is this priced right, is the ceiling right,
         is this kind of work worth selling. Those are all aggregate questions. The run list is where you
         go once you already have a specific question, and it is unbounded, so it makes a poor front door.</p>
-        <span class="react">React to: whether an operator debugging live work is badly served by that.</span>
+        <span class="verdict"><strong>Accepted</strong> · owner review 2026-08-04.</span>
       </div>
 
       <div class="q">
@@ -1643,7 +1910,7 @@
         of work. A pool bounds a customer’s spend over a period → the customer. Wallet policy → the
         wallet. Admission control → settings. A single limits page would re-collapse the four families
         #150 just separated. Reporting is centralised even though configuration is not.</p>
-        <span class="react">React to: distributed configuration with a centralised report — or is one config page worth the collapse?</span>
+        <span class="verdict"><strong>Accepted</strong> · owner review 2026-08-04. Subtask ceilings resolve here too — on the declared Subtask kind.</span>
       </div>
 
       <div class="q">
@@ -1654,17 +1921,24 @@
         <p>It stops being per-customer and becomes tenant-wide with a customer filter, so the customer
         page links into it rather than owning it. The state a task carries is <code>killed</code>; the
         episode is the record of why.</p>
-        <span class="react">React to: whether “past-limit report” survives as a phrase — #154 left that open, and it is now two reports about four families under a vocabulary where “limit” was retired.</span>
+        <span class="verdict"><strong>Accepted</strong> · owner review 2026-08-04. Still open: whether “past-limit report” survives as a phrase — #154’s naming question.</span>
       </div>
 
       <div class="q">
         <span class="qn">Question 5</span>
-        <h3>What does the subtask tree look like with ten children?</h3>
-        <p class="pos">A two-level table with a roll-up row. Never a tree widget.</p>
-        <p>Containment is exactly one level, so there is no tree to draw. The roll-up row is the
-        important one — it is where the parent’s ceiling comparison actually happens, and where a
-        fixed-price job’s single charge sits while all ten children read <em>not applicable</em>.</p>
-        <span class="react">React to: at what count the flat table stops working — 10 is fine, 200 is not, and nothing bounds it.</span>
+        <h3>How is a task broken into subtasks, and where are their ceilings set?</h3>
+        <p class="pos">Declared Subtask kinds · explicitly created Subtask instances · observed
+        composition. A two-level table with a roll-up row, never a tree widget.</p>
+        <p>A Subtask kind is a registry row with its own COGS ceiling and grouping requirements, so its
+        ceiling is set exactly where a Task kind’s is. At runtime the orchestrator <strong>explicitly
+        starts</strong> a Subtask against a registered kind with its own idempotency identity; events may
+        also attach straight to the parent, and <strong>UBB never infers a boundary</strong>. Which kinds
+        appear inside which is <em>observed</em>, never declared — no allowlist, so an agent improvising
+        is data rather than an error. Unpredictable work uses a generic registered kind such as
+        <code>agent_work</code> with an optional display label.</p>
+        <span class="verdict"><strong>Ruled</strong> · owner 2026-08-04, intermediate model. Advisory
+        dominance warnings only — no composition refusals. Still open: a child-count bound for the
+        table.</span>
       </div>
 
       <div class="q">
@@ -1674,7 +1948,7 @@
         <p>Tasks goes in the first, ungated group beside Events — every tenant has metering, the
         lifecycle API is top-level and ungated, and events and tasks are the two operational nouns.
         Spend controls goes under PLATFORM because it spans tasks, customers and wallets.</p>
-        <span class="react">React to: two new nav items in one change, on a nav that currently has ten.</span>
+        <span class="verdict"><strong>Accepted</strong> · owner review 2026-08-04.</span>
       </div>
     </div>
   </section>
@@ -1682,6 +1956,9 @@
   <section>
     <h2>What this prototype deliberately does not do</h2>
     <ul class="tight">
+      <li><strong>No permitted-subtask-kind allowlist.</strong> A Task kind never declares which Subtask kinds it may contain. Composition is observed from real runtime relationships, so an agent spawning a Subtask kind it has never spawned before is data, not a configuration error.</li>
+      <li><strong>No inferred subtask boundaries.</strong> UBB can see provider calls and timing and could guess where a Subtask begins. It must not — a guessed boundary would put spend enforcement on a structure the tenant never asserted.</li>
+      <li><strong>No composition-based start refusals.</strong> The only new refusal is declaration-validity: an explicitly created Subtask must name a registered kind. Dominance warnings are advisory and never block.</li>
       <li><strong>No dimension-scoped cap affordance.</strong> #150 §6.4 names this as a thing #152 and #153 must not build. It was never built and now never will be in v1.</li>
       <li><strong>No editable <code>charging_summary</code>, and no price field on the kind of work.</strong> Both are derived or owned elsewhere; making either editable creates a second home for one fact.</li>
       <li><strong>No counterfactual metered price</strong> on fixed-price work. #151 §12 declined it; the cost distribution is the replacement, and it answers a narrower question on purpose.</li>

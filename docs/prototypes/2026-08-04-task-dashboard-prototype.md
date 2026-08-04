@@ -1,8 +1,10 @@
 # Tasks in the console — prototype notes (#152)
 
-**Status:** prototype, awaiting reaction. **Not a decision, not a specification.**
+**Status:** revision 2 — **Q1–Q4 and Q6 accepted** at owner review 2026-08-04; **Q5 ruled** the same day
+(declared Subtask kinds · explicitly created Subtask instances · observed composition). Still a
+prototype: **not a specification.**
 **Artifact:** [`2026-08-04-task-dashboard-wireframe.html`](./2026-08-04-task-dashboard-wireframe.html) —
-open it in a browser; it is self-contained, has no build step and no dependencies.
+open it in a browser; it is self-contained, requires no build and has no dependencies.
 **Drawn against:** `main` @ `0cf00b5`, rendering decisions #138–#155 and #165.
 
 Issue [#152](https://github.com/ashcochrane/ubb/issues/152) is a `wayfinder:prototype` ticket: *build a
@@ -28,14 +30,59 @@ This surface is that consumer.
 
 ## 2. Six questions, six positions
 
-| # | Question | Position taken | What needs a ruling |
+| # | Question | Position taken | Status |
 |---|---|---|---|
-| 1 | Task type: first-class object or settings row? | **First-class**, own route `/tasks/kinds/{key}` | Whether the fixed price appears here at all, or stays a link into the pricing book |
-| 2 | Primary reporting unit: type or run? | **Kinds of work lands**; runs is a sibling | Whether an operator debugging live work is badly served by that |
-| 3 | Where are spend limits set? | **Wherever their subject lives — no Limits page** | Distributed config + centralised report, or one config page? |
-| 4 | What does a breach look like? | An **episode row**; the past-limit report becomes the breach report, widened to three families, and gains a sibling | Whether "past-limit report" survives as a phrase (#154 left this open) |
-| 5 | Subtask tree with ten children? | A **two-level table with a roll-up row**, never a tree widget | At what child count the flat table stops working — nothing bounds it |
-| 6 | New top-level tab? | **Two**: `Tasks` (ungated group, beside Events) and `Spend controls` (PLATFORM) | Two new nav items in one change, on a nav that has ten |
+| 1 | Task kind: first-class object or settings row? | **First-class**, own route `/tasks/kinds/{key}` | **Accepted.** Price stays a read-only link into the book |
+| 2 | Primary reporting unit: kind or run? | **Kinds of work lands**; runs is a sibling | **Accepted** |
+| 3 | Where are spend limits set? | **Wherever their subject lives — no Limits page** | **Accepted.** Subtask ceilings resolve here too, on the declared Subtask kind |
+| 4 | What does a breach look like? | An **episode row**; the past-limit report becomes the breach report, widened to three families, and gains a sibling | **Accepted.** Open: whether "past-limit report" survives as a phrase (#154) |
+| 5 | How is a Task broken into Subtasks, and where are their ceilings set? | **Declared Subtask kinds · explicit Subtask instances · observed composition** (§2.1). Two-level table with a roll-up row, never a tree widget | **Ruled.** Open: a child-count bound for the table |
+| 6 | New top-level tab? | **Two**: `Tasks` (ungated group, beside Events) and `Spend controls` (PLATFORM) | **Accepted** |
+
+### 2.1 The Subtask model, as ruled
+
+An **intermediate** model — explicit lifecycle and enforcement, without an allowlist that would fight
+dynamic agent behaviour.
+
+| | |
+|---|---|
+| **Subtask kinds are declared** | A registry row with its own default COGS ceiling and grouping requirements. Same table as Task kinds, discriminated by `TaskType.kind ∈ {task, subtask}`, unique on `(tenant, kind, key)` |
+| **Subtask instances are explicit** | The orchestrator starts a Subtask under a parent, supplying a **registered kind** and an idempotency identity. Events reported against it roll COGS up to the Subtask **and** the parent, one hop |
+| **Events may bypass Subtasks** | They can attach directly to the parent Task. This is a first-class path, not a gap |
+| **UBB never infers a boundary** | Not from event timing, not from provider calls. A guessed boundary would put spend enforcement on a structure the tenant never asserted |
+| **Composition is observed** | Which Subtask kinds run inside which Task kinds is derived from real runtime relationships and shown analytically. **No permitted-kind allowlist in v1** |
+| **Generic kinds are the escape hatch** | Unpredictable work uses a registered kind such as `agent_work`, with an optional per-instance **display label** (display only, never grouped) — or attaches events directly to the parent |
+| **Warnings are advisory** | Default-ceiling dominance is reported, never enforced. **No composition-based start refusals** |
+
+**One scoping note, recorded so it does not become folklore.** *"Require a registered Subtask kind"*
+and *"no additional start refusals"* are compatible: the first is a **declaration-validity** rule about
+the Subtask itself, the second scopes to **composition** — nothing decides which kind may run where.
+
+**Dominance, and why it earns a panel.** Subtask spend rolls up one hop into the parent, so:
+
+- a Subtask ceiling **c ≥ P** (its parent's ceiling) **can never fire** — the parent stops the work
+  first and cascades downward;
+- if **Σc ≤ P**, the parent's ceiling can never be reached from Subtask spend alone.
+
+Both are arithmetic over two configured numbers, not a new mechanism, and neither is visible today. A
+tenant capping ten Subtasks at £1.00 inside a Task capped at £4.00 has configured six ceilings that
+will never fire.
+
+**What this costs.** Composition is a **lagging indicator** — a brand-new Task kind shows nothing until
+work has run, which is exactly when the ceiling arithmetic would be most useful. Accepted, and stated,
+on the same footing as #150's documented blind window. The mitigation is that the dominance warning is
+delivered **at configuration time** on the Subtask kind's own page, not only in a report.
+
+**Reversibility, which is why observed was chosen.** Observed → declared later is additive, and the
+declaration can be **seeded from the observed data**. Declared → observed is removing a public
+contract. Since the clean-break licence expires at the first integrator, the cheap option is the one
+that stays reversible in the direction you would want.
+
+**Change from today's behaviour:** `subtask_type` is currently `Optional[str] = None`
+(`api/v1/schemas.py:37`), so untyped Subtasks are legal and fall through to the tenant's `RiskConfig`
+default. The ruling makes a registered kind **required for explicitly created Subtasks**. That is an
+API change #155's slices need to carry, and the generic-kind pattern is what keeps it from blocking
+dynamic work.
 
 ### Why Q3 resolves structurally
 
@@ -73,7 +120,7 @@ the checklist for whoever implements the real thing.
 |---|---|
 | Never count `expired` or `cancelled` as failures | #140 §11 |
 | Group attempts by `external_task_id`; bucket by `reason_code`; `reason_detail` never grouped | #140 §3.3, §11 |
-| Surface `charge_created` per job | #140 §11 |
+| Surface `charge_created` per Task | #140 §11 |
 | Unknown revenue ≠ zero revenue | #141 §8 |
 | Foreign-currency mirrors: exclude **and** report the excluded count | #142 |
 | `indeterminate` must never render as "under limit" | #146 §5, #150 §17 |
@@ -103,6 +150,12 @@ The named defect shapes are ordinary and easy to write — `amount ?? 0`, `measu
 
 ## 4. Deliberately absent
 
+- **A permitted-Subtask-kind allowlist** — ruled out for v1. Composition is observed, so an agent
+  spawning a Subtask kind it has never spawned before is data, not a configuration error.
+- **Inferred Subtask boundaries** — UBB could guess them from event timing or provider calls, and must
+  not. Enforcement would then sit on a structure the tenant never asserted.
+- **Composition-based start refusals** — the only new refusal is declaration-validity (an explicit
+  Subtask must name a registered kind). Dominance warnings never block.
 - **Dimension-scoped caps** — #150 §6.4 forbids the affordance.
 - **An editable price on the kind of work** — the kind declares *priced as a whole*; the amount is a
   work line in the pricing book (#139 §3.1).
@@ -131,6 +184,13 @@ rendering contract nobody has tested. It is equally the reason this file is not 
   named reports on these screens are a console feature or an API concept.
 - How a kind of work's `task_pricing_mode` may change over time (#151 residue). The wireframe shows a
   warning at the point of change because there is no publish record to show instead.
-- A child-count bound for the steps table. Ten is comfortable; nothing in the model caps it.
+- A child-count bound for the Subtasks table. Ten is comfortable, two hundred is not, and nothing in
+  the model caps it.
+- **Where the Subtask display label lives, and what it is called.** It may reuse `external_task_id`
+  (today a free-text reusable Task label) or be a new display-only field. Either way it is owed a name
+  under ADR-0006 and must never become groupable.
+- **Making a registered Subtask kind required is an API change** — `subtask_type` is `Optional` today.
+  It needs a home in #155's slices, and the migration question for existing untyped Subtasks is
+  dissolved only because #153 §13 wipes the operational rows at cutover.
 - Whether the three unbuilt recovery surfaces (#146 §11, #147 §14, #148 §7.3 — four with #165's) get a
   console home here. #151 §16 names this surface as the obvious host; this prototype does not draw one.
