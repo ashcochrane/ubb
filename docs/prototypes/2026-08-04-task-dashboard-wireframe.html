@@ -1,0 +1,1730 @@
+<title>Tasks in the console — wireframe (#152)</title>
+
+<style>
+  :root {
+    --paper:      #f6f7f9;
+    --paper-2:    #ffffff;
+    --ink:        #1a1e24;
+    --ink-2:      #4a535e;
+    --ink-3:      #79818b;
+    --rule:       #c6cdd5;
+    --rule-soft:  #dfe4ea;
+    --fill:       #e8ecf0;
+    --annot:      #2f5fa8;
+    --annot-bg:   #eaf0fa;
+
+    --st-known:   #0e7c66;
+    --st-unknown: #9a6700;
+    --st-indet:   #6b4fa0;
+    --st-na:      #79818b;
+    --st-stop:    #b42318;
+    --st-known-bg:   #e3f2ee;
+    --st-unknown-bg: #fbf1dc;
+    --st-indet-bg:   #efeaf8;
+    --st-na-bg:      #eceff2;
+    --st-stop-bg:    #fbe9e7;
+
+    --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", "Menlo", Consolas, monospace;
+
+    --step--1: 0.75rem;
+    --step-0:  0.875rem;
+    --step-1:  1.0625rem;
+    --step-2:  1.375rem;
+    --step-3:  1.875rem;
+    --step-4:  2.5rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #12161b;
+      --paper-2:    #191e25;
+      --ink:        #e4e8ed;
+      --ink-2:      #a7b0bb;
+      --ink-3:      #78828e;
+      --rule:       #333c46;
+      --rule-soft:  #262d35;
+      --fill:       #1c222a;
+      --annot:      #7fa8e8;
+      --annot-bg:   #16202f;
+
+      --st-known:   #4ec3a6;
+      --st-unknown: #d9a441;
+      --st-indet:   #a98ede;
+      --st-na:      #8a939e;
+      --st-stop:    #f0776a;
+      --st-known-bg:   #12261f;
+      --st-unknown-bg: #2a2113;
+      --st-indet-bg:   #1f1a2c;
+      --st-na-bg:      #20262d;
+      --st-stop-bg:    #2b1614;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #12161b;
+    --paper-2:    #191e25;
+    --ink:        #e4e8ed;
+    --ink-2:      #a7b0bb;
+    --ink-3:      #78828e;
+    --rule:       #333c46;
+    --rule-soft:  #262d35;
+    --fill:       #1c222a;
+    --annot:      #7fa8e8;
+    --annot-bg:   #16202f;
+
+    --st-known:   #4ec3a6;
+    --st-unknown: #d9a441;
+    --st-indet:   #a98ede;
+    --st-na:      #8a939e;
+    --st-stop:    #f0776a;
+    --st-known-bg:   #12261f;
+    --st-unknown-bg: #2a2113;
+    --st-indet-bg:   #1f1a2c;
+    --st-na-bg:      #20262d;
+    --st-stop-bg:    #2b1614;
+  }
+
+  :root[data-theme="light"] {
+    --paper:      #f6f7f9;
+    --paper-2:    #ffffff;
+    --ink:        #1a1e24;
+    --ink-2:      #4a535e;
+    --ink-3:      #79818b;
+    --rule:       #c6cdd5;
+    --rule-soft:  #dfe4ea;
+    --fill:       #e8ecf0;
+    --annot:      #2f5fa8;
+    --annot-bg:   #eaf0fa;
+
+    --st-known:   #0e7c66;
+    --st-unknown: #9a6700;
+    --st-indet:   #6b4fa0;
+    --st-na:      #79818b;
+    --st-stop:    #b42318;
+    --st-known-bg:   #e3f2ee;
+    --st-unknown-bg: #fbf1dc;
+    --st-indet-bg:   #efeaf8;
+    --st-na-bg:      #eceff2;
+    --st-stop-bg:    #fbe9e7;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 1.5rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--annot);
+    margin: 0 0 0.75rem;
+  }
+
+  h1 {
+    font-size: var(--step-4);
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0 0 0.75rem;
+  }
+
+  .standfirst {
+    font-size: var(--step-1);
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-3);
+    margin-top: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.5rem;
+  }
+
+  /* ---------- generic section ---------- */
+
+  section { margin-top: 3.5rem; }
+
+  h2 {
+    font-size: var(--step-2);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 0.5rem;
+  }
+
+  h3 {
+    font-size: var(--step-1);
+    font-weight: 600;
+    margin: 2rem 0 0.5rem;
+  }
+
+  .lede { color: var(--ink-2); max-width: 68ch; margin: 0 0 1.5rem; }
+
+  p { max-width: 68ch; }
+
+  a { color: var(--annot); }
+
+  :focus-visible { outline: 2px solid var(--annot); outline-offset: 2px; }
+
+  /* ---------- state chips ---------- */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    padding: 0.15em 0.5em;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .chip::before {
+    content: "";
+    width: 0.45em; height: 0.45em;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .chip.plain::before { display: none; }
+
+  .s-known   { color: var(--st-known);   background: var(--st-known-bg); }
+  .s-unknown { color: var(--st-unknown); background: var(--st-unknown-bg); }
+  .s-indet   { color: var(--st-indet);   background: var(--st-indet-bg); }
+  .s-na      { color: var(--st-na);      background: var(--st-na-bg); }
+  .s-stop    { color: var(--st-stop);    background: var(--st-stop-bg); }
+  .s-neutral { color: var(--ink-2);      background: var(--fill); }
+
+  /* ---------- contract table ---------- */
+
+  .scroller { overflow-x: auto; }
+
+  table.contract {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--step-0);
+    min-width: 640px;
+  }
+  table.contract th,
+  table.contract td {
+    text-align: left;
+    padding: 0.6rem 0.9rem 0.6rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  table.contract th {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--rule);
+    font-weight: 500;
+  }
+  table.contract td.never { color: var(--st-stop); font-family: var(--mono); font-size: var(--step--1); }
+
+  /* ---------- screen switcher ---------- */
+
+  .switcher {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.75rem 0;
+    margin-bottom: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .switcher button {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.02em;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+  }
+  .switcher button:hover { border-color: var(--annot); color: var(--annot); }
+  .switcher button[aria-selected="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+
+  .screen[hidden] { display: none; }
+
+  .screen-head { margin-bottom: 1.25rem; }
+  .screen-head .route {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--annot);
+    letter-spacing: 0.02em;
+  }
+  .screen-head h2 { margin-top: 0.35rem; }
+  .screen-head .answers {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* ---------- the drawing + rail ---------- */
+
+  .drawing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (min-width: 1060px) {
+    .drawing { grid-template-columns: minmax(0, 1fr) 20rem; gap: 2rem; }
+  }
+
+  .mock {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .mock-chrome {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--rule-soft);
+    background: var(--fill);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-3);
+  }
+  .mock-chrome .dot {
+    width: 0.5rem; height: 0.5rem; border-radius: 50%;
+    border: 1px solid var(--rule); flex: none;
+  }
+
+  .mock-body { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); }
+  @media (max-width: 700px) {
+    .mock-body { grid-template-columns: minmax(0, 1fr); }
+    .navrail { display: none; }
+  }
+
+  .navrail {
+    border-right: 1px solid var(--rule-soft);
+    padding: 0.75rem 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink-3);
+    background: var(--paper);
+  }
+  .navrail .group {
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    opacity: 0.7;
+    margin: 0.75rem 0 0.3rem 0.4rem;
+  }
+  .navrail .item {
+    padding: 0.22rem 0.4rem;
+    border-radius: 2px;
+    color: var(--ink-2);
+  }
+  .navrail .item.here {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .navrail .item.new {
+    color: var(--annot);
+    border: 1px dashed var(--annot);
+  }
+  .navrail .item.new.here {
+    background: var(--annot);
+    color: #fff;
+    border-style: solid;
+  }
+
+  .pane { padding: 1rem 1.1rem 1.4rem; min-width: 0; }
+
+  .pane-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    border-bottom: 1px solid var(--rule-soft);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .pane-title { font-size: var(--step-1); font-weight: 600; margin: 0; }
+  .pane-sub { font-family: var(--mono); font-size: var(--step--1); color: var(--ink-3); }
+
+  .btn {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.25rem 0.55rem;
+    color: var(--ink-2);
+    background: var(--fill);
+  }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+  /* stat tiles */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1.1rem;
+  }
+  .tile {
+    border: 1px solid var(--rule-soft);
+    border-radius: 2px;
+    padding: 0.6rem 0.7rem;
+    background: var(--paper);
+  }
+  .tile .label {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 0.3rem;
+  }
+  .tile .value {
+    font-family: var(--mono);
+    font-size: var(--step-1);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .tile .note {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink-3);
+    display: block;
+    margin-top: 0.25rem;
+  }
+
+  /* data grid */
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 720px;
+  }
+  table.grid th,
+  table.grid td {
+    text-align: left;
+    padding: 0.45rem 0.6rem 0.45rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  table.grid th {
+    font-size: 0.6875rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    border-bottom: 1px solid var(--rule);
+  }
+  table.grid td.num { text-align: right; padding-right: 0.9rem; }
+  table.grid th.num { text-align: right; padding-right: 0.9rem; }
+  table.grid tr.child td:first-child { padding-left: 1.2rem; color: var(--ink-2); }
+  table.grid tr.rollup td {
+    border-top: 1px solid var(--rule);
+    border-bottom: none;
+    background: var(--fill);
+    font-weight: 600;
+  }
+  .key { color: var(--ink); }
+  .dim { color: var(--ink-3); }
+
+  /* filter bar */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.9rem;
+  }
+  .filters .f {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.2rem 0.5rem;
+    color: var(--ink-2);
+    background: var(--paper);
+  }
+  .filters .f.on { border-color: var(--annot); color: var(--annot); background: var(--annot-bg); }
+
+  /* config rows */
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+    gap: 0.4rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    align-items: start;
+  }
+  @media (max-width: 560px) { .field { grid-template-columns: minmax(0, 1fr); } }
+  .field .fl {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-top: 0.15rem;
+  }
+  .field .fv { font-family: var(--mono); font-size: 0.75rem; min-width: 0; }
+  .field .fv .hint { color: var(--ink-3); display: block; margin-top: 0.25rem; white-space: normal; }
+
+  .input {
+    display: inline-block;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+    padding: 0.2rem 0.5rem;
+    min-width: 6rem;
+  }
+  .input.locked { background: var(--fill); color: var(--ink-3); border-style: dashed; }
+
+  .callout {
+    border-left: 2px solid var(--st-unknown);
+    background: var(--st-unknown-bg);
+    color: var(--ink);
+    padding: 0.55rem 0.75rem;
+    margin: 0.75rem 0;
+    font-family: var(--mono);
+    font-size: 0.71rem;
+    line-height: 1.5;
+    border-radius: 0 2px 2px 0;
+  }
+  .callout.stop { border-left-color: var(--st-stop); background: var(--st-stop-bg); }
+  .callout.info { border-left-color: var(--annot); background: var(--annot-bg); }
+
+  /* meters */
+  .meter {
+    display: block;
+    height: 0.45rem;
+    background: var(--fill);
+    border: 1px solid var(--rule-soft);
+    border-radius: 1px;
+    overflow: hidden;
+    min-width: 5rem;
+    margin-top: 0.25rem;
+  }
+  .meter > span { display: block; height: 100%; }
+  .meter > span.known   { background: var(--st-known); }
+  .meter > span.warn    { background: var(--st-unknown); }
+  .meter > span.indet   { background: repeating-linear-gradient(45deg, var(--st-indet), var(--st-indet) 3px, transparent 3px, transparent 6px); }
+  .meter > span.stopped { background: var(--st-stop); }
+
+  /* annotation markers + rail */
+  .mk {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.15em;
+    height: 1.15em;
+    padding: 0 0.2em;
+    margin-left: 0.35em;
+    border-radius: 2px;
+    background: var(--annot);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    vertical-align: middle;
+    flex: none;
+  }
+  /* marker text flips against the annotation ink, which lightens in dark mode */
+  @media (prefers-color-scheme: dark) { .mk { color: #0d1117; } }
+  :root[data-theme="dark"] .mk { color: #0d1117; }
+  :root[data-theme="light"] .mk { color: #fff; }
+
+  .rail {
+    border-top: 2px solid var(--annot);
+    padding-top: 0.85rem;
+  }
+  .rail h4 {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--annot);
+    margin: 0 0 0.75rem;
+    font-weight: 500;
+  }
+  .rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+  .rail li {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr);
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+  .rail li .n {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    background: var(--annot-bg);
+    color: var(--annot);
+    border: 1px solid var(--annot);
+    border-radius: 2px;
+    text-align: center;
+    height: 1.3rem;
+    line-height: 1.2rem;
+  }
+  .rail cite {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink-3);
+    font-style: normal;
+    margin-top: 0.15rem;
+  }
+
+  /* question blocks */
+  .qgrid { display: grid; gap: 1.25rem; }
+  @media (min-width: 860px) { .qgrid { grid-template-columns: 1fr 1fr; } }
+
+  .q {
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    background: var(--paper-2);
+  }
+  .q .qn {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--annot);
+  }
+  .q h3 { margin: 0.35rem 0 0.6rem; font-size: var(--step-1); }
+  .q .pos {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    border-left: 2px solid var(--ink);
+    padding-left: 0.6rem;
+    margin: 0 0 0.6rem;
+    color: var(--ink);
+  }
+  .q p { font-size: 0.8125rem; color: var(--ink-2); margin: 0 0 0.5rem; max-width: none; }
+  .q .react {
+    font-family: var(--mono);
+    font-size: 0.71rem;
+    color: var(--st-stop);
+    margin-top: 0.6rem;
+    display: block;
+  }
+
+  ul.tight { padding-left: 1.1rem; }
+  ul.tight li { margin-bottom: 0.35rem; color: var(--ink-2); }
+  ul.tight li code, p code, .q p code, td code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--fill);
+    padding: 0.05em 0.3em;
+    border-radius: 2px;
+  }
+
+  footer {
+    margin-top: 4rem;
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-3);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Prototype · issue #152 · map #137</p>
+    <h1>Tasks in the console</h1>
+    <p class="standfirst">
+      A wireframe for the two surfaces a kind of work implies — configuring it, and reporting on it.
+      Rough on purpose: this exists to be argued with, not built from. Every element carries a marker
+      pointing at the decision that forces it to be there.
+    </p>
+    <div class="meta">
+      <span>2026-08-04</span>
+      <span>Renders the model decided in #138–#155 + #165</span>
+      <span>Contracts: #153 · Rendering: #152</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>What is being drawn, and why it looks unfinished</h2>
+    <p class="lede">
+      Tasks have no surface in the console today. <code>GET /api/v1/metering/analytics/tasks</code> exists
+      with no UI on top of it; <code>PUT /api/v1/metering/task-types</code> is the only way to declare a
+      kind of work. Meanwhile sixteen decision documents have re-modelled what a task <em>is</em> — six
+      lifecycle states, three ceilings, four spend-control families, four pricing statuses and a
+      cost-completeness rule — and none of it has a consumer.
+    </p>
+    <p>
+      This wireframe takes a position on all six questions the ticket asks. The positions are
+      <strong>proposals</strong>, not decisions; each one is marked with what I need a ruling on. The
+      drawing is deliberately grey and mono — a polished mock would invite reactions about spacing
+      when what is wanted is reactions about shape.
+    </p>
+
+    <h3>The rendering contract this surface exists to honour</h3>
+    <p class="lede">
+      Seven semantic states now have to be visibly different from each other and from zero. This is the
+      whole reason the surface is hard, and it is what the fixtures must prove
+      (#155 §9.2, extended by #165).
+    </p>
+    <div class="scroller">
+      <table class="contract">
+        <thead>
+          <tr><th>State</th><th>Renders as</th><th>Never as</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="chip s-known">known zero</span></td>
+            <td><code>£0.00</code></td>
+            <td class="never">—</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-unknown">unknown amount</span></td>
+            <td>Unknown / unavailable</td>
+            <td class="never">£0.00</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-unknown">incomplete total</span></td>
+            <td>At least £4.20</td>
+            <td class="never">£4.20 presented as final</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-indet">indeterminate ceiling</span></td>
+            <td>Indeterminate</td>
+            <td class="never">“under limit”</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-na">not_applicable</span></td>
+            <td>Not applicable <em>+ which reason</em></td>
+            <td class="never">£0.00 revenue</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-na">waived revenue</span></td>
+            <td><code>£0.00</code>, explicitly waived</td>
+            <td class="never">an unlabelled zero</td>
+          </tr>
+          <tr>
+            <td><span class="chip s-na">measurements pruned</span></td>
+            <td>Pruned (retention)</td>
+            <td class="never">“no usage”</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The screens</h2>
+    <p class="lede">Six screens. Two are configuration, three are reporting, one is the moment a kind of
+    work is declared.</p>
+
+    <div class="switcher" role="tablist" aria-label="Screens">
+      <button role="tab" id="tab-1" aria-controls="screen-1" aria-selected="true">1 · Kinds of work</button>
+      <button role="tab" id="tab-2" aria-controls="screen-2" aria-selected="false">2 · Kind detail</button>
+      <button role="tab" id="tab-3" aria-controls="screen-3" aria-selected="false">3 · Declare</button>
+      <button role="tab" id="tab-4" aria-controls="screen-4" aria-selected="false">4 · Task runs</button>
+      <button role="tab" id="tab-5" aria-controls="screen-5" aria-selected="false">5 · Run detail</button>
+      <button role="tab" id="tab-6" aria-controls="screen-6" aria-selected="false">6 · Spend controls</button>
+    </div>
+
+    <!-- ============ SCREEN 1 ============ -->
+    <div class="screen" id="screen-1" role="tabpanel" aria-labelledby="tab-1">
+      <div class="screen-head">
+        <span class="route">/tasks</span>
+        <h2>Kinds of work — the landing page</h2>
+        <span class="answers">Answers Q2 (primary unit) and Q6 (where it lives)</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">Kinds of work <span class="mk">1</span></p>
+                  <span class="pane-sub">July 2026 · 6 declared</span>
+                </div>
+                <div>
+                  <span class="btn">Task runs →</span>
+                  <span class="btn primary">Declare a kind of work</span>
+                </div>
+              </div>
+
+              <div class="tiles">
+                <div class="tile">
+                  <span class="label">Tasks run</span>
+                  <span class="value">11,193</span>
+                  <span class="note">excl. charge postings <span class="mk">2</span></span>
+                </div>
+                <div class="tile">
+                  <span class="label">Supplier COGS</span>
+                  <span class="value">≥ £14,208.55</span>
+                  <span class="note"><span class="chip s-unknown">incomplete</span> 41 unresolved <span class="mk">3</span></span>
+                </div>
+                <div class="tile">
+                  <span class="label">Customer revenue</span>
+                  <span class="value">£21,940.00</span>
+                  <span class="note"><span class="chip s-known">known</span></span>
+                </div>
+                <div class="tile">
+                  <span class="label">Gross margin</span>
+                  <span class="value dim">Incomplete</span>
+                  <span class="note">cost total is a lower bound <span class="mk">4</span></span>
+                </div>
+              </div>
+
+              <div class="scroller">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>Kind of work</th>
+                      <th>Charging <span class="mk">5</span></th>
+                      <th>Ceilings <span class="mk">6</span></th>
+                      <th class="num">Tasks</th>
+                      <th class="num">p95 COGS <span class="mk">7</span></th>
+                      <th>Margin <span class="mk">8</span></th>
+                      <th class="num">Reached</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="key">report-generation</td>
+                      <td><span class="chip s-neutral plain">fixed £5.00</span></td>
+                      <td class="dim">£4.00 · 15m · 6h</td>
+                      <td class="num">1,284</td>
+                      <td class="num">£3.92</td>
+                      <td class="num">£2,180.40</td>
+                      <td class="num">3.2%</td>
+                    </tr>
+                    <tr>
+                      <td class="key">location-finder</td>
+                      <td><span class="chip s-neutral plain">per event</span></td>
+                      <td class="dim">£2.00 · 15m · 6h</td>
+                      <td class="num">8,902</td>
+                      <td class="num">£0.41</td>
+                      <td class="num">£9,884.10</td>
+                      <td class="num">0.4%</td>
+                    </tr>
+                    <tr>
+                      <td class="key">bulk-enrichment</td>
+                      <td><span class="chip s-neutral plain">per event</span></td>
+                      <td><span class="chip s-unknown">uncapped — declared</span></td>
+                      <td class="num">412</td>
+                      <td class="num">≥ £11.20</td>
+                      <td><span class="chip s-unknown">incomplete</span></td>
+                      <td class="num dim">n/a</td>
+                    </tr>
+                    <tr>
+                      <td class="key">voice-session</td>
+                      <td><span class="chip s-neutral plain">per event</span></td>
+                      <td class="dim">— · 15m · <strong>40m</strong></td>
+                      <td class="num">220</td>
+                      <td class="num">£1.88</td>
+                      <td><span class="chip s-na">unavailable at this grain</span> <span class="mk">9</span></td>
+                      <td class="num">0.0%</td>
+                    </tr>
+                    <tr>
+                      <td class="key">image-render</td>
+                      <td><span class="chip s-neutral plain">per event</span></td>
+                      <td class="dim">£1.00 · 15m · 6h</td>
+                      <td class="num">361</td>
+                      <td class="num">£0.62</td>
+                      <td class="num" style="color:var(--st-stop)">−£84.20</td>
+                      <td class="num">1.1%</td>
+                    </tr>
+                    <tr>
+                      <td class="key">nightly-sync</td>
+                      <td><span class="chip s-neutral plain">per event</span></td>
+                      <td class="dim">£25.00 · 60m · 12h</td>
+                      <td class="num">14</td>
+                      <td class="num">£18.04</td>
+                      <td class="num">£112.00</td>
+                      <td class="num">7.1%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout stop">
+                image-render · 12 events waived — a margin rule could not resolve its supplier cost, so
+                no customer was charged and the cost lands as a reported loss. <span class="mk">10</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>The aggregate lands, not the run list. A kind of work is the unit a tenant makes decisions about — price, ceiling, whether it is worth selling. A run list answers no question until you already have one.<cite>Q2 · position taken</cite></div></li>
+            <li><span class="n">2</span><div>Synthetic charge postings excluded from every count: a job must not count its own invoice as a unit of work. The measure is <em>recorded operations</em>, never “events”.<cite>#153 §7.2</cite></div></li>
+            <li><span class="n">3</span><div>The tenant-wide COGS total is a lower bound whenever any contributing cost is unresolved. “≥” plus the unresolved count, never a bare number.<cite>#151 §10 · #153 §10.5</cite></div></li>
+            <li><span class="n">4</span><div>No confident margin may be computed from an incomplete cost total. The tile says <em>Incomplete</em> rather than subtracting a lower bound from revenue and printing the difference.<cite>#153 §8.5</cite></div></li>
+            <li><span class="n">5</span><div><code>charging_summary</code> is derived at read time for display only. It is a chip, never a field — nothing on this screen may look editable.<cite>#151 §2.4</cite></div></li>
+            <li><span class="n">6</span><div>Three ceilings, each carrying basis and unit: supplier COGS, silence, duration. <code>uncapped</code> is a declaration a tenant makes, so it renders as a stated choice rather than a blank.<cite>#150 §2.2, §8.1 · #154</cite></div></li>
+            <li><span class="n">7</span><div>Percentiles are computed over known lower bounds with every task in the sample. A p95 over “whatever happens to be in the column” is what today’s code does.<cite>#153 §11.3</cite></div></li>
+            <li><span class="n">8</span><div>Margin is a bucket-level subtraction and must be able to say four different things. Three of the four appear in this one column deliberately.<cite>#153 §2, §8.5</cite></div></li>
+            <li><span class="n">9</span><div>This tenant supplies revenue at customer-period grain, so it is not attributable to a kind of work. That is <code>unavailable_at_requested_grain</code> — a different fact from unknown, and it must not read as zero.<cite>#153 §4 · #141 §8</cite></div></li>
+            <li><span class="n">10</span><div>Waived revenue is a visible exposure, not a silent zero. #147 requires it be highly visible; a footer callout is the cheapest place that satisfies that.<cite>#147 §7.3</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 2 ============ -->
+    <div class="screen" id="screen-2" role="tabpanel" aria-labelledby="tab-2" hidden>
+      <div class="screen-head">
+        <span class="route">/tasks/kinds/report-generation</span>
+        <h2>Kind of work — detail</h2>
+        <span class="answers">Answers Q1 (first-class object) and Q3 (where ceilings are set)</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks/kinds/report-generation</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">report-generation <span class="mk">1</span></p>
+                  <span class="pane-sub">Report generation · declared 2026-03-04 · 1,284 tasks in July</span>
+                </div>
+                <div><span class="btn">View runs →</span></div>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;">Declaration</p>
+              <div class="field">
+                <span class="fl">Charging</span>
+                <span class="fv">
+                  <span class="input">fixed</span> <span class="dim">· sold once per delivered task</span>
+                  <span class="hint">Steps inherit this and cannot override it.</span>
+                </span>
+              </div>
+              <div class="callout">
+                Changing this changes the revenue shape of every future task of this kind. Existing tasks
+                are unaffected — the mode is pinned at start. There is no publish record for this
+                declaration and no effective date. <span class="mk">2</span>
+              </div>
+              <div class="field">
+                <span class="fl">Price</span>
+                <span class="fv">
+                  <span class="input locked">£5.00</span>
+                  <span class="hint">Set on the work line <code>report-generation</code> in pricing book
+                  <strong>Standard 2026</strong> — not here. <a href="#">Open the book line →</a> <span class="mk">3</span></span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Grouping fields</span>
+                <span class="fv">
+                  <span class="input">region</span> <span class="input">environment</span> <span class="btn">+ add</span>
+                  <span class="hint">Required on every task of this kind. Declared fields only — free-text
+                  metadata is filterable but never groupable.</span>
+                </span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Ceilings <span class="mk">4</span></p>
+              <div class="field">
+                <span class="fl">Supplier COGS</span>
+                <span class="fv">
+                  <span class="input">£4.00</span> <span class="chip s-neutral plain">set here</span>
+                  <span class="hint">Tenant default is £10.00. Races supplier cost only — there is no
+                  customer-price ceiling on a unit of work. <span class="mk">5</span></span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Silence</span>
+                <span class="fv">
+                  <span class="input locked">15 min</span> <span class="chip s-neutral plain">inherited</span>
+                  <span class="hint">Reset by every usage event on the task.</span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Duration</span>
+                <span class="fv">
+                  <span class="input">6 h</span> <span class="chip s-neutral plain">set here</span>
+                  <span class="hint">Absolute maximum age; fires regardless of activity.</span>
+                </span>
+              </div>
+
+              <div class="callout info">
+                Ceiling against price — £4.00 ceiling on work sold at £5.00 = <strong>80%</strong>. Raise the
+                ceiling and a delivered task can cost more than it earns. <span class="mk">6</span>
+                <span class="meter" style="max-width:14rem"><span class="known" style="width:80%"></span></span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">What this kind of work costs <span class="mk">7</span></p>
+              <div class="tiles">
+                <div class="tile"><span class="label">Median</span><span class="value">£2.70</span></div>
+                <div class="tile"><span class="label">p95</span><span class="value">£3.92</span><span class="note">lower bound</span></div>
+                <div class="tile"><span class="label">Cost completeness</span><span class="value">99.3%</span></div>
+                <div class="tile"><span class="label">Reached ceiling</span><span class="value">3.2%</span></div>
+              </div>
+              <div class="callout">
+                95th percentile of currently known task COGS is £3.92. 0.7% of tasks contain unresolved
+                supplier cost, so the final p95 may be higher. This describes what the work costs — it is
+                not a recommendation about what to charge. <span class="mk">8</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>A first-class object with its own route, not a settings row. It now carries a pricing mode that is snapshotted onto every task, three ceilings with their own inheritance, required grouping fields, and its own economics. A settings table cannot hold a warning, a distribution and a book cross-reference.<cite>Q1 · position taken</cite></div></li>
+            <li><span class="n">2</span><div>The declaration has no publish record and no effective dating — pricing rules got one, this did not. Flipping a live kind of work silently changes the revenue shape of all future jobs, so the surface has to say so at the point of change.<cite>#151 residue, left open deliberately</cite></div></li>
+            <li><span class="n">3</span><div>The kind of work declares that it is priced as a whole; it never holds the amount. The amount is a work-level line in the customer’s pricing book. Rendering it as an editable field here would be a second home for one number.<cite>#139 §3.1 · #138</cite></div></li>
+            <li><span class="n">4</span><div>Q3, answered structurally: the ceiling bounds one unit of work, so it is declared on the kind of work. The other three families bound other subjects and live with them — there is no Limits page.<cite>#150 §2.2, §8.3</cite></div></li>
+            <li><span class="n">5</span><div>COGS-denominated only. Customer price is not an invariant of the work, and a fixed-price counter sits at zero until delivery, so it cannot control anything while cost accumulates.<cite>#150 §3.1</cite></div></li>
+            <li><span class="n">6</span><div>Ceiling shown against price for fixed kinds — the relative-tightening residue #150 handed here explicitly. This is the only place a tenant can see that their ceiling permits a loss-making delivery.<cite>#150 §17 → #152</cite></div></li>
+            <li><span class="n">7</span><div>The distribution answers “what does this kind of task tend to cost us?” and nothing else. One distribution, not a resolved-only series beside a lower-bound series.<cite>#153 §11</cite></div></li>
+            <li><span class="n">8</span><div>The sentence is close to verbatim from the decision, because the failure mode is a tenant reading p95 = £3.92 and setting a £4 price while the unresolved 0.7% are exactly the expensive, badly-mapped calls.<cite>#153 §11.2–11.3</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 3 ============ -->
+    <div class="screen" id="screen-3" role="tabpanel" aria-labelledby="tab-3" hidden>
+      <div class="screen-head">
+        <span class="route">/tasks/kinds/new</span>
+        <h2>Declaring a kind of work</h2>
+        <span class="answers">The moment two declarations become unavoidable</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks/kinds/new</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">Declare a kind of work</p>
+                  <span class="pane-sub">Two answers are mandatory; neither has a safe default</span>
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="fl">Key</span>
+                <span class="fv"><span class="input">competitor-scan</span></span>
+              </div>
+              <div class="field">
+                <span class="fl">Label</span>
+                <span class="fv"><span class="input">Competitor scan</span></span>
+              </div>
+
+              <div class="field">
+                <span class="fl">Charging <span class="mk">1</span></span>
+                <span class="fv">
+                  <span class="input">— choose —</span>
+                  <span class="hint">
+                    <strong>Per event</strong> — every recorded operation inside the task is priced.<br>
+                    <strong>Fixed</strong> — the task is sold once on delivery; its events are cost-only.
+                  </span>
+                </span>
+              </div>
+              <div class="callout stop">
+                Required. There is no defensible default for a tenant that bills through UBB: “per event”
+                charges every child call of a job that was meant to be sold once, and “fixed” with no
+                resolvable price refuses the start. <span class="mk">2</span>
+              </div>
+
+              <div class="field">
+                <span class="fl">Supplier COGS ceiling <span class="mk">3</span></span>
+                <span class="fv">
+                  <span class="input">— empty —</span>
+                  <span class="hint">or <span class="btn">Declare uncapped</span></span>
+                </span>
+              </div>
+              <div class="callout stop">
+                <strong>422 · uncapped_not_declared</strong><br>
+                A kind of work must either carry a ceiling or declare itself uncapped. Leaving it blank is
+                not an answer — it used to mean “unlimited spend” silently. <span class="mk">4</span>
+              </div>
+
+              <div class="field">
+                <span class="fl">Silence ceiling</span>
+                <span class="fv"><span class="input locked">15 min</span> <span class="chip s-neutral plain">tenant default</span></span>
+              </div>
+              <div class="field">
+                <span class="fl">Duration ceiling</span>
+                <span class="fv"><span class="input locked">6 h</span> <span class="chip s-neutral plain">tenant default</span></span>
+              </div>
+
+              <div style="margin-top:1rem"><span class="btn primary">Declare</span></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>The kind of work is where a job learns it is fixed-price. #147 said the mode is snapshotted but never said where it comes from; #151 put it here.<cite>#151 §4.1</cite></div></li>
+            <li><span class="n">2</span><div>#155 recorded that there is no defensible default for a full-billing tenant. A form that pre-selects one is making a commercial decision on the tenant’s behalf.<cite>#155 → #152 · #151 §4</cite></div></li>
+            <li><span class="n">3</span><div>The coverage gate that used to force this question was deleted with the whole <code>Unpriceable</code> path, so this declaration is the only thing left asking it.<cite>#146 · #150 §8.2</cite></div></li>
+            <li><span class="n">4</span><div>Uncapped stays legal but must be declared. Rendering the refusal in the wireframe because it is the one place the console gains a hard stop the API did not previously have.<cite>#150 §8.1</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 4 ============ -->
+    <div class="screen" id="screen-4" role="tabpanel" aria-labelledby="tab-4" hidden>
+      <div class="screen-head">
+        <span class="route">/tasks/runs</span>
+        <h2>Task runs</h2>
+        <span class="answers">The forensic list — six states, attempts grouped by label</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks/runs</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">Task runs</p>
+                  <span class="pane-sub">July 2026 · 11,193 tasks</span>
+                </div>
+              </div>
+
+              <div class="filters">
+                <span class="f on">grouped by label <span class="mk">1</span></span>
+                <span class="f">kind: any</span>
+                <span class="f">customer: any</span>
+                <span class="f">state: any</span>
+                <span class="f">outcome: any</span>
+                <span class="f">reason: any <span class="mk">2</span></span>
+                <span class="f">region: any</span>
+              </div>
+
+              <div class="scroller">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>Task / label</th>
+                      <th>Kind</th>
+                      <th>Customer</th>
+                      <th>State <span class="mk">3</span></th>
+                      <th>Outcome · reason</th>
+                      <th class="num">Known COGS</th>
+                      <th>Ceiling</th>
+                      <th>Charge <span class="mk">4</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="key">nightly-acme-2026-07-31 <span class="dim">· 3 attempts</span></td>
+                      <td class="dim">nightly-sync</td>
+                      <td class="dim">Acme</td>
+                      <td><span class="chip s-known">completed</span></td>
+                      <td class="dim">delivered</td>
+                      <td class="num">£19.40</td>
+                      <td class="dim">78%</td>
+                      <td class="dim">yes</td>
+                    </tr>
+                    <tr class="child">
+                      <td>· attempt 3 <span class="dim">tsk_9f2b</span></td>
+                      <td class="dim">—</td><td class="dim">—</td>
+                      <td><span class="chip s-known">completed</span></td>
+                      <td class="dim">delivered</td>
+                      <td class="num">£8.10</td>
+                      <td class="dim">32%</td>
+                      <td class="dim">yes</td>
+                    </tr>
+                    <tr class="child">
+                      <td>· attempt 2 <span class="dim">tsk_9f19</span></td>
+                      <td class="dim">—</td><td class="dim">—</td>
+                      <td><span class="chip s-stop">killed</span></td>
+                      <td class="dim">— · task_cogs_ceiling</td>
+                      <td class="num">£25.31</td>
+                      <td><span class="chip s-stop">reached</span></td>
+                      <td class="dim">no</td>
+                    </tr>
+                    <tr class="child">
+                      <td>· attempt 1 <span class="dim">tsk_9e07</span></td>
+                      <td class="dim">—</td><td class="dim">—</td>
+                      <td><span class="chip s-na">expired</span></td>
+                      <td class="dim">— · stale</td>
+                      <td class="num">£1.99</td>
+                      <td class="dim">8%</td>
+                      <td class="dim">no</td>
+                    </tr>
+                    <tr>
+                      <td class="key">tsk_71cd</td>
+                      <td class="dim">report-generation</td>
+                      <td class="dim">Northwind</td>
+                      <td><span class="chip s-known">completed</span></td>
+                      <td class="dim">delivered</td>
+                      <td class="num">≥ £4.20</td>
+                      <td><span class="chip s-indet">indeterminate</span> <span class="mk">5</span></td>
+                      <td class="dim">yes</td>
+                    </tr>
+                    <tr>
+                      <td class="key">tsk_71a8</td>
+                      <td class="dim">report-generation</td>
+                      <td class="dim">Acme</td>
+                      <td><span class="chip s-unknown">failed</span></td>
+                      <td class="dim">failed · upstream_provider_error</td>
+                      <td class="num">£2.04</td>
+                      <td class="dim">51%</td>
+                      <td class="dim">no</td>
+                    </tr>
+                    <tr>
+                      <td class="key">tsk_7190</td>
+                      <td class="dim">location-finder</td>
+                      <td class="dim">初 Labs</td>
+                      <td><span class="chip s-na">cancelled</span></td>
+                      <td class="dim">cancelled · customer_cancelled</td>
+                      <td class="num">£0.31</td>
+                      <td class="dim">16%</td>
+                      <td class="dim">no</td>
+                    </tr>
+                    <tr>
+                      <td class="key">tsk_7188</td>
+                      <td class="dim">bulk-enrichment</td>
+                      <td class="dim">Northwind</td>
+                      <td><span class="chip s-neutral">active</span></td>
+                      <td class="dim">—</td>
+                      <td class="num">£6.88</td>
+                      <td class="dim">uncapped</td>
+                      <td class="dim">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout info">
+                <strong>Failure rate: 1.4%</strong> — counts <code>failed</code> only.
+                <code>expired</code> and <code>cancelled</code> are shown but never counted as failures.
+                <span class="mk">6</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>Attempts group under the free-text label, because retries are separate attempts under one job label and UBB deliberately does not enforce one charge per label. The parent row is a grouping, not a task.<cite>#140 §7, §11</cite></div></li>
+            <li><span class="n">2</span><div>Bucket by <code>reason_code</code> from the UBB-shipped closed list. <code>reason_detail</code> is display-only and is never a filter or a group — it is free text and would explode cardinality.<cite>#140 §3.3, §11</cite></div></li>
+            <li><span class="n">3</span><div>Six states, each visually distinct. <code>completed</code> now means only “the tenant declared delivery”, and <code>killed</code> means only “UBB stopped it on a spend signal” — so the colour can carry meaning honestly.<cite>#140 §1.1, I1–I2</cite></div></li>
+            <li><span class="n">4</span><div><code>charge_created</code> surfaced per job. It keys on how the job ended, never on status alone.<cite>#140 §11 · #139 §4</cite></div></li>
+            <li><span class="n">5</span><div>Known COGS is below the ceiling but one event is unresolved, so the ceiling state is <code>indeterminate</code> — not “under limit”. The hatched fill is deliberately neither the safe colour nor the breach colour.<cite>#146 §5 · #150 §17</cite></div></li>
+            <li><span class="n">6</span><div>Stated on the surface because the temptation is structural: three of the six states are non-delivery and only one of them is a failure.<cite>#140 §11 · #153 §10.4</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 5 ============ -->
+    <div class="screen" id="screen-5" role="tabpanel" aria-labelledby="tab-5" hidden>
+      <div class="screen-head">
+        <span class="route">/tasks/runs/tsk_71cd</span>
+        <h2>Task run — detail</h2>
+        <span class="answers">Answers Q5 (the subtask tree) · carries every economic state</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /tasks/runs/tsk_71cd</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new here">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">tsk_71cd <span class="chip s-known">completed</span> <span class="chip s-neutral plain">delivered</span></p>
+                  <span class="pane-sub">report-generation · Northwind · 31 Jul 09:12 → 09:47 · label <code>nw-weekly-31</code></span>
+                </div>
+                <div><span class="btn">Pricing receipt →</span></div>
+              </div>
+
+              <div class="tiles">
+                <div class="tile">
+                  <span class="label">Supplier COGS</span>
+                  <span class="value">≥ £4.20</span>
+                  <span class="note"><span class="chip s-unknown">incomplete</span> 1 unresolved <span class="mk">1</span></span>
+                </div>
+                <div class="tile">
+                  <span class="label">Ceiling</span>
+                  <span class="value">£5.00</span>
+                  <span class="note"><span class="chip s-indet">indeterminate</span> <span class="mk">2</span></span>
+                  <span class="meter"><span class="indet" style="width:84%"></span></span>
+                </div>
+                <div class="tile">
+                  <span class="label">Customer revenue</span>
+                  <span class="value">£5.00</span>
+                  <span class="note"><span class="chip s-known">charged</span> · fixed, pinned at start</span>
+                </div>
+                <div class="tile">
+                  <span class="label">Margin</span>
+                  <span class="value dim">≤ £0.80</span>
+                  <span class="note">upper bound — cost may rise <span class="mk">3</span></span>
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="fl">Charging summary</span>
+                <span class="fv">
+                  <span class="input locked">fixed · pinned at start</span>
+                  <span class="hint">Derived from three declarations — the kind of work’s pricing mode,
+                  the matched rule, and the book publish. Read-only. <span class="mk">4</span></span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Cost sources</span>
+                <span class="fv">
+                  <span class="chip s-neutral plain">calculated 38</span>
+                  <span class="chip s-neutral plain">reported 4</span>
+                  <span class="chip s-unknown">unresolved 1</span>
+                  <span class="hint">Mixed provenance is <strong>complete</strong>, not qualified — only the
+                  unresolved event makes this total incomplete. <span class="mk">5</span></span>
+                </span>
+              </div>
+              <div class="field">
+                <span class="fl">Idempotency key</span>
+                <span class="fv"><span class="input locked">nw-weekly-31-a3f9</span> <span class="dim">· claimed permanently</span></span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Steps <span class="mk">6</span></p>
+              <div class="scroller">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>Step</th><th>State</th><th class="num">Known COGS</th><th>Ceiling</th><th>Revenue <span class="mk">7</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="child"><td>fetch-sources</td><td><span class="chip s-known">completed</span></td><td class="num">£0.41</td><td class="dim">—</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>summarise-a</td><td><span class="chip s-known">completed</span></td><td class="num">£0.88</td><td class="dim">44%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>summarise-b</td><td><span class="chip s-known">completed</span></td><td class="num">£0.91</td><td class="dim">46%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>summarise-c</td><td><span class="chip s-known">completed</span></td><td class="num">£0.79</td><td class="dim">40%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>enrich-entities</td><td><span class="chip s-known">completed</span></td><td class="num">≥ £0.44</td><td><span class="chip s-indet">indeterminate</span></td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>translate</td><td><span class="chip s-na">cancelled</span></td><td class="num">£0.12</td><td class="dim">6%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>render-charts</td><td><span class="chip s-known">completed</span></td><td class="num">£0.30</td><td class="dim">15%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>compose</td><td><span class="chip s-known">completed</span></td><td class="num">£0.19</td><td class="dim">10%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>proofread</td><td><span class="chip s-known">completed</span></td><td class="num">£0.11</td><td class="dim">6%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="child"><td>deliver</td><td><span class="chip s-known">completed</span></td><td class="num">£0.05</td><td class="dim">3%</td><td><span class="chip s-na">not applicable</span></td></tr>
+                    <tr class="rollup"><td>Rolled up into tsk_71cd</td><td>—</td><td class="num">≥ £4.20</td><td>84% · indeterminate</td><td>£5.00 on the parent</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="callout info">
+                Containment is exactly one level. A step cannot have steps, so this is a two-level table and
+                never a tree widget. <span class="mk">8</span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.2rem;">Recorded operations</p>
+              <div class="scroller">
+                <table class="grid">
+                  <thead><tr><th>Operation</th><th>Event type</th><th class="num">COGS</th><th>Measurements</th></tr></thead>
+                  <tbody>
+                    <tr><td>pst_4a71</td><td class="dim">gemini-flash-standard</td><td class="num">£0.19</td><td><span class="chip s-known">available</span></td></tr>
+                    <tr><td>pst_4a6f</td><td class="dim">gemini-flash-standard</td><td class="num">£0.22</td><td><span class="chip s-known">available</span></td></tr>
+                    <tr><td>pst_3110</td><td class="dim">serp-lookup</td><td class="num">£0.04</td><td><span class="chip s-na">pruned (retention)</span> <span class="mk">9</span></td></tr>
+                    <tr><td>pst_4a55</td><td class="dim">vendor-ocr</td><td class="num dim">unknown</td><td><span class="chip s-known">available</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>“At least £4.20” — the known total is a true lower bound. This is the presentation rule applied at task grain rather than at aggregate grain.<cite>#151 §10 · #150 §4.2</cite></div></li>
+            <li><span class="n">2</span><div>Cost £4.20 known, ceiling £5.00, one unresolved event: the ceiling cannot honestly be called safe, so it is <code>indeterminate</code>. Note enforcement did <em>not</em> fire — UBB will not stop a job it cannot fully cost.<cite>#146 §5 · #150 §4</cite></div></li>
+            <li><span class="n">3</span><div>Revenue is pinned and cost is a floor, so margin is an <em>upper</em> bound. The direction of the inequality flips relative to the cost tile, and getting it backwards is an easy and invisible defect.<cite>#148 §9 · #153 §8.5</cite></div></li>
+            <li><span class="n">4</span><div><code>charging_summary</code> is derived at read time and never stored — so it renders locked. #154 rule 4: a derived fact may be served, never written.<cite>#151 §2.4 · ADR-0006 §4</cite></div></li>
+            <li><span class="n">5</span><div>Owner’s wording correction, carried onto the surface: mixed provenance is not unhealthy; only unresolved makes a total incomplete. A drill-down, never a caveat.<cite>#151 §10</cite></div></li>
+            <li><span class="n">6</span><div>Ten steps, which is the case the ticket asked about. It is a flat table with a roll-up row — the roll-up is where the ceiling comparison actually happens.<cite>Q5 · #150 §2.5</cite></div></li>
+            <li><span class="n">7</span><div>Every step reads <em>not applicable</em> because revenue lives on the parent’s charge. The reason matters: <code>fixed_task_pricing</code> here versus <code>tenant_not_billing</code> for a metering-only tenant. Render them identically and a fixed job’s cost-only calls look exactly like a tenant that never bills at all.<cite>#151 §8 → #152</cite></div></li>
+            <li><span class="n">8</span><div>Unlimited depth was rejected on hot-path grounds. Drawing a tree widget would imply a model that does not exist.<cite>#140 §6.1</cite></div></li>
+            <li><span class="n">9</span><div>The measurement payload has passed its retention horizon while the posting survives on the six-year clock. The named defect is <code>measurements ?? {}</code> rendering this as “no usage”.<cite>#165 → #152 · #153 §12</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 6 ============ -->
+    <div class="screen" id="screen-6" role="tabpanel" aria-labelledby="tab-6" hidden>
+      <div class="screen-head">
+        <span class="route">/spend-controls</span>
+        <h2>Spend controls — two reports</h2>
+        <span class="answers">Answers Q4 (what a breach looks like, and what happens to the past-limit report)</span>
+      </div>
+
+      <div class="drawing">
+        <div class="mock">
+          <div class="mock-chrome"><span class="dot"></span><span>console.ubb — /spend-controls/breaches</span></div>
+          <div class="mock-body">
+            <div class="navrail">
+              <div class="item">Overview</div>
+              <div class="item">Events</div>
+              <div class="item new">Tasks</div>
+              <div class="item">Customers</div>
+              <div class="group">REVENUE</div>
+              <div class="item">Pricing</div>
+              <div class="item">Billing</div>
+              <div class="item">Plans</div>
+              <div class="item">Referrals</div>
+              <div class="group">PLATFORM</div>
+              <div class="item new here">Spend controls</div>
+              <div class="item">Webhooks</div>
+              <div class="item">Developers</div>
+              <div class="item">Settings</div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-top">
+                <div>
+                  <p class="pane-title">Spend controls <span class="mk">1</span></p>
+                  <span class="pane-sub">July 2026</span>
+                </div>
+              </div>
+
+              <div class="filters">
+                <span class="f on">Stops &amp; breaches</span>
+                <span class="f">Utilisation &amp; headroom</span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;">Episodes — controls that fired and had a consequence <span class="mk">2</span></p>
+              <div class="scroller">
+                <table class="grid">
+                  <thead>
+                    <tr><th>When</th><th>Family <span class="mk">3</span></th><th>Subject</th><th>Bound</th><th class="num">At crossing</th><th>Consequence</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>31 Jul 04:19</td>
+                      <td><span class="chip s-stop plain">task_ceiling</span></td>
+                      <td class="dim">tsk_9f19 · nightly-sync · Acme</td>
+                      <td class="num">£25.00</td>
+                      <td class="num">£25.31</td>
+                      <td class="dim">task stopped · final £25.31</td>
+                    </tr>
+                    <tr>
+                      <td>28 Jul 11:02</td>
+                      <td><span class="chip s-stop plain">customer_spend_pool</span></td>
+                      <td class="dim">Northwind · July</td>
+                      <td class="num">£100.00</td>
+                      <td class="num">£102.00</td>
+                      <td class="dim">starts blocked · customer-wide stop</td>
+                    </tr>
+                    <tr>
+                      <td>22 Jul 16:44</td>
+                      <td><span class="chip s-stop plain">wallet_policy</span></td>
+                      <td class="dim">初 Labs · hard floor</td>
+                      <td class="num">£0.00</td>
+                      <td class="num">−£1.14</td>
+                      <td class="dim">stop fired · cleared 16:51</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout info">
+                A pool crossing is explained through its charge and that charge’s posting, never through an
+                arbitrary usage event. <span class="mk">4</span>
+              </div>
+              <div class="callout">
+                <strong>Not here:</strong> 78 tasks whose ceiling could not be evaluated. An indeterminate
+                ceiling is never a breach — it appears in utilisation, opposite. <span class="mk">5</span>
+              </div>
+
+              <p class="pane-sub" style="letter-spacing:0.08em;text-transform:uppercase;margin-top:1.4rem;">Utilisation &amp; headroom — the second report <span class="mk">6</span></p>
+              <div class="tiles">
+                <div class="tile"><span class="label">Avg final utilisation</span><span class="value">61%</span><span class="note">per task, then averaged <span class="mk">7</span></span></div>
+                <div class="tile"><span class="label">Avg peak utilisation</span><span class="value">64%</span></div>
+                <div class="tile"><span class="label">Reached ceiling</span><span class="value">3.2%</span></div>
+                <div class="tile"><span class="label">Indeterminate</span><span class="value">0.7%</span><span class="note">78 tasks <span class="mk">8</span></span></div>
+                <div class="tile"><span class="label">Avg unused headroom</span><span class="value">£1.45</span></div>
+                <div class="tile"><span class="label">Pool used · Northwind</span><span class="value">102%</span><span class="note">blocked 28 Jul</span></div>
+              </div>
+
+              <div class="callout stop">
+                Your ceiling could not be evaluated 78 times last month. These produce no episode by
+                construction — without this number they are invisible. <span class="mk">9</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <h4>Why each element is here</h4>
+          <ol>
+            <li><span class="n">1</span><div>Its own area, not a Tasks tab: two of the three families — the customer spend pool and the wallet policy — have nothing to do with tasks. Filing them under Tasks would misplace two thirds of the report.<cite>#153 §10.1 · position taken</cite></div></li>
+            <li><span class="n">2</span><div>This <em>is</em> the past-limit report, widened. Today it reconstructs wallet-floor episodes from the stop/clear pair; it gains task ceilings and gains the pool, which it is missing entirely.<cite>#153 §10.2</cite></div></li>
+            <li><span class="n">3</span><div>Three families named on every row, because <code>CUSTOMER_WIDE_STOP</code> is currently one string for two controls and “which fired?” is unanswerable.<cite>#150 §7.4, §10</cite></div></li>
+            <li><span class="n">4</span><div>The pool’s basis is the charge posting — the single money path. Explaining a pool row through a usage event would imply a second route.<cite>#151 §6 · #153 §10.2</cite></div></li>
+            <li><span class="n">5</span><div>A task appears only if its known lower bound independently reached the ceiling. That makes the report a set of true statements rather than suspicions.<cite>#150 §4.2 · #153 §10.2</cite></div></li>
+            <li><span class="n">6</span><div>Two report contracts, not one stretched row shape — episodic versus continuous. Drawn on one screen here only to show the relationship; they are separate tabs.<cite>#153 §10.1</cite></div></li>
+            <li><span class="n">7</span><div>Averaged per task and then across tasks. Averaging every acknowledgement overweights tasks that happen to emit more events, and the error is invisible in the output.<cite>#150 §9.3</cite></div></li>
+            <li><span class="n">8</span><div><code>limit_hit_count</code> moves here from <code>/analytics/tasks</code>, where it is a third independent implementation of a ceiling comparison.<cite>#153 §10.3</cite></div></li>
+            <li><span class="n">9</span><div>Stated as a sentence, not just a percentage, because it is the one urgent fact in the whole surface that produces no event, no episode and no alert.<cite>#153 §10.3</cite></div></li>
+          </ol>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Six questions, six positions</h2>
+    <p class="lede">
+      Each of these is a proposal the wireframe commits to. The line in red is what I actually need a
+      ruling on — the rest follows from decisions already made.
+    </p>
+
+    <div class="qgrid">
+      <div class="q">
+        <span class="qn">Question 1</span>
+        <h3>Is a kind of work a first-class object, or a settings row?</h3>
+        <p class="pos">First-class, with its own route.</p>
+        <p>It now carries a charging mode snapshotted onto every task, three ceilings with independent
+        inheritance, required grouping fields, a cross-reference into a pricing book, and its own cost
+        distribution. A settings table row cannot hold a change-warning, a distribution, or a
+        ceiling-against-price gauge.</p>
+        <span class="react">React to: whether the price belongs on this page at all, or stays a link into the book.</span>
+      </div>
+
+      <div class="q">
+        <span class="qn">Question 2</span>
+        <h3>What is the primary unit — kind of work, or run?</h3>
+        <p class="pos">Kinds of work lands. Runs is a sibling, one click away.</p>
+        <p>A tenant opens this surface to make a decision — is this priced right, is the ceiling right,
+        is this kind of work worth selling. Those are all aggregate questions. The run list is where you
+        go once you already have a specific question, and it is unbounded, so it makes a poor front door.</p>
+        <span class="react">React to: whether an operator debugging live work is badly served by that.</span>
+      </div>
+
+      <div class="q">
+        <span class="qn">Question 3</span>
+        <h3>Where do spend limits get set?</h3>
+        <p class="pos">Wherever their subject lives. There is no Limits page.</p>
+        <p>The four families each bound a different thing: a ceiling bounds one unit of work → the kind
+        of work. A pool bounds a customer’s spend over a period → the customer. Wallet policy → the
+        wallet. Admission control → settings. A single limits page would re-collapse the four families
+        #150 just separated. Reporting is centralised even though configuration is not.</p>
+        <span class="react">React to: distributed configuration with a centralised report — or is one config page worth the collapse?</span>
+      </div>
+
+      <div class="q">
+        <span class="qn">Question 4</span>
+        <h3>What does a breach look like, and what of the past-limit report?</h3>
+        <p class="pos">A breach is an episode row, not a badge. The past-limit report becomes the breach
+        report, widened to three families, and gains a sibling.</p>
+        <p>It stops being per-customer and becomes tenant-wide with a customer filter, so the customer
+        page links into it rather than owning it. The state a task carries is <code>killed</code>; the
+        episode is the record of why.</p>
+        <span class="react">React to: whether “past-limit report” survives as a phrase — #154 left that open, and it is now two reports about four families under a vocabulary where “limit” was retired.</span>
+      </div>
+
+      <div class="q">
+        <span class="qn">Question 5</span>
+        <h3>What does the subtask tree look like with ten children?</h3>
+        <p class="pos">A two-level table with a roll-up row. Never a tree widget.</p>
+        <p>Containment is exactly one level, so there is no tree to draw. The roll-up row is the
+        important one — it is where the parent’s ceiling comparison actually happens, and where a
+        fixed-price job’s single charge sits while all ten children read <em>not applicable</em>.</p>
+        <span class="react">React to: at what count the flat table stops working — 10 is fine, 200 is not, and nothing bounds it.</span>
+      </div>
+
+      <div class="q">
+        <span class="qn">Question 6</span>
+        <h3>New top-level tab, or inside an existing one?</h3>
+        <p class="pos">Two new top-level items: <strong>Tasks</strong> and <strong>Spend controls</strong>.</p>
+        <p>Tasks goes in the first, ungated group beside Events — every tenant has metering, the
+        lifecycle API is top-level and ungated, and events and tasks are the two operational nouns.
+        Spend controls goes under PLATFORM because it spans tasks, customers and wallets.</p>
+        <span class="react">React to: two new nav items in one change, on a nav that currently has ten.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this prototype deliberately does not do</h2>
+    <ul class="tight">
+      <li><strong>No dimension-scoped cap affordance.</strong> #150 §6.4 names this as a thing #152 and #153 must not build. It was never built and now never will be in v1.</li>
+      <li><strong>No editable <code>charging_summary</code>, and no price field on the kind of work.</strong> Both are derived or owned elsewhere; making either editable creates a second home for one fact.</li>
+      <li><strong>No counterfactual metered price</strong> on fixed-price work. #151 §12 declined it; the cost distribution is the replacement, and it answers a narrower question on purpose.</li>
+      <li><strong>No warning threshold or amber ceiling state.</strong> Enforcement is binary and utilisation is information; v1 adds no warning event and the UI must not imply one exists.</li>
+      <li><strong>No real components.</strong> Nothing here uses the console’s design system, and it should not be lifted into <code>apps/ui</code> — the point was the shape.</li>
+    </ul>
+
+    <h3>The hazard this prototype sits on</h3>
+    <p>
+      #155 recorded it plainly: #152 and #157 now prototype against a <strong>paper model</strong>. Every
+      screen above renders a contract that exists only in decision documents — no endpoint returns a
+      measure status, no fixture carries an indeterminate ceiling, and by #155’s count every value in
+      the console’s 2,963 lines of mock fixtures is known. That is exactly why the wireframe is worth
+      having before slice 0, and exactly why it cannot be trusted as a specification.
+    </p>
+  </section>
+
+  <footer>
+    <p>Prototype for issue #152 · map #137 · drawn 2026-08-04 against <code>main</code> @ <code>0cf00b5</code>.<br>
+    Renders decisions #138–#155 and #165. Contracts belong to #153; this file is only the rendering.<br>
+    Not a specification. Not the real surface.</p>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.switcher button'));
+    function show(id) {
+      tabs.forEach(function (t) {
+        var panel = document.getElementById(t.getAttribute('aria-controls'));
+        var on = t.id === id;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (panel) { panel.hidden = !on; }
+      });
+    }
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () { show(t.id); });
+      t.addEventListener('keydown', function (e) {
+        var i = tabs.indexOf(t);
+        if (e.key === 'ArrowRight' && i < tabs.length - 1) { tabs[i + 1].focus(); show(tabs[i + 1].id); }
+        if (e.key === 'ArrowLeft' && i > 0) { tabs[i - 1].focus(); show(tabs[i - 1].id); }
+      });
+    });
+  })();
+</script>
