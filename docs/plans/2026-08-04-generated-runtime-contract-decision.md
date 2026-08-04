@@ -553,7 +553,7 @@ why"* is precisely the unexplained fragment the Code Builder exists to eliminate
 teaches habits at tenant scale.
 
 Identity is `idempotency_key`. Correlation is what `metadata` is for — filterable and readable under
-#145 §9, which folded `tags` into it for this reason. A tenant who wants to correlate a UBB event to
+#145 §8.2, which folded `tags` into it for this reason. A tenant who wants to correlate a UBB event to
 their own provider call puts the value in `metadata` deliberately, rather than being made to invent one.
 
 Map constraint 1 makes the break free: there are no live integrators, and ADR-0003 §4's 90-day
@@ -666,7 +666,7 @@ Public names introduced or removed here, for ADR-0008 §3's registry under ADR-0
 
 | Name | Standing |
 |---|---|
-| the stop signal type | **owed.** Constraints decided (§1.6): not an `Error`, not Task-scoped, describes a requested action. `UBBStopRequested` / `SpendingStopRequested` |
+| the stop signal type | **owed.** Constraints decided (§1.7): not an `Error`, not Task-scoped, describes a requested action. `UBBStopRequested` / `SpendingStopRequested` |
 | `stop_behavior` + `"raise"` / `"return"` | **new**, closed value set |
 | `trigger_source` | **new** field on the signal payload |
 | `TaskOutcomeRequired` | **new.** Task-scoped and correctly so |
