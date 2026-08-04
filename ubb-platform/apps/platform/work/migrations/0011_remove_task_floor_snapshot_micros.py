@@ -5,8 +5,12 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
 
+    # App label moved 'tasks' -> 'work' (#196); see 0001_initial for why
+    # this replaces its predecessor rather than re-running it.
+    replaces = [("tasks", "0011_remove_task_floor_snapshot_micros")]
+
     dependencies = [
-        ('tasks', '0010_task_dim1_task_dim2_task_dim3_task_dim4_task_dim5_and_more'),
+        ('work', '0010_task_dim1_task_dim2_task_dim3_task_dim4_task_dim5_and_more'),
     ]
 
     operations = [

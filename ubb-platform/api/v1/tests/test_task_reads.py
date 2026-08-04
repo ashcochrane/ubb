@@ -10,7 +10,7 @@ import pytest
 from django.test import Client
 
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 

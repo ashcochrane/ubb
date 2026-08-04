@@ -22,7 +22,7 @@ def close_abandoned_tasks():
     (e.g., client crash, network failure, forgotten close call).
     """
     from django.db.models import Q
-    from apps.platform.tasks.models import Task
+    from apps.platform.work.models import Task
 
     now = timezone.now()
     cutoff = now - timedelta(hours=1)
@@ -44,7 +44,7 @@ def close_abandoned_tasks():
     )
     closed_count = 0
 
-    from apps.platform.tasks.services import TaskService
+    from apps.platform.work.services import TaskService
 
     for task in stale_tasks.iterator():
         with transaction.atomic():
@@ -87,9 +87,9 @@ def reap_stale_tasks():
     kill_and_announce) guards against double-emit.
     """
     from django.db.models import Q
-    from apps.platform.tasks.models import Task
-    from apps.platform.tasks.reasons import STALE, STALE_MAX_AGE
-    from apps.platform.tasks.services import TaskService
+    from apps.platform.work.models import Task
+    from apps.platform.work.reasons import STALE, STALE_MAX_AGE
+    from apps.platform.work.services import TaskService
     from apps.platform.tenants.models import Tenant
     from apps.platform.tenants.flags import enforcing
 

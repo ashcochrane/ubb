@@ -182,9 +182,9 @@ def sweep_over_limit_tasks(tenant):
     transition inside ``kill_and_announce`` keeps racing lanes exactly-once.
     A subtask over its OWN limit is killed alone; a parent's kill cascades
     downward as ever."""
-    from apps.platform.tasks.models import Task
-    from apps.platform.tasks.reasons import SUBTASK_LIMIT, TASK_LIMIT
-    from apps.platform.tasks.services import TaskService
+    from apps.platform.work.models import Task
+    from apps.platform.work.reasons import SUBTASK_LIMIT, TASK_LIMIT
+    from apps.platform.work.services import TaskService
 
     swept = 0
     over = Task.objects.filter(
@@ -213,7 +213,7 @@ def remint_unannounced_kills(tenant):
     """
     from apps.platform.events.announcements import UNANNOUNCED, announcement_status
     from apps.platform.events.models import OutboxEvent
-    from apps.platform.tasks.models import Task
+    from apps.platform.work.models import Task
 
     dead_stamp = OutboxEvent.objects.filter(
         id=OuterRef("announce_outbox_id"), status="failed")

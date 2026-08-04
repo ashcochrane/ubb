@@ -1,8 +1,8 @@
 import pytest
 from django.db import IntegrityError
 from apps.platform.tenants.models import Tenant
-from apps.platform.tasks.models import TaskType
-from apps.platform.tasks.queries import task_type_policy
+from apps.platform.work.models import TaskType
+from apps.platform.work.queries import task_type_policy
 
 
 @pytest.mark.django_db

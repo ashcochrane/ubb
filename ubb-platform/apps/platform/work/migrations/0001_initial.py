@@ -9,6 +9,28 @@ class Migration(migrations.Migration):
 
     initial = True
 
+    # The app label moved 'tasks' -> 'work' (#196, slice 0 §9). A label is the
+    # key django_migrations is written under, so without this every migration
+    # in this app would read as unapplied on an existing database and Django
+    # would try to CREATE tables that are already there.
+    #
+    # Each migration here replaces exactly its own predecessor — a 1:1 chain,
+    # not a squash. Django's loader marks a replacing migration applied when
+    # its replaced targets are applied, so on a populated database the whole
+    # app resolves to "already applied" and NO SQL runs: no table is renamed,
+    # dropped or recreated, and every row, key, index and constraint survives.
+    # On a fresh database none are applied, so these run normally and build
+    # the schema. The table names are explicit ('ubb_task', 'ubb_task_type')
+    # and unchanged, so the label move is invisible to the database.
+    #
+    # 1:1 rather than a squash for two reasons. 0004 depends on usage.0025
+    # while usage migrations depend back on this app, so collapsing the chain
+    # to one node would close that into a dependency cycle. And with exactly
+    # one target each, every entry is always either wholly applied or wholly
+    # unapplied — never Django's "partially applied" case — so a database
+    # stopped part-way up the old chain resumes from where it actually is.
+    replaces = [("tasks", "0001_initial")]
+
     dependencies = [
         ('customers', '0008_remove_topup_to_billing'),
         ('tenants', '0006_add_run_hard_stop_fields'),

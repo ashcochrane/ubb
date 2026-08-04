@@ -4,7 +4,7 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet
-from apps.platform.tasks.models import Task, TaskType
+from apps.platform.work.models import Task, TaskType
 from apps.platform.dimensions.models import DimensionDef
 
 

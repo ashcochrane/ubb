@@ -6,7 +6,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.dimensions.models import DimensionDef
-from apps.platform.tasks.services import TaskService
+from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.models import TenantMarkup
 from apps.metering.pricing.services import markup_cache

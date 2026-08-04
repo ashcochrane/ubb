@@ -143,11 +143,11 @@ rows disagree about where a value came from. (ADR-0005)
 **Task type**:
 A tenant's declared kind of top-level work, carrying server-side policy (a COGS ceiling, required
 dimensions) rather than being a bare label; immutable on a `Task` once created. (ADR-0005;
-`apps/platform/tasks/models.py:TaskType`)
+`apps/platform/work/models.py:TaskType`)
 
 **Subtask type**:
 The `Subtask`-kind counterpart to task type — a declared kind of step work, with its own policy.
-(ADR-0005; `apps/platform/tasks/models.py:TaskType`)
+(ADR-0005; `apps/platform/work/models.py:TaskType`)
 
 ## Tasks
 
@@ -156,7 +156,7 @@ The registered unit of agent work — a tenant+customer-scoped grouping of many 
 one logical workflow execution, registered at the start-gate; lives in the kernel so metering and
 billing can both reference it without crossing a product boundary. Carries both running totals
 (billed + provider, denominationally explicit) and its signal points. Status
-`active | completed | failed | killed`. (`apps/platform/tasks/models.py:Task`)
+`active | completed | failed | killed`. (`apps/platform/work/models.py:Task`)
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `tags` value) —
 tags are analytics-only and never attach a limit.
 
@@ -165,14 +165,14 @@ A parent-linked child unit of work — a task registered under an active top-lev
 own COGS limit and lifecycle. Its spend rolls up into the parent's totals (the parent's cap covers
 everything underneath it); crossing its own limit kills it alone (`subtask.limit_exceeded`) while
 the parent keeps running; a parent kill/close cascades downward to its active subtasks — never
-upward. One containment level at launch. (`apps/platform/tasks/models.py:Task.parent`)
+upward. One containment level at launch. (`apps/platform/work/models.py:Task.parent`)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 
 **Task limit (provider-cost limit)**:
 A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
 passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
 races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a billing wall.
-(`apps/platform/tasks/models.py:Task.provider_cost_limit_micros`)
+(`apps/platform/work/models.py:Task.provider_cost_limit_micros`)
 _Avoid_: "hard stop" — that vocabulary retired with the 429.
 
 **Killed (task)**:
@@ -180,11 +180,11 @@ The stop signal fired for this unit — its own limit was crossed, or the reaper
 events still land, bill, and count into the killed unit's totals (and its parent's, for a
 subtask); the flip is the durable record that the signal fired, not a wall. Killing a parent
 cascades the flip to its active subtasks; killing a subtask kills it alone.
-(`apps/platform/tasks/services.py:TaskService.kill_task`)
+(`apps/platform/work/services.py:TaskService.kill_task`)
 
 **Heartbeat**:
 A task's most-recent-event timestamp; its absence past the stale window is what the reaper kills
-on. (`apps/platform/tasks/models.py:Task.last_event_at`)
+on. (`apps/platform/work/models.py:Task.last_event_at`)
 
 **Stop reason**:
 The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
@@ -193,7 +193,7 @@ The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limi
 (an owner suspended with no open floor episode — taggable, but never an episode reason, so it is
 NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer and
 consumer; rides the ack's `stop_reason`, never an HTTP error.
-(`apps/platform/tasks/reasons.py`)
+(`apps/platform/work/reasons.py`)
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though
 immutable pre-removal `UsageEvent.stop_context` rows may still carry it forever.

@@ -366,7 +366,7 @@ class TaskLimitExceeded(EventSchema):
 
     customer_id      = the SEAT that owns the task.
     billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
-    reason           = one of apps.platform.tasks.reasons (closed set).
+    reason           = one of apps.platform.work.reasons (closed set).
     Both running totals are carried, denominationally explicit; only the
     provider (COGS) total races provider_cost_limit_micros.
     """

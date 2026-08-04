@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('customers', '0014_customer_suspension_reason'),
-        ('tasks', '0005_subtask_containment'),
+        ('work', '0005_subtask_containment'),
         ('tenants', '0018_the_clean_cut_run_to_task'),
         ('usage', '0026_the_clean_cut_run_to_task'),
     ]

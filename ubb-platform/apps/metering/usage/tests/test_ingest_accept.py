@@ -29,7 +29,7 @@ from apps.metering.usage.services import ingest_accept
 from apps.metering.usage.services.ingest_accept import (
     IngestAppendFailed, accept_batch, reset_task_meta_cache)
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant
 
 

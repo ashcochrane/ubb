@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 
 
-class TasksConfig(AppConfig):
+class WorkConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.platform.tasks"
-    label = "tasks"
+    name = "apps.platform.work"
+    label = "work"

@@ -5,9 +5,9 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.services import TaskService
-from apps.platform.tasks.tasks import close_abandoned_tasks
+from apps.platform.work.models import Task
+from apps.platform.work.services import TaskService
+from apps.platform.work.tasks import close_abandoned_tasks
 
 
 class CloseAbandonedTasksTest(TestCase):

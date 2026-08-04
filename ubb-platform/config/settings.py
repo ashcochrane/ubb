@@ -35,7 +35,7 @@ INSTALLED_APPS = [
     "apps.platform.membership",
     "apps.platform.events",
     "apps.platform.audit",
-    "apps.platform.tasks",
+    "apps.platform.work",
     "apps.platform.dimensions",
     "apps.metering.usage",
     "apps.metering.pricing",
@@ -221,11 +221,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=4),  # Daily at 4 AM UTC
     },
     "close-abandoned-tasks": {
-        "task": "apps.platform.tasks.tasks.close_abandoned_tasks",
+        "task": "apps.platform.work.tasks.close_abandoned_tasks",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
     "reap-stale-tasks": {
-        "task": "apps.platform.tasks.tasks.reap_stale_tasks",
+        "task": "apps.platform.work.tasks.reap_stale_tasks",
         "schedule": crontab(minute="*/5"),  # Tier-2 P5: every 5 minutes
     },
     "flush-api-key-last-used": {

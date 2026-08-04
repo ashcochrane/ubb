@@ -2,7 +2,7 @@ import pytest
 from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.tasks.models import TaskType
+from apps.platform.work.models import TaskType
 from apps.platform.dimensions.models import DimensionDef
 
 

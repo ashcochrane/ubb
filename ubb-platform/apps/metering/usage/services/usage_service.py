@@ -123,7 +123,7 @@ def _inherit_dimensions(task_id, dimension_slots):
     if task_id is None:
         return out
 
-    from apps.platform.tasks.models import Task
+    from apps.platform.work.models import Task
     cols = ("id", "parent_id", "task_type", "subtask_type") + SLOTS
     leaf = Task.objects.filter(id=task_id).values(*cols).first()
     if leaf is None:
@@ -172,7 +172,7 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
     if parent_task_id is _UNRESOLVED:
         parent_task_id = None
         if event.task_id:
-            from apps.platform.tasks.models import Task
+            from apps.platform.work.models import Task
             parent_task_id = Task.objects.filter(
                 id=event.task_id).values_list("parent_id", flat=True).first()
     return {
@@ -356,7 +356,7 @@ def _execute_kills(kills, *, tenant_id, customer_id):
     Per-kill try/except + loud log: kill_and_announce already never raises,
     but an on_commit callback that raised would abort every later callback in
     the chain, so the belt-and-braces guard lives HERE too (#112, D2)."""
-    from apps.platform.tasks.services import TaskService
+    from apps.platform.work.services import TaskService
     for target_id, reason in kills:
         try:
             TaskService.kill_and_announce(
@@ -433,7 +433,7 @@ class UsageService:
                     # verdicts instead of raising. The event create above and
                     # this accumulate share the savepoint, so totals and
                     # events can never diverge.
-                    from apps.platform.tasks.services import TaskService
+                    from apps.platform.work.services import TaskService
                     task, verdicts = TaskService.accumulate_cost(
                         inp.task_id, billed_cost_micros=billed_cost_micros,
                         provider_cost_micros=provider_cost_micros,
@@ -490,7 +490,7 @@ class UsageService:
             # original offset, but consumers bucket by UTC calendar month.
             effective_at=event.effective_at.astimezone(dt_timezone.utc).isoformat()))
         if verdicts is not None:
-            from apps.platform.tasks import reasons
+            from apps.platform.work import reasons
             kills = reasons.kill_plan(task.id, task.parent_id, verdicts)
             if kills:
                 transaction.on_commit(
@@ -580,7 +580,7 @@ class UsageService:
         stop_reason = live.get("stop_reason")
         stop_scope = live.get("stop_scope")
         if outcome.verdicts is not None:
-            from apps.platform.tasks import reasons
+            from apps.platform.work import reasons
             unit_reason, unit_scope = reasons.stop_fields(
                 outcome.verdicts, is_subtask=task.parent_id is not None)
             if unit_reason is not None:

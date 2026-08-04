@@ -538,7 +538,7 @@ def _drawdown_tail(tenant):
             # drive_stop is savepoint-isolated, and a failure here is
             # re-driven by the hourly reconcile.
             if crossed_floor(old_balance, new_balance, limit):
-                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
                 from apps.billing.gating.services.live_counter import (

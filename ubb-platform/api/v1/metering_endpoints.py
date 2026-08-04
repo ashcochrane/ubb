@@ -40,7 +40,7 @@ from apps.metering.pricing.models import (
 )
 from api.v1.pagination import page
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.pricing.services.pricing_service import PricingError
@@ -277,7 +277,7 @@ def close_task(request, task_id: UUID):
     a killed subtask keeps its state. Closing a subtask completes it alone."""
     _product_check(request)
     from django.db import transaction
-    from apps.platform.tasks.services import TaskService
+    from apps.platform.work.services import TaskService
 
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
     with transaction.atomic():
@@ -340,7 +340,7 @@ def task_analytics(request, group_by: str = "task_type", start_date: date = None
     A p95 approaching the type's ceiling is the signal that the limit is about
     to start biting real customers."""
     _product_check(request)
-    from apps.platform.tasks.queries import task_rollup_by_type
+    from apps.platform.work.queries import task_rollup_by_type
 
     if start_date and end_date:
         if end_date < start_date:
@@ -509,7 +509,7 @@ def _apply_task_filter(qs, tenant, task_id, include_subtasks):
     containment is a single level."""
     if task_id is None:
         return qs
-    from apps.platform.tasks.models import Task
+    from apps.platform.work.models import Task
 
     ids = [task_id]
     if include_subtasks:
@@ -975,8 +975,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     than a Write carve-out."""
     _product_check(request)
     from apps.platform.dimensions.queries import slot_map
-    from apps.platform.tasks.models import TaskType
-    from apps.platform.tasks.queries import declared_task_types
+    from apps.platform.work.models import TaskType
+    from apps.platform.work.queries import declared_task_types
 
     tenant = request.auth.tenant
     declared = set(slot_map(tenant.id))
@@ -1015,5 +1015,5 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
 def list_task_types(request):
     """The tenant's declared work vocabulary."""
     _product_check(request)
-    from apps.platform.tasks.queries import declared_task_types
+    from apps.platform.work.queries import declared_task_types
     return {"task_types": declared_task_types(request.auth.tenant.id)}

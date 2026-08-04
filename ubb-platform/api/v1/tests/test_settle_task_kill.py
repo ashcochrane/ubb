@@ -21,8 +21,8 @@ from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.services import TaskService
+from apps.platform.work.models import Task
+from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.billing.wallets.models import Wallet
 
@@ -120,7 +120,7 @@ class KillFailureIsolationTest(IngestEndpointTestBase):
         task, _ = self._crossing_raw()
         with patch.object(TaskService, "kill_task",
                           side_effect=RuntimeError("lock timeout")):
-            with self.assertLogs("apps.platform.tasks.services", level="ERROR") as logs:
+            with self.assertLogs("apps.platform.work.services", level="ERROR") as logs:
                 transitioned = TaskService.kill_and_announce(
                     task.id, "task_limit",
                     tenant_id=self.tenant.id, customer_id=self.customer.id)
@@ -136,7 +136,7 @@ class KillFailureIsolationTest(IngestEndpointTestBase):
         # run the captured callbacks while the failing kill_task patch holds.
         with patch.object(TaskService, "kill_task",
                           side_effect=RuntimeError("lock timeout")):
-            with self.assertLogs("apps.platform.tasks.services", level="ERROR") as logs:
+            with self.assertLogs("apps.platform.work.services", level="ERROR") as logs:
                 with self.captureOnCommitCallbacks(execute=True):
                     result = UsageService.settle_raw(raw)
         # The settle itself completed — the raw is settled, not poisoned.

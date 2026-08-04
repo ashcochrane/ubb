@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('customers', '0014_customer_suspension_reason'),
-        ('tasks', '0010_task_dim1_task_dim2_task_dim3_task_dim4_task_dim5_and_more'),
+        ('work', '0010_task_dim1_task_dim2_task_dim3_task_dim4_task_dim5_and_more'),
         ('tenants', '0022_tenantapikey_role'),
         ('usage', '0027_usageevent_stop_context'),
     ]

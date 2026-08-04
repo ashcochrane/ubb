@@ -32,7 +32,7 @@ from apps.metering.usage.services.usage_service import (
 from apps.platform.customers.models import Customer
 from apps.platform.dimensions.queries import slot_map
 from apps.platform.dimensions.services import DimensionError, DimensionService
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 
 logger = logging.getLogger(__name__)
 

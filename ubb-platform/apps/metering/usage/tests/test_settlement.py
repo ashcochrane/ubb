@@ -23,7 +23,7 @@ from apps.metering.usage.models import BackfillDirtyPeriod, RawIngestEvent, Usag
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tasks import MAX_SETTLE_ATTEMPTS, settle_raw_events
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 
 from api.v1.tests.test_ingest_endpoint import IngestEndpointTestBase
 
@@ -644,7 +644,7 @@ class SettleKillOrderingPinTest(TransactionTestCase):
             status="pending")
 
         order = []
-        with patch("apps.platform.tasks.services.TaskService.kill_and_announce",
+        with patch("apps.platform.work.services.TaskService.kill_and_announce",
                    side_effect=lambda *a, **k: order.append("kill")), \
              patch("apps.billing.queries.settle_ingest_hold",
                    side_effect=lambda *a, **k: order.append("true_up")):

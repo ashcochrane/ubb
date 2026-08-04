@@ -7,10 +7,14 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # App label moved 'tasks' -> 'work' (#196); see 0001_initial for why
+    # this replaces its predecessor rather than re-running it.
+    replaces = [("tasks", "0004_the_clean_cut_run_to_task")]
+
     dependencies = [
-        ("tasks", "0003_run_idx_run_owner_status"),
+        ("work", "0003_run_idx_run_owner_status"),
         # Every historical migration that references the pre-rename model
-        # ('tasks.run' — usage's FK adds) must apply BEFORE the rename, or
+        # ('work.run' — usage's FK adds) must apply BEFORE the rename, or
         # the graph can order them after it and fail to resolve the model.
         ("usage", "0025_widen_rawingestevent_idempotency_key"),
     ]

@@ -11,9 +11,9 @@ from django.test import TestCase
 
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks import reasons
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.services import TaskService
+from apps.platform.work import reasons
+from apps.platform.work.models import Task
+from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant
 
 

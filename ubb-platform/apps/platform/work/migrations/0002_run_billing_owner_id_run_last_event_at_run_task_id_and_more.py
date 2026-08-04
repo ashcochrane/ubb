@@ -5,9 +5,13 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # App label moved 'tasks' -> 'work' (#196); see 0001_initial for why
+    # this replaces its predecessor rather than re-running it.
+    replaces = [("tasks", "0002_run_billing_owner_id_run_last_event_at_run_task_id_and_more")]
+
     dependencies = [
         ('customers', '0013_remove_customer_min_balance_micros'),
-        ('tasks', '0001_initial'),
+        ('work', '0001_initial'),
         ('tenants', '0016_tenant_enforcement_mode'),
     ]
 
