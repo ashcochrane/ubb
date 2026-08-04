@@ -23,7 +23,7 @@ and it has to be said before the artifact makes sense.
 
 **1. It is not four call sites. It is three, plus a branch.**
 The ticket says *"start, report, complete and handle-stop is four call sites"*. Handle-stop is not a
-call site: the stop rides fields on the ack of the report call (#150 §11), so it is a branch inside
+call site: the stop rides fields on the ack of the report call (#150 §1), so it is a branch inside
 call site 2. #149 §6 collapsed reporting to one call site, #140 gave close its required outcome, and
 #141 put the whole lifecycle in one ungated namespace. **The taught surface is start, record, close —
 plus one branch, plus a conditional second instance of start/close for Subtasks.** That is a
@@ -228,7 +228,7 @@ ceiling.
 
 **Not proposed, but worth a ruling.** #144 rates Lago's `POST /events/estimate_fees` — computed fees
 returned **without persisting the event** — the highest-value verify surface it found anywhere, and
-notes almost nobody has it. We have the compute spine (#149 §6.4: the price *is* the price). A
+notes almost nobody has it. We have the compute spine (#149 §6.3: the price *is* the price). A
 non-persisting "what would this cost" call would let the verify script check the *number* and not just
 the plumbing. It is out of scope here, it needs a name that is not "estimate" (retired by ADR-0006),
 and it is a product decision rather than a rendering one.
@@ -256,7 +256,7 @@ the header makes it possible and nothing enforces it.**
 
 #156 §13 left this open. The position is **no**, for three reasons:
 
-1. **It is not a call site of this integration.** `task.killed` and `task.expired` (ADR-0006 §5)
+1. **It is not a call site of this integration.** `task.killed` and `task.expired` (#154, under ADR-0006 §5)
    arrive precisely when nobody is calling — a Task expires *because* the caller stopped reporting. A
    handler is an operational listener, usually in a different service, often a different language.
 2. **It would need the webhook signing secret**, which is on the withhold list (#156 §6). Emittable as
@@ -305,7 +305,7 @@ becomes optional, or something must say what it is for — "supply two ids, we w
 exactly the unexplained fragment this ticket exists to prevent.
 
 **F4 · The ceiling's three public status values still spell a retired word.**
-#146 §5 coined `within_limit` / `limit_reached` / `indeterminate`; #150 §4.2 restated them. ADR-0006
+#146 §5 coined `within_limit` / `limit_reached` / `indeterminate`; #150 §4.1 restated them. ADR-0006
 then retired "limit" from field vocabulary, replaced `task.limit_exceeded` with `task.killed` /
 `task.expired`, and **declined `task.ceiling_exceeded` on the grounds that under `>=` a ceiling is
 reached, not exceeded** — reasoning that applies to `limit_reached` word for word. Nothing revisited
@@ -321,7 +321,7 @@ constant, and **the generator cannot know whether to emit an extraction or a par
 here as caller-supplied by assumption. Small, and it blocks a whole costing method.
 
 **F6 · The `reported` cost line and the `calculated` cost-claim line are the same shape with opposite
-meanings.** #151 §12 keeps `claimed_provider_cost_micros` for a surplus cost on a `calculated` kind —
+meanings.** #151 §9.1 keeps `claimed_provider_cost_micros` for a surplus cost on a `calculated` kind —
 non-canonical, flagged, diagnostic. At a call site it looks identical to a `reported` cost, which *is*
 COGS. Proposed rule: **the builder never emits any cost field for a `calculated` Event Type.** Not
 because the field is wrong, but because generated code teaches habits, and this is the one habit the
