@@ -143,6 +143,11 @@ plans, rate-card books, rates, webhook configs, referral attribution).
    named per-entity serializer; reports get bounded parameters.
 3. Regenerate the spec (`python scripts/export_openapi.py`) — the diff is
    the API review; the drift/breaking gates hold the rest.
+4. Breaking the contract? Generate the suppression entries, never type them:
+   `python openapi/contract_gate.py --baseline origin/main --emit` from the git root,
+   paste the lines into the file each belongs in, and write the `#` comment
+   block that says why. CI then re-checks the **cumulative** set against the
+   `api-v1-launch` baseline — see [`openapi/README.md`](../../openapi/README.md).
 
 ## Conformance sweep (wanted, not gating — #87)
 

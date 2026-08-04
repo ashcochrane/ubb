@@ -1,16 +1,24 @@
-# 2026-07-27 unified dimension model (pre-launch lane; no external consumers —
-# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005). Three
+# Reviewed contract breaks, WARN level — cumulative since `api-v1-launch`.
+#
+# The sibling of oasdiff-err-ignore.txt, which carries the full rules; read that
+# header first. In short: the gate (`python openapi/contract_gate.py`) compares
+# the immutable `api-v1-launch` tag against the working tree, entries are
+# GENERATED and never hand-typed (`--baseline origin/main --emit`), human metadata
+# belongs on `#` comment lines, and this file cannot reach zero until slice 8
+# tags a new baseline — which makes it the opposite of the implementation-rule
+# migration ledgers, not another one of them.
+#
+# WARN-level findings ONLY. `--warn-ignore` filters by level before matching
+# text, so an ERR-level line here suppresses nothing at all — and this file was
+# empty until 2026-07-27 precisely because the lines below were misfiled that
+# way. The gate now reports any entry that suppresses nothing.
+
+# 2026-07-27 unified dimension model (#131). PRE-LIVE LANE —
+# docs/plans/2026-07-27-unified-dimension-model-design.md, ADR-0005. Three
 # competing spend-attribution mechanisms collapse into one declared, slot-bound
 # vocabulary; `product_id`/`service_id`/`agent_id` and `Rate.dimensions` are
-# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`.
-#
-# WARN-level entries ONLY belong in this file (--warn-ignore suppresses WARN
-# findings only; ERR-level findings for this same rework live in the sibling
-# oasdiff-err-ignore.txt — this file was empty until the final-fixes wave,
-# 2026-07-27 unified dimension model plan, Critical 3: the original hand-
-# derivation put 7 of these WARN-level lines in the ERR file instead, where
-# --err-ignore silently did nothing for them — corrected by installing
-# oasdiff and running it for real.
+# replaced by `task_type`/`subtask_type`/`dim1`..`dim6`. The ERR-level findings
+# for this same rework live in oasdiff-err-ignore.txt.
 #
 # Rate write/read contract moves from a JSONB `dimensions` blob + `product_id`
 # to the ten named selector columns — the create/publish request bodies too,
@@ -29,32 +37,15 @@ GET /api/v1/metering/usage/{event_id} removed the optional property `service_id`
 # one real `group_by` parameter (design doc "What this deletes"):
 GET /api/v1/margin/by-dimension deleted the `query` request parameter `provider`
 GET /api/v1/margin/by-dimension deleted the `query` request parameter `product`
-# Final-fixes wave, 2026-07-27 unified dimension model plan, Critical 1+2: the
-# legacy `product_id` wire field is deleted from the usage write contract
-# entirely — it broke accept/settle price parity and bypassed the dimension
-# cardinality cap (no admit, no declaration required):
+# Final-fixes wave, Critical 1+2: the legacy `product_id` wire field is deleted
+# from the usage write contract entirely — it broke accept/settle price parity
+# and bypassed the dimension cardinality cap (no admit, no declaration required):
 POST /api/v1/metering/usage removed the request property `product_id`
 POST /api/v1/metering/usage/batch removed the request property `events/items/product_id`
 POST /api/v1/metering/usage/ingest removed the request property `events/items/product_id`
 
-# ============================================================================
-# ===== LAUNCH TAG BOUNDARY — the v1 compatibility contract binds here =====
-# ============================================================================
-# The openapi/v1.json revision tagged at launch (ADR-003 §5) is the public v1
-# contract. Every entry ABOVE this line is a pre-launch free break, coordinated
-# by hand with the one known tenant.
-#
-# From the launch tag onward, a NEW entry BELOW this line is permitted ONLY as
-# evidence of an ADR-003 §4 deprecation already in flight — which requires, in
-# the same or a prior change: `deprecated: true` on the operation in the spec, a
-# runtime `Sunset` header (register the route in api/v1/deprecation.py), a dated
-# changelog entry + email announcement, and at least 90 days' notice (a floor we
-# may raise, never lower). A bare removal or rename below this line is a contract
-# breach, not a CI escape hatch. See docs/api-compatibility.md.
-# ============================================================================
-
 # 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE — see the matching
-# header in oasdiff-err-ignore.txt for the api-v1-launch status and its rationale.
+# block in oasdiff-err-ignore.txt for the api-v1-launch status and its rationale.
 #
 # The per-task floor snapshot is removed outright. It read a tenant-wide constant
 # rather than the customer's own min_balance_micros, and compared it against a

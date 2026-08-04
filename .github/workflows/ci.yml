@@ -187,9 +187,11 @@ jobs:
   # The spec-as-truth ratchet (#77, ADR-002): the committed openapi/v1.json is
   # the single source of truth for the tenant surface. Three gates:
   #   drift    — offline regeneration must produce zero diff (code == document)
-  #   breaking — oasdiff against the base branch's spec; the committed
-  #              suppression files make accepting a break a visible, reviewed
-  #              change; severity-levels encodes the ADR-003 open-enum stance
+  #   breaking — oasdiff against the immutable `api-v1-launch` baseline, so the
+  #              question is "has every break since the contract was published
+  #              been reviewed?", not "did this PR break it?" (#195); the
+  #              committed suppression files make accepting a break a visible,
+  #              reviewed change; severity-levels encodes the open-enum stance
   #   TS smoke — the committed spec must generate clean TypeScript types
   # The env block mirrors the test job's: settings import needs the vars, but
   # nothing here touches Postgres/Redis, so no services are started.
@@ -203,14 +205,16 @@ jobs:
       DEBUG: "True"
       STRIPE_SECRET_KEY: sk_test_dummy
       STRIPE_WEBHOOK_SECRET: whsec_dummy
-      OASDIFF_VERSION: 1.23.0
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history: the breaking gate compares against the base
-          # branch's (PR) or parent commit's (push) committed spec.
+          # Full history AND tags: the breaking gate resolves the immutable
+          # `api-v1-launch` baseline by tag. Without the tag the gate cannot
+          # run — and it fails rather than skipping, since a silently skipped
+          # comparison is how breaks reach main unreviewed.
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-python@v5
         with:
@@ -249,31 +253,22 @@ jobs:
           python ubb-sdk/codegen/generate_exceptions.py
           git diff --exit-code -- ubb-sdk/ubb/_exceptions_generated.py
 
+      # The version is pinned in openapi/contract_gate.py and read from there,
+      # so the binary installed here cannot drift from the one the committed
+      # entries were generated with (they are matched by reported text).
       - name: Install oasdiff (pinned)
         run: |
+          VERSION="$(python openapi/contract_gate.py --print-pinned-version)"
           curl -sSfL -o /tmp/oasdiff.tar.gz \
-            "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+            "https://github.com/oasdiff/oasdiff/releases/download/v${VERSION}/oasdiff_${VERSION}_linux_amd64.tar.gz"
           tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
           sudo mv /tmp/oasdiff /usr/local/bin/oasdiff
 
-      - name: Breaking gate — oasdiff vs the base spec (open-enum config)
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF="origin/${{ github.base_ref }}"
-          else
-            BASE_REF="HEAD^"
-          fi
-          if git cat-file -e "$BASE_REF:openapi/v1.json" 2>/dev/null; then
-            git show "$BASE_REF:openapi/v1.json" > /tmp/base-v1.json
-            oasdiff breaking --fail-on WARN \
-              --severity-levels openapi/oasdiff-severity-levels.txt \
-              --err-ignore openapi/oasdiff-err-ignore.txt \
-              --warn-ignore openapi/oasdiff-warn-ignore.txt \
-              --format githubactions \
-              /tmp/base-v1.json openapi/v1.json
-          else
-            echo "No committed spec at $BASE_REF (first spec commit) — nothing to compare."
-          fi
+      # Cumulative, against `api-v1-launch` — every break since the contract
+      # was published must be recorded as reviewed, and every committed entry
+      # must still suppress something (openapi/README.md).
+      - name: Breaking gate — cumulative vs the api-v1-launch baseline
+        run: python openapi/contract_gate.py
 
       - uses: actions/setup-node@v4
         with:
