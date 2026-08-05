@@ -160,11 +160,44 @@ gates:
       code, spec, SDK, console or living docs.
     oracle: the registry's `retired_aliases`, from #154 §8's table
     source: ADR-0006, #154 §12
-    status: owned_by_slice_0
-    blocked_on: >-
-      The sweep itself, and its declared and counted exclusions — #206. The
-      retired terms are already registry data (#198), so the input exists; the
-      walker and its exclusion accounting do not.
+    status: installed
+    enforced_by:
+      - suite: contracts
+        node: >-
+          tests/contracts/test_forbidden_terms.py::test_no_retired_word_appears_unaccounted_for
+      - suite: contracts
+        node: >-
+          tests/contracts/test_forbidden_terms.py::test_every_tracked_file_is_swept_or_excluded_by_exactly_one_rule
+      - suite: contracts
+        node: >-
+          tests/contracts/test_forbidden_terms.py::test_each_rule_excludes_exactly_the_number_of_files_it_declares
+      - suite: contracts
+        node: >-
+          tests/contracts/test_forbidden_terms.py::test_the_declared_exclusion_set_is_exactly_what_the_file_says
+    notes: >-
+      Four nodes rather than one, because #206 asks for two different things and
+      a single node would let either half rot. The first is the gate; the second
+      is the TOTAL ACCOUNTING that makes it trustworthy — every tracked file is
+      swept or matched by exactly one declared rule, so a surface quietly
+      dropped from the walk fails, which counting exclusions alone cannot
+      catch. The third and fourth are the exclusion list held to what it claims,
+      by per-rule count and by a pinned literal of the whole set.
+      TWO STATED LIMITS, recorded rather than left to be discovered. The match
+      is case-sensitive over the token as the registry spells it, so a
+      Pascal-cased spelling of a retired word is not a hit — and it is no other
+      gate's subject either, since G9 compares a table against its own model
+      rather than against the vocabulary. And `retired_senses` is deliberately
+      not input: eight words are retired in one sense while live in another, and
+      ADR-0008 §1 keeps that human-judged. #206 moved three of the eight —
+      `flat`, `hold`, `estimate` — out of `retired_aliases` on the evidence of
+      the sweep's first run, where between them they produced 1,069 hits and
+      almost none of them the retired sense.
+      ONE OCCURRENCE IS LOST TO THAT MOVE and is recorded rather than absorbed:
+      `ProductFeeConfig.fee_type == "flat"` is the retired sense, and after the
+      move no gate sees it — G7 because the word is no longer input, G2 because
+      `fee_type` is a bare CharField the registry declares no concept for. An
+      undeclared public value set is #191 story 15's subject and #207's work,
+      not the sweep's.
 
   G8:
     statement: >-
