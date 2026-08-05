@@ -174,6 +174,7 @@ as slice 0 proceeds rather than arriving pre-written.
 |---|---|---|---|
 | #201 | G1, G5, G15, G16 — and the tree violates none of them | empty | empty |
 | #203 | G9, G10, G11, G12 — the model-naming rules | **6** | **1** |
+| #204 | G17, G18 — the SDK's two-way operation check | **9** | 1 |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -182,6 +183,18 @@ G10 seeds nothing: no writable `tenant_posture` column exists, which is why it
 ships with a negative control rather than an entry. The one permanent exception
 is `ConnectOAuthState`, and it is an exception to the *mechanism* — mechanical
 snake-casing produces a worse name than the one in place — not to the rule.
+
+#204's three are the SDK's dead rate-card calls — a PUT on the flat
+`/pricing/rate-cards/{card_id}` path the #86 sweep re-nested, a lineage
+`/history` read, and a `/batch` create — all owed by slice 4, whose Pricing Book
+replaces the surface they are the ergonomics for. **G18 seeds nothing**, and
+that is a ruling rather than an omission: ADR-0007 §4 states the count of
+unwrapped operations need not reach zero, so an unwrapped operation is not a
+debt anybody owes, and recording 56 of them here would make the ledger
+unreachable at zero by construction — the same argument that keeps the permanent
+exceptions in their own file. They are signed for in
+`ubb-sdk/coverage-authorisations.yaml` instead, which is an audit trail of
+reviewed increases and not a third list of debts.
 
 Still owed: G7's retired words arrive with #206, in the pull request that
 installs the sweep which finds them.
@@ -193,6 +206,15 @@ no PyYAML and this one has no Django, both deliberately, so the seeded sites
 exist twice and the agreement is checked in both directions including the entry
 ids. A site excused in a gate but absent from the ledger would be a suppression
 the ratchet cannot see — the failure this whole mechanism exists to refuse.
+
+**A gate installed in the contract suite needs none of that.** G17 reads this
+ledger directly, because it is already in a suite with PyYAML, so there is one
+encoding and no agreement test to write. Worth noting for whoever installs the
+next gate: the mirroring is the cost of a gate living where it cannot read YAML,
+not a house style. Its consequence is that each mirroring test covers *its own*
+gates — #203's was written to compare every gate with a ledger entry, which made
+#204's SDK debts fail inside a Django model walker, and is now scoped to the
+four gates that module installs.
 
 ## Beyond what #201 asked for
 

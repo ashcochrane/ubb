@@ -162,6 +162,29 @@ jobs:
             exit 1
           fi
 
+      # The SDK's coverage manifest is generated from the committed contract and
+      # the hand-written client's source (#204, ADR-0007 §4). Same argument as
+      # the vocabulary step above for why this is a SEPARATE step from the
+      # suite's in-memory comparison: this one runs the command a contributor
+      # runs and asks git, which is the only way to catch a writer that emitted
+      # CRLF or wrote to the wrong path.
+      #
+      # `--write` refuses to regenerate while any hand-written call fails to
+      # resolve, so a stale manifest can never be produced from a surface that
+      # does not agree with the contract in the first place.
+      - name: SDK coverage manifest gate — regeneration produces zero diff
+        run: |
+          python -m tools.sdk_operations --write
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The worktree is dirty after regenerating. If"
+            echo "ubb-sdk/operation-coverage.yaml is listed below, it is not"
+            echo "what the contract and the SDK produce: run"
+            echo "'python -m tools.sdk_operations --write' and commit it."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
       - name: Contract suite — the registry, and the gates over it
         run: python -m pytest tests/contracts
 
@@ -177,6 +200,17 @@ jobs:
       # SDK regeneration gates: the committed state is the floor.
       - name: Migration ledger ratchet — it only shrinks
         run: python -m tools.gates ratchet
+
+      # Published operations with no ergonomic wrapper (#204, ADR-0007 §4).
+      # Their number need NOT reach zero — the SDK is allowed deliberate gaps —
+      # so this is not the ledger's ratchet with a different subject: it refuses
+      # only a NEW gap, and only one nobody signed for. It compares the SET of
+      # unwrapped operations rather than the total, because wrapping three while
+      # publishing two unwrapped ones is a net fall and two unreviewed gaps.
+      # Same reason it sits beside the ledger's rather than in the suite: this
+      # is the half that needs git history.
+      - name: SDK coverage ratchet — no gap opens without a signature
+        run: python -m tools.sdk_operations ratchet
 
   # Schemathesis conformance sweep (#87): fuzz the app in-process against the
   # committed openapi/v1.json and report every place the implementation

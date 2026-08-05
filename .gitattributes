@@ -21,3 +21,10 @@ domain-vocabulary/** text eol=lf
 # core.autocrlf set turns the working copy into CRLF and the gate goes red for
 # a reason that has nothing to do with the vocabulary.
 ubb-platform/core/vocabulary.py text eol=lf
+
+# The SDK's coverage manifest (#204), for exactly the same reason: it is
+# generated from openapi/v1.json and ubb-sdk/ubb/, and byte-compared by
+# tests/contracts/test_sdk_operations.py and the `--write` step in CI. Its
+# authorisations file is hand-authored and only ever parsed as YAML, so it needs
+# no pin — this list is for what a gate compares byte for byte.
+ubb-sdk/operation-coverage.yaml text eol=lf

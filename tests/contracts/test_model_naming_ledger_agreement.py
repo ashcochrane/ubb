@@ -36,10 +36,19 @@ GATES_DIR = REPO_ROOT / "gates"
 GATE_MODULE = "ubb-platform/apps/platform/tests/test_model_naming.py"
 
 #: The four gates that module installs. The comparison below is driven by the
-#: UNION of what each side declares rather than by a list of the gates that
-#: happen to be seeded today — a hardcoded list would silently exempt a gate
-#: that gained its first entry later, which is precisely the gate whose seeding
-#: nobody has reviewed yet.
+#: union of these and whatever the module declares, rather than by the gates
+#: that happen to be seeded today — so G10, which seeds nothing, is compared on
+#: the day it gains its first entry rather than when somebody remembers to add
+#: it here.
+#:
+#: It is deliberately NOT driven by "every gate with a ledger entry". #203 wrote
+#: it that way when these were the only seeded gates, and #204's G17 entries
+#: then failed here demanding that SDK call sites be excused by a Django model
+#: walker — a true disagreement reported against the wrong file. A gate's
+#: allowlist is mirrored here only if it runs in the platform suite, which
+#: cannot read YAML; G17 runs in this suite and reads the ledger directly, so it
+#: has one encoding and holds itself to it in
+#: `test_sdk_operations.py::test_the_ledger_records_exactly_what_the_gate_excuses`.
 MODEL_NAMING_GATES = ("G9", "G10", "G11", "G12")
 
 LEDGER_CONSTANT = "LEDGERED_VIOLATIONS"
@@ -162,13 +171,12 @@ def test_every_excused_site_is_a_recorded_debt(gate_source, programme):
     by nobody — #155 §17's failure, hiding inside the mechanism built to close
     it.
 
-    Driven off the union of both sides, so a gate that gains its first entry
-    later is compared on the day it does rather than when somebody remembers to
-    add it here.
+    Driven off the union of this module's gates and whatever it declares, so a
+    gate that gains its first entry later is compared on the day it does — and
+    a gate it starts excusing that it should not is compared too.
     """
     declared = excused(gate_source, LEDGER_CONSTANT)
-    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)
-                       | {entry.gate for entry in programme.entries}):
+    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)):
         faults = disagreements(declared.get(gate, {}),
                                recorded(programme.entries, gate))
         assert not faults, (
@@ -177,9 +185,11 @@ def test_every_excused_site_is_a_recorded_debt(gate_source, programme):
 
 
 def test_every_permanent_exception_is_excused_and_stated(gate_source, programme):
+    """The same scope as the ledger comparison above, and for the same reason:
+    a permanent exception belongs to whichever gate declares it, and only the
+    platform suite's gates are mirrored here."""
     declared = excused(gate_source, EXCEPTIONS_CONSTANT)
-    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)
-                       | {exception.gate for exception in programme.exceptions}):
+    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)):
         faults = disagreements(declared.get(gate, {}),
                                recorded(programme.exceptions, gate))
         assert not faults, (

@@ -155,6 +155,72 @@ entries:
       One character from `pricing_mode`, and unrelated to it. Slice 4's pricing
       rules carry `rate_structure ∈ {per_unit, fixed_component}` (#151 §13.2).
 
+  # --- G17: every hand-written SDK call targets a real operation -------------
+  #
+  # THE SECOND SEEDING (#204). The three calls #155 §1.3 found: routes that
+  # exist in no spec and in no router, green in CI for months because the tests
+  # that cover them patch the HTTP client, so the mock reproduced the mistake
+  # instead of contradicting it. `gates/README.md` lists that as one of the
+  # three times this repository has shipped a check that could not fail.
+  #
+  # Two conventions differ from the model-naming entries above, and both follow
+  # from the subject rather than from preference:
+  #
+  # - `found` is `METHOD` plus the path with each parameter collapsed to `{}`,
+  #   which is the identity the gate matches on (ADR-0007 §4: method AND path,
+  #   because `GET /x/{id}` is not `POST /x/{id}`). Collapsed rather than as
+  #   written, so renaming a local variable in a dead method does not turn the
+  #   board red for no reason.
+  # - `expected` is the END STATE, not a canonical name. There is no correct
+  #   route to point at: the operations these methods want were never published,
+  #   and the debt is discharged by the call going away. A name here would be an
+  #   invention, which is what ADR-0007 §3 refuses.
+  #
+  # All three are owned by slice 4, the same slice that owns the `Rate` /
+  # `RateCard` table inversion above and for the same reason: #194's slice table
+  # gives slice 4 the Pricing Book, which is what replaces the rate-card surface
+  # these three methods are the ergonomics for. An owner slice may move earlier
+  # but never later, so any slice that rewrites the SDK's pricing methods before
+  # then may take them.
+  #
+  # They are NOT deleted here. #155 §8.1 puts the SDK's next breaking release
+  # after slice 8 as one coordinated event, and removing three public methods is
+  # a surface break; #204 asks for the invariant behind the review, which is
+  # what this gate is.
+  - id: g17-sdk-updates-a-rate-card-on-a-retired-flat-path
+    gate: G17
+    site: ubb-sdk/ubb/metering.py::MeteringClient.update_rate_card
+    expected: no call — the method goes with the rate-card surface
+    found: PUT /api/v1/metering/pricing/rate-cards/{}
+    owner_slice: slice_4
+    reason: >-
+      The bare `/pricing/rate-cards/{card_id}` addressing the #86 sweep re-nested
+      under the book — `api/v1/metering_endpoints.py` records the move on the
+      DELETE that survived it. Nothing publishes a PUT there under any method.
+      Slice 4's Pricing Book replaces versioning a card in place.
+
+  - id: g17-sdk-reads-a-rate-card-history-that-is-not-published
+    gate: G17
+    site: ubb-sdk/ubb/metering.py::MeteringClient.get_rate_card_history
+    expected: no call — the method goes with the rate-card surface
+    found: GET /api/v1/metering/pricing/rate-cards/{}/history
+    owner_slice: slice_4
+    reason: >-
+      A lineage history endpoint that exists in no spec and no router. Slice 4's
+      immutable Pricing Book Publish records are what a caller reads instead
+      (#148, #155 §3).
+
+  - id: g17-sdk-batch-creates-rate-cards-with-no-such-route
+    gate: G17
+    site: ubb-sdk/ubb/metering.py::MeteringClient.bulk_create_rate_cards
+    expected: no call — the method goes with the rate-card surface
+    found: POST /api/v1/metering/pricing/rate-cards/batch
+    owner_slice: slice_4
+    reason: >-
+      An atomic batch create that exists in no spec and no router. Rates are
+      added to a book one at a time and the book is published as a unit, which
+      is the atomicity this method was reaching for.
+
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an
 # old authorisation cannot license a later addition, and the list stays an audit
@@ -186,3 +252,15 @@ seeding_authorisations:
       This pull request installs the method/mode/structure naming rule over the
       declaring models, and records the one field standing a single character
       from a sanctioned name with an unrelated meaning.
+
+  - gate: G17
+    issue: 204
+    entries_added: 3
+    reason: >-
+      This pull request installs the rule that every hand-written SDK call
+      targets a published operation, matched on method AND normalised path, and
+      records the three calls to routes that exist in no spec and no router.
+      G18's unwrapped operations are deliberately NOT recorded here: ADR-0007 §4
+      states that count need not reach zero, and a debt nobody owes would make
+      "the ledger is at zero" unreachable by construction — the same reason the
+      permanent exceptions are a separate file.

@@ -1,0 +1,60 @@
+# Every reviewed rise in the SDK's unwrapped-operation count, kept as history
+# (#204, ADR-0007 §4).
+#
+# ADR-0007 §4 is deliberate about what it does and does not demand of
+# `ubb-sdk/operation-coverage.yaml`: the number of published operations with no
+# ergonomic wrapper **need not reach zero** — the SDK is allowed deliberate gaps
+# — but it "must stay visible and mechanically accurate, and any increase must
+# be an explicit reviewed change rather than an accidental omission".
+#
+# This file is that explicitness. It is NOT the migration ledger and nothing
+# here is a debt: no slice owns an entry, nothing has to reach zero, and an
+# unwrapped operation is a legitimate end state. Recording them as debts would
+# make `gates/migration-ledger.yaml` unreachable at zero by construction, which
+# is the same reason `gates/permanent-exceptions.yaml` is a separate list.
+#
+# `python -m tools.sdk_operations ratchet` compares the SET of unwrapped
+# operations in the committed manifest against the base branch's, and:
+#
+#   1. an operation that newly became unwrapped, with no authorisation NEW in
+#      this change, fails — so an old entry cannot license a later gap, and this
+#      list is an audit trail rather than standing permission;
+#   2. an authorisation whose `operations_added` is not exactly the number of
+#      new gaps fails — a reviewer approves a quantity, not an intention;
+#   3. an authorisation that licenses nothing fails — an override that overrides
+#      nothing is the shape of a check that cannot fail.
+#
+# The comparison is over the set and not over `summary.unwrapped`, because the
+# total has a hole the identities do not: **wrap three operations and publish
+# two unwrapped ones, and the net is minus one.** No rise, no signature, two new
+# gaps merged unreviewed — and an author who wrote an authorisation anyway would
+# have had it refused as inert. This is also the shape the migration ledger's
+# ratchet already uses, which compares entry identities and never a total.
+#
+# `id` is what makes an entry new, not `issue`: one issue landing across two
+# pull requests would otherwise find its second gap licensed by the first's
+# entry.
+
+version: 1
+
+authorisations:
+  - id: slice-0-204-seeds-the-coverage-manifest
+    issue: 204
+    operations_added: 56
+    reason: >-
+      This pull request generates the coverage manifest for the first time, so
+      every one of the 56 published operations with no ergonomic wrapper arrives
+      at once and the count rises from nothing. They are not new gaps and none
+      is a regression — the SDK has never wrapped them — but the ratchet cannot
+      tell a first seeding from an accidental omission, and being asked to sign
+      for the starting position is the point rather than a formality: 56 is now
+      the number a later change has to justify moving.
+
+      Two of them are worth a reader's attention because they are the shape a
+      wrapper would most plausibly be expected for, and both are deliberate.
+      The eight `/api/v1/me/*` operations are the end-customer widget surface,
+      authenticated by a widget token rather than by a tenant API key, so an
+      ergonomic method on a tenant-keyed client would be reachable only with
+      credentials that client does not hold. And `GET /api/v1/health` and
+      `GET /api/v1/ready` are probes for an orchestrator, not for a caller
+      metering usage.
