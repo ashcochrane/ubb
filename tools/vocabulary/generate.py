@@ -59,9 +59,13 @@ _REASON_INDENT = 7
 
 #: A comment block is a list of ``(indent, text)``. ``_BREAK`` is a bare marker
 #: line — the separator that keeps a wrapped paragraph from running into the
-#: next one. It is a sentinel rather than an empty string because an empty
-#: string is what a registry field that lost its content looks like.
-_BREAK = None
+#: next one.
+#:
+#: A distinct object rather than ``None`` or ``""``, because both of those are
+#: what a registry field that lost its content looks like: a summary that came
+#: back empty would silently render as a separator instead of failing. Same
+#: reasoning as ``tests/contracts/_helpers.py``'s ``ABSENT``.
+_BREAK = object()
 
 
 class GenerationFailed(Exception):

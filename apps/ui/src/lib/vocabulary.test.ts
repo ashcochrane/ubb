@@ -30,11 +30,11 @@ import {
 // exports as data rather than to name them one by one.
 const exports_ = Object.entries(vocabulary) as [string, unknown][];
 
+// `_KNOWN_VALUES` ends with `_VALUES`, so one suffix catches both.
 /** Every `<CONCEPT>_VALUES` / `<CONCEPT>_KNOWN_VALUES` export, by name. */
 const valueLists = exports_.filter(
   (entry): entry is [string, readonly string[]] =>
-    (entry[0].endsWith("_VALUES") || entry[0].endsWith("_KNOWN_VALUES")) &&
-    Array.isArray(entry[1]),
+    entry[0].endsWith("_VALUES") && Array.isArray(entry[1]),
 );
 
 /** Every `<CONCEPT>_LABEL_KEYS` export, by name. */
@@ -62,13 +62,6 @@ describe("the generated vocabulary module", () => {
     expect(labelMaps.length).toBe(valueLists.length);
   });
 
-  it("declares no empty or duplicated value set", () => {
-    for (const [name, values] of valueLists) {
-      expect(values.length, name).toBeGreaterThan(0);
-      expect(new Set(values).size, name).toBe(values.length);
-    }
-  });
-
   it("labels exactly the values of its concept, no more and no fewer", () => {
     // The `satisfies Record<…, string>` in the artifact makes TypeScript prove
     // the map is TOTAL over its value type. It cannot prove the map has no
@@ -83,9 +76,7 @@ describe("the generated vocabulary module", () => {
     for (const [name, labels] of labelMaps) {
       const prefixes = new Set<string>();
       for (const [value, key] of Object.entries(labels)) {
-        expect(key, `${name}.${value}`).toBe(
-          `${key.slice(0, key.length - value.length - 1)}.${value}`,
-        );
+        expect(key.endsWith(`.${value}`), `${name}: ${key}`).toBe(true);
         prefixes.add(key.slice(0, key.length - value.length - 1));
       }
       // One concept, one prefix. Two would mean a label catalogue could not
@@ -93,23 +84,15 @@ describe("the generated vocabulary module", () => {
       expect([...prefixes], name).toHaveLength(1);
     }
   });
-
-  it("carries no user-facing English — tokens and label keys only", () => {
-    // ADR-0008 §4: the registry generates the value sets and the stable label
-    // KEYS; the English lives in the console's own catalogue. A space is the
-    // cheapest reliable tell that a word has arrived where a token belongs.
-    for (const [name, values] of valueLists) {
-      for (const value of values) {
-        expect(value, `${name}: ${value}`).not.toMatch(/\s/);
-      }
-    }
-    for (const [name, labels] of labelMaps) {
-      for (const key of Object.values(labels)) {
-        expect(key, `${name}: ${key}`).not.toMatch(/\s/);
-      }
-    }
-  });
 });
+
+// Deliberately NOT here: "the values are non-empty, unique, and free of
+// English". Those are registry rules, proved exactly against the registry by
+// `tests/contracts/test_generated_vocabulary.py` — the compiler refuses an
+// empty or duplicated value set, and the contract suite allows a string in
+// these artifacts only if it is a registry token or a label key. Restating
+// them in a weaker form here would be a second, laxer copy of a rule that
+// already has an oracle, and the first thing to disagree with it.
 
 describe("the kind a concept declares reaches the console as a type", () => {
   // These two are the reason the artifact bothers with types at all, and the

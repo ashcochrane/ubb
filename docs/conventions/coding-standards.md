@@ -70,12 +70,23 @@ For a concept's **meaning and relationships**, the per-product `CONTEXT.md` glos
 place (via the root `CONTEXT-MAP.md`) — `drawdown` not "charge", `referred customer` not "referee".
 If a concept is in neither, that's a signal — see `docs/agents/domain.md`.
 
-Backend code **imports** a registry value from `core.vocabulary`; it never restates the literal
-(#200). That module is **generated** — the banner says so, and a hand edit turns CI red. Agreement is
-therefore structural rather than textual, which is why nothing scans backend source for matching
+Code **imports** a registry value; it never restates the literal. Each of the three consumers has its
+own **generated** artifact — the banner says so on each, and a hand edit turns CI red:
+
+| Consumer | Import from | Landed |
+|---|---|---|
+| Django platform | `core.vocabulary` | #200 |
+| React console | `@/lib/vocabulary` | #207 |
+| Python SDK | `ubb.vocabulary` | #207 |
+
+Agreement is therefore structural rather than textual, which is why nothing scans source for matching
 strings. Two names per set, and the difference binds: `<CONCEPT>_VALUES` is a `closed` concept and is
 exhaustive; `<CONCEPT>_KNOWN_VALUES` is an `open` one, so a value missing from it is still legal and
 that set must never decide a rejection (ADR-0003).
+
+The console's artifact adds the stable label **keys** and, for an `open` concept, a type that admits
+any string — so don't write an exhaustive `switch` over one. It never carries the English: that is
+the console's own catalogue (ADR-0008 §4).
 
 Editing the registry is therefore never enough on its own — regenerate in the same commit:
 

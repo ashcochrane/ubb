@@ -16,7 +16,8 @@ is the only input — ruff post-hook disabled, newlines LF-normalized
 (`.gitattributes`) — so any OS reproduces the committed bytes. See
 `ubb-sdk/codegen/README.md`.
 
-**Hand shell — everything else under `ubb/`.** `UBBClient` and the product
+**Hand shell — everything else under `ubb/`, with the two named exceptions
+below.** `UBBClient` and the product
 sub-clients own what a generator can't express (#61): retry policy
 (`retry.py`), webhook HMAC verification incl. two-signature rotation
 (`webhooks.py`), stop-verdict-on-a-200 semantics, pagination, and the
@@ -62,6 +63,31 @@ changes. (Facade-async decision, parked on #65, resolved here.)
 
 `ubb/_spec_revision.py` (generated, ratcheted) records the exact committed-spec
 sha256 and version each build was cut from, exposed as `ubb.__spec_revision__`.
+
+## Canonical vocabulary
+
+`ubb/vocabulary.py` (generated, ratcheted) is the second exception to "hand
+shell — everything else": a flat module of literals rendered from
+`domain-vocabulary/` at the git root, so **a value the API can return is a
+value the SDK can name** (#207). It carries no underscore prefix because it is
+a *public* surface an integrator imports, and no `_generated` suffix because
+there is nothing to re-export it through — a hand-written re-export layer would
+be the second copy of every name it exists to abolish. The banner says it is
+generated and a hand edit turns CI red, exactly as for the core above.
+
+Not star-exported from `ubb/__init__.py`, deliberately: forty concepts' worth
+of constants do not belong in the package's top-level namespace. Reach it by
+module — `from ubb import vocabulary`.
+
+It rides the same ratchet, via a different generator: `python -m
+tools.vocabulary --write` at the git root, checked by the `contract`s job's
+`Vocabulary generation gate` step and by `tests/contracts/`.
+
+**`<CONCEPT>_KNOWN_VALUES` never decides a rejection.** ADR-0003's open enums
+mean a value the registry has never seen is legal, so an SDK that raised on an
+unrecognised status would break its callers the day UBB adds one. The suffix is
+the warning: `_VALUES` is a closed set, `_KNOWN_VALUES` is what UBB recognises
+today.
 
 ## Typed 200s everywhere — the gap is closed (#98)
 

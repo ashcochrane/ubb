@@ -101,18 +101,13 @@ gates:
       which disagrees with the tree — so the pull request that installs it
       seeds every disagreement it finds into the ledger.
     notes: >-
-      OWNERSHIP RECORDED, NOT RESOLVED — this is an inference #207 is making
-      that a later ticket may correct. The row is owed by slice 0, and after
-      #207 no remaining slice-0 ticket converts a console or SDK consumer to
-      import its artifact: #208 is the spec's known-value metadata, #209 the
-      SDK's route literals, and #210 the console's label catalogue — which
-      makes labels.ts read these label KEYS and is the nearest thing, but is
-      scoped to labels rather than to every closed value set. So either #210
-      installs this over the surface it converts, or the row moves to the slice
-      that converts the rest. #207 flags it rather than reassigning it, because
-      moving a gate between slices is the owner's call — and because setting
-      `landed: true` on slice 0 with this row still owned is what turns CI red,
-      which is the moment the question must already have an answer.
+      OWNERSHIP NEEDS AN OWNER'S EYE, and #207 records it rather than
+      reassigning it — moving a gate between slices is not a generator
+      ticket's call. The row is owed by slice 0, and no remaining slice-0
+      ticket states that it converts a console or SDK consumer to import its
+      artifact. Setting `landed: true` on slice 0 with this row still owed
+      turns CI red, so the question has a deadline whether or not anyone asks
+      it first.
 
   G3:
     statement: >-
