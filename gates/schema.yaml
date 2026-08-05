@@ -51,9 +51,16 @@ statuses:
 owned_status:
   prefix: owned_by_
   summary: >-
-    The subject does not exist yet; the named slice installs the gate.
-    `blocked_on` states what must exist first, so the row is a plan rather than
-    a shrug.
+    The gate is not installed, and the named slice installs it. `blocked_on`
+    states what must exist first, so the row is a plan rather than a shrug.
+    Two different things can be missing and this status covers both: the gate's
+    SUBJECT (the `kind` column G14 pins does not exist) or merely its CHECKER
+    (G10's derived-column rule is already satisfied by the tree; nothing walks
+    it yet). #191 decision 6 phrases the status around the first case because
+    that is the one worth arguing about — installing a gate over a subject that
+    does not exist produces a test that passes on nothing — but an uninstalled
+    gate is an uninstalled gate, and claiming `installed` for a checker nobody
+    wrote would be the only alternative.
   requires:
     - blocked_on
   forbids:

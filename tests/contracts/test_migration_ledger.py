@@ -79,26 +79,23 @@ def authorisation(gate="G1", issue=203, entries_added=1):
 # 1. The shipped ledger, and the ratchet that guards it
 # ---------------------------------------------------------------------------
 
-def test_the_shipped_ledger_and_exceptions_hold(programme):
-    """Both files load, and every rule over them is satisfied — the load itself
-    is the check, exactly as for the manifest."""
-    for record in programme.entries + programme.exceptions:
-        assert programme.gates[record.gate].installed
+def test_the_shipped_ledger_is_empty_and_that_is_the_rule_not_an_omission(
+        programme):
+    """Rule 2 means an entry may only name an installed gate, and the four
+    installed today — the registry's validity, its generated artifacts, and the
+    spec and SDK ratchets — are not violated by this tree.
 
-
-def test_the_ledger_is_empty_because_no_installed_gate_is_violated(programme):
-    """Not an omission: rule 2 means an entry may only name an installed gate,
-    and the four gates installed today (the registry's validity, the generated
-    artifacts, and the spec and SDK ratchets) are not violated by this tree.
-
-    The gates seeded with today's violations — G7's retired words, G9's three
-    table names — arrive with the pull requests that install them. If this
-    assertion ever fails, the ledger has entries and the comment above is what
-    needs updating, not the test.
+    The gates seeded with today's violations (G7's retired words, G9's three
+    table names) arrive with the pull requests that install them, #206 and #203.
+    So when this assertion first fails, the fix is to replace it with the loop
+    below over real entries — not to delete the rule.
     """
     assert programme.entries == ()
     assert programme.exceptions == ()
     assert programme.installed_gates(), "no gate is installed — suspect the parse"
+
+    for record in programme.entries + programme.exceptions:
+        assert programme.gates[record.gate].installed, record.id
 
 
 def test_ci_runs_the_ratchet_and_can_fail_on_it():

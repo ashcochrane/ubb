@@ -28,7 +28,7 @@ import pytest
 import yaml
 
 from _helpers import REPO_ROOT
-from tools.gates.enforcement import CONTRACT_COMMAND, _triggers, enforcement_faults
+from tools.gates.enforcement import CONTRACT_COMMAND, enforcement_faults, triggers
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -71,7 +71,7 @@ def test_the_workflow_was_actually_read(workflow):
     assert isinstance(workflow.get("jobs"), dict)
     assert "contracts" in workflow["jobs"], "the contracts job is missing"
     assert len(workflow["jobs"]) > 1, "only one job parsed — suspect the parse"
-    assert isinstance(_triggers(workflow), dict), "the `on:` block did not parse"
+    assert isinstance(triggers(workflow), dict), "the `on:` block did not parse"
 
 
 def test_the_contract_job_installs_no_django(workflow):
@@ -140,7 +140,7 @@ def test_the_yaml_on_key_gotcha_is_handled():
     would report "no triggers" for every real GitHub workflow ever written."""
     parsed = yaml.safe_load("on:\n  push:\n  pull_request:\njobs: {}\n")
     assert True in parsed and "on" not in parsed
-    assert set(_triggers(parsed)) == {"push", "pull_request"}
+    assert set(triggers(parsed)) == {"push", "pull_request"}
 
 
 # ---------------------------------------------------------------------------

@@ -19,9 +19,7 @@ from pathlib import Path
 import yaml
 
 from tools.gates import errors as codes
-from tools.gates.enforcement import (
-    collection_faults, job_faults, step_faults,
-)
+from tools.gates.enforcement import collection_faults, step_faults
 from tools.gates.errors import GateError, GatesInvalid
 # Borrowed rather than copied. `load_yaml` refuses a mapping key that appears
 # twice, where PyYAML's `safe_load` silently keeps the last — the wrong default
@@ -36,6 +34,9 @@ LEDGER_FILE = "migration-ledger.yaml"
 EXCEPTIONS_FILE = "permanent-exceptions.yaml"
 REQUIRED_FILES = (SCHEMA_FILE, SLICES_FILE, MANIFEST_FILE, LEDGER_FILE,
                   EXCEPTIONS_FILE)
+#: Not registry content, and not an error either — the reasoning has to live
+#: somewhere, and beside the data is the right place.
+READ_BY_HUMANS = ("README.md",)
 
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 
@@ -87,6 +88,10 @@ class Row:
     status: str
     body: dict = field(repr=False)
     sites: tuple[Site, ...] = ()
+    #: The `owned_by_` spelling this row was compiled against. Carried rather
+    #: than assumed, so `owner_slice` cannot read a status the schema no longer
+    #: declares that way.
+    prefix: str = "owned_by_"
 
     @property
     def installed(self):
@@ -95,7 +100,7 @@ class Row:
     @property
     def owner_slice(self):
         """The slice key this row is owed to, or None."""
-        return owner_slice_of(self.status)
+        return owner_slice_of(self.status, self.prefix)
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,11 @@ class PermanentException:
     gate: str
     site: str
     reason: str
+
+    @property
+    def identity(self):
+        """As :attr:`LedgerEntry.identity`, and for the same reason."""
+        return (self.gate, self.site)
 
 
 @dataclass(frozen=True)
@@ -203,6 +213,18 @@ def _read_documents(gates_dir, errors):
                                 "the gates directory does not exist"))
         return documents
 
+    # No ignored category. A file here that nothing reads is either a document
+    # somebody believes is enforced and is not, or a mislaid one — and either way
+    # a directory that silently tolerates it is how a manifest acquires a second,
+    # unread copy of itself.
+    for path in sorted(gates_dir.iterdir()):
+        if path.name in REQUIRED_FILES or path.name in READ_BY_HUMANS:
+            continue
+        errors.append(GateError(
+            codes.UNEXPECTED_FILE, f"gates/{path.name}",
+            f"nothing reads this. The gates directory holds exactly "
+            f"{', '.join(REQUIRED_FILES)} and {', '.join(READ_BY_HUMANS)}."))
+
     for name in REQUIRED_FILES:
         path = gates_dir / name
         if not path.is_file():
@@ -238,11 +260,11 @@ def _workflow(repo_root, errors):
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as problem:
-        errors.append(GateError(codes.WORKFLOW_MISSING, WORKFLOW_PATH,
+        errors.append(GateError(codes.WORKFLOW_INVALID, WORKFLOW_PATH,
                                 str(problem).replace("\n", " ")))
         return {}
     if not isinstance(document, dict):
-        errors.append(GateError(codes.WORKFLOW_MISSING, WORKFLOW_PATH,
+        errors.append(GateError(codes.WORKFLOW_INVALID, WORKFLOW_PATH,
                                 "the workflow is not a mapping"))
         return {}
     return document
@@ -266,6 +288,19 @@ def _schema(document, errors):
     owned = block("owned_status")
     row_fields = block("row_fields")
     kinds = block("enforcement_kinds")
+
+    # The schema is the oracle for what a status REQUIRES and FORBIDS. It is not
+    # the oracle for what `installed` MEANS: `Row.installed` compares against the
+    # constant above, and `_check_enforcement` acts on it. Renaming the status in
+    # this file alone would leave every row silently un-installed while the shape
+    # rules still validated — so the two names the compiler acts on must be here.
+    for name in (INSTALLED, DEFERRED):
+        if name not in statuses:
+            errors.append(GateError(codes.SCHEMA_INVALID, where,
+                                    f"`statuses` must declare `{name}`: the "
+                                    f"compiler acts on it by name, so a schema "
+                                    f"that renames it would disarm every row "
+                                    f"carrying it rather than reject it"))
 
     prefix = owned.get("prefix")
     if not isinstance(prefix, str) or not prefix:
@@ -436,8 +471,8 @@ def _suites(document, repo_root, workflow, errors):
                 faulty = True
                 continue
             values[field_name] = value
-        for unknown in set(body) - set(SUITE_FIELDS):
-            errors.append(GateError(codes.SUITE_MISSING_FIELD, at,
+        for unknown in sorted(set(body) - set(SUITE_FIELDS)):
+            errors.append(GateError(codes.SUITE_UNKNOWN_FIELD, at,
                                     f"`{unknown}` is not a suite field"))
             faulty = True
         if faulty:
@@ -546,7 +581,7 @@ def _row(name, section, body, schema, slices, where, errors):
     return Row(id=name, section=section,
                statement=str(body.get("statement", "")),
                oracle=str(body.get("oracle", "")), status=str(status),
-               body=body, sites=sites)
+               body=body, sites=sites, prefix=schema["prefix"])
 
 
 def _shape_key(status, schema, slices):
@@ -629,9 +664,11 @@ def _check_enforcement(gates, obligations, suites, repo_root, workflow, errors):
                         f"`{site['suite']}` is not a suite this manifest "
                         f"declares ({', '.join(sorted(suites)) or 'none'})"))
                     continue
-                faults = (job_faults(workflow, suite.job)
-                          + collection_faults(repo_root, suite.root,
-                                              suite.config, site["node"]))
+                # Only the node. Whether the suite RUNS was settled once when it
+                # was declared, and blaming a `continue-on-error` job again for
+                # every gate that names it turns one cause into N errors.
+                faults = collection_faults(repo_root, suite.root, suite.config,
+                                           site["node"])
             for fault in faults:
                 errors.append(GateError(
                     codes.GATE_NOT_RUNNING, at,
@@ -640,14 +677,29 @@ def _check_enforcement(gates, obligations, suites, repo_root, workflow, errors):
 
 # --- migration-ledger.yaml and permanent-exceptions.yaml --------------------
 
+#: Which codes :func:`_records` reports, per list. Named rather than positional:
+#: four bare strings in a tuple is exactly the argument a caller gets wrong.
+@dataclass(frozen=True)
+class RecordCodes:
+    not_mapping: str
+    missing: str
+    unknown: str
+    bad_type: str
+
+
+ENTRY_CODES = RecordCodes(codes.ENTRY_NOT_MAPPING, codes.ENTRY_MISSING_FIELD,
+                          codes.ENTRY_UNKNOWN_FIELD,
+                          codes.ENTRY_INVALID_FIELD_TYPE)
+AUTHORISATION_CODES = RecordCodes(codes.AUTHORISATION_NOT_MAPPING,
+                                  codes.AUTHORISATION_MISSING_FIELD,
+                                  codes.AUTHORISATION_UNKNOWN_FIELD,
+                                  codes.AUTHORISATION_INVALID_FIELD_TYPE)
+
+
 def _ledger(document, schema, gates, slices, errors):
     where = f"gates/{LEDGER_FILE}"
     entries = _records(document, "entries", schema["ledger_entry"], where,
-                       LedgerEntry, errors,
-                       (codes.ENTRY_NOT_MAPPING, codes.ENTRY_MISSING_FIELD,
-                        codes.ENTRY_UNKNOWN_FIELD,
-                        codes.ENTRY_INVALID_FIELD_TYPE),
-                       integers=())
+                       LedgerEntry, errors, ENTRY_CODES, integers=())
     _check_identity(entries, where, errors)
     for entry in entries:
         at = f"{where}: {entry.id}"
@@ -666,11 +718,7 @@ def _ledger(document, schema, gates, slices, errors):
 
     authorisations = _records(document, "seeding_authorisations",
                               schema["authorisation"], where, Authorisation,
-                              errors,
-                              (codes.AUTHORISATION_NOT_MAPPING,
-                               codes.AUTHORISATION_MISSING_FIELD,
-                               codes.AUTHORISATION_UNKNOWN_FIELD,
-                               codes.AUTHORISATION_INVALID_FIELD_TYPE),
+                              errors, AUTHORISATION_CODES,
                               integers=("issue", "entries_added"))
     for authorisation in authorisations:
         _check_gate_reference(authorisation.gate, gates,
@@ -682,11 +730,7 @@ def _ledger(document, schema, gates, slices, errors):
 def _exceptions(document, schema, gates, errors):
     where = f"gates/{EXCEPTIONS_FILE}"
     exceptions = _records(document, "exceptions", schema["exception"], where,
-                          PermanentException, errors,
-                          (codes.ENTRY_NOT_MAPPING, codes.ENTRY_MISSING_FIELD,
-                           codes.ENTRY_UNKNOWN_FIELD,
-                           codes.ENTRY_INVALID_FIELD_TYPE),
-                          integers=())
+                          PermanentException, errors, ENTRY_CODES, integers=())
     _check_identity(exceptions, where, errors)
     for exception in exceptions:
         _check_gate_reference(exception.gate, gates, f"{where}: {exception.id}",
@@ -694,9 +738,11 @@ def _exceptions(document, schema, gates, errors):
     return exceptions
 
 
-def _records(document, key, rules, where, factory, errors, error_codes,
+def _records(document, key, rules, where, factory, errors, record_codes,
              integers):
-    not_mapping, missing, unknown, bad_type = error_codes
+    not_mapping = record_codes.not_mapping
+    missing, unknown = record_codes.missing, record_codes.unknown
+    bad_type = record_codes.bad_type
     required, allowed = rules
     declared = document.get(key)
     if declared is None:
@@ -748,7 +794,7 @@ def _check_identity(records, where, errors):
             errors.append(GateError(codes.DUPLICATE_ENTRY_ID, where,
                                     f"`{record.id}` is used twice"))
         by_id[record.id] = record
-        identity = (record.gate, record.site)
+        identity = record.identity
         if identity in by_site:
             errors.append(GateError(
                 codes.DUPLICATE_ENTRY_SITE, f"{where}: {record.id}",

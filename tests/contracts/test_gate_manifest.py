@@ -294,6 +294,19 @@ def test_a_suite_whose_declared_config_is_absent_is_rejected(tmp_path):
     assert invalid.codes() == {codes.SUITE_CONFIG_MISSING}
 
 
+def test_a_disarmed_job_is_blamed_once_however_many_gates_name_it(tmp_path):
+    """One cause, one error. A `continue-on-error` job is the suite's fault, and
+    repeating it for every gate that names the suite buries the other faults in
+    a run — which is how a reader stops reading the list."""
+    workflow = workflow_document()
+    workflow["jobs"]["contracts"]["continue-on-error"] = True
+    invalid = rejection(tmp_path, workflow=workflow,
+                        gates=gates(G1=installed(), G2=installed(),
+                                    G3=installed()))
+    assert invalid.codes() == {codes.GATE_NOT_RUNNING}
+    assert len(invalid.errors) == 1, "the same cause was reported more than once"
+
+
 def test_deleting_a_test_the_real_manifest_names_turns_ci_red(tmp_path):
     """The same control against the SHIPPED manifest, so it is the real rows
     being defended rather than a synthetic stand-in."""
@@ -427,7 +440,20 @@ def test_a_missing_gates_file_is_rejected_by_name(tmp_path):
 
 def test_a_workflow_that_cannot_be_read_is_rejected(tmp_path):
     invalid = rejection(tmp_path, workflow="{{ not: yaml ]")
-    assert codes.WORKFLOW_MISSING in invalid.codes()
+    assert codes.WORKFLOW_INVALID in invalid.codes()
+
+
+def test_a_file_the_gates_directory_would_not_carry_is_rejected(tmp_path):
+    """No ignored category. A file here that nothing reads is either a document
+    somebody believes is enforced and is not, or a mislaid one."""
+    invalid = rejection(tmp_path, files={"gates/notes.yaml": "entries: []\n"})
+    assert invalid.codes() == {codes.UNEXPECTED_FILE}
+
+
+def test_the_readme_beside_the_gates_is_not_gate_content(tmp_path):
+    """The reasoning has to live somewhere, and beside the data is the right
+    place — so the rule above must not make it an error."""
+    load(tmp_path, files={"gates/README.md": "# why\n"})
 
 
 # ---------------------------------------------------------------------------

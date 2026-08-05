@@ -25,6 +25,7 @@ import ast
 import configparser
 import fnmatch
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 
 # The command that runs the repository-wide contract suite. The job is found by
@@ -46,7 +47,7 @@ SKIPPING_MARKS = ("skip", "skipif", "xfail")
 # The workflow
 # ---------------------------------------------------------------------------
 
-def _triggers(workflow):
+def triggers(workflow):
     """The `on:` block.
 
     YAML 1.1 reads a bare `on` as the boolean true, so a workflow parsed with
@@ -67,16 +68,16 @@ def _enabled(value):
 
 def trigger_faults(workflow):
     """Every reason ``workflow`` does not run on every push and pull request."""
-    triggers = _triggers(workflow)
-    if not isinstance(triggers, dict):
-        return [f"the workflow declares no triggers: {triggers!r}"]
+    declared = triggers(workflow)
+    if not isinstance(declared, dict):
+        return [f"the workflow declares no triggers: {declared!r}"]
 
     faults = []
     for event in ("push", "pull_request"):
-        if event not in triggers:
+        if event not in declared:
             faults.append(f"the workflow does not run on {event}")
             continue
-        filters = triggers[event] or {}
+        filters = declared[event] or {}
         for filter_key in ("paths", "paths-ignore"):
             if isinstance(filters, dict) and filter_key in filters:
                 faults.append(
@@ -95,7 +96,7 @@ def enforcement_faults(workflow, command=CONTRACT_COMMAND):
     workflows through the same entry point the real one uses.
     """
     faults = trigger_faults(workflow)
-    if not isinstance(_triggers(workflow), dict):
+    if not isinstance(triggers(workflow), dict):
         return faults  # no triggers at all; nothing below is meaningful
 
     found = False
@@ -165,6 +166,7 @@ def step_faults(workflow, job_name, step_name):
 # The pytest suite
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
 class Collection:
     """One suite's collection rules, read from its pytest configuration.
 
@@ -172,14 +174,11 @@ class Collection:
     ``conformance`` from the default run, which is exactly the kind of
     exclusion that would let a gate be listed and never collected.
     """
-
-    def __init__(self, python_files, python_functions, python_classes,
-                 norecursedirs, ignored):
-        self.python_files = python_files
-        self.python_functions = python_functions
-        self.python_classes = python_classes
-        self.norecursedirs = norecursedirs
-        self.ignored = ignored
+    python_files: tuple
+    python_functions: tuple
+    python_classes: tuple
+    norecursedirs: tuple
+    ignored: tuple
 
     @classmethod
     def from_config(cls, config_path):

@@ -88,8 +88,13 @@ installs it:
    seeding authorisation (below);
 4. run `python -m tools.gates` — it will tell you if the site is not armed.
 
+**And when the slice itself lands, set its `landed: true` in `slices.yaml`.**
+That is what arms rule 3 below; until it is set, an entry owed by a finished
+slice sits there looking owned. See the closing section for why this is declared
+rather than observed.
+
 A slice that lands while still named by an `owned_by_slice_N` row turns CI red:
-`slices.yaml` declares `landed`, and a landed slice cannot owe an installation.
+a landed slice cannot owe an installation.
 
 ## The ledger, and its three rules
 
@@ -172,6 +177,29 @@ The machinery is complete and proven by negative controls that put synthetic
 violations through the real entry point. What it has to say about today is
 nothing.
 
+## Beyond what #201 asked for
+
+Four rules here are stricter than the ticket's acceptance criteria. None
+contradicts one; each was added because the mechanism is hollow without it. They
+are listed so a reviewer sees them rather than discovers them.
+
+1. **An entry may only name an `installed` gate** (and so may an exception).
+   #191 §5 rule 2 asks only that an entry name a real gate and a real slice. The
+   stricter form is what makes every entry falsifiable — and it is why both lists
+   ship empty rather than seeded with hand-typed guesses about gates nothing runs.
+2. **An entry's owner slice may move earlier but never later.** Rule 1 as written
+   catches additions. Silently editing `owner_slice: slice_2` to `slice_7` adds
+   nothing and shrinks nothing, and it is #155 §17's failure with an extra step.
+3. **A seeding authorisation's count must match exactly, and one that licenses
+   nothing fails.** "An explicit, reviewed override" with no quantity is an
+   intention; with no effect it is the inert-suppression defect the spec gate
+   already catches in `openapi/`.
+4. **The `obligations:` section.** #201 makes `deferred_obligation` one of three
+   statuses, and no §8 gate carries it — it would have been dead vocabulary in a
+   manifest whose job is that nothing gets lost. O2 and O3 are ADR-0008 §6's two
+   admission acts; O1 is the acceptance audit §9 establishes, carried here for
+   the same reason ADR-0008 gives for the others: *never silently marked passed.*
+
 ## What none of this proves
 
 Every gate in ADR-0008 §8 is a **consistency** check, and this manifest is a
@@ -186,3 +214,16 @@ A row can be perfectly armed, actually running, and assert something not worth
 asserting. That question belongs to the one owned acceptance audit — recorded
 here as obligation `O1`, precisely so it cannot be mistaken for something a gate
 settled.
+
+And one gap specific to these files, flagged rather than buried:
+
+**`landed` is declared, and nothing observes it.** Rule 3 — an entry whose owner
+slice has landed fails CI — fires off `slices.yaml`, and no check in a hermetic
+suite can see that a GitHub issue closed. If a slice lands and nobody flips its
+flag, rule 3 and `LANDED_SLICE_OWNS_GATE` sit inert: exactly the *"everyone
+assumed somebody else owned it"* they exist to close, one level up.
+
+The flip is therefore part of the landing slice's own work, alongside its
+manifest rows — see *Flipping a row* above. It is not automatable without
+putting a network call inside a gate, which would trade a silent gap for a flaky
+one. Making the obligation visible is the mitigation, not a fix.

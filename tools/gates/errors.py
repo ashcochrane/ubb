@@ -11,11 +11,13 @@ from dataclasses import dataclass
 
 # --- Structure: the directory and the files in it ---------------------------
 GATES_MISSING = "gates_missing"                # the directory or a required file is absent
+UNEXPECTED_FILE = "unexpected_file"            # something in gates/ nothing reads
 YAML_INVALID = "yaml_invalid"                  # a file does not parse
 DUPLICATE_KEY = "duplicate_key"                # the same key twice in one mapping
 FILE_NOT_MAPPING = "file_not_mapping"          # a file is not the mapping it must be
 SCHEMA_INVALID = "schema_invalid"              # schema.yaml does not describe a usable schema
-WORKFLOW_MISSING = "workflow_missing"          # the CI workflow is absent or unparseable
+WORKFLOW_MISSING = "workflow_missing"          # the CI workflow is absent
+WORKFLOW_INVALID = "workflow_invalid"          # ... or present and unreadable
 
 # --- The slices -------------------------------------------------------------
 SLICES_INVALID = "slices_invalid"              # slices.yaml declares no usable slices
@@ -28,6 +30,7 @@ DUPLICATE_SLICE_ORDER = "duplicate_slice_order"        # two slices, one positio
 # --- The declared pytest suites ---------------------------------------------
 SUITE_NOT_MAPPING = "suite_not_mapping"
 SUITE_MISSING_FIELD = "suite_missing_field"
+SUITE_UNKNOWN_FIELD = "suite_unknown_field"    # a field a suite may not carry
 SUITE_INVALID_FIELD_TYPE = "suite_invalid_field_type"
 SUITE_ROOT_MISSING = "suite_root_missing"      # the suite's root is not in the repository
 SUITE_CONFIG_MISSING = "suite_config_missing"  # a declared pytest config file is absent
@@ -51,6 +54,11 @@ UNKNOWN_SUITE = "unknown_suite"                    # a suite the manifest does n
 GATE_NOT_RUNNING = "gate_not_running"              # the named site is not armed, or not collected
 
 # --- The migration ledger and the permanent exceptions ----------------------
+#
+# One family for both lists. They are separate LISTS with different shapes, but
+# "a required field is missing" is the same fault wherever it happens, and the
+# error's `location` names the file. A parallel EXCEPTION_* family would say
+# nothing the location does not.
 ENTRY_NOT_MAPPING = "entry_not_mapping"
 ENTRY_MISSING_FIELD = "entry_missing_field"
 ENTRY_UNKNOWN_FIELD = "entry_unknown_field"
