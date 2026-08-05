@@ -72,9 +72,11 @@ which is the house pattern:
 | `test_gate_manifest.py` | `gates/manifest.yaml` is true: all twenty-seven of ADR-0008 §8's gates are accounted for, every `installed` row's check is proven to actually run and be able to fail, and every owed row names a real slice and what must exist first. |
 | `test_migration_ledger.py` | The ledger only shrinks, every entry names an installed gate and an unlanded owner slice, and the permanent exceptions are a separate list with a different shape. |
 | `test_model_naming_ledger_agreement.py` | The four model-naming gates (#203) excuse exactly the debts `gates/` records. Those gates run in the platform suite because their subject is the app registry, so the seeded sites exist twice — this holds the two encodings to each other, by id and in both directions. |
+| `test_sdk_operations.py` | The SDK's two-way operation check (#204): every hand-written call targets a published operation by method **and** normalised path, and every published operation carries a derived disposition in a manifest that regenerates with zero diff. Carries #155 §8.5's six named cases, one test each. |
 | `test_contract_suite_is_enforced.py` | This suite runs, is required, and needs no Django. |
 | `_helpers.py` | Builds synthetic registries on disk for the negative controls, off the **real** schema — so a change to the shipped kind table is felt by every control. Also copies the **real** registry, for the controls that must mutate exactly one thing about it. |
 | `_gate_helpers.py` | The same, for gate programmes: a synthetic `gates/`, workflow and test tree on disk, loaded through the real compiler. Also drives the ledger ratchet through a real git repository, because resolving a base ref is the one part a pure test cannot reach. |
+| `_sdk_helpers.py` | The same, for SDK surfaces: a synthetic contract, hand shell, generated client and ledger on disk, read through the real walker. Path *expressions* rather than paths, so a control can express an f-string, a variable or a concatenation — the cases that are about how a route was written. |
 | `conftest.py` | Puts the git root on `sys.path`. That is the entire fixture surface. |
 
 The gate manifest is this slice's **single coordinating verdict**: the gates

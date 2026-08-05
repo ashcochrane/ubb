@@ -1,0 +1,726 @@
+# @generated from openapi/v1.json and ubb-sdk/ubb/ — do not edit by hand.
+# Regenerate with `python -m tools.sdk_operations --write`.
+#
+# Every operation the committed contract publishes, and what the SDK does about
+# it (ADR-0007 §4, #155 §8.2). The count of unwrapped operations is NOT required
+# to reach zero — the SDK is allowed deliberate gaps — but it must stay visible
+# and mechanically accurate, and it may not rise without a signature.
+#
+#   wrapped           a hand-written call in ubb-sdk/ubb/ resolves to it
+#   generated_only    no hand-written call; the generated client has its module
+#   not_yet_wrapped   no hand-written call and no generated module either —
+#                     unreachable through this SDK by any route
+#
+# All three are DERIVED from the tree, never declared. A hand-written
+# classification would be a second copy of a fact the repository already
+# states, and the only question it could raise is whether the two copies agree.
+#
+# `wrapped_by` names the declaring method rather than a line, so a call moving
+# down its file is not a diff. Where one operation is reached from more than one
+# place, every place is listed.
+
+version: 1
+
+# The lines a reviewer has to read. `unwrapped` rising is refused by
+# `python -m tools.sdk_operations ratchet` unless this change carries an entry
+# in ubb-sdk/coverage-authorisations.yaml that licenses exactly the rise.
+summary:
+  operations: 134
+  unwrapped: 56
+  wrapped: 78
+  generated_only: 56
+  not_yet_wrapped: 0
+
+operations:
+  - operation_id: api_v1_audit_endpoints_list_audit_records
+    method: GET
+    path: /api/v1/audit/records
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_configure_auto_top_up
+    method: PUT
+    path: /api/v1/billing/customers/{customer_id}/auto-top-up
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.configure_auto_topup
+  - operation_id: api_v1_billing_endpoints_create_grant
+    method: POST
+    path: /api/v1/billing/customers/{customer_id}/grants
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.create_grant
+  - operation_id: api_v1_billing_endpoints_create_top_up
+    method: POST
+    path: /api/v1/billing/customers/{customer_id}/top-up
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.create_top_up
+  - operation_id: api_v1_billing_endpoints_credit
+    method: POST
+    path: /api/v1/billing/credit
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.credit
+  - operation_id: api_v1_billing_endpoints_debit
+    method: POST
+    path: /api/v1/billing/debit
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.debit
+  - operation_id: api_v1_billing_endpoints_get_balance
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/balance
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_balance
+  - operation_id: api_v1_billing_endpoints_get_customer_billing_profile
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/billing-profile
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_get_customer_budget
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/budget
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_budget
+  - operation_id: api_v1_billing_endpoints_get_customer_budget_status
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/budget/status
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_budget_status
+  - operation_id: api_v1_billing_endpoints_get_postpaid_config
+    method: GET
+    path: /api/v1/billing/postpaid-config
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_postpaid_config
+  - operation_id: api_v1_billing_endpoints_get_tenant_budget
+    method: GET
+    path: /api/v1/billing/budget
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_get_transactions
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/transactions
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_transactions
+  - operation_id: api_v1_billing_endpoints_list_customer_usage_invoices
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/usage-invoices
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.get_usage_invoices
+  - operation_id: api_v1_billing_endpoints_list_grants
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/grants
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.list_grants
+  - operation_id: api_v1_billing_endpoints_list_tenant_usage_invoices
+    method: GET
+    path: /api/v1/billing/tenant/usage-invoices
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_pre_check
+    method: POST
+    path: /api/v1/billing/pre-check
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.pre_check
+  - operation_id: api_v1_billing_endpoints_put_customer_billing_profile
+    method: PUT
+    path: /api/v1/billing/customers/{customer_id}/billing-profile
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_put_customer_budget
+    method: PUT
+    path: /api/v1/billing/customers/{customer_id}/budget
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.set_budget
+  - operation_id: api_v1_billing_endpoints_put_postpaid_config
+    method: PUT
+    path: /api/v1/billing/postpaid-config
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.set_postpaid_config
+  - operation_id: api_v1_billing_endpoints_put_tenant_budget
+    method: PUT
+    path: /api/v1/billing/budget
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_refund_usage
+    method: POST
+    path: /api/v1/billing/customers/{customer_id}/refund
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.refund
+  - operation_id: api_v1_billing_endpoints_revenue_analytics
+    method: GET
+    path: /api/v1/billing/analytics/revenue
+    disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_void_grant
+    method: POST
+    path: /api/v1/billing/customers/{customer_id}/grants/{grant_id}/void
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.void_grant
+  - operation_id: api_v1_billing_endpoints_withdraw
+    method: POST
+    path: /api/v1/billing/customers/{customer_id}/withdraw
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.withdraw
+  - operation_id: api_v1_connect_endpoints_connect_start
+    method: POST
+    path: /api/v1/connect/start
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.start_connect_onboarding
+  - operation_id: api_v1_connect_endpoints_connect_status
+    method: GET
+    path: /api/v1/connect/status
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.get_connect_status
+  - operation_id: api_v1_endpoints_health
+    method: GET
+    path: /api/v1/health
+    disposition: generated_only
+  - operation_id: api_v1_endpoints_past_limit_report
+    method: GET
+    path: /api/v1/customers/{customer_id}/past-limit-report
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_past_limit_report
+  - operation_id: api_v1_endpoints_ready
+    method: GET
+    path: /api/v1/ready
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_create_top_up
+    method: POST
+    path: /api/v1/me/top-up
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_get_balance
+    method: GET
+    path: /api/v1/me/balance
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_get_invoices
+    method: GET
+    path: /api/v1/me/invoices
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_get_transactions
+    method: GET
+    path: /api/v1/me/transactions
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_get_usage_summary
+    method: GET
+    path: /api/v1/me/usage-summary
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_list_grants
+    method: GET
+    path: /api/v1/me/grants
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_list_subscription_invoices
+    method: GET
+    path: /api/v1/me/subscription-invoices
+    disposition: generated_only
+  - operation_id: api_v1_me_endpoints_list_usage_invoices
+    method: GET
+    path: /api/v1/me/usage-invoices
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_add_rate
+    method: POST
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/rates
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_assign_book
+    method: POST
+    path: /api/v1/metering/pricing/customers/{customer_id}/rate-card
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_close_task
+    method: POST
+    path: /api/v1/metering/tasks/{task_id}/close
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.close_task
+  - operation_id: api_v1_metering_endpoints_create_book
+    method: POST
+    path: /api/v1/metering/pricing/rate-cards
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.create_rate_card
+  - operation_id: api_v1_metering_endpoints_declare_dimensions
+    method: PUT
+    path: /api/v1/metering/dimensions
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_declare_task_types
+    method: PUT
+    path: /api/v1/metering/task-types
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_delete_customer_markup
+    method: DELETE
+    path: /api/v1/metering/pricing/customers/{customer_id}/markup
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_delete_rate
+    method: DELETE
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.delete_rate
+  - operation_id: api_v1_metering_endpoints_get_customer_markup
+    method: GET
+    path: /api/v1/metering/pricing/customers/{customer_id}/markup
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_markup
+  - operation_id: api_v1_metering_endpoints_get_task
+    method: GET
+    path: /api/v1/metering/tasks/{task_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_get_tenant_markup
+    method: GET
+    path: /api/v1/metering/pricing/markup
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_markup
+  - operation_id: api_v1_metering_endpoints_get_usage
+    method: GET
+    path: /api/v1/metering/customers/{customer_id}/usage
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_usage
+  - operation_id: api_v1_metering_endpoints_get_usage_event
+    method: GET
+    path: /api/v1/metering/usage/{event_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_ingest_usage_batch
+    method: POST
+    path: /api/v1/metering/usage/ingest
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_book_rates
+    method: GET
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/rates
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_books
+    method: GET
+    path: /api/v1/metering/pricing/rate-cards
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.list_rate_cards
+  - operation_id: api_v1_metering_endpoints_list_dimension_values
+    method: GET
+    path: /api/v1/metering/dimensions/{key}/values
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_dimensions
+    method: GET
+    path: /api/v1/metering/dimensions
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_task_types
+    method: GET
+    path: /api/v1/metering/task-types
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_tasks
+    method: GET
+    path: /api/v1/metering/tasks
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_publish_book
+    method: POST
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publish
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_record_usage
+    method: POST
+    path: /api/v1/metering/usage
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.record_usage
+  - operation_id: api_v1_metering_endpoints_record_usage_batch
+    method: POST
+    path: /api/v1/metering/usage/batch
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.record_batch
+  - operation_id: api_v1_metering_endpoints_task_analytics
+    method: GET
+    path: /api/v1/metering/analytics/tasks
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_upsert_customer_markup
+    method: PUT
+    path: /api/v1/metering/pricing/customers/{customer_id}/markup
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.set_customer_markup
+  - operation_id: api_v1_metering_endpoints_upsert_tenant_markup
+    method: PUT
+    path: /api/v1/metering/pricing/markup
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.set_markup
+  - operation_id: api_v1_metering_endpoints_usage_analytics
+    method: GET
+    path: /api/v1/metering/analytics/usage
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.usage_analytics
+  - operation_id: api_v1_metering_endpoints_usage_timeseries
+    method: GET
+    path: /api/v1/metering/analytics/usage/timeseries
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.usage_timeseries
+  - operation_id: api_v1_plan_endpoints_archive_plan
+    method: DELETE
+    path: /api/v1/plans/{key}
+    disposition: generated_only
+  - operation_id: api_v1_plan_endpoints_assign_plan
+    method: POST
+    path: /api/v1/customers/{external_id}/plan
+    disposition: generated_only
+  - operation_id: api_v1_plan_endpoints_create_plan
+    method: POST
+    path: /api/v1/plans
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.create_plan
+  - operation_id: api_v1_plan_endpoints_get_plan
+    method: GET
+    path: /api/v1/plans/{key}
+    disposition: generated_only
+  - operation_id: api_v1_plan_endpoints_list_plans
+    method: GET
+    path: /api/v1/plans
+    disposition: generated_only
+  - operation_id: api_v1_plan_endpoints_update_plan
+    method: PATCH
+    path: /api/v1/plans/{key}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.update_plan
+  - operation_id: api_v1_platform_endpoints_create_customer
+    method: POST
+    path: /api/v1/platform/customers
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.create_customer
+  - operation_id: api_v1_platform_endpoints_get_business
+    method: GET
+    path: /api/v1/platform/accounts/business/{external_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.get_business
+  - operation_id: api_v1_sandbox_endpoints_reset_sandbox
+    method: POST
+    path: /api/v1/sandbox/reset
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_create_api_key
+    method: POST
+    path: /api/v1/tenant/api-keys
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.create_api_key
+  - operation_id: api_v1_tenant_endpoints_create_invitation
+    method: POST
+    path: /api/v1/tenant/invitations
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_create_sandbox
+    method: POST
+    path: /api/v1/tenant/sandbox
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.create_sandbox
+  - operation_id: api_v1_tenant_endpoints_get_sandbox
+    method: GET
+    path: /api/v1/tenant/sandbox
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.get_sandbox
+  - operation_id: api_v1_tenant_endpoints_get_tenant_config
+    method: GET
+    path: /api/v1/tenant/config
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.get_tenant_config
+  - operation_id: api_v1_tenant_endpoints_list_api_keys
+    method: GET
+    path: /api/v1/tenant/api-keys
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.list_api_keys
+  - operation_id: api_v1_tenant_endpoints_list_billing_periods
+    method: GET
+    path: /api/v1/tenant/billing-periods
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_list_invitations
+    method: GET
+    path: /api/v1/tenant/invitations
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_list_invoices
+    method: GET
+    path: /api/v1/tenant/invoices
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_list_members
+    method: GET
+    path: /api/v1/tenant/members
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_remove_member
+    method: DELETE
+    path: /api/v1/tenant/members/{member_id}
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_revoke_api_key
+    method: DELETE
+    path: /api/v1/tenant/api-keys/{key_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.revoke_api_key
+  - operation_id: api_v1_tenant_endpoints_revoke_invitation
+    method: DELETE
+    path: /api/v1/tenant/invitations/{invitation_id}
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_rotate_api_key
+    method: POST
+    path: /api/v1/tenant/api-keys/{key_id}/rotate
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.rotate_api_key
+  - operation_id: api_v1_tenant_endpoints_update_member_role
+    method: PATCH
+    path: /api/v1/tenant/members/{member_id}
+    disposition: generated_only
+  - operation_id: api_v1_tenant_endpoints_update_tenant_config
+    method: PATCH
+    path: /api/v1/tenant/config
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.update_tenant_config
+  - operation_id: apps_platform_events_api_webhook_endpoints_create_webhook_config
+    method: POST
+    path: /api/v1/webhooks/configs
+    disposition: generated_only
+  - operation_id: apps_platform_events_api_webhook_endpoints_delete_webhook_config
+    method: DELETE
+    path: /api/v1/webhooks/configs/{config_id}
+    disposition: generated_only
+  - operation_id: apps_platform_events_api_webhook_endpoints_list_webhook_configs
+    method: GET
+    path: /api/v1/webhooks/configs
+    disposition: generated_only
+  - operation_id: apps_platform_events_api_webhook_endpoints_list_webhook_deliveries
+    method: GET
+    path: /api/v1/webhooks/configs/{config_id}/deliveries
+    disposition: generated_only
+  - operation_id: apps_platform_events_api_webhook_endpoints_rotate_webhook_secret
+    method: POST
+    path: /api/v1/webhooks/configs/{config_id}/rotate-secret
+    disposition: generated_only
+  - operation_id: apps_platform_events_api_webhook_endpoints_update_webhook_config
+    method: PATCH
+    path: /api/v1/webhooks/configs/{config_id}
+    disposition: generated_only
+  - operation_id: apps_referrals_api_endpoints_analytics_earnings
+    method: GET
+    path: /api/v1/referrals/analytics/earnings
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_analytics_earnings
+  - operation_id: apps_referrals_api_endpoints_analytics_summary
+    method: GET
+    path: /api/v1/referrals/analytics/summary
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_analytics_summary
+  - operation_id: apps_referrals_api_endpoints_attribute_referral
+    method: POST
+    path: /api/v1/referrals/attribute
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.attribute
+  - operation_id: apps_referrals_api_endpoints_create_program
+    method: POST
+    path: /api/v1/referrals/program
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.create_program
+  - operation_id: apps_referrals_api_endpoints_deactivate_program
+    method: DELETE
+    path: /api/v1/referrals/program
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.deactivate_program
+  - operation_id: apps_referrals_api_endpoints_get_program
+    method: GET
+    path: /api/v1/referrals/program
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_program
+  - operation_id: apps_referrals_api_endpoints_get_referral_ledger
+    method: GET
+    path: /api/v1/referrals/referrals/{referral_id}/ledger
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_ledger
+  - operation_id: apps_referrals_api_endpoints_get_referrer
+    method: GET
+    path: /api/v1/referrals/referrers/{customer_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_referrer
+  - operation_id: apps_referrals_api_endpoints_get_referrer_earnings
+    method: GET
+    path: /api/v1/referrals/referrers/{customer_id}/earnings
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_earnings
+  - operation_id: apps_referrals_api_endpoints_get_referrer_referrals
+    method: GET
+    path: /api/v1/referrals/referrers/{customer_id}/referrals
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.get_referrals
+  - operation_id: apps_referrals_api_endpoints_list_referrers
+    method: GET
+    path: /api/v1/referrals/referrers
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.list_referrers
+  - operation_id: apps_referrals_api_endpoints_payout_export
+    method: GET
+    path: /api/v1/referrals/payouts/export
+    disposition: generated_only
+  - operation_id: apps_referrals_api_endpoints_reactivate_program
+    method: POST
+    path: /api/v1/referrals/program/reactivate
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.reactivate_program
+  - operation_id: apps_referrals_api_endpoints_register_referrer
+    method: POST
+    path: /api/v1/referrals/referrers
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.register_referrer
+  - operation_id: apps_referrals_api_endpoints_revoke_referral
+    method: DELETE
+    path: /api/v1/referrals/referrals/{referral_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.revoke_referral
+  - operation_id: apps_referrals_api_endpoints_update_program
+    method: PATCH
+    path: /api/v1/referrals/program
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/referrals.py::ReferralsClient.update_program
+  - operation_id: apps_subscriptions_api_endpoints_cancel_subscription
+    method: POST
+    path: /api/v1/subscriptions/customers/{external_id}/subscription/cancel
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.cancel_subscription
+  - operation_id: apps_subscriptions_api_endpoints_get_invoices
+    method: GET
+    path: /api/v1/subscriptions/customers/{customer_id}/invoices
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/subscriptions.py::SubscriptionsClient.get_invoices
+  - operation_id: apps_subscriptions_api_endpoints_get_subscription
+    method: GET
+    path: /api/v1/subscriptions/customers/{customer_id}/subscription
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/subscriptions.py::SubscriptionsClient.get_subscription
+  - operation_id: apps_subscriptions_api_endpoints_pause_subscription
+    method: POST
+    path: /api/v1/subscriptions/customers/{external_id}/subscription/pause
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.pause_subscription
+  - operation_id: apps_subscriptions_api_endpoints_resume_subscription
+    method: POST
+    path: /api/v1/subscriptions/customers/{external_id}/subscription/resume
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.resume_subscription
+  - operation_id: apps_subscriptions_api_endpoints_set_customer_seats
+    method: POST
+    path: /api/v1/subscriptions/customers/{external_id}/seats
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.set_seats
+  - operation_id: apps_subscriptions_api_endpoints_subscribe_customer
+    method: POST
+    path: /api/v1/subscriptions/customers/{external_id}/subscribe
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/client.py::UBBClient.subscribe_customer
+  - operation_id: apps_subscriptions_api_endpoints_trigger_sync
+    method: POST
+    path: /api/v1/subscriptions/sync
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/subscriptions.py::SubscriptionsClient.sync
+  - operation_id: apps_subscriptions_api_margin_endpoints_business_margin
+    method: GET
+    path: /api/v1/margin/business/{external_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_business_margin
+  - operation_id: apps_subscriptions_api_margin_endpoints_customer_margin
+    method: GET
+    path: /api/v1/margin/customers/{customer_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_margin
+  - operation_id: apps_subscriptions_api_margin_endpoints_get_revenue
+    method: GET
+    path: /api/v1/margin/customers/{customer_id}/revenue
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_revenue
+  - operation_id: apps_subscriptions_api_margin_endpoints_get_revenue_mode
+    method: GET
+    path: /api/v1/margin/customers/{customer_id}/revenue-mode
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_revenue_mode
+  - operation_id: apps_subscriptions_api_margin_endpoints_get_threshold
+    method: GET
+    path: /api/v1/margin/threshold
+    disposition: generated_only
+  - operation_id: apps_subscriptions_api_margin_endpoints_list_margin
+    method: GET
+    path: /api/v1/margin/customers
+    disposition: generated_only
+  - operation_id: apps_subscriptions_api_margin_endpoints_margin_by_dimension
+    method: GET
+    path: /api/v1/margin/by-dimension
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_by_dimension
+  - operation_id: apps_subscriptions_api_margin_endpoints_margin_summary
+    method: GET
+    path: /api/v1/margin/summary
+    disposition: generated_only
+  - operation_id: apps_subscriptions_api_margin_endpoints_margin_trend
+    method: GET
+    path: /api/v1/margin/customers/{customer_id}/trend
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_trend
+  - operation_id: apps_subscriptions_api_margin_endpoints_margin_unprofitable
+    method: GET
+    path: /api/v1/margin/unprofitable
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_unprofitable_customers
+  - operation_id: apps_subscriptions_api_margin_endpoints_put_revenue
+    method: PUT
+    path: /api/v1/margin/customers/{customer_id}/revenue
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.set_customer_revenue
+  - operation_id: apps_subscriptions_api_margin_endpoints_put_revenue_mode
+    method: PUT
+    path: /api/v1/margin/customers/{customer_id}/revenue-mode
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.set_revenue_mode
+  - operation_id: apps_subscriptions_api_margin_endpoints_put_threshold
+    method: PUT
+    path: /api/v1/margin/threshold
+    disposition: generated_only

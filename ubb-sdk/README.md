@@ -514,6 +514,30 @@ client.create_customer(external_id: str, stripe_customer_id: str = "",
 
 ---
 
+## What this SDK reaches, and what it does not
+
+`operation-coverage.yaml` lists every operation the API publishes and what this
+SDK does about it — generated from `openapi/v1.json` and this package's source,
+never hand-maintained (#204, ADR-0007 §4):
+
+| | |
+|---|---|
+| `wrapped` | an ergonomic method calls it — the surface documented above |
+| `generated_only` | no ergonomic method; reach it through `ubb._core` |
+| `not_yet_wrapped` | not reachable through this SDK at all |
+
+Today that is 78 wrapped and 56 `generated_only`, and the gap is deliberate
+rather than a backlog: the eight `/api/v1/me/*` operations are the end-customer
+widget surface and need a widget token rather than a tenant key, and the health
+and readiness probes are for an orchestrator. A rise in the unwrapped count
+needs a signed entry in `coverage-authorisations.yaml`, so a new operation
+cannot arrive unwrapped by accident.
+
+Regenerate with `python -m tools.sdk_operations --write` from the git root; CI
+fails on a stale copy.
+
+---
+
 ## Running the dev server
 
 ```bash
