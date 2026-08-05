@@ -15,10 +15,23 @@
 # a gate that is INSTALLED. An exception to a gate that cannot fail anything
 # suppresses nothing, and would sit here unfalsifiable.
 #
-# IT IS EMPTY TODAY for that reason. G9 — `db_table == canonical(model_name)` —
-# is the gate `ConnectOAuthState` is an exception to, and G9 is installed by
-# #203, which adds this entry in the same pull request.
+# G9 was installed by #203, which is why the entry below could finally be
+# written down. It is also still checked: the gate reports `ConnectOAuthState`
+# as a mismatch on every run and this file is what excuses it, so if the model
+# were ever renamed to something that canonicalises correctly, the exception
+# would go stale and the platform suite would say so.
 
 version: 1
 
-exceptions: []
+exceptions:
+  - id: g9-connect-oauth-state-is-one-acronym
+    gate: G9
+    site: ubb-platform/apps/platform/tenants/models.py::ConnectOAuthState
+    reason: >-
+      OAuth is a single acronym token. Mechanical snake-casing splits it and
+      produces `ubb_connect_o_auth_state`, which is worse than the correct name
+      already in place — so the exception is to the mechanism, not to the rule.
+      Deliberately not solved by teaching `canonical_table` about acronyms: a
+      canonicalisation with a judgement step in it is one nobody can predict,
+      and one stated exception is cheaper than a rule that argues back
+      (#154 §6.4, ADR-0006 §9).

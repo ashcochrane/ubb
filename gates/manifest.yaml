@@ -181,38 +181,72 @@ gates:
       model; every exception carries a reason.
     oracle: ADR-0006 §9, against the Django app registry
     source: ADR-0006 §9, #154 §6.4
-    status: owned_by_slice_0
-    blocked_on: >-
-      The model-naming gates, installed by #203 in the platform suite, which
-      also seeds this gate's three known violations into the ledger and
-      `ConnectOAuthState` into the permanent exceptions.
+    status: installed
+    notes: >-
+      Managed concrete first-party models only (#154 §6.4) — an unmanaged model
+      maps a table UBB does not own. Three mismatches are in the ledger, owed by
+      slices 4 and 8; `ConnectOAuthState` is in the permanent exceptions, and is
+      an exception to the mechanism rather than to the rule. The same module
+      carries #154 §6.4's two pre-flight checks — that no two models canonicalise
+      onto one table, and that no canonical name exceeds PostgreSQL's identifier
+      limit — because a gate demanding a name the database cannot hold would have
+      no legal answer.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_table_name_is_the_canonical_snake_cased_model_name
 
   G10:
     statement: No writable `tenant_posture` column exists — the fact is derived, not stored.
     oracle: ADR-0006 §4, against the Django app registry
     source: ADR-0006 §4, #154 §12
-    status: owned_by_slice_0
-    blocked_on: >-
-      The model-naming gates (#203). This one is already green in the tree, so
-      it ships with a negative control proving it is an absence test rather
-      than a vacuous one.
+    status: installed
+    notes: >-
+      Green in the tree, and seeds nothing. It ships with a negative control
+      that puts a real model carrying the column through the same entry point,
+      because an absence test with nothing proving it can fail is a test that
+      asserts nothing — the shape this repository has already shipped three
+      times. "Writable" is a concrete column: a property or serializer field
+      serving the derived value read-only is exactly what ADR-0006 §4 permits.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_no_writable_column_stores_the_derived_tenant_posture
 
   G11:
     statement: >-
       `_micros` appears only on money-typed fields; no other unit uses the suffix.
     oracle: ADR-0006 §1, against the Django app registry
     source: ADR-0006 §1, #154 §12
-    status: owned_by_slice_0
-    blocked_on: The model-naming gates (#203), which seed `markup_percentage_micros`.
+    status: installed
+    notes: >-
+      Two conjuncts: a `_micros` field may not name a second unit, and it must be
+      an integer column wide enough to hold micros. The first catches a second
+      unit named in the field's OWN name, which is the shape the one real
+      ambiguity took (`markup_percentage_micros`, both seeded); a `_micros`
+      column silently holding seconds under a money-shaped name is invisible to
+      it and belongs to review — ADR-0008 §9's limit, at field scale.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_the_micros_suffix_names_money_and_nothing_else
 
   G12:
     statement: >-
       The enum-name rule over declaring models — `method`, `mode` and
       `structure` mean the three different things ADR-0006 §3 says they mean.
-    oracle: ADR-0006 §3, against the Django app registry
+    oracle: ADR-0006 §3 and §7, against the Django app registry
     source: ADR-0006 §3, #154 §12
-    status: owned_by_slice_0
-    blocked_on: The model-naming gates (#203), which seed `Rate.pricing_model`.
+    status: installed
+    notes: >-
+      The near-miss comparison is against the five names ADR-0006 §3 spells, not
+      an edit distance against the three bare words: `code` is one character from
+      `mode`, and `status_code`, `reason_code` and `referral_code` are correct
+      names a distance rule would condemn. A second conjunct refuses Django's own
+      noun as a field word (§7 — the framework yields), so a future
+      `analytics_model` is caught and not only the one collision §3 already
+      names. `Rate.pricing_model` is seeded. The VALUES of a method or mode field
+      are G2's business, not this gate's.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_method_mode_and_structure_describe_different_things
 
   G13:
     statement: No unqualified domain import of a Celery `tasks` module.
