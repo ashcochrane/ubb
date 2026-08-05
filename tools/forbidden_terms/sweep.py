@@ -44,6 +44,26 @@ from tools.ratchets import git
 #: `found: N files` on a G7 ledger entry — the extent the entry excuses.
 EXTENT = re.compile(r"^(\d+) files?$")
 
+#: What separates the two halves of a ledger site, `<area>::<term>`.
+SITE = "::"
+
+
+def site_of(area, term):
+    """The ledger site for one term on one area."""
+    return f"{area}{SITE}{term}"
+
+
+def parse_site(site):
+    """``(area, term)``, or ``(None, None)`` if it is not a site at all.
+
+    One place, because a separator that three modules each split on their own
+    is a separator that can be changed in one of them.
+    """
+    area, separator, term = site.partition(SITE)
+    if not separator or not area or not term:
+        return None, None
+    return area, term
+
 
 @dataclass(frozen=True)
 class Occurrence:
@@ -71,10 +91,6 @@ class Result:
     excluded: dict
     occurrences: tuple
     faults: tuple
-
-    @property
-    def ok(self):
-        return not self.faults
 
     def by_site(self):
         """``{(area, term): Occurrence}`` — keyed the way the ledger sites are."""
@@ -123,6 +139,31 @@ def tracked_files(repo_root):
             codes.TREE_UNREADABLE, ".",
             "`git ls-files` reported no files at all")
     return paths, None
+
+
+def unaccounted(tracked, swept, excluded):
+    """Files the tree reports that the sweep neither read nor excused.
+
+    THE POINT IS THE ARGUMENT, not the arithmetic. `partition` classifies every
+    path it is GIVEN, so comparing its own input against its own output proves
+    nothing. Passing a listing obtained independently — from git, not from the
+    sweep — is what turns this into a real question: *did the walk cover the
+    tree, or only the part of it the walk chose to look at?*
+
+    That is the failure counting exclusions cannot catch. A rule that widens
+    changes a count; a walk that quietly stopped reading `ubb-sdk/` widens no
+    rule at all, and shows up only here.
+    """
+    accounted = set(swept)
+    for paths in excluded.values():
+        accounted |= set(paths)
+    return tuple(
+        SweepError(
+            codes.UNACCOUNTED_FILE, path,
+            "the tree reports this file and the sweep neither read it nor "
+            "excused it under a declared rule. Every tracked file is one or "
+            "the other; a third category is a blind spot nothing declared.")
+        for path in sorted(set(tracked) - accounted))
 
 
 def partition(paths, plan):
@@ -282,8 +323,8 @@ def excused(entries):
     extents, faults = {}, []
     for entry in entries:
         where = f"gates/migration-ledger.yaml: {entry.id}"
-        area, _, term = entry.site.partition("::")
-        if not area or not term:
+        area, term = parse_site(entry.site)
+        if area is None:
             faults.append(SweepError(
                 codes.LEDGER_EXTENT_UNPARSED, where,
                 f"the site `{entry.site}` is not `<area>::<term>`"))
@@ -319,7 +360,7 @@ def gate_faults(result, extents):
     found = result.by_site()
     for site, occurrence in sorted(found.items()):
         area, term = site
-        where = f"{area}::{term}"
+        where = site_of(area, term)
         if site not in extents:
             faults.append(SweepError(
                 codes.TERM_ON_LIVING_SURFACE, where,
@@ -345,7 +386,7 @@ def gate_faults(result, extents):
     for site in sorted(set(extents) - set(found)):
         area, term = site
         faults.append(SweepError(
-            codes.LEDGER_ENTRY_STALE, f"{area}::{term}",
+            codes.LEDGER_ENTRY_STALE, site_of(area, term),
             f"a ledger entry owes `{term}` on the `{area}` surface and the "
             f"sweep finds it nowhere there. Paying a debt and deleting its "
             f"entry are one act — an entry cannot outlive the debt it records."))

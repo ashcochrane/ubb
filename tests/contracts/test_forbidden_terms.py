@@ -45,7 +45,9 @@ from tools.forbidden_terms.plan import (
     Plan,
     load_plan,
 )
-from tools.forbidden_terms.sweep import excused, gate_faults, run, tracked_files
+from tools.forbidden_terms.sweep import (
+    excused, gate_faults, run, tracked_files, unaccounted,
+)
 from tools.gates import load_programme
 from tools.vocabulary import load_registry
 
@@ -89,26 +91,53 @@ def entries(programme):
 # 1. Did it read everything?
 # ---------------------------------------------------------------------------
 
-def test_every_tracked_file_is_swept_or_excluded_by_exactly_one_rule(plan,
-                                                                     result):
+def _git_listing():
+    """The tree according to git, NOT according to the sweep.
+
+    Deliberately a raw subprocess rather than `tracked_files`: the accounting
+    below is only a real question if the listing it compares against comes from
+    somewhere the sweep does not control. Compare the walker's own input with
+    its own output and it passes by construction.
+    """
+    listed = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+                            capture_output=True, text=True, check=True)
+    return tuple(sorted(p for p in listed.stdout.split("\0") if p))
+
+
+def test_every_tracked_file_is_swept_or_excluded_by_exactly_one_rule(result):
     """The total accounting. There is no third category.
 
     A file that is neither swept nor excused is the shape of a surface quietly
     dropped from the walk — the failure that counting exclusions cannot see,
-    because a sweep that stopped reading `ubb-sdk/` widens no rule.
+    because a sweep that stopped reading `ubb-sdk/` widens no rule at all.
+    """
+    faults = unaccounted(_git_listing(), result.swept, result.excluded)
+    assert not faults, (
+        f"{len(faults)} file(s) the tree reports and the sweep did not account "
+        f"for:\n" + "\n".join(f"  {fault}" for fault in faults[:5]))
+
+
+def test_negative_control_a_file_the_walk_missed_fails(result):
+    """The accounting must be shown to fail, or it is an assertion not evidence.
+
+    A file git reports and the sweep never classified: exactly what a narrowed
+    walk would leave behind.
+    """
+    listing = _git_listing() + ("ubb-sdk/ubb/a_module_the_walk_skipped.py",)
+    faults = unaccounted(listing, result.swept, result.excluded)
+    assert _codes(faults) == {codes.UNACCOUNTED_FILE}
+    assert "a_module_the_walk_skipped" in faults[0].location
+
+
+def test_the_sweeps_own_listing_agrees_with_git(result):
+    """And the other half: `tracked_files` itself is what git says.
+
+    Without this, narrowing the walk inside `tracked_files` would narrow the
+    check above with it, and both would stay green.
     """
     tracked, problem = tracked_files(REPO_ROOT)
     assert problem is None, problem
-
-    accounted = set(result.swept)
-    for paths in result.excluded.values():
-        accounted |= set(paths)
-    missing = sorted(set(tracked) - accounted)
-    assert not missing, (
-        f"{len(missing)} tracked file(s) are neither swept nor excluded by a "
-        f"declared rule: {missing[:5]}")
-    assert len(accounted) == len(tracked), (
-        "a file is accounted for twice, so the per-rule counts are a guess")
+    assert set(tracked) == set(_git_listing())
 
 
 def test_no_file_is_excused_by_two_rules_at_once(result):

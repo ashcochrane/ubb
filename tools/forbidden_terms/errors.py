@@ -69,16 +69,8 @@ class SweepError:
         return f"{self.code}: {self.location}: {self.message}"
 
 
-class SweepInvalid(Exception):
-    """Raised with EVERY error found, not just the first."""
-
-    def __init__(self, errors):
-        self.errors = tuple(sorted(errors))
-        super().__init__(
-            f"{len(self.errors)} forbidden-term sweep error(s):\n"
-            + "\n".join(f"  {error}" for error in self.errors)
-        )
-
-    def codes(self):
-        """The set of codes reported — what negative controls assert on."""
-        return {error.code for error in self.errors}
+# There is deliberately NO exception type here, unlike `tools/gates` and
+# `tools/vocabulary`. Those compile a document and either return it or refuse;
+# this sweep's whole output is a list of findings, so raising on the first one
+# would throw away the report. Every entry point returns its faults, and the
+# gate decides what to do with them.

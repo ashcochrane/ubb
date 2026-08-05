@@ -262,6 +262,14 @@ in one sense while live in another "would force the sweep into exclusions broad
 enough to disarm it". **This is the ticket's largest judgement call and it
 weakens what G7 can catch**, so it is recorded here rather than left in a diff.
 
+It costs exactly one live occurrence, and that is written down too:
+`ProductFeeConfig.fee_type == "flat"` is the retired sense, and no gate now sees
+it — G7 because the word is not input, G2 because `fee_type` is a bare
+`CharField` the registry declares no concept for. **An undeclared public value
+set is the finding**, not a sweep gap: #191 story 15 requires a public value to
+declare its kind before it ships, and giving `fee_type` a concept belongs with
+#207's consumer gates.
+
 And one entry has **no positive owner**: `meter_only` is owed by slice 8 because
 no slice's issue says it rebuilds `customer_billing_mode`, and the mode's
 siblings gate on payment-rail activation, which is slice 8's. That is #205's

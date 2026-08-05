@@ -140,15 +140,27 @@ rate_structure:
     # `flat` was a `retired_aliases` entry until the sweep it feeds was actually
     # built (#206). It cannot be one: `values_list("id", flat=True)` is Django's
     # own keyword argument and appears about a hundred times in first-party
-    # code, so sweeping the bare token would condemn the ORM. The rule
-    # `retired_aliases` states about itself — retired WHEREVER IT APPEARS, as a
-    # whole token — is simply false of this word, and #202's own note says a
-    # word in that position "would force the sweep into exclusions broad enough
-    # to disarm it".
+    # code, so sweeping the bare token would condemn the ORM — and that debt is
+    # unpayable, which would put "the ledger reaches zero" (G22) out of reach by
+    # construction. The rule `retired_aliases` states about itself — retired
+    # WHEREVER IT APPEARS, as a whole token — is simply false of this word, and
+    # #202's own note says a word in that position "would force the sweep into
+    # exclusions broad enough to disarm it".
     #
-    # Nothing is lost by moving it. The value `flat` only ever appears beside
-    # the field `pricing_model`, which IS swept, and G2 refuses a consumer that
-    # declares a `rate_structure` value the registry does not own.
+    # WHAT THE MOVE COSTS, stated rather than glossed. Most occurrences of the
+    # retired VALUE sit beside the field `pricing_model`, which IS swept and is
+    # owed by slice 4 — so they are caught by the field even though the value is
+    # not. One does not: `ProductFeeConfig.fee_type == "flat"`
+    # (apps/billing/tenant_billing/services.py). That field is a bare
+    # `CharField(max_length=100)` carrying `flat` / `percentage` /
+    # `flat_monthly`, and the registry declares NO concept for it — so after
+    # this move no gate sees that value. G7 cannot (the word is not input) and
+    # G2 cannot (there is no concept to compare against).
+    #
+    # That is a real gap and it is not G7's to close. An undeclared public value
+    # set is #191 story 15's subject — "a new public value must declare its kind
+    # before it ships" — and the fix is to give `fee_type` a concept here, which
+    # belongs with #207's consumer gates rather than with the sweep.
     - term: flat
       retired_as: >-
         a `rate_structure` value. The value it carried said how the amount

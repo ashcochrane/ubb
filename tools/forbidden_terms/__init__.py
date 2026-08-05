@@ -14,9 +14,8 @@ console, the SDK, the committed contract and the living docs — and a check
 hosted by one party to the agreement can only ever see its own side.
 """
 
-from .errors import SweepError, SweepInvalid
+from .errors import SweepError
 from .plan import (
-    PERMANENCES,
     PERMANENT,
     PLAN_PATH,
     UNTIL_SLICE_8,
@@ -30,27 +29,29 @@ from .sweep import (
     Result,
     excused,
     gate_faults,
-    pattern,
+    parse_site,
     run,
+    site_of,
     tracked_files,
+    unaccounted,
 )
 
 __all__ = [
     "Area",
     "ExclusionRule",
     "Occurrence",
-    "PERMANENCES",
     "PERMANENT",
     "PLAN_PATH",
     "Plan",
     "Result",
     "SweepError",
-    "SweepInvalid",
     "UNTIL_SLICE_8",
     "excused",
     "gate_faults",
     "load_plan",
-    "pattern",
+    "parse_site",
     "run",
+    "site_of",
     "tracked_files",
+    "unaccounted",
 ]

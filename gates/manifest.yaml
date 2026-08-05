@@ -190,8 +190,14 @@ gates:
       not input: eight words are retired in one sense while live in another, and
       ADR-0008 §1 keeps that human-judged. #206 moved three of the eight —
       `flat`, `hold`, `estimate` — out of `retired_aliases` on the evidence of
-      the sweep's first run, where between them they produced 1,069 hits and not
-      one of them the retired sense.
+      the sweep's first run, where between them they produced 1,069 hits and
+      almost none of them the retired sense.
+      ONE OCCURRENCE IS LOST TO THAT MOVE and is recorded rather than absorbed:
+      `ProductFeeConfig.fee_type == "flat"` is the retired sense, and after the
+      move no gate sees it — G7 because the word is no longer input, G2 because
+      `fee_type` is a bare CharField the registry declares no concept for. An
+      undeclared public value set is #191 story 15's subject and #207's work,
+      not the sweep's.
 
   G8:
     statement: >-
