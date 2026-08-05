@@ -68,6 +68,7 @@ which is the house pattern:
 | File | What it checks |
 |---|---|
 | `test_vocabulary_registry.py` | `domain-vocabulary/` is valid: the shipped registry, one negative control per named rejection reason, and the legal constructions that must keep passing. |
+| `test_generated_vocabulary.py` | Every artifact generated from the registry is exactly what the registry produces, and the generated backend module *means* what the registry says — asserted by executing it, not by matching its text. |
 | `test_contract_suite_is_enforced.py` | This suite runs, is required, and needs no Django. |
-| `_helpers.py` | Builds synthetic registries on disk for the negative controls, off the **real** schema — so a change to the shipped kind table is felt by every control. |
+| `_helpers.py` | Builds synthetic registries on disk for the negative controls, off the **real** schema — so a change to the shipped kind table is felt by every control. Also copies the **real** registry, for the controls that must mutate exactly one thing about it. |
 | `conftest.py` | Puts the git root on `sys.path`. That is the entire fixture surface. |

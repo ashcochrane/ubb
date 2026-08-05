@@ -62,6 +62,23 @@ Use `drawdown` not "charge", `margin` not "markup", `Rate` vs `RateCard`, `refer
 For a concept's **exact token and value set**, `domain-vocabulary/` is the oracle and CI enforces it
 (ADR-0008 §2). Every concept there declares one of four kinds — `closed`, `open`, `tenant_defined`,
 `free_text` — and `tenant_defined`/`free_text` carry no values by construction, because UBB never
-ships a catalogue of the tenant's models, providers or grouping values. Validate an edit with
+ships a catalogue of the tenant's models, providers or grouping values. Check an edit with
 `python -m tools.vocabulary`. The registry is **seeded, not complete** (#202 finishes it), so a
 concept it does not yet carry still resolves through `CONTEXT.md`.
+
+Backend code **imports** a registry value from `core.vocabulary`; it never restates the literal
+(#200). That module is **generated** — the banner says so, and a hand edit turns CI red. Agreement is
+therefore structural rather than textual, which is why nothing scans backend source for matching
+strings. Two names per set, and the difference binds: `<CONCEPT>_VALUES` is a `closed` concept and is
+exhaustive; `<CONCEPT>_KNOWN_VALUES` is an `open` one, so a value missing from it is still legal and
+that set must never decide a rejection (ADR-0003).
+
+Editing the registry is therefore never enough on its own — regenerate in the same commit:
+
+```
+python -m tools.vocabulary --write
+```
+
+Where a value's canonical name is not yet the string in flight, **leave the literal alone**: renaming
+a value a tenant can see belongs to the slice that owns it, with a migration-ledger entry (#201), not
+to whoever happens to be editing the file.

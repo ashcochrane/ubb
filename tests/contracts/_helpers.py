@@ -12,6 +12,7 @@ shipped kind table is felt immediately by every control, rather than passing
 against a stale copy of the rules.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,41 @@ def rejection(tmp_path, **kwargs):
     with pytest.raises(RegistryInvalid) as raised:
         load_registry(registry_dir, tmp_path)
     return raised.value
+
+
+def copy_real_registry(tmp_path):
+    """A verbatim copy of the SHIPPED registry.
+
+    Some controls have to mutate exactly one thing about the *real* registry
+    and show the consequence — a synthetic registry cannot do that, because it
+    would differ from the committed artifacts for a hundred reasons at once and
+    prove nothing about the one change under test.
+    """
+    destination = tmp_path / "domain-vocabulary"
+    shutil.copytree(REAL_REGISTRY, destination)
+    return destination
+
+
+def redeclare(registry_dir, file_name, concept_name, **changes):
+    """Rewrite one concept in a copied registry.
+
+    The domain file is round-tripped through YAML, so its comments do not
+    survive. That costs nothing: the compiler reads data, and every generator
+    renders from the compiled concepts rather than from the file's text — so a
+    control that changed only formatting would correctly produce no diff.
+    """
+    path = registry_dir / "concepts" / file_name
+    assert path.is_file(), f"{file_name} is not a domain file in this registry"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    # #202 moves concepts between domain files. A control that quietly stopped
+    # mutating anything would keep passing while proving nothing, so say which
+    # concept moved rather than raising a bare KeyError from a dict lookup.
+    assert concept_name in document, (
+        f"{concept_name} is no longer declared in {file_name} — the control "
+        f"must name the file it moved to"
+    )
+    document[concept_name].update(changes)
+    path.write_text(_text(document), encoding="utf-8")
 
 
 def _text(document):
