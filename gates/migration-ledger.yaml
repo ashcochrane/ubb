@@ -358,6 +358,1757 @@ entries:
       entirely (#154 §3.4); it survives here as the namespace of the event the
       pool fires. Slice 6 lands `customer_spend_pool` as the family.
 
+  # --- G7: no retired word on any living surface -----------------------------
+  #
+  # THE SECOND LARGE SEEDING, and by far the biggest: 159 entries over 50 of the
+  # registry's 70 retired terms. That is the sweep doing what #191's disposition
+  # table predicted of it — "installed, heavily seeded" — and the number is the
+  # whole re-model stated as arithmetic rather than as an intention.
+  #
+  # An entry's SITE is `<area>::<term>`, and its `found` is the number of files
+  # that area currently has the word in. Two decisions are packed into that, and
+  # both were arrived at by running the sweep rather than by reasoning about it:
+  #
+  #   * PER AREA, not per file. One entry per (area, term) is 159 rows; one per
+  #     file would be 1,340, and every file move in eight slices of demolition
+  #     would be a ledger edit. Per TERM alone would be 50 rows and would let a
+  #     word cross from the backend to the SDK unnoticed, which is exactly the
+  #     re-entry this gate exists to refuse.
+  #   * A FILE COUNT, not a line count. A line count moves whenever anyone edits
+  #     a line, so no ratchet could stand on it. The file count moves when a
+  #     retired word reaches somewhere it was not — which is the thing worth
+  #     refusing while the debt stands. #203's review found the shape this
+  #     closes: an excuse keyed on the site alone stays green when the violation
+  #     moves.
+  #
+  # `found` is checked in BOTH directions and must be exactly true. Too low and
+  # the word has spread; too high and the entry is an excuse with no upper
+  # bound, since the ledger's ratchet compares entry identities rather than
+  # their contents and would never notice a `999` typed into one. So paying part
+  # of a debt means editing its number, which is the change being recorded
+  # rather than an inconvenience — and the ratchet lets a number fall for free.
+  #
+  # Every owner slice below is taken from what #194's slice issues say they
+  # CARRY, not from the concept's neighbourhood. That is why `revenue_mode` is
+  # slice 7 and not slice 1 — #189 deletes `Customer.revenue_mode` outright —
+  # and why `request_id` is slice 5, where the key that replaces it gets its
+  # permanent claim. The webhook events repeat G8's owners exactly, because one
+  # event cannot be owed by two slices.
+  #
+  # ONE ENTRY HAS NO POSITIVE OWNER: `meter_only` is slice 8 by default, and its
+  # reason says so. It is #205's residue in a new place — an owner slice that
+  # nobody chose — and it is written down rather than smoothed over.
+
+  - id: g7-backend-balance_floor_exceeded
+    gate: G7
+    site: backend::balance_floor_exceeded
+    expected: reason_code
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason named for a wallet-policy floor. Slice 6 rebuilds
+      wallet policy and the reason takes the family's vocabulary.
+
+  - id: g7-backend-budget
+    gate: G7
+    site: backend::budget
+    expected: control_family
+    found: 37 files
+    owner_slice: slice_6
+    reason: >-
+      A retired spend-control family name. #150's four families —
+      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
+      replace one word that named all of them at once, and slice 6
+      builds them.
+
+  - id: g7-backend-budget.set
+    gate: G7
+    site: backend::budget.set
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The audit action for configuring the retired family. It is renamed
+      with the family, in the slice that replaces it.
+
+  - id: g7-backend-budget.threshold_reached
+    gate: G7
+    site: backend::budget.threshold_reached
+    expected: webhook_event_type
+    found: 6 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by the retired family name.
+      `customer_spend_pool.threshold_reached` replaces it when slice 6
+      builds the Customer Spend Pool. Same owner as G8's entry.
+
+  - id: g7-backend-budget_exceeded
+    gate: G7
+    site: backend::budget_exceeded
+    expected: affordability_reason
+    found: 10 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict named after the retired family. Slice 6's
+      four families give the refusal its own noun.
+
+  - id: g7-backend-budget_unavailable
+    gate: G7
+    site: backend::budget_unavailable
+    expected: affordability_reason
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The same, for the case where the family's state could not be read.
+
+  - id: g7-backend-card_type
+    gate: G7
+    site: backend::card_type
+    expected: pricing_book_name
+    found: 35 files
+    owner_slice: slice_4
+    reason: >-
+      The discriminator that carried supplier cost and customer price in
+      one table — the conflation the cost/price split exists to end
+      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
+      sits on.
+
+  - id: g7-backend-concurrency_limit
+    gate: G7
+    site: backend::concurrency_limit
+    expected: affordability_reason
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict for a control slice 6 DELETES outright —
+      `max_concurrent_requests` goes with admission control's rebuild.
+
+  - id: g7-backend-cost_limit_exceeded
+    gate: G7
+    site: backend::cost_limit_exceeded
+    expected: reason_code
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason spelling the retired field word. Slice 6's
+      ceiling family is what it becomes.
+
+  - id: g7-backend-customer_wide_stop
+    gate: G7
+    site: backend::customer_wide_stop
+    expected: reason_code
+    found: 19 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason naming a mechanism rather than the customer whose
+      spend was stopped. Slice 6 rebuilds the four families it spans.
+
+  - id: g7-backend-dimension
+    gate: G7
+    site: backend::dimension
+    expected: grouping_field_value
+    found: 39 files
+    owner_slice: slice_2
+    reason: >-
+      Slice 2 builds the ten Grouping Field slots that replace the
+      dimension registry, so the value word goes when the slots arrive.
+
+  - id: g7-backend-dimension.declared
+    gate: G7
+    site: backend::dimension.declared
+    expected: audit_action
+    found: 3 files
+    owner_slice: slice_2
+    reason: >-
+      The audit action for declaring one. It is renamed with the thing
+      it records, in the slice that replaces the declaration itself.
+
+  - id: g7-backend-dimension_def
+    gate: G7
+    site: backend::dimension_def
+    expected: grouping_field_value
+    found: 1 files
+    owner_slice: slice_2
+    reason: >-
+      The declaration record behind a dimension value. Replaced by the
+      Grouping Field slot slice 2 declares.
+
+  - id: g7-backend-dimensions
+    gate: G7
+    site: backend::dimensions
+    expected: analytics_grouping_kind
+    found: 32 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-backend-markup.deleted
+    gate: G7
+    site: backend::markup.deleted
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      The other half of the markup audit pair, retired with its subject
+      when slice 4 deletes `TenantMarkup`.
+
+  - id: g7-backend-markup.set
+    gate: G7
+    site: backend::markup.set
+    expected: audit_action
+    found: 3 files
+    owner_slice: slice_4
+    reason: >-
+      The audit action for setting a markup. Slice 4 deletes
+      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
+      action's subject goes.
+
+  - id: g7-backend-meter_only
+    gate: G7
+    site: backend::meter_only
+    expected: customer_billing_mode
+    found: 16 files
+    owner_slice: slice_8
+    reason: >-
+      It said what UBB does NOT do; `external` says where the billing
+      actually happens, which is the fact a tenant is choosing between.
+      Owned by slice 8 because the mode's siblings — `prepaid` and
+      `postpaid` — may not be activated before their payment rail has
+      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
+      REBUILDS THIS SUBJECT, so this owner is the programme's default
+      rather than a positive finding, and it wants an owner's eye.
+
+  - id: g7-backend-metering_async
+    gate: G7
+    site: backend::metering_async
+    expected: tenant_product
+    found: 14 files
+    owner_slice: slice_1
+    reason: >-
+      The fast lane's product flag. #149 established the lane had no
+      successor and slice 1 removes it in full, so the flag goes with
+      the lane rather than being renamed to anything.
+
+  - id: g7-backend-metric
+    gate: G7
+    site: backend::metric
+    expected: measurement_key
+    found: 20 files
+    owner_slice: slice_2
+    reason: >-
+      The industry uses this word for the metered ENTITY rather than for
+      the quantity inside it, so keeping it would have guaranteed mis-
+      translation at every integration boundary (#145 §10). Slice 2
+      declares measurements and the word goes with the model.
+
+  - id: g7-backend-metric_name
+    gate: G7
+    site: backend::metric_name
+    expected: measurement_key
+    found: 30 files
+    owner_slice: slice_2
+    reason: >-
+      The declared measurement's key. Slice 2's `value_type` / `unit` /
+      `source_path` declaration is where the field is rebuilt (#145).
+
+  - id: g7-backend-pre_check
+    gate: G7
+    site: backend::pre_check
+    expected: affordability_reason
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      It named when the question was asked rather than what was asked.
+      Slice 6's admission control gives the answer its own vocabulary.
+
+  - id: g7-backend-pricing_model
+    gate: G7
+    site: backend::pricing_model
+    expected: rate_structure
+    found: 24 files
+    owner_slice: slice_4
+    reason: >-
+      It sat one character from `pricing_mode` and meant something
+      unrelated, which ADR-0006 §3 calls a defect rather than a
+      coincidence. Slice 4 rebuilds the pricing rules that carry it.
+
+  - id: g7-backend-pricing_provenance
+    gate: G7
+    site: backend::pricing_provenance
+    expected: pricing_receipt_subject_type
+    found: 10 files
+    owner_slice: slice_4
+    reason: >-
+      What a price receipt is about. Slice 4 introduces Pricing Receipts
+      with `receipt_schema_version` and the subject type takes its name.
+
+  - id: g7-backend-rate.added
+    gate: G7
+    site: backend::rate.added
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action over the rate entity slice 4 replaces with the
+      Pricing Book's rules.
+
+  - id: g7-backend-rate.deleted
+    gate: G7
+    site: backend::rate.deleted
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      The other half of the same pair, retired with the same subject.
+
+  - id: g7-backend-rate_card
+    gate: G7
+    site: backend::rate_card
+    expected: pricing_book_name
+    found: 25 files
+    owner_slice: slice_4
+    reason: >-
+      The container entity. #148 §5.4 replaces it with the Pricing Book,
+      and slice 4 is where it stops existing.
+
+  - id: g7-backend-rate_card.assigned
+    gate: G7
+    site: backend::rate_card.assigned
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+
+  - id: g7-backend-rate_card.created
+    gate: G7
+    site: backend::rate_card.created
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+
+  - id: g7-backend-rate_card.published
+    gate: G7
+    site: backend::rate_card.published
+    expected: audit_action
+    found: 5 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+      Slice 4's immutable Publish records are what it becomes.
+
+  - id: g7-backend-request_id
+    gate: G7
+    site: backend::request_id
+    expected: idempotency_key
+    found: 70 files
+    owner_slice: slice_5
+    reason: >-
+      A second caller-supplied correlation value with no uniqueness
+      constraint, no lookup and no read that changed any behaviour,
+      while carrying an index write on the hottest path in the system
+      (#179 §4). Owned by slice 5 rather than slice 2 because that is
+      where the key that replaces it — caller-supplied `idempotency_key`
+      with a permanent claim — is finalised, and the deletion is safe
+      only once it is.
+
+  - id: g7-backend-revenue_mode
+    gate: G7
+    site: backend::revenue_mode
+    expected: tenant_posture
+    found: 11 files
+    owner_slice: slice_7
+    reason: >-
+      It named a mode where the fact is a posture. Slice 7 DELETES
+      `Customer.revenue_mode`, the `/revenue-mode` pair and the
+      `/customers/{id}/revenue` pair outright.
+
+  - id: g7-backend-revenue_mode.set
+    gate: G7
+    site: backend::revenue_mode.set
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_7
+    reason: >-
+      The audit action for setting it, retired with the field slice 7
+      deletes.
+
+  - id: g7-backend-revenue_profile.set
+    gate: G7
+    site: backend::revenue_profile.set
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_7
+    reason: >-
+      An earlier spelling of the same audit action, retired with the
+      same field.
+
+  - id: g7-backend-soft_floor.cleared
+    gate: G7
+    site: backend::soft_floor.cleared
+    expected: webhook_event_type
+    found: 8 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair. Same owner as G8's entry.
+
+  - id: g7-backend-soft_floor.crossed
+    gate: G7
+    site: backend::soft_floor.crossed
+    expected: webhook_event_type
+    found: 9 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the wallet policy
+      that holds the floor. Same owner as G8's entry.
+
+  - id: g7-backend-stop.cleared
+    gate: G7
+    site: backend::stop.cleared
+    expected: webhook_event_type
+    found: 13 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair, replaced by
+      `customer.stop_cleared`. Same owner as G8's entry.
+
+  - id: g7-backend-stop.fired
+    gate: G7
+    site: backend::stop.fired
+    expected: webhook_event_type
+    found: 17 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the customer whose
+      state changed (ADR-0006 §5). `customer.stopped` replaces it when
+      slice 6 rebuilds spend control. Same owner as G8's entry.
+
+  - id: g7-backend-subtask.limit_exceeded
+    gate: G7
+    site: backend::subtask.limit_exceeded
+    expected: webhook_event_type
+    found: 10 files
+    owner_slice: slice_5
+    reason: >-
+      The subtask half of the same split (#140 §4.3), owned by the slice
+      that rebuilds the lifecycle. Same owner as G8's entry.
+
+  - id: g7-backend-subtask_limit
+    gate: G7
+    site: backend::subtask_limit
+    expected: reason_code
+    found: 8 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason spelling the retired field word. Slice 6's
+      ceiling family replaces it.
+
+  - id: g7-backend-tag_key
+    gate: G7
+    site: backend::tag_key
+    expected: analytics_grouping_kind
+    found: 8 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind that read from the open bag. Slice 7's grouping
+      contract declares what may be grouped on, which is the capability
+      the bag deliberately does not have.
+
+  - id: g7-backend-tags
+    gate: G7
+    site: backend::tags
+    expected: metadata_key
+    found: 25 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-backend-task.limit_exceeded
+    gate: G7
+    site: backend::task.limit_exceeded
+    expected: webhook_event_type
+    found: 18 files
+    owner_slice: slice_5
+    reason: >-
+      Replaced by TWO events rather than renamed to one: #140 §4.3
+      splits a spend kill from a Task nobody ever closed. Slice 5
+      rebuilds the Task lifecycle that distinguishes them. Same owner as
+      G8's entry for the same event.
+
+  - id: g7-backend-task_limit
+    gate: G7
+    site: backend::task_limit
+    expected: reason_code
+    found: 16 files
+    owner_slice: slice_6
+    reason: >-
+      The same, at Task granularity. Slice 6's ceiling family replaces
+      it.
+
+  - id: g7-backend-task_limit_exceeded
+    gate: G7
+    site: backend::task_limit_exceeded
+    expected: reason_code
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The exceeded form of the same retired reason, replaced with it.
+
+  - id: g7-backend-usage_line_item_group_by
+    gate: G7
+    site: backend::usage_line_item_group_by
+    expected: analytics_grouping_kind
+    found: 11 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind named after the invoice line it produced rather
+      than after what it grouped. Slice 7's collapse replaces it.
+
+  - id: g7-backend-usage_metrics
+    gate: G7
+    site: backend::usage_metrics
+    expected: measurement_key
+    found: 23 files
+    owner_slice: slice_2
+    reason: >-
+      The bag of measured quantities on one event. Slice 2 replaces it
+      with declared measurements, which is what makes them costable.
+
+  - id: g7-console-budget
+    gate: G7
+    site: console::budget
+    expected: control_family
+    found: 24 files
+    owner_slice: slice_6
+    reason: >-
+      A retired spend-control family name. #150's four families —
+      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
+      replace one word that named all of them at once, and slice 6
+      builds them.
+
+  - id: g7-console-budget.threshold_reached
+    gate: G7
+    site: console::budget.threshold_reached
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by the retired family name.
+      `customer_spend_pool.threshold_reached` replaces it when slice 6
+      builds the Customer Spend Pool. Same owner as G8's entry.
+
+  - id: g7-console-budget_exceeded
+    gate: G7
+    site: console::budget_exceeded
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict named after the retired family. Slice 6's
+      four families give the refusal its own noun.
+
+  - id: g7-console-budget_unavailable
+    gate: G7
+    site: console::budget_unavailable
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The same, for the case where the family's state could not be read.
+
+  - id: g7-console-card_type
+    gate: G7
+    site: console::card_type
+    expected: pricing_book_name
+    found: 15 files
+    owner_slice: slice_4
+    reason: >-
+      The discriminator that carried supplier cost and customer price in
+      one table — the conflation the cost/price split exists to end
+      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
+      sits on.
+
+  - id: g7-console-concurrency_limit
+    gate: G7
+    site: console::concurrency_limit
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict for a control slice 6 DELETES outright —
+      `max_concurrent_requests` goes with admission control's rebuild.
+
+  - id: g7-console-cost_card
+    gate: G7
+    site: console::cost_card
+    expected: pricing_book_name
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      One half of the conflated entity, named after the discriminator
+      value rather than after anything real. Slice 3 and slice 4 split
+      it; the name goes when the price half does.
+
+  - id: g7-console-customer_wide_stop
+    gate: G7
+    site: console::customer_wide_stop
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason naming a mechanism rather than the customer whose
+      spend was stopped. Slice 6 rebuilds the four families it spans.
+
+  - id: g7-console-dimension
+    gate: G7
+    site: console::dimension
+    expected: grouping_field_value
+    found: 29 files
+    owner_slice: slice_2
+    reason: >-
+      Slice 2 builds the ten Grouping Field slots that replace the
+      dimension registry, so the value word goes when the slots arrive.
+
+  - id: g7-console-dimensions
+    gate: G7
+    site: console::dimensions
+    expected: analytics_grouping_kind
+    found: 16 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-console-markup.deleted
+    gate: G7
+    site: console::markup.deleted
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The other half of the markup audit pair, retired with its subject
+      when slice 4 deletes `TenantMarkup`.
+
+  - id: g7-console-markup.set
+    gate: G7
+    site: console::markup.set
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      The audit action for setting a markup. Slice 4 deletes
+      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
+      action's subject goes.
+
+  - id: g7-console-meter_only
+    gate: G7
+    site: console::meter_only
+    expected: customer_billing_mode
+    found: 7 files
+    owner_slice: slice_8
+    reason: >-
+      It said what UBB does NOT do; `external` says where the billing
+      actually happens, which is the fact a tenant is choosing between.
+      Owned by slice 8 because the mode's siblings — `prepaid` and
+      `postpaid` — may not be activated before their payment rail has
+      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
+      REBUILDS THIS SUBJECT, so this owner is the programme's default
+      rather than a positive finding, and it wants an owner's eye.
+
+  - id: g7-console-metering_async
+    gate: G7
+    site: console::metering_async
+    expected: tenant_product
+    found: 5 files
+    owner_slice: slice_1
+    reason: >-
+      The fast lane's product flag. #149 established the lane had no
+      successor and slice 1 removes it in full, so the flag goes with
+      the lane rather than being renamed to anything.
+
+  - id: g7-console-metric
+    gate: G7
+    site: console::metric
+    expected: measurement_key
+    found: 17 files
+    owner_slice: slice_2
+    reason: >-
+      The industry uses this word for the metered ENTITY rather than for
+      the quantity inside it, so keeping it would have guaranteed mis-
+      translation at every integration boundary (#145 §10). Slice 2
+      declares measurements and the word goes with the model.
+
+  - id: g7-console-metric_name
+    gate: G7
+    site: console::metric_name
+    expected: measurement_key
+    found: 9 files
+    owner_slice: slice_2
+    reason: >-
+      The declared measurement's key. Slice 2's `value_type` / `unit` /
+      `source_path` declaration is where the field is rebuilt (#145).
+
+  - id: g7-console-price_card
+    gate: G7
+    site: console::price_card
+    expected: pricing_book_name
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The other half. Replaced by the Pricing Book slice 4 introduces.
+
+  - id: g7-console-pricing_model
+    gate: G7
+    site: console::pricing_model
+    expected: rate_structure
+    found: 12 files
+    owner_slice: slice_4
+    reason: >-
+      It sat one character from `pricing_mode` and meant something
+      unrelated, which ADR-0006 §3 calls a defect rather than a
+      coincidence. Slice 4 rebuilds the pricing rules that carry it.
+
+  - id: g7-console-pricing_provenance
+    gate: G7
+    site: console::pricing_provenance
+    expected: pricing_receipt_subject_type
+    found: 4 files
+    owner_slice: slice_4
+    reason: >-
+      What a price receipt is about. Slice 4 introduces Pricing Receipts
+      with `receipt_schema_version` and the subject type takes its name.
+
+  - id: g7-console-rate_card
+    gate: G7
+    site: console::rate_card
+    expected: pricing_book_name
+    found: 8 files
+    owner_slice: slice_4
+    reason: >-
+      The container entity. #148 §5.4 replaces it with the Pricing Book,
+      and slice 4 is where it stops existing.
+
+  - id: g7-console-rate_card.assigned
+    gate: G7
+    site: console::rate_card.assigned
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+
+  - id: g7-console-rate_card.published
+    gate: G7
+    site: console::rate_card.published
+    expected: audit_action
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+      Slice 4's immutable Publish records are what it becomes.
+
+  - id: g7-console-request_id
+    gate: G7
+    site: console::request_id
+    expected: idempotency_key
+    found: 6 files
+    owner_slice: slice_5
+    reason: >-
+      A second caller-supplied correlation value with no uniqueness
+      constraint, no lookup and no read that changed any behaviour,
+      while carrying an index write on the hottest path in the system
+      (#179 §4). Owned by slice 5 rather than slice 2 because that is
+      where the key that replaces it — caller-supplied `idempotency_key`
+      with a permanent claim — is finalised, and the deletion is safe
+      only once it is.
+
+  - id: g7-console-revenue_mode
+    gate: G7
+    site: console::revenue_mode
+    expected: tenant_posture
+    found: 8 files
+    owner_slice: slice_7
+    reason: >-
+      It named a mode where the fact is a posture. Slice 7 DELETES
+      `Customer.revenue_mode`, the `/revenue-mode` pair and the
+      `/customers/{id}/revenue` pair outright.
+
+  - id: g7-console-soft_floor.cleared
+    gate: G7
+    site: console::soft_floor.cleared
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair. Same owner as G8's entry.
+
+  - id: g7-console-soft_floor.crossed
+    gate: G7
+    site: console::soft_floor.crossed
+    expected: webhook_event_type
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the wallet policy
+      that holds the floor. Same owner as G8's entry.
+
+  - id: g7-console-stop.cleared
+    gate: G7
+    site: console::stop.cleared
+    expected: webhook_event_type
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair, replaced by
+      `customer.stop_cleared`. Same owner as G8's entry.
+
+  - id: g7-console-stop.fired
+    gate: G7
+    site: console::stop.fired
+    expected: webhook_event_type
+    found: 4 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the customer whose
+      state changed (ADR-0006 §5). `customer.stopped` replaces it when
+      slice 6 rebuilds spend control. Same owner as G8's entry.
+
+  - id: g7-console-subtask.limit_exceeded
+    gate: G7
+    site: console::subtask.limit_exceeded
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_5
+    reason: >-
+      The subtask half of the same split (#140 §4.3), owned by the slice
+      that rebuilds the lifecycle. Same owner as G8's entry.
+
+  - id: g7-console-subtask_limit
+    gate: G7
+    site: console::subtask_limit
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason spelling the retired field word. Slice 6's
+      ceiling family replaces it.
+
+  - id: g7-console-tag_key
+    gate: G7
+    site: console::tag_key
+    expected: analytics_grouping_kind
+    found: 8 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind that read from the open bag. Slice 7's grouping
+      contract declares what may be grouped on, which is the capability
+      the bag deliberately does not have.
+
+  - id: g7-console-tags
+    gate: G7
+    site: console::tags
+    expected: metadata_key
+    found: 4 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-console-task.limit_exceeded
+    gate: G7
+    site: console::task.limit_exceeded
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_5
+    reason: >-
+      Replaced by TWO events rather than renamed to one: #140 §4.3
+      splits a spend kill from a Task nobody ever closed. Slice 5
+      rebuilds the Task lifecycle that distinguishes them. Same owner as
+      G8's entry for the same event.
+
+  - id: g7-console-task_limit
+    gate: G7
+    site: console::task_limit
+    expected: reason_code
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      The same, at Task granularity. Slice 6's ceiling family replaces
+      it.
+
+  - id: g7-console-usage_line_item_group_by
+    gate: G7
+    site: console::usage_line_item_group_by
+    expected: analytics_grouping_kind
+    found: 6 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind named after the invoice line it produced rather
+      than after what it grouped. Slice 7's collapse replaces it.
+
+  - id: g7-console-usage_metrics
+    gate: G7
+    site: console::usage_metrics
+    expected: measurement_key
+    found: 7 files
+    owner_slice: slice_2
+    reason: >-
+      The bag of measured quantities on one event. Slice 2 replaces it
+      with declared measurements, which is what makes them costable.
+
+  - id: g7-docs-budget
+    gate: G7
+    site: docs::budget
+    expected: control_family
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      A retired spend-control family name. #150's four families —
+      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
+      replace one word that named all of them at once, and slice 6
+      builds them.
+
+  - id: g7-docs-customer_wide_stop
+    gate: G7
+    site: docs::customer_wide_stop
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason naming a mechanism rather than the customer whose
+      spend was stopped. Slice 6 rebuilds the four families it spans.
+
+  - id: g7-docs-dimension
+    gate: G7
+    site: docs::dimension
+    expected: grouping_field_value
+    found: 3 files
+    owner_slice: slice_2
+    reason: >-
+      Slice 2 builds the ten Grouping Field slots that replace the
+      dimension registry, so the value word goes when the slots arrive.
+
+  - id: g7-docs-dimensions
+    gate: G7
+    site: docs::dimensions
+    expected: analytics_grouping_kind
+    found: 2 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-docs-limit_reached
+    gate: G7
+    site: docs::limit_reached
+    expected: ceiling_status
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A ceiling status spelling the word ADR-0006 removed from the field
+      vocabulary. Slice 6 coins `ceiling_reached`, and #158 §12's lower-
+      bound rule is why `indeterminate` must never render as this.
+
+  - id: g7-docs-meter_only
+    gate: G7
+    site: docs::meter_only
+    expected: customer_billing_mode
+    found: 2 files
+    owner_slice: slice_8
+    reason: >-
+      It said what UBB does NOT do; `external` says where the billing
+      actually happens, which is the fact a tenant is choosing between.
+      Owned by slice 8 because the mode's siblings — `prepaid` and
+      `postpaid` — may not be activated before their payment rail has
+      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
+      REBUILDS THIS SUBJECT, so this owner is the programme's default
+      rather than a positive finding, and it wants an owner's eye.
+
+  - id: g7-docs-metric
+    gate: G7
+    site: docs::metric
+    expected: measurement_key
+    found: 2 files
+    owner_slice: slice_2
+    reason: >-
+      The industry uses this word for the metered ENTITY rather than for
+      the quantity inside it, so keeping it would have guaranteed mis-
+      translation at every integration boundary (#145 §10). Slice 2
+      declares measurements and the word goes with the model.
+
+  - id: g7-docs-pre_check
+    gate: G7
+    site: docs::pre_check
+    expected: affordability_reason
+    found: 4 files
+    owner_slice: slice_6
+    reason: >-
+      It named when the question was asked rather than what was asked.
+      Slice 6's admission control gives the answer its own vocabulary.
+
+  - id: g7-docs-pricing_model
+    gate: G7
+    site: docs::pricing_model
+    expected: rate_structure
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      It sat one character from `pricing_mode` and meant something
+      unrelated, which ADR-0006 §3 calls a defect rather than a
+      coincidence. Slice 4 rebuilds the pricing rules that carry it.
+
+  - id: g7-docs-rate_card
+    gate: G7
+    site: docs::rate_card
+    expected: pricing_book_name
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The container entity. #148 §5.4 replaces it with the Pricing Book,
+      and slice 4 is where it stops existing.
+
+  - id: g7-docs-rate_card.published
+    gate: G7
+    site: docs::rate_card.published
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+      Slice 4's immutable Publish records are what it becomes.
+
+  - id: g7-docs-request_id
+    gate: G7
+    site: docs::request_id
+    expected: idempotency_key
+    found: 2 files
+    owner_slice: slice_5
+    reason: >-
+      A second caller-supplied correlation value with no uniqueness
+      constraint, no lookup and no read that changed any behaviour,
+      while carrying an index write on the hottest path in the system
+      (#179 §4). Owned by slice 5 rather than slice 2 because that is
+      where the key that replaces it — caller-supplied `idempotency_key`
+      with a permanent claim — is finalised, and the deletion is safe
+      only once it is.
+
+  - id: g7-docs-soft_floor.cleared
+    gate: G7
+    site: docs::soft_floor.cleared
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair. Same owner as G8's entry.
+
+  - id: g7-docs-soft_floor.crossed
+    gate: G7
+    site: docs::soft_floor.crossed
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the wallet policy
+      that holds the floor. Same owner as G8's entry.
+
+  - id: g7-docs-stop.cleared
+    gate: G7
+    site: docs::stop.cleared
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair, replaced by
+      `customer.stop_cleared`. Same owner as G8's entry.
+
+  - id: g7-docs-stop.fired
+    gate: G7
+    site: docs::stop.fired
+    expected: webhook_event_type
+    found: 3 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the customer whose
+      state changed (ADR-0006 §5). `customer.stopped` replaces it when
+      slice 6 rebuilds spend control. Same owner as G8's entry.
+
+  - id: g7-docs-subtask_limit
+    gate: G7
+    site: docs::subtask_limit
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason spelling the retired field word. Slice 6's
+      ceiling family replaces it.
+
+  - id: g7-docs-tag_key
+    gate: G7
+    site: docs::tag_key
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind that read from the open bag. Slice 7's grouping
+      contract declares what may be grouped on, which is the capability
+      the bag deliberately does not have.
+
+  - id: g7-docs-tags
+    gate: G7
+    site: docs::tags
+    expected: metadata_key
+    found: 5 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-docs-task.limit_exceeded
+    gate: G7
+    site: docs::task.limit_exceeded
+    expected: webhook_event_type
+    found: 2 files
+    owner_slice: slice_5
+    reason: >-
+      Replaced by TWO events rather than renamed to one: #140 §4.3
+      splits a spend kill from a Task nobody ever closed. Slice 5
+      rebuilds the Task lifecycle that distinguishes them. Same owner as
+      G8's entry for the same event.
+
+  - id: g7-docs-task_limit
+    gate: G7
+    site: docs::task_limit
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The same, at Task granularity. Slice 6's ceiling family replaces
+      it.
+
+  - id: g7-docs-usage_line_item_group_by
+    gate: G7
+    site: docs::usage_line_item_group_by
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind named after the invoice line it produced rather
+      than after what it grouped. Slice 7's collapse replaces it.
+
+  - id: g7-docs-within_limit
+    gate: G7
+    site: docs::within_limit
+    expected: ceiling_status
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The other ceiling status carrying the retired word.
+      `within_ceiling` replaces it when slice 6 builds the family.
+
+  - id: g7-openapi-budget
+    gate: G7
+    site: openapi::budget
+    expected: control_family
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A retired spend-control family name. #150's four families —
+      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
+      replace one word that named all of them at once, and slice 6
+      builds them.
+
+  - id: g7-openapi-budget.threshold_reached
+    gate: G7
+    site: openapi::budget.threshold_reached
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by the retired family name.
+      `customer_spend_pool.threshold_reached` replaces it when slice 6
+      builds the Customer Spend Pool. Same owner as G8's entry.
+
+  - id: g7-openapi-budget_exceeded
+    gate: G7
+    site: openapi::budget_exceeded
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict named after the retired family. Slice 6's
+      four families give the refusal its own noun.
+
+  - id: g7-openapi-budget_unavailable
+    gate: G7
+    site: openapi::budget_unavailable
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The same, for the case where the family's state could not be read.
+
+  - id: g7-openapi-card_type
+    gate: G7
+    site: openapi::card_type
+    expected: pricing_book_name
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The discriminator that carried supplier cost and customer price in
+      one table — the conflation the cost/price split exists to end
+      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
+      sits on.
+
+  - id: g7-openapi-concurrency_limit
+    gate: G7
+    site: openapi::concurrency_limit
+    expected: affordability_reason
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An affordability verdict for a control slice 6 DELETES outright —
+      `max_concurrent_requests` goes with admission control's rebuild.
+
+  - id: g7-openapi-customer_wide_stop
+    gate: G7
+    site: openapi::customer_wide_stop
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason naming a mechanism rather than the customer whose
+      spend was stopped. Slice 6 rebuilds the four families it spans.
+
+  - id: g7-openapi-dimension
+    gate: G7
+    site: openapi::dimension
+    expected: grouping_field_value
+    found: 1 files
+    owner_slice: slice_2
+    reason: >-
+      Slice 2 builds the ten Grouping Field slots that replace the
+      dimension registry, so the value word goes when the slots arrive.
+
+  - id: g7-openapi-dimensions
+    gate: G7
+    site: openapi::dimensions
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-openapi-metric
+    gate: G7
+    site: openapi::metric
+    expected: measurement_key
+    found: 1 files
+    owner_slice: slice_2
+    reason: >-
+      The industry uses this word for the metered ENTITY rather than for
+      the quantity inside it, so keeping it would have guaranteed mis-
+      translation at every integration boundary (#145 §10). Slice 2
+      declares measurements and the word goes with the model.
+
+  - id: g7-openapi-metric_name
+    gate: G7
+    site: openapi::metric_name
+    expected: measurement_key
+    found: 1 files
+    owner_slice: slice_2
+    reason: >-
+      The declared measurement's key. Slice 2's `value_type` / `unit` /
+      `source_path` declaration is where the field is rebuilt (#145).
+
+  - id: g7-openapi-pricing_model
+    gate: G7
+    site: openapi::pricing_model
+    expected: rate_structure
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      It sat one character from `pricing_mode` and meant something
+      unrelated, which ADR-0006 §3 calls a defect rather than a
+      coincidence. Slice 4 rebuilds the pricing rules that carry it.
+
+  - id: g7-openapi-pricing_provenance
+    gate: G7
+    site: openapi::pricing_provenance
+    expected: pricing_receipt_subject_type
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      What a price receipt is about. Slice 4 introduces Pricing Receipts
+      with `receipt_schema_version` and the subject type takes its name.
+
+  - id: g7-openapi-rate_card
+    gate: G7
+    site: openapi::rate_card
+    expected: pricing_book_name
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The container entity. #148 §5.4 replaces it with the Pricing Book,
+      and slice 4 is where it stops existing.
+
+  - id: g7-openapi-rate_card.published
+    gate: G7
+    site: openapi::rate_card.published
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+      Slice 4's immutable Publish records are what it becomes.
+
+  - id: g7-openapi-request_id
+    gate: G7
+    site: openapi::request_id
+    expected: idempotency_key
+    found: 1 files
+    owner_slice: slice_5
+    reason: >-
+      A second caller-supplied correlation value with no uniqueness
+      constraint, no lookup and no read that changed any behaviour,
+      while carrying an index write on the hottest path in the system
+      (#179 §4). Owned by slice 5 rather than slice 2 because that is
+      where the key that replaces it — caller-supplied `idempotency_key`
+      with a permanent claim — is finalised, and the deletion is safe
+      only once it is.
+
+  - id: g7-openapi-revenue_mode
+    gate: G7
+    site: openapi::revenue_mode
+    expected: tenant_posture
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      It named a mode where the fact is a posture. Slice 7 DELETES
+      `Customer.revenue_mode`, the `/revenue-mode` pair and the
+      `/customers/{id}/revenue` pair outright.
+
+  - id: g7-openapi-soft_floor.cleared
+    gate: G7
+    site: openapi::soft_floor.cleared
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair. Same owner as G8's entry.
+
+  - id: g7-openapi-soft_floor.crossed
+    gate: G7
+    site: openapi::soft_floor.crossed
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the wallet policy
+      that holds the floor. Same owner as G8's entry.
+
+  - id: g7-openapi-stop.cleared
+    gate: G7
+    site: openapi::stop.cleared
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The clearing half of the same pair, replaced by
+      `customer.stop_cleared`. Same owner as G8's entry.
+
+  - id: g7-openapi-stop.fired
+    gate: G7
+    site: openapi::stop.fired
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      An event owned by a mechanism rather than by the customer whose
+      state changed (ADR-0006 §5). `customer.stopped` replaces it when
+      slice 6 rebuilds spend control. Same owner as G8's entry.
+
+  - id: g7-openapi-subtask.limit_exceeded
+    gate: G7
+    site: openapi::subtask.limit_exceeded
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_5
+    reason: >-
+      The subtask half of the same split (#140 §4.3), owned by the slice
+      that rebuilds the lifecycle. Same owner as G8's entry.
+
+  - id: g7-openapi-subtask_limit
+    gate: G7
+    site: openapi::subtask_limit
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason spelling the retired field word. Slice 6's
+      ceiling family replaces it.
+
+  - id: g7-openapi-tag_key
+    gate: G7
+    site: openapi::tag_key
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind that read from the open bag. Slice 7's grouping
+      contract declares what may be grouped on, which is the capability
+      the bag deliberately does not have.
+
+  - id: g7-openapi-tags
+    gate: G7
+    site: openapi::tags
+    expected: metadata_key
+    found: 3 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-openapi-task.limit_exceeded
+    gate: G7
+    site: openapi::task.limit_exceeded
+    expected: webhook_event_type
+    found: 1 files
+    owner_slice: slice_5
+    reason: >-
+      Replaced by TWO events rather than renamed to one: #140 §4.3
+      splits a spend kill from a Task nobody ever closed. Slice 5
+      rebuilds the Task lifecycle that distinguishes them. Same owner as
+      G8's entry for the same event.
+
+  - id: g7-openapi-task_limit
+    gate: G7
+    site: openapi::task_limit
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      The same, at Task granularity. Slice 6's ceiling family replaces
+      it.
+
+  - id: g7-openapi-usage_line_item_group_by
+    gate: G7
+    site: openapi::usage_line_item_group_by
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind named after the invoice line it produced rather
+      than after what it grouped. Slice 7's collapse replaces it.
+
+  - id: g7-openapi-usage_metrics
+    gate: G7
+    site: openapi::usage_metrics
+    expected: measurement_key
+    found: 1 files
+    owner_slice: slice_2
+    reason: >-
+      The bag of measured quantities on one event. Slice 2 replaces it
+      with declared measurements, which is what makes them costable.
+
+  - id: g7-repo-dimensions
+    gate: G7
+    site: repo::dimensions
+    expected: analytics_grouping_kind
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-repo-meter_only
+    gate: G7
+    site: repo::meter_only
+    expected: customer_billing_mode
+    found: 1 files
+    owner_slice: slice_8
+    reason: >-
+      It said what UBB does NOT do; `external` says where the billing
+      actually happens, which is the fact a tenant is choosing between.
+      Owned by slice 8 because the mode's siblings — `prepaid` and
+      `postpaid` — may not be activated before their payment rail has
+      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
+      REBUILDS THIS SUBJECT, so this owner is the programme's default
+      rather than a positive finding, and it wants an owner's eye.
+
+  - id: g7-repo-metering_async
+    gate: G7
+    site: repo::metering_async
+    expected: tenant_product
+    found: 1 files
+    owner_slice: slice_1
+    reason: >-
+      The fast lane's product flag. #149 established the lane had no
+      successor and slice 1 removes it in full, so the flag goes with
+      the lane rather than being renamed to anything.
+
+  - id: g7-repo-tags
+    gate: G7
+    site: repo::tags
+    expected: metadata_key
+    found: 2 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-sdk-budget
+    gate: G7
+    site: sdk::budget
+    expected: control_family
+    found: 10 files
+    owner_slice: slice_6
+    reason: >-
+      A retired spend-control family name. #150's four families —
+      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
+      replace one word that named all of them at once, and slice 6
+      builds them.
+
+  - id: g7-sdk-card_type
+    gate: G7
+    site: sdk::card_type
+    expected: pricing_book_name
+    found: 12 files
+    owner_slice: slice_4
+    reason: >-
+      The discriminator that carried supplier cost and customer price in
+      one table — the conflation the cost/price split exists to end
+      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
+      sits on.
+
+  - id: g7-sdk-customer_wide_stop
+    gate: G7
+    site: sdk::customer_wide_stop
+    expected: reason_code
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      A refusal reason naming a mechanism rather than the customer whose
+      spend was stopped. Slice 6 rebuilds the four families it spans.
+
+  - id: g7-sdk-dimension
+    gate: G7
+    site: sdk::dimension
+    expected: grouping_field_value
+    found: 9 files
+    owner_slice: slice_2
+    reason: >-
+      Slice 2 builds the ten Grouping Field slots that replace the
+      dimension registry, so the value word goes when the slots arrive.
+
+  - id: g7-sdk-dimensions
+    gate: G7
+    site: sdk::dimensions
+    expected: analytics_grouping_kind
+    found: 18 files
+    owner_slice: slice_7
+    reason: >-
+      The plural named an analytics grouping capability, not a value.
+      Slice 7's one economic query replaces it with `field:`/`rollup:`
+      grouping and its discovery contract.
+
+  - id: g7-sdk-markup.set
+    gate: G7
+    site: sdk::markup.set
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      The audit action for setting a markup. Slice 4 deletes
+      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
+      action's subject goes.
+
+  - id: g7-sdk-meter_only
+    gate: G7
+    site: sdk::meter_only
+    expected: customer_billing_mode
+    found: 2 files
+    owner_slice: slice_8
+    reason: >-
+      It said what UBB does NOT do; `external` says where the billing
+      actually happens, which is the fact a tenant is choosing between.
+      Owned by slice 8 because the mode's siblings — `prepaid` and
+      `postpaid` — may not be activated before their payment rail has
+      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
+      REBUILDS THIS SUBJECT, so this owner is the programme's default
+      rather than a positive finding, and it wants an owner's eye.
+
+  - id: g7-sdk-metric
+    gate: G7
+    site: sdk::metric
+    expected: measurement_key
+    found: 2 files
+    owner_slice: slice_2
+    reason: >-
+      The industry uses this word for the metered ENTITY rather than for
+      the quantity inside it, so keeping it would have guaranteed mis-
+      translation at every integration boundary (#145 §10). Slice 2
+      declares measurements and the word goes with the model.
+
+  - id: g7-sdk-metric_name
+    gate: G7
+    site: sdk::metric_name
+    expected: measurement_key
+    found: 9 files
+    owner_slice: slice_2
+    reason: >-
+      The declared measurement's key. Slice 2's `value_type` / `unit` /
+      `source_path` declaration is where the field is rebuilt (#145).
+
+  - id: g7-sdk-pre_check
+    gate: G7
+    site: sdk::pre_check
+    expected: affordability_reason
+    found: 7 files
+    owner_slice: slice_6
+    reason: >-
+      It named when the question was asked rather than what was asked.
+      Slice 6's admission control gives the answer its own vocabulary.
+
+  - id: g7-sdk-pricing_model
+    gate: G7
+    site: sdk::pricing_model
+    expected: rate_structure
+    found: 9 files
+    owner_slice: slice_4
+    reason: >-
+      It sat one character from `pricing_mode` and meant something
+      unrelated, which ADR-0006 §3 calls a defect rather than a
+      coincidence. Slice 4 rebuilds the pricing rules that carry it.
+
+  - id: g7-sdk-pricing_provenance
+    gate: G7
+    site: sdk::pricing_provenance
+    expected: pricing_receipt_subject_type
+    found: 4 files
+    owner_slice: slice_4
+    reason: >-
+      What a price receipt is about. Slice 4 introduces Pricing Receipts
+      with `receipt_schema_version` and the subject type takes its name.
+
+  - id: g7-sdk-rate_card
+    gate: G7
+    site: sdk::rate_card
+    expected: pricing_book_name
+    found: 2 files
+    owner_slice: slice_4
+    reason: >-
+      The container entity. #148 §5.4 replaces it with the Pricing Book,
+      and slice 4 is where it stops existing.
+
+  - id: g7-sdk-rate_card.published
+    gate: G7
+    site: sdk::rate_card.published
+    expected: audit_action
+    found: 1 files
+    owner_slice: slice_4
+    reason: >-
+      An audit action naming the container the Pricing Book replaces.
+      Slice 4's immutable Publish records are what it becomes.
+
+  - id: g7-sdk-request_id
+    gate: G7
+    site: sdk::request_id
+    expected: idempotency_key
+    found: 13 files
+    owner_slice: slice_5
+    reason: >-
+      A second caller-supplied correlation value with no uniqueness
+      constraint, no lookup and no read that changed any behaviour,
+      while carrying an index write on the hottest path in the system
+      (#179 §4). Owned by slice 5 rather than slice 2 because that is
+      where the key that replaces it — caller-supplied `idempotency_key`
+      with a permanent claim — is finalised, and the deletion is safe
+      only once it is.
+
+  - id: g7-sdk-revenue_mode
+    gate: G7
+    site: sdk::revenue_mode
+    expected: tenant_posture
+    found: 9 files
+    owner_slice: slice_7
+    reason: >-
+      It named a mode where the fact is a posture. Slice 7 DELETES
+      `Customer.revenue_mode`, the `/revenue-mode` pair and the
+      `/customers/{id}/revenue` pair outright.
+
+  - id: g7-sdk-tag_key
+    gate: G7
+    site: sdk::tag_key
+    expected: analytics_grouping_kind
+    found: 7 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind that read from the open bag. Slice 7's grouping
+      contract declares what may be grouped on, which is the capability
+      the bag deliberately does not have.
+
+  - id: g7-sdk-tags
+    gate: G7
+    site: sdk::tags
+    expected: metadata_key
+    found: 7 files
+    owner_slice: slice_2
+    reason: >-
+      A second open bag whose name implied the grouping capability the
+      surviving one deliberately does not have. Slice 2 folds `tags`
+      into `metadata` (#145 §8), and the capability retires with the
+      name.
+
+  - id: g7-sdk-task_limit
+    gate: G7
+    site: sdk::task_limit
+    expected: reason_code
+    found: 2 files
+    owner_slice: slice_6
+    reason: >-
+      The same, at Task granularity. Slice 6's ceiling family replaces
+      it.
+
+  - id: g7-sdk-usage_line_item_group_by
+    gate: G7
+    site: sdk::usage_line_item_group_by
+    expected: analytics_grouping_kind
+    found: 5 files
+    owner_slice: slice_7
+    reason: >-
+      A grouping kind named after the invoice line it produced rather
+      than after what it grouped. Slice 7's collapse replaces it.
+
+  - id: g7-sdk-usage_metrics
+    gate: G7
+    site: sdk::usage_metrics
+    expected: measurement_key
+    found: 9 files
+    owner_slice: slice_2
+    reason: >-
+      The bag of measured quantities on one event. Slice 2 replaces it
+      with declared measurements, which is what makes them costable.
+
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an
 # old authorisation cannot license a later addition, and the list stays an audit
@@ -416,3 +2167,20 @@ seeding_authorisations:
       it does. G13, installed in the same pull request, seeds nothing — no
       module in the tree binds the bare name `tasks` — which is why it carries
       no authorisation here.
+
+  - gate: G7
+    issue: 206
+    entries_added: 159
+    reason: >-
+      This pull request installs the forbidden-term sweep over every tracked
+      file — first-party code, the committed contract, the SDK, the console and
+      the living docs — with declared, counted and totally-accounted exclusions,
+      and records what it finds today: 50 of the registry's 70 retired terms,
+      across 159 (area, term) sites. It renames nothing. The sweep goes green
+      not by weakening the rule but by the ledger emptying over the following
+      eight slices, which is the shape #206 asked for.
+      Three words moved OUT of the sweep's input in the same change rather than
+      into this list — `flat`, `hold` and `estimate` are now `retired_senses`,
+      because each is retired in one sense while live in another and #202's own
+      note says a word in that position would force exclusions broad enough to
+      disarm the gate. They are not debts, so they are not here.

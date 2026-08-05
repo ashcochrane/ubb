@@ -159,9 +159,9 @@ def test_the_ceiling_statuses_no_longer_spell_a_retired_word(registry):
 SWEPT = {
     "metric", "metric_name", "dimension", "dimension_def", "tags",
     "card_type", "cost_card", "price_card", "budget", "charging_mode",
-    "pre_check", "async_ingest", "fast_lane", "estimate", "hold",
+    "pre_check", "async_ingest", "fast_lane",
     "work_charge", "revenue_mode", "pricing_provenance", "audit_trail",
-    "meter_only", "metering_async", "pricing_model", "flat",
+    "meter_only", "metering_async", "pricing_model",
 }
 
 #: The rows of §8 whose retirement is scoped by SENSE. A text sweep cannot
@@ -170,7 +170,25 @@ SWEPT = {
 #: — #154 §3.4 keeps `limit` in the admission-control rejection, ADR-0007 §4
 #: uses "operation" for every published route — and would force exclusions
 #: broad enough to disarm the sweep, which #154 §14 warns about by name.
-SENSE_RETIRED = {"limit", "operation", "job", "step", "ingest"}
+#:
+#: THREE OF THESE MOVED HERE IN #206, out of SWEPT above, and they moved on
+#: evidence rather than on argument: the sweep this list feeds was built, run,
+#: and produced 1,069 hits for `flat`, `hold` and `estimate` between them
+#: without one of them being the retired sense.
+#:
+#:   * `flat` is Django's `values_list(..., flat=True)`, about a hundred times.
+#:   * `hold` is `LiveCounter.hold`, the atomic accept-time reservation in the
+#:     estimate-hold-settle sequence — a live first-class mechanism.
+#:   * `estimate` is `PricingService.estimate`, the call that precedes it.
+#:
+#: All three were retired as values of `rate_structure` and `pricing_status`,
+#: and `pricing_status` is a new concept whose values have never shipped — so
+#: there is not one occurrence of either word as a status value anywhere in the
+#: tree. Nothing is lost by the move: the value `flat` only ever appears beside
+#: the field `pricing_model`, which IS swept, and G2 refuses a consumer that
+#: declares a value the registry does not own.
+SENSE_RETIRED = {"limit", "operation", "job", "step", "ingest",
+                 "flat", "hold", "estimate"}
 
 
 def test_retired_terms_are_registry_data(registry):

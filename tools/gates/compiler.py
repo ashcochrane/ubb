@@ -37,6 +37,16 @@ REQUIRED_FILES = (SCHEMA_FILE, SLICES_FILE, MANIFEST_FILE, LEDGER_FILE,
 #: Not registry content, and not an error either — the reasoning has to live
 #: somewhere, and beside the data is the right place.
 READ_BY_HUMANS = ("README.md",)
+#: Gate bookkeeping this compiler does not read, but a NAMED module does. The
+#: "nothing reads this" rule below is about a file nothing reads at all; a file
+#: with a declared reader and a declared enforcer is accounted for, which is the
+#: property that rule protects. `forbidden-term-sweep.yaml` is #206's declared
+#: exclusion list, read by `tools/forbidden_terms` and enforced by
+#: `tests/contracts/test_forbidden_terms.py`.
+READ_BY_OTHER_TOOLS = {
+    "forbidden-term-sweep.yaml": ("tools/forbidden_terms",
+                                  "tests/contracts/test_forbidden_terms.py"),
+}
 
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 
@@ -218,12 +228,15 @@ def _read_documents(gates_dir, errors):
     # a directory that silently tolerates it is how a manifest acquires a second,
     # unread copy of itself.
     for path in sorted(gates_dir.iterdir()):
-        if path.name in REQUIRED_FILES or path.name in READ_BY_HUMANS:
+        if (path.name in REQUIRED_FILES or path.name in READ_BY_HUMANS
+                or path.name in READ_BY_OTHER_TOOLS):
             continue
         errors.append(GateError(
             codes.UNEXPECTED_FILE, f"gates/{path.name}",
             f"nothing reads this. The gates directory holds exactly "
-            f"{', '.join(REQUIRED_FILES)} and {', '.join(READ_BY_HUMANS)}."))
+            f"{', '.join(REQUIRED_FILES)}, {', '.join(READ_BY_HUMANS)}, and "
+            f"{', '.join(sorted(READ_BY_OTHER_TOOLS))} — each of which names "
+            f"the module that reads it."))
 
     for name in REQUIRED_FILES:
         path = gates_dir / name

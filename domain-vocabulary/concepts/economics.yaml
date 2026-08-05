@@ -136,8 +136,27 @@ rate_structure:
     # `pricing_model` sat one character from `pricing_mode` and meant something
     # unrelated, which ADR-0006 §3 calls a defect rather than a coincidence.
     - pricing_model
-    # The value it carried said how the amount looked, not what it did.
-    - flat
+  retired_senses:
+    # `flat` was a `retired_aliases` entry until the sweep it feeds was actually
+    # built (#206). It cannot be one: `values_list("id", flat=True)` is Django's
+    # own keyword argument and appears about a hundred times in first-party
+    # code, so sweeping the bare token would condemn the ORM. The rule
+    # `retired_aliases` states about itself — retired WHEREVER IT APPEARS, as a
+    # whole token — is simply false of this word, and #202's own note says a
+    # word in that position "would force the sweep into exclusions broad enough
+    # to disarm it".
+    #
+    # Nothing is lost by moving it. The value `flat` only ever appears beside
+    # the field `pricing_model`, which IS swept, and G2 refuses a consumer that
+    # declares a `rate_structure` value the registry does not own.
+    - term: flat
+      retired_as: >-
+        a `rate_structure` value. The value it carried said how the amount
+        looked, not what it did, and `fixed_component` replaces it.
+      survives_as: >-
+        Django's `values_list(..., flat=True)`, and the ordinary English
+        adjective for an un-nested route — "the flat create endpoint" that #86
+        re-nested.
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/pricing/models.py
@@ -178,11 +197,31 @@ pricing_status:
     - unknown
     - not_applicable
   label_key_prefix: pricing_status
-  retired_aliases:
+  retired_senses:
     # Two words for a provisional price. Under #148 §8 and #149 the resolved
-    # price is the price, so neither names anything that still exists.
-    - estimate
-    - hold
+    # price is the price, so neither names a PRICING STATUS that still exists.
+    #
+    # Both were `retired_aliases` until #206 built the sweep and ran it. Neither
+    # can be one, and the evidence is unusually clean: `pricing_status` is a new
+    # concept whose values have never shipped, so there is not one occurrence of
+    # either word as a status value anywhere in the tree — while `hold` returns
+    # 419 hits and `estimate` 271, every single one of them the OTHER sense.
+    # A sweep term with a 100% false-positive rate does not need weighing up.
+    - term: estimate
+      retired_as: >-
+        a `pricing_status` value naming a provisional price. `known` is the
+        only thing a settled price is, and an unsettled one is `unknown`.
+      survives_as: >-
+        `PricingService.estimate`, the accept-time call in the async recording
+        path — the verb for what that path does before the worker settles it.
+    - term: hold
+      retired_as: >-
+        a `pricing_status` value naming money set aside against a price not yet
+        known. Under #148 §8 the resolved price is the price.
+      survives_as: >-
+        the spend-control hold: `LiveCounter.hold`, the atomic Redis reservation
+        taken at accept time in the estimate-hold-settle sequence. That is a
+        live first-class mechanism, not a status a row carries.
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py

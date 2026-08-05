@@ -11,10 +11,15 @@ slice 0 — #191).
 | `migration-ledger.yaml` | Every current violation of an **installed** gate, individually identified, each owed by a named slice. Only ever shrinks. |
 | `permanent-exceptions.yaml` | Deliberate exceptions with stated reasons. **Not** the ledger, and the reason for that is below. |
 | `schema.yaml` | The shape rules the compiler enforces. Data, not documentation. |
+| `forbidden-term-sweep.yaml` | G7's declared plan (#206) — where the sweep looks, and the enumerated, counted exclusions where it deliberately does not. |
 
-Everything here is read by `tools/gates` and checked by
+Everything here except the last is read by `tools/gates` and checked by
 `tests/contracts/test_gate_manifest.py` and
-`tests/contracts/test_migration_ledger.py`.
+`tests/contracts/test_migration_ledger.py`. `forbidden-term-sweep.yaml` is read
+by `tools/forbidden_terms` and checked by
+`tests/contracts/test_forbidden_terms.py` — it sits here because it is gate
+bookkeeping like the other five, and the compiler's "nothing reads this" rule
+knows it by name rather than ignoring it.
 
 ```
 python -m tools.gates            # is every claim in the manifest true?
@@ -176,6 +181,8 @@ as slice 0 proceeds rather than arriving pre-written.
 | #203 | G9, G10, G11, G12 — the model-naming rules | **6** | **1** |
 | #204 | G17, G18 — the SDK's two-way operation check | **9** | 1 |
 | #205 | G8, G13 — the webhook catalogue's shape, and Celery import discipline | **29** | 1 |
+| #222 | — (thirteen webhook renames paid) | **16** | 1 |
+| #206 | G7 — the forbidden-term sweep | **175** | 1 |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -226,8 +233,39 @@ What remains is not renameable in the same sense — the two Task events SPLIT
 into `killed` and `expired` (#140 §4.3) and the five control events are rewritten
 under #150's four families, so each needs its slice's work first.
 
-Still owed: G7's retired words arrive with #206, in the pull request that
-installs the sweep which finds them.
+**#206 then installed G7 and seeded 159 entries — the largest seeding by an
+order of magnitude, and the whole re-model stated as arithmetic**: 50 of the
+registry's 70 retired terms, still present across six areas of the tree. Its
+`site` is `<area>::<term>` and its `found` is a file count, which are the two
+decisions worth knowing about. Per (area, term) is 159 rows where per file
+would be 1,340 and per term alone would be 50 — and the middle one is the only
+granularity that both survives eight slices of file movement *and* refuses a
+word crossing from the backend to the SDK. A file count rather than a line
+count for the same reason: a line count moves whenever anyone edits a line, so
+no ratchet could stand on it, while the file count moves exactly when a retired
+word reaches somewhere it was not. That is #203's review finding — an excuse
+keyed on the site alone stays green when the violation moves — closed here in
+the form this gate takes.
+
+The count is checked in **both** directions. Too low and the word has spread;
+too high and the entry is an excuse with no upper bound, because the ratchet
+compares entry identities rather than their contents and would never see a
+`999` typed into one. So paying part of a debt means editing its number — the
+change being recorded, not an inconvenience.
+
+Three words moved OUT of the sweep's input in the same change rather than into
+the ledger. `flat`, `hold` and `estimate` produced 1,069 hits between them and
+not one was the retired sense: `flat` is Django's `values_list(..., flat=True)`,
+`hold` is `LiveCounter.hold`, `estimate` is `PricingService.estimate`. They are
+now `retired_senses`, which is #202's own stated rule applied — a word retired
+in one sense while live in another "would force the sweep into exclusions broad
+enough to disarm it". **This is the ticket's largest judgement call and it
+weakens what G7 can catch**, so it is recorded here rather than left in a diff.
+
+And one entry has **no positive owner**: `meter_only` is owed by slice 8 because
+no slice's issue says it rebuilds `customer_billing_mode`, and the mode's
+siblings gate on payment-rail activation, which is slice 8's. That is #205's
+residue in a new place — an owner nobody chose — and it wants an owner's eye.
 
 **A gate installed in the platform or SDK suite keeps its allowlist there**, in
 the language that suite is written in, and a contract test holds the two to each

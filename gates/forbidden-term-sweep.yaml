@@ -1,0 +1,215 @@
+# The forbidden-term sweep's declared plan (#206, gate G7).
+#
+# This file is DATA, not documentation: `tools/forbidden_terms` reads it and
+# `tests/contracts/test_forbidden_terms.py` enforces every claim in it. The same
+# discipline `domain-vocabulary/schema.yaml` and `gates/schema.yaml` apply to
+# their own subjects.
+#
+# WHAT THE SWEEP READS: every file `git ls-files` reports. Not a list of roots.
+# A list of roots is a thing that can quietly lose an entry, and #154 §12's
+# point is that the one surface nobody checks is where the old word survives.
+# It also deletes an exclusion category outright — `.venv`, `node_modules`,
+# `__pycache__` and build output are not tracked, so nothing below has to name
+# them, and every rule here is one of the SEMANTIC exclusions #154 §14 warned
+# about rather than mechanical noise hiding them.
+#
+# THE THREE PROPERTIES, all enforced:
+#
+#   1. ENUMERATED. A pattern is an exact tracked path or a `dir/**` prefix.
+#      There is no wildcard language, on purpose: `**/migrations/**` would be
+#      one character from `**/m*/**`, so the eighteen migration directories are
+#      written out and a nineteenth app has to be added deliberately.
+#   2. COUNTED. Each rule declares exactly how many tracked files it removes.
+#      Widening one changes the number, and the number is in the diff.
+#   3. TOTALLY ACCOUNTED. Every tracked file is swept or matched by exactly one
+#      rule. No third category — which is what makes NARROWING impossible too:
+#      a surface quietly dropped from the walk is a file with no rule, and that
+#      fails. Counting exclusions catches a blind spot that grows; only total
+#      accounting catches a sweep that stopped reading `ubb-sdk/`.
+#
+# When a count is wrong, `python -m tools.forbidden_terms` prints the actual.
+
+version: 1
+
+# --- Areas ------------------------------------------------------------------
+#
+# Where a hit gets reported, and what a ledger entry's site names.
+#
+# The registry's four surfaces — backend, console, sdk, openapi — are NOT here.
+# They are read from `domain-vocabulary/consumers.yaml`, which already states
+# where each one lives, and a second copy of those roots is a second thing to
+# keep true. The compiler refuses an area that shadows one.
+areas:
+  docs:
+    root: docs
+    summary: >-
+      The living documentation at the git root — the ADRs, the conventions and
+      the architecture notes that state what is true now. The dated documents
+      under `plans/` and `reviews/` are excluded below; they state what was
+      decided, which is a different thing.
+
+# Everything no declared root contains: the repository's own furniture —
+# CLAUDE.md, CONTEXT-MAP.md, the workflow, the tooling and the contract suite.
+# It is genuinely a living surface and swept like any other, and it is the
+# residual rather than a rooted area because "the rest" is its whole definition.
+fallback_area: repo
+
+# --- Anchors ----------------------------------------------------------------
+#
+# Files the sweep must be SHOWN to have read (#191 story 20). A path-resolution
+# bug that quietly emptied the walk would otherwise leave a gate that always
+# passes, which is the failure this whole slice is built against.
+#
+# Two claims are checked, not one: every anchor was read, AND every area has at
+# least one anchor. The second is what stops a new area arriving unguarded,
+# which is how the first would rot. An exclusion rule that covers an anchor
+# fails too — that is a widening over a living surface, caught at the rule.
+anchors:
+  # backend — the model that carries the tenant's own measurement vocabulary.
+  - ubb-platform/apps/metering/usage/models.py
+  # console — the hand-authored label catalogue #207 validates directly.
+  - apps/ui/src/lib/labels.ts
+  # sdk — the hand-written call surface ADR-0007 §4 governs.
+  - ubb-sdk/ubb/metering.py
+  # openapi — the committed contract itself.
+  - openapi/v1.json
+  # docs — a living convention document, deliberately NOT ADR-0006: that one is
+  # excluded below because its subject IS the retirement table, and an anchor
+  # has to be a file the sweep genuinely reads for content.
+  - docs/conventions/api-contract.md
+  # repo — the orientation document every agent reads first.
+  - CLAUDE.md
+
+# --- Exclusions -------------------------------------------------------------
+#
+# #154 §14 names three false-positive categories and then names the danger in
+# the remedy: "an over-broad exclusion silently disarms it." Each rule below
+# therefore states what it covers, why, and when it ends.
+exclusions:
+
+  - id: frozen-dated-documents
+    permanence: permanent
+    files: 121
+    paths:
+      - docs/plans/**
+      - docs/reviews/**
+      - ubb-platform/docs/plans/**
+      - apps/ui/docs/superpowers/plans/**
+      - apps/ui/docs/superpowers/specs/**
+    reason: >-
+      Dated documents are frozen history. They are evidence of what was decided
+      on a day, not statements of current truth, and CLAUDE.md says so: read
+      them for "why we decided X", never edit them as current truth. A retired
+      word in a 2026-03 plan is the record being accurate. This exclusion is
+      PERMANENT and has no end date, because the documents have no end either —
+      editing one to remove a word it correctly used would be falsifying the
+      record to satisfy a gate.
+
+  - id: historical-migrations
+    permanence: until_slice_8
+    files: 183
+    paths:
+      - ubb-platform/apps/billing/gating/migrations/**
+      - ubb-platform/apps/billing/invoicing/migrations/**
+      - ubb-platform/apps/billing/stripe/migrations/**
+      - ubb-platform/apps/billing/tenant_billing/migrations/**
+      - ubb-platform/apps/billing/topups/migrations/**
+      - ubb-platform/apps/billing/wallets/migrations/**
+      - ubb-platform/apps/metering/pricing/migrations/**
+      - ubb-platform/apps/metering/usage/migrations/**
+      - ubb-platform/apps/platform/audit/migrations/**
+      - ubb-platform/apps/platform/customers/migrations/**
+      - ubb-platform/apps/platform/dimensions/migrations/**
+      - ubb-platform/apps/platform/events/migrations/**
+      - ubb-platform/apps/platform/membership/migrations/**
+      - ubb-platform/apps/platform/plans/migrations/**
+      - ubb-platform/apps/platform/tenants/migrations/**
+      - ubb-platform/apps/platform/work/migrations/**
+      - ubb-platform/apps/referrals/migrations/**
+      - ubb-platform/apps/subscriptions/migrations/**
+    reason: >-
+      A migration carries the column names that existed when it ran, and a
+      rename migration must NAME the old column — `RenameField(old_name=...)`
+      is the whole point. Rewriting one to satisfy a sweep would break replay
+      of the history it exists to be.
+      This exclusion ENDS AT slice_8, and it ends by DELETION rather than
+      renewal: #155 §5.4's cutover squash deletes this entire category, so the
+      exclusion goes with the files. Eighteen directories are written out
+      rather than matched by a wildcard so that a nineteenth app's migrations
+      are a deliberate addition here, visible in a diff.
+      STATED RESIDUAL: this covers migrations not yet written as well as the
+      183 that exist, so a NEW migration introducing a retired word is not
+      caught. Narrowing it to today's files would be the tighter rule and is
+      the wrong one — slices 1 to 7 are largely renames, and a `RenameField`
+      naming the word it retires is the correct migration rather than a
+      violation. The count is what keeps this honest: every migration added
+      moves the number, so the growth is at least counted in a diff.
+
+  - id: vendored-dependency-manifests
+    permanence: permanent
+    files: 2
+    paths:
+      - pnpm-lock.yaml
+      - ubb-platform/requirements.lock.txt
+    reason: >-
+      #154 §14's "vendored code" category, which in this repository is exactly
+      two generated dependency graphs. A retired word in either is a third
+      party's package name, and UBB's vocabulary has no claim on it. Permanent:
+      the files are regenerated by their package managers, never authored.
+
+  - id: the-vocabulary-registry
+    permanence: permanent
+    files: 10
+    paths:
+      - domain-vocabulary/**
+    reason: >-
+      The oracle. `retired_aliases` is the sweep's own input, so the registry
+      names every retired word by construction — sweeping it would be the gate
+      reading its own question and reporting it as an answer. Permanent, for as
+      long as there is a registry.
+
+  - id: the-gate-bookkeeping
+    permanence: permanent
+    files: 7
+    paths:
+      - gates/**
+    reason: >-
+      A migration-ledger entry names the retired word it owes, a permanent
+      exception names the one it excuses, and this file names the terms in its
+      own commentary. Bookkeeping about a retired word has to be able to write
+      it down. Permanent, and narrow: `gates/` holds six declared documents and
+      a README, and `tools/gates` already refuses an unread seventh.
+
+  - id: checks-whose-subject-is-a-retired-word
+    permanence: permanent
+    files: 13
+    paths:
+      - docs/adr/0006-domain-vocabulary-and-contract-naming.md
+      - openapi/oasdiff-err-ignore.txt
+      - openapi/oasdiff-warn-ignore.txt
+      - tests/contracts/_webhook_helpers.py
+      - tests/contracts/test_end_state_vocabulary.py
+      - tests/contracts/test_forbidden_terms.py
+      - tests/contracts/test_vocabulary_registry.py
+      - tests/contracts/test_webhook_catalogue.py
+      - tests/contracts/test_webhook_rename_migration.py
+      - tools/webhook_catalogue/assessment.py
+      - tools/webhook_catalogue/shape.py
+      - ubb-platform/api/v1/tests/test_contract_gate.py
+      - ubb-platform/apps/platform/events/tests/test_webhook_event_rename.py
+    reason: >-
+      Files whose SUBJECT is the retired vocabulary: the ADR that retires the
+      words and lists them under "retired and not to reappear"; the two oasdiff
+      suppression files that record #222's deliberate contract break by naming
+      what was removed; #205's webhook-shape machinery, which cites the names it
+      refuses in order to explain the rule; the tests that prove a rename
+      happened, which must spell the old name to prove it; and this sweep's own
+      negative controls, which plant retired words on purpose.
+      The test for admission is NOT "this file is inconvenient" but "no slice
+      will ever remove this word from this file, because naming it is what the
+      file is for" — which is also why these are exclusions rather than ledger
+      entries. A debt needs somebody who will pay it.
+      Every path is an EXACT file rather than a directory, so the rule cannot
+      spread to a neighbour: `tests/contracts/` holds sixteen modules and five
+      are named here. Permanent, and each file is small enough that a reviewer
+      can check the claim by opening it.
