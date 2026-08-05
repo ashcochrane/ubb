@@ -6,6 +6,10 @@ from django.db import models
 
 from apps.platform.membership.roles import ADMIN, ROLE_CHOICES
 from core.models import BaseModel
+from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_POSTPAID,
+    CUSTOMER_BILLING_MODE_PREPAID,
+)
 
 
 # "metering_async" is a metering SUB-feature flag (POST /metering/usage/ingest),
@@ -23,10 +27,18 @@ VALID_PRODUCTS = {"metering", "billing", "referrals", "metering_async"}
 # a currency. It sat here only because the 1/100 minor unit was hard-coded at
 # twenty sites and the list was the cheapest way to keep them all true.
 
+# The canonical tokens come from the registry via `core.vocabulary` (#200), so
+# this model cannot hold a second copy of a value that drifts from it. The
+# English stays here: label wording is not registry content (ADR-0008 §4).
+#
+# "meter_only" is the one entry still spelled out. The registry declares the
+# END-STATE name for it, which is a different word, and renaming the value a
+# tenant's API responses carry is a later slice's job (a migration-ledger entry,
+# #201) — not something to slip into the slice that installs the gates.
 BILLING_MODE_CHOICES = [
     ("meter_only", "Meter only"),
-    ("prepaid", "Prepaid credits"),
-    ("postpaid", "Postpaid"),
+    (CUSTOMER_BILLING_MODE_PREPAID, "Prepaid credits"),
+    (CUSTOMER_BILLING_MODE_POSTPAID, "Postpaid"),
 ]
 
 # Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
@@ -144,7 +156,8 @@ class Tenant(BaseModel):
             raise ValidationError(
                 {"products": f"Unknown products: {', '.join(sorted(unknown))}"}
             )
-        if self.billing_mode in ("prepaid", "postpaid") and "billing" not in (self.products or []):
+        money_modes = (CUSTOMER_BILLING_MODE_PREPAID, CUSTOMER_BILLING_MODE_POSTPAID)
+        if self.billing_mode in money_modes and "billing" not in (self.products or []):
             raise ValidationError(
                 {"billing_mode": f"billing_mode '{self.billing_mode}' requires 'billing' in products."}
             )

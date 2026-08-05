@@ -14,3 +14,10 @@ ubb-sdk/ubb/_spec_revision.py text eol=lf
 # rides a zero-diff gate off it, so a contributor's core.autocrlf can never
 # become the reason a regeneration check disagrees.
 domain-vocabulary/** text eol=lf
+
+# ...and the output. The generated backend constants (#200) are byte-compared
+# by tests/contracts/test_generated_vocabulary.py against what the generator
+# writes, which is LF on every platform. Without this pin, a checkout with
+# core.autocrlf set turns the working copy into CRLF and the gate goes red for
+# a reason that has nothing to do with the vocabulary.
+ubb-platform/core/vocabulary.py text eol=lf

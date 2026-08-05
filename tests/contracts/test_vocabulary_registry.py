@@ -563,6 +563,10 @@ def test_the_cli_names_the_reason_and_exits_nonzero(tmp_path, capsys):
 
 
 def test_the_cli_reports_the_shipped_registry_as_valid(capsys):
+    """Status 0 means BOTH halves of the CLI's verdict passed: the registry is
+    valid and every artifact generated from it is current (#200). One command,
+    one answer — so a stale artifact fails here too, and the generated-artifact
+    gate lives in `test_generated_vocabulary.py`."""
     from tools.vocabulary.__main__ import main
 
     status = main(["--registry", str(REAL_REGISTRY), "--repo-root", str(REPO_ROOT)])

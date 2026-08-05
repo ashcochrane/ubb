@@ -10,7 +10,26 @@ signal reasons, not refusal codes — every usage report answers HTTP 200; the
 reason rides the response's stop fields. The retired 429-era strings
 (`cost_limit_exceeded`, `balance_floor_exceeded`, the label-cap
 `task_limit_exceeded`) are deliberately NOT reused.
+
+The registry (`domain-vocabulary/`) is the source of these tokens (#200). Where
+a reason's canonical name IS the string already in flight, this module takes it
+from `core.vocabulary` rather than restating it, so the backend cannot hold a
+second copy that drifts. Today that is one of them.
+
+"Closed" above and the registry's `open` kind are not in conflict, and the
+generated name is `REASON_CODE_KNOWN_VALUES` for exactly that reason. Closed is
+a rule on UBB's own PRODUCERS: no stop path here may invent a string, and
+`ALL_REASONS` is the whole set they may use. Open is a rule on CONSUMERS: a stop
+can originate outside UBB, so a reason this module has never heard of must still
+travel rather than be rejected at the boundary (ADR-0003). Neither set may be
+used to refuse a value arriving from outside.
+
+The rest carry names the registry retires. Swapping one here would change what
+the API returns, which slice 0 does not do — each is a rename owned by a later
+slice and recorded in the migration ledger (#201).
 """
+
+from core.vocabulary import REASON_CODE_PARENT_KILLED
 
 # The task's provider-cost (COGS) limit was crossed (Task.provider_cost_limit_micros).
 # On a subtask event this means the PARENT's limit was crossed by the rolled-up
@@ -30,7 +49,7 @@ STALE_MAX_AGE = "stale_max_age"
 # Kill-metadata only (#38): a subtask flipped by its parent's downward
 # cascade — it crossed nothing of its own, so this never rides an ack's
 # stop_reason or a limit event; late events on it say TASK_NOT_ACTIVE.
-PARENT_KILLED = "parent_killed"
+PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
 # customer scope) — an owner suspended with no open floor episode
 # (admin/fraud, or a money suspension whose episode already cleared).

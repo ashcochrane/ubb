@@ -17,8 +17,9 @@ missing oracle.
 
 Issue #198 landed the registry as a **tracer bullet** — data, compiler, gate and
 CI in one complete path — carrying a representative concept of each of the four
-kinds and nothing more. The complete reconciled end-state vocabulary lands with
-**#202**, and the generated consumers with **#200**, **#207** and **#208**.
+kinds and nothing more. Issue #200 added the first generated consumer, the
+backend constants. The complete reconciled end-state vocabulary lands with
+**#202**, and the remaining generated consumers with **#207** and **#208**.
 
 ## What is in here
 
@@ -27,6 +28,33 @@ kinds and nothing more. The complete reconciled end-state vocabulary lands with
 | `schema.yaml` | The registry's own schema — the four kinds, and the fields each one requires or forbids. **Data, not documentation**: the compiler reads it, so it cannot drift away from what is enforced. |
 | `consumers.yaml` | The surfaces a concept may name as a consumer, each with the subtree it lives in. |
 | `concepts/*.yaml` | The vocabulary itself, split by domain. CI treats the directory as **one registry**: a term defined twice across files, or defined differently in two, is a failure. |
+
+## What is generated from it
+
+A canonical token is authored **here, once**; every other appearance is
+generated or verified (ADR-0008 §3).
+
+| Artifact | Consumer | Landed |
+|---|---|---|
+| `ubb-platform/core/vocabulary.py` | the Django platform, which **imports** the constants | #200 |
+| Console value lists + label keys | the React console | #207 |
+| SDK vocabulary constants | the Python SDK | #208 |
+
+Backend code is never scanned for matching string literals. It imports the
+generated module, so agreement is **structural rather than textual** — the
+difference between a check a coincidence can satisfy and one it cannot.
+
+Every generated artifact rides a **zero-diff regeneration check**: the committed
+bytes must be exactly what the registry produces, so a hand edit or a stale
+generation turns CI red instead of rotting. That is the ratchet the generated
+SDK core and its registry-derived exception hierarchy already ride.
+
+Editing the registry alone is therefore never enough — regenerate in the same
+commit, or CI is red:
+
+```
+python -m tools.vocabulary --write
+```
 
 ## The four kinds
 
@@ -74,8 +102,9 @@ later, deeper check — generated artifacts ride a zero-diff regeneration gate.
 
 ## Working on it
 
-Validate before you commit — the same verdict CI reaches, without waiting for a
-workflow:
+Check before you commit — the same verdict CI reaches, without waiting for a
+workflow. One command answers both questions: is the registry valid, and is
+every artifact generated from it current?
 
 ```
 python -m tools.vocabulary
@@ -105,8 +134,11 @@ python -m pytest tests/contracts
    provisional public vocabulary, so a value cannot be parked under a temporary
    name and corrected later).
 3. Write a `summary` a human would recognise. Every concept says what it means.
+   It is rendered into the generated artifacts, so write it in **end-state**
+   language: a summary that names a retired term plants that word in a file
+   nobody may hand-edit, and the gate says so.
 4. Name its consumers, or write `consumers: []` and let it be visibly unconsumed.
-5. Run `python -m tools.vocabulary`.
+5. Run `python -m tools.vocabulary --write` and commit what it regenerates.
 
 ### Retired terms
 

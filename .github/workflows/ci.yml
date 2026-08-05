@@ -129,6 +129,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r tests/contracts/requirements.txt
 
+      # The contract suite renders each generated artifact in memory and
+      # compares. This step runs the command a CONTRIBUTOR runs and compares
+      # with git — the one thing the in-memory check cannot cover: a writer
+      # that emitted CRLF, or wrote to the wrong path, would leave the suite
+      # green while the documented regeneration step corrupted the file (#200).
+      # Same ratchet shape as the spec drift gate and the SDK core/exception
+      # gates below.
+      #
+      # The verdict is the whole worktree, not a named path, so a target added
+      # to `tools.vocabulary.generate.TARGETS` (#207, #208) is covered on the
+      # day it is added — including the case a named-path check cannot see at
+      # all, which is a NEW generated file nobody committed.
+      - name: Vocabulary generation gate — regeneration produces zero diff
+        run: |
+          python -m tools.vocabulary --write
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The worktree is dirty after regenerating. If a generated"
+            echo "vocabulary artifact is listed below, it is not what the"
+            echo "registry produces: run 'python -m tools.vocabulary --write'"
+            echo "and commit the result."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
       - name: Contract suite — the registry, and the gates over it
         run: python -m pytest tests/contracts
 
