@@ -74,9 +74,9 @@ class TestExpiryBeat:
         assert WalletTransaction.objects.filter(
             wallet=w, idempotency_key=f"expiry:{g.pk}").count() == 1
         assert OutboxEvent.objects.filter(
-            event_type="billing.credit_grant_expired").count() == 1
+            event_type="credit_grant.expired").count() == 1
         payload = OutboxEvent.objects.get(
-            event_type="billing.credit_grant_expired").payload
+            event_type="credit_grant.expired").payload
         assert payload["grant_id"] == str(g.pk)
         assert payload["expired_micros"] == 10_000_000
         assert payload["balance_micros"] == 0
@@ -105,7 +105,7 @@ class TestExpiryBeat:
         assert not WalletTransaction.objects.filter(
             wallet=w, idempotency_key=f"expiry:{g.pk}").exists()
         assert not OutboxEvent.objects.filter(
-            event_type="billing.credit_grant_expired").exists()
+            event_type="credit_grant.expired").exists()
 
     def test_warning_winning_update_one_shot(self):
         t, c, w = _setup()
@@ -119,7 +119,7 @@ class TestExpiryBeat:
         assert g.warning_sent_at is not None
         assert g.status == "active"  # warned, not expired
         events = OutboxEvent.objects.filter(
-            event_type="billing.credit_grant_expiring")
+            event_type="credit_grant.expiring")
         assert events.count() == 1
         payload = events.get().payload
         assert payload["grant_id"] == str(g.pk)
@@ -132,7 +132,7 @@ class TestExpiryBeat:
         _grant(w, t, amount=10_000_000, expires_at=None)
         expire_credit_grants()
         assert not OutboxEvent.objects.filter(
-            event_type="billing.credit_grant_expiring").exists()
+            event_type="credit_grant.expiring").exists()
 
 
 @pytest.mark.django_db
@@ -177,7 +177,7 @@ class TestSweepFaultIsolation:
         # No expiring-soon warning for the dead customer either (pass 2
         # shares the liveness policy).
         assert not OutboxEvent.objects.filter(
-            event_type="billing.credit_grant_expiring",
+            event_type="credit_grant.expiring",
             payload__customer_id=str(c1.id)).exists()
 
     def test_unexpected_failure_logged_and_sweep_continues(self):
@@ -231,7 +231,7 @@ class TestBalanceLowOnExpiry:
         expire_credit_grants()
         expire_credit_grants()  # replay: grant already expired -> no re-emit
 
-        events = OutboxEvent.objects.filter(event_type="billing.balance_low")
+        events = OutboxEvent.objects.filter(event_type="wallet.balance_low")
         assert events.count() == 1
         payload = events.get().payload
         assert payload["customer_id"] == str(c.id)
@@ -251,7 +251,7 @@ class TestBalanceLowOnExpiry:
             expires_at=timezone.now() - timedelta(minutes=1))
         expire_credit_grants()  # post-expiry balance 50 >= trigger 5
         assert not OutboxEvent.objects.filter(
-            event_type="billing.balance_low").exists()
+            event_type="wallet.balance_low").exists()
 
 
 @pytest.mark.django_db

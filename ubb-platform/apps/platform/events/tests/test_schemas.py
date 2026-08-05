@@ -76,7 +76,7 @@ class TestReferralRewardEarnedSchema:
 class TestBalanceLowSchema:
     def test_event_type(self):
         from apps.platform.events.schemas import BalanceLow
-        assert BalanceLow.EVENT_TYPE == "billing.balance_low"
+        assert BalanceLow.EVENT_TYPE == "wallet.balance_low"
 
     def test_fields(self):
         from apps.platform.events.schemas import BalanceLow
@@ -94,7 +94,7 @@ class TestBalanceLowSchema:
 class TestBalanceCriticalSchema:
     def test_event_type(self):
         from apps.platform.events.schemas import BalanceCritical
-        assert BalanceCritical.EVENT_TYPE == "billing.balance_critical"
+        assert BalanceCritical.EVENT_TYPE == "wallet.balance_critical"
 
     def test_fields(self):
         from apps.platform.events.schemas import BalanceCritical
@@ -110,7 +110,7 @@ class TestBalanceCriticalSchema:
 class TestTopUpRequestedSchema:
     def test_event_type(self):
         from apps.platform.events.schemas import TopUpRequested
-        assert TopUpRequested.EVENT_TYPE == "billing.topup_requested"
+        assert TopUpRequested.EVENT_TYPE == "top_up.requested"
 
     def test_fields(self):
         from apps.platform.events.schemas import TopUpRequested
@@ -128,7 +128,7 @@ class TestTopUpRequestedSchema:
 class TestCustomerSuspendedSchema:
     def test_event_type(self):
         from apps.platform.events.schemas import CustomerSuspended
-        assert CustomerSuspended.EVENT_TYPE == "billing.customer_suspended"
+        assert CustomerSuspended.EVENT_TYPE == "customer.suspended"
 
     def test_fields(self):
         from apps.platform.events.schemas import CustomerSuspended
@@ -144,17 +144,17 @@ class TestCustomerSuspendedSchema:
 class TestMarginEventContracts:
     def test_margin_event_contracts(self):
         from dataclasses import asdict
-        from apps.platform.events.schemas import MarginCustomerUnprofitable, MarginProviderCostSpike
-        e1 = MarginCustomerUnprofitable(
+        from apps.platform.events.schemas import CustomerUnprofitable, ProviderCostSpike
+        e1 = CustomerUnprofitable(
             tenant_id="t", customer_id="c", period_start="2026-06-01",
             gross_margin_micros=-500, margin_pct=-5.0, threshold_pct=0.0)
-        assert e1.EVENT_TYPE == "margin.customer_unprofitable"
+        assert e1.EVENT_TYPE == "customer.unprofitable"
         assert asdict(e1)["customer_id"] == "c"
-        e2 = MarginProviderCostSpike(
+        e2 = ProviderCostSpike(
             tenant_id="t", customer_id="c", period_start="2026-06-01",
             prev_provider_cost_micros=100, current_provider_cost_micros=200,
             prev_margin_pct=20.0, current_margin_pct=5.0)
-        assert e2.EVENT_TYPE == "margin.provider_cost_spike"
+        assert e2.EVENT_TYPE == "provider.cost_spike"
 
 
 def test_budget_threshold_event_contract():
@@ -171,16 +171,16 @@ def test_usage_invoice_pushed_contract():
     from apps.platform.events.schemas import UsageInvoicePushed
     e = UsageInvoicePushed(tenant_id="t", customer_id="c", period_start="2026-06",
                            total_billed_micros=1000, line_item_count=2, stripe_invoice_id="in_1")
-    assert e.EVENT_TYPE == "usage.invoice_pushed"
+    assert e.EVENT_TYPE == "usage_invoice.pushed"
     assert asdict(e)["line_item_count"] == 2
 
 
 def test_auto_topup_requires_action_contract():
     from dataclasses import asdict
-    from apps.platform.events.schemas import AutoTopupRequiresAction
-    e = AutoTopupRequiresAction(tenant_id="t", customer_id="c", attempt_id="a",
+    from apps.platform.events.schemas import AutoTopUpRequiresAction
+    e = AutoTopUpRequiresAction(tenant_id="t", customer_id="c", attempt_id="a",
                                 amount_micros=20_000_000, code="authentication_required")
-    assert e.EVENT_TYPE == "auto_topup.requires_action"
+    assert e.EVENT_TYPE == "auto_top_up.requires_action"
     assert asdict(e)["amount_micros"] == 20_000_000
 
 
@@ -189,7 +189,7 @@ def test_balance_overage_contract():
     from apps.platform.events.schemas import BalanceOverage
     e = BalanceOverage(tenant_id="t", customer_id="c", balance_micros=-500,
                        overage_limit_micros=0, overage_micros=500)
-    assert e.EVENT_TYPE == "billing.balance_overage"
+    assert e.EVENT_TYPE == "wallet.balance_overage"
     assert asdict(e)["overage_micros"] == 500
 
 

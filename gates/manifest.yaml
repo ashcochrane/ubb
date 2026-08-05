@@ -185,9 +185,14 @@ gates:
       over BOTH `task.*` and `subtask.*` and over all six statuses rather than
       only the terminal five: "terminal Task events map to a status" is then a
       consequence rather than a rule needing its own definition of terminal.
-      Twenty of thirty-five events are in the ledger, owed by slices 5, 6, 7 and
-      8; #205 renames none of them, because an event name is a public contract
-      and the rename belongs with the slice that rebuilds the event's subject.
+      #205 installed it over twenty violations and renamed none of them, because
+      an event name is a public contract and the rename belongs with the slice
+      that rebuilds the event's subject. #222 then renamed the thirteen whose
+      subject nothing rebuilds, in one act rather than four, because ADR-0006's
+      Consequences say the v1 contract breaks deliberately ONCE. Seven remain in
+      the ledger, owed by slices 5 and 6, and none of them is a rename: the two
+      Task events SPLIT into `killed` and `expired` (#140 §4.3) and the five
+      control events are rewritten under #150's four families.
       What it does NOT prove is that a declared transition is a past-tense form:
       no oracle here settles English tense, so that judgement is made once when
       a name is declared and mechanically held from then on (ADR-0008 §1, §9).

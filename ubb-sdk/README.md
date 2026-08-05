@@ -218,8 +218,8 @@ billing.void_grant(customer_id=customer.id, grant_id=grant.id)
 Paid top-ups (checkout + auto-top-up) create `paid` lots automatically; they
 never expire unless the customer's billing profile sets
 `topup_grant_expiry_days`. The legacy `credit()` call is untouched — it adds
-plain non-expiring base money. Webhook events `billing.credit_grant_expiring`
-(7 days out, one-shot) and `billing.credit_grant_expired` let you notify
+plain non-expiring base money. Webhook events `credit_grant.expiring`
+(7 days out, one-shot) and `credit_grant.expired` let you notify
 customers.
 
 ## Money representation

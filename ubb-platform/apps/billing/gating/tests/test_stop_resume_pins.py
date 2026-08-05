@@ -61,11 +61,11 @@ def _cleared():
 
 
 def _suspended_events():
-    return OutboxEvent.objects.filter(event_type="billing.customer_suspended")
+    return OutboxEvent.objects.filter(event_type="customer.suspended")
 
 
 def _overage_events():
-    return OutboxEvent.objects.filter(event_type="billing.balance_overage")
+    return OutboxEvent.objects.filter(event_type="wallet.balance_overage")
 
 
 def _break_redis(monkeypatch):

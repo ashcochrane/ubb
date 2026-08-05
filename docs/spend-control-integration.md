@@ -53,7 +53,7 @@ Back-out is instant (set `off`).
    `UBBStoppedError`. Either way the event was recorded and billed — the stop
    is an instruction, not an error.
 4. **Handle the webhooks** (catches *idle*/*sibling* workers not currently
-   posting): on `billing.customer_suspended` cancel **all** that customer's
+   posting): on `customer.suspended` cancel **all** that customer's
    tasks; on `task.limit_exceeded` cancel the task named by `task_id` (the
    posting worker already got the stop verdict on its ack).
 
@@ -81,7 +81,7 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both
   running totals, denominationally explicit — only the provider total races
   the limit), and `suspended` (the owner's durable status).
-- **Webhooks →** `billing.customer_suspended` (cancel all the customer's
+- **Webhooks →** `customer.suspended` (cancel all the customer's
   tasks), `task.limit_exceeded` (cancel `task_id`; carries both totals and
   the limit), `stop.fired` (customer-wide stop).
 
@@ -89,7 +89,7 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
 
 The stop is cooperative — your runtime cancels at a safe boundary. Common shapes:
 
-- **Inngest:** `cancelOn` matched to a `billing.customer_suspended` webhook keyed on `data.customer_id`; finishes the current step.
+- **Inngest:** `cancelOn` matched to a `customer.suspended` webhook keyed on `data.customer_id`; finishes the current step.
 - **Temporal:** webhook → `workflow.cancel()`; activities must heartbeat to receive the cancellation.
 - **Vercel AI SDK:** a `stopWhen` predicate that consults the last `record_usage` result's `stop`.
 - **LangGraph:** check the `stop` flag at a node boundary; stop via the checkpointer.

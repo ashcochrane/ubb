@@ -69,8 +69,8 @@ Pro-rated recurring revenue for a window — manual revenue profile + Stripe sub
 computed without touching invoices.
 
 **Unprofitable / provider-cost spike**:
-The transition-guarded conditions that emit `margin.customer_unprofitable` (below the margin floor
-for N consecutive periods) / `margin.provider_cost_spike` (a period-over-period cost jump).
+The transition-guarded conditions that emit `customer.unprofitable` (below the margin floor
+for N consecutive periods) / `provider.cost_spike` (a period-over-period cost jump).
 
 **Resnapshot**:
 Refreshing a prior month's margin snapshot after backfilled usage dirtied it, by consuming
@@ -84,5 +84,5 @@ The single surface billing may import (ADR-001) — it lets billing stamp/repair
 (`apps/subscriptions/ports.py`)
 
 **Events**:
-Consumes `usage.recorded` (cost accumulation); emits `margin.customer_unprofitable`,
-`margin.provider_cost_spike`.
+Consumes `usage.recorded` (cost accumulation); emits `customer.unprofitable`,
+`provider.cost_spike`.

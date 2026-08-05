@@ -43,12 +43,12 @@ class MarginFlaggingTest(TestCase):
         econ.refresh_from_db()
         assert econ.is_unprofitable is True
         assert OutboxEvent.objects.filter(
-            event_type="margin.customer_unprofitable").count() == 1
+            event_type="customer.unprofitable").count() == 1
         # Re-running must NOT emit again (transition-only)
         econ2 = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         MarginService.evaluate_and_emit(econ2)
         assert OutboxEvent.objects.filter(
-            event_type="margin.customer_unprofitable").count() == 1
+            event_type="customer.unprofitable").count() == 1
 
     def test_provider_cost_spike_webhook(self):
         # previous month snapshot with low provider cost
@@ -64,8 +64,8 @@ class MarginFlaggingTest(TestCase):
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         MarginService.evaluate_and_emit(econ)
         assert OutboxEvent.objects.filter(
-            event_type="margin.provider_cost_spike").count() == 1
+            event_type="provider.cost_spike").count() == 1
         # idempotent — no duplicate for the same period
         MarginService.evaluate_and_emit(econ)
         assert OutboxEvent.objects.filter(
-            event_type="margin.provider_cost_spike").count() == 1
+            event_type="provider.cost_spike").count() == 1

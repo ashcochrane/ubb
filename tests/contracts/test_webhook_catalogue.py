@@ -19,12 +19,19 @@ also means the migration ledger is read directly rather than mirrored: unlike
 need `test_model_naming_ledger_agreement.py` to hold two encodings together,
 there is exactly one copy of the excused list here.
 
-**This gate installs over a catalogue that violates it twenty times**, and #205
-renames none of them. That ordering is the point rather than an embarrassment: a
+**This gate installed over a catalogue that violated it twenty times**, and #205
+renamed none of them. That ordering is the point rather than an embarrassment: a
 gate installed before the code complies is what makes the vocabulary impossible
-to regress (#155 §3.1). Every one of the twenty is an individually identified
+to regress (#155 §3.1). Every one of the twenty was an individually identified
 ledger entry naming the slice that removes it, and section 1 proves each is
 still a real violation — so an entry cannot outlive the debt it records.
+
+**Seven remain.** #222 paid the thirteen whose correction depended on nothing —
+a product owning the wallet's levels, a measure owning the customer's
+profitability, a subject buried inside a transition token, one concept spelled
+two ways. What is left is owed by slices 5 and 6, and none of it is a rename:
+the two Task events become TWO events each (#140 §4.3) and the five control
+events are rewritten under #150's four families.
 
 **Why no mock.** Every control below builds a real repository on disk and runs
 the real entry point over it. A control that patched the reader would reproduce
@@ -52,16 +59,21 @@ SHAPE_FAULTS = frozenset({
     codes.TRANSITION_NOT_A_DECLARED_STATE,
 })
 
-#: How many events #205 found in violation. A CEILING only: the ledger only
-#: shrinks, so the day slice 6 renames `billing.balance_low` and deletes its
-#: entry this must fall to 19 without anything going red for complying.
+#: How many events are still in violation. A CEILING only: the ledger only
+#: shrinks, so the day slice 6 renames `stop.fired` and deletes its entry this
+#: must fall to 6 without anything going red for complying.
+#:
+#: #205 seeded twenty; #222 renamed the thirteen whose correction depended on
+#: nothing, leaving the seven that slices 5 and 6 rewrite rather than rename.
+#: Lowered with them so the ceiling stays tight — a ceiling left at twenty would
+#: go on admitting thirteen debts nobody owes.
 #:
 #: The floor comes from `test_the_ledger_records_exactly_what_the_gate_excuses`
 #: instead, and self-updates: it compares the gate's excuses against the ledger's
 #: own entries, so a gate that silently stopped finding violations reports an
 #: empty set against a non-empty file. A count pinned here would have had to be
 #: edited by every slice that pays one.
-SEEDED = 20
+SEEDED = 7
 
 
 @pytest.fixture(scope="module")

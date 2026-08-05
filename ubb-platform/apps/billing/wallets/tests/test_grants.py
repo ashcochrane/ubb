@@ -225,8 +225,8 @@ class TestG3ExpiryNeverNegative:
                 wallet=w, transaction_type="GRANT_EXPIRY"):
             assert txn.balance_after_micros >= 0
         assert not OutboxEvent.objects.filter(
-            event_type__in=["billing.balance_overage",
-                            "billing.customer_suspended"]).exists()
+            event_type__in=["wallet.balance_overage",
+                            "customer.suspended"]).exists()
 
     def test_expiry_clamped_even_when_invariant_was_dented(self):
         """Defense-in-depth: remaining > balance (corrupted) still cannot
@@ -248,8 +248,8 @@ class TestG3ExpiryNeverNegative:
         assert txn.amount_micros == -4_000_000
         assert txn.balance_after_micros == 0
         assert not OutboxEvent.objects.filter(
-            event_type__in=["billing.balance_overage",
-                            "billing.customer_suspended"]).exists()
+            event_type__in=["wallet.balance_overage",
+                            "customer.suspended"]).exists()
 
 
 @pytest.mark.django_db

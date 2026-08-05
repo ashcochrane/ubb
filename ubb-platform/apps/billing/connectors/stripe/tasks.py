@@ -13,7 +13,7 @@ from apps.billing.locking import lock_for_billing, lock_top_up_attempt
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
 from apps.platform.events.outbox import write_event
-from apps.platform.events.schemas import AutoTopupRequiresAction
+from apps.platform.events.schemas import AutoTopUpRequiresAction
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def charge_auto_topup_task(attempt_id):
                     attempt.stripe_payment_intent_id = pi.id if hasattr(pi, "id") else pi
                 attempt.failure_reason = {"error_type": "AuthenticationRequired", "code": "authentication_required"}
                 attempt.save(update_fields=["status", "stripe_payment_intent_id", "failure_reason", "updated_at"])
-                write_event(AutoTopupRequiresAction(
+                write_event(AutoTopUpRequiresAction(
                     tenant_id=str(attempt.customer.tenant_id), customer_id=str(attempt.customer_id),
                     attempt_id=str(attempt.id), amount_micros=attempt.amount_micros, code="authentication_required"))
             return

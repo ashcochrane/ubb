@@ -35,11 +35,27 @@ ERR, WARN = contract_gate.LEVEL_ERR, contract_gate.LEVEL_WARN
 HTTP_METHODS = frozenset(
     {"GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"})
 
+#: oasdiff's non-operation sections. A finding here carries no operation and no
+#: path, so its entry opens with the section instead — see `component_finding`.
+SECTIONS = frozenset({"components"})
+
 
 def finding(operation="GET", path="/api/v1/margin/", text="api path removed "
             "without deprecation", level=ERR):
     """One oasdiff `--format json` finding, trimmed to the fields we read."""
     return {"operation": operation, "path": path, "text": text, "level": level}
+
+
+def component_finding(text="webhook `billing.balance_low` removed", level=ERR):
+    """A COMPONENT-level finding, verbatim in shape from oasdiff 1.23.0.
+
+    Note what is NOT here: `operation` and `path`. That is the whole point —
+    the gate read both unconditionally and raised KeyError on the first webhook
+    removal since the baseline was tagged, which is to say it could not run at
+    all for the change #222 made.
+    """
+    return {"id": "webhook-removed", "section": "components",
+            "text": text, "level": level}
 
 
 class TestEntryFor:
@@ -200,6 +216,59 @@ class TestReview:
         assert report.ok
 
 
+class TestComponentLevelFindings:
+    """A finding about no operation — the shape a webhook rename produces (#222).
+
+    Every assertion below was settled by running oasdiff 1.23.0 against the real
+    baseline, not inferred from its source. The first reading of its matcher was
+    that a missing operation and path match anything, on the reasoning that Go's
+    `strings.Contains(line, "")` is true of every line; `_cross_check` disproved
+    it in one run — a line carrying only the finding text suppresses nothing,
+    and one carrying `components` as well suppresses exactly its own finding.
+    """
+
+    def test_the_entry_opens_with_the_section_not_with_blanks(self):
+        assert contract_gate.entry_for(component_finding()) == (
+            "components webhook `billing.balance_low` removed")
+
+    def test_a_generated_entry_suppresses_the_finding_it_came_from(self):
+        f = component_finding()
+        assert contract_gate.suppresses(contract_gate.entry_for(f), f)
+
+    def test_the_text_alone_suppresses_nothing(self):
+        """The reading that shipped would have been green here, and oasdiff
+        would have gone on reporting the break as unreviewed."""
+        f = component_finding()
+        assert not contract_gate.suppresses(f["text"], f)
+
+    def test_an_entry_for_one_webhook_does_not_cover_another(self):
+        entry = contract_gate.entry_for(component_finding())
+        assert not contract_gate.suppresses(
+            entry, component_finding(text="webhook `margin.provider_cost_spike` "
+                                          "removed"))
+
+    def test_an_operation_finding_still_ignores_its_section(self):
+        """`section` fills the slot only when there is no operation, so an
+        operation-level entry does not suddenly have to name `paths` — which
+        would make every entry committed before #222 inert at once.
+        """
+        f = finding() | {"section": "paths"}
+        assert contract_gate.entry_for(f) == (
+            "GET /api/v1/margin/ api path removed without deprecation")
+        assert contract_gate.suppresses(contract_gate.entry_for(f), f)
+
+    def test_a_recorded_component_break_leaves_a_clean_report(self):
+        f = component_finding()
+        report = contract_gate.review(
+            [f], err_entries=[(1, contract_gate.entry_for(f))], warn_entries=[])
+        assert report.ok
+
+    def test_an_unrecorded_component_break_is_unreviewed(self):
+        f = component_finding()
+        report = contract_gate.review([f], err_entries=[], warn_entries=[])
+        assert report.unreviewed == [f]
+
+
 class TestCommittedSuppressionFiles:
     """The committed files, checked without oasdiff — CI runs the real
     comparison, but a hand-typed finding is catchable right here."""
@@ -207,15 +276,29 @@ class TestCommittedSuppressionFiles:
     @pytest.mark.parametrize("name", [contract_gate.ERR_IGNORE_NAME,
                                       contract_gate.WARN_IGNORE_NAME])
     def test_every_entry_is_a_finding_not_prose(self, name):
+        """Two legal shapes, and nothing else.
+
+        An OPERATION-level entry opens with an HTTP method and an `/api/v1/`
+        path. A COMPONENT-level one opens with its section instead, because the
+        finding carries no operation and no path — a webhook is a published
+        event, not a route (#222). Widening to admit the second shape is not
+        loosening the rule: prose still opens with neither, which is the whole
+        thing this test refuses.
+        """
         entries = contract_gate.parse_entries(
             (GIT_ROOT / "openapi" / name).read_text(encoding="utf-8"))
         assert entries, f"{name} has no entries — did the baseline move?"
         for lineno, entry in entries:
-            operation, _, rest = entry.partition(" ")
-            assert operation in HTTP_METHODS, (
+            head, _, rest = entry.partition(" ")
+            assert head in HTTP_METHODS or head in SECTIONS, (
                 f"{name}:{lineno} is not a generated finding — human metadata "
                 f"belongs on a `#` comment line: {entry!r}")
-            assert rest.startswith("/api/v1/"), f"{name}:{lineno}: {entry!r}"
+            if head in HTTP_METHODS:
+                assert rest.startswith("/api/v1/"), f"{name}:{lineno}: {entry!r}"
+            else:
+                assert rest, (
+                    f"{name}:{lineno} is a bare section with no finding text — "
+                    f"it would suppress every component finding: {entry!r}")
 
     @pytest.mark.parametrize("name", [contract_gate.ERR_IGNORE_NAME,
                                       contract_gate.WARN_IGNORE_NAME])

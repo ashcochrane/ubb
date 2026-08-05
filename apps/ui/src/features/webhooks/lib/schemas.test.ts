@@ -109,9 +109,60 @@ describe("groupedEventTypes", () => {
     const values = groups.flatMap((group) => group.options.map((o) => o.value));
     expect(values).toHaveLength(WEBHOOK_EVENT_TYPES.length);
     expect(values).not.toContain("*");
-    const billing = groups.find((group) => group.key === "billing");
-    expect(billing?.label).toBe("Billing");
-    expect(billing?.options.map((o) => o.label)).toContain("Balance low");
+    const wallet = groups.find((group) => group.key === "wallet");
+    expect(wallet?.label).toBe("Wallet");
+    expect(wallet?.options.map((o) => o.label)).toContain("Balance low");
+  });
+
+  // #222: the namespace belongs to the thing whose state changed, so the
+  // picker's shape changes with the catalogue. `billing` was a product and
+  // `margin` a measure, and neither may own a group.
+  it("offers no group for a product or a measure", () => {
+    const keys = groupedEventTypes().map((group) => group.key);
+    expect(keys).not.toContain("billing");
+    expect(keys).not.toContain("margin");
+  });
+
+  it("splits the old billing group across the subjects that own it", () => {
+    const groups = groupedEventTypes();
+    const optionsOf = (key: string) =>
+      groups.find((group) => group.key === key)?.options.map((o) => o.value) ?? [];
+
+    expect(optionsOf("wallet")).toEqual([
+      "wallet.balance_critical",
+      "wallet.balance_low",
+      "wallet.balance_overage",
+    ]);
+    expect(optionsOf("customer")).toContain("customer.suspended");
+    expect(optionsOf("top_up")).toEqual(["top_up.requested"]);
+    expect(optionsOf("withdrawal")).toEqual(["withdrawal.requested"]);
+    expect(optionsOf("credit_grant")).toEqual([
+      "credit_grant.expired",
+      "credit_grant.expiring",
+    ]);
+  });
+
+  it("splits the old margin group across the subjects the alerts are about", () => {
+    const groups = groupedEventTypes();
+    const optionsOf = (key: string) =>
+      groups.find((group) => group.key === key)?.options.map((o) => o.value) ?? [];
+
+    expect(optionsOf("customer")).toContain("customer.unprofitable");
+    expect(optionsOf("provider")).toEqual(["provider.cost_spike"]);
+  });
+
+  it("gives every regrouped event wording rather than a placeholder", () => {
+    // #155 §9.2 — a value must never reach a tenant as a blank. `humanize`
+    // answers "—" for the empty string, so the placeholder is what a name with
+    // no wording actually looks like here, and both are refused.
+    for (const group of groupedEventTypes()) {
+      expect(group.label).not.toBe("");
+      expect(group.label).not.toBe("—");
+      for (const option of group.options) {
+        expect(option.label).not.toBe("");
+        expect(option.label).not.toBe("—");
+      }
+    }
   });
 });
 

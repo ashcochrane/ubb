@@ -13,7 +13,7 @@ class StripeConnectorConfig(AppConfig):
         )
 
         handler_registry.register(
-            "billing.balance_low",
+            "wallet.balance_low",
             "stripe_connector.auto_topup",
             handle_balance_low_stripe,
             requires_product="billing",

@@ -37,7 +37,7 @@ def _payload(t, c, billed):
 
 def _suspend_events(cid):
     return OutboxEvent.objects.filter(
-        event_type="billing.customer_suspended", payload__customer_id=str(cid))
+        event_type="customer.suspended", payload__customer_id=str(cid))
 
 
 @pytest.mark.django_db

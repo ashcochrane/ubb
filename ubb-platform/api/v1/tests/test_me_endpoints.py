@@ -239,7 +239,7 @@ class WidgetTopUpReplayTest(TestCase):
             TopUpAttempt.objects.filter(customer=self.customer).count(), 1)
         self.assertEqual(
             OutboxEvent.objects.filter(
-                event_type="billing.topup_requested").count(), 1)
+                event_type="top_up.requested").count(), 1)
 
 
 class WidgetGrantsEnvelopeTest(TestCase):
