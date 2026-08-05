@@ -6,7 +6,8 @@ from ninja import Schema, Field
 from pydantic import field_validator
 
 from api.v1.pagination import Paginated
-from core.money import DEFAULT_CURRENCY, MisalignedAmount, assert_aligned, minor_units
+from core.exceptions import MisalignedAmount
+from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
 # concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
@@ -16,7 +17,7 @@ from core.money import DEFAULT_CURRENCY, MisalignedAmount, assert_aligned, minor
 # schema; endpoints answer ``page(qs, cursor, limit, serialize=<it>)``.
 
 
-def _whole_minor_units(value):
+def whole_minor_units(value, message=None):
     """Refuse inbound money that is not a whole minor unit of the currency.
 
     R3 §5.4 keeps the *inward* boundaries strict: unlike a computed invoice
@@ -25,15 +26,18 @@ def _whole_minor_units(value):
 
     Request validation runs before any tenant is resolved, so it can only ask
     the platform's default currency. Admitting a second currency means moving
-    this check to somewhere a tenant is in scope — the parameter is what makes
-    that a move rather than an excavation.
+    this check to somewhere a tenant is in scope — the parameter on the
+    ``core.money`` helpers is what makes that a move rather than an excavation.
+
+    ``message`` overrides the rejection text: the widget surface (me_endpoints)
+    words the same rule differently, and that wording is part of its answer.
     """
     try:
         assert_aligned(value, DEFAULT_CURRENCY)
     except MisalignedAmount:
-        raise ValueError(
+        raise ValueError(message or (
             f"must be divisible by {minor_units(DEFAULT_CURRENCY):_} (whole cents)"
-        ) from None
+        )) from None
     return value
 
 
@@ -308,7 +312,7 @@ class ConfigureAutoTopUpRequest(Schema):
     @field_validator("top_up_amount_micros")
     @classmethod
     def top_up_amount_micros_divisible(cls, v):
-        return _whole_minor_units(v)
+        return whole_minor_units(v)
 
 
 class CreateTopUpRequest(Schema):
@@ -322,7 +326,7 @@ class CreateTopUpRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        return _whole_minor_units(v)
+        return whole_minor_units(v)
 
 
 class TopUpCheckoutResponse(Schema):
@@ -344,7 +348,7 @@ class WithdrawRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        return _whole_minor_units(v)
+        return whole_minor_units(v)
 
 
 class RefundRequest(Schema):
@@ -479,7 +483,7 @@ class CreateGrantRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        return _whole_minor_units(v)
+        return whole_minor_units(v)
 
 
 class GrantOut(Schema):

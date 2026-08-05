@@ -113,9 +113,11 @@ def repair_subscription_invoice(tenant, stripe_invoice_id, inv, new_status):
         row.status = new_status
         if new_status == "paid" and not row.paid_at:
             row.paid_at = timezone.now()
-            # The tenant's currency, matching the webhook fast path this
-            # repairs after (api/v1/webhooks.py); a foreign-currency invoice is
-            # quarantined, not converted (money model §4.3).
+            # The tenant's currency, matching the webhook fast path this poller
+            # repairs after (api/v1/webhooks.py) — the two must agree or the
+            # repair would rewrite the amount. See that site for why it is not
+            # inv.currency, and for the foreign-currency quarantine that §4.3
+            # hands to #152/#153 and that does not exist yet.
             row.amount_paid_micros = from_minor(
                 getattr(inv, "amount_paid", 0) or 0,
                 (tenant.default_currency or DEFAULT_CURRENCY).lower())

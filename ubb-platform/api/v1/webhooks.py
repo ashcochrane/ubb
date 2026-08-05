@@ -222,12 +222,16 @@ def _reconcile_customer_invoice(event, *, new_status):
         ).first()
         if not sub:
             return
-        # The tenant's currency, not inv.currency: a connected account may hold
-        # a subscription in a currency UBB never admitted, and a Stripe amount
-        # in one is not a thing this conversion can honestly denominate. Such
-        # invoices are already mirrored with their own currency on the row and
-        # are quarantined — flagged and excluded from aggregates — rather than
-        # converted (2026-07-30 money model §4.3).
+        # The tenant's currency, NOT inv.currency. A connected account may hold
+        # a subscription in a currency UBB never admitted, and this conversion
+        # cannot honestly denominate an amount in one. Using inv.currency would
+        # turn that into a raised UnknownCurrency inside a webhook; using the
+        # tenant's reproduces exactly what the bare * 10_000 did before, since
+        # every admitted currency is two-decimal. The row still stores the
+        # invoice's own currency below, so the mismatch stays visible. The
+        # decided fix is to quarantine foreign-currency rows — flag them and
+        # exclude them from aggregates — which does NOT exist yet: §4.3 of the
+        # 2026-07-30 money model hands it to #152/#153.
         currency = (sub.tenant.default_currency or DEFAULT_CURRENCY).lower()
         with transaction.atomic():
             row, _created = SubscriptionInvoice.objects.select_for_update().get_or_create(

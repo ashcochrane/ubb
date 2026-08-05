@@ -11,6 +11,20 @@ from core.money import DEFAULT_CURRENCY, from_minor, to_minor
 logger = logging.getLogger(__name__)
 
 
+def _floor_to_minor_unit(amount_micros, currency):
+    """Floor to a whole minor unit, DROPPING the remainder.
+
+    This is the one place UBB still drops money. R3 says the remainder is
+    carried, never dropped — the usage-invoice path already does that via
+    PostpaidResidualLedger, and #199 ("The platform fee carries its
+    remainder") gives the platform fee the equivalent carry record. Kept
+    behaviour-identical here so the routing change proves nothing else moved;
+    the discard is named and in one place so #199 has one function to change.
+    """
+    whole, _dropped = to_minor(amount_micros, currency)
+    return from_minor(whole, currency)
+
+
 class TenantBillingService:
     @staticmethod
     def get_or_create_current_period(tenant):
@@ -106,13 +120,7 @@ class TenantBillingService:
                 elif config.fee_type == "percentage":
                     pct = Decimal(str(config.config.get("percentage", "0")))
                     fee = int(Decimal(period.total_usage_cost_micros) * pct / Decimal(100))
-                    # Floor to the minor unit. The discarded remainder is the
-                    # one place UBB still drops money (R3 says carry it); the
-                    # `_` is deliberate and is corrected by the fee-carry
-                    # ticket that follows — kept behaviour-identical here so
-                    # the routing change proves nothing else moved.
-                    whole, _dropped = to_minor(fee, fee_currency)
-                    fee = from_minor(whole, fee_currency)
+                    fee = _floor_to_minor_unit(fee, fee_currency)
                 else:
                     continue
 
@@ -131,10 +139,7 @@ class TenantBillingService:
                 * billing_config.platform_fee_percentage
                 / Decimal(100)
             )
-            fee = int(raw_fee)
-            # Same floor, same dropped remainder, same successor ticket.
-            whole, _dropped = to_minor(fee, fee_currency)
-            fee = from_minor(whole, fee_currency)
+            fee = _floor_to_minor_unit(int(raw_fee), fee_currency)
             total_fee = fee
             line_items.append({
                 "product": "platform",

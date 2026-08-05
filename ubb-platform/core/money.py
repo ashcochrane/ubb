@@ -38,6 +38,8 @@ conversion is :func:`to_minor` — and it is deliberately not a place to fix an
 unaligned amount, because by then the remainder has nowhere to go.
 """
 
+from core.exceptions import MisalignedAmount, UnknownCurrency
+
 # A micro is a millionth of a currency unit; every stored money column is an
 # exact whole number of these.
 MICROS_PER_UNIT = 1_000_000
@@ -71,14 +73,6 @@ SUPPORTED_CURRENCIES = frozenset(_MINOR_UNIT_EXPONENT)
 DEFAULT_CURRENCY = "usd"
 
 
-class UnknownCurrency(ValueError):
-    """A currency whose minor unit this module does not know."""
-
-
-class MisalignedAmount(ValueError):
-    """An amount that still carries a sub-minor-unit remainder at a boundary."""
-
-
 def minor_units(currency: str) -> int:
     """Micros in one minor unit of ``currency`` — the multiplier.
 
@@ -86,9 +80,10 @@ def minor_units(currency: str) -> int:
     unit is a million micros. This is the number the twenty sites used to
     hard-code.
 
-    Raises :class:`UnknownCurrency` rather than falling back to a default: a
-    caller with no currency in hand must say which one it means, or the bug
-    stays invisible until a second currency is admitted.
+    Raises :class:`~core.exceptions.UnknownCurrency` rather than falling back
+    to a default. A call site with no tenant in scope may still choose
+    :data:`DEFAULT_CURRENCY`, but it has to name that choice in its own code
+    where a reader can see it — the helper will not make it silently.
     """
     try:
         exponent = _MINOR_UNIT_EXPONENT[currency.lower()]

@@ -5,14 +5,13 @@ import time
 import stripe
 from django.conf import settings
 
-from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
-from core.money import (
-    DEFAULT_CURRENCY,
+from core.exceptions import (
     MisalignedAmount,
-    assert_aligned,
-    minor_units,
-    to_minor,
+    StripeTransientError,
+    StripePaymentError,
+    StripeFatalError,
 )
+from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units, to_minor
 
 assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
 
@@ -39,6 +38,15 @@ def micros_to_cents(amount_micros, currency=DEFAULT_CURRENCY):
     round the remainder away here — by this point it has nowhere to be carried
     to. It is translated to StripeFatalError because a misaligned amount at the
     Stripe boundary is a non-retryable bug, not a transient failure.
+
+    ``currency`` defaults, and today every caller takes the default. That is
+    honest rather than aspirational: the OUTBOUND Stripe boundary is still
+    USD-only in the other half too — the ``currency="usd"`` literals sent
+    alongside these amounts (stripe_api.py, receipts.py, and the platform-fee
+    invoice item below). Making this argument real means fixing that pair
+    together, which needs the live Stripe money test in a second currency that
+    §7.2 defers. The parameter exists so that is a change of arguments rather
+    than an excavation.
     """
     try:
         assert_aligned(amount_micros, currency)

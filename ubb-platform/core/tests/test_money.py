@@ -12,12 +12,11 @@ twenty sites that used to hard-code the multiplier.
 """
 import pytest
 
+from core.exceptions import MisalignedAmount, UBBError, UnknownCurrency
 from core.money import (
     DEFAULT_CURRENCY,
     MICROS_PER_UNIT,
     SUPPORTED_CURRENCIES,
-    MisalignedAmount,
-    UnknownCurrency,
     assert_aligned,
     from_minor,
     minor_units,
@@ -256,3 +255,11 @@ class TestSupportedCurrencies:
         from core import money
 
         assert SUPPORTED_CURRENCIES == frozenset(money._MINOR_UNIT_EXPONENT)
+
+
+class TestErrorsAreDomainExceptions:
+    """coding-standards.md: raise from the UBBError taxonomy, never bare ones."""
+
+    def test_both_money_errors_are_ubb_errors(self):
+        assert issubclass(UnknownCurrency, UBBError)
+        assert issubclass(MisalignedAmount, UBBError)
