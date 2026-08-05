@@ -13837,10 +13837,10 @@
   },
   "servers": [],
   "webhooks": {
-    "auto_topup.requires_action": {
+    "auto_top_up.requires_action": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_auto_topup_requires_action",
+        "operationId": "webhook_auto_top_up_requires_action",
         "parameters": [
           {
             "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
@@ -13905,7 +13905,7 @@
                       "customer_id",
                       "attempt_id"
                     ],
-                    "title": "AutoTopupRequiresAction",
+                    "title": "AutoTopUpRequiresAction",
                     "type": "object"
                   },
                   "event_id": {
@@ -13913,7 +13913,7 @@
                     "type": "string"
                   },
                   "event_type": {
-                    "const": "auto_topup.requires_action",
+                    "const": "auto_top_up.requires_action",
                     "type": "string"
                   },
                   "livemode": {
@@ -13947,916 +13947,7 @@
             "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
           }
         },
-        "summary": "auto_topup.requires_action delivery"
-      }
-    },
-    "billing.balance_critical": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_balance_critical",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "balance_micros": {
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "min_balance_micros": {
-                        "title": "Min Balance Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "balance_micros",
-                      "min_balance_micros"
-                    ],
-                    "title": "BalanceCritical",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.balance_critical",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.balance_critical delivery"
-      }
-    },
-    "billing.balance_low": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_balance_low",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "balance_micros": {
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "suggested_topup_micros": {
-                        "title": "Suggested Topup Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      },
-                      "threshold_micros": {
-                        "title": "Threshold Micros",
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "balance_micros",
-                      "threshold_micros",
-                      "suggested_topup_micros"
-                    ],
-                    "title": "BalanceLow",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.balance_low",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.balance_low delivery"
-      }
-    },
-    "billing.balance_overage": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_balance_overage",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "overage_limit_micros": {
-                        "default": 0,
-                        "title": "Overage Limit Micros",
-                        "type": "integer"
-                      },
-                      "overage_micros": {
-                        "default": 0,
-                        "title": "Overage Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id"
-                    ],
-                    "title": "BalanceOverage",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.balance_overage",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.balance_overage delivery"
-      }
-    },
-    "billing.credit_grant_expired": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_credit_grant_expired",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "expired_micros": {
-                        "default": 0,
-                        "title": "Expired Micros",
-                        "type": "integer"
-                      },
-                      "grant_id": {
-                        "title": "Grant Id",
-                        "type": "string"
-                      },
-                      "kind": {
-                        "default": "",
-                        "title": "Kind",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "grant_id"
-                    ],
-                    "title": "CreditGrantExpired",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.credit_grant_expired",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.credit_grant_expired delivery"
-      }
-    },
-    "billing.credit_grant_expiring": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_credit_grant_expiring",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "expires_at": {
-                        "default": "",
-                        "title": "Expires At",
-                        "type": "string"
-                      },
-                      "grant_id": {
-                        "title": "Grant Id",
-                        "type": "string"
-                      },
-                      "kind": {
-                        "default": "",
-                        "title": "Kind",
-                        "type": "string"
-                      },
-                      "remaining_micros": {
-                        "default": 0,
-                        "title": "Remaining Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "grant_id"
-                    ],
-                    "title": "CreditGrantExpiring",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.credit_grant_expiring",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.credit_grant_expiring delivery"
-      }
-    },
-    "billing.customer_suspended": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_customer_suspended",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "balance_micros": {
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "reason": {
-                        "title": "Reason",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "reason",
-                      "balance_micros"
-                    ],
-                    "title": "CustomerSuspended",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.customer_suspended",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.customer_suspended delivery"
-      }
-    },
-    "billing.topup_requested": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_topup_requested",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "amount_micros": {
-                        "title": "Amount Micros",
-                        "type": "integer"
-                      },
-                      "cancel_url": {
-                        "title": "Cancel Url",
-                        "type": "string"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "success_url": {
-                        "title": "Success Url",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      },
-                      "trigger": {
-                        "title": "Trigger",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "amount_micros",
-                      "trigger",
-                      "success_url",
-                      "cancel_url"
-                    ],
-                    "title": "TopUpRequested",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.topup_requested",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.topup_requested delivery"
-      }
-    },
-    "billing.withdrawal_requested": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_billing_withdrawal_requested",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "amount_micros": {
-                        "title": "Amount Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "idempotency_key": {
-                        "default": "",
-                        "title": "Idempotency Key",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      },
-                      "transaction_id": {
-                        "title": "Transaction Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "amount_micros",
-                      "transaction_id"
-                    ],
-                    "title": "WithdrawalRequested",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "billing.withdrawal_requested",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "billing.withdrawal_requested delivery"
+        "summary": "auto_top_up.requires_action delivery"
       }
     },
     "budget.threshold_reached": {
@@ -14982,6 +14073,242 @@
         "summary": "budget.threshold_reached delivery"
       }
     },
+    "credit_grant.expired": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_credit_grant_expired",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "balance_micros": {
+                        "default": 0,
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "expired_micros": {
+                        "default": 0,
+                        "title": "Expired Micros",
+                        "type": "integer"
+                      },
+                      "grant_id": {
+                        "title": "Grant Id",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "default": "",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "grant_id"
+                    ],
+                    "title": "CreditGrantExpired",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "credit_grant.expired",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "credit_grant.expired delivery"
+      }
+    },
+    "credit_grant.expiring": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_credit_grant_expiring",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "expires_at": {
+                        "default": "",
+                        "title": "Expires At",
+                        "type": "string"
+                      },
+                      "grant_id": {
+                        "title": "Grant Id",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "default": "",
+                        "title": "Kind",
+                        "type": "string"
+                      },
+                      "remaining_micros": {
+                        "default": 0,
+                        "title": "Remaining Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "grant_id"
+                    ],
+                    "title": "CreditGrantExpiring",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "credit_grant.expiring",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "credit_grant.expiring delivery"
+      }
+    },
     "customer.deleted": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -15078,6 +14405,232 @@
           }
         },
         "summary": "customer.deleted delivery"
+      }
+    },
+    "customer.suspended": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_suspended",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "balance_micros": {
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "title": "Reason",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "reason",
+                      "balance_micros"
+                    ],
+                    "title": "CustomerSuspended",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer.suspended",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer.suspended delivery"
+      }
+    },
+    "customer.unprofitable": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_unprofitable",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "gross_margin_micros": {
+                        "default": 0,
+                        "title": "Gross Margin Micros",
+                        "type": "integer"
+                      },
+                      "margin_pct": {
+                        "default": 0.0,
+                        "title": "Margin Pct",
+                        "type": "number"
+                      },
+                      "period_start": {
+                        "title": "Period Start",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "threshold_pct": {
+                        "default": 0.0,
+                        "title": "Threshold Pct",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "period_start"
+                    ],
+                    "title": "CustomerUnprofitable",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer.unprofitable",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer.unprofitable delivery"
       }
     },
     "invitation.created": {
@@ -15298,247 +14851,6 @@
         "summary": "invitation.revoked delivery"
       }
     },
-    "margin.customer_unprofitable": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_margin_customer_unprofitable",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "gross_margin_micros": {
-                        "default": 0,
-                        "title": "Gross Margin Micros",
-                        "type": "integer"
-                      },
-                      "margin_pct": {
-                        "default": 0.0,
-                        "title": "Margin Pct",
-                        "type": "number"
-                      },
-                      "period_start": {
-                        "title": "Period Start",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      },
-                      "threshold_pct": {
-                        "default": 0.0,
-                        "title": "Threshold Pct",
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "period_start"
-                    ],
-                    "title": "MarginCustomerUnprofitable",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "margin.customer_unprofitable",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "margin.customer_unprofitable delivery"
-      }
-    },
-    "margin.provider_cost_spike": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_margin_provider_cost_spike",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "current_margin_pct": {
-                        "default": 0.0,
-                        "title": "Current Margin Pct",
-                        "type": "number"
-                      },
-                      "current_provider_cost_micros": {
-                        "default": 0,
-                        "title": "Current Provider Cost Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "period_start": {
-                        "title": "Period Start",
-                        "type": "string"
-                      },
-                      "prev_margin_pct": {
-                        "default": 0.0,
-                        "title": "Prev Margin Pct",
-                        "type": "number"
-                      },
-                      "prev_provider_cost_micros": {
-                        "default": 0,
-                        "title": "Prev Provider Cost Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "period_start"
-                    ],
-                    "title": "MarginProviderCostSpike",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "margin.provider_cost_spike",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "margin.provider_cost_spike delivery"
-      }
-    },
     "member.activated": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -15651,6 +14963,129 @@
           }
         },
         "summary": "member.activated delivery"
+      }
+    },
+    "provider.cost_spike": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_provider_cost_spike",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "current_margin_pct": {
+                        "default": 0.0,
+                        "title": "Current Margin Pct",
+                        "type": "number"
+                      },
+                      "current_provider_cost_micros": {
+                        "default": 0,
+                        "title": "Current Provider Cost Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "period_start": {
+                        "title": "Period Start",
+                        "type": "string"
+                      },
+                      "prev_margin_pct": {
+                        "default": 0.0,
+                        "title": "Prev Margin Pct",
+                        "type": "number"
+                      },
+                      "prev_provider_cost_micros": {
+                        "default": 0,
+                        "title": "Prev Provider Cost Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "period_start"
+                    ],
+                    "title": "ProviderCostSpike",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "provider.cost_spike",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "provider.cost_spike delivery"
       }
     },
     "referral.created": {
@@ -17421,10 +16856,10 @@
         "summary": "tenant.api_key_rotated delivery"
       }
     },
-    "usage.invoice_push_failed_permanent": {
+    "top_up.requested": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_usage_invoice_push_failed_permanent",
+        "operationId": "webhook_top_up_requested",
         "parameters": [
           {
             "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
@@ -17461,40 +16896,40 @@
                 "properties": {
                   "data": {
                     "properties": {
+                      "amount_micros": {
+                        "title": "Amount Micros",
+                        "type": "integer"
+                      },
+                      "cancel_url": {
+                        "title": "Cancel Url",
+                        "type": "string"
+                      },
                       "customer_id": {
                         "title": "Customer Id",
                         "type": "string"
                       },
-                      "last_error": {
-                        "default": "",
-                        "title": "Last Error",
-                        "type": "string"
-                      },
-                      "period_start": {
-                        "title": "Period Start",
-                        "type": "string"
-                      },
-                      "push_attempts": {
-                        "default": 0,
-                        "title": "Push Attempts",
-                        "type": "integer"
-                      },
-                      "stripe_invoice_id": {
-                        "default": "",
-                        "title": "Stripe Invoice Id",
+                      "success_url": {
+                        "title": "Success Url",
                         "type": "string"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "trigger": {
+                        "title": "Trigger",
                         "type": "string"
                       }
                     },
                     "required": [
                       "tenant_id",
                       "customer_id",
-                      "period_start"
+                      "amount_micros",
+                      "trigger",
+                      "success_url",
+                      "cancel_url"
                     ],
-                    "title": "UsageInvoicePushFailedPermanent",
+                    "title": "TopUpRequested",
                     "type": "object"
                   },
                   "event_id": {
@@ -17502,7 +16937,7 @@
                     "type": "string"
                   },
                   "event_type": {
-                    "const": "usage.invoice_push_failed_permanent",
+                    "const": "top_up.requested",
                     "type": "string"
                   },
                   "livemode": {
@@ -17536,130 +16971,7 @@
             "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
           }
         },
-        "summary": "usage.invoice_push_failed_permanent delivery"
-      }
-    },
-    "usage.invoice_pushed": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_usage_invoice_pushed",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "line_item_count": {
-                        "default": 0,
-                        "title": "Line Item Count",
-                        "type": "integer"
-                      },
-                      "period_start": {
-                        "title": "Period Start",
-                        "type": "string"
-                      },
-                      "residual_micros": {
-                        "default": 0,
-                        "title": "Residual Micros",
-                        "type": "integer"
-                      },
-                      "stripe_invoice_id": {
-                        "default": "",
-                        "title": "Stripe Invoice Id",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      },
-                      "total_billed_micros": {
-                        "default": 0,
-                        "title": "Total Billed Micros",
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "period_start"
-                    ],
-                    "title": "UsageInvoicePushed",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "usage.invoice_pushed",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "usage.invoice_pushed delivery"
+        "summary": "top_up.requested delivery"
       }
     },
     "usage.recorded": {
@@ -17949,6 +17261,694 @@
           }
         },
         "summary": "usage.refunded delivery"
+      }
+    },
+    "usage_invoice.push_failed_permanent": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_usage_invoice_push_failed_permanent",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "last_error": {
+                        "default": "",
+                        "title": "Last Error",
+                        "type": "string"
+                      },
+                      "period_start": {
+                        "title": "Period Start",
+                        "type": "string"
+                      },
+                      "push_attempts": {
+                        "default": 0,
+                        "title": "Push Attempts",
+                        "type": "integer"
+                      },
+                      "stripe_invoice_id": {
+                        "default": "",
+                        "title": "Stripe Invoice Id",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "period_start"
+                    ],
+                    "title": "UsageInvoicePushFailedPermanent",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "usage_invoice.push_failed_permanent",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "usage_invoice.push_failed_permanent delivery"
+      }
+    },
+    "usage_invoice.pushed": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_usage_invoice_pushed",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "line_item_count": {
+                        "default": 0,
+                        "title": "Line Item Count",
+                        "type": "integer"
+                      },
+                      "period_start": {
+                        "title": "Period Start",
+                        "type": "string"
+                      },
+                      "residual_micros": {
+                        "default": 0,
+                        "title": "Residual Micros",
+                        "type": "integer"
+                      },
+                      "stripe_invoice_id": {
+                        "default": "",
+                        "title": "Stripe Invoice Id",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "total_billed_micros": {
+                        "default": 0,
+                        "title": "Total Billed Micros",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "period_start"
+                    ],
+                    "title": "UsageInvoicePushed",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "usage_invoice.pushed",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "usage_invoice.pushed delivery"
+      }
+    },
+    "wallet.balance_critical": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_wallet_balance_critical",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "balance_micros": {
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "min_balance_micros": {
+                        "title": "Min Balance Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "balance_micros",
+                      "min_balance_micros"
+                    ],
+                    "title": "BalanceCritical",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "wallet.balance_critical",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "wallet.balance_critical delivery"
+      }
+    },
+    "wallet.balance_low": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_wallet_balance_low",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "balance_micros": {
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "suggested_topup_micros": {
+                        "title": "Suggested Topup Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "threshold_micros": {
+                        "title": "Threshold Micros",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "balance_micros",
+                      "threshold_micros",
+                      "suggested_topup_micros"
+                    ],
+                    "title": "BalanceLow",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "wallet.balance_low",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "wallet.balance_low delivery"
+      }
+    },
+    "wallet.balance_overage": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_wallet_balance_overage",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "balance_micros": {
+                        "default": 0,
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "overage_limit_micros": {
+                        "default": 0,
+                        "title": "Overage Limit Micros",
+                        "type": "integer"
+                      },
+                      "overage_micros": {
+                        "default": 0,
+                        "title": "Overage Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id"
+                    ],
+                    "title": "BalanceOverage",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "wallet.balance_overage",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "wallet.balance_overage delivery"
+      }
+    },
+    "withdrawal.requested": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_withdrawal_requested",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "amount_micros": {
+                        "title": "Amount Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "idempotency_key": {
+                        "default": "",
+                        "title": "Idempotency Key",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "transaction_id": {
+                        "title": "Transaction Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "amount_micros",
+                      "transaction_id"
+                    ],
+                    "title": "WithdrawalRequested",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "withdrawal.requested",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "withdrawal.requested delivery"
       }
     }
   }

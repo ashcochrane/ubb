@@ -210,9 +210,21 @@ across this catalogue and the audit registry (`auto_topup` here, `auto_top_up`
 there). **#205 renames none of them.** An event
 name is a public contract, so the rename belongs to the slice that rebuilds the
 event's subject and can carry the spec, the SDK and the console with it in one
-vertical — slices 5, 6, 7 and 8, per entry. **G13 seeds nothing**: no module in
-the tree binds the bare word `tasks`, so it ships with negative controls instead
-of entries, exactly as G10 does.
+vertical. **G13 seeds nothing**: no module in the tree binds the bare word
+`tasks`, so it ships with negative controls instead of entries, exactly as G10
+does.
+
+**#222 then paid thirteen of the twenty, and G8's ledger stands at seven owed by
+slices 5 and 6.** The thirteen were the ones with no subject being rebuilt —
+every `billing`, every `margin`, both invoice events and the spelling — so
+"belongs to the slice that rebuilds the subject" named no slice for them, and
+seven had landed on slice 8 by default against a ticket that says nothing about
+renaming public events. Answering that with one act rather than four is
+ADR-0006's Consequences applied literally: the v1 contract breaks deliberately
+*once*, and map #137 constraint 1 makes a clean break available exactly once.
+What remains is not renameable in the same sense — the two Task events SPLIT
+into `killed` and `expired` (#140 §4.3) and the five control events are rewritten
+under #150's four families, so each needs its slice's work first.
 
 Still owed: G7's retired words arrive with #206, in the pull request that
 installs the sweep which finds them.

@@ -120,8 +120,8 @@ class TestOffIsByteForBytePreEnforcement:
         assert c.status == "suspended"                            # baseline
         assert c.suspension_reason == "min_balance_exceeded"
         assert OutboxEvent.objects.filter(
-            event_type="billing.balance_overage").count() == 1    # early warning
+            event_type="wallet.balance_overage").count() == 1    # early warning
         assert OutboxEvent.objects.filter(
-            event_type="billing.customer_suspended").count() == 1
+            event_type="customer.suspended").count() == 1
         assert not OutboxEvent.objects.filter(event_type="stop.fired").exists()
         assert not StopSignalState.objects.filter(owner=c).exists()

@@ -64,13 +64,35 @@ OPENAPI_DIR = Path(__file__).resolve().parent
 GIT_ROOT = OPENAPI_DIR.parent
 
 
+def located(finding: dict) -> tuple[str, str]:
+    """Where a finding says it is — the two parts an entry must name besides text.
+
+    Most findings are about one operation on one path and carry both. A
+    COMPONENT-level one carries neither: `webhook-removed` reports
+    `{"section": "components", "text": "webhook `x` removed"}`, because a
+    webhook is a published event rather than a route a caller invokes. It
+    matches on its SECTION where an operation-level finding matches on its
+    operation, so that is what fills the slot.
+
+    This is oasdiff's behaviour, not an assumption about it — a line carrying
+    only the text suppresses nothing, and one carrying `components` as well
+    suppresses exactly its finding. `_cross_check` re-proves it on every run by
+    comparing this matcher against oasdiff's own `--err-ignore` pass, which is
+    how the first reading here (that a missing part matches anything, as
+    `strings.Contains(line, "")` would) was caught rather than shipped.
+    """
+    return finding.get("operation") or finding.get("section", ""), \
+        finding.get("path", "")
+
+
 def entry_for(finding: dict) -> str:
     """The suppression line for one oasdiff finding.
 
     Operation, path, then oasdiff's own text verbatim — the three parts its
-    matcher looks for.
+    matcher looks for. A finding carrying no operation or path contributes only
+    its text, rather than a line opening with blanks.
     """
-    return f"{finding['operation']} {finding['path']} {finding['text']}"
+    return " ".join(part for part in (*located(finding), finding["text"]) if part)
 
 
 def suppresses(entry: str, finding: dict) -> bool:
@@ -81,8 +103,9 @@ def suppresses(entry: str, finding: dict) -> bool:
     around a generated finding, but may not paraphrase the finding itself.
     """
     line = entry.lower()
-    return (finding["operation"].lower() in line
-            and finding["path"].lower() in line
+    operation, path = located(finding)
+    return (operation.lower() in line
+            and path.lower() in line
             and finding["text"].lower() in line)
 
 
@@ -200,7 +223,7 @@ def _cross_check(ours: list[dict], theirs: list[dict]) -> None:
     a divergence would make that documentation false.
     """
     def key(findings):
-        return sorted((f["operation"], f["path"], f["text"]) for f in findings)
+        return sorted((*located(f), f["text"]) for f in findings)
 
     if key(ours) != key(theirs):
         _fail("this gate and oasdiff's own --err-ignore/--warn-ignore run "

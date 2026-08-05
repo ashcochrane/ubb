@@ -342,7 +342,7 @@ class TestBillingOutboxHandler:
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
         handle_usage_recorded_billing(str(e.id), payload)
         assert OutboxEvent.objects.filter(
-            event_type="billing.balance_overage").count() == 1
+            event_type="wallet.balance_overage").count() == 1
 
     def test_redelivery_does_not_double_debit_or_refire_overage(self):
         import uuid
@@ -425,7 +425,7 @@ class TestBillingHandlerEmitsBalanceLow:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         low_event = OutboxEvent.objects.filter(
-            event_type="billing.balance_low"
+            event_type="wallet.balance_low"
         ).first()
         assert low_event is not None
         assert low_event.payload["balance_micros"] == 4_000_000
@@ -466,7 +466,7 @@ class TestBillingHandlerEmitsBalanceLow:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         assert not OutboxEvent.objects.filter(
-            event_type="billing.balance_low"
+            event_type="wallet.balance_low"
         ).exists()
 
     @pytest.mark.django_db
@@ -496,7 +496,7 @@ class TestBillingHandlerEmitsBalanceLow:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         assert not OutboxEvent.objects.filter(
-            event_type="billing.balance_low"
+            event_type="wallet.balance_low"
         ).exists()
 
 
@@ -532,7 +532,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         suspended_event = OutboxEvent.objects.filter(
-            event_type="billing.customer_suspended"
+            event_type="customer.suspended"
         ).first()
         assert suspended_event is not None
         assert suspended_event.payload["reason"] == "min_balance_exceeded"
@@ -569,5 +569,5 @@ class TestBillingHandlerEmitsCustomerSuspended:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         assert not OutboxEvent.objects.filter(
-            event_type="billing.customer_suspended"
+            event_type="customer.suspended"
         ).exists()

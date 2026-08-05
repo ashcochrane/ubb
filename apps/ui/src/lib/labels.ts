@@ -291,22 +291,17 @@ export const planIntervalLabel = label({ month: "Monthly", year: "Yearly" });
 // Webhooks — the event-type catalog (35 types; "*" = all events)
 
 export const WEBHOOK_EVENT_TYPES = [
-  "auto_topup.requires_action",
-  "billing.balance_critical",
-  "billing.balance_low",
-  "billing.balance_overage",
-  "billing.credit_grant_expired",
-  "billing.credit_grant_expiring",
-  "billing.customer_suspended",
-  "billing.topup_requested",
-  "billing.withdrawal_requested",
+  "auto_top_up.requires_action",
   "budget.threshold_reached",
+  "credit_grant.expired",
+  "credit_grant.expiring",
   "customer.deleted",
+  "customer.suspended",
+  "customer.unprofitable",
   "invitation.created",
   "invitation.revoked",
-  "margin.customer_unprofitable",
-  "margin.provider_cost_spike",
   "member.activated",
+  "provider.cost_spike",
   "referral.created",
   "referral.expired",
   "referral.payout_due",
@@ -322,13 +317,18 @@ export const WEBHOOK_EVENT_TYPES = [
   "tenant.api_key_created",
   "tenant.api_key_revoked",
   "tenant.api_key_rotated",
-  "usage.invoice_push_failed_permanent",
-  "usage.invoice_pushed",
+  "top_up.requested",
   "usage.recorded",
   "usage.refunded",
+  "usage_invoice.push_failed_permanent",
+  "usage_invoice.pushed",
+  "wallet.balance_critical",
+  "wallet.balance_low",
+  "wallet.balance_overage",
+  "withdrawal.requested",
 ] as const;
 
-/** "billing.balance_low" → "Billing — Balance low". */
+/** "wallet.balance_low" → "Wallet — Balance low". */
 export function webhookEventTypeLabel(eventType: string): string {
   if (eventType === "*") return "All events";
   const [group, rest] = eventType.split(".", 2);

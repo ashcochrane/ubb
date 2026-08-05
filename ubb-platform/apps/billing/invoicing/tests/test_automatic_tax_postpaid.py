@@ -76,7 +76,7 @@ class TestPostpaidAutomaticTax:
         assert create.call_count == 1  # parked immediately, no retry burn
         assert "automatic_tax" in rec.last_attempt_error
         alert = OutboxEvent.objects.get(
-            event_type="usage.invoice_push_failed_permanent")
+            event_type="usage_invoice.push_failed_permanent")
         assert "automatic_tax" in alert.payload["last_error"]
 
 

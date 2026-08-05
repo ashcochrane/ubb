@@ -98,3 +98,57 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required pr
 # schema turns that silent no-op into a 422:
 PUT /api/v1/billing/budget request property `enforce_mode` was restricted to a list of enum values
 PUT /api/v1/billing/customers/{customer_id}/budget request property `enforce_mode` was restricted to a list of enum values
+
+# 2026-08-05 the thirteen webhook events named for the state entered (#222).
+# PRE-LIVE LANE — map #137 constraint 1, reaffirmed by migration/cutover §7.1.
+# Not a deprecation, and deliberately not spread out: ADR-0006's Consequences
+# say the v1 contract "breaks deliberately, once", so all thirteen land in one
+# pull request rather than four across slices 5–8. The freedom that makes a
+# clean break available is that no tenant is integrated against v1, it is spent
+# exactly once, and docs/api-compatibility.md carries the standing note naming
+# the day it ends.
+#
+# Every one is a RENAME, not a removal: the event is still published, under the
+# name ADR-0006 §5 gives it. oasdiff reports a rename as a removal plus an
+# addition and only the removal is breaking, which is why thirteen lines appear
+# here and the thirteen new names appear nowhere. A product may not own a
+# namespace (`billing` is a `tenant_product` value), a measure may not own one
+# (`margin` is the figure that moved, not the subject of the alert), the subject
+# belongs in the namespace rather than inside the transition token
+# (`usage.invoice_pushed`), and one concept has one spelling (`auto_topup` had
+# disagreed with the audit registry's `auto_top_up` for as long as both existed).
+#
+#   billing.balance_low                 -> wallet.balance_low
+#   billing.balance_critical            -> wallet.balance_critical
+#   billing.balance_overage             -> wallet.balance_overage
+#   billing.customer_suspended          -> customer.suspended
+#   billing.topup_requested             -> top_up.requested
+#   billing.withdrawal_requested        -> withdrawal.requested
+#   billing.credit_grant_expiring       -> credit_grant.expiring
+#   billing.credit_grant_expired        -> credit_grant.expired
+#   margin.customer_unprofitable        -> customer.unprofitable
+#   margin.provider_cost_spike          -> provider.cost_spike
+#   usage.invoice_pushed                -> usage_invoice.pushed
+#   usage.invoice_push_failed_permanent -> usage_invoice.push_failed_permanent
+#   auto_topup.requires_action          -> auto_top_up.requires_action
+#
+# These are the first COMPONENT-level findings this file has carried, and they
+# read differently for that reason: `components` where every line above names an
+# operation and a path. A webhook is a published event rather than a route a
+# caller invokes, so oasdiff reports it under its section instead — and matches
+# an entry on that section exactly as it matches an operation-level one on its
+# operation. `located()` in contract_gate.py had never met such a finding and
+# raised KeyError rather than running the gate at all.
+components webhook `auto_topup.requires_action` removed
+components webhook `billing.balance_critical` removed
+components webhook `billing.balance_low` removed
+components webhook `billing.balance_overage` removed
+components webhook `billing.credit_grant_expired` removed
+components webhook `billing.credit_grant_expiring` removed
+components webhook `billing.customer_suspended` removed
+components webhook `billing.topup_requested` removed
+components webhook `billing.withdrawal_requested` removed
+components webhook `margin.customer_unprofitable` removed
+components webhook `margin.provider_cost_spike` removed
+components webhook `usage.invoice_push_failed_permanent` removed
+components webhook `usage.invoice_pushed` removed

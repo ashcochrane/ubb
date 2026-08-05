@@ -160,7 +160,7 @@ class CustomerDeleted(EventSchema):
 
 @dataclass(frozen=True)
 class WithdrawalRequested(EventSchema):
-    EVENT_TYPE = "billing.withdrawal_requested"
+    EVENT_TYPE = "withdrawal.requested"
     tenant_id: str
     customer_id: str
     amount_micros: int
@@ -181,7 +181,7 @@ class ReferralPayoutDue(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceLow(EventSchema):
-    EVENT_TYPE = "billing.balance_low"
+    EVENT_TYPE = "wallet.balance_low"
     tenant_id: str
     customer_id: str
     balance_micros: int
@@ -191,7 +191,7 @@ class BalanceLow(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceCritical(EventSchema):
-    EVENT_TYPE = "billing.balance_critical"
+    EVENT_TYPE = "wallet.balance_critical"
     tenant_id: str
     customer_id: str
     balance_micros: int
@@ -200,7 +200,7 @@ class BalanceCritical(EventSchema):
 
 @dataclass(frozen=True)
 class TopUpRequested(EventSchema):
-    EVENT_TYPE = "billing.topup_requested"
+    EVENT_TYPE = "top_up.requested"
     tenant_id: str
     customer_id: str
     amount_micros: int
@@ -211,7 +211,7 @@ class TopUpRequested(EventSchema):
 
 @dataclass(frozen=True)
 class CustomerSuspended(EventSchema):
-    EVENT_TYPE = "billing.customer_suspended"
+    EVENT_TYPE = "customer.suspended"
     tenant_id: str
     customer_id: str
     reason: str
@@ -219,8 +219,8 @@ class CustomerSuspended(EventSchema):
 
 
 @dataclass(frozen=True)
-class MarginCustomerUnprofitable(EventSchema):
-    EVENT_TYPE = "margin.customer_unprofitable"
+class CustomerUnprofitable(EventSchema):
+    EVENT_TYPE = "customer.unprofitable"
     tenant_id: str
     customer_id: str
     period_start: str
@@ -230,8 +230,8 @@ class MarginCustomerUnprofitable(EventSchema):
 
 
 @dataclass(frozen=True)
-class MarginProviderCostSpike(EventSchema):
-    EVENT_TYPE = "margin.provider_cost_spike"
+class ProviderCostSpike(EventSchema):
+    EVENT_TYPE = "provider.cost_spike"
     tenant_id: str
     customer_id: str
     period_start: str
@@ -255,7 +255,7 @@ class BudgetThresholdReached(EventSchema):
 
 @dataclass(frozen=True)
 class UsageInvoicePushed(EventSchema):
-    EVENT_TYPE = "usage.invoice_pushed"
+    EVENT_TYPE = "usage_invoice.pushed"
     tenant_id: str
     customer_id: str
     period_start: str
@@ -267,7 +267,7 @@ class UsageInvoicePushed(EventSchema):
 
 @dataclass(frozen=True)
 class UsageInvoicePushFailedPermanent(EventSchema):
-    EVENT_TYPE = "usage.invoice_push_failed_permanent"
+    EVENT_TYPE = "usage_invoice.push_failed_permanent"
     tenant_id: str
     customer_id: str
     period_start: str
@@ -277,8 +277,8 @@ class UsageInvoicePushFailedPermanent(EventSchema):
 
 
 @dataclass(frozen=True)
-class AutoTopupRequiresAction(EventSchema):
-    EVENT_TYPE = "auto_topup.requires_action"
+class AutoTopUpRequiresAction(EventSchema):
+    EVENT_TYPE = "auto_top_up.requires_action"
     tenant_id: str
     customer_id: str
     attempt_id: str
@@ -288,7 +288,7 @@ class AutoTopupRequiresAction(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceOverage(EventSchema):
-    EVENT_TYPE = "billing.balance_overage"
+    EVENT_TYPE = "wallet.balance_overage"
     tenant_id: str
     customer_id: str
     balance_micros: int = 0
@@ -298,7 +298,7 @@ class BalanceOverage(EventSchema):
 
 @dataclass(frozen=True)
 class CreditGrantExpiring(EventSchema):
-    EVENT_TYPE = "billing.credit_grant_expiring"
+    EVENT_TYPE = "credit_grant.expiring"
     tenant_id: str
     customer_id: str
     grant_id: str
@@ -344,7 +344,7 @@ class TenantApiKeyRevoked(EventSchema):
 
 @dataclass(frozen=True)
 class CreditGrantExpired(EventSchema):
-    EVENT_TYPE = "billing.credit_grant_expired"
+    EVENT_TYPE = "credit_grant.expired"
     tenant_id: str
     customer_id: str
     grant_id: str

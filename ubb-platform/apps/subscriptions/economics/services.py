@@ -119,7 +119,7 @@ class MarginService:
         from django.db import transaction
         from apps.platform.events.outbox import write_event
         from apps.platform.events.models import OutboxEvent
-        from apps.platform.events.schemas import MarginCustomerUnprofitable, MarginProviderCostSpike
+        from apps.platform.events.schemas import CustomerUnprofitable, ProviderCostSpike
         from apps.subscriptions.economics.models import CustomerEconomics
 
         cfg = MarginService._threshold(econ.tenant_id, econ.customer_id)
@@ -139,7 +139,7 @@ class MarginService:
             econ.save(update_fields=["is_unprofitable", "updated_at"])
         if below and not prev_flag:
             with transaction.atomic():
-                write_event(MarginCustomerUnprofitable(
+                write_event(CustomerUnprofitable(
                     tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
                     period_start=econ.period_start.isoformat(),
                     gross_margin_micros=econ.gross_margin_micros,
@@ -153,12 +153,12 @@ class MarginService:
                     / Decimal(prev.provider_cost_micros) * 100)
             if rise >= spike_pct:
                 already = OutboxEvent.objects.filter(
-                    event_type="margin.provider_cost_spike", tenant_id=econ.tenant_id,
+                    event_type="provider.cost_spike", tenant_id=econ.tenant_id,
                     payload__customer_id=str(econ.customer_id),
                     payload__period_start=econ.period_start.isoformat()).exists()
                 if not already:
                     with transaction.atomic():
-                        write_event(MarginProviderCostSpike(
+                        write_event(ProviderCostSpike(
                             tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
                             period_start=econ.period_start.isoformat(),
                             prev_provider_cost_micros=prev.provider_cost_micros,

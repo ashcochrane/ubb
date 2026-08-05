@@ -47,7 +47,7 @@ class TestChargeTask:
             charge_auto_topup_task(str(a.id))
         a.refresh_from_db()
         assert a.status == "requires_action"
-        assert mw.called and type(mw.call_args.args[0]).__name__ == "AutoTopupRequiresAction"
+        assert mw.called and type(mw.call_args.args[0]).__name__ == "AutoTopUpRequiresAction"
 
 
 @pytest.mark.django_db

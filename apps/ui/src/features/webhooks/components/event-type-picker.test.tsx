@@ -36,4 +36,30 @@ describe("EventTypePicker", () => {
     fireEvent.click(first);
     expect(first).toHaveAttribute("aria-checked", "false");
   });
+
+  it("renders the regrouped events under the subject that owns them", () => {
+    // #222 dissolved the `billing` group of eight and the `margin` group of
+    // two. Asserted on what a tenant actually SEES rather than on the grouping
+    // function's return value: the group heading, the option label beside its
+    // checkbox, and the checkbox being reachable by that label — which is also
+    // #155 §9.2's floor, since a value with no wording renders as a blank a
+    // `getByLabelText` cannot find.
+    render(<Harness />);
+
+    for (const heading of ["Wallet", "Credit grant", "Top up", "Provider"]) {
+      expect(screen.getByText(heading)).toBeInTheDocument();
+    }
+    expect(screen.queryByText("Billing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Margin")).not.toBeInTheDocument();
+
+    // By ROLE and accessible name: Base UI pairs each visible checkbox with a
+    // hidden native input carrying the same label, so `getByLabelText` finds
+    // two elements for one control.
+    const balanceLow = screen.getByRole("checkbox", { name: "Balance low" });
+    fireEvent.click(balanceLow);
+    expect(balanceLow).toHaveAttribute("aria-checked", "true");
+    expect(
+      screen.getByRole("checkbox", { name: "Cost spike" }),
+    ).toBeInTheDocument();
+  });
 });

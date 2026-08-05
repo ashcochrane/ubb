@@ -30,8 +30,8 @@ export const MOCK_WEBHOOK_CONFIGS: WebhookConfig[] = [
     id: "3f6c1a52-9d0e-4b6a-8a3d-6a1f0c9b2e71",
     url: "https://api.acme.dev/webhooks/ubb",
     event_types: [
-      "billing.balance_low",
-      "billing.balance_critical",
+      "wallet.balance_low",
+      "wallet.balance_critical",
       "stop.fired",
       "stop.cleared",
     ],
@@ -46,7 +46,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "0d3e5a71-2f48-4c1b-9e6d-8b1a4c7f2d90",
       event_id: "9c1f4b82-6a3d-4e7f-b510-27d8e9a6c143",
-      event_type: "billing.balance_low",
+      event_type: "wallet.balance_low",
       success: true,
       status_code: 200,
       error_message: "",
@@ -74,7 +74,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "30618da4-5c71-4f4e-b19a-1e4d70ac5023",
       event_id: "c4f27eb5-9d60-41a2-c843-5a01b2d9f476",
-      event_type: "billing.balance_critical",
+      event_type: "wallet.balance_critical",
       success: true,
       status_code: 200,
       error_message: "",
@@ -83,7 +83,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "41729eb5-6d82-4059-c2ab-2f5e81bd6134",
       event_id: "d5038fc6-ae71-42b3-d954-6b12c3e0a587",
-      event_type: "billing.balance_low",
+      event_type: "wallet.balance_low",
       success: false,
       status_code: 429,
       error_message: "Receiver answered 429 Too Many Requests",

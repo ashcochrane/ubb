@@ -648,9 +648,9 @@ class TestDrawdownTail:
             billed_cost_micros=2_000_000)
         assert result.outcome == "applied"
         assert OutboxEvent.objects.filter(
-            event_type="billing.balance_overage").count() == 1
+            event_type="wallet.balance_overage").count() == 1
         assert OutboxEvent.objects.filter(
-            event_type="billing.customer_suspended").count() == 1
+            event_type="customer.suspended").count() == 1
         c.refresh_from_db()
         assert c.status == "suspended"
         assert c.suspension_reason == "min_balance_exceeded"
@@ -666,7 +666,7 @@ class TestDrawdownTail:
                                    usage_event_id=str(uuid.uuid4()),
                                    billed_cost_micros=3_000_000)
         assert OutboxEvent.objects.filter(
-            event_type="billing.balance_low").count() == 1
+            event_type="wallet.balance_low").count() == 1
 
     def test_enforcing_floor_cross_drives_the_stop_lane(self):
         t = _tenant(enforcement_mode="enforcing")
@@ -684,7 +684,7 @@ class TestDrawdownTail:
         # Enforcing: the folded suspension rides the signal ledger, never the
         # Tier-1 direct write.
         assert not OutboxEvent.objects.filter(
-            event_type="billing.customer_suspended").exists()
+            event_type="customer.suspended").exists()
 
     def test_repair_flag_suppresses_the_whole_tail(self):
         """I12: a back-correction debits and allocates but never re-fires
@@ -702,7 +702,7 @@ class TestDrawdownTail:
         w.refresh_from_db()
         assert w.balance_micros == -1_000_000
         assert not OutboxEvent.objects.exclude(
-            event_type="billing.credit_grant_expired").exists()
+            event_type="credit_grant.expired").exists()
         c.refresh_from_db()
         assert c.status == "active"
         txn = WalletTransaction.objects.get(pk=result.transaction_id)
@@ -721,7 +721,7 @@ class TestDrawdownTail:
                             amount_micros=99_000_000,
                             idempotency_key=str(uuid.uuid4()))  # refused
         assert OutboxEvent.objects.filter(
-            event_type="billing.withdrawal_requested").count() == 1
+            event_type="withdrawal.requested").count() == 1
 
 
 # ---------------------------------------------------------------------------

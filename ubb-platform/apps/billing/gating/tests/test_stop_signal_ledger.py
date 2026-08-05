@@ -53,7 +53,7 @@ class TestStopTransition:
         StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
         assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") is None
         assert _events("stop.fired", owner_id=c.id).count() == 1
-        assert _events("billing.customer_suspended", "customer_id", c.id).count() == 1
+        assert _events("customer.suspended", "customer_id", c.id).count() == 1
 
     def test_clear_wins_once_and_carries_the_closed_episode(self):
         t = _tenant()
@@ -112,7 +112,7 @@ class TestSuspensionFold:
         c.refresh_from_db()
         assert c.status == "suspended"
         assert c.suspension_reason == "min_balance_exceeded"
-        suspended = _events("billing.customer_suspended", "customer_id", c.id)
+        suspended = _events("customer.suspended", "customer_id", c.id)
         assert suspended.count() == 1
         assert suspended.get().payload["balance_micros"] == -6_000_000
 
@@ -134,7 +134,7 @@ class TestSuspensionFold:
         c.refresh_from_db()
         assert c.suspension_reason == "fraud"
         assert _events("stop.fired", owner_id=c.id).count() == 1
-        assert _events("billing.customer_suspended", "customer_id", c.id).count() == 0
+        assert _events("customer.suspended", "customer_id", c.id).count() == 0
 
 
 @pytest.mark.django_db

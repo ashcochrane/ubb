@@ -1,12 +1,17 @@
-// The event-type catalog grouped by prefix ("billing.balance_low" → group
-// "billing") for the subscription picker. "*" is NOT part of any group — it is
+// The event-type catalog grouped by prefix ("wallet.balance_low" → group
+// "wallet") for the subscription picker. "*" is NOT part of any group — it is
 // the separate "All events" toggle.
+//
+// The grouping needs no code change to follow a rename, but its OUTPUT does:
+// ADR-0006 §5 gives the namespace to the thing whose state changed, so the
+// picker now offers the wallet, the customer, the credit grant and the invoice
+// rather than the product they happened to be filed under (#222).
 
 import { humanize, WEBHOOK_EVENT_TYPES } from "@/lib/labels";
 
 export interface EventTypeOption {
   value: string;
-  /** Suffix label inside its group: "billing.balance_low" → "Balance low". */
+  /** Suffix label inside its group: "wallet.balance_low" → "Balance low". */
   label: string;
 }
 

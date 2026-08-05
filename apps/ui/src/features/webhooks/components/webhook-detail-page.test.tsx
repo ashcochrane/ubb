@@ -37,7 +37,7 @@ describe("WebhookDetailPage", () => {
     expect(
       screen.getByText("Receiver answered 500 Internal Server Error"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Billing — Balance low").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Wallet — Balance low").length).toBeGreaterThan(0);
     expect(
       screen.getByText("9c1f4b82-6a3d-4e7f-b510-27d8e9a6c143"),
     ).toBeInTheDocument();

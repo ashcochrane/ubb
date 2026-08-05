@@ -1,7 +1,7 @@
 import { CodeBlock } from "@/components/shared/code-block";
 
 const ENVELOPE_EXAMPLE = `{
-  "event_type": "billing.balance_low",
+  "event_type": "wallet.balance_low",
   "event_id": "9c1f4b82-6a3d-4e7f-b510-27d8e9a6c143",
   "created_at": "2026-07-24T12:00:00Z",
   "data": { ... }

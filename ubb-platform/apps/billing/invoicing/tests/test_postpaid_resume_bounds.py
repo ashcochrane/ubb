@@ -29,7 +29,7 @@ from apps.billing.invoicing.services.postpaid_service import PostpaidUsageServic
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 SVC = "apps.billing.invoicing.services.postpaid_service.stripe"
-FAILED_EVENT = "usage.invoice_push_failed_permanent"
+FAILED_EVENT = "usage_invoice.push_failed_permanent"
 
 
 def _charge_ready_tenant():
@@ -182,7 +182,7 @@ class TestCrashPairMatrix:
         assert m.finalize.call_count == 0
         assert rec.status == "pushed" and rec.stripe_invoice_id == "in_1"
         assert list(rec.line_items.values_list("stripe_invoice_item_id", flat=True)) == ["ii_old"]
-        assert OutboxEvent.objects.filter(event_type="usage.invoice_pushed").count() == 1
+        assert OutboxEvent.objects.filter(event_type="usage_invoice.pushed").count() == 1
 
 
 @pytest.mark.django_db
@@ -682,7 +682,7 @@ class TestRepushCommand:
 @pytest.mark.django_db
 def test_failed_permanent_event_type_is_registered():
     """An unregistered event type dispatches to zero handlers — assert the
-    registry actually knows usage.invoice_push_failed_permanent."""
+    registry actually knows usage_invoice.push_failed_permanent."""
     from apps.platform.events.registry import handler_registry
     handlers = handler_registry.get_handlers(FAILED_EVENT)
-    assert handlers, "usage.invoice_push_failed_permanent must be registered in events/apps.py"
+    assert handlers, "usage_invoice.push_failed_permanent must be registered in events/apps.py"

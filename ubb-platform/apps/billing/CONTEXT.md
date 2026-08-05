@@ -336,7 +336,7 @@ Pinning usage lines onto the owner's subscription-renewal invoice instead of min
 one.
 
 **failed_permanent**:
-A usage invoice parked after exhausting its retries; emits `usage.invoice_push_failed_permanent`.
+A usage invoice parked after exhausting its retries; emits `usage_invoice.push_failed_permanent`.
 
 **Platform fee**:
 UBB's own charge to the tenant, computed per-product at the tenant's own period close. The

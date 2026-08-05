@@ -620,7 +620,7 @@ class WithdrawOutboxEventTest(TestCase):
         response = self._withdraw()
         self.assertEqual(response.status_code, 200)
 
-        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        events = OutboxEvent.objects.filter(event_type="withdrawal.requested")
         self.assertEqual(events.count(), 1)
         evt = events.first()
         self.assertEqual(evt.payload["customer_id"], str(self.customer.id))
@@ -633,7 +633,7 @@ class WithdrawOutboxEventTest(TestCase):
         self._withdraw(idempotency_key="wdraw_dup")
         self._withdraw(idempotency_key="wdraw_dup")
 
-        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        events = OutboxEvent.objects.filter(event_type="withdrawal.requested")
         self.assertEqual(events.count(), 1)
 
     def test_withdraw_insufficient_balance_no_event(self):
@@ -643,7 +643,7 @@ class WithdrawOutboxEventTest(TestCase):
         self.assertEqual(response["Content-Type"], "application/problem+json")
         self.assertEqual(response.json()["code"], "insufficient_balance")
 
-        events = OutboxEvent.objects.filter(event_type="billing.withdrawal_requested")
+        events = OutboxEvent.objects.filter(event_type="withdrawal.requested")
         self.assertEqual(events.count(), 0)
 
 
@@ -771,7 +771,7 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertEqual(body["status"], "topup_requested")
 
         event = OutboxEvent.objects.filter(
-            event_type="billing.topup_requested"
+            event_type="top_up.requested"
         ).first()
         self.assertIsNotNone(event)
         self.assertEqual(event.payload["amount_micros"], 20_000_000)
@@ -787,7 +787,7 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertEqual(replay.status_code, 202)
         self.assertEqual(
             OutboxEvent.objects.filter(
-                event_type="billing.topup_requested").count(),
+                event_type="top_up.requested").count(),
             1)
 
     def test_topup_without_idempotency_key_is_a_422_problem(self):

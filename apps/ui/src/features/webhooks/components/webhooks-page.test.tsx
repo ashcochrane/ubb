@@ -29,7 +29,7 @@ describe("WebhooksPage", () => {
     expect(screen.getByText("All events")).toBeInTheDocument();
     // 4 subscribed types → first 2 chips + "+2 more".
     expect(screen.getByText("+2 more")).toBeInTheDocument();
-    expect(screen.getByText("Billing — Balance low")).toBeInTheDocument();
+    expect(screen.getByText("Wallet — Balance low")).toBeInTheDocument();
     // The mid-rotation endpoint shows its rotation-window badge.
     expect(screen.getByText("Rotating secret")).toBeInTheDocument();
   });
