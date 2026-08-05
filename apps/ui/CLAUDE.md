@@ -32,6 +32,11 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   `unwrap()` (`src/api/problem.ts`), branch on `code`.
 - **Open enums (ADR-003)**: every categorical field is an open string → labels via `src/lib/labels.ts`
   with `humanize` fallback; never render raw values.
+- **Canonical values**: `src/lib/vocabulary.ts` is **generated** from the repo's vocabulary registry
+  (`domain-vocabulary/`) — value lists, union types and stable label *keys*, never the English.
+  Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates
+  and fails on any diff (`python -m tools.vocabulary --write` at the git root). An `open` concept's
+  type admits any string on purpose, so don't write an exhaustive `switch` over one.
 - **Verdict bodies**: HTTP 200 ≠ success for pre-check (`allowed:false`) and usage ingest
   (`stop`/per-item `accepted`) — branch on the body.
 - **Identity**: path `customer_id` = UBB UUID; `credit`/`debit` bodies + platform routes use

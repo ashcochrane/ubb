@@ -19,8 +19,9 @@ Issue #198 landed the registry as a **tracer bullet** — data, compiler, gate a
 CI in one complete path — carrying a representative concept of each of the four
 kinds and nothing more. Issue #200 added the first generated consumer, the
 backend constants. Issue **#202** filled it in: the complete reconciled
-end-state vocabulary, from ADR-0006 and the decision records. The remaining
-generated consumers arrive with **#207** and **#208**.
+end-state vocabulary, from ADR-0006 and the decision records. Issue **#207**
+added the other two consumers, in the two other languages. The published
+contract's known-value metadata arrives with **#208**.
 
 **On the day it filled in, the registry disagreed with almost the entire
 codebase. That is the design** (#191 decision 1). Every value here is the one
@@ -51,17 +52,50 @@ generated or verified (ADR-0008 §3).
 | Artifact | Consumer | Landed |
 |---|---|---|
 | `ubb-platform/core/vocabulary.py` | the Django platform, which **imports** the constants | #200 |
-| Console value lists + label keys | the React console | #207 |
-| SDK vocabulary constants | the Python SDK | #208 |
+| `apps/ui/src/lib/vocabulary.ts` | the React console — value lists, union types and stable label **keys** | #207 |
+| `ubb-sdk/ubb/vocabulary.py` | the Python SDK, so a value the API can return is a value the SDK can name | #207 |
+| OpenAPI known-value metadata | the committed tenant contract | #208 |
 
-Backend code is never scanned for matching string literals. It imports the
-generated module, so agreement is **structural rather than textual** — the
-difference between a check a coincidence can satisfy and one it cannot.
+Consumer code is never scanned for matching string literals. Each consumer
+imports its generated artifact, so agreement is **structural rather than
+textual** — the difference between a check a coincidence can satisfy and one it
+cannot.
+
+The two Python artifacts bind the same values from one authored source and
+differ only in the account each gives of itself. That is not duplication to be
+tidied away: the platform and the SDK are separately installable and cannot
+import each other, so each needs its own copy, and ADR-0008 §3's whole point is
+that a *generated* copy is the answer and a second hand-written one is the
+problem. What is forbidden is a second renderer, and there is one.
+
+The console's artifact carries **keys, never words**, and one thing the other
+two do not: `satisfies Record<…, string>` on each label map, so the console's
+own compiler proves the map covers every value of its concept at the moment a
+value is added here. An `open` concept's map is declared total over its KNOWN
+values, never over the concept's type — that type admits any string (ADR-0003),
+and a map total over `string` would be total over nothing.
 
 Every generated artifact rides a **zero-diff regeneration check**: the committed
 bytes must be exactly what the registry produces, so a hand edit or a stale
 generation turns CI red instead of rotting. That is the ratchet the generated
 SDK core and its registry-derived exception hierarchy already ride.
+
+### If the SDK is ever split out of this repository
+
+Recorded now, while it costs nothing, because the invariant is easy to lose in
+the move and expensive to notice afterwards. Today the SDK is a package in this
+monorepo, so its artifact is regenerated from this registry by this
+repository's own CI and the check is direct. After a split there is no single
+checkout holding both, and "regenerate and compare" stops being answerable in
+one job.
+
+What replaces it is two things, and **neither alone is sufficient**: the SDK's
+own CI validates its artifact against a *pinned, versioned* registry artifact,
+so its build is reproducible and its release is self-describing; and a
+**required cross-repository compatibility job** supplies the overall verdict,
+because a pin proves only that the SDK agrees with the registry it pinned — not
+that the pin is current. A split that ships the first and skips the second
+converts a gate into a version stamp.
 
 Editing the registry alone is therefore never enough — regenerate in the same
 commit, or CI is red:
