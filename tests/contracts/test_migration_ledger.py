@@ -79,23 +79,51 @@ def authorisation(gate="G1", issue=203, entries_added=1):
 # 1. The shipped ledger, and the ratchet that guards it
 # ---------------------------------------------------------------------------
 
-def test_the_shipped_ledger_is_empty_and_that_is_the_rule_not_an_omission(
+def test_every_shipped_record_names_an_installed_gate_and_an_unlanded_owner(
         programme):
-    """Rule 2 means an entry may only name an installed gate, and the four
-    installed today — the registry's validity, its generated artifacts, and the
-    spec and SDK ratchets — are not violated by this tree.
+    """Rules 2 and 3, over the ledger and exceptions this repository ships.
 
-    The gates seeded with today's violations (G7's retired words, G9's three
-    table names) arrive with the pull requests that install them, #206 and #203.
-    So when this assertion first fails, the fix is to replace it with the loop
-    below over real entries — not to delete the rule.
+    #201 shipped this as *"the ledger is empty and that is the rule, not an
+    omission"*, with the instruction that when the assertion first failed the fix
+    was to replace it with the loop over real entries rather than delete the
+    rule. #203 is what made it fail: installing the four model-naming gates put
+    six debts and one permanent exception on the record, in the same pull
+    request, which is the ordering rule 2 exists to force.
+
+    Deliberately **not** an assertion that the ledger is non-empty. It reaches
+    zero at slice 8, and a test that had to be edited on the day it did would be
+    a test arguing with the outcome it exists to produce. What is asserted is
+    the rule — true of seven records today and of none then.
     """
-    assert programme.entries == ()
-    assert programme.exceptions == ()
     assert programme.installed_gates(), "no gate is installed — suspect the parse"
 
     for record in programme.entries + programme.exceptions:
-        assert programme.gates[record.gate].installed, record.id
+        assert programme.gates[record.gate].installed, (
+            f"{record.id} names {record.gate}, which is not installed — a debt "
+            f"against a check that cannot fail anything is a note nothing will "
+            f"ever prove or clear")
+
+    for record in programme.entries:
+        owner = programme.slices[record.owner_slice]
+        assert not owner.landed, (
+            f"{record.id} is owed by {record.owner_slice} (#{owner.issue}), "
+            f"which has landed — so this debt is owed by nobody")
+
+
+def test_no_shipped_entry_expects_the_term_it_already_carries(programme):
+    """An entry whose `expected` equals its `found` records no debt at all.
+
+    The compiler checks that both are non-empty strings, which a copy-paste
+    while seeding satisfies perfectly. This is the assertion that a seeded entry
+    describes an actual difference — and it is worth making precisely because
+    seeding happens in bulk, by hand, in the pull request that installs a gate.
+    """
+    inert = sorted(record.id for record in programme.entries
+                   if record.found is not None
+                   and record.found == record.expected)
+    assert not inert, (
+        "these entries expect the term the site already carries, so nothing "
+        "would change when they are 'paid': " + ", ".join(inert))
 
 
 def test_ci_runs_the_ratchet_and_can_fail_on_it():

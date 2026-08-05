@@ -164,18 +164,35 @@ The separation is structural rather than a convention: an exception carries no
 `owner_slice` and no `expected`, because no rename is coming, and the schema
 refuses one that claims either.
 
-## Both files are empty today, and that is the truth
+## What the two files hold today
 
-Rule 2 is why. Four gates are installed as this lands — G1 and G5 (the registry's
-validity and its generated artifacts) and G15 and G16 (the spec and SDK
-ratchets) — and the tree violates none of them. Every gate seeded with today's
-violations is still *owed*: G9's three table names and G7's retired words arrive
-with #203 and #206, in the same pull requests that install the gates which find
-them.
+Rule 2 is what decides this. A gate seeded with today's violations records them
+in the same pull request that installs it, never before — so the ledger fills up
+as slice 0 proceeds rather than arriving pre-written.
 
-The machinery is complete and proven by negative controls that put synthetic
-violations through the real entry point. What it has to say about today is
-nothing.
+| Landed | Gates installed | Ledger | Exceptions |
+|---|---|---|---|
+| #201 | G1, G5, G15, G16 — and the tree violates none of them | empty | empty |
+| #203 | G9, G10, G11, G12 — the model-naming rules | **6** | **1** |
+
+#203's six are the `Rate`/`RateCard` table inversion and
+`ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
+`_micros` means millionths of a percent (G11), and `Rate.pricing_model` (G12).
+G10 seeds nothing: no writable `tenant_posture` column exists, which is why it
+ships with a negative control rather than an entry. The one permanent exception
+is `ConnectOAuthState`, and it is an exception to the *mechanism* — mechanical
+snake-casing produces a worse name than the one in place — not to the rule.
+
+Still owed: G7's retired words arrive with #206, in the pull request that
+installs the sweep which finds them.
+
+**A gate installed in the platform or SDK suite keeps its allowlist there**, in
+the language that suite is written in, and a contract test holds the two to each
+other. #203's is `test_model_naming_ledger_agreement.py`: the platform suite has
+no PyYAML and this one has no Django, both deliberately, so the seeded sites
+exist twice and the agreement is checked in both directions including the entry
+ids. A site excused in a gate but absent from the ledger would be a suppression
+the ratchet cannot see — the failure this whole mechanism exists to refuse.
 
 ## Beyond what #201 asked for
 

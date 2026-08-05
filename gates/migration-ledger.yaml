@@ -22,26 +22,159 @@
 #
 # ---------------------------------------------------------------------------
 #
-# IT IS EMPTY, AND THAT IS THE TRUTH RATHER THAN AN OMISSION.
+# THE FIRST SEEDING: the four model-naming gates (#203).
 #
-# Rule 2 is why. Four gates are installed as this file lands — G1 and G5 (the
-# registry's validity and the generated artifacts) and G15 and G16 (the spec and
-# SDK ratchets) — and the tree violates none of them. Every gate that is seeded
-# with today's violations is still owned rather than installed: G9's three table
-# names and G7's retired words arrive with #203 and #206, in the same pull
-# request that installs the gate which finds them.
+# G9, G10, G11 and G12 were installed in the pull request that added these
+# entries, over a tree that violates three of them. That ordering is the point
+# rather than an embarrassment: a gate installed before the code complies is
+# what makes the vocabulary impossible to regress (#155 §3.1). G10 seeds
+# nothing — no writable `tenant_posture` column exists — so it carries no
+# authorisation below, because an override that overrides nothing is the shape
+# of a check that cannot fail.
 #
-# So this file fills up as slice 0 proceeds, and each of those pull requests
-# carries its own seeding authorisation. The machinery is complete and proven by
-# negative controls in tests/contracts/test_migration_ledger.py; what it has to
-# say about today is nothing.
+# Every entry's `site` is exactly the string the gate itself prints, and
+# `ubb-platform/apps/platform/tests/test_model_naming.py::
+# test_every_seeded_entry_is_still_a_real_violation` fails if a seeded site
+# stops being a violation. So an entry cannot outlive the debt it records:
+# paying it and deleting it are one act.
 
 version: 1
 
-entries: []
+entries:
+  # --- G9: `db_table == canonical(model_name)` ------------------------------
+  #
+  # The `Rate` / `RateCard` inversion — each model sitting on the other's
+  # table. #154 §6.2 records that it resolves BY CONSTRUCTION rather than by a
+  # rename: #138 splits `Rate` into supplier cost and pricing rules, #148
+  # replaces `RateCard` with the Pricing Book, and both tables are rebuilt
+  # regardless. The replacements take correct names instead of inheriting
+  # inverted legacy ones, which is why renaming them earlier would be work with
+  # no product (#155 §3.1).
+  #
+  # Owned by slice 4 rather than slice 3: `Rate` carries both halves of the
+  # split (`card_type ∈ {cost, price}`), so the model — and its table — can
+  # only go when the price half goes too. Slice 4 is where `Rate` stops
+  # existing.
+  - id: g9-rate-sits-on-the-rate-card-table
+    gate: G9
+    site: ubb-platform/apps/metering/pricing/models.py::Rate
+    expected: ubb_rate
+    found: ubb_rate_card
+    owner_slice: slice_4
+    reason: >-
+      `Rate` sits on the legacy `ubb_rate_card` table, which its own name says
+      belongs to `RateCard`. Resolved by construction when slice 4 finishes
+      replacing `Rate` with the Pricing Book's rules (#154 §6.2).
+
+  - id: g9-rate-card-sits-on-the-container-table
+    gate: G9
+    site: ubb-platform/apps/metering/pricing/models.py::RateCard
+    expected: ubb_rate_card
+    found: ubb_rate_card_container
+    owner_slice: slice_4
+    reason: >-
+      The other half of the inversion: `RateCard` was pushed onto
+      `ubb_rate_card_container` when the misnamed original took its table.
+      Slice 4's Pricing Book replaces it and takes the correct name (#154 §6.2).
+
+  # The one entry here that is a genuine rename rather than a rebuild. No domain
+  # slice touches `CustomerSubscriptionItem` — #194's slice table never names
+  # subscriptions — so nothing earlier than the cutover removes this debt, and
+  # recording it against a slice that does not do the work would be #155 §17's
+  # failure with a nicer label. Slice 8's migration squash (#155 §11.1) rebuilds
+  # every table from a fresh initial set, which is what clears it; §11.3 already
+  # requires every seeded allowlist to be at zero by then.
+  #
+  # An owner slice may move EARLIER but never later, so any slice that touches
+  # subscriptions before the cutover may take this and pull the rename forward.
+  - id: g9-customer-subscription-item-table-abbreviated
+    gate: G9
+    site: ubb-platform/apps/subscriptions/models.py::CustomerSubscriptionItem
+    expected: ubb_customer_subscription_item
+    found: ubb_customer_sub_item
+    owner_slice: slice_8
+    reason: >-
+      `sub` is a short form beside a long form, which ADR-0006 §2 refuses. #154
+      §6.3 requires a genuine table rename preserving rows, keys and
+      constraints; slice 8's squash rebuilds the table under the correct name.
+
+  # --- G11: `_micros` means millionths of a currency unit ------------------
+  #
+  # The suffix means money on 73 columns and millionths of a PERCENT on these
+  # two. #147 §9.2 records what the ambiguity has already cost: the
+  # `le=1_000_000_000` bound exists specifically because such a value "is far
+  # more likely a unit error (percent passed as micros) than a real commercial
+  # term". `expected` is ADR-0006 §1's honest spelling — same scale, right unit.
+  #
+  # Both are owned by slice 4, which per #194's slice table deletes `TenantMarkup`
+  # and `Plan.markup_percentage_micros` outright. Deletion clears the debt as
+  # surely as a rename; what may not happen is the field surviving under this
+  # name past that slice.
+  - id: g11-tenant-markup-percentage-micros
+    gate: G11
+    site: ubb-platform/apps/metering/pricing/models.py::TenantMarkup.markup_percentage_micros
+    expected: markup_micro_percent
+    found: markup_percentage_micros
+    owner_slice: slice_4
+    reason: >-
+      Millionths of a percent under the money suffix. Slice 4 deletes
+      `TenantMarkup` when pricing rules replace it (#154 §3.5, #147 §9.2).
+
+  - id: g11-plan-markup-percentage-micros
+    gate: G11
+    site: ubb-platform/apps/platform/plans/models.py::Plan.markup_percentage_micros
+    expected: markup_micro_percent
+    found: markup_percentage_micros
+    owner_slice: slice_4
+    reason: >-
+      The same unit collision on the kernel's Plan. Slice 4 deletes it; the Plan
+      gains a required `pricing_book_id` instead (#154 §6, #151 §7).
+
+  # --- G12: method, mode and structure describe different things ------------
+  #
+  # `pricing_model` sits one character from `pricing_mode`, a declared concept
+  # meaning something entirely different — which pricing regime governs a Task,
+  # rather than the arithmetic shape of a rate. #151 §13.2 ratified
+  # `rate_structure` precisely because a name "may not survive one character
+  # from `pricing_mode`".
+  - id: g12-rate-pricing-model
+    gate: G12
+    site: ubb-platform/apps/metering/pricing/models.py::Rate.pricing_model
+    expected: rate_structure
+    found: pricing_model
+    owner_slice: slice_4
+    reason: >-
+      One character from `pricing_mode`, and unrelated to it. Slice 4's pricing
+      rules carry `rate_structure ∈ {per_unit, fixed_component}` (#151 §13.2).
 
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an
 # old authorisation cannot license a later addition, and the list stays an audit
-# trail rather than a standing permission.
-seeding_authorisations: []
+# trail rather than standing permission. The count must be exactly how many
+# entries arrived: a reviewer approves a quantity, not an intention.
+seeding_authorisations:
+  - gate: G9
+    issue: 203
+    entries_added: 3
+    reason: >-
+      This pull request installs `db_table == canonical(model_name)` over every
+      first-party managed concrete model, and records the three tables that
+      violate it today. The fourth mismatch, `ConnectOAuthState`, is a reasoned
+      permanent exception rather than a debt and lives in
+      gates/permanent-exceptions.yaml.
+
+  - gate: G11
+    issue: 203
+    entries_added: 2
+    reason: >-
+      This pull request installs the rule that the money suffix names money and
+      nothing else, and records the two columns where `_micros` currently means
+      millionths of a percent.
+
+  - gate: G12
+    issue: 203
+    entries_added: 1
+    reason: >-
+      This pull request installs the method/mode/structure naming rule over the
+      declaring models, and records the one field standing a single character
+      from a sanctioned name with an unrelated meaning.
