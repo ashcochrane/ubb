@@ -1,10 +1,10 @@
-# Economics vocabulary: UBB's role in a tenant's customer billing, the axes a
-# tenant may price and group by, and the plan catalogue.
+# Economics vocabulary: UBB's role in a tenant's customer billing, how an amount
+# is derived, what a resolved amount is worth, and what analytics may measure.
 #
-# SEEDED, NOT COMPLETE. Issue #198 is the tracer bullet for the registry — data,
-# compiler, gate and CI in one path — so this file carries a representative
-# concept of each kind and nothing more. The complete reconciled end-state
-# vocabulary lands with #202, and this file grows into it.
+# COMPLETE END-STATE (#202). Every value here is the one ADR-0006 and the
+# decision records fixed, NOT the one the code carries today. On the day this
+# landed most of these disagreed with the tree; that disagreement is the
+# migration each later slice is measured by, not a defect in this file.
 
 customer_billing_mode:
   kind: closed
@@ -31,14 +31,411 @@ customer_billing_mode:
     - surface: openapi
       path: openapi/v1.json
 
+tenant_posture:
+  kind: closed
+  summary: >-
+    Whether UBB creates this tenant's customer charges at all. DERIVED from
+    `customer_billing_mode` and never stored (ADR-0006 §4) — a second writable
+    copy could disagree with the first, and the wrong one is always the one
+    nobody is looking at. It is served read-only so callers need not
+    reconstruct the mapping.
+  values:
+    - metering_only
+    - full_billing
+  label_key_prefix: tenant_posture
+  # No `value_semantics` here, deliberately. The derivation is over
+  # `customer_billing_mode`'s VALUES — `external` maps to `metering_only`,
+  # `prepaid` and `postpaid` to `full_billing` — and a rule over boolean inputs
+  # could only restate that in terms it cannot check against the field it
+  # derives from. What enforces ADR-0006 §4 here is the absence test G10:
+  # no writable `tenant_posture` column exists.
+  retired_aliases:
+    # `Customer.revenue_mode` stored a second, writable answer to this same
+    # question. It is deleted rather than renamed (#153 §3): posture derives.
+    - revenue_mode
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+costing_method:
+  kind: closed
+  summary: >-
+    How an Event Type's supplier COGS is derived — `calculated` from declared
+    Measurements against CostRates, or `reported` from a value the provider or
+    the caller supplies. "Method" means how an amount is derived, and never
+    which operating regime applies (ADR-0006 §3).
+  values:
+    - calculated
+    - reported
+  label_key_prefix: costing_method
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/events/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+pricing_method:
+  kind: closed
+  summary: >-
+    How a resolved pricing rule derives customer price — as a margin applied
+    over supplier cost, or as a price attached directly to the event. One
+    method per rule; a rule that wanted both would be two rules.
+  values:
+    - margin_over_cost
+    - direct_event_price
+  label_key_prefix: pricing_method
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+pricing_mode:
+  kind: closed
+  summary: >-
+    Which pricing regime governs a whole Task — every event priced as it
+    arrives, or one agreed price for the delivered Task. Declared on the Task
+    kind and snapshotted onto the Task; both carry the same word deliberately,
+    because they are one concept at two scopes and the model name already
+    supplies the scope.
+  values:
+    - event_priced
+    - fixed
+  label_key_prefix: pricing_mode
+  retired_aliases:
+    # "charging mode" named this regime, the costing method and the pricing
+    # method interchangeably — one phrase for three declarations (#151 §13.3).
+    - charging_mode
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+rate_structure:
+  kind: closed
+  summary: >-
+    The arithmetic shape of a rate — an amount per unit of quantity, or a
+    component that applies once regardless of quantity. "Structure" means the
+    mathematical shape and nothing else (ADR-0006 §3).
+  values:
+    - per_unit
+    - fixed_component
+  label_key_prefix: rate_structure
+  retired_aliases:
+    # `pricing_model` sat one character from `pricing_mode` and meant something
+    # unrelated, which ADR-0006 §3 calls a defect rather than a coincidence.
+    - pricing_model
+    # The value it carried said how the amount looked, not what it did.
+    - flat
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+costing_status:
+  kind: closed
+  summary: >-
+    Whether supplier COGS for a subject is settled. `unresolved` and a NULL
+    amount are one fact and travel together; zero is a resolved amount and
+    means something else entirely (ADR-0007 §2).
+  values:
+    - known
+    - unresolved
+    - not_applicable
+  label_key_prefix: costing_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+pricing_status:
+  kind: closed
+  summary: >-
+    Whether customer price for a subject is settled, and if not, why not.
+    `waived` is a decision somebody made; `unknown` is information UBB does not
+    have; `not_applicable` is a subject that generates no customer revenue at
+    this level, such as an event inside a Task sold for one agreed price.
+  values:
+    - known
+    - waived
+    - unknown
+    - not_applicable
+  label_key_prefix: pricing_status
+  retired_aliases:
+    # Two words for a provisional price. Under #148 §8 and #149 the resolved
+    # price is the price, so neither names anything that still exists.
+    - estimate
+    - hold
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+usage_event_kind:
+  kind: closed
+  summary: >-
+    The nature of one usage row, and NOTHING else — not the tenant, not how
+    COGS was derived, not how customer price was calculated (ADR-0006 §3.8).
+    `metered_usage` is a real event for work that occurred; `task_charge` is
+    the synthetic posting projected from the canonical Charge when a Task sold
+    for one agreed price is delivered.
+  values:
+    - metered_usage
+    - task_charge
+  label_key_prefix: usage_event_kind
+  retired_aliases:
+    # "work" would be the only place that word appeared as a noun now that Task
+    # is the ratified unit of work (#154 §3.8).
+    - work_charge
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+pricing_receipt_subject_type:
+  kind: closed
+  summary: >-
+    What a Pricing Receipt explains — one usage row, or one canonical Charge.
+    The receipt is the authoritative record of ECONOMIC RESOLUTION, not a
+    guarantee that customer revenue exists: a metering-only tenant has receipts
+    (ADR-0006). Its `provenance` section survives as a section name.
+  values:
+    - usage_event
+    - charge
+  label_key_prefix: pricing_receipt_subject_type
+  retired_aliases:
+    # The record carried three names. `pricing_provenance` understated it — it
+    # now holds authoritative amounts and statuses, not only references to where
+    # they came from — and "audit trail" already names the governance ledger,
+    # which keeps the name "audit log" (#154 §3.3).
+    - pricing_provenance
+    - audit_trail
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+analytics_measure:
+  kind: closed
+  summary: >-
+    The four things the economic query can measure. Each name says which side
+    of the trade it sits on, and `recorded_events` says plainly that it counts
+    records at the tenant's declared granularity rather than units of work.
+  values:
+    - supplier_cogs
+    - customer_revenue
+    - gross_margin
+    - recorded_events
+  label_key_prefix: analytics_measure
+  retired_aliases:
+    # #153's provisional name for the count. #149 §2 had already ruled that one
+    # event is one provider call, so a second noun for it would create a second
+    # public name for one concept (ADR-0006 §2).
+    - recorded_operations
+  retired_senses:
+    - term: operation
+      retired_as: >-
+        a count noun for a unit of metered work. #154 §8 retires it; the event
+        is the declared unit and `recorded_events` is the measure.
+      survives_as: >-
+        an OpenAPI operation. ADR-0007 §4 uses the word for every published
+        route, requires each hand-written SDK call to target a real one, and
+        names the disposition manifest over all of them.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+measure_status:
+  kind: closed
+  summary: >-
+    What one requested measure's amount is worth in a response. Four facts that
+    used to be one integer: `incomplete` says some input is still unresolved,
+    `unavailable_at_requested_grain` says the number exists but cannot be
+    attributed this finely, and `not_applicable` says the measure does not
+    apply here. No query may coerce any of them to zero (#153 §8.5).
+  values:
+    - known
+    - incomplete
+    - unavailable_at_requested_grain
+    - not_applicable
+  label_key_prefix: measure_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+analytics_grouping_kind:
+  kind: closed
+  summary: >-
+    Whether a grouping axis is a column on the event or a join to a declared
+    rollup. The namespace is deliberate: a field and a rollup have materially
+    different cardinality and query cost, and hiding that behind identical
+    looking strings is how a chart times out in production (#153 §5.3).
+  values:
+    - field
+    - rollup
+  label_key_prefix: analytics_grouping_kind
+  retired_aliases:
+    # Four bespoke grouping parameters, one per surface, each with its own
+    # answer to the same question. `group_by` replaces all of them (#153 §5.3).
+    - dimensions
+    - tag_key
+    - usage_line_item_group_by
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: openapi
+      path: openapi/v1.json
+
+analytics_rollup:
+  kind: closed
+  summary: >-
+    The aggregation axes UBB itself owns, one level above what the tenant
+    declares. The tenant assigns members to them; the axes themselves are
+    UBB's. Rollup membership is analytical taxonomy and may reclassify history,
+    which is safe precisely because it touches no money (#153 §5.5).
+  values:
+    - event_category
+    - measurement_concept
+  label_key_prefix: analytics_rollup
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: openapi
+      path: openapi/v1.json
+
+source_kind:
+  kind: closed
+  summary: >-
+    Where a declared quantity comes from, and how the Code Builder is to obtain
+    it. An Event Type's reported-cost mapping shares this source vocabulary but
+    NARROWS it: a fixed per-call supplier cost is a configured cost rule, not a
+    number that arrives per event, so `constant` is refused there (#156 §4,
+    #179 §3.3). Sharing the source declaration is the reuse worth having;
+    sharing the whole set would let one costing method mean two things.
+  values:
+    - provider_response
+    - caller_supplied
+    - derived
+    - constant
+  label_key_prefix: source_kind
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/events/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+amount_representation:
+  kind: closed
+  summary: >-
+    What an extracted supplier-cost number actually represents, so the
+    conversion to currency micros is generated once and exactly rather than
+    written by hand in a repository UBB never sees. Declaring it is what keeps
+    "no float enters money arithmetic" true across the boundary (#179 §3.4).
+  values:
+    - micros
+    - minor_units
+    - major_units_decimal
+  label_key_prefix: amount_representation
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/events/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+tenant_product:
+  kind: closed
+  summary: >-
+    The products a tenant has enabled. Three, not four: the second recording
+    lane was deleted along with the flag that switched it on, because there is
+    one recording core and a tenant should not be choosing between two of them
+    (#149 §6). Subscription lifecycle gates on `billing` rather than on a flag
+    of its own.
+  values:
+    - metering
+    - billing
+    - referrals
+  label_key_prefix: tenant_product
+  retired_aliases:
+    # The flag, the lane it switched on, and the console's name for the choice.
+    - metering_async
+    - async_ingest
+    - fast_lane
+    - ingest_mode
+  retired_senses:
+    - term: ingest
+      retired_as: >-
+        a named recording lane or mode a tenant could select between. #149 §6
+        deleted the lane; there is one recording core.
+      survives_as: >-
+        `usage_ingest`, the trigger source naming where a spend stop was
+        applied — the recording path itself, not a choice about it (#154 §5.3).
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+event_type_key:
+  kind: tenant_defined
+  summary: >-
+    The key a tenant gives one of its own registered Event Types. UBB owns the
+    entity, its costing declaration and its validation contract, and never
+    enumerates the keys: doing so would make the registry a catalogue of the
+    tenant's providers and calls, which map #137 constraint 5 forbids UBB to
+    ship.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/events/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
 grouping_field_value:
   kind: tenant_defined
   summary: >-
     A value a tenant reports on one of its own declared grouping fields — a
     model name, a region, a customer tier. UBB bounds the keyspace (ADR-0005's
     cardinality cap) and never enumerates the values: doing so would make the
-    registry a catalogue of the tenant's vendors and models, which map #137
+    registry a catalogue of the tenant's suppliers and models, which map #137
     constraint 5 forbids UBB to ship.
+  retired_aliases:
+    # The old name meant *price selection* at a competing product — the one job
+    # a grouping axis in UBB will never do (#145 §10).
+    - dimension
+    - dimension_def
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/dimensions/models.py

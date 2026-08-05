@@ -1,0 +1,124 @@
+# Governance vocabulary: the actions the tenant audit log records.
+#
+# A SEPARATE FILE FROM THE WEBHOOKS, deliberately. `apps/platform/audit/
+# actions.py` states the rule this file inherits: the ledger and the queue are
+# independent contracts, so the action `api_key.created` and the event
+# `tenant.api_key_created` are independent names. Carrying them in one domain
+# file would invite exactly the merge that rule refuses.
+#
+# COMPLETE END-STATE (#202), from #154 §4.4.
+
+audit_action:
+  kind: closed
+  summary: >-
+    Every action the tenant governance ledger may record, as `noun.verb`. The
+    ledger refuses an unregistered name, which is what stops the registered set
+    from drifting from what is actually written. Closed for the same reason:
+    UBB authors every one of them, and a name nothing may write is not an
+    action.
+  # `noun.verb`, the ledger's own shape — the same two-token form the webhook
+  # catalogue uses, and for the same reason: both halves stay ordinary tokens.
+  token_pattern: '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'
+  values:
+    # Credentials and identity.
+    - api_key.created
+    - api_key.rotated
+    - api_key.revoked
+    - invitation.created
+    - invitation.revoked
+    - member.role_changed
+    - member.removed
+    # Tenant governance and configuration.
+    - tenant.config_changed
+    - sandbox.created
+    - sandbox.reset
+    - connect.started
+    - billing_profile.set
+    - auto_top_up.configured
+    - postpaid_config.set
+    # Spend controls, under the family that owns them.
+    - customer_spend_pool.set
+    - margin_threshold.set
+    # Money moved by hand.
+    - wallet.credited
+    - wallet.debited
+    - wallet.withdrawn
+    - top_up.requested
+    - usage.refunded
+    - grant.created
+    - grant.voided
+    # The catalogue of what things cost and what they sell for. The single
+    # entity that once held both is split across the COGS boundary, so the two
+    # sides are recorded separately rather than under one word.
+    - pricing_book.created
+    - pricing_book.assigned
+    - pricing_book.published
+    - cost_rate.added
+    - cost_rate.deleted
+    - pricing_rule.added
+    - pricing_rule.deleted
+    - customer_pricing_override.set
+    # What the tenant declares it meters.
+    - event_type.declared
+    - measurement.declared
+    - grouping_field.declared
+    - task_type.declared
+    - tenant_supplied_revenue.recorded
+    # Customers, plans and subscriptions.
+    - customer.created
+    - plan.created
+    - plan.updated
+    - plan.archived
+    - plan.assigned
+    - subscription.created
+    - subscription.canceled
+    - subscription.paused
+    - subscription.resumed
+    - subscription.seats_changed
+    # Referrals.
+    - referral_program.created
+    - referral_program.updated
+    - referral_program.deactivated
+    - referral_program.reactivated
+    - referrer.registered
+    - referral.attributed
+    - referral.revoked
+    # Webhook configuration.
+    - webhook_config.created
+    - webhook_config.updated
+    - webhook_config.deleted
+    - webhook_config.secret_rotated
+    # The one entry that opens the production ledger, written at the cutover.
+    # It is registered here rather than invented there because it is an action
+    # like any other, and the ledger refuses names it does not know.
+    - system.preproduction_model_cutover
+  label_key_prefix: audit_action
+  retired_aliases:
+    # ADR-004 §2 makes these names additive-only and a rename a breaking change.
+    # #154 §4.2 spends a one-time, scoped, pre-production exception on them:
+    # the ledger is renamed, registrations for concepts that no longer exist are
+    # removed, pre-cutover rows are deleted, and the production ledger opens
+    # with the entry above. Keeping the old names registered-but-retired would
+    # leave the live codebase carrying a second vocabulary for the sole purpose
+    # of interpreting pre-launch history. AFTER the cutover the additive-only
+    # rule applies unchanged, and this exception is spent.
+    - budget.set
+    - dimension.declared
+    - rate_card.created
+    - rate_card.assigned
+    - rate_card.published
+    - rate.added
+    - rate.deleted
+    - revenue_profile.set
+    # Registrations for concepts that no longer exist at all. The configured
+    # input they recorded is now a field of a pricing rule, recorded by the
+    # pricing-rule actions above; the setting the second one recorded is gone
+    # because posture derives.
+    - markup.set
+    - markup.deleted
+    - revenue_mode.set
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/audit/actions.py
+    - surface: openapi
+      path: openapi/v1.json

@@ -1,30 +1,180 @@
-# Spend-control vocabulary: why a unit of work was stopped, and what a ceiling
-# assessment concluded.
+# Spend-control vocabulary: the four families, what a ceiling assessment
+# concluded, why work was stopped, and why a start was refused.
 #
-# SEEDED, NOT COMPLETE — see the header of `economics.yaml`. The four
-# spend-control families and the ceiling statuses with their lower-bound rule
-# arrive with #202.
+# COMPLETE END-STATE (#202). One word left this vocabulary entirely: it named
+# four different things — a bound on one unit of work, a bound on a customer's
+# charges, a wallet floor, and a rate of new work — and each of those now has
+# its own name (ADR-0006, #154 §3.4).
+
+control_family:
+  kind: closed
+  summary: >-
+    Which of the four spend controls a signal came from. The same four words
+    are the webhook namespace, the analytics family and this field, because one
+    public concept gets one public name (ADR-0006 §2). A Ceiling bounds one
+    unit of work, a customer spend pool bounds one customer's charges over a
+    period, a wallet policy holds the floors, and admission control bounds the
+    rate of new work and says nothing about supplier cost at all.
+  values:
+    - ceiling
+    - customer_spend_pool
+    - wallet_policy
+    - admission_control
+  label_key_prefix: control_family
+  retired_aliases:
+    # A word for money set aside, used for a bound on charges that UBB enforces
+    # by stopping work. `customer_spend_pool` says whose money and over what.
+    - budget
+  retired_senses:
+    - term: limit
+      retired_as: >-
+        a field word naming a spend control. It named all four families at
+        once, which is why #154 §3.4 removed it from the field vocabulary and
+        gave each family its own noun.
+      survives_as: >-
+        the retry information on an admission-control rejection, which #154
+        §3.4 keeps verbatim — `Retry-After`, `window_reset_at`, `limit` and
+        `remaining` — beside the ordinary pagination parameter of the same name.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/gating/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+ceiling_status:
+  kind: closed
+  summary: >-
+    What a ceiling assessment concluded for one Task. `indeterminate` is kept
+    distinct from an unresolved cost on purpose: an unresolved cost is a
+    missing value, and `indeterminate` is the resulting inability to evaluate
+    the ceiling (#158 §12.2).
+  values:
+    - within_ceiling
+    - ceiling_reached
+    - indeterminate
+    - not_applicable
+  label_key_prefix: ceiling_status
+  value_semantics:
+    summary: >-
+      The lower-bound rule (#158 §12.3). Once the KNOWN portion of accumulated
+      COGS has reached the ceiling, costs still unresolved cannot argue the
+      Task back under it — this is a spend-control safety invariant rather than
+      a naming detail, which is why it is carried beside the values as data.
+      `>=` is the comparison, so a ceiling is reached rather than exceeded.
+    inputs:
+      - a_ceiling_applies
+      - known_cogs_at_or_above_ceiling
+      - unresolved_costs_remain
+    cases:
+      - when:
+          a_ceiling_applies: false
+          known_cogs_at_or_above_ceiling: any
+          unresolved_costs_remain: any
+        then: not_applicable
+        because: >-
+          Nothing was evaluated, so nothing was concluded. `indeterminate`
+          means UBB tried and could not tell, never that there was nothing to
+          try (#158 §12.4).
+      - when:
+          a_ceiling_applies: true
+          known_cogs_at_or_above_ceiling: true
+          unresolved_costs_remain: any
+        then: ceiling_reached
+        because: >-
+          The known accumulated COGS is already at or above the ceiling. Costs
+          that are still unresolved can only add to it, so no later resolution
+          can reverse this answer — reporting anything softer here would let an
+          unresolved cost buy a Task more spending.
+      - when:
+          a_ceiling_applies: true
+          known_cogs_at_or_above_ceiling: false
+          unresolved_costs_remain: true
+        then: indeterminate
+        because: >-
+          The known lower bound is still below the ceiling and at least one
+          applicable cost is unresolved, so UBB cannot prove the Task is inside
+          it. This is the only case the word covers.
+      - when:
+          a_ceiling_applies: true
+          known_cogs_at_or_above_ceiling: false
+          unresolved_costs_remain: false
+        then: within_ceiling
+        because: >-
+          Every applicable cost is resolved and the total is below the ceiling,
+          which is the only state in which UBB can say so positively.
+  retired_aliases:
+    # Coined before ADR-0006 removed the word from field vocabulary, and never
+    # revisited. They cost nothing to correct because they were never built:
+    # #158 §12.1 found them in decision documents and one prototype only.
+    - within_limit
+    - limit_reached
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+ceiling_basis:
+  kind: closed
+  summary: >-
+    What a Ceiling bounds. Cost and time genuinely are different columns in
+    different units, so each ceiling field states its own basis and unit rather
+    than one field switching unit, storage and comparison at once (#150 §2.3).
+  values:
+    - cost
+    - time
+  label_key_prefix: ceiling_basis
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+spend_pool_enforce_mode:
+  kind: closed
+  summary: >-
+    Whether a customer spend pool only announces a crossing or also stops work.
+    A blocking pool enforces identically for `prepaid` and `postpaid` — mode
+    decides who invoices, not whether the bound bites (#150 §7.1).
+  values:
+    - alert_only
+    - blocking
+  label_key_prefix: spend_pool_enforce_mode
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/gating/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
 
 reason_code:
   kind: open
   summary: >-
-    Why work was stopped or a limit was reported. Open rather than closed
-    because a stop can originate outside UBB — a provider refusal, a tenant's
-    own control — and a value UBB has never seen must still travel rather than
-    be rejected at the boundary. The asymmetry is the whole point: a value
-    listed here and missing from a UBB-owned consumer is a defect; a value the
-    registry has never seen is legal.
+    Why work was stopped, or why a bound was reported as reached. Open rather
+    than closed because a stop can originate outside UBB — a provider refusal,
+    a tenant's own control — and a value UBB has never seen must still travel
+    rather than be rejected at the boundary. The asymmetry is the whole point:
+    a value listed here and missing from a UBB-owned consumer is a defect; a
+    value the registry has never seen is legal.
   known_values:
     - task_cogs_ceiling
     - customer_spend_pool
     - parent_killed
+    - silence_window
+    - hard_floor
   allow_unknown: true
   label_key_prefix: reason_code
   retired_aliases:
-    # `task_limit` and `customer_wide_stop` name the mechanism's effect rather
-    # than the thing that was exceeded. The end-state names say which budget
-    # bound — the task's own COGS ceiling, or the customer's shared pool.
+    # These named the mechanism's effect rather than the thing that was
+    # exceeded. The end-state names say which bound — the Task's own COGS
+    # ceiling, or the customer's shared pool.
     - task_limit
+    - subtask_limit
     - customer_wide_stop
     # The 429-era refusal codes: retired when stops became signals on a 200
     # rather than rejections (`work/reasons.py` names them as deliberately
@@ -39,5 +189,44 @@ reason_code:
       path: apps/ui/src/lib/labels.ts
     - surface: sdk
       path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json
+
+affordability_reason:
+  kind: open
+  summary: >-
+    Why an affordability question was answered no. The question names what is
+    being asked rather than the object inspected, so it stays true if a credit
+    line or a grant later becomes an input. Open for the same reason as the
+    stop vocabulary beside it: a refusal can arise from a control UBB gains
+    later, and a caller must render one it has not seen rather than fail.
+  known_values:
+    - insufficient_funds
+    - account_closed
+    - customer_stopped
+    - soft_floor_reached
+    - rate_limit_exceeded
+    - customer_spend_pool_exceeded
+    - customer_spend_pool_unavailable
+    - parent_task_not_active
+    - subtask_depth_exceeded
+  allow_unknown: true
+  label_key_prefix: affordability_reason
+  retired_aliases:
+    # The endpoint's old name described a moment in a sequence rather than the
+    # question it answers, and #141 retired it outright rather than deprecating
+    # it — map #137 constraint 1 spent once.
+    - pre_check
+    # Two reasons named after the word that left the field vocabulary.
+    - budget_exceeded
+    - budget_unavailable
+    # The bound behind it is deleted: #150 §12.5 removes the concurrent-request
+    # cap, leaving admission control to bound the rate of new work only.
+    - concurrency_limit
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/gating/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json

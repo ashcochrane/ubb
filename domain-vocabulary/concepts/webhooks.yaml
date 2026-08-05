@@ -1,0 +1,114 @@
+# The webhook catalogue, under one convention (ADR-0006 §5).
+#
+# COMPLETE END-STATE (#202). Today's catalogue has no convention at all: some
+# namespaces are resources, some are products and some are mechanisms, and two
+# spellings of one concept coexist. Every name below follows the one rule, and
+# the twenty it replaces are carried beside it as retired terms.
+
+webhook_event_type:
+  kind: closed
+  summary: >-
+    Every event UBB publishes, named `<domain owner>.<past-tense state
+    entered>`. A resource lifecycle transition is owned by the resource; a
+    control's own state change is owned by the declared control family. Cause
+    and mechanism never appear in the name — they travel as structured payload
+    fields, so a subscriber classifies by subscribing rather than by parsing.
+    Closed because UBB authors every one of them and a subscriber may only
+    subscribe to a name UBB publishes.
+  # A webhook name is two tokens joined by a dot, which is the reason the
+  # per-concept override exists at all. Both halves still obey the registry's
+  # ordinary token shape, so nothing else is admitted by widening it.
+  token_pattern: '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'
+  values:
+    # Usage and refunds — already a resource and a past-tense transition.
+    - usage.recorded
+    - usage.refunded
+    - refund.requested
+    # Terminal Task and Subtask states. Two events, not one: a subscriber
+    # alerting on spend incidents must stop being paged when a worker dies,
+    # and "how often did work stop on a ceiling?" must be answerable without
+    # parsing a reason string (#140 §4.3).
+    - task.killed
+    - task.expired
+    - subtask.killed
+    - subtask.expired
+    # Spend controls, each under the family that fired.
+    - customer_spend_pool.threshold_reached
+    - wallet_policy.soft_floor_crossed
+    - wallet_policy.soft_floor_cleared
+    # A customer-wide stop is a state the customer entered.
+    - customer.stopped
+    - customer.stop_cleared
+    - customer.suspended
+    - customer.deleted
+    - customer.unprofitable
+    - provider.cost_spike
+    # The wallet owns its own levels; "billing" is a product, not an owner.
+    - wallet.balance_low
+    - wallet.balance_critical
+    - wallet.balance_overage
+    - top_up.requested
+    - auto_top_up.requires_action
+    - withdrawal.requested
+    - credit_grant.expiring
+    - credit_grant.expired
+    # The invoice owns its own state.
+    - usage_invoice.pushed
+    - usage_invoice.push_failed_permanent
+    # Unchanged: each already names a resource and a past-tense transition.
+    - referral.created
+    - referral.expired
+    - referral.reward_earned
+    - referral.payout_due
+    - invitation.created
+    - invitation.revoked
+    - member.activated
+    - sandbox.reset_completed
+    - tenant.api_key_created
+    - tenant.api_key_rotated
+    - tenant.api_key_revoked
+  label_key_prefix: webhook_event_type
+  retired_aliases:
+    # Named for a bound rather than for the state entered, and unable to
+    # distinguish a spend kill from a Task nobody ever closed.
+    - task.limit_exceeded
+    - subtask.limit_exceeded
+    # Mechanism namespaces. A control event belongs to its declared family, so
+    # the namespace, the `control_family` field and the analytics family are
+    # one word rather than three.
+    - stop.fired
+    - stop.cleared
+    - soft_floor.crossed
+    - soft_floor.cleared
+    - budget.threshold_reached
+    # Product namespaces. "billing" is a product, not a domain owner, so it
+    # cannot own the wallet's levels or the credit grant's lifecycle.
+    - billing.balance_low
+    - billing.balance_critical
+    - billing.balance_overage
+    - billing.topup_requested
+    - billing.withdrawal_requested
+    - billing.customer_suspended
+    - billing.credit_grant_expiring
+    - billing.credit_grant_expired
+    # Named for the figure being watched rather than the subject of the alert.
+    - margin.customer_unprofitable
+    - margin.provider_cost_spike
+    # The invoice's own state, filed under the thing that produced it.
+    - usage.invoice_pushed
+    - usage.invoice_push_failed_permanent
+    # One concept, two spellings — this one disagreed with the audit registry's
+    # `auto_top_up.configured` for as long as both existed.
+    - auto_topup.requires_action
+  consumers:
+    # The schemas, not `events/catalog.py`. The catalogue DERIVES its tuple from
+    # these classes, so the names themselves live here — a consumer pointed at
+    # the derived tuple would be compared against a file holding no names.
+    - surface: backend
+      path: ubb-platform/apps/platform/events/schemas.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: sdk
+      path: ubb-sdk/ubb/webhooks.py
+    - surface: openapi
+      path: openapi/v1.json

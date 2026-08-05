@@ -36,6 +36,17 @@ OPEN_MUST_ALLOW_UNKNOWN = "open_must_allow_unknown"  # `open` with allow_unknown
 RETIRED_ALIAS_COLLISION = "retired_alias_collision"  # a retired term that is also live
 DUPLICATE_RETIRED_ALIAS = "duplicate_retired_alias"  # one term retired by two concepts
 
+# --- Retired senses: a word retired in ONE sense and live in others ---------
+INVALID_RETIRED_SENSE = "invalid_retired_sense"      # not {term, retired_as, survives_as}
+DUPLICATE_RETIRED_SENSE = "duplicate_retired_sense"  # one term sense-retired by two concepts
+RETIRED_SENSE_CONFLICT = "retired_sense_conflict"    # a term both swept and sense-retired
+
+# --- Value semantics: a decision rule declared as data ----------------------
+INVALID_VALUE_SEMANTICS = "invalid_value_semantics"  # the rule is not the declared shape
+VALUE_SEMANTICS_UNKNOWN_RESULT = "value_semantics_unknown_result"  # a result that is not a value
+VALUE_SEMANTICS_NOT_TOTAL = "value_semantics_not_total"    # an input combination no case answers
+VALUE_SEMANTICS_AMBIGUOUS = "value_semantics_ambiguous"    # a combination two cases answer
+
 # --- Identity across files --------------------------------------------------
 DUPLICATE_TERM = "duplicate_term"              # the same concept, defined twice
 CONFLICTING_DEFINITION = "conflicting_definition"  # ... and the two definitions disagree

@@ -116,6 +116,53 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
             f"{name}'s subject does not exist yet, so it cannot be installed")
 
 
+def test_slice_0_declares_the_payment_rail_names_and_owes_the_machinery(programme):
+    """#191 decision 14's split, as a claim about this manifest (#202).
+
+    Slice 0 declares `payment_rail` and its environment values as `closed`
+    registry concepts, because ADR-0008 §10.4 requires the names to exist before
+    anything is built on them. Slice 8 builds the record, the flag and the
+    centrally enforced invariant. The audit has to be able to tell the early
+    declaration from the later implementation, and this is what says so: the
+    names existing must never be read as the invariant being enforced.
+
+    The general shape of an owed row and of a deferred obligation is asserted
+    over every row above; what is asserted here is the pairing those checks
+    cannot know — that it is *slice 8* that owes G27, and that the obligation
+    beside it is the live-money one rather than some other deferral.
+    """
+    assert programme.gates["G27"].owner_slice == "slice_8"
+    assert "live" in programme.obligations["O3"].body["evidence_required"]
+
+
+#: The gates whose statement IS "a consumer carries the registry's values".
+#: While any of them is uninstalled the registry's disagreement with that
+#: consumer cannot be a ledger entry, because an entry may only name an
+#: installed gate — so `blocked_on` is the only place that debt is visible.
+CONSUMER_AGREEMENT_GATES = ("G2", "G3", "G4", "G6")
+
+
+def test_the_registrys_consumer_gates_name_what_will_seed_them(programme):
+    """#202 authored the vocabulary these four gates will compare against, and
+    nothing else ties the two together (#202's own acceptance criteria asked for
+    a ledger entry per disagreeing concept, which rule 2 does not admit while
+    the gates are owed).
+
+    So each row states the registry as the input its installer seeds from. It is
+    the weakest useful form of the tie — prose in a checked field — but it is
+    the form available before the consumers exist, and it fails loudly if
+    somebody flips one of these to `installed` without a consumer to compare.
+    """
+    for name in CONSUMER_AGREEMENT_GATES:
+        row = programme.gates[name]
+        if row.installed:
+            continue
+        assert "domain-vocabulary" in row.body["blocked_on"], (
+            f"{name} does not say it will be seeded from the registry — a "
+            f"reader installing it has nowhere to look for what it should find"
+        )
+
+
 def test_every_deferred_obligation_carries_its_reason_owner_and_evidence(programme):
     """ADR-0008 §6: these are carried explicitly, "never silently marked passed"."""
     assert programme.obligations, "the deferred obligations went missing"

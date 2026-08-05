@@ -55,16 +55,20 @@ append-only **ledger entry** keyed this way — never a bare `balance += x`.
 
 ## Vocabulary
 
-Name things using the relevant `CONTEXT.md` glossary (per-product, via the root `CONTEXT-MAP.md`).
-Use `drawdown` not "charge", `margin` not "markup", `Rate` vs `RateCard`, `referred customer` not
-"referee". If a concept isn't in the glossary, that's a signal — see `docs/agents/domain.md`.
+**`domain-vocabulary/` is the oracle, and it is complete** (#202): every UBB-owned concept's exact
+token and value set is declared there, CI enforces it (ADR-0008 §2), and the names are the ones
+ADR-0006 fixed rather than the ones the tree carries today. Check an edit with
+`python -m tools.vocabulary`. Read the registry BEFORE inventing a name — several words the older
+prose in this repository still uses are retired there, and `retired_aliases` says what replaced each
+one.
 
-For a concept's **exact token and value set**, `domain-vocabulary/` is the oracle and CI enforces it
-(ADR-0008 §2). Every concept there declares one of four kinds — `closed`, `open`, `tenant_defined`,
-`free_text` — and `tenant_defined`/`free_text` carry no values by construction, because UBB never
-ships a catalogue of the tenant's models, providers or grouping values. Check an edit with
-`python -m tools.vocabulary`. The registry is **seeded, not complete** (#202 finishes it), so a
-concept it does not yet carry still resolves through `CONTEXT.md`.
+Every concept declares one of four kinds — `closed`, `open`, `tenant_defined`, `free_text` — and
+`tenant_defined`/`free_text` carry no values by construction, because UBB never ships a catalogue of
+the tenant's models, providers or grouping values.
+
+For a concept's **meaning and relationships**, the per-product `CONTEXT.md` glossary is still the
+place (via the root `CONTEXT-MAP.md`) — `drawdown` not "charge", `referred customer` not "referee".
+If a concept is in neither, that's a signal — see `docs/agents/domain.md`.
 
 Backend code **imports** a registry value from `core.vocabulary`; it never restates the literal
 (#200). That module is **generated** — the banner says so, and a hand edit turns CI red. Agreement is
