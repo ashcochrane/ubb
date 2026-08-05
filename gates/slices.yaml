@@ -1,0 +1,84 @@
+# The build programme's slices (#194), as data.
+#
+# The gate manifest and the migration ledger both name a slice. This file is
+# what makes "a real slice" checkable without a network call: a status of
+# `owned_by_slice_4` or a ledger entry owned by `slice_4` resolves here or it
+# does not resolve at all.
+#
+# `order` is the position in #194's dependency chain, NOT the slice's number.
+# They differ in one place — #184 is blocked by slice 7 and blocks slice 8 — and
+# the chain is what the ledger's "an owner slice may only move earlier" rule
+# compares against.
+#
+# `landed` is DECLARED, because nothing in a checkout can observe that an issue
+# closed. Flipping it is part of the landing slice's own work, and it is not a
+# formality: the moment a slice is declared landed, every ledger entry owned by
+# it fails CI, and every manifest row still claiming that slice owns it fails
+# too. That is the mechanism closing #155 §17 — an entry cannot survive to slice
+# 8 because everyone assumed somebody else owned it.
+
+version: 1
+
+slices:
+  slice_0:
+    issue: 191
+    title: Gates and money primitives
+    order: 0
+    landed: false
+
+  slice_1:
+    issue: 192
+    title: Demolition
+    order: 1
+    landed: false
+
+  slice_2:
+    issue: 193
+    title: Measurement and catalogue
+    order: 2
+    landed: false
+
+  slice_3:
+    issue: 185
+    title: Cost
+    order: 3
+    landed: false
+
+  slice_4:
+    issue: 186
+    title: Price
+    order: 4
+    landed: false
+
+  slice_5:
+    issue: 187
+    title: Work
+    order: 5
+    landed: false
+
+  slice_6:
+    issue: 188
+    title: Spend control
+    order: 6
+    landed: false
+
+  slice_7:
+    issue: 189
+    title: Analytics
+    order: 7
+    landed: false
+
+  # Not numbered in #194's table, and deliberately so: it is the Code Builder,
+  # sequenced after slice 7 and before the cutover. It is a slice in every way
+  # that matters here — it owns gates, and work can be owed to it.
+  slice_builder:
+    issue: 184
+    title: Code Builder
+    order: 8
+    landed: false
+
+  slice_8:
+    issue: 190
+    title: Cutover
+    order: 9
+    landed: false

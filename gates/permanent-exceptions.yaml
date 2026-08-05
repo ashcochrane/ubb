@@ -1,0 +1,24 @@
+# Permanent reasoned exceptions — a DIFFERENT list from the migration ledger,
+# on purpose (#201, #191 decision 5).
+#
+# A deliberate exception with a stated reason is not a debt anybody owes. The
+# case this exists for is `ConnectOAuthState → ubb_connect_oauth_state`: OAuth is
+# a single acronym token, and mechanical snake-casing yields the worse
+# `ubb_connect_o_auth_state`. Nobody is going to rename it, in slice 8 or ever.
+#
+# Mixing the two lists would make "the ledger is at zero" unachievable by
+# construction, and G22 — slice 8's completion gate, before platform admission —
+# depends on zero being reachable. So an entry here carries no `owner_slice` and
+# no `expected`: there is no rename coming, and the shape of the row says so.
+#
+# The one thing an exception shares with a ledger entry is rule 2: it must name
+# a gate that is INSTALLED. An exception to a gate that cannot fail anything
+# suppresses nothing, and would sit here unfalsifiable.
+#
+# IT IS EMPTY TODAY for that reason. G9 — `db_table == canonical(model_name)` —
+# is the gate `ConnectOAuthState` is an exception to, and G9 is installed by
+# #203, which adds this entry in the same pull request.
+
+version: 1
+
+exceptions: []

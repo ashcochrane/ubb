@@ -1,0 +1,181 @@
+# The gate manifest's and the migration ledger's own schema (#201, ADR-0008 §8).
+#
+# This file is DATA, not documentation: `tools/gates` reads it and enforces it.
+# What a row of each kind must carry is declared here exactly once, so "may an
+# `installed` row carry a `blocked_on`?" is answered by a file rather than by
+# reading the compiler — the same discipline `domain-vocabulary/schema.yaml`
+# applies to the vocabulary registry.
+#
+# A schema change is therefore a reviewable diff in its own right, and cannot
+# drift away from the checker the way a prose description would.
+
+version: 1
+
+# --- Statuses ---------------------------------------------------------------
+#
+# A row carries EXACTLY ONE. Two of them are spelled out below; the third is a
+# family — `owned_by_<slice key>`, one per slice declared in `slices.yaml` —
+# and is DERIVED rather than listed. That is the point: a status naming a slice
+# that does not exist cannot be spelled at all, so ADR-0008's "every
+# `owned_by_slice_N` names a real slice" is true by construction rather than by
+# a second check somebody has to remember to write.
+statuses:
+  installed:
+    summary: >-
+      The check runs in a named suite or a named CI step, is not skipped, and is
+      not continue-on-error. `enforced_by` says where, and every site named
+      there is verified against the workflow and the suite's collection rules.
+    requires:
+      - enforced_by
+    forbids:
+      - blocked_on
+      - reason
+      - owner_role
+      - evidence_required
+
+  deferred_obligation:
+    summary: >-
+      Not a CI check at all. ADR-0008 §6 requires these to be carried explicitly
+      with a reason, an owner role and the evidence required — "never silently
+      marked passed" — which is exactly the shape below.
+    requires:
+      - reason
+      - owner_role
+      - evidence_required
+    forbids:
+      - enforced_by
+      - blocked_on
+
+# The derived family. `prefix` + a slice key from `slices.yaml` is the whole
+# spelling rule: `owned_by_slice_0`, `owned_by_slice_8`, `owned_by_slice_builder`.
+owned_status:
+  prefix: owned_by_
+  summary: >-
+    The subject does not exist yet; the named slice installs the gate.
+    `blocked_on` states what must exist first, so the row is a plan rather than
+    a shrug.
+  requires:
+    - blocked_on
+  forbids:
+    - enforced_by
+    - reason
+    - owner_role
+    - evidence_required
+
+# --- The inventory ----------------------------------------------------------
+#
+# ADR-0008 §8's twenty-seven standing gates, by identifier. The manifest must
+# carry exactly these — no more, and none missing. It lives here rather than in
+# the compiler because `tools/gates` is machinery and this is a fact about this
+# repository, the same split as `tools/vocabulary` and `domain-vocabulary/`.
+#
+# Amending ADR-0008's inventory therefore means editing this list, which is a
+# reviewable diff that makes CI demand the matching row. A gate cannot be
+# dropped by deleting its row and hoping.
+gate_inventory:
+  - G1
+  - G2
+  - G3
+  - G4
+  - G5
+  - G6
+  - G7
+  - G8
+  - G9
+  - G10
+  - G11
+  - G12
+  - G13
+  - G14
+  - G15
+  - G16
+  - G17
+  - G18
+  - G19
+  - G20
+  - G21
+  - G22
+  - G23
+  - G24
+  - G25
+  - G26
+  - G27
+
+# --- Row shape --------------------------------------------------------------
+#
+# `statement` and `oracle` are required of every row including the deferred
+# obligations: ADR-0008 §1 admits a check as a machine gate only when an
+# authoritative source holds the expected answer, so a row that cannot name its
+# oracle has not been thought through, whoever ends up answering it.
+row_fields:
+  required:
+    - statement
+    - oracle
+    - status
+  optional:
+    # Where the gate comes from — an ADR section or a decision document. Prose
+    # for a reader, not a checked reference.
+    - source
+    # Anything a reader needs that the fields above do not carry, including an
+    # inference this manifest is making that a later slice may correct.
+    - notes
+
+# --- Enforcement sites ------------------------------------------------------
+#
+# The two forms an `installed` row's `enforced_by` list may take. Both are
+# checked; neither is prose.
+enforcement_kinds:
+  # A test node in a declared pytest suite: `path/to/test_x.py::test_y`. The
+  # suite's job and step must be armed, and the node must be one this suite
+  # actually collects — the file matches `python_files`, the function matches
+  # `python_functions`, no `norecursedirs` or `--ignore` excludes the path, and
+  # the function carries no skip or xfail marker.
+  suite_node:
+    fields:
+      - suite
+      - node
+  # A named step in a named CI job — for the gates that are not pytest at all:
+  # the spec drift comparison, the oasdiff run, the generator zero-diff checks,
+  # `tsc -b`. The job and the step must both be armed.
+  workflow_step:
+    fields:
+      - job
+      - step
+
+# --- The migration ledger ---------------------------------------------------
+#
+# One entry per current violation of an installed gate. `expected` is the
+# canonical term ADR-0006 says the site should carry; `found` is optional
+# because a violation is not always a wrong name — it can be an absence.
+ledger_entry_fields:
+  required:
+    - id
+    - gate
+    - site
+    - expected
+    - owner_slice
+    - reason
+  optional:
+    - found
+
+# A seeding authorisation: the explicit, reviewed override that lets one pull
+# request ADD entries. Without one, the ratchet fails on any addition.
+seeding_authorisation_fields:
+  required:
+    - gate
+    - issue
+    - entries_added
+    - reason
+
+# --- Permanent reasoned exceptions ------------------------------------------
+#
+# A DIFFERENT list, on purpose. These are not debts and no slice owns them, so
+# they carry no `owner_slice` and no `expected` — there is no rename coming.
+# Mixing them into the ledger would make "the ledger is at zero" unreachable by
+# construction, and slice 8 depends on it being reachable.
+exception_fields:
+  required:
+    - id
+    - gate
+    - site
+    - reason
