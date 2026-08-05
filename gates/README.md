@@ -175,6 +175,7 @@ as slice 0 proceeds rather than arriving pre-written.
 | #201 | G1, G5, G15, G16 — and the tree violates none of them | empty | empty |
 | #203 | G9, G10, G11, G12 — the model-naming rules | **6** | **1** |
 | #204 | G17, G18 — the SDK's two-way operation check | **9** | 1 |
+| #205 | G8, G13 — the webhook catalogue's shape, and Celery import discipline | **29** | 1 |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -196,6 +197,23 @@ exceptions in their own file. They are signed for in
 `ubb-sdk/coverage-authorisations.yaml` instead, which is an audit trail of
 reviewed increases and not a third list of debts.
 
+#205's twenty are the largest single seeding, and the number is the absence of a
+convention rather than decay: ADR-0006 §5 fixed one on 2026-08-03 and the
+catalogue predates it. All twenty, by fault: eight are owned by the product
+`billing` rather than by the wallet, the grant or the customer whose state
+changed; four are owned by a mechanism (`stop`, `soft_floor`) and one by a
+retired spend-control family (`budget`); two are owned by a measure (`margin`)
+rather than by the customer and the provider the alerts are about; two put a
+bound in the name where a Task status belongs; two file the invoice's own state
+under `usage`, the thing that produced it; and one concept is spelled two ways
+across this catalogue and the audit registry (`auto_topup` here, `auto_top_up`
+there). **#205 renames none of them.** An event
+name is a public contract, so the rename belongs to the slice that rebuilds the
+event's subject and can carry the spec, the SDK and the console with it in one
+vertical — slices 5, 6, 7 and 8, per entry. **G13 seeds nothing**: no module in
+the tree binds the bare word `tasks`, so it ships with negative controls instead
+of entries, exactly as G10 does.
+
 Still owed: G7's retired words arrive with #206, in the pull request that
 installs the sweep which finds them.
 
@@ -207,14 +225,21 @@ exist twice and the agreement is checked in both directions including the entry
 ids. A site excused in a gate but absent from the ledger would be a suppression
 the ratchet cannot see — the failure this whole mechanism exists to refuse.
 
-**A gate installed in the contract suite needs none of that.** G17 reads this
-ledger directly, because it is already in a suite with PyYAML, so there is one
-encoding and no agreement test to write. Worth noting for whoever installs the
-next gate: the mirroring is the cost of a gate living where it cannot read YAML,
-not a house style. Its consequence is that each mirroring test covers *its own*
-gates — #203's was written to compare every gate with a ledger entry, which made
-#204's SDK debts fail inside a Django model walker, and is now scoped to the
+**A gate installed in the contract suite needs none of that.** G17 and G8 read
+this ledger directly, because they are already in a suite with PyYAML, so there
+is one encoding and no agreement test to write. Worth noting for whoever installs
+the next gate: the mirroring is the cost of a gate living where it cannot read
+YAML, not a house style. Its consequence is that each mirroring test covers *its
+own* gates — #203's was written to compare every gate with a ledger entry, which
+made #204's SDK debts fail inside a Django model walker, and is now scoped to the
 four gates that module installs.
+
+G8 is the case that makes the argument concrete: it seeds twenty entries, and
+mirroring twenty sites into a Django suite would have been twenty chances for the
+two copies to disagree. **And a gate that seeds nothing needs no mirroring
+wherever it lives** — G13 runs in the platform suite beside the boundary walker,
+which is where its subject is, and has no allowlist in either encoding to hold
+together.
 
 ## Beyond what #201 asked for
 

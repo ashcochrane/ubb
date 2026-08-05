@@ -154,6 +154,14 @@ class Concept:
     retired_aliases: tuple = ()
     retired_senses: tuple = ()
     value_semantics: ValueSemantics | None = None
+    #: The pattern this concept's VALUES obey — the schema-wide one, or the
+    #: per-concept override where a value set legitimately carries more
+    #: structure. Carried on the compiled concept rather than left inside the
+    #: loader because it is registry data a consumer needs: the webhook
+    #: catalogue gate (#205) states ADR-0006 §5's `<owner>.<transition>` shape
+    #: in terms of it, and a second copy of the pattern in that gate could
+    #: drift from this one.
+    token_pattern: str = ""
 
     @property
     def declared_values(self):
@@ -661,6 +669,7 @@ def _build_concept(name, body, source, schema, surfaces, repo_root, errors):
         retired_aliases=retired,
         retired_senses=senses,
         value_semantics=semantics,
+        token_pattern=value_pattern,
     )
 
 

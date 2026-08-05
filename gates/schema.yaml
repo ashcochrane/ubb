@@ -154,6 +154,14 @@ enforcement_kinds:
 # One entry per current violation of an installed gate. `expected` is the
 # canonical term ADR-0006 says the site should carry; `found` is optional
 # because a violation is not always a wrong name — it can be an absence.
+#
+# `expected` may name MORE THAN ONE canonical term, joined by ` and `, for the
+# case where paying a debt splits one thing into two rather than renaming it.
+# #205's `task.limit_exceeded` is the case that forced it: #140 §4.3 replaces it
+# with `task.killed` AND `task.expired`, because a subscriber alerting on spend
+# incidents must stop being paged when a worker dies. Recorded here rather than
+# left as a convention inside one gate, since it is a fact about what this field
+# may hold — and a gate that checks `expected` (G8 does) has to know the rule.
 ledger_entry_fields:
   required:
     - id
