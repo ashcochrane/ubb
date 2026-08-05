@@ -37,6 +37,14 @@ MIGRATION = importlib.import_module(
 #: `killed` and `expired` (#140 §4.3), and slice 6 rewrites the five control
 #: emitters under #150's four families. A migration that renamed them now would
 #: be guessing at a target state that does not exist yet.
+#:
+#: A second encoding of the ledger's remaining entries, and it does not need an
+#: agreement test to keep it honest: the day slice 5 pays one of these, the name
+#: leaves the catalogue and `test_the_deferred_seven_are_not_renamed` goes red
+#: naming it. The check that DOES need a separate home is the one this list
+#: cannot make — that `RENAMES` names only retired terms — because the registry
+#: is YAML and this suite has no PyYAML. It lives in
+#: tests/contracts/test_webhook_rename_migration.py.
 DEFERRED = (
     "task.limit_exceeded", "subtask.limit_exceeded", "stop.fired",
     "stop.cleared", "soft_floor.crossed", "soft_floor.cleared",
