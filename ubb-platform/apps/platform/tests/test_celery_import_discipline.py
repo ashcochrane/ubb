@@ -17,8 +17,14 @@ and every reader after that has to work out which sense is meant from context.
 
 **Two conjuncts**, both about a *binding* rather than about a path:
 
-1. No import binds the bare local name `tasks` to a `tasks` module.
+1. No import binds the bare local name `tasks`, whatever it points at.
 2. No import from Celery binds `task`, `tasks`, `Task` or `Tasks`.
+
+The first is deliberately stated over the BOUND NAME rather than over the
+imported module. Keying it on "the target is a `tasks` module" would leave
+`from apps.x import services as tasks` legal, which puts the collision word in
+the namespace by the one route the rule was written to close. Nothing in the
+tree does that, and nothing should be able to.
 
 The second is not in G13's one-line statement and is recorded in the manifest's
 notes rather than smuggled in. It closes the same door at class scope: `from
@@ -44,6 +50,18 @@ walker excludes them because a fixture may legitimately reach across a product
 boundary to set one up. No such exemption exists here: a test binding `tasks`
 bare is the same ambiguity in the same tree, read by the same people. The tree is
 clean today, so the strict form costs nothing and leaves no allowlist to erode.
+
+**Why the walk is not shared with the boundary walker**, since the two are
+visibly similar. They scan different trees to different rules — that one takes
+`apps/` and `core/` without tests or migrations, this one takes four trees with
+them — and they need different things from a statement: the boundary rule is
+about the module IMPORTED, so it yields the target, while this rule is about the
+name BOUND, so it yields the local name and the statement to quote back. Only the
+relative-import anchoring is genuinely common, and lifting fifteen lines into a
+shared module would mean editing ADR-001's enforcement site as a side effect of a
+vocabulary ticket. The duplication is therefore deliberate and stated, in the
+same spirit as `tests/contracts/_helpers.py` recomputing the repository root
+rather than importing it.
 """
 import ast
 from pathlib import Path
@@ -140,11 +158,6 @@ def iter_bindings(tree, module, is_package=False):
                 yield node.lineno, local, target, statement
 
 
-def _is_tasks_module(target):
-    """Is the imported dotted name a module named `tasks`?"""
-    return target == "tasks" or target.endswith(".tasks")
-
-
 def _is_framework(target):
     """Does the imported dotted name come out of Celery itself?"""
     return target == FRAMEWORK or target.startswith(FRAMEWORK + ".")
@@ -166,13 +179,13 @@ def _touches_infrastructure(target):
 def classify_binding(source_label, lineno, local, target, statement):
     """Return ``(rule, message)`` if this import binds the domain's noun to
     infrastructure, else None."""
-    if local == "tasks" and _is_tasks_module(target):
+    if local == "tasks":
         return (
             RULE_MODULE,
-            f"{source_label}:{lineno} binds the bare name `tasks` to the Celery "
-            f"module {target} (`{statement}`) — ADR-0006 §7: where a framework's "
-            f"word collides with a domain word, the framework yields, and this "
-            f"repository's domain noun is the Task. See {ADR}.\n{_ACCEPTABLE}",
+            f"{source_label}:{lineno} binds the bare name `tasks` to {target} "
+            f"(`{statement}`) — ADR-0006 §7: where a framework's word collides "
+            f"with a domain word, the framework yields, and this repository's "
+            f"domain noun is the Task. See {ADR}.\n{_ACCEPTABLE}",
         )
     if local in COLLISION_NAMES and _is_framework(target):
         return (
@@ -319,6 +332,20 @@ def test_negative_control_aliasing_back_onto_the_domain_noun_is_flagged():
     assert hits[0][0] == RULE_MODULE
 
 
+def test_negative_control_binding_anything_else_to_the_noun_is_flagged():
+    """The rule is about the NAME BOUND, not about what it points at.
+
+    A rule keyed on "the target is a `tasks` module" would let these through,
+    and each puts the collision word in the namespace by exactly the route
+    ADR-0006 §7 is written to close.
+    """
+    for source in ("from apps.billing.wallets import services as tasks\n",
+                   "import queue as tasks\n"):
+        hits = _classify_snippet(source)
+        assert len(hits) == 1, source
+        assert hits[0][0] == RULE_MODULE, source
+
+
 def test_negative_control_celery_base_class_binding_is_flagged():
     for source in ("from celery import Task\n",
                    "from celery.app.task import Task\n",
@@ -364,5 +391,6 @@ def test_prefix_matching_does_not_confuse_sibling_names():
         "from apps.platform.events import tasks_webhook_cleanup\n")
     # `celery_config` is not the celery package.
     assert not _classify_snippet("from celery_config import Task\n")
-    assert not _is_tasks_module("apps.platform.events.tasks_webhook_cleanup")
+    assert not _touches_infrastructure(
+        "apps.platform.events.tasks_webhook_cleanup")
     assert not _is_framework("celery_config.app")

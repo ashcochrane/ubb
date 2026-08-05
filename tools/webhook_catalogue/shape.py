@@ -24,14 +24,29 @@ under another number:
   UBB names elsewhere. `billing.balance_low` is refused even though its
   transition is impeccable, because `billing` is a product.
 
-**What this gate does not prove, said plainly.** ADR-0006 §5 spells the second
-token as *past tense*, and no oracle in this repository settles whether a word is
-a past-tense form. What the gate proves is that the token is one the registry
-declares as a state entered — so the tense judgement happens once, in review, at
-the moment a name is declared, and is mechanically enforced from then on. That is
-ADR-0008 §1's line between machine-proved and human-judged, and ADR-0008 §9's
-sentence applies without softening: consistency with a declaration is not proof
-that the declaration was right.
+**What this gate does not prove, said plainly.** Three things, and none of them
+is an oversight — each is the price of being a shape rule rather than a
+membership one.
+
+1. **Tense.** ADR-0006 §5 spells the second token as *past tense*, and no oracle
+   in this repository settles whether a word is a past-tense form. What the gate
+   proves is that the token is one the registry declares as a state entered — so
+   the tense judgement happens once, in review, when a name is declared, and is
+   mechanically enforced from then on. ADR-0008 §1's line between machine-proved
+   and human-judged, and ADR-0008 §9's sentence applies without softening:
+   consistency with a declaration is not proof the declaration was right.
+2. **The two halves are checked independently**, so their cross-product passes.
+   `wallet.api_key_created` has a declared owner and a declared transition and
+   this gate admits it, though no such event exists and the pairing is
+   meaningless. Refusing it would need a per-owner state model that no oracle
+   holds; what closes it is the membership check, which is G2's whole statement
+   and which #207 installs over every surface at once.
+3. **That an event SHOULD exist.** A catalogue missing an event entirely is
+   nothing this rule can see. That belongs to the slice that lands the state.
+
+The honest summary is that G8 refuses names of the wrong shape and G2 refuses
+names that are not in the set; neither alone is the whole of ADR-0006 §5, and
+this file is the first half.
 
 A literal past-tense rule was tried and rejected rather than skipped. Requiring
 the transition's final word to end in `-ed` condemns nine of the thirty-seven
@@ -69,6 +84,11 @@ class Vocabulary:
     """The registry, reduced to what ADR-0006 §5's two halves are stated over."""
     #: Where the live catalogue lives, from the registry's own declaration.
     catalogue_path: str
+    #: The registry file `webhook_event_type` is declared in, so a fault found
+    #: in the END STATE names the file to open. Carried here rather than looked
+    #: up through the registry at the point of use: this type exists so that
+    #: nothing downstream has to reach back past it.
+    declared_in: str
     #: `<owner>.<transition>` — the registry's own pattern for these names.
     name_pattern: str
     #: Every namespace the end-state catalogue uses: resources and control
@@ -140,6 +160,7 @@ def load_vocabulary(registry):
 
     return Vocabulary(
         catalogue_path=backend[0],
+        declared_in=events.source,
         name_pattern=events.token_pattern,
         owners=frozenset(owners),
         transitions=frozenset(transitions),

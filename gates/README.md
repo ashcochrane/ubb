@@ -199,12 +199,15 @@ reviewed increases and not a third list of debts.
 
 #205's twenty are the largest single seeding, and the number is the absence of a
 convention rather than decay: ADR-0006 §5 fixed one on 2026-08-03 and the
-catalogue predates it. Eight events are owned by the product `billing` rather
-than by the wallet, the grant or the customer whose state changed; four are
-owned by a mechanism (`stop`, `soft_floor`) and one by a retired spend-control
-family (`budget`); two put a bound in the name where a Task status belongs; and
-one concept is spelled two ways across this catalogue and the audit registry
-(`auto_topup` here, `auto_top_up` there). **#205 renames none of them.** An event
+catalogue predates it. All twenty, by fault: eight are owned by the product
+`billing` rather than by the wallet, the grant or the customer whose state
+changed; four are owned by a mechanism (`stop`, `soft_floor`) and one by a
+retired spend-control family (`budget`); two are owned by a measure (`margin`)
+rather than by the customer and the provider the alerts are about; two put a
+bound in the name where a Task status belongs; two file the invoice's own state
+under `usage`, the thing that produced it; and one concept is spelled two ways
+across this catalogue and the audit registry (`auto_topup` here, `auto_top_up`
+there). **#205 renames none of them.** An event
 name is a public contract, so the rename belongs to the slice that rebuilds the
 event's subject and can carry the spec, the SDK and the console with it in one
 vertical — slices 5, 6, 7 and 8, per entry. **G13 seeds nothing**: no module in

@@ -52,9 +52,15 @@ SHAPE_FAULTS = frozenset({
     codes.TRANSITION_NOT_A_DECLARED_STATE,
 })
 
-#: How many events #205 found in violation. A floor and a ceiling, because both
-#: directions are interesting: the list only shrinks, and a run reporting far
-#: fewer has stopped reading the catalogue.
+#: How many events #205 found in violation. A CEILING only: the ledger only
+#: shrinks, so the day slice 6 renames `billing.balance_low` and deletes its
+#: entry this must fall to 19 without anything going red for complying.
+#:
+#: The floor comes from `test_the_ledger_records_exactly_what_the_gate_excuses`
+#: instead, and self-updates: it compares the gate's excuses against the ledger's
+#: own entries, so a gate that silently stopped finding violations reports an
+#: empty set against a non-empty file. A count pinned here would have had to be
+#: edited by every slice that pays one.
 SEEDED = 20
 
 
@@ -177,6 +183,10 @@ def test_the_reader_visited_the_whole_catalogue(shipped):
     Names a floor and two events, because the failure modes differ. A file that
     stopped resolving reports zero; a reader that stopped recognising the
     attribute reports a subset, and the named events are ones no slice deletes.
+
+    The floor on EVENTS is what belongs here. The floor on violations does not:
+    it falls every time a slice pays a debt, and it is already enforced against
+    the ledger — see `test_the_ledger_records_exactly_what_the_gate_excuses`.
     """
     catalogue, _ = shipped
     assert catalogue is not None, "the catalogue could not be assessed at all"
@@ -186,8 +196,10 @@ def test_the_reader_visited_the_whole_catalogue(shipped):
     published = {event.name for event in catalogue.events}
     for expected in ("usage.recorded", "customer.deleted"):
         assert expected in published, f"the reader did not see {expected}"
-    assert len(catalogue.violations) == SEEDED, (
-        f"{len(catalogue.violations)} violations, and #205 recorded {SEEDED}")
+    assert len(catalogue.violations) <= SEEDED, (
+        f"{len(catalogue.violations)} violations, and #205 recorded {SEEDED}. "
+        f"This only ever falls — a rise means an event was renamed INTO a shape "
+        f"ADR-0006 §5 refuses.")
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +278,7 @@ def test_negative_control_a_malformed_name_is_refused_once(tmp_path):
     something that was never a webhook name.
     """
     for name in ("usage", "a.b.c", "Usage.Recorded", "usage."):
-        errors = rejection(tmp_path, events=((f"Synthetic", repr(name)),))
+        errors = rejection(tmp_path, events=(("Synthetic", repr(name)),))
         assert [error.code for error in errors] == [codes.NAME_MALFORMED], name
 
 
@@ -342,7 +354,6 @@ def test_negative_control_a_missing_concept_stops_the_assessment(tmp_path):
     that carried on would report the shape half as green while silently dropping
     the other — the failure this manifest exists to refuse, inside one gate.
     """
-    catalogue, errors = None, None
     write_repository(tmp_path, omit=("task_status",))
     catalogue, errors = assess(tmp_path)
     assert catalogue is None
