@@ -58,3 +58,10 @@ append-only **ledger entry** keyed this way — never a bare `balance += x`.
 Name things using the relevant `CONTEXT.md` glossary (per-product, via the root `CONTEXT-MAP.md`).
 Use `drawdown` not "charge", `margin` not "markup", `Rate` vs `RateCard`, `referred customer` not
 "referee". If a concept isn't in the glossary, that's a signal — see `docs/agents/domain.md`.
+
+For a concept's **exact token and value set**, `domain-vocabulary/` is the oracle and CI enforces it
+(ADR-0008 §2). Every concept there declares one of four kinds — `closed`, `open`, `tenant_defined`,
+`free_text` — and `tenant_defined`/`free_text` carry no values by construction, because UBB never
+ships a catalogue of the tenant's models, providers or grouping values. Validate an edit with
+`python -m tools.vocabulary`. The registry is **seeded, not complete** (#202 finishes it), so a
+concept it does not yet carry still resolves through `CONTEXT.md`.

@@ -1,0 +1,59 @@
+# Economics vocabulary: UBB's role in a tenant's customer billing, the axes a
+# tenant may price and group by, and the plan catalogue.
+#
+# SEEDED, NOT COMPLETE. Issue #198 is the tracer bullet for the registry — data,
+# compiler, gate and CI in one path — so this file carries a representative
+# concept of each kind and nothing more. The complete reconciled end-state
+# vocabulary lands with #202, and this file grows into it.
+
+customer_billing_mode:
+  kind: closed
+  summary: >-
+    What UBB does about money for a tenant's customers. `external` means the
+    tenant bills their customers somewhere else and UBB only meters; `prepaid`
+    and `postpaid` mean UBB drives the money, and neither may be activated
+    before its payment rail has been (ADR-0008 §6).
+  values:
+    - external
+    - prepaid
+    - postpaid
+  label_key_prefix: customer_billing_mode
+  retired_aliases:
+    # `meter_only` said what UBB does NOT do. `external` says where the billing
+    # actually happens, which is the fact a tenant is choosing between. The
+    # rename is owned by a later slice; the registry states the destination now.
+    - meter_only
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+grouping_field_value:
+  kind: tenant_defined
+  summary: >-
+    A value a tenant reports on one of its own declared grouping fields — a
+    model name, a region, a customer tier. UBB bounds the keyspace (ADR-0005's
+    cardinality cap) and never enumerates the values: doing so would make the
+    registry a catalogue of the tenant's vendors and models, which map #137
+    constraint 5 forbids UBB to ship.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/dimensions/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+plan_name:
+  kind: free_text
+  summary: >-
+    The display name a tenant gives a plan. Prose a human typed, not a token —
+    it is recorded here so that "should plan names be an enum?" is answered
+    once, in data, and never re-opened. A `free_text` concept declares no
+    values by construction; that absence IS its content.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/plans/models.py
+    - surface: openapi
+      path: openapi/v1.json

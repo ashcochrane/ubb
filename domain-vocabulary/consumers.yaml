@@ -1,0 +1,40 @@
+# The surfaces a concept may declare as a consumer (issue #198).
+#
+# A "consumer" is a place a canonical value actually appears — a backend module,
+# the console, the SDK, the committed contract. Concepts name consumers as
+# `{surface, path}` pairs, and the compiler refuses a pair whose surface is not
+# declared here, whose path does not exist, or whose path sits outside the
+# surface's root.
+#
+# **A declared consumer is an END-STATE consumer.** On the day the registry
+# lands it disagrees with almost the whole codebase (#191 decision 1), so a
+# declared consumer is the place the value will live once its slice has run —
+# not a claim that the file already carries the registry's values. Proving a
+# consumer *agrees* is a later, deeper check: generated artifacts ride a
+# zero-diff regeneration gate (#200, #207, #208) and every disagreement that
+# survives is a migration-ledger entry naming the slice that removes it (#201).
+#
+# The `root` is what stops a typo'd path from resolving against some unrelated
+# file that happens to exist.
+
+version: 1
+
+surfaces:
+  backend:
+    summary: The Django platform — the models and services that hold the value.
+    root: ubb-platform
+
+  console:
+    summary: The React console, which renders the value to a human.
+    root: apps/ui
+
+  sdk:
+    summary: The Python SDK, which names the value for an integrator.
+    root: ubb-sdk
+
+  openapi:
+    summary: >-
+      The committed tenant contract. Open concepts appear here as
+      `x-ubb-known-values` documentation metadata and never as a closed `enum`
+      array, which is what keeps ADR-0003 true.
+    root: openapi

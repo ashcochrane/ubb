@@ -1,0 +1,12 @@
+# Everything the repository-wide contract suite needs, pinned.
+#
+# Deliberately NOT ubb-platform/requirements.lock.txt. This suite must run
+# without Django, and installing the platform's dependencies would make that
+# claim unfalsifiable: a Django import creeping into a contract test would
+# simply work. Two packages is also what keeps the job fast enough to be the
+# first thing that goes red.
+#
+# The same pinning discipline as the in-job oasdiff and SDK generator installs
+# in ci.yml: the version lives in exactly one place, and that place is here.
+pytest==9.0.3
+PyYAML==6.0.3

@@ -26,6 +26,19 @@ LocMemCache — gating/budget tests need cross-process cache semantics). Run eve
 - One deliberate exception: `conformance/` (the non-gating schemathesis sweep, #87) sits outside
   `apps/` and outside default collection — see the conformance section in `api-contract.md`.
 
+## The other suite: `tests/contracts/` at the git root
+
+Checks that verify **agreement between** the platform, the console, the SDK and the committed spec
+live at the git root, not inside any one of them — a check hosted by one party to an agreement can
+only ever see its own side. It has its own `pytest.ini`, its own two-package pinned requirements, and
+**no Django**: `python -m pytest tests/contracts` from the git root.
+
+It gates (ADR-0008 §7 — *test location predicts enforcement*): a required CI job, no
+`continue-on-error`, no path filter, and `test_contract_suite_is_enforced.py` asserts that against
+the workflow file so disarming it means deleting the test that says it is armed. Put a check there
+when its subject spans two surfaces; keep model-structure gates in `apps/platform/tests/` beside the
+existing architecture walkers, which need the app registry loaded.
+
 ## Two non-obvious guards (in the root `conftest.py`)
 
 1. **Redis DB 15.** The suite is moved onto Redis DB index 15 (override with `UBB_TEST_REDIS_DB`

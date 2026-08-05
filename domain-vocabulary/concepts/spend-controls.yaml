@@ -1,0 +1,43 @@
+# Spend-control vocabulary: why a unit of work was stopped, and what a ceiling
+# assessment concluded.
+#
+# SEEDED, NOT COMPLETE — see the header of `economics.yaml`. The four
+# spend-control families and the ceiling statuses with their lower-bound rule
+# arrive with #202.
+
+reason_code:
+  kind: open
+  summary: >-
+    Why work was stopped or a limit was reported. Open rather than closed
+    because a stop can originate outside UBB — a provider refusal, a tenant's
+    own control — and a value UBB has never seen must still travel rather than
+    be rejected at the boundary. The asymmetry is the whole point: a value
+    listed here and missing from a UBB-owned consumer is a defect; a value the
+    registry has never seen is legal.
+  known_values:
+    - task_cogs_ceiling
+    - customer_spend_pool
+    - parent_killed
+  allow_unknown: true
+  label_key_prefix: reason_code
+  retired_aliases:
+    # `task_limit` and `customer_wide_stop` name the mechanism's effect rather
+    # than the thing that was exceeded. The end-state names say which budget
+    # bound — the task's own COGS ceiling, or the customer's shared pool.
+    - task_limit
+    - customer_wide_stop
+    # The 429-era refusal codes: retired when stops became signals on a 200
+    # rather than rejections (`work/reasons.py` names them as deliberately
+    # not reused).
+    - cost_limit_exceeded
+    - balance_floor_exceeded
+    - task_limit_exceeded
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/reasons.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json
