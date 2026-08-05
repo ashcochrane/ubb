@@ -1,0 +1,47 @@
+# The migration ledger — every current violation of an INSTALLED gate, as an
+# individually identified entry that a named slice owes (#201, #158 §11.3).
+#
+# It is a finite migration plan, not permission for the old architecture to
+# survive. It only ever shrinks, it reaches zero at slice 8 before platform
+# admission, and every entry names the slice that removes it — which is #155
+# §17's recorded residue closed: an entry cannot survive to slice 8 because
+# everyone assumed somebody else owned it.
+#
+# Three mechanical rules, all enforced (gates/README.md has the reasoning):
+#
+#   1. It only shrinks. CI compares this file against the base branch's and
+#      fails on any added entry, unless a `seeding_authorisation` below names
+#      the gate — the explicit, reviewed override. An entry's owner slice may
+#      move earlier but never later, because deferring a debt quietly is the
+#      same failure as adding one.
+#   2. Every entry names a real gate and a real slice. The gate must be
+#      `installed` in gates/manifest.yaml: an entry against a gate that cannot
+#      fail anything is a note, not a debt, and nothing would ever prove it
+#      right or wrong.
+#   3. An entry whose owner slice has already landed fails CI.
+#
+# ---------------------------------------------------------------------------
+#
+# IT IS EMPTY, AND THAT IS THE TRUTH RATHER THAN AN OMISSION.
+#
+# Rule 2 is why. Four gates are installed as this file lands — G1 and G5 (the
+# registry's validity and the generated artifacts) and G15 and G16 (the spec and
+# SDK ratchets) — and the tree violates none of them. Every gate that is seeded
+# with today's violations is still owned rather than installed: G9's three table
+# names and G7's retired words arrive with #203 and #206, in the same pull
+# request that installs the gate which finds them.
+#
+# So this file fills up as slice 0 proceeds, and each of those pull requests
+# carries its own seeding authorisation. The machinery is complete and proven by
+# negative controls in tests/contracts/test_migration_ledger.py; what it has to
+# say about today is nothing.
+
+version: 1
+
+entries: []
+
+# Every act of seeding, kept as history. The ratchet permits additions for a
+# gate only when an authorisation naming it is NEW in this pull request — so an
+# old authorisation cannot license a later addition, and the list stays an audit
+# trail rather than a standing permission.
+seeding_authorisations: []

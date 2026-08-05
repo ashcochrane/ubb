@@ -117,6 +117,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history AND every branch: the migration ledger's ratchet (#201)
+          # compares against the ledger the change branched from, which it
+          # resolves through the merge base with `origin/main`. Without the
+          # history the ratchet cannot run — and it FAILS rather than skipping,
+          # since a silently skipped comparison is how a debt reaches main
+          # unreviewed. Same call the breaking gate made for its tag.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -156,6 +164,19 @@ jobs:
 
       - name: Contract suite — the registry, and the gates over it
         run: python -m pytest tests/contracts
+
+      # The migration ledger only shrinks (#201, #158 §11.3). Everything else
+      # about the ledger is checked in the suite above, offline; this step
+      # exists separately because this is the one question that needs git
+      # history — does the proposed ledger owe MORE than the ledger this change
+      # branched from?
+      #
+      # An addition is refused unless a seeding authorisation naming the gate is
+      # new in this change, which is what makes seeding an explicit, reviewed
+      # act rather than a review habit. Same ratchet shape as the spec drift and
+      # SDK regeneration gates: the committed state is the floor.
+      - name: Migration ledger ratchet — it only shrinks
+        run: python -m tools.gates ratchet
 
   # Schemathesis conformance sweep (#87): fuzz the app in-process against the
   # committed openapi/v1.json and report every place the implementation

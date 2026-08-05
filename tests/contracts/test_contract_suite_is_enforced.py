@@ -28,12 +28,9 @@ import pytest
 import yaml
 
 from _helpers import REPO_ROOT
+from tools.gates.enforcement import CONTRACT_COMMAND, enforcement_faults, triggers
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-
-# The command that runs this suite. The job is found by what it RUNS, not by
-# what it is called — a renamed job must not be able to slip the check.
-CONTRACT_COMMAND = "pytest tests/contracts"
 
 # Importing any of these pulls in Django settings, a database connection, or
 # both. `config` is the settings package; `apps` and `core` are the platform's.
@@ -45,67 +42,13 @@ SCANNED_TREES = ("tests/contracts", "tools")
 # ---------------------------------------------------------------------------
 # 1. The job exists, and it is required
 # ---------------------------------------------------------------------------
-
-def _triggers(workflow):
-    """The `on:` block.
-
-    YAML 1.1 reads a bare `on` as the boolean true, so a workflow parsed with
-    PyYAML keys its triggers under `True`. Reading only `"on"` finds nothing and
-    concludes, wrongly and silently, that the workflow has no triggers at all.
-    """
-    for key in ("on", True):
-        if key in workflow:
-            return workflow[key]
-    return None
-
-
-def _enabled(value):
-    """A `continue-on-error` / `if` value that is anything but a literal false
-    counts as set — including a `${{ }}` expression this test cannot evaluate."""
-    return value is not None and value is not False
-
-
-def enforcement_faults(workflow, command=CONTRACT_COMMAND):
-    """Every reason ``workflow`` does not REQUIRE ``command`` to pass.
-
-    A pure function over a parsed document, so the negative controls below feed
-    it synthetic workflows through the same entry point the real one uses.
-    """
-    faults = []
-
-    triggers = _triggers(workflow)
-    if not isinstance(triggers, dict):
-        return [f"the workflow declares no triggers: {triggers!r}"]
-    for event in ("push", "pull_request"):
-        if event not in triggers:
-            faults.append(f"the workflow does not run on {event}")
-            continue
-        filters = triggers[event] or {}
-        for filter_key in ("paths", "paths-ignore"):
-            if isinstance(filters, dict) and filter_key in filters:
-                faults.append(
-                    f"the {event} trigger carries a `{filter_key}` filter — a "
-                    f"filter that never mentions an input silently stops the "
-                    f"gate running"
-                )
-
-    found = False
-    for job_name, job in (workflow.get("jobs") or {}).items():
-        for step in (job.get("steps") or []):
-            if command not in str(step.get("run", "")):
-                continue
-            found = True
-            if _enabled(job.get("continue-on-error")):
-                faults.append(f"job `{job_name}` is continue-on-error")
-            if _enabled(step.get("continue-on-error")):
-                faults.append(f"the step in `{job_name}` is continue-on-error")
-            if _enabled(job.get("if")):
-                faults.append(f"job `{job_name}` is conditional on `if`")
-            if _enabled(step.get("if")):
-                faults.append(f"the step in `{job_name}` is conditional on `if`")
-    if not found:
-        faults.append(f"no job runs `{command}`")
-    return faults
+#
+# `enforcement_faults` used to live here. #201 moved it to
+# `tools/gates/enforcement.py`, because the gate manifest asks the same question
+# about every check that claims to be installed — and two copies of "is this
+# gate armed?" is exactly the second hand-maintained source this programme
+# exists to refuse. The controls below still exercise it from here, against the
+# workflow it was written for.
 
 
 @pytest.fixture(scope="module")
@@ -128,7 +71,7 @@ def test_the_workflow_was_actually_read(workflow):
     assert isinstance(workflow.get("jobs"), dict)
     assert "contracts" in workflow["jobs"], "the contracts job is missing"
     assert len(workflow["jobs"]) > 1, "only one job parsed — suspect the parse"
-    assert isinstance(_triggers(workflow), dict), "the `on:` block did not parse"
+    assert isinstance(triggers(workflow), dict), "the `on:` block did not parse"
 
 
 def test_the_contract_job_installs_no_django(workflow):
@@ -197,7 +140,7 @@ def test_the_yaml_on_key_gotcha_is_handled():
     would report "no triggers" for every real GitHub workflow ever written."""
     parsed = yaml.safe_load("on:\n  push:\n  pull_request:\njobs: {}\n")
     assert True in parsed and "on" not in parsed
-    assert set(_triggers(parsed)) == {"push", "pull_request"}
+    assert set(triggers(parsed)) == {"push", "pull_request"}
 
 
 # ---------------------------------------------------------------------------

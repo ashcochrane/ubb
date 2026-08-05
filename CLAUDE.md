@@ -55,6 +55,8 @@ Django (`pip install -r tests/contracts/requirements.txt` — two pinned package
   console, the SDK and the committed spec. It gates: required CI job, no `continue-on-error`, no path
   filter, and a test that asserts exactly that. See `tests/contracts/README.md`.
 - `python -m tools.vocabulary` — validate `domain-vocabulary/` and name every reason it is invalid.
+- `python -m tools.gates` — is every claim in `gates/manifest.yaml` true? And
+  `python -m tools.gates ratchet` — does the migration ledger owe more than the base branch's did?
 
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 
@@ -93,3 +95,13 @@ UBB-owned concept is called and what values it may take (ADR-0008 §2), enforced
 `CONTEXT.md` glossaries explain what a concept *means*; the registry pins the exact tokens. It is
 **seeded, not complete** — #202 lands the full end-state vocabulary. See
 `domain-vocabulary/README.md`.
+
+### Gates
+
+`gates/` accounts for every standing gate in ADR-0008 §8: each is either **installed and proven to
+actually run** — CI verifies the job and step are not `continue-on-error`, not `if:`-conditional,
+not path-filtered, and that a named test node is one its suite really collects — or explicitly
+**owed by a named slice**, with what must exist first. Beside it, `migration-ledger.yaml` records
+every current violation of an installed gate, individually, owed by a named slice, and only ever
+shrinks. Permanent reasoned exceptions are a **separate** list, because they are not debts anybody
+owes. See `gates/README.md`, including how a slice flips its own row from owed to installed.

@@ -69,6 +69,14 @@ which is the house pattern:
 |---|---|
 | `test_vocabulary_registry.py` | `domain-vocabulary/` is valid: the shipped registry, one negative control per named rejection reason, and the legal constructions that must keep passing. |
 | `test_generated_vocabulary.py` | Every artifact generated from the registry is exactly what the registry produces, and the generated backend module *means* what the registry says — asserted by executing it, not by matching its text. |
+| `test_gate_manifest.py` | `gates/manifest.yaml` is true: all twenty-seven of ADR-0008 §8's gates are accounted for, every `installed` row's check is proven to actually run and be able to fail, and every owed row names a real slice and what must exist first. |
+| `test_migration_ledger.py` | The ledger only shrinks, every entry names an installed gate and an unlanded owner slice, and the permanent exceptions are a separate list with a different shape. |
 | `test_contract_suite_is_enforced.py` | This suite runs, is required, and needs no Django. |
 | `_helpers.py` | Builds synthetic registries on disk for the negative controls, off the **real** schema — so a change to the shipped kind table is felt by every control. Also copies the **real** registry, for the controls that must mutate exactly one thing about it. |
+| `_gate_helpers.py` | The same, for gate programmes: a synthetic `gates/`, workflow and test tree on disk, loaded through the real compiler. Also drives the ledger ratchet through a real git repository, because resolving a base ref is the one part a pure test cannot reach. |
 | `conftest.py` | Puts the git root on `sys.path`. That is the entire fixture surface. |
+
+The gate manifest is this slice's **single coordinating verdict**: the gates
+themselves live in four places — here, the platform suite, the SDK suite and the
+workflow — and `gates/manifest.yaml` is the one place all of them are accounted
+for. `gates/README.md` carries the reasoning.
