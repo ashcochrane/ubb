@@ -153,12 +153,13 @@ def assess(repo_root):
             f"publish. Either the route is wrong, or the method is: "
             f"{_near_misses(site, operations)}"))
 
-    for excuse in sorted(set(excuses) - used_excuses):
+    for site, route in sorted(set(excuses) - used_excuses):
         errors.append(SurfaceError(
-            codes.EXCUSE_NOT_A_VIOLATION, f"{LEDGER_PATH}: {excuses[excuse]}",
-            f"excuses `{excuse[1]}` at {excuse[0]}, and no such invalid call is "
-            f"there any more. Paying a debt and deleting its entry are one act: "
-            f"an entry that outlives the violation it records is a suppression "
+            codes.EXCUSE_NOT_A_VIOLATION,
+            f"{LEDGER_PATH}: {excuses[(site, route)]}",
+            f"excuses `{route}` at {site}, and no such invalid call is there "
+            f"any more. Paying a debt and deleting its entry are one act: an "
+            f"entry that outlives the violation it records is a suppression "
             f"nothing will ever clear."))
 
     rows = tuple(

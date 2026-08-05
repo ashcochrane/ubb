@@ -23,22 +23,24 @@ against a baseline. Three ways a ledger can grow, and all three are caught:
 Removals are always fine. That is the whole point.
 """
 
-import subprocess
 from dataclasses import dataclass
-from pathlib import Path
-
-import yaml
 
 from tools.gates import errors as codes
 from tools.gates.compiler import LEDGER_FILE
 from tools.gates.errors import GateError
+from tools.ratchets import (
+    DEFAULT_BASE, document_at, resolve_base, working_tree_document,
+)
 
 LEDGER_PATH = f"gates/{LEDGER_FILE}"
 
-#: The branch a change lands on. Resolved through its merge base, so on a
-#: feature branch the comparison is against the ledger the branch started from
-#: rather than against whatever main has since become.
-DEFAULT_BASE = "origin/main"
+# Re-exported so `tools.gates.ratchet` stays the one module a reader of the
+# ledger's ratchet has to open. #204 moved the base-ref resolution to
+# `tools/ratchets.py` when the SDK coverage manifest needed the same thing, and
+# two copies of "which commit am I compared against?" is the arrangement that
+# decides whether a gate compares against anything at all.
+__all__ = ["Comparison", "DEFAULT_BASE", "LEDGER_PATH", "compare", "ledger_at",
+           "resolve_base", "run"]
 
 
 @dataclass(frozen=True)
@@ -175,52 +177,11 @@ def compare(base_document, head_document, slices):
 
 # ---------------------------------------------------------------------------
 # Reading the base ref
+#
+# `resolve_base` and the git plumbing live in `tools/ratchets.py`, shared with
+# the SDK coverage ratchet. What stays here is the one thing that is about the
+# LEDGER: which file to read.
 # ---------------------------------------------------------------------------
-
-def _git(repo_root, *arguments):
-    return subprocess.run(["git", "-C", str(repo_root), *arguments],
-                          capture_output=True, text=True)
-
-
-def resolve_base(repo_root, base=DEFAULT_BASE, proposal_is_committed=True):
-    """The commit whose ledger this change is compared against.
-
-    The merge base with ``base`` — on a feature branch, the ledger the branch
-    started from; on a pull request, the base branch's, because the checkout is
-    a merge commit.
-
-    The one case needing care is when the merge base *is* HEAD, which happens
-    two ways that want opposite answers:
-
-    - the proposal is uncommitted, sitting in the working tree. HEAD is exactly
-      the right baseline, and there is nothing else it could be.
-    - the proposal IS HEAD — a commit pushed straight to the base branch.
-      Comparing it against itself would prove nothing, so this falls back to the
-      first parent and asks "did this commit add entries?" A direct push is
-      gated like anything else.
-
-    It never silently skips. A baseline that cannot be read fails the gate;
-    ``openapi/contract_gate.py`` made the same call, for the same reason.
-    """
-    merge_base = _git(repo_root, "merge-base", "HEAD", base)
-    if merge_base.returncode != 0:
-        return None, (f"cannot resolve a merge base with {base!r}: "
-                      f"{merge_base.stderr.strip()}. In CI this means the ref "
-                      f"was not fetched (`fetch-depth: 0`); the ratchet must "
-                      f"never be skipped for a missing baseline.")
-    resolved = merge_base.stdout.strip()
-
-    head = _git(repo_root, "rev-parse", "HEAD").stdout.strip()
-    if resolved != head or not proposal_is_committed:
-        return resolved, None
-
-    parent = _git(repo_root, "rev-parse", "HEAD^")
-    if parent.returncode != 0:
-        return None, ("HEAD is the merge base, carries the proposed ledger and "
-                      "has no parent — there is no earlier ledger to compare "
-                      "against.")
-    return parent.stdout.strip(), None
-
 
 def ledger_at(repo_root, ref):
     """The ledger document committed at ``ref``.
@@ -229,15 +190,7 @@ def ledger_at(repo_root, ref):
     that is the true state of a branch taken before this ticket landed, and
     every entry in the proposal is genuinely an addition.
     """
-    result = _git(repo_root, "show", f"{ref}:{LEDGER_PATH}")
-    if result.returncode != 0:
-        if "exists on disk, but not in" in result.stderr or "does not exist" in result.stderr:
-            return {}
-        return None
-    try:
-        return yaml.safe_load(result.stdout) or {}
-    except yaml.YAMLError:
-        return None
+    return document_at(repo_root, ref, LEDGER_PATH)
 
 
 def run(repo_root, slices, base=DEFAULT_BASE):
@@ -247,9 +200,7 @@ def run(repo_root, slices, base=DEFAULT_BASE):
     The proposal is always the WORKING TREE's ledger, so an author gets the same
     verdict before committing that CI gives afterwards.
     """
-    repo_root = Path(repo_root)
-    head_document = yaml.safe_load(
-        (repo_root / LEDGER_PATH).read_text(encoding="utf-8")) or {}
+    head_document = working_tree_document(repo_root, LEDGER_PATH)
 
     ref, problem = resolve_base(
         repo_root, base,

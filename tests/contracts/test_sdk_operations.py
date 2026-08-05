@@ -48,7 +48,7 @@ from tools.sdk_operations.manifest import MANIFEST_PATH, compare, render
 from tools.sdk_operations.ratchet import AUTHORISATIONS_PATH
 from tools.sdk_operations.ratchet import compare as ratchet_compare
 from tools.sdk_operations.ratchet import run as ratchet_run
-from tools.sdk_operations.spec import SPEC_PATH
+from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH
 
 #: The modules the walker must have visited. A vacuity guard names them because
 #: a walker that silently found nothing passes every assertion below.
@@ -76,10 +76,10 @@ def rejection(tmp_path, **kwargs):
     must raise. Fails the test if it loads — which is the shape that makes
     these negative controls, rather than assertions about a passing run."""
     write_repository(tmp_path, **kwargs)
-    return refusal(tmp_path)
+    return must_refuse(tmp_path)
 
 
-def refusal(repo_root):
+def must_refuse(repo_root):
     """The same, for a repository a control has already mutated on disk."""
     with pytest.raises(SurfaceInvalid) as raised:
         load_coverage(repo_root)
@@ -138,8 +138,7 @@ def test_every_published_operation_carries_a_disposition(shipped):
 
     published = json.loads((REPO_ROOT / SPEC_PATH).read_text(encoding="utf-8"))
     expected = sum(1 for item in published["paths"].values()
-                   for method in item
-                   if method in ("get", "put", "post", "delete", "patch"))
+                   for method in item if method in HTTP_METHODS)
     assert len(coverage.rows) == expected, (
         f"{len(coverage.rows)} rows for {expected} published operations")
 
@@ -428,7 +427,7 @@ def test_a_new_sub_package_is_refused_rather_than_unwalked(tmp_path):
     ergonomics.mkdir()
     (ergonomics / "__init__.py").write_text("", encoding="utf-8")
 
-    assert codes.UNSCANNED_PACKAGE in refusal(tmp_path).codes()
+    assert codes.UNSCANNED_PACKAGE in must_refuse(tmp_path).codes()
 
 
 def test_an_excused_call_that_changed_its_route_is_no_longer_excused(tmp_path):
@@ -502,21 +501,21 @@ def test_a_generated_client_with_no_modules_fails(tmp_path):
     """
     write_repository(tmp_path, generated=(),
                      modules={"things.py": client_module()})
-    assert codes.GENERATED_CLIENT_EMPTY in refusal(tmp_path).codes()
+    assert codes.GENERATED_CLIENT_EMPTY in must_refuse(tmp_path).codes()
 
 
 def test_a_missing_contract_fails_rather_than_reporting_a_clean_surface(tmp_path):
     """Reading zero operations must never look like agreement."""
     write_repository(tmp_path, modules={"things.py": client_module()})
     (tmp_path / SPEC_PATH).unlink()
-    assert codes.SPEC_MISSING in refusal(tmp_path).codes()
+    assert codes.SPEC_MISSING in must_refuse(tmp_path).codes()
 
 
 def test_a_missing_hand_shell_fails_rather_than_reporting_a_clean_surface(tmp_path):
     """And neither must walking zero modules."""
     write_repository(tmp_path, modules={"things.py": client_module()})
     (tmp_path / SHELL_ROOT / "things.py").unlink()
-    assert codes.SHELL_EMPTY in refusal(tmp_path).codes()
+    assert codes.SHELL_EMPTY in must_refuse(tmp_path).codes()
 
 
 def test_the_manifest_renders_the_same_bytes_twice(tmp_path):
@@ -539,11 +538,24 @@ def test_a_missing_manifest_is_a_different_fault_from_a_stale_one(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 4. The ratchet: the unwrapped count only falls
+# 4. The ratchet: no operation becomes unwrapped without a signature
 # ---------------------------------------------------------------------------
 
-def manifest_document(unwrapped):
-    return {"version": 1, "summary": {"operations": 10, "unwrapped": unwrapped}}
+def manifest_document(unwrapped=(), wrapped=()):
+    """A manifest naming exactly which operations are unwrapped.
+
+    The comparison is over identities, not over `summary.unwrapped`, so these
+    controls have to name operations. That is the point of the shape: `wrap
+    three, publish two` is the case a count cannot see.
+    """
+    rows = [{"operation_id": name, "method": "GET", "path": f"/api/v1/{name}",
+             "disposition": GENERATED_ONLY} for name in unwrapped]
+    rows += [{"operation_id": name, "method": "GET", "path": f"/api/v1/{name}",
+              "disposition": WRAPPED, "wrapped_by": ["x.py::C.m"]}
+             for name in wrapped]
+    return {"version": 1,
+            "summary": {"operations": len(rows), "unwrapped": len(unwrapped)},
+            "operations": rows}
 
 
 def authorisations(*entries):
@@ -553,32 +565,54 @@ def authorisations(*entries):
         for identifier, count in entries]}
 
 
-def test_a_rise_with_no_authorisation_is_refused():
-    comparison = ratchet_compare(manifest_document(2), manifest_document(3),
+def test_a_new_gap_with_no_authorisation_is_refused():
+    comparison = ratchet_compare(manifest_document(("a", "b")),
+                                 manifest_document(("a", "b", "c")),
                                  authorisations(), authorisations())
     assert not comparison.ok
     assert comparison.faults[0].code == codes.UNWRAPPED_ROSE
+    assert "c" in comparison.faults[0].message, "the message must name the gap"
 
 
-def test_a_rise_licensed_by_a_new_authorisation_is_allowed():
-    comparison = ratchet_compare(manifest_document(2), manifest_document(3),
+def test_a_new_gap_licensed_by_a_new_authorisation_is_allowed():
+    comparison = ratchet_compare(manifest_document(("a", "b")),
+                                 manifest_document(("a", "b", "c")),
                                  authorisations(), authorisations(("new", 1)))
     assert comparison.ok, [str(fault) for fault in comparison.faults]
-    assert comparison.rise == 1
+    assert comparison.opened == ("c",)
+
+
+def test_wrapping_more_than_you_open_still_needs_a_signature():
+    """The hole a net count cannot see, and the reason this compares identities.
+
+    Wrap three operations and publish two unwrapped ones and the net is −1: no
+    rise, no signature, two new gaps merged unreviewed — and an author who
+    wrote an authorisation anyway would have had it refused as inert. Comparing
+    the SETS makes this two additions, whatever the total does.
+    """
+    comparison = ratchet_compare(
+        manifest_document(unwrapped=("a", "b", "c")),
+        manifest_document(unwrapped=("d", "e"), wrapped=("a", "b", "c")),
+        authorisations(), authorisations())
+    assert not comparison.ok
+    assert comparison.faults[0].code == codes.UNWRAPPED_ROSE
+    assert comparison.opened == ("d", "e")
+    assert comparison.closed == ("a", "b", "c")
 
 
 def test_an_authorisation_carried_over_from_the_base_licenses_nothing():
     """Otherwise the file is standing permission wearing an audit trail's clothes."""
     old = authorisations(("already-there", 5))
-    comparison = ratchet_compare(manifest_document(2), manifest_document(3),
-                                 old, old)
+    comparison = ratchet_compare(manifest_document(("a",)),
+                                 manifest_document(("a", "b")), old, old)
     assert not comparison.ok
     assert comparison.faults[0].code == codes.UNWRAPPED_ROSE
 
 
 def test_an_authorisation_that_miscounts_is_refused():
     """A reviewer approves a quantity, not an intention."""
-    comparison = ratchet_compare(manifest_document(2), manifest_document(3),
+    comparison = ratchet_compare(manifest_document(("a",)),
+                                 manifest_document(("a", "b")),
                                  authorisations(), authorisations(("new", 4)))
     assert not comparison.ok
     assert comparison.faults[0].code == codes.AUTHORISATION_COUNT_WRONG
@@ -586,28 +620,31 @@ def test_an_authorisation_that_miscounts_is_refused():
 
 def test_an_authorisation_that_licenses_nothing_is_refused():
     """An override that overrides nothing is the shape of a check that cannot fail."""
-    comparison = ratchet_compare(manifest_document(3), manifest_document(3),
+    comparison = ratchet_compare(manifest_document(("a",)),
+                                 manifest_document(("a",)),
                                  authorisations(), authorisations(("new", 2)))
     assert not comparison.ok
     assert comparison.faults[0].code == codes.AUTHORISATION_INERT
 
 
-def test_a_fall_needs_no_authorisation_at_all():
+def test_closing_gaps_needs_no_authorisation_at_all():
     """Nothing here demands the count shrink, and nothing penalises it either."""
-    comparison = ratchet_compare(manifest_document(9), manifest_document(4),
+    comparison = ratchet_compare(manifest_document(("a", "b", "c")),
+                                 manifest_document(unwrapped=("a",),
+                                                   wrapped=("b", "c")),
                                  authorisations(), authorisations())
     assert comparison.ok
-    assert comparison.rise == 0
+    assert comparison.rise == 0 and comparison.closed == ("b", "c")
 
 
 def test_a_base_with_no_manifest_treats_every_gap_as_new():
     """A branch taken before this ticket landed genuinely has no manifest, and
-    every unwrapped operation in the proposal genuinely is a rise from nothing —
-    which is what makes this pull request's own authorisation load-bearing."""
-    comparison = ratchet_compare({}, manifest_document(56),
-                                 {}, authorisations(("seed", 56)))
+    every unwrapped operation in the proposal genuinely is new — which is what
+    makes this pull request's own authorisation load-bearing."""
+    comparison = ratchet_compare({}, manifest_document(("a", "b")),
+                                 {}, authorisations(("seed", 2)))
     assert comparison.ok
-    assert comparison.was == 0 and comparison.now == 56
+    assert comparison.opened == ("a", "b")
 
 
 @pytest.fixture
@@ -620,7 +657,8 @@ def repository(tmp_path):
     git(tmp_path, "init", "-b", "main", str(tmp_path))
     git(tmp_path, "config", "user.email", "ci@example.invalid")
     git(tmp_path, "config", "user.name", "CI")
-    _commit(tmp_path, manifest_document(2), authorisations(), "as it stands")
+    _commit(tmp_path, manifest_document(("a", "b")), authorisations(),
+            "as it stands")
     return tmp_path
 
 
@@ -635,18 +673,19 @@ def _commit(repository, manifest, authorisation_document, message):
     git(repository, "commit", "-m", message)
 
 
-def test_a_branch_that_raises_the_count_fails_against_its_base(repository):
+def test_a_branch_that_opens_a_gap_fails_against_its_base(repository):
     git(repository, "checkout", "-b", "feature")
-    _commit(repository, manifest_document(3), authorisations(), "one more gap")
+    _commit(repository, manifest_document(("a", "b", "c")), authorisations(),
+            "one more gap")
     comparison = ratchet_run(repository, "main")
     assert not comparison.ok
     assert comparison.faults[0].code == codes.UNWRAPPED_ROSE
 
 
-def test_a_branch_that_raises_it_with_a_signature_passes(repository):
+def test_a_branch_that_opens_one_with_a_signature_passes(repository):
     git(repository, "checkout", "-b", "feature")
-    _commit(repository, manifest_document(3), authorisations(("new", 1)),
-            "one more gap, signed for")
+    _commit(repository, manifest_document(("a", "b", "c")),
+            authorisations(("new", 1)), "one more gap, signed for")
     assert ratchet_run(repository, "main").ok
 
 

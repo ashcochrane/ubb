@@ -20,6 +20,8 @@ itself rather than on a copy of it.
 
 import json
 
+import yaml
+
 #: The prefix every synthetic route shares with the real ones, so a control
 #: exercises the same `ROUTE_MARKER` rule the shipped contract does.
 ROOT = "/api/v1"
@@ -115,7 +117,8 @@ def write_repository(tmp_path, *, operations=DEFAULT_OPERATIONS, modules=None,
     if ledger is not None:
         (tmp_path / "gates").mkdir(parents=True, exist_ok=True)
         (tmp_path / "gates" / "migration-ledger.yaml").write_text(
-            ledger if isinstance(ledger, str) else _yaml(ledger),
+            ledger if isinstance(ledger, str)
+            else yaml.safe_dump(ledger, sort_keys=False),
             encoding="utf-8")
 
     if manifest is not None:
@@ -136,25 +139,3 @@ def excusing(*entries):
             for index, (site, found) in enumerate(entries)
         ],
     }
-
-
-def _yaml(document):
-    """A tiny dumper, so the helpers do not depend on emitter settings.
-
-    Only the two shapes ``excusing`` produces — a mapping of scalars and a list
-    of flat mappings — because a general dumper here would be a second
-    implementation of PyYAML nobody asked for.
-    """
-    lines = []
-    for key, value in document.items():
-        if isinstance(value, list):
-            lines.append(f"{key}:")
-            for item in value:
-                first = True
-                for name, field in item.items():
-                    prefix = "  - " if first else "    "
-                    lines.append(f"{prefix}{name}: {json.dumps(field)}")
-                    first = False
-        else:
-            lines.append(f"{key}: {json.dumps(value)}")
-    return "\n".join(lines) + "\n"

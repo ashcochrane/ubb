@@ -84,13 +84,13 @@ def _ratchet(repo_root, base):
         for fault in comparison.faults:
             print(f"  {fault}", file=sys.stderr)
         return 1
-    if comparison.rise:
-        print(f"the unwrapped count rose from {comparison.was} to "
-              f"{comparison.now}, under an authorisation licensing "
-              f"{comparison.licensed}.")
-    else:
-        print(f"the unwrapped count did not rise: {comparison.was} -> "
-              f"{comparison.now}.")
+    print(f"{len(comparison.opened)} operation(s) became unwrapped and "
+          f"{len(comparison.closed)} gained a wrapper.")
+    if comparison.opened:
+        print(f"  signed for by an authorisation licensing "
+              f"{comparison.licensed}:")
+        for operation_id in comparison.opened:
+            print(f"    {operation_id}")
     return 0
 
 

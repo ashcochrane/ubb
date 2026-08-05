@@ -83,12 +83,12 @@ def template(path):
 
 
 def load_operations(repo_root):
-    """Every operation the committed contract publishes.
+    """``({(METHOD, template): Operation}, errors)`` for the committed contract.
 
-    Returns ``{(METHOD, template): Operation}``. Raises
-    :class:`~tools.sdk_operations.errors.SurfaceInvalid` through the caller's
-    error list rather than here: the loader collects, and one entry point
-    decides whether to raise.
+    Never raises: it collects. One entry point —
+    :func:`tools.sdk_operations.load_coverage` — decides whether a non-empty
+    error list becomes a failure, so a caller that wants the whole story in one
+    run can have it.
     """
     errors = []
     operations = _read(Path(repo_root) / SPEC_PATH, errors)

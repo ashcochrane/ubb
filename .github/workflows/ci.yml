@@ -201,13 +201,15 @@ jobs:
       - name: Migration ledger ratchet — it only shrinks
         run: python -m tools.gates ratchet
 
-      # The count of published operations with no ergonomic wrapper (#204,
-      # ADR-0007 §4). It need NOT reach zero — the SDK is allowed deliberate
-      # gaps — so this is not the ledger's ratchet with a different subject: it
-      # refuses only a RISE, and only one nobody signed for. Same reason it sits
-      # beside the ledger's rather than in the suite: this is the half that
-      # needs git history.
-      - name: SDK coverage ratchet — the unwrapped count only falls
+      # Published operations with no ergonomic wrapper (#204, ADR-0007 §4).
+      # Their number need NOT reach zero — the SDK is allowed deliberate gaps —
+      # so this is not the ledger's ratchet with a different subject: it refuses
+      # only a NEW gap, and only one nobody signed for. It compares the SET of
+      # unwrapped operations rather than the total, because wrapping three while
+      # publishing two unwrapped ones is a net fall and two unreviewed gaps.
+      # Same reason it sits beside the ledger's rather than in the suite: this
+      # is the half that needs git history.
+      - name: SDK coverage ratchet — no gap opens without a signature
         run: python -m tools.sdk_operations ratchet
 
   # Schemathesis conformance sweep (#87): fuzz the app in-process against the

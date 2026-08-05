@@ -35,7 +35,7 @@ _PREAMBLE = f"""#
 # Every operation the committed contract publishes, and what the SDK does about
 # it (ADR-0007 §4, #155 §8.2). The count of unwrapped operations is NOT required
 # to reach zero — the SDK is allowed deliberate gaps — but it must stay visible
-# and mechanically accurate, and it may not rise without a signature.
+# and mechanically accurate, and no operation may join them unsigned.
 #
 #   wrapped           a hand-written call in {SHELL_ROOT}/ resolves to it
 #   generated_only    no hand-written call; the generated client has its module
@@ -46,15 +46,28 @@ _PREAMBLE = f"""#
 # classification would be a second copy of a fact the repository already
 # states, and the only question it could raise is whether the two copies agree.
 #
+# One consequence, flagged rather than buried: #155 §8.2 described
+# `not_yet_wrapped` as "deliberately unavailable", imagining a human declaring
+# it. Derived, it means "unreachable by any route" — a detector for an operation
+# the pinned generator silently skipped, which G16 cannot see because it
+# compares the generator against itself. Deliberateness moved to the
+# authorisation; the word narrowed.
+#
 # `wrapped_by` names the declaring method rather than a line, so a call moving
 # down its file is not a diff. Where one operation is reached from more than one
 # place, every place is listed.
+#
+# The count is per OPERATION, not per path. #155 §1.3 counted 42 paths the SDK
+# never calls; at the operation identity ADR-0007 §4 requires — method AND path
+# — the same tree gives 56. Both numbers are right about different units.
 """
 
 _SUMMARY_NOTE = """
-# The lines a reviewer has to read. `unwrapped` rising is refused by
-# `python -m tools.sdk_operations ratchet` unless this change carries an entry
-# in ubb-sdk/coverage-authorisations.yaml that licenses exactly the rise.
+# The lines a reviewer has to read. An operation JOINING the unwrapped set is
+# refused by `python -m tools.sdk_operations ratchet` unless this change carries
+# an entry in ubb-sdk/coverage-authorisations.yaml licensing exactly that many.
+# The ratchet compares the set, not this total: wrapping three while publishing
+# two unwrapped ones lowers the number and opens two gaps.
 """
 
 
@@ -82,12 +95,15 @@ def render(coverage):
 
 
 def compare(coverage, repo_root):
-    """``None`` if the committed manifest is what this coverage renders.
+    """``(fault or None, rendered bytes)`` for the committed manifest.
 
-    Otherwise a :class:`~tools.sdk_operations.errors.SurfaceError` saying which
-    way it is wrong. Missing and stale are separate codes because they are
-    different faults with different fixes, and "no differences found" must
-    never be what a deleted manifest looks like.
+    The fault is ``None`` when the committed bytes are exactly what this
+    coverage renders, and otherwise a
+    :class:`~tools.sdk_operations.errors.SurfaceError` saying which way it is
+    wrong. Missing and stale are separate codes because they are different
+    faults with different fixes, and "no differences found" must never be what
+    a deleted manifest looks like. The bytes come back either way so
+    :func:`write` does not have to render twice.
 
     The comparison is over BYTES. Decoding would fold CRLF into LF and call a
     Windows working copy current, so this tool would report "up to date" about

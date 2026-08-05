@@ -344,11 +344,16 @@ gates:
       `not_yet_wrapped` from the absence of both — because a hand-written
       classification would be a second copy of a fact the tree already states.
       56 operations are unwrapped, which ADR-0007 §4 does not require to reach
-      zero; what it requires is that a RISE be signed for, and the ratchet step
-      below refuses one that is not. `not_yet_wrapped` is zero today and is kept
-      because G16 compares the generator against itself: an operation the
+      zero; what it requires is that a new gap be signed for, and the ratchet
+      step below refuses one that is not — comparing the SET of unwrapped
+      operations, because wrapping three while publishing two unwrapped ones is
+      a net fall and two unreviewed gaps. `not_yet_wrapped` is zero today and is
+      kept because G16 compares the generator against itself: an operation the
       generator silently skips is missing from both sides of that comparison and
-      only this row would notice.
+      only this row would notice. Note that this narrows #155 §8.2's wording,
+      which described `not_yet_wrapped` as "deliberately unavailable" and
+      imagined a human declaring it; here deliberateness is carried by the
+      authorisation instead, and the word means "unreachable by any route".
     enforced_by:
       - suite: contracts
         node: tests/contracts/test_sdk_operations.py::test_every_published_operation_carries_a_disposition
@@ -357,7 +362,7 @@ gates:
       - job: contracts
         step: SDK coverage manifest gate — regeneration produces zero diff
       - job: contracts
-        step: SDK coverage ratchet — the unwrapped count only falls
+        step: SDK coverage ratchet — no gap opens without a signature
 
   G19:
     statement: >-

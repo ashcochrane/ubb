@@ -16,8 +16,8 @@ The public surface is small on purpose:
 programme's bookkeeping; this is one of the checks it accounts for.
 """
 
-from tools.sdk_operations.coverage import Coverage, Row, assess, load_coverage
-from tools.sdk_operations.errors import SurfaceError, SurfaceInvalid
+from .coverage import Coverage, Row, assess, load_coverage
+from .errors import SurfaceError, SurfaceInvalid
 
 __all__ = ["Coverage", "Row", "SurfaceError", "SurfaceInvalid", "assess",
            "load_coverage"]

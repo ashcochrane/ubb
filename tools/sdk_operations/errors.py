@@ -30,17 +30,12 @@ CALL_MALFORMED = "call_malformed"              # a request call with no path arg
 STRAY_ROUTE_LITERAL = "stray_route_literal"    # a route spelled outside any call this gate reads
 NO_SUCH_OPERATION = "no_such_operation"        # method + path matches nothing published
 
-# --- The declared gaps ------------------------------------------------------
-DISPOSITIONS_UNREADABLE = "dispositions_unreadable"
-DISPOSITION_NOT_MAPPING = "disposition_not_mapping"
-DISPOSITION_MISSING_FIELD = "disposition_missing_field"
-DISPOSITION_UNKNOWN_FIELD = "disposition_unknown_field"
-DISPOSITION_INVALID_FIELD_TYPE = "disposition_invalid_field_type"
-DISPOSITION_UNKNOWN_KIND = "disposition_unknown_kind"      # not one of ADR-0007 §4's two
-DISPOSITION_UNKNOWN_OPERATION = "disposition_unknown_operation"  # names no published operation
-DISPOSITION_ON_WRAPPED = "disposition_on_wrapped"          # declares a gap that is not one
-DUPLICATE_DISPOSITION = "duplicate_disposition"
-UNDECLARED_GAP = "undeclared_gap"              # unwrapped, and nobody said so on purpose
+# There are deliberately no `disposition_*` codes. An earlier shape of this gate
+# had a human declare each unwrapped operation's disposition in a checked-in
+# file, which needed a family of codes for a mis-declared one. The shipped gate
+# DERIVES all three dispositions from the tree instead, so there is nothing to
+# mis-declare — see `coverage.py`. The codes went with the design; a constant
+# nothing raises is a rule nothing enforces.
 
 # --- The excused invalid calls, read from the migration ledger ---------------
 EXCUSE_UNREADABLE = "excuse_unreadable"        # gates/migration-ledger.yaml will not parse
