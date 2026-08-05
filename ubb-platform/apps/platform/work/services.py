@@ -2,7 +2,7 @@ import logging
 
 from django.utils import timezone
 
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ class TaskService:
         after the parent's own winning flip (parent lock already held, so
         subtask registration — which locks the parent — can never slip a new
         child past a finished cascade)."""
-        from apps.platform.tasks import reasons
+        from apps.platform.work import reasons
         now = timezone.now()
         children = Task.objects.select_for_update().filter(
             parent=parent, status="active")

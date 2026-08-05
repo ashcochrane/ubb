@@ -15,9 +15,9 @@ from django.utils import timezone
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.services import TaskService
-from apps.platform.tasks.tasks import close_abandoned_tasks, reap_stale_tasks
+from apps.platform.work.models import Task
+from apps.platform.work.services import TaskService
+from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 

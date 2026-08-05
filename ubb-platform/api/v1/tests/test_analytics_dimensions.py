@@ -11,7 +11,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
 from apps.platform.dimensions.models import DimensionDef
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 
 
 @pytest.mark.django_db

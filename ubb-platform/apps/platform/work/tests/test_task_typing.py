@@ -1,7 +1,7 @@
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 
 
 @pytest.mark.django_db

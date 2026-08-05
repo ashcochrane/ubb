@@ -33,7 +33,7 @@ The rules:
 Timestamps are stored as ISO-8601 strings, ids as strings — the array must
 be JSON-storable and byte-stable on replay reads.
 """
-from apps.platform.tasks import reasons
+from apps.platform.work import reasons
 
 # Kill reasons that name a limit episode a late event should point back at.
 _EPISODE_KILL_REASONS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
@@ -80,7 +80,7 @@ def _unit_contexts(task, verdicts, now):
             # The cascade was the PARENT's trip — chase one level up. A
             # parent reaped/completed for a non-limit reason falls through
             # to the generic task_not_active entry.
-            from apps.platform.tasks.models import Task
+            from apps.platform.work.models import Task
             parent = Task.objects.filter(id=task.parent_id).only(
                 "id", "status", "metadata", "completed_at").first()
             parent_reason = (parent.metadata or {}).get("kill_reason") \

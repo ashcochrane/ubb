@@ -39,7 +39,7 @@ from apps.billing.queries import get_patrol_stats
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant
 
 

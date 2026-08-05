@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 BATCH_URL = "/api/v1/metering/usage/batch"
@@ -227,7 +227,7 @@ class TestBatchOneRuleParity:
         (the next event's verdict retries the kill)."""
         t, c, http, auth = _setup()
         task = self._task(t, c)
-        with mock.patch("apps.platform.tasks.services.TaskService.kill_task",
+        with mock.patch("apps.platform.work.services.TaskService.kill_task",
                         side_effect=RuntimeError("kill boom")) as kill:
             resp = _post(http, auth, BATCH_URL, {"events": self._items(c, task)})
         assert resp.status_code == 200  # never a 500

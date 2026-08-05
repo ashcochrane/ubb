@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.aggregates import Aggregate
 
-from apps.platform.tasks.models import Task, TaskType
+from apps.platform.work.models import Task, TaskType
 
 
 def task_type_policy(tenant_id, key, kind) -> dict | None:

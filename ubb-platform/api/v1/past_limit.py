@@ -32,8 +32,8 @@ from django.utils.dateparse import parse_datetime
 from apps.billing.queries import get_stop_signal_state
 from apps.metering.usage.models import UsageEvent
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks import reasons
-from apps.platform.tasks.models import Task
+from apps.platform.work import reasons
+from apps.platform.work.models import Task
 
 _UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 

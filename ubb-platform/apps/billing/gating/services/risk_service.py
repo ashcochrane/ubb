@@ -16,7 +16,7 @@ class RiskService:
         opinion" — the caller applies the existing RiskConfig fallback.
         """
         from apps.platform.dimensions.services import DimensionError, DimensionService
-        from apps.platform.tasks.queries import task_type_policy
+        from apps.platform.work.queries import task_type_policy
 
         kind = "subtask" if is_subtask else "task"
         key = (subtask_type if is_subtask else task_type) or ""
@@ -137,7 +137,7 @@ class RiskService:
         # never be born under an already-terminal parent.
         if create_task:
             from django.db import transaction
-            from apps.platform.tasks.models import Task
+            from apps.platform.work.models import Task
             with transaction.atomic():
                 parent = None
                 if parent_task_id is not None:
@@ -210,7 +210,7 @@ class RiskService:
                         and not customer.tenant.require_cost_card_coverage):
                     return {"allowed": False, "reason": "cost_coverage_required",
                             "balance_micros": balance, "task_id": None}
-                from apps.platform.tasks.services import TaskService
+                from apps.platform.work.services import TaskService
 
                 task = TaskService.create_task(
                     tenant=customer.tenant,

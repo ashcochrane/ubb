@@ -5,7 +5,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.tasks.models import Task
+from apps.platform.work.models import Task
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.wallets.models import Wallet
 from apps.billing.tenant_billing.models import BillingTenantConfig

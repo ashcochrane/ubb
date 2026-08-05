@@ -47,7 +47,7 @@ class UsageEvent(BaseModel):
     # — tags are free-form analytics labels and never silently become a
     # limited thing (no tag-fallback inference).
     task = models.ForeignKey(
-        "tasks.Task", on_delete=models.CASCADE, related_name="usage_events",
+        "work.Task", on_delete=models.CASCADE, related_name="usage_events",
         null=True, blank=True,
     )
     # When the usage economically HAPPENED (caller-suppliable, bounded by

@@ -122,7 +122,7 @@ problem+json. Batch and async ingest speak **one verdict field set**:
 Verdict words come from the same registry (`verdicts` section):
 `ingest_rejections` reference problem codes; `stop_reasons`, `stop_scopes`,
 and `pre_check_reasons` are the closed vocabularies of the spend-control
-surface (`apps/platform/tasks/reasons.py`, `RiskService`).
+surface (`apps/platform/work/reasons.py`, `RiskService`).
 
 ## Idempotency is a domain concept
 

@@ -20,7 +20,7 @@ from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.wallets.models import Wallet
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.services import TaskService
+from apps.platform.work.services import TaskService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 

@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("usage", "0025_widen_rawingestevent_idempotency_key"),
-        ("tasks", "0004_the_clean_cut_run_to_task"),
+        ("work", "0004_the_clean_cut_run_to_task"),
     ]
 
     operations = [

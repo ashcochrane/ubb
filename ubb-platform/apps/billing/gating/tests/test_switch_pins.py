@@ -45,8 +45,8 @@ from apps.metering.usage.models import RawIngestEvent, UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+from apps.platform.work.models import Task
+from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
 from apps.platform.tenants.flags import arrival_signals_on
 from apps.platform.tenants.models import Tenant, TenantApiKey
 

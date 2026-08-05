@@ -1,4 +1,4 @@
-import apps.platform.tasks.models
+import apps.platform.work.models
 import django.db.models.deletion
 import uuid
 from django.db import migrations, models
@@ -6,8 +6,12 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # App label moved 'tasks' -> 'work' (#196); see 0001_initial for why
+    # this replaces its predecessor rather than re-running it.
+    replaces = [("tasks", "0008_tasktype")]
+
     dependencies = [
-        ('tasks', '0007_task_idx_task_active_limited'),
+        ('work', '0007_task_idx_task_active_limited'),
         ('tenants', '0022_tenantapikey_role'),
     ]
 
@@ -21,7 +25,7 @@ class Migration(migrations.Migration):
                 ('key', models.SlugField(max_length=64)),
                 ('kind', models.CharField(choices=[('task', 'Task'), ('subtask', 'Subtask')], default='task', max_length=8)),
                 ('default_provider_cost_limit_micros', models.BigIntegerField(blank=True, null=True)),
-                ('required_dimensions', models.JSONField(blank=True, default=apps.platform.tasks.models._empty_list)),
+                ('required_dimensions', models.JSONField(blank=True, default=apps.platform.work.models._empty_list)),
                 ('retired_at', models.DateTimeField(blank=True, null=True)),
                 ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='task_types', to='tenants.tenant')),
             ],

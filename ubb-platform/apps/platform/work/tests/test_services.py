@@ -7,9 +7,9 @@ from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
-from apps.platform.tasks.services import TaskService
+from apps.platform.work.models import Task
+from apps.platform.work.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
+from apps.platform.work.services import TaskService
 
 
 class TaskServiceCreateTest(TestCase):

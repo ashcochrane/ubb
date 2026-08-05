@@ -23,9 +23,9 @@ from django.utils import timezone
 from apps.billing.gating.models import StopSignalState
 from apps.metering.usage.services.stop_context import build_stop_context
 from apps.platform.customers.models import Customer
-from apps.platform.tasks import reasons
-from apps.platform.tasks.models import Task
-from apps.platform.tasks.services import TaskService
+from apps.platform.work import reasons
+from apps.platform.work.models import Task
+from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant
 
 NO_VERDICTS = {"crossed_task_limit": False, "crossed_subtask_limit": False,

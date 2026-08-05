@@ -295,7 +295,7 @@ class LiveCounter:
             # non-crossing event must not clear a flag a sibling run set — the
             # flag lifts only on recovery (credit / reconcile).
             if LiveCounter._crossed(mode, v, owner_id, tenant):
-                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
                 opened = LiveCounter._set_stop(
                     owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
                     balance_micros=v if mode == "prepaid" else 0)
@@ -423,7 +423,7 @@ class LiveCounter:
                 out.append(_held_verdict())
 
             if crossed:
-                from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
                 LiveCounter._set_stop(
                     owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
                     balance_micros=crossing_value if mode == "prepaid" else 0)
@@ -857,7 +857,7 @@ class LiveCounter:
         fast-lane flag is re-aligned best-effort either way (patrol job
         §C.2: durable truth owns the verdict cache); returns True when the
         flag actually changed — the #44 flag-realignment outcome."""
-        from apps.platform.tasks.reasons import CUSTOMER_WIDE_STOP
+        from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService)
         if crossed:
