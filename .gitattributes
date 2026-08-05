@@ -8,3 +8,9 @@ openapi/v1.json text eol=lf
 ubb-sdk/ubb/_core/** text eol=lf
 ubb-sdk/ubb/_exceptions_generated.py text eol=lf
 ubb-sdk/ubb/_spec_revision.py text eol=lf
+
+# The vocabulary registry is the input every generated vocabulary artifact is
+# byte-compared against (#200, #207, #208). Pin it to LF now, before anything
+# rides a zero-diff gate off it, so a contributor's core.autocrlf can never
+# become the reason a regeneration check disagrees.
+domain-vocabulary/** text eol=lf

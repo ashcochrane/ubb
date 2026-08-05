@@ -1,0 +1,88 @@
+# The vocabulary registry's own schema (ADR-0008 §2, issue #198).
+#
+# This file is DATA, not documentation: `tools/vocabulary` reads it and enforces
+# it. The four kinds and the fields each one requires or forbids are declared
+# here exactly once, so "what may a `closed` concept carry?" is answered by a
+# file rather than by reading the compiler.
+#
+# A schema change is therefore a reviewable diff in its own right, and cannot
+# drift away from the checker the way a prose description would.
+
+version: 1
+
+# The canonical form of a concept name and of every value it declares:
+# lower snake_case, starting with a letter. Concepts whose values legitimately
+# carry more structure override this per concept with `token_pattern` — the
+# webhook catalogue's `<owner>.<past-tense state entered>` names (ADR-0006 §5)
+# are the case this exists for, and they arrive with #202.
+token_pattern: '^[a-z][a-z0-9_]*$'
+
+# Fields every concept carries, whatever its kind.
+#
+# `consumers` is REQUIRED and may be empty. That is the point: a concept nobody
+# consumes yet is legal, but it is legal *visibly* — the author had to write
+# `consumers: []` and the compiler reports it by name. A concept that simply
+# omitted the key would be silently unchecked, which is the failure mode the
+# declared-consumer list exists to prevent.
+concept_fields:
+  required:
+    - kind
+    - summary
+    - consumers
+  optional:
+    # Values retired in favour of this concept's canonical ones. Registry data,
+    # not a list somebody maintains by memory — the forbidden-term sweep (#206)
+    # consumes it directly.
+    - retired_aliases
+    # Per-concept override of the registry-wide `token_pattern` above.
+    - token_pattern
+
+# One entry per kind in ADR-0008 §2's table. `requires` and `forbids` are the
+# whole of the per-kind shape rule; anything not listed in `concept_fields` or
+# in some kind's `requires`/`forbids` is an unknown field and fails.
+kinds:
+  closed:
+    summary: UBB owns the whole value set — exactly these values, no more.
+    requires:
+      - values
+      - label_key_prefix
+    forbids:
+      - known_values
+      - allow_unknown
+
+  open:
+    summary: >-
+      UBB records the values it knows; consumers accept future and external ones.
+      Checking is asymmetric — a registry-known value missing from a UBB-owned
+      consumer is a defect, a runtime value the registry has never seen is legal.
+    requires:
+      - known_values
+      - allow_unknown
+      - label_key_prefix
+    forbids:
+      - values
+
+  tenant_defined:
+    summary: >-
+      The tenant owns the values. UBB defines the field and its validation
+      contract and never enumerates the set — map #137 constraint 5 as a schema
+      rule, so the registry cannot become the vendor catalogue that constraint
+      forbids UBB to ship.
+    forbids:
+      - values
+      - known_values
+      - allow_unknown
+      # No label key: the tenant authored the value, so UBB has no wording to
+      # supply for it.
+      - label_key_prefix
+
+  free_text:
+    summary: >-
+      Not vocabulary. Recorded here so that "is this a value set?" is answered
+      once, in data, rather than re-litigated by whoever next wants to add an
+      enum to it.
+    forbids:
+      - values
+      - known_values
+      - allow_unknown
+      - label_key_prefix

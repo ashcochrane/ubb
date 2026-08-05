@@ -97,6 +97,41 @@ jobs:
         working-directory: ubb-sdk
         run: python -m pytest
 
+  # The repository-wide contract suite (#198, ADR-0008 §2 and §7). Today it is
+  # the vocabulary registry's validity gate; as slice 0 lands it becomes the
+  # single coordinating verdict for the registry and every consumer generated
+  # from it — the platform, the console, the SDK and the committed spec.
+  #
+  # It lives at the git root rather than inside any one of them because it
+  # verifies AGREEMENT BETWEEN them, and a check hosted by one party to the
+  # agreement can only ever see its own side.
+  #
+  # Two pinned packages, no Postgres, no Redis, no settings: this suite must run
+  # without Django, and installing the platform lock would make that claim
+  # unfalsifiable. `test_contract_suite_is_enforced.py` asserts exactly that
+  # about this job, along with the absence of `continue-on-error`, an `if:` and
+  # a path filter — so disarming this gate means deleting the test that says it
+  # is armed, which is a visible act in a diff.
+  contracts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tests/contracts/requirements.txt
+
+      - name: Install the contract suite's dependencies (pinned)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/contracts/requirements.txt
+
+      - name: Contract suite — the registry, and the gates over it
+        run: python -m pytest tests/contracts
+
   # Schemathesis conformance sweep (#87): fuzz the app in-process against the
   # committed openapi/v1.json and report every place the implementation
   # contradicts the document (see ubb-platform/conformance/). WANTED, NOT

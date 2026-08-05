@@ -48,6 +48,14 @@ From `ubb-platform/` (venv at `ubb-platform/.venv`):
   refreshes the committed `openapi/v1.json`, the single source of truth for the tenant surface
   (ADR-002; CI's drift/breaking/TS gates enforce it — see `openapi/README.md`)
 
+The **contract suite** runs from the **git root**, not from `ubb-platform/`, and deliberately without
+Django (`pip install -r tests/contracts/requirements.txt` — two pinned packages):
+
+- `python -m pytest tests/contracts` — everything that verifies *agreement between* the platform, the
+  console, the SDK and the committed spec. It gates: required CI job, no `continue-on-error`, no path
+  filter, and a test that asserts exactly that. See `tests/contracts/README.md`.
+- `python -m tools.vocabulary` — validate `domain-vocabulary/` and name every reason it is invalid.
+
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 
 ## Conventions
@@ -79,3 +87,9 @@ The five canonical labels, used as-is (`needs-triage`, `needs-info`, `ready-for-
 Multi-context: `CONTEXT-MAP.md` at the repo root points to one `CONTEXT.md` per product
 (`ubb-platform/apps/<product>/CONTEXT.md`). ADRs live in `docs/adr/` (new) and `docs/architecture/`
 (existing). See `docs/agents/domain.md`.
+
+`domain-vocabulary/` is the **machine-readable** half of that: the checked-in registry of what a
+UBB-owned concept is called and what values it may take (ADR-0008 §2), enforced by CI. The
+`CONTEXT.md` glossaries explain what a concept *means*; the registry pins the exact tokens. It is
+**seeded, not complete** — #202 lands the full end-state vocabulary. See
+`domain-vocabulary/README.md`.
