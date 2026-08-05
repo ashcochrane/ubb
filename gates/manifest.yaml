@@ -232,7 +232,7 @@ gates:
     statement: >-
       The enum-name rule over declaring models — `method`, `mode` and
       `structure` mean the three different things ADR-0006 §3 says they mean.
-    oracle: ADR-0006 §3, against the Django app registry
+    oracle: ADR-0006 §3 and §7, against the Django app registry
     source: ADR-0006 §3, #154 §12
     status: installed
     notes: >-

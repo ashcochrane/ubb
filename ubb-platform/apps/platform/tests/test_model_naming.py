@@ -38,6 +38,7 @@ match the vocabulary registry is G2's job and rides its consumers (#207).
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from django.apps import apps
 from django.db import models
@@ -47,12 +48,20 @@ ADR = "docs/adr/0006-domain-vocabulary-and-contract-naming.md"
 LEDGER = "gates/migration-ledger.yaml"
 EXCEPTIONS = "gates/permanent-exceptions.yaml"
 
+# apps/platform/tests/test_model_naming.py -> the git root.
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 # Every first-party app is a package under `apps.`; the platform's own tree sits
 # under `ubb-platform/` in the repository, which is what makes a site string
 # here paste-able into a grep from the git root — and the ledger's `site` is
 # read from the git root.
+#
+# Named `PLATFORM_TREE` rather than `PLATFORM_ROOT` on purpose: the module next
+# door binds `PLATFORM_ROOT` to a `Path` at that directory, and two names alike
+# in one package holding different types is the confusion this file's own G12
+# rule exists to refuse.
 FIRST_PARTY_PACKAGE = "apps."
-PLATFORM_ROOT = "ubb-platform"
+PLATFORM_TREE = "ubb-platform"
 
 TABLE_PREFIX = "ubb_"
 
@@ -129,7 +138,7 @@ GATE_OF_RULE = {
 # Today's violations, seeded — the ledger's entries and the one exception.
 #
 # Both mirror `gates/`, keyed by the ledger's own `site` spelling and carrying
-# the entry id, and `tests/contracts/test_model_naming_ledger_agreement.py`
+# `(entry id, found)`, and `tests/contracts/test_model_naming_ledger_agreement.py`
 # holds the two encodings to each other in both directions. They cannot live in
 # one place: this suite has no PyYAML (the platform lock deliberately does not
 # carry it) and the contract suite has no Django (deliberately, so a Django
@@ -137,35 +146,47 @@ GATE_OF_RULE = {
 # ADR-0006 §4 warns about, so the agreement test is not optional decoration —
 # it is what makes this list a copy rather than a second opinion.
 #
+# The alternative considered and rejected: GENERATE this list from the ledger,
+# the way `core/vocabulary.py` is generated from the registry (#200), with a
+# zero-diff gate. That is the house answer for registry VALUES in backend code
+# (docs/conventions/coding-standards.md), and it does not fit here — it would
+# put a generated artifact inside a test package and make `tools/vocabulary`'s
+# generator own a `gates/` artifact, crossing the boundary #198 and #201 drew
+# between the two programmes. The agreement test buys the same guarantee — they
+# cannot disagree — for a fraction of the machinery.
+#
 # An entry here is a debt, not an excuse. `test_every_seeded_entry_is_still_a_
 # real_violation` fails the moment a seeded site is fixed and the entry is not
 # deleted, so the ledger cannot rot into an allowlist nobody rereads.
 # ---------------------------------------------------------------------------
 
-# Spelled as plain literals rather than built from `PLATFORM_ROOT`, for two
+# Spelled as plain literals rather than built from `PLATFORM_TREE`, for two
 # reasons: a site is then greppable verbatim across this file and `gates/`, and
 # the agreement test can read these with `ast.literal_eval` without importing
 # Django into a suite that deliberately has none.
 LEDGERED_VIOLATIONS = {
     "G9": {
         "ubb-platform/apps/metering/pricing/models.py::Rate":
-            "g9-rate-sits-on-the-rate-card-table",
+            ("g9-rate-sits-on-the-rate-card-table", "ubb_rate_card"),
         "ubb-platform/apps/metering/pricing/models.py::RateCard":
-            "g9-rate-card-sits-on-the-container-table",
+            ("g9-rate-card-sits-on-the-container-table",
+             "ubb_rate_card_container"),
         "ubb-platform/apps/subscriptions/models.py::CustomerSubscriptionItem":
-            "g9-customer-subscription-item-table-abbreviated",
+            ("g9-customer-subscription-item-table-abbreviated",
+             "ubb_customer_sub_item"),
     },
     "G11": {
         "ubb-platform/apps/metering/pricing/models.py"
         "::TenantMarkup.markup_percentage_micros":
-            "g11-tenant-markup-percentage-micros",
+            ("g11-tenant-markup-percentage-micros",
+             "markup_percentage_micros"),
         "ubb-platform/apps/platform/plans/models.py"
         "::Plan.markup_percentage_micros":
-            "g11-plan-markup-percentage-micros",
+            ("g11-plan-markup-percentage-micros", "markup_percentage_micros"),
     },
     "G12": {
         "ubb-platform/apps/metering/pricing/models.py::Rate.pricing_model":
-            "g12-rate-pricing-model",
+            ("g12-rate-pricing-model", "pricing_model"),
     },
 }
 
@@ -197,6 +218,7 @@ class ModelFact:
     control would then have to build a whole world to exercise one rule.
     """
     name: str
+    app_label: str
     module: str
     db_table: str
     fields: tuple
@@ -206,7 +228,7 @@ class ModelFact:
     @property
     def source(self):
         """The file the model is declared in, relative to the git root."""
-        return f"{PLATFORM_ROOT}/{self.module.replace('.', '/')}.py"
+        return f"{PLATFORM_TREE}/{self.module.replace('.', '/')}.py"
 
     @property
     def site(self):
@@ -227,6 +249,7 @@ def model_facts(model):
     meta = model._meta
     return ModelFact(
         name=model.__name__,
+        app_label=meta.app_label,
         module=model.__module__,
         db_table=meta.db_table,
         fields=tuple(FieldFact(field.name, field.get_internal_type())
@@ -406,6 +429,16 @@ def _collect():
 _VIOLATIONS, _FACTS = _collect()
 
 
+def _entry_id(entry):
+    """A ledger entry is `(id, found)`; a permanent exception is just an id.
+
+    The shapes differ because the two lists differ: the schema gives an
+    exception no `expected` and no `found`, since no rename is coming and there
+    is nothing for a later value to be compared against.
+    """
+    return entry[0] if isinstance(entry, tuple) else entry
+
+
 def _excused(gate, site):
     return (site in LEDGERED_VIOLATIONS.get(gate, {})
             or site in PERMANENT_EXCEPTIONS.get(gate, {}))
@@ -441,7 +474,7 @@ def test_walker_actually_sees_the_model_layer():
     # 4 a test to edit for no reason, and a guard that has to be edited to stay
     # true is one that gets edited into meaninglessness. App labels are stable
     # across the re-model: it renames the domain, not the packages.
-    apps_seen = {model._meta.app_label for model in first_party_models()}
+    apps_seen = {fact.app_label for fact in _FACTS}
     for expected in ("tenants", "work", "usage", "pricing", "wallets",
                      "subscriptions", "referrals"):
         assert expected in apps_seen, f"walker visited no model in `{expected}`"
@@ -459,11 +492,8 @@ def test_every_model_site_names_a_file_that_exists():
     entry would be unfalsifiable and the allowlist would excuse nothing while
     looking like it excused something.
     """
-    from pathlib import Path
-
-    repo_root = Path(__file__).resolve().parents[4]
     missing = sorted({fact.source for fact in _FACTS
-                      if not (repo_root / fact.source).is_file()})
+                      if not (REPO_ROOT / fact.source).is_file()})
     assert not missing, "model source paths do not resolve:\n" + "\n".join(missing)
 
 
@@ -477,10 +507,10 @@ def test_every_seeded_entry_is_still_a_real_violation():
     """
     found = {(GATE_OF_RULE[rule], site) for rule, site, _ in _VIOLATIONS}
     stale = sorted(
-        f"{gate} {identifier} ({site})"
+        f"{gate} {_entry_id(entry)} ({site})"
         for source in (LEDGERED_VIOLATIONS, PERMANENT_EXCEPTIONS)
         for gate, sites in source.items()
-        for site, identifier in sites.items()
+        for site, entry in sites.items()
         if (gate, site) not in found
     )
     assert not stale, (
@@ -488,6 +518,33 @@ def test_every_seeded_entry_is_still_a_real_violation():
         "them from the ledger (or the exceptions) and from this module:\n"
         + "\n".join(stale)
     )
+
+
+def test_every_seeded_table_entry_still_names_the_table_it_recorded():
+    """An excuse covers the violation recorded, not whatever the site does next.
+
+    `_excused` keys on the gate and the site, which is the ledger's own notion of
+    identity — and on its own that is too generous for G9. If `Rate` moved from
+    `ubb_rate_card` to a THIRD wrong table, the site would still be excused, the
+    gate would stay green, and the entry's `found:` would quietly become untrue.
+    So the recorded `found` is checked against the live table.
+
+    G11 and G12 need no equivalent: their sites end in the field name, so a
+    field that changed its name changed its site, and the entry goes stale by
+    the test above.
+    """
+    by_site = {fact.site: fact for fact in _FACTS}
+    drifted = []
+    for site, (identifier, recorded) in LEDGERED_VIOLATIONS["G9"].items():
+        fact = by_site.get(site)
+        assert fact is not None, f"{identifier}: no model at {site}"
+        if fact.db_table != recorded:
+            drifted.append(f"{identifier}: the ledger records "
+                           f"found=`{recorded}`, the model is on "
+                           f"`{fact.db_table}`")
+    assert not drifted, (
+        "a seeded table moved without the ledger being updated — the excuse "
+        "covers a violation that no longer exists:\n" + "\n".join(drifted))
 
 
 # ---------------------------------------------------------------------------

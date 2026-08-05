@@ -24,6 +24,7 @@ neither file can gain, lose or relabel a site alone.
 """
 
 import ast
+from functools import lru_cache
 
 import pytest
 
@@ -34,13 +35,25 @@ GATES_DIR = REPO_ROOT / "gates"
 
 GATE_MODULE = "ubb-platform/apps/platform/tests/test_model_naming.py"
 
-#: The gates whose debts are recorded on both sides. G10 is deliberately absent:
-#: it seeds nothing, so it has nothing to agree about — and a row here for a gate
-#: with no entries would pass forever without asserting anything.
-SEEDED_GATES = ("G9", "G11", "G12")
+#: The four gates that module installs. The comparison below is driven by the
+#: UNION of what each side declares rather than by a list of the gates that
+#: happen to be seeded today — a hardcoded list would silently exempt a gate
+#: that gained its first entry later, which is precisely the gate whose seeding
+#: nobody has reviewed yet.
+MODEL_NAMING_GATES = ("G9", "G10", "G11", "G12")
 
 LEDGER_CONSTANT = "LEDGERED_VIOLATIONS"
 EXCEPTIONS_CONSTANT = "PERMANENT_EXCEPTIONS"
+
+
+@lru_cache(maxsize=4)
+def _parsed(source):
+    """The gate module's AST, parsed once rather than once per lookup.
+
+    The parse is cached, not the extracted value: `literal_eval` runs fresh on
+    every call, so no caller can hand another a dict it has already mutated.
+    """
+    return ast.parse(source)
 
 
 def literal_constant(source, name):
@@ -52,8 +65,7 @@ def literal_constant(source, name):
     a value computed at runtime cannot be read here, and the test says so
     rather than silently skipping it.
     """
-    tree = ast.parse(source)
-    for statement in tree.body:
+    for statement in _parsed(source).body:
         targets = (statement.targets if isinstance(statement, ast.Assign)
                    else [statement.target] if isinstance(statement, ast.AnnAssign)
                    else [])
@@ -70,6 +82,50 @@ def literal_constant(source, name):
     raise AssertionError(f"{GATE_MODULE} declares no `{name}`")
 
 
+def excused(source, constant):
+    """`{gate: {site: (id, found)}}` as the gate module declares it.
+
+    Normalised so both constants have one shape: the ledger's entries carry a
+    recorded `found`, the permanent exceptions do not — the schema gives them no
+    such field, because no rename is coming and there is nothing to compare a
+    future value against.
+    """
+    declared = literal_constant(source, constant)
+    return {
+        gate: {site: tuple(entry) if isinstance(entry, tuple) else (entry, None)
+               for site, entry in sites.items()}
+        for gate, sites in declared.items()
+    }
+
+
+def recorded(records, gate):
+    """The same shape, from the loaded ledger or exception list."""
+    return {record.site: (record.id, getattr(record, "found", None))
+            for record in records if record.gate == gate}
+
+
+def disagreements(excused_sites, recorded_sites):
+    """Every way two sides of one gate fail to say the same thing.
+
+    A real predicate rather than an inline `==`, so the negative controls below
+    can push synthetic pairs through the function the assertions actually use.
+    An `assert a != b` control proves that two dicts differ, which was never in
+    doubt.
+    """
+    faults = []
+    for site in sorted(set(excused_sites) - set(recorded_sites)):
+        faults.append(f"{site} is excused by the gate but is in no record — a "
+                      f"suppression with no debt behind it")
+    for site in sorted(set(recorded_sites) - set(excused_sites)):
+        faults.append(f"{site} is recorded in gates/ but the gate excuses "
+                      f"nothing there — the entry is unreachable")
+    for site in sorted(set(excused_sites) & set(recorded_sites)):
+        if excused_sites[site] != recorded_sites[site]:
+            faults.append(f"{site}: the gate says {excused_sites[site]}, "
+                          f"gates/ says {recorded_sites[site]}")
+    return faults
+
+
 @pytest.fixture(scope="module")
 def gate_source():
     return (REPO_ROOT / GATE_MODULE).read_text(encoding="utf-8")
@@ -80,11 +136,6 @@ def programme():
     return load_programme(GATES_DIR, REPO_ROOT)
 
 
-def _recorded(records, gate):
-    """`{site: id}` for one gate, from the loaded ledger or exception list."""
-    return {record.site: record.id for record in records if record.gate == gate}
-
-
 # ---------------------------------------------------------------------------
 # The agreement
 # ---------------------------------------------------------------------------
@@ -93,45 +144,47 @@ def test_the_gate_module_exists_and_declares_both_allowlists(gate_source):
     """Vacuity guard. Every assertion below reads these two constants, and a
     renamed module or constant would otherwise turn this file green by making
     all of its comparisons empty."""
-    ledgered = literal_constant(gate_source, LEDGER_CONSTANT)
-    excepted = literal_constant(gate_source, EXCEPTIONS_CONSTANT)
+    ledgered = excused(gate_source, LEDGER_CONSTANT)
+    excepted = excused(gate_source, EXCEPTIONS_CONSTANT)
 
-    assert set(ledgered) == set(SEEDED_GATES), (
-        f"{LEDGER_CONSTANT} covers {sorted(ledgered)}, not {list(SEEDED_GATES)}")
+    assert set(ledgered) <= set(MODEL_NAMING_GATES), (
+        f"{LEDGER_CONSTANT} covers {sorted(ledgered)}, which is not a subset "
+        f"of the gates this module installs")
     assert sum(len(sites) for sites in ledgered.values()) > 0
     assert excepted.get("G9"), "the ConnectOAuthState exception is not excused"
 
 
 def test_every_excused_site_is_a_recorded_debt(gate_source, programme):
-    """A site the gate excuses must be a debt somebody owes.
+    """A site the gate excuses must be a debt somebody owes, and the same debt.
 
     This is the direction that matters most. An excused site with no ledger
     entry is a suppression the ratchet cannot see, owed by no slice and cleared
     by nobody — #155 §17's failure, hiding inside the mechanism built to close
     it.
+
+    Driven off the union of both sides, so a gate that gains its first entry
+    later is compared on the day it does rather than when somebody remembers to
+    add it here.
     """
-    for gate in SEEDED_GATES:
-        excused = literal_constant(gate_source, LEDGER_CONSTANT).get(gate, {})
-        recorded = _recorded(programme.entries, gate)
-        assert excused == recorded, (
-            f"{gate}: the gate module and gates/migration-ledger.yaml "
-            f"disagree.\n"
-            f"  excused in {GATE_MODULE}: {sorted(excused.items())}\n"
-            f"  recorded in the ledger:   {sorted(recorded.items())}")
+    declared = excused(gate_source, LEDGER_CONSTANT)
+    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)
+                       | {entry.gate for entry in programme.entries}):
+        faults = disagreements(declared.get(gate, {}),
+                               recorded(programme.entries, gate))
+        assert not faults, (
+            f"{gate}: {GATE_MODULE} and gates/migration-ledger.yaml "
+            f"disagree.\n  " + "\n  ".join(faults))
 
 
 def test_every_permanent_exception_is_excused_and_stated(gate_source, programme):
-    for gate in sorted({exception.gate for exception in programme.exceptions}
-                       | set(literal_constant(gate_source,
-                                              EXCEPTIONS_CONSTANT))):
-        excused = literal_constant(gate_source,
-                                   EXCEPTIONS_CONSTANT).get(gate, {})
-        recorded = _recorded(programme.exceptions, gate)
-        assert excused == recorded, (
-            f"{gate}: the gate module and gates/permanent-exceptions.yaml "
-            f"disagree.\n"
-            f"  excused in {GATE_MODULE}: {sorted(excused.items())}\n"
-            f"  recorded in the exceptions: {sorted(recorded.items())}")
+    declared = excused(gate_source, EXCEPTIONS_CONSTANT)
+    for gate in sorted(set(MODEL_NAMING_GATES) | set(declared)
+                       | {exception.gate for exception in programme.exceptions}):
+        faults = disagreements(declared.get(gate, {}),
+                               recorded(programme.exceptions, gate))
+        assert not faults, (
+            f"{gate}: {GATE_MODULE} and gates/permanent-exceptions.yaml "
+            f"disagree.\n  " + "\n  ".join(faults))
 
 
 def test_a_debt_and_an_exception_are_never_the_same_site(gate_source):
@@ -141,8 +194,8 @@ def test_a_debt_and_an_exception_are_never_the_same_site(gate_source):
     slice and simultaneously declared as never being fixed — and the ledger
     would never reach the zero G22 depends on.
     """
-    ledgered = literal_constant(gate_source, LEDGER_CONSTANT)
-    excepted = literal_constant(gate_source, EXCEPTIONS_CONSTANT)
+    ledgered = excused(gate_source, LEDGER_CONSTANT)
+    excepted = excused(gate_source, EXCEPTIONS_CONSTANT)
     for gate in set(ledgered) & set(excepted):
         both = set(ledgered[gate]) & set(excepted[gate])
         assert not both, f"{gate}: recorded as both a debt and an exception: {both}"
@@ -154,8 +207,8 @@ def test_every_excused_site_names_a_file_in_the_platform_tree(gate_source):
     the ledger entry that shares it would be unfalsifiable."""
     sites = [
         site
-        for source in (literal_constant(gate_source, LEDGER_CONSTANT),
-                       literal_constant(gate_source, EXCEPTIONS_CONSTANT))
+        for source in (excused(gate_source, LEDGER_CONSTANT),
+                       excused(gate_source, EXCEPTIONS_CONSTANT))
         for sites in source.values()
         for site in sites
     ]
@@ -177,7 +230,7 @@ def test_every_excused_site_names_a_file_in_the_platform_tree(gate_source):
 
 SYNTHETIC = '''\
 LEDGERED_VIOLATIONS = {
-    "G9": {"ubb-platform/apps/x/models.py::Alpha": "g9-alpha"},
+    "G9": {"ubb-platform/apps/x/models.py::Alpha": ("g9-alpha", "ubb_beta")},
 }
 
 PERMANENT_EXCEPTIONS = {}
@@ -185,19 +238,51 @@ PERMANENT_EXCEPTIONS = {}
 COMPUTED = "a" + "b"
 '''
 
-
-def test_negative_control_a_missing_site_is_a_disagreement():
-    excused = literal_constant(SYNTHETIC, LEDGER_CONSTANT)["G9"]
-    assert excused != {}, "an empty ledger must not match a non-empty allowlist"
+SITE = "ubb-platform/apps/x/models.py::Alpha"
 
 
-def test_negative_control_a_relabelled_entry_is_a_disagreement():
+def _synthetic_allowlist():
+    return excused(SYNTHETIC, LEDGER_CONSTANT)["G9"]
+
+
+def test_negative_control_an_unrecorded_suppression_is_flagged():
+    """The failure this file exists for: the gate excuses a site that no ledger
+    entry covers. Pushed through `disagreements`, the function the assertions
+    above call — not an inequality between two dicts."""
+    faults = disagreements(_synthetic_allowlist(), {})
+    assert len(faults) == 1
+    assert "suppression with no debt behind it" in faults[0]
+
+
+def test_negative_control_an_unreachable_ledger_entry_is_flagged():
+    """The other direction: a debt recorded against a site the gate does not
+    excuse. Nothing would ever clear it, because nothing was ever suppressed."""
+    faults = disagreements({}, _synthetic_allowlist())
+    assert len(faults) == 1
+    assert "the entry is unreachable" in faults[0]
+
+
+def test_negative_control_a_relabelled_entry_is_flagged():
     """Identity includes the id: relabelling one side alone is a disagreement,
     because a reader following an id from the gate to the ledger would find
     nothing."""
-    excused = literal_constant(SYNTHETIC, LEDGER_CONSTANT)["G9"]
-    relabelled = {site: "g9-renamed" for site in excused}
-    assert excused != relabelled
+    allowlist = _synthetic_allowlist()
+    faults = disagreements(allowlist, {SITE: ("g9-renamed", "ubb_beta")})
+    assert len(faults) == 1 and "g9-renamed" in faults[0]
+
+
+def test_negative_control_a_drifted_found_value_is_flagged():
+    """The same site and the same id, recording a different observed value. The
+    site alone is too coarse an identity — see the platform suite's
+    `test_every_seeded_table_entry_still_names_the_table_it_recorded`."""
+    allowlist = _synthetic_allowlist()
+    faults = disagreements(allowlist, {SITE: ("g9-alpha", "ubb_gamma")})
+    assert len(faults) == 1 and "ubb_gamma" in faults[0]
+
+
+def test_positive_control_two_sides_that_agree_produce_no_faults():
+    allowlist = _synthetic_allowlist()
+    assert disagreements(allowlist, dict(allowlist)) == []
 
 
 def test_negative_control_a_computed_constant_is_refused():
