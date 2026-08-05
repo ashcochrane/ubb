@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from core.exceptions import StripeFatalError
+from core.money import DEFAULT_CURRENCY, minor_units, to_minor
 
 logger = logging.getLogger("ubb.billing")
 
@@ -250,7 +251,8 @@ class PostpaidUsageService:
             # status != "pushing" guard means a stale-reclaimed loser can
             # never reach here to double-deposit. The ledger exists by
             # construction: the Phase-1 reservation get_or_create'd it.
-            if not (0 <= residual_out < 10_000):
+            currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
+            if not (0 <= residual_out < minor_units(currency)):
                 logger.error("billing.residual_out_of_range", extra={"data": {
                     "usage_invoice_id": str(rec.id), "customer_id": str(customer.id),
                     "residual_out": residual_out}})
@@ -274,7 +276,7 @@ class PostpaidUsageService:
 
         connected = tenant.stripe_connected_account_id
         api_key = api_key_for_tenant(tenant)
-        currency = (tenant.default_currency or "usd").lower()
+        currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
 
         # Critical-1: --rebill-void rotates EVERY idempotency-key family. Within
         # Stripe's 24h key window the legacy keys would replay the recorded
@@ -294,12 +296,13 @@ class PostpaidUsageService:
         cent_lines, residual = [], carry_in
         for i, (label, amount) in enumerate(lines):
             cent_micros = amount + residual          # fold carry into the first/largest line
-            cents = cent_micros // 10_000
-            residual = cent_micros - cents * 10_000
+            # R3's floor-with-carry: the remainder comes BACK from the helper,
+            # so this loop cannot drop it by forgetting to compute it.
+            cents, residual = to_minor(cent_micros, currency)
             if cents <= 0:
                 continue
             cent_lines.append((i, label, cents, amount))
-        if residual >= 10_000:
+        if residual >= minor_units(currency):
             logger.error("postpaid.residual_overflow", extra={"data": {
                 "usage_invoice_id": str(rec.id), "residual_micros": residual}})
 

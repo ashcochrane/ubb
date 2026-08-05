@@ -6,6 +6,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.billing.tenant_billing.models import TenantBillingPeriod
+from core.money import DEFAULT_CURRENCY, from_minor, to_minor
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,12 @@ class TenantBillingService:
         if tenant.is_sandbox:
             return 0, []
 
+        # The platform fee is UBB invoicing the tenant on UBB's OWN Stripe
+        # account, always in the platform's currency (see the currency="usd"
+        # on the invoice item in stripe_service.push_platform_fee_invoice) —
+        # not the tenant's customer-facing default_currency.
+        fee_currency = DEFAULT_CURRENCY
+
         total_fee = 0
         line_items = []
 
@@ -99,7 +106,13 @@ class TenantBillingService:
                 elif config.fee_type == "percentage":
                     pct = Decimal(str(config.config.get("percentage", "0")))
                     fee = int(Decimal(period.total_usage_cost_micros) * pct / Decimal(100))
-                    fee = (fee // 10_000) * 10_000  # Floor to cent boundary
+                    # Floor to the minor unit. The discarded remainder is the
+                    # one place UBB still drops money (R3 says carry it); the
+                    # `_` is deliberate and is corrected by the fee-carry
+                    # ticket that follows — kept behaviour-identical here so
+                    # the routing change proves nothing else moved.
+                    whole, _dropped = to_minor(fee, fee_currency)
+                    fee = from_minor(whole, fee_currency)
                 else:
                     continue
 
@@ -119,7 +132,9 @@ class TenantBillingService:
                 / Decimal(100)
             )
             fee = int(raw_fee)
-            fee = (fee // 10_000) * 10_000
+            # Same floor, same dropped remainder, same successor ticket.
+            whole, _dropped = to_minor(fee, fee_currency)
+            fee = from_minor(whole, fee_currency)
             total_fee = fee
             line_items.append({
                 "product": "platform",

@@ -18,15 +18,10 @@ from core.models import BaseModel
 # metering and margin). Plans and subscription lifecycle gate on "billing".
 VALID_PRODUCTS = {"metering", "billing", "referrals", "metering_async"}
 
-# CUR-1: currencies a tenant may set as default_currency. 2-DECIMAL (cents
-# style) currencies ONLY — every micros<->Stripe-amount conversion path in the
-# codebase assumes a 1/100 minor unit (the pervasive ``// 10_000`` /
-# ``* 10_000`` sites). Zero-decimal currencies like jpy/krw are REJECTED until
-# the minor-unit helper lands (CUR-2).
-SUPPORTED_CURRENCIES = frozenset({
-    "usd", "eur", "gbp", "aud", "cad", "chf", "nzd", "sgd", "hkd",
-    "sek", "nok", "dkk", "pln", "czk", "mxn", "brl", "inr", "zar",
-})
+# CUR-1's SUPPORTED_CURRENCIES now lives in ``core.money``, beside the table
+# that says how many minor units each of them has — one place, both facts about
+# a currency. It sat here only because the 1/100 minor unit was hard-coded at
+# twenty sites and the list was the cheapest way to keep them all true.
 
 BILLING_MODE_CHOICES = [
     ("meter_only", "Meter only"),

@@ -17,6 +17,7 @@ from apps.billing.connectors.stripe.invoice_routing import (
 )
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from core.locking import lock_customer
+from core.money import DEFAULT_CURRENCY, from_minor
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,9 @@ def handle_checkout_completed(event):
             extra={"data": {"session_id": getattr(session, "id", None)}},
         )
         return
-    amount_micros = session.amount_total * 10_000
+    amount_micros = from_minor(
+        session.amount_total,
+        (customer.tenant.default_currency or DEFAULT_CURRENCY).lower())
 
     # Task 7: the credit must land on the billing OWNER, never the
     # Stripe-matched `customer` above (which can be a pooled seat). When a
@@ -302,11 +305,11 @@ def handle_charge_dispute_closed(event):
             extra={"data": {"charge_id": charge_id}},
         )
         return
-    amount_micros = dispute.amount * 10_000  # Stripe cents -> micros
-
     from apps.billing.wallets import operations as wallet_ops
 
     tenant = attempt.customer.tenant
+    amount_micros = from_minor(  # Stripe minor units -> micros
+        dispute.amount, (tenant.default_currency or DEFAULT_CURRENCY).lower())
 
     # Task 8a: this clawback moves money OUT. The original top-up's credit
     # landed on the billing OWNER (Task 7); clawing it back from the seat
@@ -409,6 +412,8 @@ def handle_charge_refunded(event):
             "refusing to claw back rather than risk debiting the seat")
     owner_id = attempt.billing_owner_id
 
+    currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
+
     with transaction.atomic():
         # One commit for the whole refund list (parity with the pre-#109
         # single transaction); each refund is its own exactly-once wallet op
@@ -421,8 +426,8 @@ def handle_charge_refunded(event):
                 continue
             wallet_ops.claw_back_stripe_refund(
                 customer_id=owner_id, tenant=tenant,
-                amount_micros=refund_amount * 10_000, refund_id=refund_id,
-                attempt_id=attempt.id)
+                amount_micros=from_minor(refund_amount, currency),
+                refund_id=refund_id, attempt_id=attempt.id)
 
 
 def handle_payment_intent_succeeded(event):

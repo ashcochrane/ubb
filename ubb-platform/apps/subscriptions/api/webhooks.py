@@ -7,6 +7,7 @@ from apps.billing.connectors.stripe.invoice_routing import livemode_filter
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
 from apps.platform.customers.models import Customer
+from core.money import DEFAULT_CURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ def handle_subscription_created(event):
         )
         raise  # Re-raise so webhook framework retries
 
-    amount_micros, seat_qty, interval = _sum_items(stripe_sub)
+    amount_micros, seat_qty, interval = _sum_items(
+        stripe_sub, (customer.tenant.default_currency or DEFAULT_CURRENCY).lower())
     StripeSubscription.objects.get_or_create(
         stripe_subscription_id=stripe_sub.id,
         defaults={
@@ -59,7 +61,8 @@ def handle_subscription_updated(event):
             stripe_subscription_id=stripe_sub.id,
             **livemode_filter(event),
         )
-        amount_micros, seat_qty, interval = _sum_items(stripe_sub)
+        amount_micros, seat_qty, interval = _sum_items(
+            stripe_sub, (sub.tenant.default_currency or DEFAULT_CURRENCY).lower())
         sub.status = stripe_sub.status
         sub.stripe_product_name = _product_name(stripe_sub) or sub.stripe_product_name
         sub.amount_micros = amount_micros

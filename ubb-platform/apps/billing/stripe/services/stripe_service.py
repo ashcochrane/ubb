@@ -6,6 +6,13 @@ import stripe
 from django.conf import settings
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
+from core.money import (
+    DEFAULT_CURRENCY,
+    MisalignedAmount,
+    assert_aligned,
+    minor_units,
+    to_minor,
+)
 
 assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
 
@@ -24,17 +31,28 @@ def validate_amount_micros(amount_micros):
         raise StripeFatalError(f"amount_micros must be > 0, got {amount_micros}")
 
 
-def micros_to_cents(amount_micros):
-    """Convert micros to cents. Raises StripeFatalError if not evenly divisible."""
-    if amount_micros % 10_000 != 0:
+def micros_to_cents(amount_micros, currency=DEFAULT_CURRENCY):
+    """Convert micros to cents. Raises StripeFatalError if not evenly divisible.
+
+    The refusal is core.money's boundary assertion (R3): proof that whoever
+    computed this amount already ran the floor-with-carry, not a licence to
+    round the remainder away here — by this point it has nowhere to be carried
+    to. It is translated to StripeFatalError because a misaligned amount at the
+    Stripe boundary is a non-retryable bug, not a transient failure.
+    """
+    try:
+        assert_aligned(amount_micros, currency)
+    except MisalignedAmount as exc:
         logger.error(
             "Non-cent-aligned amount detected",
             extra={"data": {"amount_micros": amount_micros}},
         )
         raise StripeFatalError(
-            f"amount_micros={amount_micros} not divisible by 10_000"
-        )
-    return amount_micros // 10_000
+            f"amount_micros={amount_micros} not divisible by "
+            f"{minor_units(currency):_}"
+        ) from exc
+    cents, _ = to_minor(amount_micros, currency)
+    return cents
 
 
 def api_key_for_tenant(tenant):

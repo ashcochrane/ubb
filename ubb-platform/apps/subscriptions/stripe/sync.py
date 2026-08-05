@@ -9,6 +9,7 @@ from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
 from apps.platform.queries import get_tenant_stripe_account, get_customers_by_stripe_id
 from core.exceptions import StripeFatalError
+from core.money import DEFAULT_CURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,8 @@ def sync_subscriptions(tenant):
             continue
 
         try:
-            amount_micros, seat_qty, interval = _sum_items(stripe_sub)
+            amount_micros, seat_qty, interval = _sum_items(
+                stripe_sub, (tenant.default_currency or DEFAULT_CURRENCY).lower())
             StripeSubscription.objects.update_or_create(
                 stripe_subscription_id=stripe_sub.id,
                 defaults={

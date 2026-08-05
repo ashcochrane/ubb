@@ -6,6 +6,7 @@ from ninja import Schema, Field
 from pydantic import field_validator
 
 from api.v1.pagination import Paginated
+from core.money import DEFAULT_CURRENCY, MisalignedAmount, assert_aligned, minor_units
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
 # concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
@@ -13,6 +14,27 @@ from api.v1.pagination import Paginated
 # #77's hazard, so every name below must stay unique). Each entity's row
 # mapping lives in ONE named serializer function declared beside its Out
 # schema; endpoints answer ``page(qs, cursor, limit, serialize=<it>)``.
+
+
+def _whole_minor_units(value):
+    """Refuse inbound money that is not a whole minor unit of the currency.
+
+    R3 §5.4 keeps the *inward* boundaries strict: unlike a computed invoice
+    line, this is money Stripe will really move, and there is no later line to
+    carry a remainder into.
+
+    Request validation runs before any tenant is resolved, so it can only ask
+    the platform's default currency. Admitting a second currency means moving
+    this check to somewhere a tenant is in scope — the parameter is what makes
+    that a move rather than an excavation.
+    """
+    try:
+        assert_aligned(value, DEFAULT_CURRENCY)
+    except MisalignedAmount:
+        raise ValueError(
+            f"must be divisible by {minor_units(DEFAULT_CURRENCY):_} (whole cents)"
+        ) from None
+    return value
 
 
 class PreCheckRequest(Schema):
@@ -286,9 +308,7 @@ class ConfigureAutoTopUpRequest(Schema):
     @field_validator("top_up_amount_micros")
     @classmethod
     def top_up_amount_micros_divisible(cls, v):
-        if v % 10_000 != 0:
-            raise ValueError("must be divisible by 10_000 (whole cents)")
-        return v
+        return _whole_minor_units(v)
 
 
 class CreateTopUpRequest(Schema):
@@ -302,9 +322,7 @@ class CreateTopUpRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        if v % 10_000 != 0:
-            raise ValueError("must be divisible by 10_000 (whole cents)")
-        return v
+        return _whole_minor_units(v)
 
 
 class TopUpCheckoutResponse(Schema):
@@ -326,9 +344,7 @@ class WithdrawRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        if v % 10_000 != 0:
-            raise ValueError("must be divisible by 10_000 (whole cents)")
-        return v
+        return _whole_minor_units(v)
 
 
 class RefundRequest(Schema):
@@ -463,9 +479,7 @@ class CreateGrantRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def amount_micros_divisible(cls, v):
-        if v % 10_000 != 0:
-            raise ValueError("must be divisible by 10_000 (whole cents)")
-        return v
+        return _whole_minor_units(v)
 
 
 class GrantOut(Schema):
@@ -995,7 +1009,7 @@ class TenantConfigIn(Schema):
     # truth within minutes; ON→OFF drains naturally at settle). Omit =
     # unchanged. Never a contract change — only the latency profile.
     arrival_signals_enabled: Optional[bool] = None
-    # CUR-1: lowercase ISO code from tenants.models.SUPPORTED_CURRENCIES
+    # CUR-1: lowercase ISO code from core.money.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     # Spend-safety defaults. Omitting a key leaves it unchanged.
