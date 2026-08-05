@@ -221,6 +221,269 @@ entries:
       added to a book one at a time and the book is published as a unit, which
       is the atomicity this method was reaching for.
 
+  # --- G8: a webhook event is named for the state entered -------------------
+  #
+  # THE THIRD SEEDING (#205), and the largest: twenty of the catalogue's
+  # thirty-five events. That is not decay, it is the absence of a convention —
+  # ADR-0006 §5 fixed one on 2026-08-03 and the catalogue predates it. Some
+  # namespaces are resources, some are products (`billing` owns the wallet's
+  # levels, the grant's lifecycle and the customer's suspension), some are
+  # mechanisms (`stop`, `soft_floor`), one is a retired spend-control family
+  # (`budget`) and one is a measure (`margin`). Two spellings of one concept
+  # coexist across this catalogue and the audit registry: `auto_topup` here,
+  # `auto_top_up` there.
+  #
+  # **#205 installs the gate and renames nothing.** A rename is a public
+  # contract change — the event name is what a subscriber subscribes to — so it
+  # belongs to the slice that rebuilds the event's subject and can carry the
+  # spec, the SDK and the console with it in one vertical. Renaming twenty
+  # events in a gate-installation ticket would be the largest surface break of
+  # the programme performed by the ticket least able to test it.
+  #
+  # Conventions, both following from the subject:
+  #
+  # - `site` is the declaring payload class, because `events/catalog.py` DERIVES
+  #   its tuple from those classes — the class is where the name actually lives.
+  #   `found` is the published name, and the excuse is keyed on BOTH (#204's
+  #   rule): an entry keyed on the class alone would stay green if that class
+  #   kept its debt and changed which wrong name it published.
+  # - `expected` is the end-state name from
+  #   domain-vocabulary/concepts/webhooks.yaml, and the gate checks that it IS
+  #   one. Two entries name two events, joined by `and`: #140 §4.3 splits a
+  #   spend kill from a Task nobody ever closed, so one overloaded event becomes
+  #   two distinct states and a subscriber classifies by subscribing.
+  #
+  # Owner slices are #194's slice table, applied as "the slice that owns the
+  # event's subject". Seven fall to slice 8, and that is the #203 precedent
+  # rather than a shrug: no slice in the table rebuilds top-ups, withdrawals,
+  # auto-top-up, credit grants or invoicing, and recording a debt against a
+  # slice that does not do the work would be #155 §17's failure with a nicer
+  # label. An owner slice may move earlier but never later, so any slice that
+  # touches one of these surfaces first may take it.
+
+  # Slice 5 (Work) — the Task's terminal states are its subject.
+  - id: g8-task-limit-exceeded-names-a-bound-not-a-state
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::TaskLimitExceeded
+    expected: task.killed and task.expired
+    found: task.limit_exceeded
+    owner_slice: slice_5
+    reason: >-
+      Named for a bound rather than for the state entered, and `limit_exceeded`
+      is no `task_status` value — so the event announces a state a Task cannot
+      be in. It becomes TWO events: a subscriber alerting on spend incidents
+      must stop being paged when a worker dies, and "how often did work stop on
+      a ceiling?" must be answerable without parsing a reason string
+      (#140 §4.3). Slice 5 lands the six lifecycle states.
+
+  - id: g8-subtask-limit-exceeded-names-a-bound-not-a-state
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::SubtaskLimitExceeded
+    expected: subtask.killed and subtask.expired
+    found: subtask.limit_exceeded
+    owner_slice: slice_5
+    reason: >-
+      The same defect on contained work. One model and one status set means one
+      rule, so the Subtask's terminal events split exactly as the Task's do
+      (#154 §3.1). Slice 5 lands both.
+
+  # Slice 6 (Spend control) — the four families, and the wallet they draw on.
+  - id: g8-stop-fired-is-a-mechanism-namespace
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::StopFired
+    expected: customer.stopped
+    found: stop.fired
+    owner_slice: slice_6
+    reason: >-
+      `stop` is the mechanism, not a domain owner. A customer-wide stop is a
+      state the CUSTOMER entered; which control fired travels as
+      `control_family` and why as `reason_code`, which is exactly what
+      ADR-0006 §5 moves out of the name. Slice 6 lands the four families.
+
+  - id: g8-stop-cleared-is-a-mechanism-namespace
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::StopCleared
+    expected: customer.stop_cleared
+    found: stop.cleared
+    owner_slice: slice_6
+    reason: >-
+      The other half of the episode pair, under the same mechanism namespace.
+      It moves with the event it closes, or the two stop pairing (#155 §3.1).
+
+  - id: g8-soft-floor-crossed-is-a-mechanism-namespace
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::SoftFloorCrossed
+    expected: wallet_policy.soft_floor_crossed
+    found: soft_floor.crossed
+    owner_slice: slice_6
+    reason: >-
+      The soft floor is a wallet policy setting, and the policy is the declared
+      control family that owns the namespace. One public concept, one public
+      name, on the webhook and in `control_family` alike (ADR-0006 §2).
+
+  - id: g8-soft-floor-cleared-is-a-mechanism-namespace
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::SoftFloorCleared
+    expected: wallet_policy.soft_floor_cleared
+    found: soft_floor.cleared
+    owner_slice: slice_6
+    reason: >-
+      The clear that pairs with the crossing above, and it moves with it.
+
+  - id: g8-budget-threshold-reached-uses-a-retired-family
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::BudgetThresholdReached
+    expected: customer_spend_pool.threshold_reached
+    found: budget.threshold_reached
+    owner_slice: slice_6
+    reason: >-
+      `budget` named all four spend controls at once and left the vocabulary
+      entirely (#154 §3.4); it survives here as the namespace of the event the
+      pool fires. Slice 6 lands `customer_spend_pool` as the family.
+
+  - id: g8-billing-owns-the-wallets-low-balance
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::BalanceLow
+    expected: wallet.balance_low
+    found: billing.balance_low
+    owner_slice: slice_6
+    reason: >-
+      `billing` is a product, not a domain owner, so it cannot own the wallet's
+      own levels. Slice 6 lands the wallet policy that sets them.
+
+  - id: g8-billing-owns-the-wallets-critical-balance
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::BalanceCritical
+    expected: wallet.balance_critical
+    found: billing.balance_critical
+    owner_slice: slice_6
+    reason: >-
+      The second of the wallet's three levels under a product namespace. All
+      three move together or the set reads as three unrelated events.
+
+  - id: g8-billing-owns-the-wallets-overage
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::BalanceOverage
+    expected: wallet.balance_overage
+    found: billing.balance_overage
+    owner_slice: slice_6
+    reason: >-
+      The third level, and the same product namespace.
+
+  - id: g8-billing-owns-the-customers-suspension
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::CustomerSuspended
+    expected: customer.suspended
+    found: billing.customer_suspended
+    owner_slice: slice_6
+    reason: >-
+      Suspension is a state the customer entered, and the customer already owns
+      a namespace in this catalogue — so the subject appears once as an owner
+      and once inside a product's transition token, which is the ambiguity
+      ADR-0006 §5 exists to remove. It follows the hard floor that causes it.
+
+  # Slice 7 (Analytics) — both are emitted by the accrual margin engine in
+  # apps/subscriptions/economics/, which slice 7's single economic query
+  # replaces. Renaming either earlier would edit an emitter about to be deleted.
+  - id: g8-margin-owns-the-customers-profitability
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::MarginCustomerUnprofitable
+    expected: customer.unprofitable
+    found: margin.customer_unprofitable
+    owner_slice: slice_7
+    reason: >-
+      Named for the figure being watched rather than the subject of the alert.
+      The customer is what became unprofitable, and `gross_margin` is the
+      measure that says so — a measure is not a domain owner.
+
+  - id: g8-margin-owns-the-providers-cost-spike
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::MarginProviderCostSpike
+    expected: provider.cost_spike
+    found: margin.provider_cost_spike
+    owner_slice: slice_7
+    reason: >-
+      The same shape: the provider's cost spiked, and margin is the figure that
+      moved as a result. Slice 2 makes Provider a real entity and slice 3 lands
+      the cost, so either may pull this forward.
+
+  # Slice 8 (Cutover) — no slice in #194's table rebuilds these subjects.
+  - id: g8-billing-owns-the-top-up-request
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::TopUpRequested
+    expected: top_up.requested
+    found: billing.topup_requested
+    owner_slice: slice_8
+    reason: >-
+      A product namespace, and the audit ledger already registers this action as
+      `top_up.requested` — so one concept is spelled two ways across two
+      contracts today. No slice rebuilds top-ups; the cutover's one deliberate
+      contract break carries it (#155 §11.1).
+
+  - id: g8-billing-owns-the-withdrawal-request
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::WithdrawalRequested
+    expected: withdrawal.requested
+    found: billing.withdrawal_requested
+    owner_slice: slice_8
+    reason: >-
+      The same product namespace over a withdrawal's own state. No slice
+      rebuilds withdrawals.
+
+  - id: g8-auto-top-up-is-spelled-two-ways
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::AutoTopupRequiresAction
+    expected: auto_top_up.requires_action
+    found: auto_topup.requires_action
+    owner_slice: slice_8
+    reason: >-
+      One concept, two spellings: this event says `auto_topup` and the audit
+      registry says `auto_top_up`, and they have disagreed for as long as both
+      have existed (ADR-0006 §2). The only entry here that is purely a spelling
+      correction — any slice touching auto-top-up may take it, and none is
+      scheduled to.
+
+  - id: g8-billing-owns-the-grants-expiry-warning
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::CreditGrantExpiring
+    expected: credit_grant.expiring
+    found: billing.credit_grant_expiring
+    owner_slice: slice_8
+    reason: >-
+      The grant owns its own lifecycle; `billing` is the product it is filed
+      under. No slice rebuilds credit grants.
+
+  - id: g8-billing-owns-the-grants-expiry
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::CreditGrantExpired
+    expected: credit_grant.expired
+    found: billing.credit_grant_expired
+    owner_slice: slice_8
+    reason: >-
+      The terminal half of the grant's lifecycle, under the same product
+      namespace, and it moves with the warning above.
+
+  - id: g8-usage-owns-the-invoice-push
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::UsageInvoicePushed
+    expected: usage_invoice.pushed
+    found: usage.invoice_pushed
+    owner_slice: slice_8
+    reason: >-
+      The invoice's own state, filed under the thing that produced it — so the
+      subject appears inside the transition token instead of owning the
+      namespace. No slice rebuilds invoicing.
+
+  - id: g8-usage-owns-the-invoice-push-failure
+    gate: G8
+    site: ubb-platform/apps/platform/events/schemas.py::UsageInvoicePushFailedPermanent
+    expected: usage_invoice.push_failed_permanent
+    found: usage.invoice_push_failed_permanent
+    owner_slice: slice_8
+    reason: >-
+      The permanent-failure half of the same push, and the same misplaced
+      subject. It moves with the event above.
+
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an
 # old authorisation cannot license a later addition, and the list stays an audit
@@ -264,3 +527,18 @@ seeding_authorisations:
       states that count need not reach zero, and a debt nobody owes would make
       "the ledger is at zero" unreachable by construction — the same reason the
       permanent exceptions are a separate file.
+
+  - gate: G8
+    issue: 205
+    entries_added: 20
+    reason: >-
+      This pull request installs ADR-0006 §5's shape over the event catalogue —
+      one domain owner, one state entered, cause and mechanism in payload fields
+      — and records the twenty of thirty-five events that predate the
+      convention. It renames none of them: an event name is a public contract,
+      so each rename belongs to the slice that rebuilds the event's subject and
+      can carry the spec, the SDK and the console with it. Every `expected`
+      names an end-state value the registry declares, and the gate checks that
+      it does. G13, installed in the same pull request, seeds nothing — no
+      module in the tree binds the bare name `tasks` — which is why it carries
+      no authorisation here.

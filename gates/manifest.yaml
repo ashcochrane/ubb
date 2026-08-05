@@ -170,10 +170,37 @@ gates:
     statement: >-
       Webhook catalogue shape — every event is `<owner>.<past_tense>`, and every
       terminal Task event maps to a status value.
-    oracle: ADR-0006 §5, against the event catalogue
+    oracle: >-
+      the vocabulary registry, decomposed into ADR-0006 §5's two halves, against
+      the event catalogue in apps/platform/events/schemas.py
     source: ADR-0006 §5, #154 §12
-    status: owned_by_slice_0
-    blocked_on: The catalogue-shape gate, installed by #205 over today's 35-event catalogue.
+    status: installed
+    notes: >-
+      A SHAPE check, not a membership one, and that is what keeps it distinct
+      from G2. The registry's end-state values are taken apart into the domain
+      owners and the states entered, and a live name is judged on its halves —
+      so a name the registry has never seen can still be assessed, which is what
+      "shape" has to mean. G2 asks the membership question, over every surface,
+      when #207 lands the consumers it compares. The Task conjunct is stated
+      over BOTH `task.*` and `subtask.*` and over all six statuses rather than
+      only the terminal five: "terminal Task events map to a status" is then a
+      consequence rather than a rule needing its own definition of terminal.
+      Twenty of thirty-five events are in the ledger, owed by slices 5, 6, 7 and
+      8; #205 renames none of them, because an event name is a public contract
+      and the rename belongs with the slice that rebuilds the event's subject.
+      What it does NOT prove is that a declared transition is a past-tense form:
+      no oracle here settles English tense, so that judgement is made once when
+      a name is declared and mechanically held from then on (ADR-0008 §1, §9).
+      A literal `-ed` rule was tried and refused nine of the registry's own
+      thirty-seven names, including `credit_grant.expiring` and
+      `wallet.balance_low`.
+    enforced_by:
+      - suite: contracts
+        node: tests/contracts/test_webhook_catalogue.py::test_every_event_is_named_for_the_state_entered
+      - suite: contracts
+        node: tests/contracts/test_webhook_catalogue.py::test_every_task_event_maps_to_a_status_value
+      - suite: contracts
+        node: tests/contracts/test_webhook_catalogue.py::test_the_declared_end_state_obeys_the_rules_it_supplies
 
   G9:
     statement: >-
@@ -252,10 +279,27 @@ gates:
     statement: No unqualified domain import of a Celery `tasks` module.
     oracle: ADR-0006 §7, against the platform's import graph
     source: ADR-0006 §7, #154 §12
-    status: owned_by_slice_0
-    blocked_on: >-
-      The import-discipline gate (#205). The module move (#196) is what makes it
-      meaningful and has landed; the walker has not.
+    status: installed
+    notes: >-
+      The rule is about a BINDING, not a path: `import apps.x.tasks` binds `apps`
+      and its uses are therefore qualified, which is exactly what ADR-0006 §7
+      asks for. What is refused is binding the bare word `tasks` — and, in a
+      second conjunct recorded here rather than smuggled in, binding Celery's own
+      `Task` unqualified, which is the identical collision one level down and
+      would otherwise be legal. Same shape as G12's second conjunct. It walks
+      every AST node, so a lazy function-body import is caught exactly as a
+      module-scope one — the historical erosion vector ADR-001's Context names —
+      and unlike the boundary walker beside it, tests and migrations are in
+      scope: no fixture has a reason to bind this word, and the tree is clean, so
+      the strict form leaves no allowlist to erode. It seeds NOTHING, which is
+      why it ships with negative controls for all four violating shapes and
+      positive controls for each qualified form the failure message recommends
+      — an absence test with nothing proving it can fail asserts nothing.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_celery_import_discipline.py::test_no_domain_module_imports_a_celery_tasks_module_unqualified
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_celery_import_discipline.py::test_celery_does_not_bind_the_domain_noun
 
   G14:
     statement: The four `kind` discriminator pins.
