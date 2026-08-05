@@ -1,12 +1,18 @@
 import logging
 from datetime import datetime, timezone as dt_timezone
 
+from core.money import from_minor
+
 logger = logging.getLogger(__name__)
 
 
-def _sum_items(stripe_sub):
+def _sum_items(stripe_sub, currency):
     """(amount_micros, seat_qty, interval). amount = Sum(licensed unit_amount*qty) across access+seat;
-    metered items contribute 0 (their revenue arrives as InvoiceItems)."""
+    metered items contribute 0 (their revenue arrives as InvoiceItems).
+
+    ``currency`` is the tenant's, denominating the Stripe ``unit_amount``s this
+    sums. Required rather than defaulted: every caller has a tenant in scope,
+    and a silent default is the assumption core.money exists to delete."""
     total, seat_qty, interval = 0, 1, "month"
     for it in stripe_sub["items"]["data"]:
         price = it["price"]; rec = price.get("recurring") or {}
@@ -14,7 +20,7 @@ def _sum_items(stripe_sub):
         if rec.get("usage_type") == "metered":
             continue
         qty = it.get("quantity", 1) or 1
-        total += (price.get("unit_amount") or 0) * 10_000 * qty
+        total += from_minor(price.get("unit_amount") or 0, currency) * qty
         if qty > 1:
             seat_qty = qty
     return total, seat_qty, interval

@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.models import StripeWebhookEvent
 from core.exceptions import StripeFatalError
+from core.money import DEFAULT_CURRENCY, from_minor
 from apps.billing.locking import lock_invoice
 
 from apps.billing.connectors.stripe.webhooks import (
@@ -221,6 +222,17 @@ def _reconcile_customer_invoice(event, *, new_status):
         ).first()
         if not sub:
             return
+        # The tenant's currency, NOT inv.currency. A connected account may hold
+        # a subscription in a currency UBB never admitted, and this conversion
+        # cannot honestly denominate an amount in one. Using inv.currency would
+        # turn that into a raised UnknownCurrency inside a webhook; using the
+        # tenant's reproduces exactly what the bare * 10_000 did before, since
+        # every admitted currency is two-decimal. The row still stores the
+        # invoice's own currency below, so the mismatch stays visible. The
+        # decided fix is to quarantine foreign-currency rows — flag them and
+        # exclude them from aggregates — which does NOT exist yet: §4.3 of the
+        # 2026-07-30 money model hands it to #152/#153.
+        currency = (sub.tenant.default_currency or DEFAULT_CURRENCY).lower()
         with transaction.atomic():
             row, _created = SubscriptionInvoice.objects.select_for_update().get_or_create(
                 stripe_invoice_id=inv.id,
@@ -228,7 +240,8 @@ def _reconcile_customer_invoice(event, *, new_status):
                     "tenant": sub.tenant,
                     "customer": sub.customer,
                     "stripe_subscription": sub,
-                    "amount_paid_micros": (getattr(inv, "amount_paid", 0) or 0) * 10_000,
+                    "amount_paid_micros": from_minor(
+                        getattr(inv, "amount_paid", 0) or 0, currency),
                     "currency": getattr(inv, "currency", "usd"),
                     "status": new_status,
                     "period_start": _unix(getattr(inv, "period_start", None)),
@@ -249,7 +262,8 @@ def _reconcile_customer_invoice(event, *, new_status):
             if row.status == "paid" and not row.paid_at:
                 st = getattr(inv, "status_transitions", None)
                 row.paid_at = _unix(getattr(st, "paid_at", None)) or timezone.now()
-                row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
+                row.amount_paid_micros = from_minor(
+                    getattr(inv, "amount_paid", 0) or 0, currency)
             _refresh_urls(row, inv)
             row.save()
         # F5.5: a CONSOLIDATED usage rec rides this subscription invoice — its

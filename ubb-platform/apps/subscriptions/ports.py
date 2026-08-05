@@ -16,6 +16,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.connectors.stripe.invoice_routing import _refresh_urls, ar_transition_allowed
+from core.money import DEFAULT_CURRENCY, from_minor
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,14 @@ def repair_subscription_invoice(tenant, stripe_invoice_id, inv, new_status):
         row.status = new_status
         if new_status == "paid" and not row.paid_at:
             row.paid_at = timezone.now()
-            row.amount_paid_micros = (getattr(inv, "amount_paid", 0) or 0) * 10_000
+            # The tenant's currency, matching the webhook fast path this poller
+            # repairs after (api/v1/webhooks.py) — the two must agree or the
+            # repair would rewrite the amount. See that site for why it is not
+            # inv.currency, and for the foreign-currency quarantine that §4.3
+            # hands to #152/#153 and that does not exist yet.
+            row.amount_paid_micros = from_minor(
+                getattr(inv, "amount_paid", 0) or 0,
+                (tenant.default_currency or DEFAULT_CURRENCY).lower())
         _refresh_urls(row, inv)
         row.save()
     return 1

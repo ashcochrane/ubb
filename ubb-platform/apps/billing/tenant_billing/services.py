@@ -6,8 +6,23 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.billing.tenant_billing.models import TenantBillingPeriod
+from core.money import DEFAULT_CURRENCY, from_minor, to_minor
 
 logger = logging.getLogger(__name__)
+
+
+def _floor_to_minor_unit(amount_micros, currency):
+    """Floor to a whole minor unit, DROPPING the remainder.
+
+    This is the one place UBB still drops money. R3 says the remainder is
+    carried, never dropped — the usage-invoice path already does that via
+    PostpaidResidualLedger, and #199 ("The platform fee carries its
+    remainder") gives the platform fee the equivalent carry record. Kept
+    behaviour-identical here so the routing change proves nothing else moved;
+    the discard is named and in one place so #199 has one function to change.
+    """
+    whole, _dropped = to_minor(amount_micros, currency)
+    return from_minor(whole, currency)
 
 
 class TenantBillingService:
@@ -87,6 +102,12 @@ class TenantBillingService:
         if tenant.is_sandbox:
             return 0, []
 
+        # The platform fee is UBB invoicing the tenant on UBB's OWN Stripe
+        # account, always in the platform's currency (see the currency="usd"
+        # on the invoice item in stripe_service.push_platform_fee_invoice) —
+        # not the tenant's customer-facing default_currency.
+        fee_currency = DEFAULT_CURRENCY
+
         total_fee = 0
         line_items = []
 
@@ -99,7 +120,7 @@ class TenantBillingService:
                 elif config.fee_type == "percentage":
                     pct = Decimal(str(config.config.get("percentage", "0")))
                     fee = int(Decimal(period.total_usage_cost_micros) * pct / Decimal(100))
-                    fee = (fee // 10_000) * 10_000  # Floor to cent boundary
+                    fee = _floor_to_minor_unit(fee, fee_currency)
                 else:
                     continue
 
@@ -118,8 +139,7 @@ class TenantBillingService:
                 * billing_config.platform_fee_percentage
                 / Decimal(100)
             )
-            fee = int(raw_fee)
-            fee = (fee // 10_000) * 10_000
+            fee = _floor_to_minor_unit(int(raw_fee), fee_currency)
             total_fee = fee
             line_items.append({
                 "product": "platform",

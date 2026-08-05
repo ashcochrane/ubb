@@ -39,6 +39,7 @@ from apps.subscriptions.stripe.items import (
     _product_name,
     _sum_items,
 )
+from core.money import DEFAULT_CURRENCY, from_minor
 
 
 class OrchestrationError(Exception):
@@ -523,7 +524,8 @@ class SubscriptionOrchestrator:
     @classmethod
     @transaction.atomic
     def _persist_mirror(cls, tenant, owner, plan, sub) -> StripeSubscription:
-        amount_micros, seat_qty, interval = _sum_items(sub)
+        currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
+        amount_micros, seat_qty, interval = _sum_items(sub, currency)
         start = _period_start(sub) or timezone.now()
         end = _period_end(sub) or _period_fallback_end(start, interval)
 
@@ -577,7 +579,8 @@ class SubscriptionOrchestrator:
                     "stripe_subscription": mirror,
                     "axis": axis,
                     "stripe_price_id": price_id,
-                    "unit_amount_micros": (price.get("unit_amount") or 0) * 10_000,
+                    "unit_amount_micros": from_minor(
+                        price.get("unit_amount") or 0, currency),
                     "quantity": it.get("quantity", 1) or 1,
                     "plan": plan,
                 },

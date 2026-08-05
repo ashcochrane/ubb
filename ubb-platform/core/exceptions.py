@@ -49,6 +49,25 @@ class StripeFatalError(UBBError):
     pass
 
 
+class UnknownCurrency(UBBError):
+    """A currency whose minor unit ``core.money`` does not know.
+
+    Raised rather than defaulting: a caller with no currency in hand must say
+    which one it means, or the assumption stays invisible until a second
+    currency is admitted — which is the coupling ``core.money`` exists to
+    delete."""
+    pass
+
+
+class MisalignedAmount(UBBError):
+    """An amount still carrying a sub-minor-unit remainder at a money boundary.
+
+    Means some upstream step skipped ``core.money.to_minor``, and the remainder
+    now has nowhere to be carried to. Rounding it away at the boundary is
+    exactly the bug the carry rule exists to prevent."""
+    pass
+
+
 class NotBillingOwnerError(UBBError):
     """Task 8c ratchet: raised by ``apps.billing.locking.lock_for_billing``
     when handed a customer id that is not itself a billing owner (i.e.

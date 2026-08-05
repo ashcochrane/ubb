@@ -8,7 +8,9 @@ from django.utils import timezone
 from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
 from apps.platform.audit.marker import records_audit
+from api.v1.schemas import whole_minor_units
 from core.auth import ProductAccess
+from core.money import DEFAULT_CURRENCY, minor_units
 from core.problems import Problem
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
@@ -79,9 +81,11 @@ class TopUpRequest(Schema):
     @field_validator("amount_micros")
     @classmethod
     def validate_amount_micros(cls, value):
-        if value % 10_000 != 0:
-            raise ValueError("amount_micros must be divisible by 10,000 (cent-aligned)")
-        return value
+        # The same inward boundary as the tenant-facing top-up, kept with its
+        # own wording because the message is part of the widget surface's answer.
+        return whole_minor_units(value, message=(
+            "amount_micros must be divisible by "
+            f"{minor_units(DEFAULT_CURRENCY):,} (cent-aligned)"))
 
 
 class TopUpResponse(Schema):

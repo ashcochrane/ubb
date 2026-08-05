@@ -515,7 +515,7 @@ def get_tenant_config(request):
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.metering.pricing.models import Rate
-    from apps.platform.tenants.models import SUPPORTED_CURRENCIES
+    from core.money import SUPPORTED_CURRENCIES
     t = request.auth.tenant
     new_currency = None
     if payload.default_currency is not None:
@@ -524,9 +524,9 @@ def update_tenant_config(request, payload: TenantConfigIn):
             raise Problem(
                 "unsupported_currency",
                 f"unsupported currency {new_currency!r}: only "
-                "2-decimal currencies are supported (zero-decimal "
-                "currencies like jpy/krw are rejected until the "
-                "minor-unit helper lands); allowed: "
+                "2-decimal currencies are supported (a zero- or "
+                "three-decimal currency needs a live Stripe money test "
+                "in that currency before it can be admitted); allowed: "
                 f"{', '.join(sorted(SUPPORTED_CURRENCIES))}")
         if new_currency != (t.default_currency or "usd").lower():
             reason = _currency_locked_reason(t)
