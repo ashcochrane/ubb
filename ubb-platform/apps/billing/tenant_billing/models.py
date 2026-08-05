@@ -119,6 +119,51 @@ class TenantInvoiceLineItem(BaseModel):
         return f"LineItem({self.product}: {self.amount_micros})"
 
 
+class PlatformFeeCarry(BaseModel):
+    """R3's carry-forward record for the platform fee (#199).
+
+    Glossary entry in `apps/billing/CONTEXT.md`; the sibling that does the same
+    job per customer is `PostpaidResidualLedger`. Kept separate because the two
+    are keyed at different grains — the fee is computed per tenant per period,
+    which is where its remainder becomes knowable.
+
+    Both ends of the chain are stored: the carry-in costs one column and makes
+    "why was March a cent larger" answerable from the row, rather than by
+    re-deriving every prior month.
+
+    Written at CLOSE, not at push, so a period that never bills still banks its
+    remainder — the carry belongs to the tenant, not to the pushing act.
+    """
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="platform_fee_carries"
+    )
+    billing_period = models.OneToOneField(
+        TenantBillingPeriod, on_delete=models.CASCADE, related_name="fee_carry"
+    )
+    carried_in_micros = models.BigIntegerField(default=0)
+    carried_out_micros = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "ubb_platform_fee_carry"
+        constraints = [
+            # A carry is a sub-minor-unit REMAINDER, so it is never negative —
+            # `to_minor` floors, giving 0 <= remainder < minor_units for every
+            # input, negatives included. The upper bound is deliberately NOT a
+            # constraint: it is minor_units(currency), and spelling it here
+            # would hard-code the bare `10_000` that core/money.py exists to
+            # delete. It is asserted in the suite instead, where the currency
+            # is in scope.
+            models.CheckConstraint(
+                condition=models.Q(carried_in_micros__gte=0)
+                & models.Q(carried_out_micros__gte=0),
+                name="ck_platform_fee_carry_non_negative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PlatformFeeCarry({self.tenant.name}: {self.carried_out_micros})"
+
+
 class BillingTenantConfig(BaseModel):
     tenant = models.OneToOneField(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="billing_config"
