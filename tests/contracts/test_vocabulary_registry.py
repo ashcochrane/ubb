@@ -385,6 +385,138 @@ def test_one_term_retired_by_two_concepts_is_rejected(tmp_path):
     assert E.DUPLICATE_RETIRED_ALIAS in invalid.codes()
 
 
+def test_a_term_both_swept_and_sense_retired_is_rejected(tmp_path):
+    """The two lists answer the same question differently, and the sweep can
+    only be given one answer. `retired_aliases` says "forbidden wherever this
+    word appears"; `retired_senses` says "forbidden in one sense, and here is
+    the one that survives". Both about one word is a contradiction authored in
+    two places, which is exactly what a single-registry load exists to catch."""
+    invalid = rejection(tmp_path, concepts={
+        "economics.yaml": {"thing": concept(retired_aliases=["old_word"])},
+        "spend-controls.yaml": {"other": concept(
+            label_key_prefix="other",
+            retired_senses=[{"term": "old_word",
+                             "retired_as": "one sense.",
+                             "survives_as": "another sense."}],
+        )},
+    })
+    assert E.RETIRED_SENSE_CONFLICT in invalid.codes()
+
+
+def test_one_term_sense_retired_by_two_concepts_is_rejected(tmp_path):
+    """As with retired aliases: "which sense survives?" must have one answer,
+    and a second claim would silently win the mapping."""
+    sense = [{"term": "old_word", "retired_as": "a sense.",
+              "survives_as": "another."}]
+    invalid = rejection(tmp_path, concepts={
+        "economics.yaml": {"thing": concept(retired_senses=sense)},
+        "spend-controls.yaml": {"other": concept(label_key_prefix="other",
+                                                 retired_senses=sense)},
+    })
+    assert E.DUPLICATE_RETIRED_SENSE in invalid.codes()
+
+
+def test_a_retired_sense_missing_the_surviving_sense_is_rejected(tmp_path):
+    """Without `survives_as` the entry is a retired alias somebody left out of
+    the sweep's input — which is the failure this field exists to prevent, not
+    a shape it may take."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        retired_senses=[{"term": "old_word", "retired_as": "a sense."}],
+    )}})
+    assert E.INVALID_RETIRED_SENSE in invalid.codes()
+
+
+def test_an_empty_retired_senses_list_is_rejected(tmp_path):
+    """An empty list reads as "we considered this and found none", which is a
+    claim; omitting the key is the honest way to say nothing about it."""
+    invalid = rejection(tmp_path, concepts={
+        "economics.yaml": {"thing": concept(retired_senses=[])},
+    })
+    assert E.INVALID_RETIRED_SENSE in invalid.codes()
+
+
+# --- value semantics --------------------------------------------------------
+
+def semantics(cases, inputs=("wet",), summary="A rule, for the compiler."):
+    return {"summary": summary, "inputs": list(inputs), "cases": cases}
+
+
+def test_a_decision_rule_with_a_hole_is_rejected(tmp_path):
+    """AC: the lower-bound rule is data, not prose — and data that answers three
+    of four cases is decided by whichever consumer meets the fourth first."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics([
+            {"when": {"wet": True}, "then": "alpha", "because": "It is wet."},
+        ]),
+    )}})
+    assert E.VALUE_SEMANTICS_NOT_TOTAL in invalid.codes()
+
+
+def test_a_decision_rule_that_answers_one_case_twice_is_rejected(tmp_path):
+    """Two rows for one combination is a rule whose answer depends on which one
+    a reader checks first — the ambiguity `>=` versus `>` produced in the
+    ceiling statuses before #158 §12.3 settled it."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics([
+            {"when": {"wet": "any"}, "then": "alpha", "because": "Always."},
+            {"when": {"wet": True}, "then": "beta", "because": "Except wet."},
+        ]),
+    )}})
+    assert E.VALUE_SEMANTICS_AMBIGUOUS in invalid.codes()
+
+
+def test_a_decision_rule_answering_with_an_undeclared_value_is_rejected(tmp_path):
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics([
+            {"when": {"wet": "any"}, "then": "gamma", "because": "Always."},
+        ]),
+    )}})
+    assert E.VALUE_SEMANTICS_UNKNOWN_RESULT in invalid.codes()
+
+
+def test_a_decision_rule_case_omitting_an_input_is_rejected(tmp_path):
+    """A missing key is a case nobody decided, not a wildcard. `any` is how a
+    rule says "this input does not affect the answer", and it has to be
+    written."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics(
+            inputs=("wet", "cold"),
+            cases=[{"when": {"wet": True}, "then": "alpha", "because": "Wet."}],
+        ),
+    )}})
+    assert E.INVALID_VALUE_SEMANTICS in invalid.codes()
+    assert E.VALUE_SEMANTICS_NOT_TOTAL not in invalid.codes()
+
+
+def test_a_decision_rule_case_without_a_reason_is_rejected(tmp_path):
+    """A row with no `because` is the prose this field replaces, minus the
+    prose — and the reason is the half a reviewer can actually disagree with."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics([{"when": {"wet": "any"}, "then": "alpha"}]),
+    )}})
+    assert E.INVALID_VALUE_SEMANTICS in invalid.codes()
+
+
+def test_a_decision_rule_on_a_tenant_owned_concept_is_rejected(tmp_path):
+    """A rule resolves to one of the concept's own values, so declaring one on a
+    kind that has none would be enumerating the tenant's set by the back door.
+
+    One cause, one error: the forbidden field is the fault, and the rule's
+    answers not being values it does not have is that same fault restated. The
+    exact code set is asserted, because "contains FORBIDDEN_FIELD" would pass
+    just as happily while the compiler reported both.
+    """
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": {
+        "kind": "tenant_defined",
+        "summary": "The tenant owns these.",
+        "value_semantics": semantics([
+            {"when": {"wet": "any"}, "then": "alpha", "because": "Always."},
+        ]),
+        "consumers": [],
+    }}})
+    assert invalid.codes() == {E.FORBIDDEN_FIELD}
+
+
 def test_an_unusable_consumers_file_is_blamed_before_the_concepts(tmp_path):
     """One cause, one error — the same rule the schema path already follows."""
     invalid = rejection(
@@ -516,6 +648,43 @@ def test_a_token_pattern_override_admits_a_structured_value(tmp_path):
         values=["task.completed", "invoice.finalized"],
     )}})
     assert registry.concepts["thing"].values == ("task.completed", "invoice.finalized")
+
+
+def test_a_total_unambiguous_decision_rule_loads(tmp_path):
+    """The positive control the four rejections above need. Without it a
+    compiler that refused every rule would pass all of them."""
+    registry = load(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        value_semantics=semantics(
+            inputs=("wet", "cold"),
+            cases=[
+                {"when": {"wet": True, "cold": "any"}, "then": "alpha",
+                 "because": "Wet decides it, whatever the temperature."},
+                {"when": {"wet": False, "cold": "any"}, "then": "beta",
+                 "because": "Dry decides it, whatever the temperature."},
+            ],
+        ),
+    )}})
+
+    rule = registry.concepts["thing"].value_semantics
+    assert rule.inputs == ("wet", "cold")
+    assert [case.then for case in rule.cases] == ["alpha", "beta"]
+
+
+def test_a_sense_retired_word_is_not_sweep_input(tmp_path):
+    """The whole point of the second list: `retired_terms` is what #206 walks,
+    and a word that survives in another sense must not be in it — while still
+    being visible to a reader, and to the acceptance audit, by name."""
+    registry = load(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        retired_aliases=["gone_everywhere"],
+        retired_senses=[{"term": "gone_here_only",
+                         "retired_as": "the sense that went.",
+                         "survives_as": "the sense that stayed."}],
+    )}})
+
+    assert set(registry.retired_terms) == {"gone_everywhere"}
+    concept_name, sense = registry.retired_senses["gone_here_only"]
+    assert concept_name == "thing"
+    assert sense.survives_as == "the sense that stayed."
 
 
 def test_all_four_kinds_load_together(tmp_path):

@@ -37,6 +37,13 @@ from pathlib import Path
 _TEXT_WIDTH = 77
 _RULE_WIDTH = 79
 
+#: A decision rule renders as three nested levels — the input assignment, the
+#: value it answers, and why. Each sits one step in from the last, so a reader
+#: scanning for "what happens when X" can stop at the middle one.
+_RULE_INDENT = 2
+_ANSWER_INDENT = 4
+_REASON_INDENT = 7
+
 
 class GenerationFailed(Exception):
     """The registry is valid, but an artifact cannot be rendered honestly.
@@ -167,6 +174,7 @@ class BackendConstants:
         lines += _comment(f"{concept.kind} — {rule.summary.strip()}")
         lines += ["#"] + _comment(concept.summary.strip())
         lines += ["#"] + _comment(f"Declared in {concept.source}.")
+        lines += self._decision_rule(concept)
 
         if not concept.declared_values:
             return "\n".join(lines + ["#"] + _comment(_NO_CONSTANTS_NOTE)) + "\n"
@@ -187,6 +195,30 @@ class BackendConstants:
         lines += [f"    {name}," for name in names]
         lines.append("})")
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _decision_rule(concept):
+        """The concept's `value_semantics`, rendered for a reader.
+
+        As a COMMENT, not a table: the module is literals, and a half-imported
+        rule invites a caller to consult two of its rows and infer the third.
+        The registry holds the rule as data — that is where a consumer that
+        wants to evaluate it should read it, through the compiler that already
+        proved it total.
+        """
+        semantics = concept.value_semantics
+        if semantics is None:
+            return []
+        lines = ["#"] + _comment(
+            "Decision rule, declared as registry data and proved total and "
+            "unambiguous by the compiler:")
+        lines += ["#"] + _comment(semantics.summary.strip(), indent=2)
+        for case in semantics.cases:
+            condition = ", ".join(f"{name}={state}" for name, state in case.when)
+            lines += ["#"] + _comment(condition, indent=_RULE_INDENT)
+            lines += _comment(f"-> {case.then}", indent=_ANSWER_INDENT)
+            lines += _comment(case.because.strip(), indent=_REASON_INDENT)
+        return lines
 
 
 BACKEND_CONSTANTS = BackendConstants()
@@ -296,11 +328,17 @@ def _identifier(text):
     return name
 
 
-def _comment(text):
-    """``text`` wrapped as `# ` comment lines at the repository's width."""
-    wrapped = textwrap.wrap(" ".join(text.split()), width=_TEXT_WIDTH,
+def _comment(text, indent=0):
+    """``text`` wrapped as `# ` comment lines at the repository's width.
+
+    ``indent`` shifts the wrapped block right, which is what lets a decision
+    rule's rows sit under their heading — the whitespace has to be applied here
+    because the wrap collapses everything the caller could have written.
+    """
+    pad = " " * indent
+    wrapped = textwrap.wrap(" ".join(text.split()), width=_TEXT_WIDTH - indent,
                             break_long_words=False, break_on_hyphens=False)
-    return [f"# {line}" for line in wrapped] or ["#"]
+    return [f"# {pad}{line}" for line in wrapped] or ["#"]
 
 
 def _rule_comment(name):

@@ -33,7 +33,37 @@ concept_fields:
     # Values retired in favour of this concept's canonical ones. Registry data,
     # not a list somebody maintains by memory — the forbidden-term sweep (#206)
     # consumes it directly.
+    #
+    # Every term here is retired WHEREVER IT APPEARS, as a whole token. That is
+    # what makes the list directly sweepable, and it is why a word that is
+    # retired in one sense while staying live in another belongs in
+    # `retired_senses` below instead.
     - retired_aliases
+    # Words retired in ONE SENSE while remaining live in another.
+    #
+    # #154 §8 retires `limit` "as a field word" — and #154 §3.4 keeps `limit`
+    # and `remaining` in the admission-control rejection. It retires "operation"
+    # "as a count noun" — and ADR-0007 §4 uses the word for every OpenAPI
+    # operation. Putting those into `retired_aliases` would state something
+    # false and force the sweep into exclusions broad enough to disarm it, which
+    # #154 §14 warns about by name.
+    #
+    # So they are carried here instead: visible, owned, and NOT sweep input.
+    # ADR-0008 §1 is the authority — a question that needs judgement about
+    # meaning rather than comparison against an oracle stays human-judged, and
+    # an obligation that is not a gate is recorded rather than dropped.
+    - retired_senses
+    # A decision rule over the concept's own values, as data rather than prose.
+    #
+    # The case that forced it is `ceiling_status`: #158 §12.3 calls its
+    # lower-bound rule "a spend-control safety invariant, not a naming detail",
+    # and says it belongs in the registry BESIDE the values. A sentence in a
+    # summary is not beside the values, it is above them.
+    #
+    # The compiler proves the table is total and unambiguous over its declared
+    # boolean inputs, so a rule that answers only three of four cases fails here
+    # rather than in whatever consumer meets the fourth first.
+    - value_semantics
     # Per-concept override of the registry-wide `token_pattern` above.
     - token_pattern
 
@@ -75,6 +105,10 @@ kinds:
       # No label key: the tenant authored the value, so UBB has no wording to
       # supply for it.
       - label_key_prefix
+      # A decision rule resolves to one of the concept's own values. A kind that
+      # declares none has nothing for a rule to answer with, and a rule here
+      # would be enumerating the tenant's set by the back door.
+      - value_semantics
 
   free_text:
     summary: >-
@@ -86,3 +120,4 @@ kinds:
       - known_values
       - allow_unknown
       - label_key_prefix
+      - value_semantics

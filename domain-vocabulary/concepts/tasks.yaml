@@ -1,0 +1,165 @@
+# Task vocabulary: the unit of work, what state it ended in, who said so, and
+# what the generated integration code does when UBB says stop.
+#
+# COMPLETE END-STATE (#202). A Task is the top-level unit of work and a Subtask
+# is the same record with a parent, so there is one model and one status set
+# here rather than two of each (ADR-0006, #154 §3.1).
+
+task_status:
+  kind: closed
+  summary: >-
+    The durable state a Task or Subtask is in. `active` is the only
+    non-terminal one. The three the tenant declares are reachable only by an
+    explicit close; the two UBB writes are reachable only by UBB — `killed`
+    means UBB stopped it on a spend signal and nothing else, and `expired`
+    means nobody ever told UBB how it ended.
+  values:
+    - active
+    - completed
+    - failed
+    - cancelled
+    - killed
+    - expired
+  label_key_prefix: task_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json
+
+task_outcome:
+  kind: closed
+  summary: >-
+    What the tenant declares when it closes a Task, and the only thing that
+    decides whether a Charge fires. It is a separate concept from the resulting
+    status because the caller declares an outcome and UBB records a state: a
+    Task UBB already stopped does not become `delivered` because a worker said
+    so late.
+  values:
+    - delivered
+    - failed
+    - cancelled
+  label_key_prefix: task_outcome
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/services.py
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json
+
+task_type_kind:
+  kind: closed
+  summary: >-
+    Which level a declared Task kind may be used at. It survives the collapse
+    of the two type columns into one because it is what lets a declaration be
+    refused at declaration time rather than at use — a kind meant for contained
+    work cannot be declared with a whole-Task pricing regime.
+  values:
+    - task
+    - subtask
+  label_key_prefix: task_type_kind
+  retired_senses:
+    - term: job
+      retired_as: >-
+        a prose synonym for a Task. Put and declined in #154 §3.1: it reads as a
+        queue execution or a worker attempt, which is the infrastructure sense,
+        not the tenant's unit of work.
+      survives_as: >-
+        a CI job. The gate manifest's `enforced_by` names one, and every
+        workflow step runs inside one.
+    - term: step
+      retired_as: >-
+        a prose synonym for a Subtask. Declined with `job` in #154 §3.1: it
+        implies a strictly sequential workflow stage, which contained work is
+        not.
+      survives_as: >-
+        a CI step, which is what an `installed` gate names beside its job.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+trigger_source:
+  kind: open
+  summary: >-
+    The mechanism that applied a transition — which is a different question
+    from the business cause, and both travel as structured fields so a webhook
+    never has to carry either in its name (ADR-0006 §5). Open because the set
+    grows whenever UBB adds an enforcement path, and a consumer must accept one
+    it has not seen rather than reject the event carrying it.
+  known_values:
+    - usage_ingest
+    - enforcement_patrol
+    - parent_cascade
+    - pool_crossing
+    - stale_reaper
+  allow_unknown: true
+  label_key_prefix: trigger_source
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/reasons.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+stop_behavior:
+  kind: closed
+  summary: >-
+    What the generated integration wrapper does when UBB signals a spend stop.
+    The default raises, and the signal derives from `BaseException` so a
+    tenant's own broad handler cannot swallow it; `return` is available for
+    callers who deliberately want to inspect the signal in line, and the
+    generated code says which one it selected (#179 §1).
+  values:
+    - raise
+    - return
+  label_key_prefix: stop_behavior
+  consumers:
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+
+task_type_key:
+  kind: tenant_defined
+  summary: >-
+    The key a tenant gives one of its own declared Task kinds. UBB owns the
+    entity and its declaration rules and never enumerates the keys — map #137
+    constraint 5, which is why the registry cannot become a catalogue of what
+    the tenant sells.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+external_task_id:
+  kind: free_text
+  summary: >-
+    The caller's own identifier for a Task, carried so an engineer can find
+    their side of the record from UBB's. Opaque to UBB, which neither parses it
+    nor groups on it.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json
+
+reason_detail:
+  kind: free_text
+  summary: >-
+    The sentence a caller may attach beside a reason code when a Task did not
+    deliver. Display only, and never grouped on — it is the cardinality guard
+    that lets the code beside it stay a small closed vocabulary (#140 §3.3).
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: openapi
+      path: openapi/v1.json

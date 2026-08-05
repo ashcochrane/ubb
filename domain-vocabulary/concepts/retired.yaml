@@ -1,0 +1,89 @@
+# The canonical terms that replaced retired vocabulary and carry no UBB-owned
+# value set of their own.
+#
+# READ THE NAME CAREFULLY: nothing in this file is retired. These are the
+# SURVIVING names — the answer to "what replaced this word?" for the terms whose
+# replacement is a tenant-owned set or a caller's own prose, and which therefore
+# have no closed value set to hang beside. Every other retirement lives on the
+# concept whose value set replaced it, in that concept's own domain file.
+#
+# It exists as one file because the forbidden-term sweep (#206) reads the whole
+# registry anyway, and a reviewer asking "is #154 §8's table accounted for?"
+# should not have to reconstruct the answer from five domain files. The rest of
+# §8's table is on `customer_billing_mode`, `tenant_posture`, `pricing_mode`,
+# `rate_structure`, `pricing_status`, `usage_event_kind`,
+# `pricing_receipt_subject_type`, `analytics_measure`, `analytics_grouping_kind`,
+# `tenant_product`, `grouping_field_value`, `control_family`, `ceiling_status`,
+# `reason_code`, `affordability_reason` and `webhook_event_type`.
+
+measurement_key:
+  kind: tenant_defined
+  summary: >-
+    The key a tenant gives one of its own declared measurable quantities. UBB
+    owns the entity, its unit and its value type, and never enumerates the
+    keys. The industry uses the retired word for the metered ENTITY rather than
+    for the quantity inside it, so keeping it here would have guaranteed
+    mis-translation at every integration boundary (#145 §10).
+  retired_aliases:
+    - metric
+    - metric_name
+    - usage_metrics
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+metadata_key:
+  kind: tenant_defined
+  summary: >-
+    A key in the one open bag a tenant may attach to a record. Filterable,
+    never groupable — grouping is what declared Grouping Fields are for, and
+    the bag exists precisely because not everything a caller wants to keep
+    should become an analytics axis with a cardinality bound.
+  retired_aliases:
+    # A second open bag whose name implied the grouping capability the first one
+    # deliberately does not have. It retires with that capability (#145 §8).
+    - tags
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+pricing_book_name:
+  kind: free_text
+  summary: >-
+    The display name a tenant gives a book of pricing rules. Prose a human
+    typed. The record it names replaced an entity that carried supplier cost
+    and customer price in one table discriminated by a column, which is the
+    conflation the cost/price split exists to end (#138, #148 §5.4).
+  retired_aliases:
+    - card_type
+    - cost_card
+    - price_card
+    - rate_card
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+idempotency_key:
+  kind: free_text
+  summary: >-
+    The caller's key for making a retried write safe. Opaque to UBB beyond its
+    length bound, and the only caller-supplied correlation value on the
+    recording path — which is what made the second one removable: it had no
+    uniqueness constraint, no lookup, no filter and no read that changed any
+    behaviour, while carrying an index write on the hottest path in the system
+    (#179 §4).
+  retired_aliases:
+    - request_id
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: sdk
+      path: ubb-sdk/ubb/metering.py
+    - surface: openapi
+      path: openapi/v1.json

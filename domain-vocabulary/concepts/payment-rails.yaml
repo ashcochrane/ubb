@@ -1,0 +1,39 @@
+# Payment-rail vocabulary (ADR-0008 §6, #158 §10.4).
+#
+# THE NAMES LAND BEFORE THE MACHINERY, DELIBERATELY. ADR-0008 §10.4 requires
+# these names to exist before anything is built on them, and ADR-0007 §3 forbids
+# publishing anything under a provisional name — so parking them under a working
+# title and correcting it later is not available. Slice 8 builds the activation
+# record, the capability flag and the centrally enforced invariant; slice 0
+# declares what they will be called and carries the obligation that says so
+# (gates/manifest.yaml, G27 and O3).
+#
+# Both concepts therefore declare NO consumers, which is legal and reported by
+# name. That is the honest state: nothing consumes them yet, and a registry that
+# hid the fact would be claiming coverage it does not have.
+
+payment_rail:
+  kind: closed
+  summary: >-
+    A mechanism through which UBB collects a tenant's customer money. Named for
+    the mechanism rather than after any one provider, because activation is
+    scoped per rail: one successful transaction on one rail is never read as
+    proof that another is ready. Each rail carries its own readiness evidence
+    and its own named approver.
+  values:
+    - stripe
+  label_key_prefix: payment_rail
+  consumers: []
+
+payment_rail_environment:
+  kind: closed
+  summary: >-
+    Which environment a rail activation was evidenced in. The distinction is
+    the whole point of recording it: an automated round trip in one proves the
+    integration works, and only a controlled transaction in the other proves
+    money moved, was received, and reconciled exactly once.
+  values:
+    - test
+    - live
+  label_key_prefix: payment_rail_environment
+  consumers: []

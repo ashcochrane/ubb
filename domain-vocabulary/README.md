@@ -13,13 +13,22 @@ run: `openapi/v1.json` declares an allowed value list in 3 of its 165 component
 schemas, by design under ADR-0003's open-enum stance. The registry is the
 missing oracle.
 
-## Status: seeded, not complete
+## Status: complete, and deliberately at odds with the code
 
 Issue #198 landed the registry as a **tracer bullet** — data, compiler, gate and
 CI in one complete path — carrying a representative concept of each of the four
 kinds and nothing more. Issue #200 added the first generated consumer, the
-backend constants. The complete reconciled end-state vocabulary lands with
-**#202**, and the remaining generated consumers with **#207** and **#208**.
+backend constants. Issue **#202** filled it in: the complete reconciled
+end-state vocabulary, from ADR-0006 and the decision records. The remaining
+generated consumers arrive with **#207** and **#208**.
+
+**On the day it filled in, the registry disagreed with almost the entire
+codebase. That is the design** (#191 decision 1). Every value here is the one
+that was decided, not the one the tree carries — because every value is already
+frozen in ADR-0006 and the decision records, ADR-0007 §3 forbids parking a
+public value under a temporary name, and #158 §12.1 had already applied exactly
+this reasoning to the ceiling statuses. The disagreement is the migration, and
+every later slice is measured by how much of it that slice deletes.
 
 ## What is in here
 
@@ -28,6 +37,11 @@ backend constants. The complete reconciled end-state vocabulary lands with
 | `schema.yaml` | The registry's own schema — the four kinds, and the fields each one requires or forbids. **Data, not documentation**: the compiler reads it, so it cannot drift away from what is enforced. |
 | `consumers.yaml` | The surfaces a concept may name as a consumer, each with the subtree it lives in. |
 | `concepts/*.yaml` | The vocabulary itself, split by domain. CI treats the directory as **one registry**: a term defined twice across files, or defined differently in two, is a failure. |
+
+The domains are economics, tasks, spend controls, webhooks, payment rails, and
+`retired.yaml` — which holds the **surviving** names whose replacement is a
+tenant-owned set or a caller's own prose, and so has no value set to sit beside.
+Nothing in that file is retired; read its header before adding to it.
 
 ## What is generated from it
 
@@ -140,12 +154,104 @@ python -m pytest tests/contracts
 4. Name its consumers, or write `consumers: []` and let it be visibly unconsumed.
 5. Run `python -m tools.vocabulary --write` and commit what it regenerates.
 
-### Retired terms
+### Retired terms, and the two lists
 
 `retired_aliases` is registry data, not a list somebody maintains by memory —
 it is the declared input the forbidden-term sweep (#206) consumes. A term
 retired by one concept while live in another is refused: the sweep works over
 text, so it cannot both forbid and require one word.
+
+Every entry is matched as a **whole term on identifier and word boundaries**,
+never as a substring. `hold` does not forbid `threshold`; `metric` does not
+forbid `usage_metrics`, which is retired in its own right. A sweep matching
+substrings would have to exempt half the tree, and #154 §14 is explicit that an
+over-broad exclusion silently disarms the gate.
+
+Most terms are one snake_case token. Two concepts retire **dotted** ones — the
+webhook catalogue's `<owner>.<past-tense>` names and the audit ledger's
+`noun.verb` actions — and each declares the `token_pattern` that admits them, so
+the form a term takes is data rather than something the sweep has to guess.
+
+Some words are retired **in one sense only**, and those go in `retired_senses`
+instead — with the sense that went, and the sense that survives:
+
+```
+limit      retired as a spend-control field word
+           survives in the admission-control rejection's retry information
+operation  retired as a count noun for metered work
+           survives as an OpenAPI operation
+job, step  retired as prose synonyms for Task and Subtask
+           survive as a CI job and a CI step
+ingest     retired as a selectable recording lane
+           survives in `usage_ingest`, the trigger source
+```
+
+Putting those in `retired_aliases` would state something false in a normative
+file, and would force the sweep into exactly the exclusions above. They are not
+sweep input. They are carried, visibly and with an owner, for the one owned
+acceptance audit — ADR-0008 §1: a question needing judgement about meaning
+rather than comparison against an oracle stays human-judged, and an obligation
+that is not a gate is recorded rather than dropped.
+
+The compiler refuses a word that appears in both lists, and a word claimed by
+two concepts in either.
+
+### Decision rules
+
+A few concepts carry a `value_semantics` block: the rule that decides which of
+their values applies, as **data**, over named boolean inputs.
+
+It exists because of one case. #158 §12.3 calls `ceiling_status`'s lower-bound
+rule *"a spend-control safety invariant, not a naming detail"* and says it
+belongs in the registry **beside the values**. A sentence in a summary is not
+beside the values; it is above them, and nothing can check it.
+
+The compiler proves each rule is **total** — every combination of its inputs
+reaches an answer — and **unambiguous** — no combination reaches two. So a rule
+that answers three of four cases fails here, rather than being settled by
+whichever consumer meets the fourth first. `any` is how a rule says an input
+does not affect the answer, and it has to be written: an omitted input is a case
+nobody decided.
+
+The generated backend module renders the rule as a comment rather than as an
+importable table. The rule lives here, where the compiler already proved it;
+half-importing it would invite a caller to consult two rows and infer the third.
+
+## What is deliberately absent
+
+Three things a reader may go looking for, and why they are not here.
+
+- **A value set the decision records left open.** #140 §3.3's list of reasons a
+  Task did not deliver is recorded there as *"illustrative, to be fixed in
+  implementation"*, so it is not a decided set and ADR-0007 §3 forbids parking
+  one under a provisional name. `admission_control.rate_limit_reached` and
+  `indeterminate_reason` are conditional in the same way — #154 §14 records that
+  the first may never be registered, and #158 §12.4 introduces the second with
+  *"where useful"*. The slice that builds each one decides it.
+- **A migration-ledger entry per disagreeing consumer.** #202 asks for one, and
+  this is a conflict between two tickets of the same slice rather than an
+  oversight — it is recorded here so the owner can reverse it rather than
+  discover it. #191 §5 rule 2 asks only that an entry name a real gate and a
+  real slice, which would admit these entries. #201 deliberately went further
+  (its README, *"Beyond what #201 asked for"*, item 1): an entry may only name
+  an **installed** gate, because a debt against a check that cannot fail
+  anything is a note nothing will ever prove, clear or notice. The four gates
+  that compare a consumer against the registry — G2, G3, G4, G6 — are all still
+  owned, so the entries are inadmissible under the stricter rule.
+
+  The stricter rule is kept, on its own merits and because loosening it to admit
+  ~40 hand-typed entries against checks nothing runs is exactly what it was
+  written to prevent. Nor is the disagreement measurable another way: #191
+  decision 3 rules out scanning backend modules for matching string literals,
+  because they are meant to *import* the generated module. So the entries are
+  seeded by the pull request that installs each gate, per `gates/README.md`;
+  what is enforced now is that each of those four rows names this registry as
+  the input it will be seeded from, and is owed to a slice that has not landed
+  — see `tests/contracts/test_gate_manifest.py`.
+- **Anything the tenant owns.** No Event Type key, Task or Subtask kind,
+  Grouping Field value, instance display name, provider outcome or free-text
+  description is enumerated anywhere, by construction (the schema forbids the
+  fields) and by assertion over the shipped registry.
 
 ## What the registry is not
 
