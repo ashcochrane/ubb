@@ -42,21 +42,26 @@ LAST_HISTORICAL = HISTORICAL_MIGRATIONS[-1]
 CONTENT_TYPE_MIGRATION = "0012_rename_app_label_content_types"
 
 
-def _loader_with_applied(applied_keys):
-    """A migration graph built as if exactly `applied_keys` were recorded."""
+def _built_as_if_applied(cls, applied_keys):
+    """Build `cls` against a database that recorded exactly `applied_keys`.
+
+    Both the loader and the executor read the history once, on construction,
+    so patching the recorder for that call is enough to ask what either would
+    conclude about a database this repository does not have to hand.
+    """
     recorded = {key: mock.Mock() for key in applied_keys}
     with mock.patch.object(
         MigrationRecorder, "applied_migrations", return_value=recorded
     ):
-        return MigrationLoader(connection)
+        return cls(connection)
+
+
+def _loader_with_applied(applied_keys):
+    return _built_as_if_applied(MigrationLoader, applied_keys)
 
 
 def _executor_with_applied(applied_keys):
-    recorded = {key: mock.Mock() for key in applied_keys}
-    with mock.patch.object(
-        MigrationRecorder, "applied_migrations", return_value=recorded
-    ):
-        return MigrationExecutor(connection)
+    return _built_as_if_applied(MigrationExecutor, applied_keys)
 
 
 class AppLabelTest(TestCase):

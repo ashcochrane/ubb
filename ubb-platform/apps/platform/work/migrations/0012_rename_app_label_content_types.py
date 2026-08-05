@@ -12,13 +12,17 @@
 # re-labels the existing rows in place, which keeps their primary keys and so
 # keeps everything pointing at them intact. No schema is touched either way.
 
+import logging
+
 from django.db import migrations
+
+logger = logging.getLogger(__name__)
 
 OLD_LABEL = "tasks"
 NEW_LABEL = "work"
 
 
-def _relabel(apps, schema_editor, *, source, target):
+def _relabel(apps, *, source, target):
     ContentType = apps.get_model("contenttypes", "ContentType")
 
     stale = ContentType.objects.filter(app_label=source)
@@ -30,15 +34,25 @@ def _relabel(apps, schema_editor, *, source, target):
             app_label=target, model__in=stale.values_list("model", flat=True)
         ).values_list("model", flat=True)
     )
+    if taken:
+        # Skipping is the safe choice, but it is also the case this migration
+        # exists to prevent: the rows left behind keep whatever admin log
+        # entries and permissions point at them, now orphaned. Say so, because
+        # a silent skip reads exactly like a successful one.
+        logger.warning(
+            "content types %s already exist under %r, so the %r rows for them "
+            "stay put; admin log entries and permissions still reference those",
+            sorted(taken), target, source,
+        )
     stale.exclude(model__in=taken).update(app_label=target)
 
 
 def forwards(apps, schema_editor):
-    _relabel(apps, schema_editor, source=OLD_LABEL, target=NEW_LABEL)
+    _relabel(apps, source=OLD_LABEL, target=NEW_LABEL)
 
 
 def backwards(apps, schema_editor):
-    _relabel(apps, schema_editor, source=NEW_LABEL, target=OLD_LABEL)
+    _relabel(apps, source=NEW_LABEL, target=OLD_LABEL)
 
 
 class Migration(migrations.Migration):
