@@ -339,8 +339,18 @@ one.
 A usage invoice parked after exhausting its retries; emits `usage.invoice_push_failed_permanent`.
 
 **Platform fee**:
-UBB's own charge to the tenant, computed per-product at the tenant's own period close.
-(`apps/billing/tenant_billing/`)
+UBB's own charge to the tenant, computed per-product at the tenant's own period close. The
+per-product amounts are summed in exact micros and reach the currency's minor unit exactly once,
+at close (R3). (`apps/billing/tenant_billing/`)
+
+**Platform fee carry**:
+The sub-minor-unit remainder a period's fee could not bill, banked against the tenant and applied
+to the next period's fee — one row per (tenant, period), written at close so a period that never
+pushes cannot strand it. Sandbox tenants get no row, since they accrue no fee.
+(`apps/billing/tenant_billing/models.py:PlatformFeeCarry`)
+_Avoid_: reading it as the postpaid **residual ledger**, which does the same job for usage-invoice
+lines but is keyed per customer and reserved/deposited across a push.
+(`apps/billing/invoicing/models.py:PostpaidResidualLedger`)
 
 ## Stripe connector kit (the ADR-001 §5 exception)
 
