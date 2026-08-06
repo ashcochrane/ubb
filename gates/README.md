@@ -183,6 +183,7 @@ as slice 0 proceeds rather than arriving pre-written.
 | #205 | G8, G13 — the webhook catalogue's shape, and Celery import discipline | **29** | 1 |
 | #222 | — (thirteen webhook renames paid) | **16** | 1 |
 | #206 | G7 — the forbidden-term sweep | **175** | 1 |
+| #227 | G2, G3 — the consumer census | **229** | 1 |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -267,13 +268,78 @@ It costs exactly one live occurrence, and that is written down too:
 it — G7 because the word is not input, G2 because `fee_type` is a bare
 `CharField` the registry declares no concept for. **An undeclared public value
 set is the finding**, not a sweep gap: #191 story 15 requires a public value to
-declare its kind before it ships, and giving `fee_type` a concept belongs with
-#207's consumer gates.
+declare its kind before it ships. **#227 settled it by taking story 15's other
+way out** — the field is not public, so no concept is owed and the reason is
+under test rather than written down; see the entry for #227 below.
 
 And one entry has **no positive owner**: `meter_only` is owed by slice 8 because
 no slice's issue says it rebuilds `customer_billing_mode`, and the mode's
 siblings gate on payment-rail activation, which is slice 8's. That is #205's
 residue in a new place — an owner nobody chose — and it wants an owner's eye.
+
+**#227 then installed G2 and G3 and seeded fifty-four — the whole re-model
+stated from the consumers' side.** `domain-vocabulary/consumers.yaml` had
+already promised these entries: a declared consumer is an **end-state**
+consumer, and *"every disagreement that survives is a migration-ledger entry
+naming the slice that removes it"*. The census asks one question of each — does
+this consumer hold the concept's values **by reference** to the generated
+artifact? — and the answer today is no, 54 times: 47 `closed` concepts under G2
+and 7 `open` ones under G3, over the backend's 29 declared consumers, the
+console's 20 and the SDK's 5. Two sites hold anything at all, both from #200,
+and both are recorded with what they have already paid.
+
+Its `site` is `<consumer path>::<concept>` and its `found` is `<held> of <total>
+values`. Per (file, concept) for the reason #206 chose (area, term): per value
+would be 338 rows churning whenever a value moves, and per file would let one
+concept's debt hide behind a neighbour's. The count is checked in **both**
+directions, exactly as G7's is — the ratchet compares entry identities rather
+than their contents, so a `9 of 9 values` typed into one would licence a whole
+concept for as long as the entry stood.
+
+**The owner is the slice that rebuilds the concept's SUBJECT, never the slice
+that owns the file.** `task_status` is slice 5's whether the consumer restating
+it is a Django model, the console or the SDK — #205's rule for event names,
+applied to consumers. Two consequences are worth seeing rather than
+discovering.
+
+The **console's twenty are not slice 0's**, and #210 is what settles that: *"Slice
+0 is complete when the mechanism is active and regressions are impossible — not
+when all fifty-two importing files have been rewritten"*, with every remaining
+map becoming an individually identified entry carrying an owner and a removal
+slice. Seeding them against slice 0 would have been the opposite of what that
+ticket asks for.
+
+And **`audit_action` has no positive owner** — the second time this shape has
+appeared, after #206's `meter_only`. Its fifty-eight actions name subjects across
+every slice, so no one slice rebuilds the catalogue, and it is recorded against
+the cutover for want of an owner rather than because anyone chose one. Any slice
+may take it earlier; none may take it later.
+
+**What the census cannot see is counted rather than merely admitted.** It walks
+the consumers the registry *declares*, so a `choices=` list for a concept
+`domain-vocabulary/` says nothing about is invisible to it — and structurally so,
+because attributing an enumeration to a concept means comparing its members
+against a value set, which is the literal scan #191 decision 3 rules out. So
+`tests/contracts/test_undeclared_value_sets.py` pins every `choices=` in living
+backend code by file, all 46 across 19 files, and a new one has to come past a
+reviewer. That is an **inventory, not a ledger**, and the difference is the same
+one that keeps the permanent exceptions in their own file: a ledger entry names
+a canonical term and a removal slice, and for most of these neither exists.
+Backend only, and stated: `choices=` is Django declaring a closed value set,
+while a TypeScript `as const` array is as often a query key as vocabulary — a
+pinned count over those would pin noise and get raised until it stopped failing,
+which is #154 §14's over-broad exclusion arriving by a different door.
+
+Two things the ticket asked for are recorded in the **manifest** rather than
+here, because they are facts about what G2 covers rather than debts anybody
+owes. ADR-0005's selector invariant — `Rate.SELECTORS` against `UsageEvent` —
+is **superseded** by G2's registry-backed form, with the existing test left in
+place until slice 4 deletes its subject, so that deletion is not later mistaken
+for a loss of coverage. And `ProductFeeConfig.fee_type`, #206's one lost
+occurrence, **gets no concept**: it is not a public value set, and
+`tests/contracts/test_product_fee_type_is_not_public.py` is what makes that
+claim falsifiable rather than a note — the day it reaches the spec, the SDK or
+the console, #191 story 15 binds and the concept is owed.
 
 **A gate installed in the platform or SDK suite keeps its allowlist there**, in
 the language that suite is written in, and a contract test holds the two to each

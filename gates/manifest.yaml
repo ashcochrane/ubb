@@ -82,32 +82,96 @@ gates:
       Every closed value set matches its backend, console and SDK consumers.
     oracle: the vocabulary registry
     source: ADR-0008 §2, #158 §3.2
-    status: owned_by_slice_0
-    blocked_on: >-
-      The generated ARTIFACTS all exist now — the backend constants (#200) and
-      the console and SDK ones (#207) — and each is byte-identical to what the
-      registry produces, which is G5's subject and is installed. This gate is
-      about the CONSUMERS, and two of the three still restate their values
-      rather than importing them. The backend has begun:
-      apps/platform/tenants/models.py and apps/platform/work/reasons.py import
-      from core.vocabulary. The console's apps/ui/src/lib/labels.ts and the
-      SDK's hand-written call surface import nothing, so on those two surfaces
-      there is nothing whose agreement could be checked structurally — and #191
-      decision 3 rules out the textual alternative of scanning source for
-      matching string literals. Installing it today would compare each
-      generated artifact against the registry it was generated from and report
-      green about a question it had not asked. The values it will compare
-      against are the complete end-state set in domain-vocabulary/ (#202),
-      which disagrees with the tree — so the pull request that installs it
-      seeds every disagreement it finds into the ledger.
+    status: installed
     notes: >-
-      OWNERSHIP NEEDS AN OWNER'S EYE, and #207 records it rather than
-      reassigning it — moving a gate between slices is not a generator
-      ticket's call. The row is owed by slice 0, and no remaining slice-0
-      ticket states that it converts a console or SDK consumer to import its
-      artifact. Setting `landed: true` on slice 0 with this row still owed
-      turns CI red, so the question has a deadline whether or not anyone asks
-      it first.
+      THE UNIT IS A VALUE, NOT A FILE, and the question asked of it is whether
+      a declared consumer holds it BY REFERENCE to the generated artifact.
+      #191 decision 3 rules out the textual alternative — scanning consumer
+      source for matching string literals is a check a coincidence can satisfy,
+      since two unrelated places spelling one word pass it and so does a value
+      that has already moved. So nothing here reads a value. It reads the
+      NAMES the generator binds, asked of `tools.vocabulary.generate` rather
+      than rebuilt beside it, and finds them through imports, which cannot be a
+      coincidence. A consumer holding two of a concept's three constants
+      measures as two of three, which is what
+      apps/platform/tenants/models.py is.
+      ONE MECHANISM, TWO READINGS. `tools/consumers` takes the census once; G2
+      reads it over `closed` concepts and G3 over `open` ones. It is also the
+      predicate #208 consumes for its own rule that the spec advertises a value
+      only where the backend serves it, which is why it is a package rather
+      than a test helper — two implementations of one predicate is the shape
+      that bit #203, whose agreement test was wrong until it was run.
+      THREE STATED LIMITS, recorded rather than left to be discovered.
+      (1) The census walks the consumers the REGISTRY DECLARES, so an
+      enumeration in a file no concept names is invisible to it. That is not an
+      oversight: attributing a bare value list to a concept means comparing its
+      members against a value set, which is the literal scan decision 3
+      forbids. But invisible must not mean unaccounted, so the gap is COUNTED
+      rather than merely admitted:
+      tests/contracts/test_undeclared_value_sets.py pins every `choices=` in
+      living backend code by file — 46 across 19 files — so a value set the
+      agreed model says nothing about cannot arrive in silence. It is
+      deliberately an inventory and not a ledger, because a ledger entry names
+      a canonical term and a removal slice and neither exists for a concept
+      nobody has decided. It is also deliberately backend-only: `choices=` is
+      Django declaring that a field has a closed value set, while a TypeScript
+      `as const` array is as often a query key as vocabulary, and a pinned
+      count over those would pin noise and be raised until it stopped failing.
+      The SDK declares none at all, and both facts are themselves checked.
+      (2) The console's LABEL MAPS are G6's, not this gate's. `labels.ts`
+      enumerates values twice — once as `as const` arrays and once as the keys
+      of its label maps — and G2 sees only the first, because the second is
+      exactly what "every label maps to a valid registry value" already
+      covers. #210 installs that half.
+      (3) `openapi` is a declared surface with NO generated artifact, so no
+      consumer there can hold a value by reference at all and the census
+      refuses the question rather than answering it. Its check is G4's,
+      installed by #208.
+      ADR-0005'S SELECTOR INVARIANT IS SUPERSEDED HERE (#191 §13).
+      `test_usage_event_and_rate_share_one_selector_vocabulary` in
+      ubb-platform/apps/platform/tests/test_dimension_invariants.py holds
+      `Rate.SELECTORS` to `UsageEvent`'s columns — the closest thing in the
+      tree to a registry check, and #145 removed its subject in the target
+      model. The rule it encodes, that a selector must exist as a declared
+      column, survives as this gate's registry-backed form. THE EXISTING TEST
+      STAYS until slice 4 deletes `Rate`, and this note is what stops that
+      deletion later reading as a loss of coverage.
+      `ProductFeeConfig.fee_type` GETS NO CONCEPT, and the reason is checked
+      rather than asserted. #206 moved `flat` out of the sweep's input on the
+      evidence of 1,069 hits, which left
+      ubb-platform/apps/billing/tenant_billing/models.py's bare `CharField`
+      carrying a retired sense that no gate could see. #191 story 15 requires a
+      PUBLIC value set to declare its kind — and this one is not public: it
+      appears in no committed contract, no SDK and no console, and is written
+      only by UBB's own operators. Registering it would put a private operator
+      field in the statement of the agreed model and would mean coining a
+      replacement for `flat` on a subject no slice rebuilds. So it is recorded
+      here instead, with the claim under test:
+      tests/contracts/test_product_fee_type_is_not_public.py fails the day it
+      reaches any of the three public surfaces, at which point story 15 binds
+      and the concept is owed. That module is deliberately NOT listed in
+      `enforced_by` below: it checks story 15's premise, not this gate's
+      statement, and a row whose armed-ness turned on an unrelated test would
+      be claiming something it does not measure. It gates by location instead —
+      ADR-0008 §7, everything under tests/contracts/ is required.
+    enforced_by:
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g2_every_closed_value_is_held_by_reference_or_owed
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_negative_control_a_restated_closed_value_set_is_a_finding
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g2_every_seeded_entry_is_still_a_real_violation
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g2_every_entrys_extent_is_exactly_what_the_census_finds
+      - suite: contracts
+        node: tests/contracts/test_consumer_census.py::test_the_census_read_every_surface
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_the_census_was_taken_without_a_fault
 
   G3:
     statement: >-
@@ -116,18 +180,47 @@ gates:
       legal where the concept is open.
     oracle: the vocabulary registry
     source: ADR-0008 §2, #158 §3.3
-    status: owned_by_slice_0
-    blocked_on: >-
-      The same unconverted consumers as G2. #207 landed the console and SDK
-      artifacts, so the known values now exist in both languages; what does not
-      exist is a console or SDK consumer that reads them instead of restating
-      them. Seeded from the same domain-vocabulary/ known values (#202).
+    status: installed
     notes: >-
-      Owned alongside G2 and moves with it — see that row's ownership note. The
-      asymmetry in the statement is what makes this a separate gate rather than
-      a clause of G2: a registry-known value missing from a UBB-owned consumer
-      is a defect, while a runtime value the registry has never seen stays
-      legal, and that second half must never be checked.
+      The same census as G2, read over `open` concepts — see that row for the
+      mechanism and its three stated limits. What makes this a separate gate
+      rather than a clause of G2 is the asymmetry, and it is the half that is
+      easy to get backwards: a registry-known value missing from a UBB-owned
+      consumer is a defect, while a runtime value the registry has never seen
+      is legal and is NEVER reported.
+      THE SECOND HALF IS UNREPRESENTABLE, not merely unreported. A verdict's
+      `held` and `missing` partition exactly the registry's declared values for
+      its concept, so there is nowhere for an unknown value to appear even if
+      the walker wanted to report one — it reads generated names, and a value
+      UBB has never seen has none. That is stronger than a rule somebody has to
+      remember not to break, and it is what keeps ADR-0003 true: a G3 that
+      reported the second half would make UBB learning a new value a CI
+      failure. Proved with a control rather than asserted —
+      `test_negative_control_an_unknown_runtime_value_is_never_a_finding` puts
+      a consumer that handles an unseen value through the real census and
+      requires silence, beside its opposite so the silence is a choice rather
+      than a gate that reports nothing at all.
+    enforced_by:
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g3_every_known_open_value_is_held_by_reference_or_owed
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g3_every_seeded_entry_is_still_a_real_violation
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_g3_every_entrys_extent_is_exactly_what_the_census_finds
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_negative_control_an_unknown_runtime_value_is_never_a_finding
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_negative_control_a_known_value_left_behind_is_a_finding
+      - suite: contracts
+        node: >-
+          tests/contracts/test_consumer_census.py::test_the_census_never_reports_a_value_the_registry_has_never_seen
+      - suite: contracts
+        node: tests/contracts/test_consumer_census.py::test_the_census_read_every_surface
 
   G4:
     statement: >-
@@ -218,9 +311,11 @@ gates:
       ONE OCCURRENCE IS LOST TO THAT MOVE and is recorded rather than absorbed:
       `ProductFeeConfig.fee_type == "flat"` is the retired sense, and after the
       move no gate sees it — G7 because the word is no longer input, G2 because
-      `fee_type` is a bare CharField the registry declares no concept for. An
-      undeclared public value set is #191 story 15's subject and #207's work,
-      not the sweep's.
+      `fee_type` is a bare CharField the registry declares no concept for.
+      SETTLED BY #227, which took the second of #191 story 15's two ways out:
+      the field is not a public value set at all, so no concept is owed, and
+      tests/contracts/test_product_fee_type_is_not_public.py is what makes that
+      claim falsifiable. See G2's row for the reasoning.
 
   G8:
     statement: >-
@@ -237,7 +332,7 @@ gates:
       owners and the states entered, and a live name is judged on its halves —
       so a name the registry has never seen can still be assessed, which is what
       "shape" has to mean. G2 asks the membership question, over every surface,
-      when #207 lands the consumers it compares. The Task conjunct is stated
+      and #227 installed it. The Task conjunct is stated
       over BOTH `task.*` and `subtask.*` and over all six statuses rather than
       only the terminal five: "terminal Task events map to a status" is then a
       consequence rather than a rule needing its own definition of terminal.

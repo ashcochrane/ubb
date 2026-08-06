@@ -169,6 +169,25 @@ class _Target:
         suffix = "known_values" if concept.known_values else "values"
         return _identifier(f"{concept.name}_{suffix}")
 
+    def handles(self, concept):
+        """``{generated name: the values a consumer referencing it holds}``.
+
+        The inverse of rendering, and it lives here for the reason rendering
+        does: a target is the authority on what it binds, so the question
+        *"which names carry this concept's values?"* has one answer rather than
+        one per caller. The consumer census (#227) reads it to decide whether a
+        declared consumer holds a value BY REFERENCE, which is what makes that
+        check structural rather than a comparison of spellings; #208 reads the
+        same answer through the census's predicate.
+
+        A concept that declares no values binds nothing and yields nothing —
+        `tenant_defined` and `free_text`, which is map #137 constraint 5 and
+        not an omission.
+        """
+        if not concept.declared_values:
+            return {}
+        return {self.set_name(concept): frozenset(concept.declared_values)}
+
     def _comment(self, blocks):
         """``(indent, text)`` blocks as comment lines in this language."""
         width = _RULE_WIDTH - len(self.marker) - 1
@@ -270,6 +289,13 @@ class _PythonConstants(_Target):
         claims += [(self.value_name(concept, value), f"{concept.name}.{value}")
                    for value in concept.declared_values]
         return claims
+
+    def handles(self, concept):
+        """The set, plus one handle per value — Python binds both."""
+        handles = super().handles(concept)
+        for value in concept.declared_values:
+            handles[self.value_name(concept, value)] = frozenset({value})
+        return handles
 
     # --- rendering -----------------------------------------------------------
 
@@ -481,6 +507,27 @@ class ConsoleVocabulary(_Target):
                     f"{concept.name}.{value}'s label key")
                    for value in concept.declared_values]
         return claims
+
+    def handles(self, concept):
+        """The array, the label-key map, and the type that carries the values.
+
+        No per-value handle: this surface binds no constant per member (see
+        :meth:`_PythonConstants.value_name`), so holding is all-or-nothing here.
+
+        AN OPEN CONCEPT'S OWN TYPE IS NOT A HANDLE, and this is the subtle one.
+        It renders as ``<Known> | (string & {})`` precisely so a value UBB has
+        never seen stays legal (ADR-0003) — which means a consumer typing a
+        field with it has enumerated nothing. Only the KNOWN type carries the
+        values, which is why it is a separate name at all.
+        """
+        handles = super().handles(concept)
+        if not concept.declared_values:
+            return handles
+        whole = frozenset(concept.declared_values)
+        handles[self.label_keys_name(concept)] = whole
+        handles[self.known_type_name(concept) if concept.known_values
+                else self.type_name(concept)] = whole
+        return handles
 
     # --- rendering -----------------------------------------------------------
 
