@@ -37,7 +37,17 @@ class _ProblemDocumentingNinjaAPI(NinjaAPI):
     """The one schema seam (#104): the offline exporter and the runtime
     ``/api/v1/openapi.json`` both render through ``get_openapi_schema``, so
     correcting the error media type here keeps the committed document and
-    the served one truthful — and identical — by construction."""
+    the served one truthful — and identical — by construction.
+
+    ONE THING IS DELIBERATELY NOT HERE, and it is the only place the two
+    documents diverge. The known-value metadata (#208) is applied by
+    ``api.v1.openapi_export`` after this seam, not inside it: it reads a
+    generated JSON file at the git root, and a Django request path should not
+    acquire that dependency — nor a ``sys.path`` entry — to serve a document
+    ADR-002 says is not the contract. So the served schema carries the error
+    dialect and the committed one carries the error dialect **and** the
+    vocabulary metadata. The divergence is empty until a concept is advertised;
+    ``openapi_export._apply_known_values`` carries the reasoning."""
 
     def get_openapi_schema(self, **kwargs):
         return document_problem_media_type(super().get_openapi_schema(**kwargs))

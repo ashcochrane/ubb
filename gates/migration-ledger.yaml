@@ -2851,6 +2851,443 @@ entries:
       #150's four families. Slice 6 owns them, and one value is already held
       by reference here (#200).
 
+  # --- G4: the published contract advertises only what the backend serves ---
+  #
+  # #208 installs the known-value metadata: the spec begins telling API
+  # consumers which values UBB knows about, generated from the registry
+  # according to each concept's KIND — an `open` concept's recognised values
+  # as `x-ubb-known-values` documentation metadata beside an untouched
+  # `type: string`, a `closed` one's as a real `enum`, and nothing at all for a
+  # concept whose values the tenant owns. ADR-0003's open-enum stance is not
+  # reversed, and the gate proves no open concept was quietly closed.
+  #
+  # THESE TWENTY-NINE ARE THE RULE THAT KEEPS IT HONEST: the spec advertises a
+  # value only where the backend already SERVES it, asked through #227's census
+  # predicate rather than a second copy of it. Nothing in the tree serves any
+  # concept yet — #227 recorded that from the consumers' side as fifty-four
+  # entries — so the contract carries no metadata today and every concept the
+  # registry says appears in it is owed here instead. Emitting the final values
+  # on a field that still returns the retired one would put a falsehood into a
+  # PUBLISHED document, which is worse than saying nothing because a consumer
+  # can act on it.
+  #
+  # So this is a large seeding that changes `openapi/v1.json` by zero bytes,
+  # and both halves of that are the intended outcome rather than a shortfall.
+  #
+  # `found` is the extent the generated document records, checked in BOTH
+  # directions against it — too low and the consumer regressed, too high and
+  # the entry is an excuse the ratchet could never see, since it compares entry
+  # identities rather than their contents. Two entries are already part-paid
+  # from #200: `customer_billing_mode` at 2 of 3 and `reason_code` at 1 of 5.
+  #
+  # THE OWNER IS THE SLICE THAT REBUILDS THE CONCEPT'S SUBJECT, and it is the
+  # same owner #227 gave the same concept — one concept, one removal slice,
+  # whether the debt is a Django model restating it or the contract staying
+  # silent about it. Paying a G4 entry is therefore the second half of paying
+  # that slice's G2 or G3 entry: convert the consumer, then mark the schema
+  # field, and the export refuses the marker if they are done the other way
+  # round.
+  #
+  # Two entries have no positive owner, and both are inherited rather than
+  # chosen: `audit_action`, whose fifty-eight actions name subjects across
+  # every slice, and `customer_billing_mode`, whose siblings gate on
+  # payment-rail activation. They are recorded against the cutover for want of
+  # an owner — #206's `meter_only` and #227's `audit_action` in a third place
+  # — and any slice may take them earlier.
+
+  - id: g4-openapi-affordability_reason
+    gate: G4
+    site: openapi/v1.json::affordability_reason
+    expected: affordability_reason
+    found: 0 of 9 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 9 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds spend control, and the affordability read is where
+      these reasons are reported. The metadata appears in that slice.
+
+  - id: g4-openapi-amount_representation
+    gate: G4
+    site: openapi/v1.json::amount_representation
+    expected: amount_representation
+    found: 0 of 3 values
+    owner_slice: slice_2
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 2 rebuilds the measurement catalogue, which is where this is
+      declared on the Event Type (#179 §3.4). The metadata appears in that
+      slice.
+
+  - id: g4-openapi-analytics_grouping_kind
+    gate: G4
+    site: openapi/v1.json::analytics_grouping_kind
+    expected: analytics_grouping_kind
+    found: 0 of 2 values
+    owner_slice: slice_7
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 7 rebuilds analytics around declared Grouping Fields and
+      rollups, which is what this kind tells apart. The metadata appears in
+      that slice.
+
+  - id: g4-openapi-analytics_measure
+    gate: G4
+    site: openapi/v1.json::analytics_measure
+    expected: analytics_measure
+    found: 0 of 4 values
+    owner_slice: slice_7
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 7 rebuilds the analytics surface these three measures and the
+      event count are computed for. The metadata appears in that slice.
+
+  - id: g4-openapi-analytics_rollup
+    gate: G4
+    site: openapi/v1.json::analytics_rollup
+    expected: analytics_rollup
+    found: 0 of 2 values
+    owner_slice: slice_7
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 7 rebuilds analytics, where Event Category and Measurement
+      Concept land once #147 removed the first from pricing. The metadata
+      appears in that slice.
+
+  - id: g4-openapi-audit_action
+    gate: G4
+    site: openapi/v1.json::audit_action
+    expected: audit_action
+    found: 0 of 58 values
+    owner_slice: slice_8
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 58 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Its fifty-eight actions name subjects across every slice, so no one
+      slice rebuilds the catalogue and it is recorded against the cutover for
+      want of an owner — #227's finding, repeated here because it is the same
+      absence and it wants an owner's eye. The metadata appears in that slice.
+
+  - id: g4-openapi-ceiling_basis
+    gate: G4
+    site: openapi/v1.json::ceiling_basis
+    expected: ceiling_basis
+    found: 0 of 2 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds the ceiling, which is what declares whether it
+      bounds cost or time (#150). The metadata appears in that slice.
+
+  - id: g4-openapi-ceiling_status
+    gate: G4
+    site: openapi/v1.json::ceiling_status
+    expected: ceiling_status
+    found: 0 of 4 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds the ceiling, and #158 §12.3's lower-bound rule
+      over these statuses is a spend-control safety invariant rather than a
+      naming detail. The metadata appears in that slice.
+
+  - id: g4-openapi-control_family
+    gate: G4
+    site: openapi/v1.json::control_family
+    expected: control_family
+    found: 0 of 4 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds spend control around #150's four families, which
+      is what this names. The metadata appears in that slice.
+
+  - id: g4-openapi-costing_method
+    gate: G4
+    site: openapi/v1.json::costing_method
+    expected: costing_method
+    found: 0 of 2 values
+    owner_slice: slice_2
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 2 rebuilds the Event Type catalogue, where #146 declares
+      which derivation reaches the one COGS number. The metadata appears in
+      that slice.
+
+  - id: g4-openapi-costing_status
+    gate: G4
+    site: openapi/v1.json::costing_status
+    expected: costing_status
+    found: 0 of 3 values
+    owner_slice: slice_3
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 3 rebuilds Cost, and an event UBB can place but not price is
+      what this status records (#146). The metadata appears in that slice.
+
+  - id: g4-openapi-customer_billing_mode
+    gate: G4
+    site: openapi/v1.json::customer_billing_mode
+    expected: customer_billing_mode
+    found: 2 of 3 values
+    owner_slice: slice_8
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 2 of 3 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. No slice's issue says it rebuilds this mode, and its siblings gate
+      on payment-rail activation, which is slice 8's — #206's `meter_only`
+      entry in a second place. The metadata appears in that slice.
+
+  - id: g4-openapi-measure_status
+    gate: G4
+    site: openapi/v1.json::measure_status
+    expected: measure_status
+    found: 0 of 4 values
+    owner_slice: slice_7
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 7 rebuilds the analytics surface, where a measure that is
+      unavailable must never render as a zero (#141, #147). The metadata
+      appears in that slice.
+
+  - id: g4-openapi-pricing_method
+    gate: G4
+    site: openapi/v1.json::pricing_method
+    expected: pricing_method
+    found: 0 of 2 values
+    owner_slice: slice_4
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 4 rebuilds Price, and #147's two alternative methods are what
+      a pricing rule declares. The metadata appears in that slice.
+
+  - id: g4-openapi-pricing_mode
+    gate: G4
+    site: openapi/v1.json::pricing_mode
+    expected: pricing_mode
+    found: 0 of 2 values
+    owner_slice: slice_5
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 5 rebuilds Work, and #147 snapshots this on the Task at
+      creation. The metadata appears in that slice.
+
+  - id: g4-openapi-pricing_receipt_subject_type
+    gate: G4
+    site: openapi/v1.json::pricing_receipt_subject_type
+    expected: pricing_receipt_subject_type
+    found: 0 of 2 values
+    owner_slice: slice_4
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 4 rebuilds Price, which is where #148's authoritative receipt
+      lands. The metadata appears in that slice.
+
+  - id: g4-openapi-pricing_status
+    gate: G4
+    site: openapi/v1.json::pricing_status
+    expected: pricing_status
+    found: 0 of 4 values
+    owner_slice: slice_4
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 4 rebuilds Price, and #147's three revenue states plus #148's
+      fourth are what this carries. The metadata appears in that slice.
+
+  - id: g4-openapi-rate_structure
+    gate: G4
+    site: openapi/v1.json::rate_structure
+    expected: rate_structure
+    found: 0 of 2 values
+    owner_slice: slice_4
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 4 rebuilds Price, replacing today's rate cards with the
+      Pricing Book's rules. The metadata appears in that slice.
+
+  - id: g4-openapi-reason_code
+    gate: G4
+    site: openapi/v1.json::reason_code
+    expected: reason_code
+    found: 1 of 5 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 1 of 5 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds spend control, where #150's four families rewrite
+      the stop reasons — and one value is already held by reference in the
+      backend (#200). The metadata appears in that slice.
+
+  - id: g4-openapi-source_kind
+    gate: G4
+    site: openapi/v1.json::source_kind
+    expected: source_kind
+    found: 0 of 4 values
+    owner_slice: slice_2
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 2 rebuilds the measurement catalogue this describes the
+      origin of. The metadata appears in that slice.
+
+  - id: g4-openapi-spend_pool_enforce_mode
+    gate: G4
+    site: openapi/v1.json::spend_pool_enforce_mode
+    expected: spend_pool_enforce_mode
+    found: 0 of 2 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds spend control, where the customer spend pool
+      replaces today's container (#150 §7.1). The metadata appears in that
+      slice.
+
+  - id: g4-openapi-task_outcome
+    gate: G4
+    site: openapi/v1.json::task_outcome
+    expected: task_outcome
+    found: 0 of 3 values
+    owner_slice: slice_5
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 5 rebuilds Work, and #140 makes the close carry a required
+      outcome because the charge keys on how a job ended. The metadata appears
+      in that slice.
+
+  - id: g4-openapi-task_status
+    gate: G4
+    site: openapi/v1.json::task_status
+    expected: task_status
+    found: 0 of 6 values
+    owner_slice: slice_5
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 6 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 5 rebuilds Work, and #140's six states replace the ones the
+      model serves today. The metadata appears in that slice.
+
+  - id: g4-openapi-task_type_kind
+    gate: G4
+    site: openapi/v1.json::task_type_kind
+    expected: task_type_kind
+    found: 0 of 2 values
+    owner_slice: slice_5
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 5 rebuilds Work, where the declared kind of work carries its
+      own deadlines and pricing (#139, #140). The metadata appears in that
+      slice.
+
+  - id: g4-openapi-tenant_posture
+    gate: G4
+    site: openapi/v1.json::tenant_posture
+    expected: tenant_posture
+    found: 0 of 2 values
+    owner_slice: slice_8
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. No slice's issue says it rebuilds the tenant's posture, and the
+      cutover is where it lands. The metadata appears in that slice.
+
+  - id: g4-openapi-tenant_product
+    gate: G4
+    site: openapi/v1.json::tenant_product
+    expected: tenant_product
+    found: 0 of 3 values
+    owner_slice: slice_1
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 1 is Demolition, which is where the retired product flags go.
+      The metadata appears in that slice.
+
+  - id: g4-openapi-trigger_source
+    gate: G4
+    site: openapi/v1.json::trigger_source
+    expected: trigger_source
+    found: 0 of 5 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 5 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds the enforcement paths that populate it — the
+      mechanism that applied a transition, travelling as a structured field so
+      a webhook never carries it in its name (ADR-0006 §5). The metadata
+      appears in that slice.
+
+  - id: g4-openapi-usage_event_kind
+    gate: G4
+    site: openapi/v1.json::usage_event_kind
+    expected: usage_event_kind
+    found: 0 of 2 values
+    owner_slice: slice_5
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 5 rebuilds Work, which is where #139's work-charge posting is
+      marked. The metadata appears in that slice.
+
+  - id: g4-openapi-webhook_event_type
+    gate: G4
+    site: openapi/v1.json::webhook_event_type
+    expected: webhook_event_type
+    found: 0 of 37 values
+    owner_slice: slice_6
+    reason: >-
+      The contract may not advertise these values while the backend consumer
+      holds 0 of 37 of them: the spec would publish the agreed vocabulary on a
+      field that still returns the one it replaces, and a consumer can act on
+      that. Slice 6 rebuilds spend control, and the seven events G8 still owes
+      are the ones #150's four families rewrite. The metadata appears in that
+      slice.
+
 seeding_authorisations:
   - gate: G9
     issue: 203
@@ -2946,3 +3383,20 @@ seeding_authorisations:
       ADR-0003 is what that protects, and
       `tests/contracts/test_consumer_census.py` proves the silence with a
       control rather than asserting it.
+
+  - gate: G4
+    issue: 208
+    entries_added: 29
+    reason: >-
+      This pull request installs the known-value metadata generated from the
+      registry, and records the twenty-nine concepts the contract may not
+      advertise because their backend consumers do not serve the registry's
+      values. It advertises none of them and changes `openapi/v1.json` by zero
+      bytes: the metadata for each appears in the slice that renames it, which
+      is why the count here is the whole of the registry's contract surface
+      rather than a residue. The concepts whose values the tenant owns, and
+      those the registry gives no `openapi` consumer, are NOT recorded — they
+      contribute nothing to the spec by construction, so no slice owes their
+      arrival, and recording them would make "the ledger is at zero"
+      unreachable in exactly the way the permanent exceptions are kept out of
+      it.

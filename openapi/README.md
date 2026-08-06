@@ -17,6 +17,62 @@ Output is deterministic (sorted keys, LF, trailing newline), so the diff you
 commit is exactly the surface change you made — the spec diff is the API
 review.
 
+## Known-value metadata (#208, ADR-0008 §2)
+
+The contract tells consumers which values UBB knows about, **without closing a
+single open enum**. ADR-0003's open-enum stance is not reversed and not
+weakened: an `open` concept keeps `type: string` and exposes its recognised
+values as documentation metadata, because a schema that enumerated the set
+would make UBB learning a new value a breaking change to a published contract.
+
+A schema field says which registry concept it carries, and **only** that:
+
+```python
+class TaskOut(Schema):
+    status: str = Field(json_schema_extra={"x-ubb-concept": "task_status"})
+```
+
+The values arrive at export time from `known-values.json` — generated from
+`domain-vocabulary/` by `python -m tools.vocabulary --write`, and committed
+beside this document. So the platform's source never spells a value set the
+registry owns, and agreement is structural rather than a coincidence of
+spelling (#191 decision 3).
+
+| The concept's kind | What the exported document gets |
+|---|---|
+| `open` | `x-ubb-known-values`, beside an untouched `type: string`. Never an `enum`. |
+| `closed` | a real `enum` — UBB owns the whole value set, so the schema may say so |
+| `tenant_defined`, `free_text` | nothing, and a marker on one is **refused** |
+| no `openapi` consumer in the registry | nothing, and a marker on one is **refused** |
+
+`x-ubb-concept` survives into the published document. That is deliberate: it is
+the concept-to-schema mapping G4 walks, and a mapping the gate had to infer by
+comparing spellings would be one a coincidence could satisfy.
+
+### The rule, and the order it forces
+
+**The contract advertises a value only where the backend already serves it** —
+asked through the consumer census (`tools/consumers`), which is G2 and G3's
+predicate rather than a second copy of it. Emitting the final values on a field
+that still returns the retired one would put a falsehood into a published
+document, which is worse than saying nothing because a consumer can act on it.
+
+So marking a field whose concept the backend does not yet serve **fails the
+export**, naming the field. It is not silently skipped: the debt is already an
+individually identified `G4` entry in `gates/migration-ledger.yaml`, and a
+marker that quietly did nothing would be a check that cannot fail. The order is
+therefore fixed, and it is one slice's single act:
+
+1. convert the concept's backend consumer to import `core.vocabulary`;
+2. regenerate — `python -m tools.vocabulary --write` flips it to advertised;
+3. mark the schema field and regenerate the spec;
+4. delete its ledger entry, and record any break with `--emit` below.
+
+Today **no concept is served**, so this document carries no known-value
+metadata and twenty-nine concepts are ledger entries. That is slice 0's correct
+outcome: the mechanism is active and regressions are impossible, which is what
+slice 0 is for.
+
 ## The three CI gates (`.github/workflows/ci.yml`, `contract` job)
 
 1. **Drift gate** — regenerates offline and fails on any diff against the

@@ -13,16 +13,20 @@ of them.
 
 A target is anything carrying ``path`` and ``render(registry)``. Issue #200
 shipped the first — the backend constants; #207 added the console value lists
-and the SDK constants, in the two other languages; the OpenAPI known-value
-metadata (#208) is a new entry in :data:`TARGETS` and inherits the zero-diff
-gate, the ``--write`` command and the CLI's report without touching this
-contract.
+and the SDK constants, in the two other languages; #208 added the OpenAPI
+known-value decisions, which are data rather than source. Each is an entry in
+:data:`TARGETS` and inherits the zero-diff gate, the ``--write`` command and
+the CLI's report without touching this contract.
 
 Four rules hold for every target, and all four are tested:
 
-- **Deterministic.** Same registry, same bytes, on any machine and in any
-  order. A zero-diff gate over an unstable renderer fails at random, and a gate
-  that cries wolf gets disabled rather than obeyed.
+- **Deterministic.** Same registry and same working tree, same bytes, on any
+  machine and in any order. A zero-diff gate over an unstable renderer fails at
+  random, and a gate that cries wolf gets disabled rather than obeyed. Three of
+  the four targets read nothing but the registry; :class:`OpenApiKnownValues`
+  also reads the consumer census, because *whether* the contract may advertise
+  a value is a fact about the tree and not about the registry — see its own
+  docstring.
 - **Refusal over a plausible-looking lie.** Where the registry is valid but
   cannot be rendered honestly — two concepts whose constants would collide on
   one name — generation raises :class:`GenerationFailed`. Silently emitting the
@@ -44,6 +48,8 @@ import re
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
+
+from tools.known_values import build as build_known_values
 
 #: Comment and code lines wrap here. The marker plus its trailing space is
 #: subtracted per target, so `# ` and `// ` both land the widest comment line on
@@ -576,14 +582,80 @@ class ConsoleVocabulary(_Target):
                 else self.type_name(concept))
 
 
+# ---------------------------------------------------------------------------
+# The committed contract's known-value decisions
+# ---------------------------------------------------------------------------
+
+class OpenApiKnownValues:
+    """What the published contract may say about each concept (#208).
+
+    **Deliberately not a :class:`_Target` subclass.** A target is anything
+    carrying ``path`` and ``render(registry)`` — this module's opening
+    paragraph says so — and that is the whole of what this one shares. It binds
+    no name, so `set_name` and `handles` have nothing to answer; it emits no
+    comments, so `marker`, `_comment` and `_section_rule` have nothing to
+    write; and it cannot collide, because the document is keyed by concept name
+    and the registry already refuses to define one term twice, so
+    `_check_for_collisions` has nothing to check. Inheriting in order to
+    override four methods into silence would leave two of them unreachable —
+    and an unreachable override reads as coverage rather than as absence.
+
+    Two things make it the odd one out, and both are the point.
+
+    **It is data, not source.** A JSON document cannot import anything, so the
+    committed contract holds no value BY REFERENCE — which is precisely why
+    `tools/consumers` refuses to answer `serves(concept, "openapi")` at all.
+    What this artifact carries instead is a decision the spec export applies;
+    see :mod:`tools.known_values`.
+
+    **It reads the tree as well as the registry.** The other three targets are
+    pure functions of `domain-vocabulary/`; this one consults the consumer
+    census, because the question it answers is not *what values does this
+    concept have?* but *may the published contract state them yet?* — and #208's
+    rule is that it may only where the backend consumer already serves them.
+    That fact lives in the tree.
+
+    The consequence is worth having rather than merely tolerating: on the day a
+    slice converts a backend consumer to import `core.vocabulary`, this
+    artifact goes stale, CI says so, regenerating flips the concept to
+    advertised, and the spec drift gate then demands the contract be
+    regenerated too. The migration arms its own next step.
+    """
+
+    path = "openapi/known-values.json"
+
+    def render(self, registry):
+        # `tools.consumers` imports THIS module for the naming rules each
+        # surface binds, so the dependency genuinely runs both ways and a
+        # module-scope import here would be a cycle. Deferred rather than
+        # restructured because only this one render needs the answer, and the
+        # alternative — threading a census through `render` for all four
+        # targets — would spread one target's input across every other's
+        # signature. `tools.known_values` needs no such treatment and is
+        # imported at module scope.
+        from tools.consumers import take_census
+
+        document = build_known_values(registry,
+                                      take_census(registry.repo_root, registry))
+        # `sort_keys` rather than a curated order: `@generated` sorts first
+        # anyway, and a renderer whose output order depends on dictionary
+        # construction is one insertion away from a zero-diff gate that fails
+        # at random. `ensure_ascii=False` keeps the banner's punctuation as the
+        # UTF-8 it is committed as, which is what the byte comparison reads.
+        return json.dumps(document, indent=2, sort_keys=True,
+                          ensure_ascii=False) + "\n"
+
+
 BACKEND_CONSTANTS = BackendConstants()
 CONSOLE_VOCABULARY = ConsoleVocabulary()
 SDK_CONSTANTS = SdkConstants()
+OPENAPI_KNOWN_VALUES = OpenApiKnownValues()
 
 #: Every artifact generated from the registry. Adding one here gives it the
 #: zero-diff gate, `--write`, and the CLI's report at once — which is the point
 #: of the list existing at all.
-TARGETS = (BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS)
+TARGETS = (BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS,
+           OPENAPI_KNOWN_VALUES)
 
 
 # ---------------------------------------------------------------------------

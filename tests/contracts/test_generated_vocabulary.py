@@ -46,6 +46,7 @@ from tools.vocabulary.generate import (
     CONSOLE_VOCABULARY,
     DIFFERS,
     MISSING,
+    OPENAPI_KNOWN_VALUES,
     SDK_CONSTANTS,
     TARGETS,
     GenerationFailed,
@@ -62,6 +63,20 @@ from _helpers import (REAL_REGISTRY, REPO_ROOT, concept, copy_real_registry,
 #: decide which checks apply to it — `test_the_gate_actually_read_the_artifacts`
 #: is what makes that unavoidable.
 PYTHON_TARGETS = (BACKEND_CONSTANTS, SDK_CONSTANTS)
+
+#: The targets whose artifact is SOURCE — a module a consumer imports, in a
+#: language with comments and a namespace.
+#:
+#: #208's is not one of them. `openapi/known-values.json` is data: it binds no
+#: name, has no comment syntax, and its strings include the structural keys any
+#: JSON document needs. So the three checks below that read an artifact *as
+#: source* — its section rules, the constants it binds, and the rule that every
+#: string it emits is a registry token — are scoped here, and
+#: `test_openapi_known_values.py` states each of them again in the form a JSON
+#: document can carry. Naming which checks apply to which artifact is the
+#: obligation `test_the_gate_actually_read_the_artifacts` exists to force; this
+#: is #208 discharging it rather than quietly widening a parametrize.
+SOURCE_TARGETS = (BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS)
 
 
 @pytest.fixture(scope="module")
@@ -161,13 +176,42 @@ def test_the_gate_actually_read_the_artifacts(registry):
     fails too, which is what makes #208 come through this file and say which of
     the checks below its artifact is subject to.
     """
-    assert set(TARGETS) == {BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS}
+    assert set(TARGETS) == {BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS,
+                            OPENAPI_KNOWN_VALUES}
     assert BACKEND_CONSTANTS.path == "ubb-platform/core/vocabulary.py"
     assert CONSOLE_VOCABULARY.path == "apps/ui/src/lib/vocabulary.ts"
     assert SDK_CONSTANTS.path == "ubb-sdk/ubb/vocabulary.py"
+    assert OPENAPI_KNOWN_VALUES.path == "openapi/known-values.json"
+    assert set(SOURCE_TARGETS) == set(TARGETS) - {OPENAPI_KNOWN_VALUES}
     for target in TARGETS:
         assert (REPO_ROOT / target.path).is_file(), f"{target.path} is missing"
         assert len(committed(target)) > 500, f"{target.path} is suspiciously small"
+
+
+def test_every_generated_artifact_is_pinned_to_lf(registry):
+    """`.gitattributes` pins every target, derived from `TARGETS`.
+
+    The gate above compares BYTES, so a checkout with `core.autocrlf` set turns
+    a generated artifact into CRLF and the comparison goes red for a reason
+    that has nothing to do with the vocabulary. `.gitattributes` is what stops
+    that, and until now the rule lived only in a comment there and two
+    docstrings in the generator — a hard rule nothing checked.
+
+    #208 nearly shipped the gap it warns about: a fourth target with no pin.
+    Derived from `TARGETS` rather than listed, so the fifth is covered on the
+    day it is added rather than on the day somebody remembers.
+    """
+    attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+    pinned = {line.split()[0] for line in attributes.splitlines()
+              if line.strip() and not line.lstrip().startswith("#")
+              and "eol=lf" in line}
+
+    unpinned = sorted(t.path for t in TARGETS if t.path not in pinned)
+    assert not unpinned, (
+        f"{len(unpinned)} generated artifact(s) ride a byte comparison with no "
+        f"LF pin: {unpinned}. Add `<path> text eol=lf` to .gitattributes, or a "
+        f"Windows checkout turns the zero-diff gate red for a reason nobody "
+        f"can read in the diff.")
 
 
 def test_stale_targets_reports_nothing_for_the_committed_tree(registry):
@@ -187,12 +231,16 @@ def test_stale_targets_reports_nothing_for_the_committed_tree(registry):
 
 @pytest.mark.parametrize("target", TARGETS, ids=lambda t: t.path)
 def test_each_artifact_is_marked_generated_and_names_its_source(registry, target):
-    """AC: both artifacts are clearly marked as generated and name the registry
-    as their source. A reader who arrives by "go to definition" must learn, in
-    the first line, that editing here is pointless — and where to edit instead.
+    """AC: every artifact is clearly marked as generated and names the registry
+    as its source. A reader who arrives by "go to definition" must learn, at the
+    top of the file, that editing here is pointless — and where to edit instead.
+
+    Two lines rather than one: JSON has no comment syntax, so #208's artifact
+    announces itself in its first KEY, which is the line after the opening
+    brace. The three source artifacts still satisfy this on their first line.
     """
     source = target.render(registry)
-    head = source.splitlines()[0]
+    head = "\n".join(source.splitlines()[:2])
 
     assert "@generated" in head, f"{target.path} does not announce itself"
     assert "domain-vocabulary/" in head
@@ -219,7 +267,7 @@ def test_no_artifact_names_a_retired_term(registry, target):
         )
 
 
-@pytest.mark.parametrize("target", TARGETS, ids=lambda t: t.path)
+@pytest.mark.parametrize("target", SOURCE_TARGETS, ids=lambda t: t.path)
 def test_no_artifact_carries_user_facing_english(registry, target):
     """AC: neither generated artifact carries user-facing English.
 
@@ -234,6 +282,12 @@ def test_no_artifact_carries_user_facing_english(registry, target):
     So the rule is exact: every string literal an artifact emits is a registry
     token or a label key built from one. Prose lives in comments, where nothing
     can render it.
+
+    Scoped to the source artifacts because "every string literal" is the wrong
+    reading of a JSON document, whose keys are structural. The same claim for
+    #208's artifact —
+    `test_openapi_known_values.py::test_the_document_emits_no_string_that_is_not_a_registry_token`
+    — reads its values instead.
     """
     speakable = _emitted_strings(target, registry)
     assert speakable, f"{target.path}: no strings found — the reader is broken"
@@ -445,11 +499,26 @@ def test_a_kind_that_declares_no_values_is_accounted_for_not_omitted(registry,
     why no generator may enumerate what the tenant owns. Each artifact still
     NAMES them, because a reader cannot otherwise tell "declares nothing" from
     "the generator lost it", and the second is the failure worth catching.
+
+    #208's artifact is held to the same rule in the form it can carry: the
+    concept has a row, the row's representation is `none`, and it carries no
+    values. That is the acceptance criterion *a tenant-defined concept
+    contributes nothing to the spec*, checked here rather than only beside the
+    gate, so all four artifacts answer it in one place.
     """
     source = target.render(registry)
     silent = [c for kind in ("tenant_defined", "free_text")
               for c in registry.of_kind(kind)]
     assert silent, "no valueless concept in the registry — nothing proven"
+
+    if target is OPENAPI_KNOWN_VALUES:
+        rows = json.loads(source)["concepts"]
+        for concept_ in silent:
+            assert rows[concept_.name]["representation"] == "none"
+            assert "values" not in rows[concept_.name], (
+                f"{target.path} enumerates {concept_.name}, which UBB does not "
+                f"own")
+        return
 
     emitted = (set(console_value_lists(source)) if target is CONSOLE_VOCABULARY
                else set(namespace(source)))
@@ -472,6 +541,11 @@ _HAND_EDITS = {
     BACKEND_CONSTANTS.path: ("'prepaid'", "'pre_paid'"),
     CONSOLE_VOCABULARY.path: ('"prepaid"', '"pre_paid"'),
     SDK_CONSTANTS.path: ("'prepaid'", "'pre_paid'"),
+    # Not a misspelling but the edit this artifact actually invites: somebody
+    # marks a concept served so the contract will advertise it, rather than
+    # converting the consumer that would make it true. It is the one hand edit
+    # here that would put a falsehood into a PUBLISHED document.
+    OPENAPI_KNOWN_VALUES.path: ('"advertised": false', '"advertised": true'),
 }
 
 
@@ -755,10 +829,15 @@ def test_the_renderers_are_stable_across_runs(registry, target):
     assert target.render(registry) == target.render(registry)
 
 
-@pytest.mark.parametrize("target", TARGETS, ids=lambda t: t.path)
+@pytest.mark.parametrize("target", SOURCE_TARGETS, ids=lambda t: t.path)
 def test_concepts_are_emitted_in_a_stable_order_not_file_order(registry, target):
     """Sorted by name in every artifact, so moving a concept between domain
-    files is not also a diff in three generated files at once."""
+    files is not also a diff in three generated files at once.
+
+    Read through the section rules the source artifacts carry, which JSON has
+    none of — `test_openapi_known_values.py` asserts the same of #208's by its
+    keys.
+    """
     source = target.render(registry)
     positions = [source.index(f"--- {name} ") for name in sorted(registry.concepts)]
     assert positions == sorted(positions)

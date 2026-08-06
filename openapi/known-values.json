@@ -1,0 +1,258 @@
+{
+  "@generated": "from domain-vocabulary/ — do not edit by hand. Regenerate with `python -m tools.vocabulary --write`.",
+  "concepts": {
+    "affordability_reason": {
+      "advertised": false,
+      "backend_serves": "0 of 9 values",
+      "kind": "open",
+      "representation": "known_values"
+    },
+    "amount_representation": {
+      "advertised": false,
+      "backend_serves": "0 of 3 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "analytics_grouping_kind": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "analytics_measure": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "analytics_rollup": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "audit_action": {
+      "advertised": false,
+      "backend_serves": "0 of 58 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "ceiling_basis": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "ceiling_status": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "control_family": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "costing_method": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "costing_status": {
+      "advertised": false,
+      "backend_serves": "0 of 3 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "customer_billing_mode": {
+      "advertised": false,
+      "backend_serves": "2 of 3 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "event_type_key": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "tenant_defined",
+      "representation": "none"
+    },
+    "external_task_id": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
+    "grouping_field_value": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "tenant_defined",
+      "representation": "none"
+    },
+    "idempotency_key": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
+    "measure_status": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "measurement_key": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "tenant_defined",
+      "representation": "none"
+    },
+    "metadata_key": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "tenant_defined",
+      "representation": "none"
+    },
+    "payment_rail": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
+    "payment_rail_environment": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
+    "plan_name": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
+    "pricing_book_name": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
+    "pricing_method": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "pricing_mode": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "pricing_receipt_subject_type": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "pricing_status": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "rate_structure": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "reason_code": {
+      "advertised": false,
+      "backend_serves": "1 of 5 values",
+      "kind": "open",
+      "representation": "known_values"
+    },
+    "reason_detail": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
+    "source_kind": {
+      "advertised": false,
+      "backend_serves": "0 of 4 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "spend_pool_enforce_mode": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "stop_behavior": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
+    "task_outcome": {
+      "advertised": false,
+      "backend_serves": "0 of 3 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "task_status": {
+      "advertised": false,
+      "backend_serves": "0 of 6 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "task_type_key": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "tenant_defined",
+      "representation": "none"
+    },
+    "task_type_kind": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "tenant_posture": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "tenant_product": {
+      "advertised": false,
+      "backend_serves": "0 of 3 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "trigger_source": {
+      "advertised": false,
+      "backend_serves": "0 of 5 values",
+      "kind": "open",
+      "representation": "known_values"
+    },
+    "usage_event_kind": {
+      "advertised": false,
+      "backend_serves": "0 of 2 values",
+      "kind": "closed",
+      "representation": "enum"
+    },
+    "webhook_event_type": {
+      "advertised": false,
+      "backend_serves": "0 of 37 values",
+      "kind": "closed",
+      "representation": "enum"
+    }
+  },
+  "version": 1
+}
