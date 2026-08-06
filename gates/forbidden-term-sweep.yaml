@@ -185,7 +185,7 @@ exclusions:
 
   - id: checks-whose-subject-is-a-retired-word
     permanence: permanent
-    files: 13
+    files: 14
     paths:
       - docs/adr/0006-domain-vocabulary-and-contract-naming.md
       - openapi/oasdiff-err-ignore.txt
@@ -193,6 +193,7 @@ exclusions:
       - tests/contracts/_webhook_helpers.py
       - tests/contracts/test_end_state_vocabulary.py
       - tests/contracts/test_forbidden_terms.py
+      - tests/contracts/test_undeclared_value_sets.py
       - tests/contracts/test_vocabulary_registry.py
       - tests/contracts/test_webhook_catalogue.py
       - tests/contracts/test_webhook_rename_migration.py
@@ -208,11 +209,19 @@ exclusions:
       refuses in order to explain the rule; the tests that prove a rename
       happened, which must spell the old name to prove it; and this sweep's own
       negative controls, which plant retired words on purpose.
+      #227 adds one of a slightly different kind, and it is called out rather
+      than folded in: `test_undeclared_value_sets.py` names no retired word in
+      prose. It pins an INVENTORY OF REAL PATHS, and one directory UBB has not
+      yet renamed is spelled with a retired word. The path is data, and editing
+      it to satisfy this sweep would falsify the inventory to keep a gate
+      quiet — which is the frozen-document argument arriving from a live file.
       The test for admission is NOT "this file is inconvenient" but "no slice
       will ever remove this word from this file, because naming it is what the
       file is for" — which is also why these are exclusions rather than ledger
-      entries. A debt needs somebody who will pay it.
+      entries. A debt needs somebody who will pay it. The new entry passes it
+      the same way the rename tests do: the word leaves when the directory is
+      renamed, and the inventory line moves with it in the same change.
       Every path is an EXACT file rather than a directory, so the rule cannot
-      spread to a neighbour: `tests/contracts/` holds sixteen modules and five
+      spread to a neighbour: `tests/contracts/` holds eighteen modules and six
       are named here. Permanent, and each file is small enough that a reviewer
       can check the claim by opening it.

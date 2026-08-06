@@ -216,7 +216,7 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
-        "checks-whose-subject-is-a-retired-word": ("permanent", 13, 13),
+        "checks-whose-subject-is-a-retired-word": ("permanent", 14, 14),
     }
 
 
