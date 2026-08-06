@@ -10,6 +10,7 @@ import {
   INITIAL_WALLETS,
   TENANT_USAGE_INVOICES,
   buildDailyRows,
+  rowsInRange,
 } from "./mock-data";
 import type {
   BudgetConfig,
@@ -37,11 +38,7 @@ export async function getRevenueAnalytics(range: {
   end_date?: string;
 }): Promise<RevenueAnalyticsResponse> {
   await mockDelay();
-  const daily = ALL_DAILY_ROWS.filter(
-    (row) =>
-      (!range.start_date || row.day >= range.start_date) &&
-      (!range.end_date || row.day <= range.end_date),
-  );
+  const daily = rowsInRange(ALL_DAILY_ROWS, range);
   const totalProvider = daily.reduce((sum, row) => sum + row.provider_cost_micros, 0);
   const totalBilled = daily.reduce((sum, row) => sum + row.billed_cost_micros, 0);
   return {
