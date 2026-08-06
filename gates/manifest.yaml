@@ -576,23 +576,44 @@ gates:
 
   G17:
     statement: >-
-      Every hand-written SDK call targets a real operation, matched by method
-      plus normalised path or by `operationId`.
+      Every hand-written SDK call targets a real operation, named through one
+      generated registry rather than by spelling a route.
     oracle: openapi/v1.json
-    source: ADR-0007 §4
+    source: ADR-0007 §4, #155 §8.3
     status: installed
     notes: >-
       Static, over the SDK's source: the gate reads `ubb-sdk/ubb/*.py` with
       `ast` and never imports the client. That is what lets it live in a suite
       with no `httpx`, and it is the correction to the failure itself — the
       three dead calls were green because their tests patched the transport, and
-      source cannot be mocked. A second conjunct makes the first honest: every
-      route literal in the hand shell must BE a call this gate resolved, so
-      writing `self._http.get("/api/v1/...")` is refused rather than unseen. The
-      three known invalid calls are in the ledger, owed by slice 4.
+      source cannot be mocked. The three known invalid calls are in the ledger,
+      owed by slice 4.
+      #209 changed what there is to check. A call no longer spells a route at
+      all: it names a constant in `ubb-sdk/ubb/_operations.py`, generated from
+      the contract and the ledger and gated for zero diff, so a renamed
+      operation renames its constant and a wrapper that did not move stops
+      resolving. What remains checkable is the name and the fill — an
+      undeclared constant, and the wrong number of values for a path's
+      parameters, which an f-string could not have caught at all.
+      Three conjuncts keep that from being advice. A request naming its target
+      any other way is refused, so there is nowhere left to write a route. Every
+      route literal anywhere in the hand shell is refused, so
+      `self._http.get(...)` is caught rather than unseen. And a route named in a
+      DOCSTRING must still be one the contract publishes, is a family of, or the
+      ledger excuses — because #155 §8.3's claim is that a rename cannot leave a
+      stale string behind, and a docstring is a string. That last one found a
+      real stale mention of a route deleted long ago.
+      ADR-0007 §4's method-AND-path identity did not weaken; it moved to the one
+      place the mistake can still be made. A call site cannot spell a method, so
+      a valid path under the wrong verb is now only reachable as a registry
+      entry, and that is where it is checked.
     enforced_by:
       - suite: contracts
         node: tests/contracts/test_sdk_operations.py::test_every_hand_written_call_targets_a_published_operation
+      - suite: contracts
+        node: tests/contracts/test_sdk_operations.py::test_no_route_literal_survives_in_the_hand_written_layer
+      - suite: contracts
+        node: tests/contracts/test_sdk_operations.py::test_the_registry_regenerates_with_zero_diff
 
   G18:
     statement: >-

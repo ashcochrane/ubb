@@ -36,17 +36,18 @@ stays green. This row is what would notice. It is the same shape as
 because the day it is not, nothing else is looking.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from tools.sdk_operations import errors as codes
+from tools.sdk_operations import registry
 from tools.sdk_operations.calls import (
     GENERATED_PACKAGE, ROUTE_MARKER, SHELL_ROOT, load_call_sites,
 )
 from tools.sdk_operations.errors import SurfaceError, SurfaceInvalid
-from tools.sdk_operations.spec import SPEC_PATH, load_operations
+from tools.sdk_operations.spec import SPEC_PATH, load_operations, template
 
 #: The three dispositions, from ADR-0007 §4. They are restated here rather than
 #: taken from `domain-vocabulary/` on the same rule that puts the gate statuses
@@ -91,6 +92,7 @@ class Coverage:
 
     rows: tuple
     excused: tuple          # the invalid calls the ledger currently carries
+    entries: dict = field(default_factory=dict)   # the registry the contract renders
 
     def counts(self):
         """``{disposition: how many}`` over every disposition, including zeros.
@@ -124,12 +126,24 @@ def assess(repo_root):
     """
     repo_root = Path(repo_root)
     operations, errors = load_operations(repo_root)
-    sites, call_errors = load_call_sites(repo_root)
+    excuses = _excused_invalid_calls(repo_root, errors)
+
+    # The registry first, because every call resolves through it. `expected` is
+    # what the contract and the ledger render; `committed` is what the SDK
+    # actually imports, and the calls are resolved against THAT — a gate that
+    # resolved against the renderer would pass on a registry nobody could
+    # import. Where the two disagree is reported below, per operation.
+    expected = registry.expected_entries(operations, excuses, errors)
+    committed = registry.load(repo_root, errors)
+    _check_the_registry_is_the_contract(committed, expected, errors)
+
+    sites, documented, call_errors = load_call_sites(
+        repo_root, committed if committed else None)
     errors += call_errors
 
     _check_the_route_marker_still_holds(operations, errors)
+    _check_documented_routes(documented, operations, excuses, errors)
     generated = _generated_operation_ids(repo_root, operations, errors)
-    excuses = _excused_invalid_calls(repo_root, errors)
 
     wrappers = {}
     used_excuses = set()
@@ -173,7 +187,28 @@ def assess(repo_root):
         for _, operation in sorted(operations.items(),
                                    key=lambda item: item[1].operation_id)
     )
-    return Coverage(rows=rows, excused=tuple(sorted(used_excuses))), errors
+    return Coverage(rows=rows, excused=tuple(sorted(used_excuses)),
+                    entries=expected), errors
+
+
+def rebuild_registry(repo_root):
+    """Regenerate the operation registry alone; return ``(rewritten, errors)``.
+
+    Separated from :func:`assess` and run BEFORE it, because the registry is
+    what every call resolves against and it is generated from the contract and
+    the ledger alone — it needs to know nothing about the hand shell. Folded
+    into the main pass, a contract change would be unfixable by the command
+    that fixes it: the stale registry would fail 81 calls, `--write` would
+    refuse to run while calls fail, and the only way out would be to hand-edit
+    the file the banner forbids hand-editing.
+    """
+    repo_root = Path(repo_root)
+    operations, errors = load_operations(repo_root)
+    excuses = _excused_invalid_calls(repo_root, errors)
+    entries = registry.expected_entries(operations, excuses, errors)
+    if errors or not entries:
+        return False, errors
+    return registry.write(entries, repo_root), errors
 
 
 def load_coverage(repo_root):
@@ -209,6 +244,111 @@ def _near_misses(site, operations):
         return ("the contract publishes " + ", ".join(f"`{one}`" for one in same_path)
                 + " at that path, and nothing else.")
     return "the contract publishes nothing at that path under any method."
+
+
+def _check_the_registry_is_the_contract(committed, expected, errors):
+    """The committed registry declares exactly what the contract publishes.
+
+    Three ways it can be wrong, and they are separate codes because they are
+    separate mistakes with separate fixes: an operation it fails to name, a
+    name it declares that nothing publishes, and — the one ADR-0007 §4 is most
+    insistent about — a name whose method or path is not its operation's.
+
+    That third case is where #155 §8.5's second required control now lives. A
+    valid path under the wrong HTTP method used to be writable at any of 81
+    call sites; since #209 a call site cannot spell a method at all, so the one
+    place the mistake survives is a hand edit to this file. Which is precisely
+    why it is checked here rather than declared unreachable: a rule that
+    describes its own violation as impossible is a rule nothing enforces.
+    """
+    if not committed or not expected:
+        return          # already reported, and 134 more errors would bury it
+
+    for name, entry in sorted(expected.items()):
+        if name not in committed:
+            errors.append(SurfaceError(
+                codes.REGISTRY_INCOMPLETE, f"{registry.REGISTRY_PATH}: {name}",
+                f"`{entry}` is published as `{entry.operation_id}` and the "
+                f"registry does not name it, so no wrapper can reach it. Run "
+                f"`python -m tools.sdk_operations --write`."))
+
+    for name, entry in sorted(committed.items()):
+        wanted = expected.get(name)
+        if wanted is None:
+            errors.append(SurfaceError(
+                codes.REGISTRY_ENTRY_UNKNOWN, f"{registry.REGISTRY_PATH}: {name}",
+                f"declares `{entry}`, which the contract does not publish and "
+                f"the ledger does not excuse. A constant nothing stands behind "
+                f"is a route literal with a nicer name — the exact thing this "
+                f"registry replaced."))
+            continue
+        if (entry.method, entry.path) != (wanted.method, wanted.path):
+            errors.append(SurfaceError(
+                codes.REGISTRY_ENTRY_WRONG, f"{registry.REGISTRY_PATH}: {name}",
+                f"declares `{entry}` and the contract publishes `{wanted}`. "
+                f"Method AND path make an operation (ADR-0007 §4): reading a "
+                f"resource is not writing it, and every wrapper naming this "
+                f"constant would call the wrong one."))
+        elif entry.operation_id != wanted.operation_id:
+            errors.append(SurfaceError(
+                codes.REGISTRY_ENTRY_WRONG, f"{registry.REGISTRY_PATH}: {name}",
+                f"carries `{entry.operation_id}` and the contract calls this "
+                f"operation `{wanted.operation_id}`. The identifier is what "
+                f"the coverage manifest credits, so a wrong one wraps the "
+                f"wrong row."))
+
+
+def _check_documented_routes(documented, operations, excuses, errors):
+    """A docstring may name a route; it may not name one that does not exist.
+
+    #209's claim is that a route rename cannot leave a stale string behind in
+    the SDK, and a docstring is a string. Every client method here documents
+    the route it calls — deliberately, as public documentation — so the answer
+    is not to delete them but to hold them to the contract like everything
+    else. When this ticket was written 48 of the 53 documented routes resolved
+    exactly, 4 named a family, and one named a route deleted long ago.
+
+    Three ways to be legitimate:
+
+    - **The route itself**, collapsed the way every identity here is collapsed.
+    - **A family** — `/api/v1/metering/` in a class docstring saying what the
+      client is for. Accepted as a prefix of something published, so it still
+      goes stale if the whole family moves.
+    - **A route the ledger excuses**, because the three dead calls are
+      documented by the methods that make them until slice 4 deletes both.
+
+    The method a docstring writes beside a route is deliberately not checked.
+    Prose says `via POST /api/v1/metering/usage`, but it also says things like
+    "PUT to update"; parsing English for an HTTP verb would make the rule
+    depend on sentence shape, and a gate that is wrong about grammar gets
+    turned off rather than obeyed. The path is the part that goes stale on a
+    rename, and the path is what is checked.
+    """
+    if not operations:
+        return          # the contract did not read; every route would be stale
+
+    published = {operation.template for operation in operations.values()}
+    excused = {template(found.partition(" ")[2]) for _, found in excuses}
+
+    for route in documented:
+        collapsed = template(route.text)
+        if collapsed in published or collapsed in excused:
+            continue
+        # A family, by whole segments. `/api/v1/metering/` covers
+        # `/api/v1/metering/usage`; a bare character prefix would also let
+        # `/api/v1/thing` stand for `/api/v1/things`, which is a typo passing
+        # for a generalisation.
+        family = collapsed.rstrip("/")
+        if any(one == family or one.startswith(family + "/")
+               for one in published):
+            continue
+        errors.append(SurfaceError(
+            codes.STALE_DOCUMENTED_ROUTE, route.location,
+            f"the documentation names `{route.text}`, which the contract does "
+            f"not publish, is not the start of anything it publishes, and the "
+            f"ledger does not excuse. A rename that fixed the call and left "
+            f"the docstring is still a stale route in the SDK — the failure "
+            f"#155 §8.3 names, one layer out."))
 
 
 def _check_the_route_marker_still_holds(operations, errors):

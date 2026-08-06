@@ -4,6 +4,7 @@ from datetime import datetime
 
 import httpx
 
+from ubb import _operations as ops
 from ubb.exceptions import UBBConnectionError, UBBStoppedError
 from ubb._http import raise_for_status
 from ubb._models import from_wire, list_from_wire
@@ -142,7 +143,7 @@ class MeteringClient:
             body["provider"] = provider
         if task_id is not None:
             body["task_id"] = task_id
-        r = self._request("post", "/api/v1/metering/usage", json=body)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE, json=body)
         result = from_wire(RecordUsageResponse, r.json())
         if raise_on_stop and result.stop:
             raise UBBStoppedError(
@@ -169,7 +170,7 @@ class MeteringClient:
             if recorded_at is not None:
                 ev["effective_at"] = _serialize_recorded_at(recorded_at)
             wire_events.append(ev)
-        r = self._request("post", "/api/v1/metering/usage/batch",
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH,
                           json={"events": wire_events})
         body = r.json()
         results = [
@@ -190,7 +191,7 @@ class MeteringClient:
 
         Closing a parent auto-completes its active subtasks server-side —
         cleanup is one call. Closing a subtask closes it alone."""
-        r = self._request("post", f"/api/v1/metering/tasks/{task_id}/close")
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_CLOSE_TASK(task_id))
         return from_wire(CloseTaskResponse, r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
@@ -216,7 +217,7 @@ class MeteringClient:
             params["stop_scope"] = stop_scope
         if episode_seq is not None:
             params["episode_seq"] = episode_seq
-        r = self._request("get", f"/api/v1/metering/customers/{customer_id}/usage", params=params)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_USAGE(customer_id), params=params)
         body = r.json()
         events = [from_wire(UsageEventOut, item) for item in body["data"]]
         return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
@@ -230,13 +231,15 @@ class MeteringClient:
         crossed/cleared marker rows with no itemized events. ``since`` /
         ``until`` (ISO datetimes) window episodes and itemized events."""
         params = {k: v for k, v in {"since": since, "until": until}.items() if v}
-        r = self._request("get", f"/api/v1/customers/{customer_id}/past-limit-report",
+        r = self._request(*ops.API_V1_ENDPOINTS_PAST_LIMIT_REPORT(customer_id),
                           params=params)
         return r.json()
 
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
-        r = self._request("get", f"/api/v1/margin/customers/{customer_id}", params=params)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_CUSTOMER_MARGIN(customer_id),
+            params=params)
         return from_wire(CustomerMarginOut, r.json())
 
     def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
@@ -252,16 +255,22 @@ class MeteringClient:
             params["start_date"] = start_date
         if end_date:
             params["end_date"] = end_date
-        r = self._request("get", "/api/v1/margin/by-dimension", params=params)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_DIMENSION,
+            params=params)
         return list_from_wire(DimensionMarginRow, r.json()["rows"])
 
     def get_unprofitable_customers(self, period_start=None):
         params = {"period_start": period_start} if period_start else {}
-        r = self._request("get", "/api/v1/margin/unprofitable", params=params)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_UNPROFITABLE,
+            params=params)
         return r.json()["customers"]
 
     def get_margin_trend(self, customer_id, periods=6):
-        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/trend", params={"periods": periods})
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_TREND(customer_id),
+            params={"periods": periods})
         return list_from_wire(MarginTrendPointOut, r.json()["points"])
 
     def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
@@ -272,25 +281,31 @@ class MeteringClient:
             body["effective_from"] = effective_from
         if effective_to:
             body["effective_to"] = effective_to
-        r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue", json=body)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE(customer_id),
+            json=body)
         return from_wire(RevenueProfileOut, r.json())
 
     def get_customer_revenue(self, customer_id):
-        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue")
+        r = self._request(*ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE(customer_id))
         return from_wire(RevenueProfileOut, r.json())
 
     def get_business_margin(self, external_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
-        r = self._request("get", f"/api/v1/margin/business/{external_id}", params=params)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_BUSINESS_MARGIN(external_id),
+            params=params)
         return r.json()
 
     def set_revenue_mode(self, customer_id, revenue_mode=""):
-        r = self._request("put", f"/api/v1/margin/customers/{customer_id}/revenue-mode",
-                          json={"revenue_mode": revenue_mode})
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE_MODE(customer_id),
+            json={"revenue_mode": revenue_mode})
         return r.json()
 
     def get_revenue_mode(self, customer_id):
-        r = self._request("get", f"/api/v1/margin/customers/{customer_id}/revenue-mode")
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE_MODE(customer_id))
         return r.json()
 
     @staticmethod
@@ -307,19 +322,19 @@ class MeteringClient:
                 "rate_per_unit_micros": rate_per_unit_micros, "unit_quantity": unit_quantity,
                 "fixed_micros": fixed_micros, "currency": currency,
                 "product_id": product_id, "customer_id": customer_id}
-        r = self._request("post", "/api/v1/metering/pricing/rate-cards", json=body)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_CREATE_BOOK, json=body)
         return self._rate_card(r.json())
 
     def update_rate_card(self, card_id, **fields):
         """Soft-version a rate card via PUT. Only the provided ``fields`` change;
         unspecified fields are copied from the active version. Returns the new
         version (same ``lineage_id``, new ``id``)."""
-        r = self._request("put", f"/api/v1/metering/pricing/rate-cards/{card_id}", json=fields)
+        r = self._request(*ops.UNPUBLISHED_PUT_METERING_PRICING_RATE_CARDS(card_id), json=fields)
         return self._rate_card(r.json())
 
     def get_rate_card_history(self, lineage_id):
         """Return every version sharing ``lineage_id``, newest first."""
-        r = self._request("get", f"/api/v1/metering/pricing/rate-cards/{lineage_id}/history")
+        r = self._request(*ops.UNPUBLISHED_GET_METERING_PRICING_RATE_CARDS_HISTORY(lineage_id))
         return [self._rate_card(row) for row in r.json()]
 
     def list_rate_cards(self, card_type=None, include_history=False, as_of=None):
@@ -330,7 +345,7 @@ class MeteringClient:
             params["include_history"] = include_history
         if as_of is not None:
             params["as_of"] = as_of
-        r = self._request("get", "/api/v1/metering/pricing/rate-cards", params=params or None)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_LIST_BOOKS, params=params or None)
         return [self._rate_card(row) for row in r.json()["data"]]
 
     def bulk_create_rate_cards(self, cards: list[dict]) -> dict:
@@ -340,7 +355,7 @@ class MeteringClient:
         entire batch is rejected (no partial writes).  Returns a dict with ``created``
         (list of new card IDs) and ``count``.
         """
-        r = self._request("post", "/api/v1/metering/pricing/rate-cards/batch",
+        r = self._request(*ops.UNPUBLISHED_POST_METERING_PRICING_RATE_CARDS_BATCH,
                           json={"cards": cards})
         return r.json()
 
@@ -349,7 +364,7 @@ class MeteringClient:
         its book — the path noun (``rates``) matches the ``rate_id`` it takes
         (#86 sweep; formerly ``delete_rate_card(card_id)``)."""
         self._request(
-            "delete", f"/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}")
+            *ops.API_V1_METERING_ENDPOINTS_DELETE_RATE(book_id, rate_id))
         return True
 
     def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,
@@ -367,7 +382,7 @@ class MeteringClient:
             params["customer_id"] = customer_id
         if group_by is not None:
             params["group_by"] = group_by
-        r = self._request("get", "/api/v1/metering/analytics/usage/timeseries", params=params)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES, params=params)
         return r.json()
 
     def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None,
@@ -396,27 +411,29 @@ class MeteringClient:
             params["stop_scope"] = stop_scope
         if episode_seq is not None:
             params["episode_seq"] = episode_seq
-        r = self._request("get", "/api/v1/metering/analytics/usage", params=params)
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_USAGE_ANALYTICS, params=params)
         return r.json()
 
     # ---- markup methods ----
 
     def get_markup(self) -> TenantMarkupOut:
-        r = self._request("get", "/api/v1/metering/pricing/markup")
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_TENANT_MARKUP)
         return self._to_markup(r.json())
 
     def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
-        r = self._request("put", "/api/v1/metering/pricing/markup", json={
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_UPSERT_TENANT_MARKUP, json={
             "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
         return self._to_markup(r.json())
 
     def get_customer_markup(self, customer_id) -> TenantMarkupOut:
-        r = self._request("get", f"/api/v1/metering/pricing/customers/{customer_id}/markup")
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP(customer_id))
         return self._to_markup(r.json())
 
     def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
-        r = self._request("put", f"/api/v1/metering/pricing/customers/{customer_id}/markup", json={
-            "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
+        r = self._request(
+            *ops.API_V1_METERING_ENDPOINTS_UPSERT_CUSTOMER_MARKUP(customer_id),
+            json={"markup_percentage_micros": markup_percentage_micros,
+                  "fixed_uplift_micros": fixed_uplift_micros})
         return self._to_markup(r.json())
 
     @staticmethod

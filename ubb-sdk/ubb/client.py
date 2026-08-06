@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ubb import _operations as ops
 from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
@@ -257,7 +258,7 @@ class UBBClient:
         POST /api/v1/platform/customers.
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/platform/customers", json={
+        r = metering._request(*ops.API_V1_PLATFORM_ENDPOINTS_CREATE_CUSTOMER, json={
             "external_id": external_id,
             "stripe_customer_id": stripe_customer_id,
             "metadata": metadata or {},
@@ -274,7 +275,7 @@ class UBBClient:
         GET /api/v1/platform/accounts/business/{external_id}.
         """
         metering = self._require_metering()
-        r = metering._request("get", f"/api/v1/platform/accounts/business/{external_id}")
+        r = metering._request(*ops.API_V1_PLATFORM_ENDPOINTS_GET_BUSINESS(external_id))
         return r.json()
 
     # ---- subscription orchestration (plan / subscribe / seats) ----
@@ -291,7 +292,7 @@ class UBBClient:
         percentage-micros (1_000_000 == 1 percent), so 50% is 50_000_000.
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/plans", json={
+        r = metering._request(*ops.API_V1_PLAN_ENDPOINTS_CREATE_PLAN, json={
             "key": key,
             "name": name,
             "access_fee_micros": access_fee_micros,
@@ -311,7 +312,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/subscriptions/customers/{external_id}/subscribe",
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_SUBSCRIBE_CUSTOMER(external_id),
             json={"plan_key": plan_key, "seats": seats},
         )
         return r.json()
@@ -324,7 +325,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/subscriptions/customers/{external_id}/seats",
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_SET_CUSTOMER_SEATS(external_id),
             json={"seats": seats},
         )
         return r.json()
@@ -356,7 +357,7 @@ class UBBClient:
             body["markup_percentage_micros"] = markup_percentage_micros
         if fixed_uplift_micros is not None:
             body["fixed_uplift_micros"] = fixed_uplift_micros
-        r = metering._request("patch", f"/api/v1/plans/{key}", json=body)
+        r = metering._request(*ops.API_V1_PLAN_ENDPOINTS_UPDATE_PLAN(key), json=body)
         return r.json()
 
     def cancel_subscription(self, external_id: str, at_period_end: bool = True) -> dict:
@@ -368,7 +369,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/cancel",
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_CANCEL_SUBSCRIPTION(external_id),
             json={"at_period_end": at_period_end},
         )
         return r.json()
@@ -381,7 +382,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/pause",
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_PAUSE_SUBSCRIPTION(external_id),
             json={},
         )
         return r.json()
@@ -394,7 +395,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/subscriptions/customers/{external_id}/subscription/resume",
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_RESUME_SUBSCRIPTION(external_id),
             json={},
         )
         return r.json()
@@ -405,7 +406,7 @@ class UBBClient:
         Calls GET /api/v1/tenant/config and returns the response as a dict.
         """
         metering = self._require_metering()
-        r = metering._request("get", "/api/v1/tenant/config")
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_GET_TENANT_CONFIG)
         return r.json()
 
     def update_tenant_config(self, *, billing_mode: str | None = None,
@@ -440,7 +441,7 @@ class UBBClient:
             body["automatic_tax_enabled"] = automatic_tax_enabled
         if default_currency is not None:
             body["default_currency"] = default_currency
-        r = metering._request("patch", "/api/v1/tenant/config", json=body)
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_UPDATE_TENANT_CONFIG, json=body)
         return r.json()
 
     # ---- sandbox (F4.4) ----
@@ -454,7 +455,7 @@ class UBBClient:
         fresh test key (that is also the rotation path).
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/tenant/sandbox", json={})
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_CREATE_SANDBOX, json={})
         return r.json()
 
     def get_sandbox(self) -> dict:
@@ -464,7 +465,7 @@ class UBBClient:
         dict: ``exists``, ``sandbox_tenant_id``, ``key_prefixes``.
         """
         metering = self._require_metering()
-        r = metering._request("get", "/api/v1/tenant/sandbox")
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_GET_SANDBOX)
         return r.json()
 
     # ---- API key lifecycle (F5.2) ----
@@ -476,7 +477,7 @@ class UBBClient:
         Calls GET /api/v1/tenant/api-keys and returns the response dict.
         """
         metering = self._require_metering()
-        r = metering._request("get", "/api/v1/tenant/api-keys")
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_LIST_API_KEYS)
         return r.json()
 
     def create_api_key(self, label: str = "", is_test: bool = False) -> dict:
@@ -487,7 +488,7 @@ class UBBClient:
         — see the response's ``tenant_id``).
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/tenant/api-keys",
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_CREATE_API_KEY,
                               json={"label": label, "is_test": is_test})
         return r.json()
 
@@ -500,7 +501,7 @@ class UBBClient:
         """
         metering = self._require_metering()
         r = metering._request(
-            "post", f"/api/v1/tenant/api-keys/{key_id}/rotate", json={})
+            *ops.API_V1_TENANT_ENDPOINTS_ROTATE_API_KEY(key_id), json={})
         return r.json()
 
     def revoke_api_key(self, key_id: str) -> dict:
@@ -510,7 +511,7 @@ class UBBClient:
         Calls DELETE /api/v1/tenant/api-keys/{key_id}.
         """
         metering = self._require_metering()
-        r = metering._request("delete", f"/api/v1/tenant/api-keys/{key_id}")
+        r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_REVOKE_API_KEY(key_id))
         return r.json()
 
     # ---- Stripe Connect onboarding ----
@@ -523,7 +524,7 @@ class UBBClient:
         connect their Stripe account.
         """
         metering = self._require_metering()
-        r = metering._request("post", "/api/v1/connect/start",
+        r = metering._request(*ops.API_V1_CONNECT_ENDPOINTS_CONNECT_START,
                               json={"return_url": return_url})
         return r.json()
 
@@ -534,7 +535,7 @@ class UBBClient:
         (account_id, charges_enabled, onboarded).
         """
         metering = self._require_metering()
-        r = metering._request("get", "/api/v1/connect/status")
+        r = metering._request(*ops.API_V1_CONNECT_ENDPOINTS_CONNECT_STATUS)
         return r.json()
 
     # ---- billing delegates ----

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from ubb import _operations as ops
 from ubb.exceptions import UBBConnectionError
 from ubb._http import raise_for_status
 from ubb.retry import request_with_retry
@@ -48,12 +49,12 @@ class SubscriptionsClient:
 
     def sync(self) -> dict:
         """Trigger a Stripe subscription sync via POST /api/v1/subscriptions/sync."""
-        r = self._request("post", "/api/v1/subscriptions/sync")
+        r = self._request(*ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_TRIGGER_SYNC)
         return r.json()
 
     def get_subscription(self, customer_id: str) -> dict:
         """Get a customer's subscription via GET /api/v1/subscriptions/customers/{customer_id}/subscription."""
-        r = self._request("get", f"/api/v1/subscriptions/customers/{customer_id}/subscription")
+        r = self._request(*ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_GET_SUBSCRIPTION(customer_id))
         return r.json()
 
     def get_invoices(self, customer_id: str, cursor: str | None = None,
@@ -62,7 +63,9 @@ class SubscriptionsClient:
         params: dict = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
-        r = self._request("get", f"/api/v1/subscriptions/customers/{customer_id}/invoices", params=params)
+        r = self._request(
+            *ops.APPS_SUBSCRIPTIONS_API_ENDPOINTS_GET_INVOICES(customer_id),
+            params=params)
         return r.json()
 
     def close(self) -> None:
