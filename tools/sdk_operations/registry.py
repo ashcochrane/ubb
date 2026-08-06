@@ -52,16 +52,42 @@ from tools.sdk_operations import errors as codes
 from tools.sdk_operations.errors import SurfaceError
 from tools.sdk_operations.spec import SPEC_PATH, template
 
+#: Where the SDK's package root sits, relative to the git root. The two paths
+#: below become import paths through it, so moving the package renames both
+#: rather than leaving one behind.
+SDK_ROOT = "ubb-sdk/"
+
+
+def module_path(path):
+    """`ubb-sdk/ubb/_operations.py` -> `ubb._operations`.
+
+    One derivation, used for both modules below and by
+    :mod:`tools.sdk_operations.calls` to recognise the import a wrapper writes.
+    Spelling an import path beside the file path it must match is how the two
+    drift, and nothing would catch it: this gate reads source and never imports
+    the SDK, so a generated artifact importing a name that is not there would
+    fail for the first person to run the client rather than in CI.
+    """
+    return path[len(SDK_ROOT):-len(".py")].replace("/", ".")
+
+
 #: The generated registry, relative to the git root.
 REGISTRY_PATH = "ubb-sdk/ubb/_operations.py"
 
-#: The hand-written type the registry's constants are instances of. The
-#: generated file's import is derived from this path rather than spelled again,
-#: so moving the module cannot leave the artifact importing a name that is not
-#: there — which no test would catch, because the gate reads source and never
-#: imports the SDK.
+#: The hand-written type the registry's constants are instances of.
 OPERATION_TYPE_PATH = "ubb-sdk/ubb/_operation.py"
-OPERATION_TYPE_IMPORT = OPERATION_TYPE_PATH[len("ubb-sdk/"):-len(".py")].replace("/", ".")
+
+REGISTRY_IMPORT = module_path(REGISTRY_PATH)
+OPERATION_TYPE_IMPORT = module_path(OPERATION_TYPE_PATH)
+
+#: How a hand-written module reaches the registry, and the alias the SDK uses.
+#: Rendered into the gate's own advice and into the controls' synthetic
+#: modules, so the line an author is told to paste is the line that resolves.
+REGISTRY_ALIAS = "ops"
+REGISTRY_IMPORT_LINE = (
+    f"from {'.'.join(REGISTRY_IMPORT.split('.')[:-1])} import "
+    f"{REGISTRY_IMPORT.split('.')[-1]} as {REGISTRY_ALIAS}")
+
 
 #: The ledger, which supplies the routes the contract does not publish.
 LEDGER_PATH = "gates/migration-ledger.yaml"
@@ -73,10 +99,30 @@ CONSTRUCTOR = "Operation"
 #: What marks a constant as a route the contract does not publish.
 UNPUBLISHED_PREFIX = "UNPUBLISHED_"
 
-#: Where a rendered assignment stops fitting on one line. Only affects layout,
-#: but it must be a constant: the comparison is over bytes, so a width that
-#: varied by machine would make the zero-diff gate fail at random.
-LINE_BUDGET = 88
+#: Where a rendered line stops fitting, and the renderer wraps. Only affects
+#: layout, but it must be a constant: the comparison is over bytes, so a width
+#: that varied by machine would make the zero-diff gate fail at random.
+LINE_LIMIT = 88
+
+#: The widest line the renderer may actually emit. Larger than
+#: :data:`LINE_LIMIT` because a single argument can exceed it on its own — the
+#: longest published path is nearly that wide and a string literal cannot be
+#: broken — and a renderer that refused to emit one would be refusing to name
+#: an operation. Two numbers rather than one so a test can hold the renderer to
+#: this without pretending the first is reachable for every input.
+WIDEST_LINE = 96
+
+
+def parse_found(found):
+    """`"GET /api/v1/x/{}"` -> `("get", "/api/v1/x/{}")`.
+
+    The ledger records an excused call as its method and collapsed path in one
+    string, because that is the identity the gate matches on. Splitting it
+    wherever it was needed invited four slightly different splits.
+    """
+    method, _, path = found.partition(" ")
+    return method.lower(), path
+
 
 _BANNER = (
     f"# @generated from {SPEC_PATH} and {LEDGER_PATH} — do not edit by hand.\n"
@@ -118,9 +164,10 @@ _PUBLISHED_HEADING = f"""
 _UNPUBLISHED_HEADING = f"""
 # --- routes the contract does not publish ------------------------------------
 #
-# The debts {LEDGER_PATH} carries against G17: routes that exist in no spec and
-# no router, called by methods slice 4 removes. Each name is derived from the
-# `found` the ledger excuses, so the constant and the excuse cannot drift.
+# The debts {LEDGER_PATH} carries against G17:
+# routes that exist in no spec and no router, called by methods slice 4 removes.
+# Each name is derived from the `found` the ledger excuses, so the constant and
+# the excuse cannot drift apart.
 """
 
 
@@ -134,9 +181,18 @@ class Entry:
     path: str                # `/api/v1/plans/{plan_key}`
 
     @property
+    def template(self):
+        """The path with its parameter names collapsed — what a call matches on.
+
+        Named the same as :attr:`tools.sdk_operations.spec.Operation.template`
+        and meaning the same thing, so the two sides of the join read alike.
+        """
+        return template(self.path)
+
+    @property
     def identity(self):
         """``(METHOD, template)`` — the key the contract is matched on."""
-        return self.method.upper(), template(self.path)
+        return self.method.upper(), self.template
 
     @property
     def arity(self):
@@ -146,7 +202,7 @@ class Entry:
         scanner, so this agrees with `ubb/_operation.py` by construction: both
         derive from the same collapse the gate matches identities on.
         """
-        return self.identity[1].count("{}")
+        return self.template.count("{}")
 
     @property
     def is_published(self):
@@ -174,7 +230,7 @@ def unpublished_name(found):
     to read — while still being long and graceless enough that nobody mistakes
     the call site for ordinary code.
     """
-    method, _, path = found.partition(" ")
+    method, path = parse_found(found)
     segments = [segment for segment in path.split("/")
                 if segment and not segment.startswith("{")]
     words = "_".join(segments).replace("-", "_").replace(".", "_")
@@ -182,11 +238,15 @@ def unpublished_name(found):
 
 
 def _strip_version(words):
-    """Drop the `api_v1` every path begins with; it distinguishes nothing."""
-    for prefix in ("api_v1_", "api_v1"):
-        if words.startswith(prefix):
-            return words[len(prefix):].upper()
-    return words.upper()
+    """Drop the `api_v1_` every path begins with; it distinguishes nothing.
+
+    Only the trailing-underscore form: a path is `/api/v1/<something>`, so the
+    separator is always there. Accepting a bare `api_v1` too would, on the only
+    input that could reach it, produce the empty name — a branch whose success
+    case is a bug.
+    """
+    prefix = "api_v1_"
+    return (words[len(prefix):] if words.startswith(prefix) else words).upper()
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +285,7 @@ def expected_entries(operations, debts, errors):
 
     for found in sorted({found for _, found in debts}):
         name = unpublished_name(found)
-        method, _, path = found.partition(" ")
+        method, path = parse_found(found)
         if name in claimed and claimed[name] != found:
             errors.append(SurfaceError(
                 codes.REGISTRY_NAME_COLLISION, f"{LEDGER_PATH}: {found}",
@@ -234,7 +294,7 @@ def expected_entries(operations, debts, errors):
                 f"excused for reaching something it does not reach."))
             continue
         claimed[name] = found
-        entries[name] = Entry(name, None, method.lower(), path)
+        entries[name] = Entry(name, None, method, path)
     return entries
 
 
@@ -277,9 +337,9 @@ def _assignments(entries):
         opening = f"{entry.name} = {CONSTRUCTOR}("
         joined = ", ".join(arguments)
 
-        if len(opening) + len(joined) + 1 <= LINE_BUDGET:
+        if len(opening) + len(joined) + 1 <= LINE_LIMIT:
             lines.append(f"{opening}{joined})")
-        elif len(joined) + 5 <= LINE_BUDGET:
+        elif len(joined) + 5 <= LINE_LIMIT:
             lines += [opening, f"    {joined})"]
         else:
             lines.append(opening)

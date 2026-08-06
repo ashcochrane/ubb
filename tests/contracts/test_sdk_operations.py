@@ -5,7 +5,7 @@ Three properties now, settled from one join:
 
 - **Forward** — every hand-written call targets a published operation, matched
   on the complete identity: HTTP method AND normalised path. A path match alone
-  is insufficient, because `GET /x{id}` is not `POST /x/{id}`.
+  is insufficient, because `GET /x/{id}` is not `POST /x/{id}`.
 - **Reverse** — every published operation carries a disposition in
   `ubb-sdk/operation-coverage.yaml`, which regenerates with zero diff.
 - **Confined** (#209) — a call *names* an operation rather than spelling a
@@ -59,7 +59,7 @@ from tools.sdk_operations.ratchet import compare as ratchet_compare
 from tools.sdk_operations.ratchet import run as ratchet_run
 from tools.sdk_operations.registry import REGISTRY_PATH
 from tools.sdk_operations.registry import compare as compare_registry
-from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH
+from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH, load_operations
 
 #: The modules the walker must have visited. A vacuity guard names them because
 #: a walker that silently found nothing passes every assertion below.
@@ -202,21 +202,33 @@ def test_the_committed_registry_is_the_contract_operation_by_operation(shipped):
           f"`python -m tools.sdk_operations --write`.")
 
 
-def test_every_published_operation_can_be_named(shipped):
+def test_every_published_operation_can_be_named():
     """One constant per published operation, so no operation is unreachable.
 
-    The reverse of the zero-diff check above and not implied by it: a renderer
-    that dropped a whole family would still regenerate with zero diff, because
-    it would drop it from both sides.
+    Read off DISK — the committed registry parsed on one side, the committed
+    contract parsed on the other — rather than from the `shipped` fixture.
+    `coverage.entries` is what the renderer produces from the contract, so
+    comparing it to `coverage.rows` would compare two things derived from the
+    same dictionary: a check that cannot fail, which is the shape this whole
+    programme exists to refuse.
+
+    The two ends genuinely differ. `registry.load` reads Python source with
+    `ast`; `load_operations` reads JSON. Nothing but the repository connects
+    them, which is what makes disagreement possible and therefore worth
+    asserting.
     """
-    coverage, _ = shipped
-    named = {entry.operation_id for entry in coverage.entries.values()
+    committed = registry_module.load(REPO_ROOT, [])
+    operations, _ = load_operations(REPO_ROOT)
+
+    named = {entry.operation_id for entry in committed.values()
              if entry.is_published}
-    published = {row.operation_id for row in coverage.rows}
+    published = {operation.operation_id for operation in operations.values()}
     assert named == published, (
-        f"the registry names {len(named)} operations and the contract "
-        f"publishes {len(published)}; the difference is "
-        f"{sorted(published ^ named)}")
+        f"the committed registry names {len(named)} operations and the "
+        f"contract publishes {len(published)}; the difference is "
+        f"{sorted(published ^ named)}. Run "
+        f"`python -m tools.sdk_operations --write`.")
+    assert len(published) > 100, "suspect the contract read"
 
 
 def test_every_published_operation_carries_a_disposition(shipped):
@@ -431,6 +443,43 @@ def test_case_3_a_renamed_operation_with_a_stale_wrapper_fails(tmp_path):
         "constant' leaves an author diffing two long identifiers by eye")
 
 
+def test_case_3b_a_path_that_moves_under_a_stable_operation_is_followed(tmp_path):
+    """The other half of case 3, and the behaviour #209 deliberately CHANGED.
+
+    Before the registry, a wrapper carried the path, so moving a route in the
+    contract broke the wrapper — case 3 above, in its original form. Now the
+    wrapper carries the `operationId`, so the same move is FOLLOWED: the
+    constant is regenerated with the new path and the method calls the right
+    route without being touched. That is the improvement, not an oversight, and
+    it is asserted here because a behaviour nobody wrote down is a behaviour
+    that gets 'fixed' by the next person to notice it.
+
+    What still catches a move the author did not intend is the documentation:
+    a docstring naming the old path no longer resolves, so the method that
+    quietly changed target says so in the same run. Both halves are asserted,
+    because the second is the whole reason the first is safe.
+    """
+    moved = ("get", f"{ROOT}/widgets", "things_list")
+    wrapper = client_module(call("things_list"))
+
+    coverage = accepted(tmp_path / "followed", operations=(moved,),
+                        modules={"things.py": wrapper})
+    row = disposition_of(coverage, "things_list")
+    assert row.disposition == WRAPPED and row.path == f"{ROOT}/widgets", (
+        "the untouched wrapper must now reach the moved route")
+
+    documented = client_module(
+        call("things_list"),
+        extra=f'\n\ndef documented():\n'
+              f'    """Wraps GET {ROOT}/things, where it used to live."""\n'
+              f'    return None\n')
+    invalid = rejection(tmp_path / "stale-prose", operations=(moved,),
+                        modules={"things.py": documented})
+    assert codes.STALE_DOCUMENTED_ROUTE in invalid.codes(), (
+        "a move the author did not intend still surfaces, through the prose "
+        "that names where the route used to be")
+
+
 def test_case_4_a_new_operation_absent_from_the_manifest_fails(tmp_path):
     """The manifest was generated before the operation existed."""
     stale_text = render(accepted(tmp_path / "before",
@@ -598,8 +647,9 @@ def test_a_stale_route_in_a_docstring_is_refused(tmp_path):
 
     The SDK's methods document the routes they call, deliberately, as public
     documentation — so the answer is not to delete them but to hold them to the
-    contract. When #209 was written one of the 53 documented routes named a
-    route deleted long ago, which is what this rule found.
+    contract. The rule caught nothing when it landed: of the 53 documented
+    routes, 48 resolve exactly, 4 name a family and 1 is ledger-excused. It is
+    here for the rename that fixes a call and forgets the prose.
     """
     invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
         "things.py": client_module(
@@ -719,8 +769,32 @@ def test_the_registry_renders_the_same_bytes_twice(tmp_path):
     first = registry_module.render(coverage.entries)
     assert first == registry_module.render(coverage.entries)
     assert first.endswith("\n")
-    assert all(len(line) <= 96 for line in first.splitlines()), (
-        "a generated file nobody may hand-edit is still a file people read")
+
+    committed = (REPO_ROOT / REGISTRY_PATH).read_text(encoding="utf-8")
+    for text, what in ((first, "the rendered registry"),
+                       (committed, "the committed registry")):
+        widest = max(len(line) for line in text.splitlines())
+        assert widest <= registry_module.WIDEST_LINE, (
+            f"{what} has a {widest}-character line and the renderer's limit is "
+            f"{registry_module.WIDEST_LINE}; a generated file nobody may "
+            f"hand-edit is still a file people read")
+
+
+def test_a_long_operation_is_wrapped_one_argument_to_a_line():
+    """The renderer's third layout, which the shipped contract never reaches.
+
+    Every real operation fits one of the first two. That makes this branch the
+    one nothing would notice breaking — so it is exercised deliberately rather
+    than left to the day a longer path arrives and the artifact stops parsing.
+    """
+    name = "A" * 60
+    entry = registry_module.Entry(name, "a" * 60, "get", f"{ROOT}/" + "b" * 60)
+    text = registry_module.render({name: entry})
+
+    assert f"{name} = Operation(\n" in text, "it must break after the opening"
+    assert max(len(line) for line in text.splitlines()) <= (
+        registry_module.WIDEST_LINE + len(entry.path)), "no runaway line"
+    compile(text, REGISTRY_PATH, "exec")     # and it is still Python
 
 
 def test_a_missing_registry_is_a_different_fault_from_a_stale_one(tmp_path):

@@ -125,15 +125,12 @@ def assess(repo_root):
     a failure.
     """
     repo_root = Path(repo_root)
-    operations, errors = load_operations(repo_root)
-    excuses = _excused_invalid_calls(repo_root, errors)
+    operations, excuses, expected, errors = _the_contracts_registry(repo_root)
 
-    # The registry first, because every call resolves through it. `expected` is
-    # what the contract and the ledger render; `committed` is what the SDK
-    # actually imports, and the calls are resolved against THAT — a gate that
-    # resolved against the renderer would pass on a registry nobody could
+    # `expected` is what the contract and the ledger render; `committed` is what
+    # the SDK actually imports, and the calls are resolved against THAT — a gate
+    # that resolved against the renderer would pass on a registry nobody could
     # import. Where the two disagree is reported below, per operation.
-    expected = registry.expected_entries(operations, excuses, errors)
     committed = registry.load(repo_root, errors)
     _check_the_registry_is_the_contract(committed, expected, errors)
 
@@ -202,13 +199,25 @@ def rebuild_registry(repo_root):
     refuse to run while calls fail, and the only way out would be to hand-edit
     the file the banner forbids hand-editing.
     """
-    repo_root = Path(repo_root)
-    operations, errors = load_operations(repo_root)
-    excuses = _excused_invalid_calls(repo_root, errors)
-    entries = registry.expected_entries(operations, excuses, errors)
+    _, _, entries, errors = _the_contracts_registry(Path(repo_root))
     if errors or not entries:
         return False, errors
     return registry.write(entries, repo_root), errors
+
+
+def _the_contracts_registry(repo_root):
+    """``(operations, excuses, expected entries, errors)`` — the shared prologue.
+
+    One function rather than the same three lines in both callers, because the
+    two must agree exactly. If :func:`rebuild_registry` ever computed the
+    expected entries differently from :func:`assess`, `--write` would emit a
+    registry that the very next check rejects, and the only way out would be to
+    hand-edit the file whose banner forbids it.
+    """
+    operations, errors = load_operations(repo_root)
+    excuses = _excused_invalid_calls(repo_root, errors)
+    return (operations, excuses,
+            registry.expected_entries(operations, excuses, errors), errors)
 
 
 def load_coverage(repo_root):
@@ -328,7 +337,7 @@ def _check_documented_routes(documented, operations, excuses, errors):
         return          # the contract did not read; every route would be stale
 
     published = {operation.template for operation in operations.values()}
-    excused = {template(found.partition(" ")[2]) for _, found in excuses}
+    excused = {template(registry.parse_found(found)[1]) for _, found in excuses}
 
     for route in documented:
         collapsed = template(route.text)

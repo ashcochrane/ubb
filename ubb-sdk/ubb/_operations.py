@@ -481,9 +481,10 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_THRESHOLD = Operation(
 
 # --- routes the contract does not publish ------------------------------------
 #
-# The debts gates/migration-ledger.yaml carries against G17: routes that exist in no spec and
-# no router, called by methods slice 4 removes. Each name is derived from the
-# `found` the ledger excuses, so the constant and the excuse cannot drift.
+# The debts gates/migration-ledger.yaml carries against G17:
+# routes that exist in no spec and no router, called by methods slice 4 removes.
+# Each name is derived from the `found` the ledger excuses, so the constant and
+# the excuse cannot drift apart.
 
 UNPUBLISHED_GET_METERING_PRICING_RATE_CARDS_HISTORY = Operation(
     None, 'get', '/api/v1/metering/pricing/rate-cards/{}/history')

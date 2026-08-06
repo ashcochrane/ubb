@@ -578,7 +578,7 @@ gates:
     statement: >-
       Every hand-written SDK call targets a real operation, named through one
       generated registry rather than by spelling a route.
-    oracle: openapi/v1.json
+    oracle: openapi/v1.json, plus gates/migration-ledger.yaml for the routes it excuses
     source: ADR-0007 §4, #155 §8.3
     status: installed
     notes: >-
@@ -601,8 +601,12 @@ gates:
       `self._http.get(...)` is caught rather than unseen. And a route named in a
       DOCSTRING must still be one the contract publishes, is a family of, or the
       ledger excuses — because #155 §8.3's claim is that a rename cannot leave a
-      stale string behind, and a docstring is a string. That last one found a
-      real stale mention of a route deleted long ago.
+      stale string behind, and a docstring is a string.
+      That third conjunct found nothing on the day it landed, and that is worth
+      stating rather than dressing up: of the 53 documented routes, 48 resolve
+      exactly, 4 name a family, and 1 is the `rate-cards/batch` route the ledger
+      already excuses. It is installed for the rename that has not happened yet
+      — the one that would otherwise fix a call and leave the prose behind.
       ADR-0007 §4's method-AND-path identity did not weaken; it moved to the one
       place the mistake can still be made. A call site cannot spell a method, so
       a valid path under the wrong verb is now only reachable as a registry

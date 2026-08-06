@@ -45,8 +45,10 @@ THING_WRITE = ("post", f"{ROOT}/things/{{thing_id}}", "things_write")
 
 DEFAULT_OPERATIONS = (THING_LIST, THING_READ)
 
-#: How a hand-written module reaches the registry, and the alias it uses.
-REGISTRY_IMPORT = "from ubb import _operations as ops\n"
+#: How a hand-written module reaches the registry. Taken from the tool rather
+#: than spelled here, so a control's synthetic module writes the same import
+#: the real modules do and the gate's own advice names.
+REGISTRY_IMPORT = registry_module.REGISTRY_IMPORT_LINE
 
 
 def spec(operations=DEFAULT_OPERATIONS):
@@ -94,9 +96,9 @@ def registry_source(operations=DEFAULT_OPERATIONS, ledger=None):
         if not isinstance(entry, dict) or entry.get("gate") != "G17":
             continue
         found = entry["found"]
-        method, _, path = found.partition(" ")
+        method, path = registry_module.parse_found(found)
         name = registry_module.unpublished_name(found)
-        entries[name] = registry_module.Entry(name, None, method.lower(), path)
+        entries[name] = registry_module.Entry(name, None, method, path)
     return registry_module.render(entries)
 
 
@@ -114,7 +116,7 @@ def client_module(*targets, class_name="ThingsClient", extra="",
     """
     lines = ['"""A synthetic hand-written client."""', ""]
     if imports:
-        lines.append(REGISTRY_IMPORT.rstrip("\n"))
+        lines.append(REGISTRY_IMPORT)
     lines += ["", f"class {class_name}:",
               "    def _request(self, method, path, **kwargs):",
               "        raise NotImplementedError", ""]

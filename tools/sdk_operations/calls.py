@@ -80,7 +80,9 @@ from pathlib import Path
 
 from tools.sdk_operations import errors as codes
 from tools.sdk_operations.errors import SurfaceError
-from tools.sdk_operations.registry import REGISTRY_PATH
+from tools.sdk_operations.registry import (
+    REGISTRY_IMPORT, REGISTRY_IMPORT_LINE, REGISTRY_PATH,
+)
 
 #: The package holding the hand-written ergonomic surface.
 SHELL_ROOT = "ubb-sdk/ubb"
@@ -91,9 +93,6 @@ GENERATED_PACKAGE = "_core"
 #: The generated registry, read by `registry.py` rather than walked as source.
 #: Derived from its path so the two cannot name different files.
 REGISTRY_MODULE = REGISTRY_PATH.rsplit("/", 1)[-1]
-
-#: The module the registry's constants live in, as an import names it.
-REGISTRY_IMPORT = REGISTRY_PATH[len("ubb-sdk/"):-len(".py")].replace("/", ".")
 
 #: The attribute names that carry a request. Both live in every product client
 #: (`_request` retries, `_request_once` does not), and both take the same two
@@ -376,7 +375,7 @@ def _call_site(node, module, qualname, aliases, entries, errors):
 
     return CallSite(module=module, qualname=qualname, line=node.lineno,
                     constant=constant, method=entry.method.upper(),
-                    route=entry.path, template=entry.identity[1])
+                    route=entry.path, template=entry.template)
 
 
 def _operation_reference(node, aliases):
@@ -406,10 +405,16 @@ def _attribute_name(node, aliases):
 
 
 def _missing_import_hint(aliases):
+    """The line to paste, when the reason nothing resolved is that it is absent.
+
+    Rendered from the same constant the SDK's modules import and the controls'
+    synthetic ones are built with, so the advice cannot name an import that
+    would not have worked.
+    """
     if aliases:
         return ""
     return (f" This module imports no registry at all: add "
-            f"`from ubb import {REGISTRY_IMPORT.split('.')[-1]} as ops`.")
+            f"`{REGISTRY_IMPORT_LINE}`.")
 
 
 #: How much of a constant two names must share before one is worth suggesting
