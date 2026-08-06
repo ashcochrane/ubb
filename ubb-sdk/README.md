@@ -240,6 +240,33 @@ rounding in billing math.
   event).
 - `unit_quantity`: the denominator — `1` means per-token; `1_000_000` means per-million-tokens.
 
+## Canonical value names
+
+`ubb.vocabulary` is **generated** from the UBB repository's vocabulary registry, so a
+value the API can return is a value you can name instead of retyping:
+
+```python
+from ubb import vocabulary
+
+if task.status == vocabulary.TASK_STATUS_COMPLETED:
+    ...
+```
+
+It is a module rather than a star-export, so nothing lands in `ubb`'s top-level
+namespace. Two names per value set, and the difference matters:
+
+| Name | Means |
+|---|---|
+| `<CONCEPT>_VALUES` | A closed set — exactly these values, no more. |
+| `<CONCEPT>_KNOWN_VALUES` | What UBB recognises **today**. |
+
+`_KNOWN_VALUES` never decides a rejection. UBB's contract has open enums by design, so
+a value that is not in the set is still legal and may arrive without a new SDK release
+— `raise` on an unrecognised status and your integration breaks on the day UBB adds
+one. Branch on the values you handle and let the rest fall through.
+
+Do not edit the module: CI regenerates it and fails on any diff.
+
 ## Retries
 
 All clients automatically retry transient failures: HTTP `429`, `502`, `503`, `504`,

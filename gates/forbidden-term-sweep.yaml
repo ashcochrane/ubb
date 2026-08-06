@@ -67,7 +67,10 @@ fallback_area: repo
 anchors:
   # backend — the model that carries the tenant's own measurement vocabulary.
   - ubb-platform/apps/metering/usage/models.py
-  # console — the hand-authored label catalogue #207 validates directly.
+  # console — the hand-authored label catalogue. Deliberately NOT the generated
+  # `vocabulary.ts` beside it: an anchor proves the sweep read a LIVING surface,
+  # and a generated file cannot be edited to remove a word anyway. #210 splits
+  # this one into identity and expression; the anchor follows the expression.
   - apps/ui/src/lib/labels.ts
   # sdk — the hand-written call surface ADR-0007 §4 governs.
   - ubb-sdk/ubb/metering.py
