@@ -45,7 +45,7 @@ import json
 import pytest
 
 from _helpers import CONSUMER_PATH, REPO_ROOT, concept, write_registry
-from tools.consumers import take_census
+from tools.consumers import serving_surfaces, take_census
 from tools.gates import load_programme
 from tools.known_values import (
     BACKEND,
@@ -289,6 +289,38 @@ def test_a_concept_is_advertised_exactly_where_the_backend_serves_it(
         assert decision.advertised is served, name
         checked += 1
     assert checked >= 25, f"only {checked} concepts reach the contract"
+
+
+def test_every_concept_the_contract_may_carry_has_a_backend_consumer(
+        registry, census, decisions):
+    """The one place `decide` softens the census's contract, closed by proof.
+
+    `Census.serves` RAISES rather than answering for a concept it has no
+    verdict on, and says why: *"#208 must not read 'the backend does not serve
+    it' from 'nobody asked'"*. `decide` does not call it in that case — it
+    reads `extent() is None` and withholds — which is the safe direction but is
+    still a softening.
+
+    So the case is required not to exist. A concept the registry says appears
+    in the contract, with values UBB owns and no backend consumer to hold them,
+    is an incoherent registry rather than a silent absence of metadata: it
+    would say the published document may state a value set nothing in UBB is
+    responsible for. If one is ever declared, this fails by name — instead of
+    that concept quietly never being advertised, for a reason no gate reports.
+    """
+    homeless = sorted(
+        name for name, decision in decisions.items()
+        if decision.representation != NOTHING
+        and census.extent(name, BACKEND) is None)
+    assert not homeless, (
+        f"{len(homeless)} concept(s) may appear in the contract but declare no "
+        f"backend consumer: {homeless}. Either give each one the consumer that "
+        f"will hold its values, or stop declaring an `openapi` consumer for it "
+        f"in domain-vocabulary/.")
+
+    # And the guard is not vacuous: the surface it names is one the census
+    # genuinely answers for, so a typo'd surface name would fail here.
+    assert BACKEND in serving_surfaces()
 
 
 def test_no_unadvertised_concept_carries_its_values(decisions):

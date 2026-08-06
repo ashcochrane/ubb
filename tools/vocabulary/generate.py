@@ -49,6 +49,8 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
+from tools.known_values import build as build_known_values
+
 #: Comment and code lines wrap here. The marker plus its trailing space is
 #: subtracted per target, so `# ` and `// ` both land the widest comment line on
 #: 79, which is where the rest of the repository sits.
@@ -584,16 +586,26 @@ class ConsoleVocabulary(_Target):
 # The committed contract's known-value decisions
 # ---------------------------------------------------------------------------
 
-class OpenApiKnownValues(_Target):
+class OpenApiKnownValues:
     """What the published contract may say about each concept (#208).
 
-    The odd one out, in two ways that are both deliberate.
+    **Deliberately not a :class:`_Target` subclass.** A target is anything
+    carrying ``path`` and ``render(registry)`` — this module's opening
+    paragraph says so — and that is the whole of what this one shares. It binds
+    no name, so `set_name` and `handles` have nothing to answer; it emits no
+    comments, so `marker`, `_comment` and `_section_rule` have nothing to
+    write; and it cannot collide, because the document is keyed by concept name
+    and the registry already refuses to define one term twice, so
+    `_check_for_collisions` has nothing to check. Inheriting in order to
+    override four methods into silence would leave two of them unreachable —
+    and an unreachable override reads as coverage rather than as absence.
 
-    **It is data, not source.** A JSON document cannot import anything, so
-    nothing here is bound to a name and :meth:`handles` yields nothing: the
-    committed contract holds no value BY REFERENCE, which is precisely why
+    Two things make it the odd one out, and both are the point.
+
+    **It is data, not source.** A JSON document cannot import anything, so the
+    committed contract holds no value BY REFERENCE — which is precisely why
     `tools/consumers` refuses to answer `serves(concept, "openapi")` at all.
-    What this artifact carries instead is a decision the spec export applies —
+    What this artifact carries instead is a decision the spec export applies;
     see :mod:`tools.known_values`.
 
     **It reads the tree as well as the registry.** The other three targets are
@@ -613,17 +625,18 @@ class OpenApiKnownValues(_Target):
     path = "openapi/known-values.json"
 
     def render(self, registry):
-        # Deferred: `tools.consumers` imports this module for the naming rules
-        # each surface binds, so importing it at module scope would be a cycle.
-        # Deferring it is not a workaround for a layering mistake — the
-        # dependency genuinely runs this way round, and only the generator's
-        # own render needs the answer.
+        # `tools.consumers` imports THIS module for the naming rules each
+        # surface binds, so the dependency genuinely runs both ways and a
+        # module-scope import here would be a cycle. Deferred rather than
+        # restructured because only this one render needs the answer, and the
+        # alternative — threading a census through `render` for all four
+        # targets — would spread one target's input across every other's
+        # signature. `tools.known_values` needs no such treatment and is
+        # imported at module scope.
         from tools.consumers import take_census
 
-        from tools.known_values import build
-
-        census = take_census(registry.repo_root, registry)
-        document = build(registry, census)
+        document = build_known_values(registry,
+                                      take_census(registry.repo_root, registry))
         # `sort_keys` rather than a curated order: `@generated` sorts first
         # anyway, and a renderer whose output order depends on dictionary
         # construction is one insertion away from a zero-diff gate that fails
@@ -631,21 +644,6 @@ class OpenApiKnownValues(_Target):
         # UTF-8 it is committed as, which is what the byte comparison reads.
         return json.dumps(document, indent=2, sort_keys=True,
                           ensure_ascii=False) + "\n"
-
-    def handles(self, concept):
-        """Nothing. A JSON document binds no name a consumer could reference.
-
-        Stated as an override rather than inherited, because the base class's
-        answer — the concept's whole set, under its generated name — would be a
-        lie here, and a census that believed it would report the committed
-        contract as a served consumer of every concept in the registry.
-        """
-        return {}
-
-    def _claims(self, concept):
-        """Nothing can collide: the document is keyed by concept name, and the
-        registry already refuses to define one term twice."""
-        return []
 
 
 BACKEND_CONSTANTS = BackendConstants()

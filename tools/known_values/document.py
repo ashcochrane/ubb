@@ -112,17 +112,26 @@ def decide(concept, census):
       consumed rather than rebuilt here; two implementations of one predicate
       is the shape that already bit #203.
 
-    A census that could not answer — no declared backend consumer, or a fault
-    that stopped the walk — yields ``advertised=False``. A broken census may
-    therefore WITHHOLD metadata and can never invent it, which is the only
-    direction of error that keeps a published contract honest.
+    A census that cannot answer — the registry declares no backend consumer,
+    or a fault stopped the walk — yields ``advertised=False`` rather than
+    calling :meth:`~tools.consumers.Census.serves`, whose docstring is explicit
+    that #208 must not read *"the backend does not serve it"* from *"nobody
+    asked"*. Distinguishing them is exactly what ``extent`` returning ``None``
+    is for, so the two cases stay two cases here.
+
+    Withholding is the ONLY direction this softening runs: a census that cannot
+    answer can never make the contract advertise something, only stay silent
+    about it, which is the sole direction of error that keeps a published
+    document honest. And the case it covers is proved not to arise —
+    `test_openapi_known_values.py` requires every concept the contract may
+    carry to have a backend consumer to serve it, so a concept falling into
+    this branch fails CI by name instead of quietly losing its metadata.
     """
     representation = _representation(concept)
-    verdicts = [v for v in census.verdicts
-                if v.concept == concept.name and v.surface == BACKEND]
+    extent = census.extent(concept.name, BACKEND)
 
     advertised = bool(
-        representation != NOTHING and verdicts
+        representation != NOTHING and extent is not None
         and census.serves(concept.name, BACKEND))
 
     return Decision(
@@ -130,7 +139,8 @@ def decide(concept, census):
         kind=concept.kind,
         representation=representation,
         advertised=advertised,
-        backend_serves=_extent(concept, verdicts),
+        backend_serves=None if extent is None
+        else f"{extent[0]} of {extent[1]} values",
         values=tuple(concept.declared_values) if advertised else None,
     )
 
@@ -149,21 +159,6 @@ def _representation(concept):
     if not any(c.surface == CONTRACT for c in concept.consumers):
         return NOTHING
     return KNOWN_VALUES if concept.known_values else ENUM
-
-
-def _extent(concept, verdicts):
-    """``"<held> of <total> values"``, or ``None`` where nothing is measurable.
-
-    Held is the INTERSECTION across the declared backend consumers, because
-    that is what :meth:`Census.serves` means when a concept has more than one:
-    a value one consumer imports and another restates is not held by the
-    backend. Reporting the union would make the number disagree with the
-    verdict beside it.
-    """
-    if not concept.declared_values or not verdicts:
-        return None
-    held = set.intersection(*(set(v.held) for v in verdicts))
-    return f"{len(held)} of {len(concept.declared_values)} values"
 
 
 def build(registry, census):

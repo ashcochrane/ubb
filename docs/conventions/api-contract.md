@@ -135,6 +135,39 @@ is a no-op returning the original outcome, never a double effect. Entity
 creates dedupe on natural identity or answer 409 `conflict` (customers,
 plans, rate-card books, rates, webhook configs, referral attribution).
 
+## Vocabulary: the values a field may carry (#208)
+
+Two vendor extensions are part of the published dialect. Both are
+**generator-owned** — never hand-written into a schema.
+
+| Extension | On | Means |
+|---|---|---|
+| `x-ubb-concept` | any string-shaped schema node | the UBB concept this field carries, named in `domain-vocabulary/` |
+| `x-ubb-known-values` | an **open** concept's node | the values UBB recognises today. Documentation, never a constraint |
+
+A field declares its concept and **nothing else** — the values arrive at export
+time from `openapi/known-values.json`:
+
+```python
+status: str = Field(json_schema_extra={"x-ubb-concept": "task_status"})
+```
+
+An `open` concept keeps `type: string` and gets `x-ubb-known-values`; it is
+**never** converted to an `enum`, because a value UBB has never seen is legal
+(ADR-0003) and a schema enumerating the set would make UBB learning a new one a
+breaking change. A `closed` concept gets a real `enum`. A concept whose values
+the tenant owns gets neither, and a marker on one is refused.
+
+**Never type a vocabulary field as `Literal[...]`.** That is a second copy of a
+value set the registry owns, and for an open concept it is the silent closure
+G4 exists to refuse. The gate accounts for every `enum` in the committed
+document by JSON pointer, so a new one has to come past a reviewer.
+
+The export **refuses** a marker whose concept the backend does not yet serve —
+the contract states a value only where the backend already returns it. Full
+rules, and the order they force on a slice, in
+[`openapi/README.md`](../../openapi/README.md).
+
 ## Adding a surface
 
 1. Raise `Problem`s with registry codes; need a new code → add it to

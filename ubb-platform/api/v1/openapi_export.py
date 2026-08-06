@@ -43,7 +43,7 @@ def generated_document_text() -> str:
     return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 
 
-def _apply_known_values(schema):
+def _apply_known_values(schema: dict) -> dict:
     """Give every field that names a registry concept its recognised values.
 
     The applier lives at the git root beside the registry, the gate manifest
@@ -52,12 +52,26 @@ def _apply_known_values(schema):
     root on the path, which is why this is a function rather than a module-level
     import: exporting the spec is a build step, and nothing on a request path
     should acquire a sys.path entry as a side effect of importing this module.
+    Appended rather than prepended, so the git root's `apps/`, `tests/` and
+    `tools/` never shadow the platform's own for the rest of the process.
 
     It is stdlib-only by design — no YAML, no registry compiler, no Django — so
     the same code runs here and in the contract suite that proves it correct.
+
+    APPLIED HERE AND NOT AT `api.py`'S SCHEMA SEAM, which is a deliberate
+    departure from that seam's stated invariant and is recorded there too.
+    `_ProblemDocumentingNinjaAPI.get_openapi_schema` exists so the committed
+    document and the served `/api/v1/openapi.json` are identical by
+    construction; putting this there would mean a Django request path reading a
+    git-root JSON file and acquiring a sys.path entry, which is a coupling the
+    platform does not otherwise have. ADR-002 is what makes the trade cheap:
+    the COMMITTED document is the single source of truth for the tenant
+    surface, and the served one is a development convenience. The divergence is
+    also empty today — no concept is advertised — so the first slice to
+    advertise one inherits a visible decision rather than a surprise.
     """
     if str(GIT_ROOT) not in sys.path:
-        sys.path.insert(0, str(GIT_ROOT))
+        sys.path.append(str(GIT_ROOT))
     from tools.known_values import apply_known_values, read_decisions
 
     return apply_known_values(schema, read_decisions(KNOWN_VALUES_PATH))

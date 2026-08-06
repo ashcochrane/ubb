@@ -203,6 +203,34 @@ class Census:
                 f"nothing here to serve")
         return all(verdict.serves for verdict in verdicts)
 
+    def extent(self, concept, surface):
+        """``(held, total)`` for one concept on one surface, or ``None``.
+
+        The measured form of :meth:`serves`, beside it rather than derived by a
+        caller: #208 records how much of a concept its consumers already hold,
+        and a second walk of ``verdicts`` to work that out would be a second
+        implementation of *which consumers count* — the shape both this class
+        and #203 exist to refuse.
+
+        HELD IS THE INTERSECTION across the declared consumers, which is what
+        :meth:`serves` means when a concept has more than one: a value one
+        consumer imports and another restates is not held by that surface.
+        Reporting the union would put a number beside a verdict that disagrees
+        with it.
+
+        ``None`` — rather than ``(0, 0)`` — where the registry declares no
+        consumer of ``concept`` on ``surface``, or the concept declares no
+        values. Nobody asked is not the same fact as nothing held, and a
+        caller that cannot tell them apart is the one :meth:`serves` raises for.
+        """
+        verdicts = [v for v in self.verdicts
+                    if v.concept == concept and v.surface == surface]
+        if not verdicts:
+            return None
+        held = set.intersection(*(set(v.held) for v in verdicts))
+        total = len(verdicts[0].held) + len(verdicts[0].missing)
+        return len(held), total
+
     def findings(self, kinds):
         """Every unheld value on a concept of one of ``kinds``, sorted.
 
