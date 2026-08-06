@@ -1,0 +1,633 @@
+"""G6 — the registry owns identity, the console owns expression (#210, ADR-0008 §4).
+
+Two questions, one gate, and they are enforced here together because the answer
+to the second is what makes the first survivable.
+
+**Coverage, both ways.** ADR-0008 §4.2 asks for four things: every required
+registry value has a label; every console label refers to a valid registry
+value; no retired token remains labelled; every supported locale carries the
+key. A one-way check would let the catalogue accumulate wording for values
+nobody serves, which is how a retired token keeps its life after the code that
+produced it is gone.
+
+**And nothing renders a name any other way.** Coverage alone proves the
+catalogue is complete, not that it is *used*. `apps/ui/src/lib/labels.ts` still
+hand-writes thirty-two value maps and eleven files still import its humaniser,
+and ADR-0008 §4.3 reverses #154 §9.1 to call that a defect rather than a soft
+landing: title-casing a retired token manufactures user-facing terminology out
+of an implementation token. #210 does not delete it — fifty-one files import
+that module — so it survives as an explicit legacy adapter, and every one of its
+debts is a migration-ledger entry with an owner slice.
+
+**The ledger IS the allowlist.** There is no second list of permitted sites: a
+new map or a new humanising import is a ledger addition, and `tools.gates
+ratchet` already refuses one without a reviewed seeding authorisation. That is
+the whole mechanism, and it is why this file compares the tree against
+`gates/migration-ledger.yaml` rather than against a constant of its own. A
+constant would be the second encoding ADR-0006 §4 warns about, and #203's
+agreement test exists because that copy was made once already.
+
+**What this gate does NOT prove.** That the wording is any good, that it is
+consistent with a style guide, or that a translation is accurate. Those are
+judgement, and ADR-0008 §1 keeps them human. It proves that a value has words,
+that the words name something real, and that nothing invents them.
+"""
+
+import json
+import re
+
+import pytest
+
+from _helpers import ABSENT, REPO_ROOT, concept, load
+from tools.gates import load_programme
+from tools.labels import (
+    Catalogue,
+    Locale,
+    coverage_faults,
+    read_catalogue,
+    required_keys,
+    retired_labels,
+    scan_legacy,
+    split_key,
+)
+from tools.labels import errors as codes
+from tools.labels.catalogue import DEFAULT_LOCALE, LOCALES_DIR
+from tools.labels.legacy import (
+    ADAPTER,
+    ADAPTER_SPECIFIER,
+    CONSOLE_ROOT,
+    DECLARED_NON_LABEL_EXPORTS,
+    HUMANISER,
+    MAP_CONSTRUCTOR,
+)
+from tools.vocabulary import load_registry
+
+GATE = "G6"
+GATES_DIR = REPO_ROOT / "gates"
+
+#: The module specifier of any `import ... from "x"` — what a file actually
+#: resolves, as opposed to what a line happens to contain.
+IMPORT_SPECIFIER = re.compile(r'from\s+"([^"]+)"')
+
+
+@pytest.fixture(scope="module")
+def registry():
+    return load_registry(REPO_ROOT / "domain-vocabulary", REPO_ROOT)
+
+
+@pytest.fixture(scope="module")
+def shipped():
+    catalogue, faults = read_catalogue(REPO_ROOT)
+    return catalogue, faults
+
+
+@pytest.fixture(scope="module")
+def legacy():
+    return scan_legacy(REPO_ROOT)
+
+
+@pytest.fixture(scope="module")
+def programme():
+    return load_programme(GATES_DIR, REPO_ROOT)
+
+
+# ---------------------------------------------------------------------------
+# 1. The catalogue is readable at all
+# ---------------------------------------------------------------------------
+
+def test_the_shipped_catalogue_loads(shipped):
+    """Vacuity guard, and the first half of "every supported locale".
+
+    Every comparison below is a set operation against this catalogue. A missing
+    directory, an unparseable file or a locale nobody imports would leave them
+    all comparing against nothing and passing — which is precisely the failure
+    mode this repository has shipped three times.
+    """
+    catalogue, faults = shipped
+    assert not faults, "\n".join(str(fault) for fault in faults)
+    assert catalogue.locales, f"no locale loaded from {LOCALES_DIR}"
+    assert catalogue.locale(DEFAULT_LOCALE) is not None
+    assert len(catalogue.keys) > 100, (
+        "the catalogue is implausibly small for a registry with this many "
+        "valued concepts — check the walk, not the wording")
+
+
+# ---------------------------------------------------------------------------
+# 2. Coverage, in both directions
+# ---------------------------------------------------------------------------
+
+def test_every_registry_value_has_wording_in_every_locale(shipped, registry):
+    """ADR-0008 §4.2's first promise AND its fourth, and §4.3's reversal made real.
+
+    A missing label fails HERE — at the gate — rather than being humanised into
+    invented copy at render time. The required set is asked of the generator's
+    own `label_key`, so the key spelled here is by construction the key the
+    console imports.
+
+    The fourth promise — *every supported locale carries the required key* — is
+    not a separate node, because it is not a separate question: `coverage_faults`
+    asks the first promise once per loaded locale. Today there is one, so the
+    loop runs once and the promise is trivially met; the day a second catalogue
+    lands, a half-translated one fails here with no edit. A node comparing the
+    locales against EACH OTHER was written and then deleted: with one locale it
+    compared a set with itself, and with two it could only report what this
+    already reports. A check that cannot fail is worse than no check, because
+    the manifest would go on naming it as evidence.
+    """
+    catalogue, _ = shipped
+    required = required_keys(registry)
+    assert required, "the registry declares no label keys at all"
+
+    findings = [f for f in coverage_faults(required, catalogue, registry)
+                if f.code in (codes.UNLABELLED_VALUE, codes.BLANK_LABEL)]
+    assert not findings, "\n".join(str(finding) for finding in findings)
+
+
+def test_every_label_names_a_live_registry_value(shipped, registry):
+    """ADR-0008 §4.2's second promise — the direction a coverage check forgets.
+
+    Without it the catalogue only grows: wording for a value that was renamed
+    two slices ago sits beside wording for the value that replaced it, and
+    nothing distinguishes them.
+    """
+    catalogue, _ = shipped
+    findings = [f for f in coverage_faults(required_keys(registry), catalogue,
+                                           registry)
+                if f.code in (codes.UNKNOWN_KEY, codes.RETIRED_KEY)]
+    assert not findings, "\n".join(str(finding) for finding in findings)
+
+
+def test_no_retired_token_keeps_its_wording(shipped, registry):
+    """ADR-0008 §4.2's third promise, on its own evidence.
+
+    Implied by the two above *today* — a retired token is not a registry value,
+    so it is already an unknown key — but that is a property of this registry
+    rather than of the rule. Stated separately so narrowing the equality later
+    cannot silently drop it, and asked of the catalogue's own keys rather than
+    of a set difference.
+    """
+    catalogue, _ = shipped
+    still_labelled = retired_labels(catalogue, registry)
+    assert not still_labelled, "\n".join(
+        f"`{key}` words `{token}`, retired by `{by}`"
+        for key, token, by in still_labelled)
+
+
+def test_every_key_is_a_prefix_and_a_value(shipped):
+    """A key the catalogue cannot be taken apart into is one the retired-token
+    check cannot inspect. Without this, a key of the wrong shape would pass
+    every assertion above by being invisible to the one that matters."""
+    catalogue, _ = shipped
+    malformed = sorted(key for key in catalogue.keys if split_key(key) is None)
+    assert not malformed, f"not `<prefix>.<value>`: {malformed}"
+
+
+# ---------------------------------------------------------------------------
+# 3. Nothing renders a name any other way
+# ---------------------------------------------------------------------------
+
+def test_the_legacy_adapter_is_where_the_gate_thinks_it_is(legacy):
+    """Vacuity guard for section 3. A moved or renamed adapter would turn every
+    comparison below into a comparison of two empty sets, and the ledger's
+    forty-two entries into unreachable ones."""
+    scanned, faults = legacy
+    assert not faults, "\n".join(str(fault) for fault in faults)
+    assert (REPO_ROOT / ADAPTER).is_file()
+    assert scanned.maps, "no hand-written value map found — the scanner is blind"
+
+
+def test_the_ledger_records_exactly_what_the_legacy_adapter_still_does(legacy,
+                                                                       programme):
+    """The allowlist, held in both directions.
+
+    An unrecorded site is the failure that matters most: a map or a humanising
+    import nobody owes, invisible to the ratchet, cleared by nobody — #155
+    §17's failure hiding inside the mechanism built to close it. The other
+    direction matters too, and differently: an entry for a site that no longer
+    exists is a debt already paid, and leaving it in place makes "the ledger is
+    at zero" arrive later than the work did.
+    """
+    scanned, _ = legacy
+    faults = disagreements(set(scanned.sites), recorded(programme, GATE),
+                           excepted(programme, GATE))
+    assert not faults, (
+        "the console and gates/migration-ledger.yaml disagree.\n  "
+        + "\n  ".join(faults))
+
+
+def test_a_permanent_exception_is_a_site_the_scanner_sees(legacy, programme):
+    """The Stripe-vocabulary maps are excused, not invisible.
+
+    An exception naming a site the scanner does not report would suppress
+    nothing while looking like it does — the same unfalsifiable shape the G9
+    exception is held to in the platform suite.
+    """
+    scanned, _ = legacy
+    excepted = {record.site for record in programme.exceptions
+                if record.gate == GATE}
+    assert excepted, "no permanent exception recorded for this gate"
+    assert excepted <= set(scanned.sites), (
+        f"excused but not found in the tree: {sorted(excepted - set(scanned.sites))}")
+
+
+def test_a_debt_and_an_exception_are_never_the_same_site(programme):
+    """A site owed by a slice and simultaneously declared as never being fixed
+    would keep the ledger off zero forever."""
+    both = recorded(programme, GATE) & {record.site
+                                        for record in programme.exceptions
+                                        if record.gate == GATE}
+    assert not both, f"recorded as both a debt and an exception: {sorted(both)}"
+
+
+def test_the_humaniser_is_declared_in_exactly_one_place():
+    """A second `humanize` anywhere in the console would make the allowlist
+    meaningless: a caller could reach humanisation without importing the
+    adapter, and the ledger would go on saying eleven files do.
+
+    `scan_legacy` reports one as a fault, and section 3's first test asserts
+    there are none. This states the rule directly as well, because the fault is
+    easy to read as an infrastructure problem rather than as the gate firing.
+    """
+    _, faults = scan_legacy(REPO_ROOT)
+    escaped = [fault for fault in faults if fault.code == codes.ADAPTER_ESCAPED]
+    assert not escaped, "\n".join(str(fault) for fault in escaped)
+
+
+def test_the_adapter_is_imported_one_way(legacy):
+    """The scanner reads import statements, so it can only see the spelling it knows.
+
+    A relative import of the same module — `./labels`, `../lib/labels` — resolves
+    to exactly the same file and would slip past the allowlist entirely. So this
+    reads every import SPECIFIER in the console and fails on any whose last
+    segment is `labels` and which is not the canonical one. Checking the
+    specifier rather than the line is what makes it exhaustive: `"labels" in
+    line` would miss `from "../lib/labels"` in a file under `src/lib/`, which is
+    the one place the shortcut is most tempting.
+    """
+    scanned, _ = legacy
+    offenders = []
+    for path in sorted((REPO_ROOT / CONSOLE_ROOT).rglob("*.ts*")):
+        for specifier in IMPORT_SPECIFIER.findall(path.read_text(encoding="utf-8")):
+            if specifier == ADAPTER_SPECIFIER:
+                continue
+            if specifier.rsplit("/", 1)[-1].removesuffix(".ts") == "labels":
+                offenders.append(
+                    f"{path.relative_to(REPO_ROOT).as_posix()}: "
+                    f"imports `{specifier}`")
+    assert not offenders, (
+        f"the adapter must be imported as `{ADAPTER_SPECIFIER}`, so that the "
+        f"allowlist can see every site that reaches it:\n  "
+        + "\n  ".join(offenders))
+    assert scanned.humanisers, "no humanising site found — the import scan is blind"
+
+
+def test_every_adapter_export_is_classified(legacy):
+    """An export nobody classified is one nobody is watching.
+
+    The gate refuses to guess: a new export of the legacy adapter is either a
+    ledgered debt or an entry in `DECLARED_NON_LABEL_EXPORTS` with the reason it
+    carries no wording. "Everything else is a helper" is the category that grows
+    in silence, which is why #206's exclusion set is pinned rather than derived
+    and why this one is too.
+    """
+    scanned, _ = legacy
+    assert not scanned.unclassified, (
+        f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
+    assert set(DECLARED_NON_LABEL_EXPORTS) == {HUMANISER, "roleRank"}, (
+        "the declared non-label exports have changed. That is allowed, and it "
+        "is a reviewable diff on purpose: each name here is a claim that the "
+        "export carries no user-facing wording")
+
+
+def test_the_map_constructor_name_appears_nowhere_else():
+    """The scanner takes the set of hand-written maps by matching
+    `legacyLabelMap(`. #210 renamed it from the bare `label` for exactly this
+    reason: `label` appears in this console as a prop, a variable and a string,
+    so a gate keyed on it would be a gate keyed on a coincidence. This asserts
+    the new name stayed unambiguous."""
+    elsewhere = [
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in sorted((REPO_ROOT / CONSOLE_ROOT).rglob("*.ts*"))
+        if path.relative_to(REPO_ROOT).as_posix() != ADAPTER
+        and MAP_CONSTRUCTOR in path.read_text(encoding="utf-8")
+    ]
+    assert not elsewhere, (
+        f"`{MAP_CONSTRUCTOR}` is meant to name one private function in "
+        f"{ADAPTER}; it also appears in {elsewhere}")
+
+
+# ---------------------------------------------------------------------------
+# The predicates the assertions above call
+# ---------------------------------------------------------------------------
+
+def recorded(programme, gate):
+    """The sites the ledger records against a gate."""
+    return {entry.site for entry in programme.entries if entry.gate == gate}
+
+
+def excepted(programme, gate):
+    """The sites the permanent exceptions excuse — accounted for, and not debts."""
+    return {record.site for record in programme.exceptions if record.gate == gate}
+
+
+def disagreements(observed, ledgered, excused=frozenset()):
+    """Every way the tree and `gates/` fail to say the same thing.
+
+    A real predicate rather than an inline `==`, so the controls below can push
+    synthetic triples through the function the assertions actually use.
+    Comparing two values derived from one source is a check that cannot fail,
+    and this repository has shipped three of those.
+
+    An observed site must be accounted for by EXACTLY ONE list, which is why
+    both are inputs here rather than one comparison per list: an exception
+    excuses a site from being a debt, not from being seen.
+    """
+    faults = []
+    for site in sorted(observed - ledgered - excused):
+        faults.append(f"{site} still hand-writes or humanises a label and no "
+                      f"ledger entry owes it — a debt with no owner, invisible "
+                      f"to the ratchet")
+    for site in sorted(ledgered - observed):
+        faults.append(f"{site} is recorded as a debt and the console no longer "
+                      f"does it — the entry is unreachable and keeps the ledger "
+                      f"off zero")
+    return faults
+
+
+# ---------------------------------------------------------------------------
+# Negative controls — the reader flags what it is shown.
+#
+# Without these every assertion above could be structurally incapable of
+# failing, which is the defect this whole directory exists to prevent.
+# ---------------------------------------------------------------------------
+
+def catalogue_of(entries, name=DEFAULT_LOCALE):
+    """A synthetic single-locale catalogue, in the shape `read_catalogue` returns."""
+    return Catalogue((Locale(name, f"{LOCALES_DIR}/{name}.json", dict(entries)),))
+
+
+@pytest.fixture
+def synthetic(tmp_path):
+    """A registry with one closed concept, two values and one retired word."""
+    return load(tmp_path, concepts={"synthetic.yaml": {"widget_state": concept(
+        values=["idle", "spinning"],
+        label_key_prefix="widget_state",
+        retired_aliases=["whirring"],
+    )}})
+
+
+def test_negative_control_a_value_with_no_wording_is_flagged(synthetic):
+    findings = coverage_faults(required_keys(synthetic),
+                               catalogue_of({"widget_state.idle": "Idle"}),
+                               synthetic)
+    assert [finding.code for finding in findings] == [codes.UNLABELLED_VALUE]
+    assert "widget_state.spinning" in findings[0].location
+
+
+def test_negative_control_a_key_naming_nothing_is_flagged(synthetic):
+    findings = coverage_faults(
+        required_keys(synthetic),
+        catalogue_of({"widget_state.idle": "Idle",
+                      "widget_state.spinning": "Spinning",
+                      "widget_state.melted": "Melted"}),
+        synthetic)
+    assert [finding.code for finding in findings] == [codes.UNKNOWN_KEY]
+
+
+def test_negative_control_a_retired_token_that_kept_its_wording_is_flagged(synthetic):
+    catalogue = catalogue_of({"widget_state.idle": "Idle",
+                              "widget_state.spinning": "Spinning",
+                              "widget_state.whirring": "Whirring"})
+    findings = coverage_faults(required_keys(synthetic), catalogue, synthetic)
+
+    assert [finding.code for finding in findings] == [codes.RETIRED_KEY]
+    # And the independent statement of the same promise, which is the one that
+    # has to keep working if the equality above is ever narrowed.
+    assert retired_labels(catalogue, synthetic) == [
+        ("widget_state.whirring", "whirring", "widget_state")]
+
+
+def test_negative_control_a_blank_label_is_flagged(synthetic):
+    findings = coverage_faults(
+        required_keys(synthetic),
+        catalogue_of({"widget_state.idle": "Idle", "widget_state.spinning": "  "}),
+        synthetic)
+    assert [finding.code for finding in findings] == [codes.BLANK_LABEL]
+
+
+def test_negative_control_a_locale_missing_a_key_is_flagged(synthetic):
+    """The four promises are stated per locale, so a complete `en` beside a
+    half-translated one must fail. Today's single-locale tree cannot show
+    this — which is why the control supplies a second locale."""
+    complete = {"widget_state.idle": "Idle", "widget_state.spinning": "Spinning"}
+    catalogue = Catalogue((
+        Locale("en", f"{LOCALES_DIR}/en.json", dict(complete)),
+        Locale("fr", f"{LOCALES_DIR}/fr.json", {"widget_state.idle": "Au repos"}),
+    ))
+    findings = coverage_faults(required_keys(synthetic), catalogue, synthetic)
+
+    assert [finding.code for finding in findings] == [codes.UNLABELLED_VALUE]
+    assert "fr.json" in findings[0].location
+
+
+def test_positive_control_a_complete_catalogue_produces_no_findings(synthetic):
+    assert coverage_faults(
+        required_keys(synthetic),
+        catalogue_of({"widget_state.idle": "Idle",
+                      "widget_state.spinning": "Spinning"}),
+        synthetic) == []
+
+
+def test_negative_control_a_tenant_defined_concept_requires_no_wording(tmp_path):
+    """map #137 constraint 5 as a checked rule: UBB never enumerates what the
+    tenant owns, so it has no wording to supply either. A required key here
+    would be the catalogue quietly becoming the vendor catalogue."""
+    registry = load(tmp_path, concepts={"synthetic.yaml": {
+        "widget_key": concept(kind="tenant_defined", values=ABSENT,
+                              label_key_prefix=ABSENT),
+    }})
+    assert registry.concepts["widget_key"].kind == "tenant_defined"
+    assert required_keys(registry) == {}
+
+
+def test_negative_control_an_unrecorded_site_is_flagged():
+    faults = disagreements({"apps/ui/src/x.tsx::humanize"}, set())
+    assert len(faults) == 1 and "no ledger entry owes it" in faults[0]
+
+
+def test_negative_control_an_unreachable_entry_is_flagged():
+    faults = disagreements(set(), {"apps/ui/src/x.tsx::humanize"})
+    assert len(faults) == 1 and "the entry is unreachable" in faults[0]
+
+
+def test_positive_control_two_sides_that_agree_produce_no_faults():
+    sites = {"apps/ui/src/x.tsx::humanize"}
+    assert disagreements(sites, set(sites)) == []
+
+
+def test_a_permanently_excepted_site_is_accounted_for_without_being_a_debt():
+    """The one thing the exceptions list buys, and its limit: it accounts for a
+    site, and it does not make the site invisible. A site in neither list still
+    fails — which is what stops "add an exception" becoming the cheap way past
+    this gate."""
+    stripe = "apps/ui/src/lib/labels.ts::subscriptionStatusLabel"
+    assert disagreements({stripe}, set(), excused={stripe}) == []
+    assert len(disagreements({stripe, "apps/ui/src/x.tsx::humanize"}, set(),
+                             excused={stripe})) == 1
+
+
+# --- controls over reading the catalogue at all -----------------------------
+
+def write_locales(tmp_path, *, index=None, files):
+    """A synthetic console tree, loaded through the entry point CI calls."""
+    directory = tmp_path / LOCALES_DIR
+    directory.mkdir(parents=True)
+    for name, body in files.items():
+        (directory / name).write_text(
+            body if isinstance(body, str) else json.dumps(body),
+            encoding="utf-8")
+    if index is not None:
+        (directory / "index.ts").write_text(index, encoding="utf-8")
+    return read_catalogue(tmp_path)
+
+
+def only(faults):
+    assert len(faults) == 1, [str(fault) for fault in faults]
+    return faults[0].code
+
+
+def test_negative_control_a_missing_locales_directory_is_a_fault(tmp_path):
+    _, faults = read_catalogue(tmp_path)
+    assert only(faults) == codes.LOCALES_MISSING
+
+
+def test_negative_control_a_missing_index_is_a_fault(tmp_path):
+    _, faults = write_locales(tmp_path, files={"en.json": {}})
+    assert only(faults) == codes.INDEX_MISSING
+
+
+def test_negative_control_a_catalogue_nobody_imports_is_a_fault(tmp_path):
+    """It would ship to nobody while satisfying every coverage assertion above,
+    because the union of loaded locales would never contain it."""
+    _, faults = write_locales(
+        tmp_path,
+        index='import en from "./en.json";\n',
+        files={"en.json": {}, "fr.json": {}})
+    assert only(faults) == codes.LOCALE_UNDECLARED
+
+
+def test_negative_control_an_import_with_no_catalogue_is_a_fault(tmp_path):
+    catalogue, faults = write_locales(
+        tmp_path,
+        index='import en from "./en.json";\nimport fr from "./fr.json";\n',
+        files={"en.json": {}})
+    assert {fault.code for fault in faults} == {codes.LOCALE_MISSING}
+    assert catalogue.locale("fr") is None
+
+
+def test_negative_control_an_unparseable_catalogue_is_a_fault(tmp_path):
+    _, faults = write_locales(tmp_path, index='import en from "./en.json";\n',
+                              files={"en.json": "{oh dear"})
+    assert codes.LOCALE_UNPARSEABLE in {fault.code for fault in faults}
+
+
+def test_negative_control_a_repeated_key_is_a_fault(tmp_path):
+    """JSON keeps the last silently, so one of two wordings ships and neither
+    author knows which — the same default the registry loader refuses in YAML."""
+    _, faults = write_locales(
+        tmp_path, index='import en from "./en.json";\n',
+        files={"en.json": '{"a.b": "One", "a.b": "Two"}'})
+    assert codes.LOCALE_MALFORMED in {fault.code for fault in faults}
+
+
+def test_negative_control_a_non_string_wording_is_a_fault(tmp_path):
+    _, faults = write_locales(tmp_path, index='import en from "./en.json";\n',
+                              files={"en.json": {"a.b": {"nested": "no"}}})
+    assert codes.LOCALE_MALFORMED in {fault.code for fault in faults}
+
+
+def test_negative_control_no_default_locale_is_a_fault(tmp_path):
+    _, faults = write_locales(tmp_path, index='import fr from "./fr.json";\n',
+                              files={"fr.json": {}})
+    assert codes.DEFAULT_LOCALE_MISSING in {fault.code for fault in faults}
+
+
+def test_positive_control_a_declared_locale_loads(tmp_path):
+    catalogue, faults = write_locales(
+        tmp_path, index='import en from "./en.json";\n',
+        files={"en.json": {"a.b": "One"}})
+    assert not faults
+    assert catalogue.keys == {"a.b"}
+
+
+# --- controls over scanning the adapter -------------------------------------
+
+def write_console(tmp_path, *, adapter, others=()):
+    (tmp_path / ADAPTER).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ADAPTER).write_text(adapter, encoding="utf-8")
+    for name, body in others:
+        path = tmp_path / CONSOLE_ROOT / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return scan_legacy(tmp_path)
+
+
+ADAPTER_SOURCE = f"""\
+export function {HUMANISER}(value: string): string {{ return value; }}
+
+function {MAP_CONSTRUCTOR}(map: Record<string, string>) {{ return map; }}
+
+export const widgetStateLabel = {MAP_CONSTRUCTOR}({{ idle: "Idle" }});
+
+export function roleRank(role: string): number {{ return role.length; }}
+"""
+
+
+def test_negative_control_a_missing_adapter_is_a_fault(tmp_path):
+    scanned, faults = scan_legacy(tmp_path)
+    assert only(faults) == codes.ADAPTER_MISSING
+    assert scanned.sites == ()
+
+
+def test_a_synthetic_adapter_scans_to_its_own_map(tmp_path):
+    """The positive control the two below are measured against."""
+    scanned, faults = write_console(tmp_path, adapter=ADAPTER_SOURCE)
+    assert not faults
+    assert scanned.sites == (f"{ADAPTER}::widgetStateLabel",)
+
+
+def test_negative_control_an_unclassified_export_is_a_fault(tmp_path):
+    scanned, faults = write_console(
+        tmp_path,
+        adapter=ADAPTER_SOURCE + "\nexport const prettyStatus = (s: string) => s;\n")
+    assert only(faults) == codes.ADAPTER_ESCAPED
+    assert scanned.unclassified == ("prettyStatus",)
+
+
+def test_negative_control_a_second_humaniser_is_a_fault(tmp_path):
+    _, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f"export function {HUMANISER}(v: string) {{ return v; }}\n")])
+    assert only(faults) == codes.ADAPTER_ESCAPED
+
+
+def test_a_file_importing_the_humaniser_becomes_a_site(tmp_path):
+    scanned, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f'import {{ {HUMANISER}, other }} from "{ADAPTER_SPECIFIER}";\n')])
+    assert not faults
+    assert f"{CONSOLE_ROOT}/features/x.ts::{HUMANISER}" in scanned.sites
+
+
+def test_a_file_importing_something_else_is_not_a_site(tmp_path):
+    """The allowlist is over reaching the HUMANISER, not over importing the
+    module: fifty-one files import a label map, and #210 is explicit that
+    rewriting them is not slice 0's job."""
+    scanned, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f'import {{ widgetStateLabel }} from "{ADAPTER_SPECIFIER}";\n')])
+    assert not faults
+    assert scanned.humanisers == ()

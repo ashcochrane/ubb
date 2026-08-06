@@ -30,8 +30,17 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   no totals) → `useCursorList` + `LoadMore`.
 - **Errors**: RFC 9457 problem+json on ANY non-2xx (declared or not) → wrap every call in
   `unwrap()` (`src/api/problem.ts`), branch on `code`.
-- **Open enums (ADR-003)**: every categorical field is an open string → labels via `src/lib/labels.ts`
-  with `humanize` fallback; never render raw values.
+- **Open enums (ADR-003)**: every categorical field is an open string, and new values may appear
+  without a schema change. That has not changed; what an unrecognised value *renders as* has.
+- **Labels**: `resolveLabel`/`labelMap` from `src/lib/localisation.ts`, over the generated
+  `*_LABEL_KEYS` maps in `src/lib/vocabulary.ts`, reading the per-locale catalogue in `src/locales`.
+  **Strict — there is no fallback.** A registry value with no wording fails CI (G6) and renders an
+  explicit development error; a value the registry has never seen renders **verbatim**, never
+  title-cased into English UBB did not author (ADR-0008 §4.3, reversing #154 §9.1). Add wording by
+  editing `src/locales/en.json`, never by writing a map.
+- **`src/lib/labels.ts` is the LEGACY adapter** — every export is a migration debt recorded in
+  `gates/migration-ledger.yaml` with an owner slice. Do not add a map to it, and do not import its
+  `humanize` into a new file: both fail CI, because the ledger is the allowlist and it only shrinks.
 - **Canonical values**: `src/lib/vocabulary.ts` is **generated** from the repo's vocabulary registry
   (`domain-vocabulary/`) — value lists, union types and stable label *keys*, never the English.
   Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates

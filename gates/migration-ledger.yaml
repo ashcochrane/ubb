@@ -3297,6 +3297,523 @@ entries:
       are the ones #150's four families rewrite. The metadata appears in that
       slice.
 
+  # --- G6: the console's hand-written value maps (#210) ---------------------
+  #
+  # Thirty of the thirty-two maps in the legacy adapter. Each one keys English
+  # off a raw token and falls back to `humanize`, which is what ADR-0008 §4.3
+  # retires. `expected` names the registry concept whose generated label keys
+  # replace the map; where the registry declares no concept for the value set,
+  # it names `label_key` — the thing that must exist there — rather than a
+  # concept name nobody has decided, which would be provisional vocabulary
+  # recorded as fact.
+  #
+  # OWNERS ARE INHERITED, NOT CHOSEN. Where the concept exists, the owner is
+  # the slice its G2/G3 entry already names, so the map and its value list are
+  # owed to one slice rather than two. Where it does not, the owner is the
+  # cutover: #210 says outright that the remainder reaches zero there, and the
+  # ratchet permits pulling an entry earlier but never later — so the cutover
+  # is the only default that cannot quietly defer a debt.
+
+  - id: g6-map-actor-kind-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::actorKindLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `actorKindLabel` hand-writes the wording for who performed an audited
+      action, and falls back to `humanize`. The registry declares no concept
+      for this value set, so there is no label key to move it to yet and no
+      domain slice's subject contains it. Owned by the cutover, where the
+      ledger reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-billing-mode-description
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::billingModeDescription
+    expected: tenant_posture and customer_billing_mode
+    owner_slice: slice_8
+    reason: >-
+      A sentence of explanatory copy per billing mode, keyed on the raw token
+      and running through the same humanising fallback — where the fallback
+      produces a title-cased token in place of a sentence. ADR-0008 §4.5 keeps
+      prose permanently out of the registry, so what this owes is not a
+      registry concept but a stable label key to hang the sentence on; it moves
+      with `billingModeLabel` beside it.
+
+  - id: g6-map-billing-mode-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::billingModeLabel
+    expected: tenant_posture and customer_billing_mode
+    owner_slice: slice_8
+    reason: >-
+      `billingModeLabel` hand-writes the wording for the tenant's billing mode
+      — including the retired token G7 records against this same file — and
+      falls back to `humanize`, so that token renders as a title-cased copy of
+      itself because a function transformed it rather than because anyone chose
+      those words. It is ADR-0008 §4.3's own worked example. The end state
+      splits this one
+      field in two, a tenant posture and a per-customer billing mode, so the
+      map does not move to one concept's label keys — it is replaced by both,
+      in the slice that splits it.
+
+  - id: g6-map-billing-period-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::billingPeriodStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `billingPeriodStatusLabel` hand-writes the wording for a billing period's
+      status, and falls back to `humanize`. The registry declares no concept
+      for this value set, so there is no label key to move it to yet and no
+      domain slice's subject contains it. Owned by the cutover, where the
+      ledger reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-budget-enforce-mode-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::budgetEnforceModeLabel
+    expected: spend_pool_enforce_mode
+    owner_slice: slice_6
+    reason: >-
+      `budgetEnforceModeLabel` hand-writes the wording for how a spend pool is
+      enforced, and falls back to `humanize` for anything it does not
+      recognise. It becomes `labelMap(SPEND_POOL_ENFORCE_MODE_LABEL_KEYS)` in
+      the slice that rebuilds that vocabulary — the same slice the concept's
+      own value-list entry names, because a value list and the words for it
+      cannot honestly move apart.
+
+  - id: g6-map-card-type-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::cardTypeLabel
+    expected: pricing_book_name
+    owner_slice: slice_4
+    reason: >-
+      `cardTypeLabel` words the cost/price split on a rate card. #138 deletes
+      `card_type` outright and the registry retires the word, so this map is
+      not replaced by a label key at all — it goes when slice 4 replaces
+      `RateCard` with the Pricing Book, alongside the two G9 table entries that
+      name the same models.
+
+  - id: g6-map-dimension-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::dimensionLabel
+    expected: analytics_grouping_kind
+    owner_slice: slice_7
+    reason: >-
+      `dimensionLabel` words the six grouping dimensions, three of which are
+      `dim1`–`dim3`. #145 renames the concept to Grouping Field and #153
+      replaces ad-hoc dimensions with `field:`/`rollup:` grouping, so slice 7
+      replaces the whole vocabulary rather than the wording for it.
+
+  - id: g6-map-enforcement-mode-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::enforcementModeLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `enforcementModeLabel` hand-writes the wording for the tenant's
+      enforcement mode, and falls back to `humanize`. The registry declares no
+      concept for this value set, so there is no label key to move it to yet
+      and no domain slice's subject contains it. Owned by the cutover, where
+      the ledger reaches zero; pulling it earlier is the ratchet's one free
+      move.
+
+  - id: g6-map-grant-kind-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::grantKindLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `grantKindLabel` hand-writes the wording for a credit grant's kind, and
+      falls back to `humanize`. The registry declares no concept for this value
+      set, so there is no label key to move it to yet and no domain slice's
+      subject contains it. Owned by the cutover, where the ledger reaches zero;
+      pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-grant-source-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::grantSourceLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `grantSourceLabel` hand-writes the wording for where a credit grant came
+      from, and falls back to `humanize`. The registry declares no concept for
+      this value set, so there is no label key to move it to yet and no domain
+      slice's subject contains it. Owned by the cutover, where the ledger
+      reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-grant-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::grantStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `grantStatusLabel` hand-writes the wording for a credit grant's status,
+      and falls back to `humanize`. The registry declares no concept for this
+      value set, so there is no label key to move it to yet and no domain
+      slice's subject contains it. Owned by the cutover, where the ledger
+      reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-ingest-mode-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::ingestModeLabel
+    expected: tenant_product
+    owner_slice: slice_1
+    reason: >-
+      `ingestModeLabel` words which ingest lane took an event. #149 deletes the
+      fast lane in full and the registry retires `ingest_mode` into
+      `tenant_product`, so slice 1 removes the map rather than rewiring it:
+      there is no second lane left to name.
+
+  - id: g6-map-ingest-rejection-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::ingestRejectionLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `ingestRejectionLabel` hand-writes the wording for why an ingested event
+      was refused, and falls back to `humanize`. The registry declares no
+      concept for this value set, so there is no label key to move it to yet
+      and no domain slice's subject contains it. Owned by the cutover, where
+      the ledger reaches zero; pulling it earlier is the ratchet's one free
+      move.
+
+  - id: g6-map-invitation-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::invitationStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `invitationStatusLabel` hand-writes the wording for an invitation's
+      status, and falls back to `humanize`. The registry declares no concept
+      for this value set, so there is no label key to move it to yet and no
+      domain slice's subject contains it. Owned by the cutover, where the
+      ledger reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-member-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::memberStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `memberStatusLabel` hand-writes the wording for a team member's status,
+      and falls back to `humanize`. The registry declares no concept for this
+      value set, so there is no label key to move it to yet and no domain
+      slice's subject contains it. Owned by the cutover, where the ledger
+      reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-past-limit-family-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::pastLimitFamilyLabel
+    expected: control_family
+    owner_slice: slice_6
+    reason: >-
+      `pastLimitFamilyLabel` hand-writes the wording for which control fired,
+      and falls back to `humanize` for anything it does not recognise. It
+      becomes `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in the slice that rebuilds
+      that vocabulary — the same slice the concept's own value-list entry
+      names, because a value list and the words for it cannot honestly move
+      apart.
+
+  - id: g6-map-pre-check-reason-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::preCheckReasonLabel
+    expected: affordability_reason
+    owner_slice: slice_6
+    reason: >-
+      `preCheckReasonLabel` hand-writes the wording for why an affordability
+      question was answered no, and falls back to `humanize` for anything it
+      does not recognise. It becomes
+      `labelMap(AFFORDABILITY_REASON_LABEL_KEYS)` in the slice that rebuilds
+      that vocabulary — the same slice the concept's own value-list entry
+      names, because a value list and the words for it cannot honestly move
+      apart.
+
+  - id: g6-map-pricing-model-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::pricingModelLabel
+    expected: rate_structure
+    owner_slice: slice_4
+    reason: >-
+      `pricingModelLabel` hand-writes the wording for how a rate is structured,
+      and falls back to `humanize` for anything it does not recognise. It
+      becomes `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in the slice that rebuilds
+      that vocabulary — the same slice the concept's own value-list entry
+      names, because a value list and the words for it cannot honestly move
+      apart.
+
+  - id: g6-map-product-description
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::productDescription
+    expected: tenant_product
+    owner_slice: slice_1
+    reason: >-
+      A sentence of explanatory copy per product, keyed on the raw token.
+      ADR-0008 §4.5 keeps prose out of the registry permanently, so this owes a
+      stable label key rather than a concept — and it owes it in slice 1, which
+      deletes `metering_async` and takes one of its rows with it.
+
+  - id: g6-map-product-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::productLabel
+    expected: tenant_product
+    owner_slice: slice_1
+    reason: >-
+      `productLabel` hand-writes the wording for the enabled products, and
+      falls back to `humanize` for anything it does not recognise. It becomes
+      `labelMap(TENANT_PRODUCT_LABEL_KEYS)` in the slice that rebuilds that
+      vocabulary — the same slice the concept's own value-list entry names,
+      because a value list and the words for it cannot honestly move apart.
+
+  - id: g6-map-referral-program-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::referralProgramStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `referralProgramStatusLabel` hand-writes the wording for a referral
+      program's status, and falls back to `humanize`. The registry declares no
+      concept for this value set, so there is no label key to move it to yet
+      and no domain slice's subject contains it. Owned by the cutover, where
+      the ledger reaches zero; pulling it earlier is the ratchet's one free
+      move.
+
+  - id: g6-map-revenue-mode-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::revenueModeLabel
+    expected: tenant_posture
+    owner_slice: slice_8
+    reason: >-
+      `revenueModeLabel` hand-writes the wording for whether revenue is billed
+      or metered, and falls back to `humanize` for anything it does not
+      recognise. It becomes `labelMap(TENANT_POSTURE_LABEL_KEYS)` in the slice
+      that rebuilds that vocabulary — the same slice the concept's own
+      value-list entry names, because a value list and the words for it cannot
+      honestly move apart.
+
+  - id: g6-map-reward-type-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::rewardTypeLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `rewardTypeLabel` hand-writes the wording for how a referral reward is
+      calculated, and falls back to `humanize`. The registry declares no
+      concept for this value set, so there is no label key to move it to yet
+      and no domain slice's subject contains it. Owned by the cutover, where
+      the ledger reaches zero; pulling it earlier is the ratchet's one free
+      move.
+
+  - id: g6-map-role-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::roleLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `roleLabel` hand-writes the wording for a team member's role, and falls
+      back to `humanize`. The registry declares no concept for this value set,
+      so there is no label key to move it to yet and no domain slice's subject
+      contains it. Owned by the cutover, where the ledger reaches zero; pulling
+      it earlier is the ratchet's one free move.
+
+  - id: g6-map-stop-reason-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::stopReasonLabel
+    expected: reason_code
+    owner_slice: slice_6
+    reason: >-
+      `stopReasonLabel` hand-writes the wording for why a stop fired, and falls
+      back to `humanize` for anything it does not recognise. It becomes
+      `labelMap(REASON_CODE_LABEL_KEYS)` in the slice that rebuilds that
+      vocabulary — the same slice the concept's own value-list entry names,
+      because a value list and the words for it cannot honestly move apart.
+
+  - id: g6-map-stop-scope-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::stopScopeLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `stopScopeLabel` hand-writes the wording for what a stop applies to, and
+      falls back to `humanize`. The registry declares no concept for this value
+      set, so there is no label key to move it to yet and no domain slice's
+      subject contains it. Owned by the cutover, where the ledger reaches zero;
+      pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-task-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::taskStatusLabel
+    expected: task_status
+    owner_slice: slice_5
+    reason: >-
+      `taskStatusLabel` hand-writes the wording for a Task's status, and falls
+      back to `humanize` for anything it does not recognise. It becomes
+      `labelMap(TASK_STATUS_LABEL_KEYS)` in the slice that rebuilds that
+      vocabulary — the same slice the concept's own value-list entry names,
+      because a value list and the words for it cannot honestly move apart.
+
+  - id: g6-map-tenant-invoice-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::tenantInvoiceStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `tenantInvoiceStatusLabel` hand-writes the wording for a tenant invoice's
+      status, and falls back to `humanize`. The registry declares no concept
+      for this value set, so there is no label key to move it to yet and no
+      domain slice's subject contains it. Owned by the cutover, where the
+      ledger reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-transaction-type-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::transactionTypeLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `transactionTypeLabel` hand-writes the wording for a wallet transaction's
+      type, and falls back to `humanize`. The registry declares no concept for
+      this value set, so there is no label key to move it to yet and no domain
+      slice's subject contains it. Owned by the cutover, where the ledger
+      reaches zero; pulling it earlier is the ratchet's one free move.
+
+  - id: g6-map-usage-invoice-status-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::usageInvoiceStatusLabel
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `usageInvoiceStatusLabel` hand-writes the wording for a usage invoice's
+      status, and falls back to `humanize`. The registry declares no concept
+      for this value set, so there is no label key to move it to yet and no
+      domain slice's subject contains it. Owned by the cutover, where the
+      ledger reaches zero; pulling it earlier is the ratchet's one free move.
+
+
+  # --- G6: the hand-written renderer -----------------------------------------
+  #
+  # Not a map: a function that takes an event name apart and humanises the
+  # pieces. It is the same debt in a worse form, because it invents wording
+  # for a value it has never been told about.
+
+  - id: g6-renderer-webhook-event-type-label
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::webhookEventTypeLabel
+    expected: webhook_event_type
+    owner_slice: slice_6
+    reason: >-
+      `webhookEventTypeLabel` it splits an event name on the dot and humanises
+      both halves, so the thirteen events #205 renames render under invented
+      wording rather than none. It becomes a catalogue lookup over
+      `WEBHOOK_EVENT_TYPE_LABEL_KEYS` when slice 6 renames the event catalogue.
+
+
+  # --- G6: the humanising call sites -----------------------------------------
+  #
+  # Eleven files import `humanize` from the legacy adapter. The ledger IS the
+  # allowlist: a twelfth is a ledger addition, which the ratchet refuses
+  # without a reviewed seeding authorisation, so the retired behaviour cannot
+  # spread while it is being removed.
+
+  - id: g6-humanises-usage-invoices-card
+    gate: G6
+    site: apps/ui/src/features/billing/components/usage-invoices-card.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `usage-invoices-card.tsx` humanises `skip_reason` into an invoice row's
+      tooltip. The registry declares no concept for why a usage invoice was
+      skipped.
+
+  - id: g6-humanises-revenue-panels
+    gate: G6
+    site: apps/ui/src/features/customers/components/revenue-panels.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `revenue-panels.tsx` humanises a revenue profile's recurring interval
+      into a sentence.
+
+  - id: g6-humanises-usage-invoices-section
+    gate: G6
+    site: apps/ui/src/features/customers/components/usage-invoices-section.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `usage-invoices-section.tsx` the same `skip_reason` tooltip, on the
+      customer page.
+
+  - id: g6-humanises-test-event-response
+    gate: G6
+    site: apps/ui/src/features/developers/components/test-event-response.tsx::humanize
+    expected: event_type_key
+    owner_slice: slice_2
+    reason: >-
+      `test-event-response.tsx` humanises the tenant's own Event Type key.
+      ADR-0008 §4.4 is explicit that a `tenant_defined` value renders as the
+      tenant declared it — title-casing someone else's identifier is the same
+      defect as inventing UBB's own.
+
+  - id: g6-humanises-attribute-referral-dialog
+    gate: G6
+    site: apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `attribute-referral-dialog.tsx` humanises a referral's status into a
+      success toast.
+
+  - id: g6-humanises-ledger-dialog
+    gate: G6
+    site: apps/ui/src/features/referrals/components/ledger-dialog.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `ledger-dialog.tsx` humanises a reward's calculation method into a table
+      cell.
+
+  - id: g6-humanises-referrals-table
+    gate: G6
+    site: apps/ui/src/features/referrals/components/referrals-table.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `referrals-table.tsx` humanises a referral's status into a table cell.
+
+  - id: g6-humanises-audit-log-page
+    gate: G6
+    site: apps/ui/src/features/settings/components/audit-log-page.tsx::humanize
+    expected: label_key
+    owner_slice: slice_8
+    reason: >-
+      `audit-log-page.tsx` humanises an audited record's resource type.
+
+  - id: g6-humanises-metadata-tree
+    gate: G6
+    site: apps/ui/src/features/settings/components/metadata-tree.tsx::humanize
+    expected: metadata_key
+    owner_slice: slice_2
+    reason: >-
+      `metadata-tree.tsx` humanises tenant-authored metadata keys into tree
+      labels. Slice 2 is where `tags` folds into `metadata`, and where the rule
+      that UBB never rewords a key the tenant chose has to land.
+
+  - id: g6-humanises-settings
+    gate: G6
+    site: apps/ui/src/features/settings/lib/settings.ts::humanize
+    expected: audit_action
+    owner_slice: slice_8
+    reason: >-
+      `settings.ts` humanises the noun half of an audit action, and RE-EXPORTS
+      the result as `auditActionLabel`. This is the one place the adapter's
+      reach leaks past the one hop the gate measures, recorded here rather than
+      left to be discovered.
+
+  - id: g6-humanises-event-groups
+    gate: G6
+    site: apps/ui/src/features/webhooks/lib/event-groups.ts::humanize
+    expected: webhook_event_type
+    owner_slice: slice_6
+    reason: >-
+      `event-groups.ts` humanises both halves of every webhook event name to
+      build the subscription picker's group headings and rows.
 seeding_authorisations:
   - gate: G9
     issue: 203
@@ -3409,3 +3926,31 @@ seeding_authorisations:
       arrival, and recording them would make "the ledger is at zero"
       unreachable in exactly the way the permanent exceptions are kept out of
       it.
+  - gate: G6
+    issue: 210
+    entries_added: 42
+    reason: >-
+      This pull request installs the label-coverage gate — every required
+      registry value has wording in every shipped locale, every wording names a
+      live registry value, no retired token keeps one — and records what the
+      console still does instead. Coverage itself seeds NOTHING: all 188
+      required keys are authored in the same change, so that half of G6 is at
+      zero on the day it is installed. The forty-two entries are the other
+      half: thirty hand-written value maps, one hand-written renderer and
+      eleven files importing the humaniser ADR-0008 §4.3 retires.
+      It converts none of them. A map's wording moves when its vocabulary is
+      rebuilt, which is why every entry naming a registry concept inherits that
+      concept's existing owner slice rather than choosing a new one — the value
+      list and the words for it are owed to one slice, not two. Converting one
+      early would pay a later slice's G2 debt from here and leave that slice's
+      entry unreachable.
+      The two Stripe-vocabulary maps are NOT here. They are permanent
+      exceptions in gates/permanent-exceptions.yaml: UBB owns neither those
+      values nor their wording, map #137 constraint 5 forbids the registry
+      enumerating a vendor's catalogue, so no label key will ever exist to move
+      them to and no slice owes the work.
+      The ledger IS the allowlist this gate enforces. There is no second list
+      of permitted sites anywhere: a thirty-first map or a twelfth humanising
+      import is an addition the ratchet refuses without its own authorisation,
+      which is what makes "reachable from allowlisted sites and nowhere else"
+      mechanical rather than a review habit.

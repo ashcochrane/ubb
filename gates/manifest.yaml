@@ -325,14 +325,71 @@ gates:
       carries the key.
     oracle: the vocabulary registry, compared against the console's label catalogue
     source: ADR-0008 §4, #158 §4.2
-    status: owned_by_slice_0
-    blocked_on: >-
-      The console has no label catalogue to check. `apps/ui/src/lib/labels.ts`
-      is today both identity and expression (#158 §16); #210 splits them and
-      lands the catalogue, the strict lookup and the coverage check. The keys it
-      must cover are the `label_key_prefix` of every valued concept in
-      domain-vocabulary/ (#202), and the tokens it may not label are that
-      registry's retired terms.
+    status: installed
+    enforced_by:
+      - suite: contracts
+        node: >-
+          tests/contracts/test_label_catalogue.py::test_every_registry_value_has_wording_in_every_locale
+      - suite: contracts
+        node: >-
+          tests/contracts/test_label_catalogue.py::test_every_label_names_a_live_registry_value
+      - suite: contracts
+        node: >-
+          tests/contracts/test_label_catalogue.py::test_no_retired_token_keeps_its_wording
+      - suite: contracts
+        node: >-
+          tests/contracts/test_label_catalogue.py::test_the_ledger_records_exactly_what_the_legacy_adapter_still_does
+      - job: contract
+        step: UI tests
+    notes: >-
+      FOUR NODES FOR ADR-0008 §4.2'S FOUR PROMISES, except that the first and
+      the fourth are one question rather than two: the coverage check runs once
+      per LOADED locale, so "every supported locale carries the required key"
+      is the first promise asked in a loop. With one locale the loop runs once;
+      the day a second catalogue lands, a half-translated one fails with no
+      edit here. A fifth node comparing the locales against each other was
+      written and DELETED — with one locale it compared a set with itself, and
+      with two it could only report what the first already reports. Naming a
+      check that cannot fail is worse than naming none, because this manifest
+      would go on offering it as evidence.
+      The remaining split is not decoration: coverage in one direction is the
+      check everybody writes, and it is the other — every label names a LIVE
+      registry value — that stops the catalogue accumulating wording for values
+      renamed two slices ago. The retired-token promise is stated separately
+      again, over the catalogue's own keys, because it is IMPLIED by the other
+      two only for as long as no live value collides with a retired one.
+      THE LAST SUITE NODE IS THE HALF THAT MATTERS MOST. Coverage proves the catalogue is
+      complete, not that anything USES it. `apps/ui/src/lib/labels.ts` still
+      hand-writes thirty-two value maps and eleven files still import the
+      humaniser ADR-0008 §4.3 retires, so #210 keeps it as an explicit legacy
+      adapter and makes every one of its debts a migration-ledger entry with an
+      owner slice — thirty maps, one renderer and eleven importing files, 42 in
+      all. THE LEDGER IS THE ALLOWLIST: there is no second list of permitted
+      sites anywhere, so a new map or a new humanising import is a ledger
+      addition and the ratchet refuses it without a reviewed authorisation.
+      That is what makes "reachable from allowlisted sites and nowhere else"
+      mechanical rather than a review habit, and it is why this row's check
+      reads `gates/migration-ledger.yaml` directly instead of holding a
+      constant of its own — one encoding, the shape #203 got wrong.
+      THE `UI tests` STEP is named because the console's own suite is the only
+      place the LOOKUP runs. The contract suite reads two files and compares
+      them; it cannot see a catalogue that is complete and unreachable — a
+      broken import, a resolver reading the wrong locale, a fallback quietly
+      reintroduced. `apps/ui/src/lib/localisation.test.tsx` renders the three
+      outcomes into the DOM. It is a workflow step rather than a suite node
+      because there is still no vitest suite kind: this row needs the STEP
+      armed, not a named vitest node, so adding a checker nobody has exercised
+      would buy nothing.
+      TWO PERMANENT EXCEPTIONS, not debts. `subscriptionStatusLabel` and
+      `planIntervalLabel` word STRIPE's vocabulary. Map #137 constraint 5
+      forbids UBB shipping a vendor catalogue, so the registry must never
+      declare those concepts, so no label key can ever exist to move them to
+      and no slice owes the work. A ledger entry for either would be a debt
+      nobody could pay and would put G22's zero out of reach by construction.
+      WHAT THIS GATE CANNOT SAY is whether the wording is any good, consistent
+      or correctly translated. Those need judgement about meaning, which
+      ADR-0008 §1 keeps human. It proves a value has words, that the words name
+      something real, and that nothing invents them.
 
   G7:
     statement: >-
