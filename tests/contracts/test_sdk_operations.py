@@ -1,17 +1,25 @@
-"""The SDK's call surface agrees with the committed contract, both ways (#204).
+"""The SDK's call surface agrees with the committed contract, both ways (#204, #209).
 
-G17 and G18 in `gates/manifest.yaml`, from ADR-0007 §4 and #155 §8.2. Two
-properties, settled from one join:
+G17 and G18 in `gates/manifest.yaml`, from ADR-0007 §4 and #155 §8.2 and §8.3.
+Three properties now, settled from one join:
 
 - **Forward** — every hand-written call targets a published operation, matched
   on the complete identity: HTTP method AND normalised path. A path match alone
   is insufficient, because `GET /x/{id}` is not `POST /x/{id}`.
 - **Reverse** — every published operation carries a disposition in
   `ubb-sdk/operation-coverage.yaml`, which regenerates with zero diff.
+- **Confined** (#209) — a call *names* an operation rather than spelling a
+  route, and the only file under `ubb-sdk/ubb/` allowed to spell one is the
+  generated registry, which regenerates with zero diff too.
 
 #155 §8.5 names six cases CI must prove and calls them not negotiable. They are
-section 2 below, one test each, in its order. Section 3 carries the controls for
-the rules this gate adds beyond them; section 4 is the ratchet.
+section 2 below, one test each, in its order. #209 moved where two of them can
+go wrong without changing what they assert, and each says so at its own head —
+that is the only concession made to the refactor, and it is a deliberate one:
+the cases are a specification, not a description of an implementation.
+
+Section 3 carries the controls for the rules this gate adds beyond them,
+section 4 is the ratchet, and section 5 checks the wiring.
 
 **Why this suite and not `ubb-sdk/tests/`.** The gate reads source with `ast`
 and never imports the client, so it needs no `httpx` and no running server —
@@ -35,20 +43,23 @@ import yaml
 from _gate_helpers import git
 from _helpers import REPO_ROOT
 from _sdk_helpers import (
-    ROOT, THING_LIST, THING_READ, THING_WRITE, client_module, excusing,
-    interpolated, literal, spec, write_repository,
+    ROOT, THING_LIST, THING_READ, THING_WRITE, call, client_module, constant,
+    excusing, interpolated, literal, registry_source, spec, write_repository,
 )
 from tools.sdk_operations import SurfaceInvalid, assess, load_coverage
 from tools.sdk_operations import errors as codes
+from tools.sdk_operations import registry as registry_module
 from tools.sdk_operations.coverage import (
     DISPOSITIONS, GENERATED_ONLY, LEDGER_PATH, NOT_YET_WRAPPED, WRAPPED,
 )
-from tools.sdk_operations.calls import SHELL_ROOT
+from tools.sdk_operations.calls import ROUTE_MARKER, SHELL_ROOT
 from tools.sdk_operations.manifest import MANIFEST_PATH, compare, render
 from tools.sdk_operations.ratchet import AUTHORISATIONS_PATH
 from tools.sdk_operations.ratchet import compare as ratchet_compare
 from tools.sdk_operations.ratchet import run as ratchet_run
-from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH
+from tools.sdk_operations.registry import REGISTRY_PATH
+from tools.sdk_operations.registry import compare as compare_registry
+from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH, load_operations
 
 #: The modules the walker must have visited. A vacuity guard names them because
 #: a walker that silently found nothing passes every assertion below.
@@ -59,9 +70,19 @@ HAND_WRITTEN_MODULES = ("billing.py", "client.py", "metering.py",
 #: test asserts on the property rather than on "no errors at all", which would
 #: also go red for a stale manifest and say the wrong thing about why.
 FORWARD_FAULTS = frozenset({
-    codes.NO_SUCH_OPERATION, codes.CALL_NOT_LITERAL, codes.CALL_MALFORMED,
-    codes.STRAY_ROUTE_LITERAL, codes.UNSCANNED_PACKAGE, codes.SHELL_MISSING,
-    codes.SHELL_EMPTY, codes.SHELL_UNREADABLE,
+    codes.NO_SUCH_OPERATION, codes.NO_SUCH_OPERATION_CONSTANT,
+    codes.CALL_NOT_AN_OPERATION, codes.CALL_MALFORMED,
+    codes.PARAMETER_COUNT_WRONG, codes.STRAY_ROUTE_LITERAL,
+    codes.STALE_DOCUMENTED_ROUTE, codes.UNSCANNED_PACKAGE,
+    codes.SHELL_MISSING, codes.SHELL_EMPTY, codes.SHELL_UNREADABLE,
+})
+
+#: The faults that mean the registry is not the contract's.
+REGISTRY_FAULTS = frozenset({
+    codes.REGISTRY_MISSING, codes.REGISTRY_UNREADABLE,
+    codes.REGISTRY_INCOMPLETE, codes.REGISTRY_ENTRY_UNKNOWN,
+    codes.REGISTRY_ENTRY_WRONG, codes.OPERATION_ID_NOT_A_NAME,
+    codes.REGISTRY_NAME_COLLISION,
 })
 
 
@@ -103,6 +124,10 @@ def disposition_of(coverage, operation_id):
     raise AssertionError(f"{operation_id} has no row at all")
 
 
+def messages(invalid, code):
+    return [error.message for error in invalid.errors if error.code == code]
+
+
 # ---------------------------------------------------------------------------
 # 1. The shipped tree
 # ---------------------------------------------------------------------------
@@ -125,6 +150,85 @@ def test_every_hand_written_call_targets_a_published_operation(shipped):
         f"{len(coverage.excused)} invalid calls are excused and #155 §1.3 "
         f"found three. The list only shrinks and reaches zero before the "
         f"cutover.")
+
+
+def test_no_route_literal_survives_in_the_hand_written_layer(shipped):
+    """#209's own claim, asserted over the real tree rather than a synthetic one.
+
+    Two halves, and the second is what makes the first mean anything. There is
+    no route literal outside the registry — and the reason there is none is
+    that no call site can spell one, not that somebody tidied up. Both are
+    checked by `assess`; this names the fault codes so a regression reads as
+    "a path came back into the hand shell" rather than as a generic red.
+    """
+    _, errors = shipped
+    strays = [error for error in errors
+              if error.code in (codes.STRAY_ROUTE_LITERAL,
+                                codes.CALL_NOT_AN_OPERATION)]
+    assert not strays, (
+        "\n" + "\n".join(str(error) for error in strays)
+        + f"\n\nSince #209 the only file under {SHELL_ROOT}/ that may spell a "
+          f"path is {REGISTRY_PATH}, and it is generated.")
+
+
+def test_the_registry_regenerates_with_zero_diff(shipped):
+    """The committed registry is exactly what the contract and ledger render.
+
+    Without this, "confined to one mechanically checked registry" would be
+    confined to one registry and checked by nothing: a hand edit could point a
+    constant anywhere, and every wrapper naming it would follow.
+    """
+    coverage, _ = shipped
+    stale, _ = compare_registry(coverage.entries, REPO_ROOT)
+    assert stale is None, str(stale)
+
+
+def test_the_committed_registry_is_the_contract_operation_by_operation(shipped):
+    """Not the same claim as the zero-diff gate above, and the difference matters.
+
+    Zero diff compares BYTES against what the renderer produces now. This
+    compares the committed file's declarations against the contract one
+    operation at a time, so a disagreement is reported as "this constant says
+    POST and the contract says GET" rather than as a diff a reader has to
+    interpret. It is also the check that survives a renderer whose layout
+    changes: the bytes would differ for a reason that is not a fault, and this
+    would still be the thing that says whether anything is actually wrong.
+    """
+    _, errors = shipped
+    faults = [error for error in errors if error.code in REGISTRY_FAULTS]
+    assert not faults, (
+        "\n" + "\n".join(str(error) for error in faults)
+        + f"\n\n{REGISTRY_PATH} is generated: run "
+          f"`python -m tools.sdk_operations --write`.")
+
+
+def test_every_published_operation_can_be_named():
+    """One constant per published operation, so no operation is unreachable.
+
+    Read off DISK — the committed registry parsed on one side, the committed
+    contract parsed on the other — rather than from the `shipped` fixture.
+    `coverage.entries` is what the renderer produces from the contract, so
+    comparing it to `coverage.rows` would compare two things derived from the
+    same dictionary: a check that cannot fail, which is the shape this whole
+    programme exists to refuse.
+
+    The two ends genuinely differ. `registry.load` reads Python source with
+    `ast`; `load_operations` reads JSON. Nothing but the repository connects
+    them, which is what makes disagreement possible and therefore worth
+    asserting.
+    """
+    committed = registry_module.load(REPO_ROOT, [])
+    operations, _ = load_operations(REPO_ROOT)
+
+    named = {entry.operation_id for entry in committed.values()
+             if entry.is_published}
+    published = {operation.operation_id for operation in operations.values()}
+    assert named == published, (
+        f"the committed registry names {len(named)} operations and the "
+        f"contract publishes {len(published)}; the difference is "
+        f"{sorted(published ^ named)}. Run "
+        f"`python -m tools.sdk_operations --write`.")
+    assert len(published) > 100, "suspect the contract read"
 
 
 def test_every_published_operation_carries_a_disposition(shipped):
@@ -194,6 +298,26 @@ def test_the_ledger_records_exactly_what_the_gate_excuses(shipped):
         f"catches the case where the authorisation was written anyway.")
 
 
+def test_each_excused_route_is_reachable_only_through_the_ledger(shipped):
+    """#209's grip on the three dead calls, which is the point of generating
+    their constants from the ledger rather than writing them down.
+
+    Each debt has exactly one `UNPUBLISHED_` constant, and that constant exists
+    because the entry does. Delete the entry — which is what paying the debt
+    looks like — and the constant goes with it, so the method that owed it
+    stops resolving in the same commit rather than three slices later.
+    """
+    coverage, _ = shipped
+    unpublished = {name for name, entry in coverage.entries.items()
+                   if not entry.is_published}
+    assert unpublished == {registry_module.unpublished_name(found)
+                           for _, found in coverage.excused}
+    assert all(name.startswith(registry_module.UNPUBLISHED_PREFIX)
+               for name in unpublished), (
+        "a route the contract does not publish must be visibly named as one at "
+        "the call site — that is the whole reason these constants are ugly")
+
+
 def test_the_walker_visited_the_whole_hand_written_surface(shipped):
     """Vacuity guard: a gate that walks nothing passes everything.
 
@@ -242,26 +366,52 @@ def test_the_dead_calls_are_owed_by_the_slice_that_replaces_them():
 # ---------------------------------------------------------------------------
 
 def test_case_1_a_nonexistent_route_fails(tmp_path):
-    invalid = rejection(tmp_path, modules={
-        "things.py": client_module(("get", literal(f"{ROOT}/nowhere"))),
-    })
-    assert codes.NO_SUCH_OPERATION in invalid.codes()
-    assert any("/nowhere" in error.message for error in invalid.errors)
+    """Both ways it can now be reached, because #209 split the mistake in two.
+
+    A wrapper can no longer *write* a nonexistent route — there is nowhere at a
+    call site to put one. So the case survives as its two halves: a wrapper
+    naming an operation nothing declares, and a registry declaring an operation
+    nothing publishes. Asserting only the first would leave the file that
+    replaced the literals unchecked, which is where the literals went.
+    """
+    named = rejection(tmp_path / "wrapper", modules={
+        "things.py": client_module("*ops.THINGS_NOWHERE")})
+    assert codes.NO_SUCH_OPERATION_CONSTANT in named.codes()
+    assert any("THINGS_NOWHERE" in message for message
+               in messages(named, codes.NO_SUCH_OPERATION_CONSTANT))
+
+    invented = registry_source() + (
+        f"\nTHINGS_NOWHERE = Operation('things_nowhere', 'get',"
+        f" '{ROOT}/nowhere')\n")
+    declared = rejection(tmp_path / "registry", registry=invented, modules={
+        "things.py": client_module("*ops.THINGS_NOWHERE")})
+    assert codes.REGISTRY_ENTRY_UNKNOWN in declared.codes()
+    assert any("/nowhere" in message for message
+               in messages(declared, codes.REGISTRY_ENTRY_UNKNOWN))
 
 
 def test_case_2_a_valid_path_with_the_wrong_method_fails(tmp_path):
     """ADR-0007 §4's own example. The path exists; the method does not.
 
+    #209 moved where this can happen without weakening it. A call site cannot
+    spell a method any more, so the one remaining way to reach a valid path
+    under a method nothing publishes is a registry entry that says so — and the
+    check lives there. A rule that declared its own violation unreachable would
+    be a rule nothing enforces, which is the failure this whole programme is
+    about.
+
     The message must name the method that IS published, because this is the
     failure a reader is likeliest to misread as "the route is wrong".
     """
-    invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
-        "things.py": client_module(("post", literal(f"{ROOT}/things"))),
-    })
-    faults = [error for error in invalid.errors
-              if error.code == codes.NO_SUCH_OPERATION]
-    assert len(faults) == 1
-    assert f"GET {ROOT}/things" in faults[0].message
+    wrong = registry_source((THING_LIST,)).replace(
+        f"'get', '{ROOT}/things'", f"'post', '{ROOT}/things'")
+    invalid = rejection(tmp_path, operations=(THING_LIST,), registry=wrong,
+                        modules={"things.py": client_module(call("things_list"))})
+
+    faults = messages(invalid, codes.REGISTRY_ENTRY_WRONG)
+    assert len(faults) == 1, invalid.errors
+    assert f"POST {ROOT}/things" in faults[0], "what the registry says"
+    assert f"GET {ROOT}/things" in faults[0], "what the contract publishes"
 
 
 def test_case_3_a_renamed_operation_with_a_stale_wrapper_fails(tmp_path):
@@ -271,17 +421,63 @@ def test_case_3_a_renamed_operation_with_a_stale_wrapper_fails(tmp_path):
     control that only asserted the "after" would be case 1 again wearing a
     different name, and would still pass if the gate had never resolved the
     call in the first place.
+
+    This is the case #209 exists for, and it is now caught one step earlier:
+    the constant is renamed with the operation, so a wrapper that did not move
+    names something that is not there, rather than sending a stale path to a
+    real server.
     """
     before = tmp_path / "before"
     after = tmp_path / "after"
-    wrapper = {"things.py": client_module(("get", literal(f"{ROOT}/things")))}
+    wrapper = {"things.py": client_module(call("things_list"))}
 
     coverage = accepted(before, operations=(THING_LIST,), modules=wrapper)
     assert disposition_of(coverage, "things_list").disposition == WRAPPED
 
-    renamed = ("get", f"{ROOT}/widgets", "things_list")
+    renamed = ("get", f"{ROOT}/things", "things_index")
     invalid = rejection(after, operations=(renamed,), modules=wrapper)
-    assert codes.NO_SUCH_OPERATION in invalid.codes()
+    assert codes.NO_SUCH_OPERATION_CONSTANT in invalid.codes()
+    assert any("THINGS_INDEX" in message for message
+               in messages(invalid, codes.NO_SUCH_OPERATION_CONSTANT)), (
+        "the message must name what it was renamed to; a bare 'no such "
+        "constant' leaves an author diffing two long identifiers by eye")
+
+
+def test_case_3b_a_path_that_moves_under_a_stable_operation_is_followed(tmp_path):
+    """The other half of case 3, and the behaviour #209 deliberately CHANGED.
+
+    Before the registry, a wrapper carried the path, so moving a route in the
+    contract broke the wrapper — case 3 above, in its original form. Now the
+    wrapper carries the `operationId`, so the same move is FOLLOWED: the
+    constant is regenerated with the new path and the method calls the right
+    route without being touched. That is the improvement, not an oversight, and
+    it is asserted here because a behaviour nobody wrote down is a behaviour
+    that gets 'fixed' by the next person to notice it.
+
+    What still catches a move the author did not intend is the documentation:
+    a docstring naming the old path no longer resolves, so the method that
+    quietly changed target says so in the same run. Both halves are asserted,
+    because the second is the whole reason the first is safe.
+    """
+    moved = ("get", f"{ROOT}/widgets", "things_list")
+    wrapper = client_module(call("things_list"))
+
+    coverage = accepted(tmp_path / "followed", operations=(moved,),
+                        modules={"things.py": wrapper})
+    row = disposition_of(coverage, "things_list")
+    assert row.disposition == WRAPPED and row.path == f"{ROOT}/widgets", (
+        "the untouched wrapper must now reach the moved route")
+
+    documented = client_module(
+        call("things_list"),
+        extra=f'\n\ndef documented():\n'
+              f'    """Wraps GET {ROOT}/things, where it used to live."""\n'
+              f'    return None\n')
+    invalid = rejection(tmp_path / "stale-prose", operations=(moved,),
+                        modules={"things.py": documented})
+    assert codes.STALE_DOCUMENTED_ROUTE in invalid.codes(), (
+        "a move the author did not intend still surfaces, through the prose "
+        "that names where the route used to be")
 
 
 def test_case_4_a_new_operation_absent_from_the_manifest_fails(tmp_path):
@@ -313,7 +509,7 @@ def test_case_5_a_deliberate_gap_passes_and_stays_visible(tmp_path):
         operations=(THING_LIST, THING_READ, THING_WRITE),
         # `things_write` has no generated module: unreachable by any route.
         generated=("things_list", "things_read"),
-        modules={"things.py": client_module(("get", literal(f"{ROOT}/things")))})
+        modules={"things.py": client_module(call("things_list"))})
 
     assert disposition_of(coverage, "things_list").disposition == WRAPPED
     assert disposition_of(coverage, "things_read").disposition == GENERATED_ONLY
@@ -326,13 +522,18 @@ def test_case_5_a_deliberate_gap_passes_and_stays_visible(tmp_path):
             f"{operation_id} is unwrapped and vanished from the manifest — "
             f"a gap nobody can see is not a declared gap")
 
+    # An unwrapped operation is still NAMED. The registry is the contract's
+    # vocabulary, not a record of what happens to be called today, so the next
+    # wrapper has a constant to reach for rather than a path to invent.
+    assert constant("things_write") in coverage.entries
+
 
 def test_case_6_a_correctly_mapped_wrapper_passes(tmp_path):
-    """Including an interpolated path, which is how 39 of the real calls read."""
+    """Both call shapes, since a parameterised route is 39 of the real ones."""
     coverage = accepted(tmp_path, modules={
         "things.py": client_module(
-            ("get", literal(f"{ROOT}/things")),
-            ("get", interpolated(f"{ROOT}/things/{{}}")),
+            call("things_list"),
+            call("things_read", "thing_id"),
         )})
 
     assert disposition_of(coverage, "things_list").disposition == WRAPPED
@@ -345,8 +546,27 @@ def test_case_6_a_correctly_mapped_wrapper_passes(tmp_path):
 # 3. The rules this gate adds beyond the six
 # ---------------------------------------------------------------------------
 
-def test_a_route_spelled_outside_a_readable_call_is_refused(tmp_path):
-    """The conjunct that makes the forward check honest.
+def test_a_route_literal_at_a_call_site_is_refused(tmp_path):
+    """The shape all 81 calls had before #209, now a violation.
+
+    Without this the refactor could come undone one method at a time, and each
+    undoing would look like ordinary code.
+    """
+    invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
+        "things.py": client_module(f'"get", {literal(f"{ROOT}/things")}')})
+    assert codes.CALL_NOT_AN_OPERATION in invalid.codes()
+
+
+def test_an_interpolated_route_at_a_call_site_is_refused(tmp_path):
+    """And the f-string shape, which is how the parameterised ones read."""
+    invalid = rejection(tmp_path, modules={
+        "things.py": client_module(
+            f'"get", {interpolated(f"{ROOT}/things/{{}}")}')})
+    assert codes.CALL_NOT_AN_OPERATION in invalid.codes()
+
+
+def test_a_route_spelled_outside_a_call_is_refused(tmp_path):
+    """The conjunct that makes the rule honest.
 
     Without it the gate reads only `_request`-shaped calls, and
     `self._http.get("/api/v1/...")` is a route it never sees — a hole an author
@@ -358,7 +578,90 @@ def test_a_route_spelled_outside_a_readable_call_is_refused(tmp_path):
     assert codes.STRAY_ROUTE_LITERAL in invalid.codes()
 
 
-def test_a_docstring_naming_a_route_is_prose_and_not_a_call(tmp_path):
+def test_a_module_that_reaches_no_registry_cannot_resolve_anything(tmp_path):
+    """And the message says which import is missing.
+
+    A gate whose failure means "you did it wrong" costs an author a search;
+    one that names the line to add costs them a paste.
+    """
+    invalid = rejection(tmp_path, modules={
+        "things.py": client_module(call("things_list"), imports=False)})
+    faults = messages(invalid, codes.CALL_NOT_AN_OPERATION)
+    assert faults and any("_operations as ops" in message for message in faults)
+
+
+def test_a_computed_target_is_refused_rather_than_skipped(tmp_path):
+    """A call this gate cannot read is not a call it can vouch for.
+
+    Skipping it would make the gate optional: anyone who assembled a route from
+    a variable would be exempt, and the exemption would be invisible.
+    """
+    invalid = rejection(tmp_path, modules={"things.py": client_module(
+        extra='\n\nclass Sneaky:\n'
+              '    def _request(self, method, path, **kwargs): ...\n\n'
+              '    def go(self, route):\n'
+              '        return self._request("get", route)\n')})
+    assert codes.CALL_NOT_AN_OPERATION in invalid.codes()
+
+
+def test_a_keyword_spelled_route_is_refused_too(tmp_path):
+    """`_request(method="get", path=...)` was readable before #209 and is a
+    violation now — the same route, spelled to dodge the positional reader."""
+    invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
+        "things.py": client_module(
+            extra=f'\n\nclass Keyword:\n'
+                  f'    def _request(self, method, path, **kwargs): ...\n\n'
+                  f'    def go(self):\n'
+                  f'        return self._request(method="get", '
+                  f'path="{ROOT}/things")\n')})
+    assert codes.CALL_NOT_AN_OPERATION in invalid.codes()
+
+
+def test_too_few_values_for_a_parameterised_route_is_refused(tmp_path):
+    """A property an f-string could not have had at all.
+
+    `f"/things/{a}"` interpolated whatever it was handed and produced a
+    plausible, wrong path; a registry entry knows how many positions it has.
+    """
+    invalid = rejection(tmp_path, modules={
+        "things.py": client_module(call("things_read"))})
+    faults = messages(invalid, codes.PARAMETER_COUNT_WRONG)
+    assert faults and "1" in faults[0]
+
+
+def test_too_many_values_for_a_parameterised_route_is_refused(tmp_path):
+    invalid = rejection(tmp_path, modules={
+        "things.py": client_module(call("things_read", "thing_id", "other_id"))})
+    assert codes.PARAMETER_COUNT_WRONG in invalid.codes()
+
+
+def test_values_passed_to_a_route_that_takes_none_are_refused(tmp_path):
+    invalid = rejection(tmp_path, modules={
+        "things.py": client_module(call("things_list", "thing_id"))})
+    assert codes.PARAMETER_COUNT_WRONG in invalid.codes()
+
+
+def test_a_stale_route_in_a_docstring_is_refused(tmp_path):
+    """#155 §8.3 says a rename may not leave a stale string behind, and a
+    docstring is a string.
+
+    The SDK's methods document the routes they call, deliberately, as public
+    documentation — so the answer is not to delete them but to hold them to the
+    contract. The rule caught nothing when it landed: of the 53 documented
+    routes, 48 resolve exactly, 4 name a family and 1 is ledger-excused. It is
+    here for the rename that fixes a call and forgets the prose.
+    """
+    invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
+        "things.py": client_module(
+            call("things_list"),
+            extra=f'\n\ndef documented():\n'
+                  f'    """Wraps GET {ROOT}/things/gone, which moved."""\n'
+                  f'    return None\n')})
+    faults = messages(invalid, codes.STALE_DOCUMENTED_ROUTE)
+    assert faults and f"{ROOT}/things/gone" in faults[0]
+
+
+def test_a_docstring_naming_a_real_route_is_prose_and_not_a_call(tmp_path):
     """The other side of that rule, and the reason it needs one.
 
     Every real client method documents the route it calls. Treating those as
@@ -367,52 +670,42 @@ def test_a_docstring_naming_a_route_is_prose_and_not_a_call(tmp_path):
     """
     coverage = accepted(tmp_path, operations=(THING_LIST,), modules={
         "things.py": client_module(
-            ("get", literal(f"{ROOT}/things")),
+            call("things_list"),
             extra=f'\n\ndef documented():\n'
                   f'    """Wraps GET {ROOT}/things, and calls nothing."""\n'
                   f'    return None\n')})
     assert coverage.unwrapped == 0
 
 
-def test_a_computed_path_is_refused_rather_than_skipped(tmp_path):
-    """A call this gate cannot read is not a call it can vouch for.
+def test_a_docstring_naming_a_family_of_routes_is_allowed(tmp_path):
+    """`/api/v1/things/` in a class docstring says what the client is FOR.
 
-    Skipping it would make the gate optional: anyone who assembles a route from
-    a variable would be exempt, and the exemption would be invisible.
-    """
-    invalid = rejection(tmp_path, modules={"things.py": client_module(
-        extra='\n\nclass Sneaky:\n'
-              '    def _request(self, method, path, **kwargs): ...\n\n'
-              '    def go(self, route):\n'
-              '        return self._request("get", route)\n')})
-    assert codes.CALL_NOT_LITERAL in invalid.codes()
-
-
-def test_a_computed_method_is_refused_too(tmp_path):
-    """Half an identity is not an identity. The path alone cannot decide."""
-    invalid = rejection(tmp_path, modules={"things.py": client_module(
-        extra=f'\n\nclass Sneaky:\n'
-              f'    def _request(self, method, path, **kwargs): ...\n\n'
-              f'    def go(self, verb):\n'
-              f'        return self._request(verb, "{ROOT}/things")\n')})
-    assert codes.CALL_NOT_LITERAL in invalid.codes()
-
-
-def test_a_keyword_spelled_call_is_read_the_same_way(tmp_path):
-    """`_request(method="get", path=...)` is the same call, and must resolve.
-
-    A positional-only reader would report this as malformed and send an author
-    looking for a bug in their route.
+    Accepted as the start of something published, so it still goes stale if the
+    whole family moves — which is the only thing that could make it wrong.
     """
     coverage = accepted(tmp_path, operations=(THING_LIST,), modules={
         "things.py": client_module(
-            extra=f'\n\nclass Keyword:\n'
-                  f'    def _request(self, method, path, **kwargs): ...\n\n'
-                  f'    def go(self):\n'
-                  f'        return self._request(method="get", '
-                  f'path="{ROOT}/things")\n')})
-    assert disposition_of(coverage, "things_list").wrapped_by == (
-        f"{SHELL_ROOT}/things.py::Keyword.go",)
+            call("things_list"),
+            extra=f'\n\nclass Family:\n'
+                  f'    """The client for {ROOT}/things/."""\n')})
+    assert coverage.unwrapped == 0
+
+
+def test_a_docstring_naming_an_excused_route_is_allowed(tmp_path):
+    """The three dead methods document what they call, until slice 4 deletes
+    both at once. A gate that refused the prose but excused the call would
+    force the documentation to lie about a method that still exists."""
+    site = f"{SHELL_ROOT}/things.py::ThingsClient.call_0"
+    gone = f"{ROOT}/gone"
+    coverage = accepted(
+        tmp_path, operations=(THING_LIST,),
+        ledger=excusing((site, f"GET {gone}")),
+        modules={"things.py": client_module(
+            f"*ops.{registry_module.unpublished_name(f'GET {gone}')}",
+            extra=f'\n\ndef documented():\n'
+                  f'    """Wraps GET {gone}, which nothing publishes."""\n'
+                  f'    return None\n')})
+    assert coverage.excused == ((site, f"GET {gone}"),)
 
 
 def test_a_new_sub_package_is_refused_rather_than_unwalked(tmp_path):
@@ -430,6 +723,89 @@ def test_a_new_sub_package_is_refused_rather_than_unwalked(tmp_path):
     assert codes.UNSCANNED_PACKAGE in must_refuse(tmp_path).codes()
 
 
+def test_a_missing_registry_fails_rather_than_reporting_a_clean_surface(tmp_path):
+    """Every call resolves through it; reading zero operations out of a missing
+    file must not look like a surface with nothing wrong."""
+    write_repository(tmp_path, modules={
+        "things.py": client_module(call("things_list"))})
+    (tmp_path / REGISTRY_PATH).unlink()
+    assert codes.REGISTRY_MISSING in must_refuse(tmp_path).codes()
+
+
+def test_a_registry_missing_an_operation_is_refused(tmp_path):
+    """A published operation nothing can name is unreachable through the SDK.
+
+    Not implied by the zero-diff gate: a renderer that dropped a family would
+    drop it from both sides of that comparison and stay green.
+    """
+    invalid = rejection(
+        tmp_path, operations=(THING_LIST, THING_READ),
+        registry=registry_source((THING_LIST,)),
+        modules={"things.py": client_module(call("things_list"))})
+    faults = messages(invalid, codes.REGISTRY_INCOMPLETE)
+    assert faults and "things_read" in faults[0], (
+        "the message must name the operation, which is what a reader needs to "
+        "find it in the contract")
+
+
+def test_a_registry_entry_that_is_not_an_operation_is_refused(tmp_path):
+    """The registry holds operations and nothing else.
+
+    A name bound to anything the reader cannot resolve would be a name the gate
+    cannot check and a wrapper can still import — the blind spot, moved.
+    """
+    invalid = rejection(
+        tmp_path, registry=registry_source() + "\nSNEAKY = 'get', '/api/v1/x'\n",
+        modules={"things.py": client_module(call("things_list"))})
+    assert codes.REGISTRY_UNREADABLE in invalid.codes()
+
+
+def test_the_registry_renders_the_same_bytes_twice(tmp_path):
+    """Determinism, because a zero-diff gate over an unstable renderer fails at
+    random — and a gate that cries wolf gets disabled rather than obeyed."""
+    coverage = accepted(tmp_path, modules={
+        "things.py": client_module(call("things_list"),
+                                   call("things_read", "thing_id"))})
+    first = registry_module.render(coverage.entries)
+    assert first == registry_module.render(coverage.entries)
+    assert first.endswith("\n")
+
+    committed = (REPO_ROOT / REGISTRY_PATH).read_text(encoding="utf-8")
+    for text, what in ((first, "the rendered registry"),
+                       (committed, "the committed registry")):
+        widest = max(len(line) for line in text.splitlines())
+        assert widest <= registry_module.WIDEST_LINE, (
+            f"{what} has a {widest}-character line and the renderer's limit is "
+            f"{registry_module.WIDEST_LINE}; a generated file nobody may "
+            f"hand-edit is still a file people read")
+
+
+def test_a_long_operation_is_wrapped_one_argument_to_a_line():
+    """The renderer's third layout, which the shipped contract never reaches.
+
+    Every real operation fits one of the first two. That makes this branch the
+    one nothing would notice breaking — so it is exercised deliberately rather
+    than left to the day a longer path arrives and the artifact stops parsing.
+    """
+    name = "A" * 60
+    entry = registry_module.Entry(name, "a" * 60, "get", f"{ROOT}/" + "b" * 60)
+    text = registry_module.render({name: entry})
+
+    assert f"{name} = Operation(\n" in text, "it must break after the opening"
+    assert max(len(line) for line in text.splitlines()) <= (
+        registry_module.WIDEST_LINE + len(entry.path)), "no runaway line"
+    compile(text, REGISTRY_PATH, "exec")     # and it is still Python
+
+
+def test_a_missing_registry_is_a_different_fault_from_a_stale_one(tmp_path):
+    """"No differences found" must never be what a deleted file looks like."""
+    write_repository(tmp_path, modules={"things.py": client_module()})
+    coverage = load_coverage(tmp_path)
+    (tmp_path / REGISTRY_PATH).unlink()
+    missing, _ = compare_registry(coverage.entries, tmp_path)
+    assert missing is not None and missing.code == codes.REGISTRY_MISSING
+
+
 def test_an_excused_call_that_changed_its_route_is_no_longer_excused(tmp_path):
     """#203's correction, applied here.
 
@@ -439,18 +815,26 @@ def test_an_excused_call_that_changed_its_route_is_no_longer_excused(tmp_path):
     route, so the excuse stops covering it.
     """
     site = f"{SHELL_ROOT}/things.py::ThingsClient.call_0"
-    excuse = excusing((site, f"GET {ROOT}/gone"))
+    gone, elsewhere = f"GET {ROOT}/gone", f"GET {ROOT}/somewhere-else"
+    excuse = excusing((site, gone))
 
     coverage = accepted(tmp_path / "matching", ledger=excuse, modules={
-        "things.py": client_module(("get", literal(f"{ROOT}/gone")))})
-    assert coverage.excused == ((site, f"GET {ROOT}/gone"),)
+        "things.py": client_module(
+            f"*ops.{registry_module.unpublished_name(gone)}")})
+    assert coverage.excused == ((site, gone),)
 
-    invalid = rejection(tmp_path / "moved", ledger=excuse, modules={
-        "things.py": client_module(("get", literal(f"{ROOT}/somewhere-else")))})
+    # The route moved and the ledger did not. The registry generated from that
+    # ledger has no constant for the new one, so the wrapper cannot even name
+    # it — and the entry describing the old one is reported as spent.
+    moved = excusing((site, elsewhere))
+    invalid = rejection(tmp_path / "moved", ledger=moved, modules={
+        "things.py": client_module(
+            f"*ops.{registry_module.unpublished_name(gone)}")})
     reported = invalid.codes()
-    assert codes.NO_SUCH_OPERATION in reported, "the new bad route must be caught"
+    assert codes.NO_SUCH_OPERATION_CONSTANT in reported, (
+        "the constant for the old route is gone with its entry")
     assert codes.EXCUSE_NOT_A_VIOLATION in reported, (
-        "and the entry describing the old one must be reported as spent")
+        "and the entry describing the new one excuses a call nobody makes")
 
 
 def test_an_excuse_for_a_call_that_now_resolves_is_reported(tmp_path):
@@ -460,7 +844,7 @@ def test_an_excuse_for_a_call_that_now_resolves_is_reported(tmp_path):
         operations=(THING_LIST,),
         ledger=excusing((f"{SHELL_ROOT}/things.py::ThingsClient.call_0",
                          f"GET {ROOT}/things")),
-        modules={"things.py": client_module(("get", literal(f"{ROOT}/things")))})
+        modules={"things.py": client_module(call("things_list"))})
     assert codes.EXCUSE_NOT_A_VIOLATION in invalid.codes()
 
 
@@ -514,18 +898,16 @@ def test_a_missing_contract_fails_rather_than_reporting_a_clean_surface(tmp_path
 def test_a_missing_hand_shell_fails_rather_than_reporting_a_clean_surface(tmp_path):
     """And neither must walking zero modules."""
     write_repository(tmp_path, modules={"things.py": client_module()})
-    (tmp_path / SHELL_ROOT / "things.py").unlink()
+    for name in ("things.py", "_operations.py"):
+        (tmp_path / SHELL_ROOT / name).unlink()
     assert codes.SHELL_EMPTY in must_refuse(tmp_path).codes()
 
 
 def test_the_manifest_renders_the_same_bytes_twice(tmp_path):
-    """Determinism, because a zero-diff gate over an unstable renderer fails at
-    random — and a gate that cries wolf gets disabled rather than obeyed."""
+    """Determinism, for the same reason as the registry's."""
     coverage = accepted(tmp_path, modules={
-        "things.py": client_module(
-            ("get", literal(f"{ROOT}/things")),
-            ("get", interpolated(f"{ROOT}/things/{{}}")),
-        )})
+        "things.py": client_module(call("things_list"),
+                                   call("things_read", "thing_id"))})
     assert render(coverage) == render(coverage)
     assert render(coverage).endswith("\n")
 
@@ -711,6 +1093,19 @@ def test_the_workflow_runs_the_regeneration_gate_and_the_ratchet():
     commands = " ".join(str(step.get("run", "")) for step in steps)
     assert "python -m tools.sdk_operations --write" in commands
     assert "python -m tools.sdk_operations ratchet" in commands
+
+
+def test_the_regeneration_step_covers_the_registry_as_well_as_the_manifest():
+    """One `--write` produces both generated artifacts, and CI's dirty-worktree
+    check sees both. If the registry were written by a command nobody runs, a
+    stale one could merge and every wrapper would follow it."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
+    steps = workflow["jobs"]["contracts"]["steps"]
+    step = next(one for one in steps
+                if "python -m tools.sdk_operations --write" in str(one.get("run", "")))
+    assert "git status --porcelain" in step["run"], (
+        "the zero-diff check is what makes --write a gate rather than a fixer")
 
 
 def test_every_gap_that_exists_was_signed_for_at_some_point():

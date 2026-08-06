@@ -1914,22 +1914,31 @@ entries:
     gate: G7
     site: sdk::dimension
     expected: grouping_field_value
-    found: 9 files
+    found: 10 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
+      The tenth file is `ubb-sdk/ubb/_operations.py`, which #209 generates
+      from the contract: the word is there because a published PATH still
+      spells it, and it will regenerate away in the same commit that
+      renames the route. Recorded rather than excluded, because the
+      generated core beside it is swept on exactly the same footing and an
+      exemption for one generated mirror and not the other is the kind of
+      narrowing nobody can see.
 
   - id: g7-sdk-dimensions
     gate: G7
     site: sdk::dimensions
     expected: analytics_grouping_kind
-    found: 18 files
+    found: 19 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
+      The nineteenth file is `ubb-sdk/ubb/_operations.py` — the same
+      generated registry, for the same reason as the singular above.
 
   - id: g7-sdk-markup.set
     gate: G7

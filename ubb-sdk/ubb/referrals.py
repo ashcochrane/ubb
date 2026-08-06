@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from ubb import _operations as ops
 from ubb.exceptions import UBBConnectionError
 from ubb._http import raise_for_status
 from ubb.retry import request_with_retry
@@ -63,41 +64,41 @@ class ReferralsClient:
             body["max_reward_micros"] = max_reward_micros
         if estimated_cost_percentage is not None:
             body["estimated_cost_percentage"] = estimated_cost_percentage
-        r = self._request("post", "/api/v1/referrals/program", json=body)
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_CREATE_PROGRAM, json=body)
         return r.json()
 
     def get_program(self) -> dict:
         """Get the active referral program via GET /api/v1/referrals/program."""
-        r = self._request("get", "/api/v1/referrals/program")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_GET_PROGRAM)
         return r.json()
 
     def update_program(self, **kwargs) -> dict:
         """Update the active referral program via PATCH /api/v1/referrals/program."""
-        r = self._request("patch", "/api/v1/referrals/program", json=kwargs)
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_UPDATE_PROGRAM, json=kwargs)
         return r.json()
 
     def deactivate_program(self) -> dict:
         """Deactivate the referral program via DELETE /api/v1/referrals/program."""
-        r = self._request("delete", "/api/v1/referrals/program")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_DEACTIVATE_PROGRAM)
         return r.json()
 
     def reactivate_program(self) -> dict:
         """Reactivate a deactivated program via POST /api/v1/referrals/program/reactivate."""
-        r = self._request("post", "/api/v1/referrals/program/reactivate")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_REACTIVATE_PROGRAM)
         return r.json()
 
     # ---- Referrer Management ----
 
     def register_referrer(self, customer_id: str) -> dict:
         """Register a customer as a referrer via POST /api/v1/referrals/referrers."""
-        r = self._request("post", "/api/v1/referrals/referrers", json={
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_REGISTER_REFERRER, json={
             "customer_id": customer_id,
         })
         return r.json()
 
     def get_referrer(self, customer_id: str) -> dict:
         """Get referrer details via GET /api/v1/referrals/referrers/{customer_id}."""
-        r = self._request("get", f"/api/v1/referrals/referrers/{customer_id}")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_GET_REFERRER(customer_id))
         return r.json()
 
     def list_referrers(self, cursor: str | None = None, limit: int = 50) -> dict:
@@ -105,7 +106,7 @@ class ReferralsClient:
         params: dict = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
-        r = self._request("get", "/api/v1/referrals/referrers", params=params)
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_LIST_REFERRERS, params=params)
         return r.json()
 
     # ---- Attribution ----
@@ -119,14 +120,14 @@ class ReferralsClient:
             body["code"] = code
         if link_token:
             body["link_token"] = link_token
-        r = self._request("post", "/api/v1/referrals/attribute", json=body)
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_ATTRIBUTE_REFERRAL, json=body)
         return r.json()
 
     # ---- Rewards ----
 
     def get_earnings(self, customer_id: str) -> dict:
         """Get referrer earnings via GET /api/v1/referrals/referrers/{customer_id}/earnings."""
-        r = self._request("get", f"/api/v1/referrals/referrers/{customer_id}/earnings")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_GET_REFERRER_EARNINGS(customer_id))
         return r.json()
 
     def get_referrals(self, customer_id: str, cursor: str | None = None,
@@ -135,7 +136,7 @@ class ReferralsClient:
         params: dict = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
-        r = self._request("get", f"/api/v1/referrals/referrers/{customer_id}/referrals",
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_GET_REFERRER_REFERRALS(customer_id),
                           params=params)
         return r.json()
 
@@ -145,7 +146,7 @@ class ReferralsClient:
         params: dict = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
-        r = self._request("get", f"/api/v1/referrals/referrals/{referral_id}/ledger",
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_GET_REFERRAL_LEDGER(referral_id),
                           params=params)
         return r.json()
 
@@ -153,14 +154,14 @@ class ReferralsClient:
 
     def revoke_referral(self, referral_id: str) -> dict:
         """Revoke a referral via DELETE /api/v1/referrals/referrals/{referral_id}."""
-        r = self._request("delete", f"/api/v1/referrals/referrals/{referral_id}")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_REVOKE_REFERRAL(referral_id))
         return r.json()
 
     # ---- Analytics ----
 
     def get_analytics_summary(self) -> dict:
         """Get referral analytics summary via GET /api/v1/referrals/analytics/summary."""
-        r = self._request("get", "/api/v1/referrals/analytics/summary")
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_ANALYTICS_SUMMARY)
         return r.json()
 
     def get_analytics_earnings(self, period_start: str | None = None,
@@ -171,7 +172,7 @@ class ReferralsClient:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        r = self._request("get", "/api/v1/referrals/analytics/earnings", params=params)
+        r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_ANALYTICS_EARNINGS, params=params)
         return r.json()
 
     def close(self) -> None:

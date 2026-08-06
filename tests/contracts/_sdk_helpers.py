@@ -1,9 +1,10 @@
 """Synthetic SDKs and contracts, for putting the gate through its real entry point.
 
-Every control here builds a whole small repository on disk — a contract, a hand
-shell, a generated client, and where it matters a migration ledger — and reads
-it with :func:`tools.sdk_operations.assess`, the same function CI and the CLI
-call. Nothing patches the walker, the resolver or the renderer.
+Every control here builds a whole small repository on disk — a contract, an
+operation registry, a hand shell, a generated client, and where it matters a
+migration ledger — and reads it with :func:`tools.sdk_operations.assess`, the
+same function CI and the CLI call. Nothing patches the walker, the resolver or
+the renderer.
 
 That is not a style preference in this file above all others. The defect this
 gate exists to catch survived for months *because its tests patched the HTTP
@@ -16,11 +17,22 @@ rules under test are about identity and evidence, not about scale. What checks
 the gate against the *real* 134 operations and 81 calls is
 ``test_sdk_operations.py``'s shipped-tree section, which asserts on the tree
 itself rather than on a copy of it.
+
+## The registry, and why it is written by default
+
+Since #209 a wrapper names an operation rather than spelling a path, so a
+synthetic repository without a registry is one where nothing can resolve. It is
+therefore generated here from the same ``operations`` the contract is built
+from — which is what makes ``registry=`` interesting when a control passes it:
+that is the only way to express "the committed registry disagrees with the
+contract", and three of the gate's rules exist for exactly that case.
 """
 
 import json
 
 import yaml
+
+from tools.sdk_operations import registry as registry_module
 
 #: The prefix every synthetic route shares with the real ones, so a control
 #: exercises the same `ROUTE_MARKER` rule the shipped contract does.
@@ -32,6 +44,11 @@ THING_READ = ("get", f"{ROOT}/things/{{thing_id}}", "things_read")
 THING_WRITE = ("post", f"{ROOT}/things/{{thing_id}}", "things_write")
 
 DEFAULT_OPERATIONS = (THING_LIST, THING_READ)
+
+#: How a hand-written module reaches the registry. Taken from the tool rather
+#: than spelled here, so a control's synthetic module writes the same import
+#: the real modules do and the gate's own advice names.
+REGISTRY_IMPORT = registry_module.REGISTRY_IMPORT_LINE
 
 
 def spec(operations=DEFAULT_OPERATIONS):
@@ -47,55 +64,98 @@ def spec(operations=DEFAULT_OPERATIONS):
             "paths": paths}
 
 
-def client_module(*requests, class_name="ThingsClient", extra=""):
-    """A hand-written client whose methods make exactly ``requests``.
+def constant(operation_id):
+    """The registry name a published operation is reached by."""
+    return registry_module.constant_name(operation_id)
 
-    Each request is ``(http method, path expression)``, where the path
-    expression is Python source — ``'"/api/v1/things"'`` for a literal,
-    ``'f"/api/v1/things/{thing_id}"'`` for an interpolated one. Passing source
-    rather than a string is what lets a control express the cases that are
-    *about* how the path was written: an f-string, a variable, a concatenation.
+
+def call(operation_id, *arguments):
+    """The source of a request's single argument: an operation reference.
+
+    ``call("things_list")`` unpacks a route that takes nothing;
+    ``call("things_read", "thing_id")`` fills one that takes a value. The
+    arguments are Python source, so a control can pass an expression as easily
+    as a name.
     """
-    lines = [
-        '"""A synthetic hand-written client."""',
-        "",
-        "",
-        f"class {class_name}:",
-        "    def _request(self, method, path, **kwargs):",
-        "        raise NotImplementedError",
-        "",
-    ]
-    for index, (method, expression) in enumerate(requests):
+    reference = f"*ops.{constant(operation_id)}"
+    return f"{reference}({', '.join(arguments)})" if arguments else reference
+
+
+def registry_source(operations=DEFAULT_OPERATIONS, ledger=None):
+    """The registry these operations and this ledger render.
+
+    Built from the same renderer the tool uses, so a synthetic repository is
+    byte-identical to what ``--write`` would produce in it — which is what lets
+    a control write one deliberately wrong and mean it.
+    """
+    entries = {}
+    for method, path, operation_id in operations:
+        name = constant(operation_id)
+        entries[name] = registry_module.Entry(name, operation_id, method, path)
+    for entry in (ledger or {}).get("entries", ()):
+        if not isinstance(entry, dict) or entry.get("gate") != "G17":
+            continue
+        found = entry["found"]
+        method, path = registry_module.parse_found(found)
+        name = registry_module.unpublished_name(found)
+        entries[name] = registry_module.Entry(name, None, method, path)
+    return registry_module.render(entries)
+
+
+def client_module(*targets, class_name="ThingsClient", extra="",
+                  imports=True):
+    """A hand-written client whose methods make exactly ``targets``.
+
+    Each target is the source of the request's argument — normally
+    :func:`call`'s output, but any Python source, which is what lets a control
+    express the cases that are *about* how a call names its target: a literal,
+    a variable, a keyword, an operation filled with the wrong number of values.
+
+    ``imports=False`` omits the registry import, for the one control about a
+    module that makes requests without reaching a registry at all.
+    """
+    lines = ['"""A synthetic hand-written client."""', ""]
+    if imports:
+        lines.append(REGISTRY_IMPORT)
+    lines += ["", f"class {class_name}:",
+              "    def _request(self, method, path, **kwargs):",
+              "        raise NotImplementedError", ""]
+    for index, target in enumerate(targets):
         lines += [
             f"    def call_{index}(self, thing_id='', other_id=''):",
-            f'        """Calls {method.upper()} something."""',
-            f'        return self._request("{method}", {expression})',
+            '        """Calls something."""',
+            f"        return self._request({target})",
             "",
         ]
     return "\n".join(lines) + extra
 
 
 def literal(path):
-    """A path expression for a plain string literal."""
+    """A path expression for a plain string literal — now always a violation."""
     return json.dumps(path)
 
 
 def interpolated(path, name="thing_id"):
-    """A path expression for an f-string, with ``{}`` filled by ``name``."""
+    """An f-string path expression, with ``{}`` filled by ``name``.
+
+    Kept because the rule that refuses one is worth a control of its own: this
+    is the shape 39 of the real call sites had before #209, so the gate has to
+    keep refusing it or the refactor could quietly come undone.
+    """
     return 'f"' + path.replace("{}", "{" + name + "}") + '"'
 
 
 def write_repository(tmp_path, *, operations=DEFAULT_OPERATIONS, modules=None,
-                     generated=None, ledger=None, manifest=None):
+                     generated=None, ledger=None, manifest=None, registry=None):
     """Write a whole synthetic repository under ``tmp_path``; return the root.
 
     ``generated`` is which operation ids the generated client has a module for;
     it defaults to all of them, which is what the real tree looks like. Passing
     a subset is how a control reaches `not_yet_wrapped`.
 
-    ``manifest`` writes a committed coverage manifest verbatim — the only way
-    to express "the committed manifest disagrees with the tree", which is what
-    the zero-diff gate exists to catch.
+    ``manifest`` and ``registry`` write those artifacts verbatim — the only way
+    to express "the committed copy disagrees with the tree", which is what the
+    two zero-diff gates exist to catch.
     """
     (tmp_path / "openapi").mkdir(parents=True, exist_ok=True)
     (tmp_path / "openapi" / "v1.json").write_text(
@@ -105,6 +165,10 @@ def write_repository(tmp_path, *, operations=DEFAULT_OPERATIONS, modules=None,
     shell.mkdir(parents=True, exist_ok=True)
     for name, source in (modules or {}).items():
         (shell / name).write_text(source, encoding="utf-8")
+
+    (shell / "_operations.py").write_text(
+        registry if registry is not None
+        else registry_source(operations, ledger), encoding="utf-8")
 
     api = shell / "_core" / "api" / "default"
     api.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from ubb import _operations as ops
 from ubb.exceptions import UBBConnectionError
 from ubb._http import raise_for_status
 from ubb._models import from_wire
@@ -67,7 +68,7 @@ class BillingClient:
         reason_code/actor attribute the adjustment for the audit trail. For a
         guarded withdrawal use ``withdraw``.
         """
-        r = self._request("post", "/api/v1/billing/debit", json={
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_DEBIT, json={
             "customer_id": customer_id,
             "amount_micros": amount_micros,
             "reference": reference,
@@ -87,7 +88,7 @@ class BillingClient:
         adjustment money — for refunding a usage charge use ``refund``.
         reason_code/actor attribute the adjustment for the audit trail.
         """
-        r = self._request("post", "/api/v1/billing/credit", json={
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_CREDIT, json={
             "customer_id": customer_id,
             "amount_micros": amount_micros,
             "source": source,
@@ -104,7 +105,7 @@ class BillingClient:
         /customers/{customer_id}/withdraw (floor-checked — a debit is not).
         customer_id is the platform customer UUID."""
         r = self._request(
-            "post", f"/api/v1/billing/customers/{customer_id}/withdraw", json={
+            *ops.API_V1_BILLING_ENDPOINTS_WITHDRAW(customer_id), json={
                 "amount_micros": amount_micros,
                 "idempotency_key": idempotency_key,
                 "description": description,
@@ -117,7 +118,7 @@ class BillingClient:
         /customers/{customer_id}/refund (resolves the original charge amount
         server-side). customer_id is the platform customer UUID."""
         r = self._request(
-            "post", f"/api/v1/billing/customers/{customer_id}/refund", json={
+            *ops.API_V1_BILLING_ENDPOINTS_REFUND_USAGE(customer_id), json={
                 "usage_event_id": usage_event_id,
                 "reason": reason,
                 "idempotency_key": idempotency_key,
@@ -126,7 +127,7 @@ class BillingClient:
 
     def get_balance(self, customer_id: str) -> BalanceResponse:
         """Get customer balance via GET /api/v1/billing/customers/{customer_id}/balance."""
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/balance")
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_BALANCE(customer_id))
         return from_wire(BalanceResponse, r.json())
 
     def pre_check(self, customer_id: str, start_task: bool = False,
@@ -148,7 +149,7 @@ class BillingClient:
             body["provider_cost_limit_micros"] = provider_cost_limit_micros
         if parent_task_id is not None:
             body["parent_task_id"] = parent_task_id
-        r = self._request("post", "/api/v1/billing/pre-check", json=body)
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PRE_CHECK, json=body)
         return r.json()
 
     def create_top_up(self, customer_id: str, amount_micros: int,
@@ -159,7 +160,7 @@ class BillingClient:
 
         idempotency_key is REQUIRED (#78): a retried call re-uses the original
         attempt server-side — a replay can never start a second charge."""
-        r = self._request("post", f"/api/v1/billing/customers/{customer_id}/top-up", json={
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_CREATE_TOP_UP(customer_id), json={
             "amount_micros": amount_micros,
             "success_url": success_url,
             "cancel_url": cancel_url,
@@ -176,7 +177,9 @@ class BillingClient:
             body["trigger_threshold_micros"] = trigger_threshold_micros
         if top_up_amount_micros is not None:
             body["top_up_amount_micros"] = top_up_amount_micros
-        r = self._request("put", f"/api/v1/billing/customers/{customer_id}/auto-top-up", json=body)
+        r = self._request(
+            *ops.API_V1_BILLING_ENDPOINTS_CONFIGURE_AUTO_TOP_UP(customer_id),
+            json=body)
         return r.json()
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,
@@ -185,7 +188,9 @@ class BillingClient:
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/transactions", params=params)
+        r = self._request(
+            *ops.API_V1_BILLING_ENDPOINTS_GET_TRANSACTIONS(customer_id),
+            params=params)
         body = r.json()
         txns = [from_wire(WalletTransactionOut, item) for item in body["data"]]
         return PaginatedResponse(data=txns, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
@@ -196,19 +201,19 @@ class BillingClient:
                 "hard_stop_pct": hard_stop_pct, "fail_closed": fail_closed}
         if alert_levels is not None:
             body["alert_levels"] = alert_levels
-        r = self._request("put", f"/api/v1/billing/customers/{customer_id}/budget", json=body)
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_BUDGET(customer_id), json=body)
         return from_wire(BudgetConfigOut, r.json())
 
     def get_budget(self, customer_id):
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/budget")
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET(customer_id))
         return from_wire(BudgetConfigOut, r.json())
 
     def get_budget_status(self, customer_id):
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/budget/status")
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET_STATUS(customer_id))
         return from_wire(BudgetStatusOut, r.json())
 
     def get_usage_invoices(self, customer_id):
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/usage-invoices")
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_LIST_CUSTOMER_USAGE_INVOICES(customer_id))
         return [from_wire(UsageInvoiceOut, row) for row in r.json()["data"]]
 
     def create_grant(self, customer_id: str, kind: str, amount_micros: int,
@@ -232,7 +237,7 @@ class BillingClient:
             body["expires_in_days"] = expires_in_days
         if description:
             body["description"] = description
-        r = self._request("post", f"/api/v1/billing/customers/{customer_id}/grants", json=body)
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_CREATE_GRANT(customer_id), json=body)
         return from_wire(GrantOut, r.json())
 
     def list_grants(self, customer_id: str, status: str | None = None,
@@ -243,7 +248,7 @@ class BillingClient:
             params["status"] = status
         if cursor is not None:
             params["cursor"] = cursor
-        r = self._request("get", f"/api/v1/billing/customers/{customer_id}/grants", params=params)
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_LIST_GRANTS(customer_id), params=params)
         body = r.json()
         grants = [from_wire(GrantOut, item) for item in body["data"]]
         return PaginatedResponse(data=grants, next_cursor=body.get("next_cursor"),
@@ -256,13 +261,13 @@ class BillingClient:
         Idempotent — voiding twice returns the already-voided lot.
         """
         r = self._request(
-            "post", f"/api/v1/billing/customers/{customer_id}/grants/{grant_id}/void")
+            *ops.API_V1_BILLING_ENDPOINTS_VOID_GRANT(customer_id, grant_id))
         return from_wire(GrantOut, r.json())
 
     def get_postpaid_config(self):
         """The tenant's postpaid config:
         ``{"usage_line_item_group_by": str, "consolidate_with_subscription": bool}``."""
-        r = self._request("get", "/api/v1/billing/postpaid-config")
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_POSTPAID_CONFIG)
         return r.json()
 
     def set_postpaid_config(self, usage_line_item_group_by="",
@@ -274,7 +279,7 @@ class BillingClient:
         body = {"usage_line_item_group_by": usage_line_item_group_by}
         if consolidate_with_subscription is not None:
             body["consolidate_with_subscription"] = consolidate_with_subscription
-        r = self._request("put", "/api/v1/billing/postpaid-config", json=body)
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PUT_POSTPAID_CONFIG, json=body)
         return r.json()
 
     def close(self) -> None:
