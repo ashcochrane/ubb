@@ -1827,6 +1827,36 @@ entries:
       The bag of measured quantities on one event. Slice 2 replaces it
       with declared measurements, which is what makes them costable.
 
+  # Two words #210 spread to this surface, and would not have without it.
+  # `tests/contracts/test_label_catalogue.py` pins the fifty-one files that
+  # import the legacy label adapter, as a shrink-only set — and two of them are
+  # NAMED after retired concepts, so pinning the path spells the word. There is
+  # no version of that list that does not; the alternative was a count, which
+  # would let one file be converted while another was added. So the debt is
+  # recorded rather than the check weakened, and it is paid by the same act as
+  # the console entries above: rename the file, and the pinned path follows.
+  - id: g7-repo-budget
+    gate: G7
+    site: repo::budget
+    expected: control_family
+    found: 1 files
+    owner_slice: slice_6
+    reason: >-
+      `features/customers/components/budget-section.tsx` is named after the
+      retired family word, and #210's importer ratchet pins its path. Slice 6
+      builds #150's four families and renames the surface; the pin follows it.
+
+  - id: g7-repo-dimension
+    gate: G7
+    site: repo::dimension
+    expected: grouping_field_value
+    found: 1 files
+    owner_slice: slice_7
+    reason: >-
+      The same, for `features/dashboard/components/dimension-breakdown.tsx`.
+      #145 renames the concept to Grouping Field and slice 7 rebuilds the
+      analytics surface that displays it.
+
   - id: g7-repo-dimensions
     gate: G7
     site: repo::dimensions
@@ -3804,7 +3834,16 @@ entries:
       `settings.ts` humanises the noun half of an audit action, and RE-EXPORTS
       the result as `auditActionLabel`. This is the one place the adapter's
       reach leaks past the one hop the gate measures, recorded here rather than
-      left to be discovered.
+      left to be discovered. It also holds `AUDIT_NOUN_LABELS`, the only
+      token-to-label map in the console living OUTSIDE the adapter — invisible
+      to the scanner by design, since #227 ruled that pinning every `as const`
+      object in a TypeScript tree pins noise. It goes when this entry does.
+      `REWARD_TYPE_HINTS` in referrals/components/program-form.tsx is the same
+      shape one category over — token-keyed explanatory copy, like
+      `productDescription` here — and is deliberately NOT recorded: ADR-0008
+      §4.5 puts prose permanently outside the registry, so no slice owes it a
+      concept. What it will eventually owe is a stable label key, which is the
+      same debt `productDescription` carries and is why that one IS here.
 
   - id: g6-humanises-event-groups
     gate: G6
@@ -3926,6 +3965,22 @@ seeding_authorisations:
       arrival, and recording them would make "the ledger is at zero"
       unreachable in exactly the way the permanent exceptions are kept out of
       it.
+  - gate: G7
+    issue: 210
+    entries_added: 2
+    reason: >-
+      Not a seeding — a SPREAD, recorded as one. #210's importer ratchet pins
+      the fifty-one console files that import the legacy label adapter, and two
+      of them are named after retired concepts, so pinning the path spells the
+      word on a surface that did not carry it. There is no version of that list
+      that avoids this: the alternative was pinning a count, which would let one
+      file be converted while another was added and read as "nothing happened".
+      So the reach is written down rather than the check weakened, and both are
+      paid by the act that pays their console siblings — rename the file, and
+      the pinned path follows it. This is the first authorisation in this file
+      that licenses a gate's ledger to grow for a reason other than the gate
+      being installed, which is why it says so plainly.
+
   - gate: G6
     issue: 210
     entries_added: 42

@@ -185,7 +185,7 @@ as slice 0 proceeds rather than arriving pre-written.
 | #206 | G7 — the forbidden-term sweep | **175** | 1 |
 | #227 | G2, G3 — the consumer census | **229** | 1 |
 | #208 | G4 — the contract's known-value metadata | **258** | 1 |
-| #210 | G6 — the console's label catalogue, both ways | **300** | **3** |
+| #210 | G6 — the console's label catalogue, both ways | **302** | **3** |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -415,16 +415,37 @@ addition without a reviewed authorisation. A thirty-first map is a ledger
 addition. That is the whole mechanism.
 
 **Owners are inherited rather than chosen**, which is new here and worth copying.
-Twelve of the entries name a concept the registry already declares, and every one
-takes the owner slice that concept's own G2/G3 entry already carries — so a value
-list and the words for it are owed to one slice rather than two, and no judgement
-was exercised. The other eighteen name `label_key` and sit against the cutover:
-the registry declares no concept for a team role or a wallet transaction type, so
-naming one in `expected` would be recording a decision nobody has taken. #210 says
-outright that the remainder reaches zero at cutover, and rule 2's "earlier but
-never later" makes the cutover the only default that cannot quietly defer a debt.
-This is the fifth and largest appearance of the no-positive-owner shape, and the
-first where the absence is a *registry* gap rather than an unassigned rename.
+Nineteen of the forty-two name a concept the registry already declares, and every
+one takes the owner slice that concept's own G2/G3 entry already carries — so a
+value list and the words for it are owed to one slice rather than two, and no
+judgement was exercised. The other twenty-three name `label_key` and sit against
+the cutover: the registry declares no concept for a team role or a wallet
+transaction type, so naming one in `expected` would be recording a decision
+nobody has taken. #210 says outright that the remainder reaches zero at cutover,
+and rule 2's "earlier but never later" makes the cutover the only default that
+cannot quietly defer a debt. Twenty-seven entries land there in total, which is
+the fifth and largest appearance of the no-positive-owner shape — and the first
+where the absence is a *registry* gap rather than an unassigned rename.
+
+**One thing here is NOT in the ledger, deliberately.** #210 also asks that new
+code may not *reach* the adapter, and fifty-one files import it today. None is a
+separate debt — each imports a map the ledger already owes, and both clear at the
+same moment — so seeding them would double the ledger while changing nothing
+about when it reaches zero. They are pinned instead as a shrink-only set in
+`tests/contracts/test_label_catalogue.py`, which is the same ratchet with no
+false debt attached. Worth knowing for the next gate that meets this shape: a
+list that only shrinks is the mechanism, and the ledger is one *use* of it.
+
+**And that pin cost two G7 entries, which is the first authorisation here that
+licenses growth for a reason other than a gate being installed.** Two of the
+fifty-one files are NAMED after retired concepts, so pinning their paths spells
+those words on a surface that did not carry them, and the sweep said so. There
+is no version of the list that avoids it — the alternative was pinning a count,
+which would let one file be converted while another was added and read as
+"nothing happened". So the reach is recorded rather than the sweep weakened, and
+both entries are paid by the act that pays their console siblings: rename the
+file, and the pinned path follows. Worth noting because the instinct in that
+moment is to add a sweep exclusion, and an exclusion would have been invisible.
 
 **Two permanent exceptions, tripling that file.** `subscriptionStatusLabel` and
 `planIntervalLabel` word Stripe's vocabulary — Stripe's values, under Stripe's

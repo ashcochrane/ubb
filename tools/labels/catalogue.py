@@ -73,9 +73,6 @@ class Catalogue:
     """Every locale the console declares, in declaration order."""
     locales: tuple
 
-    def __bool__(self):
-        return bool(self.locales)
-
     @property
     def keys(self):
         """Every key any locale carries.

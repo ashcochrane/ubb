@@ -60,6 +60,17 @@ export type LabelResolution =
  * knows about the value, and title-casing it would dress a foreign token up as
  * wording UBB authored — the precise failure this module replaces. A caller that
  * wants to mark it visually has `kind` to branch on.
+ *
+ * **This REVERSES the console's own standing rule**, and the reversal is
+ * recorded rather than slipped through. `labels.ts` opened with *"never render a
+ * raw snake_case/UPPER_SNAKE token"*, and that rule was right while its only
+ * alternative was humanising: between a token and a title-cased token, the
+ * token loses. ADR-0008 §4.3 removes the alternative, and the choice becomes a
+ * different one — between the value the server actually sent and a placeholder
+ * that discards it. A placeholder reads as authored copy for a case where UBB
+ * has authored nothing, and it throws away the one thing an operator needs to
+ * act on. So the token ships, and `kind: "unfamiliar"` is what lets a surface
+ * present it as the foreign thing it is.
  */
 export function resolveLabel(
   labelKeys: Readonly<Record<string, string>>,

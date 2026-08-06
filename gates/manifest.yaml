@@ -339,6 +339,9 @@ gates:
       - suite: contracts
         node: >-
           tests/contracts/test_label_catalogue.py::test_the_ledger_records_exactly_what_the_legacy_adapter_still_does
+      - suite: contracts
+        node: >-
+          tests/contracts/test_label_catalogue.py::test_the_adapter_gains_no_new_importer
       - job: contract
         step: UI tests
     notes: >-
@@ -364,13 +367,20 @@ gates:
       humaniser ADR-0008 §4.3 retires, so #210 keeps it as an explicit legacy
       adapter and makes every one of its debts a migration-ledger entry with an
       owner slice — thirty maps, one renderer and eleven importing files, 42 in
-      all. THE LEDGER IS THE ALLOWLIST: there is no second list of permitted
-      sites anywhere, so a new map or a new humanising import is a ledger
-      addition and the ratchet refuses it without a reviewed authorisation.
-      That is what makes "reachable from allowlisted sites and nowhere else"
-      mechanical rather than a review habit, and it is why this row's check
-      reads `gates/migration-ledger.yaml` directly instead of holding a
-      constant of its own — one encoding, the shape #203 got wrong.
+      all. THE LEDGER IS THE ALLOWLIST: a new map or a new humanising import is
+      a ledger addition and the ratchet refuses it without a reviewed
+      authorisation. That is what makes "reachable from allowlisted sites and
+      nowhere else" mechanical rather than a review habit, and it is why this
+      row's check reads `gates/migration-ledger.yaml` directly instead of
+      holding a constant of its own — one encoding, the shape #203 got wrong.
+      THE IMPORTER RATCHET IS THE OTHER HALF OF THAT SENTENCE, and it is not
+      the ledger. #210 also says new code "may not reach the adapter" — and
+      every map it exports falls back to the humaniser for a value it does not
+      recognise, so a fifty-second importer spreads the retired behaviour
+      without adding one ledger entry. None of the fifty-one is a separate debt
+      (each imports a map somebody already owes), so they are pinned in the
+      test as a shrink-only set rather than seeded as fifty-one entries that
+      would double the ledger and clear at exactly the same moment.
       THE `UI tests` STEP is named because the console's own suite is the only
       place the LOOKUP runs. The contract suite reads two files and compares
       them; it cannot see a catalogue that is complete and unreachable — a

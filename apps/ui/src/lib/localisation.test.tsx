@@ -39,7 +39,11 @@ describe("the label catalogue", () => {
   it("ships a catalogue with wording, for concepts the registry declares", () => {
     expect(labelKeyMaps.length).toBeGreaterThan(20);
     expect(Object.keys(catalogue).length).toBeGreaterThan(100);
-    expect(Object.keys(LOCALES)).toContain(DEFAULT_LOCALE);
+    // The active catalogue is the DEFAULT locale's, and it is not empty. Not
+    // `Object.keys(LOCALES)).toContain(DEFAULT_LOCALE)` — `SupportedLocale` is
+    // `keyof typeof LOCALES`, so tsc already forbids the failing case and the
+    // assertion could only ever pass.
+    expect(catalogue).toBe(LOCALES[DEFAULT_LOCALE]);
   });
 
   it("resolves every generated label key to real words", () => {
@@ -74,18 +78,21 @@ describe("strict lookup", () => {
     const orphan = { ghost: "task_status.ghost" };
     const resolved = resolveLabel(orphan, "ghost");
 
+    // The literal, not `missingLabel(...)`: asserting the marker equals the
+    // function that produced it compares a value with itself and would survive
+    // that function returning "Ghost".
     expect(resolved.kind).toBe("unlabelled");
     expect(resolved.text).toBe("[no label: task_status.ghost]");
-    expect(resolved.text).toBe(missingLabel("task_status.ghost"));
-    // The point of the marker: it is not, and cannot be mistaken for, copy.
-    expect(resolved.text).not.toBe("Ghost");
+    expect(missingLabel("task_status.ghost")).toBe(resolved.text);
   });
 
   it("renders an unfamiliar open value verbatim, never title-cased", () => {
     // ADR-0003 keeps an unseen value legal; ADR-0008 §4.4 decides what it looks
-    // like. The second assertion is the one that matters — "Quantum settled" is
-    // what the retired `humanize` produced, and it is the shape of invented
-    // copy this whole layer exists to abolish.
+    // like: the raw token, which is the shape a reintroduced humaniser would
+    // break — it produced "Quantum settled" from this input, and that is the
+    // invented copy this whole layer exists to abolish. Pinning `text` to the
+    // input exactly is what catches it; a separate `not.toBe("Quantum
+    // settled")` beside it would be an assertion the line above already makes.
     const resolved = resolveLabel(TASK_STATUS_LABEL_KEYS, UNFAMILIAR);
 
     expect(resolved).toEqual({
@@ -93,7 +100,6 @@ describe("strict lookup", () => {
       value: UNFAMILIAR,
       text: UNFAMILIAR,
     });
-    expect(resolved.text).not.toBe("Quantum settled");
   });
 
   it("renders an absent value as an absence, not as a name", () => {
@@ -131,10 +137,10 @@ describe("rendering", () => {
 
   it("puts the raw token on the page for an unfamiliar one", () => {
     render(<Status value={UNFAMILIAR} />);
-
-    const rendered = screen.getByTestId("status");
-    expect(rendered).toHaveTextContent(UNFAMILIAR);
-    expect(rendered.textContent).not.toBe("Quantum settled");
+    // `textContent`, not `toHaveTextContent`: the latter is a substring match,
+    // so it would pass on "Quantum settled (quantum_settled)" — a rendering
+    // this rule exists to forbid.
+    expect(screen.getByTestId("status").textContent).toBe(UNFAMILIAR);
   });
 
   it("puts an em dash on the page for an absent one", () => {

@@ -37,7 +37,9 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   **Strict — there is no fallback.** A registry value with no wording fails CI (G6) and renders an
   explicit development error; a value the registry has never seen renders **verbatim**, never
   title-cased into English UBB did not author (ADR-0008 §4.3, reversing #154 §9.1). Add wording by
-  editing `src/locales/en.json`, never by writing a map.
+  editing `src/locales/en.json`, never by writing a map. **This reverses the old "never render a
+  raw snake_case token" rule** — that rule was right when the alternative was humanising it; now
+  the alternative is a placeholder that discards what the server sent. Branch on `kind` to style it.
 - **`src/lib/labels.ts` is the LEGACY adapter** — every export is a migration debt recorded in
   `gates/migration-ledger.yaml` with an owner slice. Do not add a map to it, and do not import its
   `humanize` into a new file: both fail CI, because the ledger is the allowlist and it only shrinks.

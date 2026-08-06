@@ -65,9 +65,71 @@ from tools.vocabulary import load_registry
 GATE = "G6"
 GATES_DIR = REPO_ROOT / "gates"
 
+#: Every console file that imports the legacy adapter today — the set
+#: `test_the_adapter_gains_no_new_importer` holds to a ratchet. Pinned as a
+#: literal rather than counted, for the reason #206 pins its exclusion set: a
+#: count alone would let one file be converted while another was added, and the
+#: net zero would read as "nothing happened".
+ADAPTER_IMPORTERS = (
+    "apps/ui/src/components/shared/nav-config.ts",
+    "apps/ui/src/components/shared/nav-shell.tsx",
+    "apps/ui/src/components/shared/product-gate.tsx",
+    "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
+    "apps/ui/src/features/customers/components/adjust-dialogs.tsx",
+    "apps/ui/src/features/customers/components/budget-section.tsx",
+    "apps/ui/src/features/customers/components/business-rollup.tsx",
+    "apps/ui/src/features/customers/components/grants-section.tsx",
+    "apps/ui/src/features/customers/components/overview-tab.tsx",
+    "apps/ui/src/features/customers/components/past-limit-section.tsx",
+    "apps/ui/src/features/customers/components/revenue-panels.tsx",
+    "apps/ui/src/features/customers/components/subscription-tab.tsx",
+    "apps/ui/src/features/customers/components/transactions-section.tsx",
+    "apps/ui/src/features/customers/components/usage-invoices-section.tsx",
+    "apps/ui/src/features/dashboard/components/dimension-breakdown.tsx",
+    "apps/ui/src/features/developers/components/test-event-response.tsx",
+    "apps/ui/src/features/events/components/event-filters.tsx",
+    "apps/ui/src/features/events/components/events-page.tsx",
+    "apps/ui/src/features/events/components/ledger-table.tsx",
+    "apps/ui/src/features/events/components/past-limit-panel.tsx",
+    "apps/ui/src/features/events/components/stop-context-timeline.tsx",
+    "apps/ui/src/features/events/components/task-section.tsx",
+    "apps/ui/src/features/events/components/timeseries-card.tsx",
+    "apps/ui/src/features/events/lib/search.ts",
+    "apps/ui/src/features/pricing/components/add-rate-dialog.tsx",
+    "apps/ui/src/features/pricing/components/book-detail-page.tsx",
+    "apps/ui/src/features/pricing/components/books-table.tsx",
+    "apps/ui/src/features/pricing/components/publish-row.tsx",
+    "apps/ui/src/features/pricing/components/rates-table.tsx",
+    "apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx",
+    "apps/ui/src/features/referrals/components/ledger-dialog.tsx",
+    "apps/ui/src/features/referrals/components/program-form.tsx",
+    "apps/ui/src/features/referrals/components/program-section.tsx",
+    "apps/ui/src/features/referrals/components/referrals-table.tsx",
+    "apps/ui/src/features/referrals/lib/program-form.ts",
+    "apps/ui/src/features/settings/api/mock.ts",
+    "apps/ui/src/features/settings/components/audit-log-page.tsx",
+    "apps/ui/src/features/settings/components/billing-mode-card.tsx",
+    "apps/ui/src/features/settings/components/invitations-section.tsx",
+    "apps/ui/src/features/settings/components/members-section.tsx",
+    "apps/ui/src/features/settings/components/metadata-tree.tsx",
+    "apps/ui/src/features/settings/components/products-card.tsx",
+    "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
+    "apps/ui/src/features/settings/lib/settings.ts",
+    "apps/ui/src/features/webhooks/api/mock.ts",
+    "apps/ui/src/features/webhooks/components/deliveries-table.tsx",
+    "apps/ui/src/features/webhooks/components/webhook-config-table.tsx",
+    "apps/ui/src/features/webhooks/lib/event-groups.ts",
+    "apps/ui/src/features/webhooks/lib/schemas.test.ts",
+    "apps/ui/src/hooks/use-current-role.ts",
+    "apps/ui/src/hooks/use-tenant-config.ts",
+)
+
 #: The module specifier of any `import ... from "x"` — what a file actually
-#: resolves, as opposed to what a line happens to contain.
-IMPORT_SPECIFIER = re.compile(r'from\s+"([^"]+)"')
+#: resolves, as opposed to what a line happens to contain. BOTH quote styles:
+#: the console's eslint configuration declares no `quotes` rule, so a
+#: single-quoted specifier is lint-clean and a `"`-only pattern would simply not
+#: see it.
+IMPORT_SPECIFIER = re.compile(r"""from\s+["']([^"']+)["']""")
 
 
 @pytest.fixture(scope="module")
@@ -239,16 +301,20 @@ def test_a_debt_and_an_exception_are_never_the_same_site(programme):
     assert not both, f"recorded as both a debt and an exception: {sorted(both)}"
 
 
-def test_the_humaniser_is_declared_in_exactly_one_place():
-    """A second `humanize` anywhere in the console would make the allowlist
-    meaningless: a caller could reach humanisation without importing the
-    adapter, and the ledger would go on saying eleven files do.
+def test_nothing_escapes_the_one_adapter(legacy):
+    """Three ways the allowlist could be true and meaningless, stated directly.
 
-    `scan_legacy` reports one as a fault, and section 3's first test asserts
-    there are none. This states the rule directly as well, because the fault is
-    easy to read as an infrastructure problem rather than as the gate firing.
+    A second `humanize` declared anywhere in the console; a value map built
+    without the `export const` the scanner reads; an `export { … }` clause that
+    exports a name no declaration shows. Each would let a caller reach the
+    retired behaviour while the ledger went on saying eleven files do.
+
+    `scan_legacy` already reports all three as faults, and section 3's first
+    test asserts there are none. This states the rule again because that
+    assertion reads as an infrastructure check — "the scan worked" — rather than
+    as this gate firing, and the two failures want different reactions.
     """
-    _, faults = scan_legacy(REPO_ROOT)
+    _, faults = legacy
     escaped = [fault for fault in faults if fault.code == codes.ADAPTER_ESCAPED]
     assert not escaped, "\n".join(str(fault) for fault in escaped)
 
@@ -288,15 +354,52 @@ def test_every_adapter_export_is_classified(legacy):
     ledgered debt or an entry in `DECLARED_NON_LABEL_EXPORTS` with the reason it
     carries no wording. "Everything else is a helper" is the category that grows
     in silence, which is why #206's exclusion set is pinned rather than derived
-    and why this one is too.
+    and why this one is too — including the value lists and derived types, which
+    an earlier draft matched by SHAPE. That rule was true of the nine present and
+    would have been silently true of the tenth somebody added.
     """
     scanned, _ = legacy
     assert not scanned.unclassified, (
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
-    assert set(DECLARED_NON_LABEL_EXPORTS) == {HUMANISER, "roleRank"}, (
-        "the declared non-label exports have changed. That is allowed, and it "
+    assert set(DECLARED_NON_LABEL_EXPORTS) == {
+        HUMANISER, "roleRank",
+        "BILLING_MODES", "PRODUCTS", "ROLES", "ANALYTICS_DIMENSIONS",
+        "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
+        "BillingMode", "Product", "Role",
+    }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "
         "export carries no user-facing wording")
+
+
+def test_the_adapter_gains_no_new_importer(legacy):
+    """#210's other sentence: *new or modified code … may not reach the adapter*.
+
+    The ledger owes each MAP, which bounds what the adapter still does. It does
+    not bound who calls it — and every map falls back to the humaniser for a
+    value it does not recognise, so a fifty-second importer spreads the retired
+    behaviour without adding a single ledger entry. None of these files is a
+    separate debt (each imports a map somebody already owes), so they are pinned
+    here rather than seeded as fifty-one more entries that would double the
+    ledger and clear at exactly the same moment.
+
+    It is a RATCHET, not a target: the set may only shrink. Converting a file to
+    `@/lib/localisation` means deleting its line, which is the diff that shows
+    the work happened.
+    """
+    scanned, _ = legacy
+    observed, pinned = set(scanned.importers), set(ADAPTER_IMPORTERS)
+    added = sorted(observed - pinned)
+    gone = sorted(pinned - observed)
+
+    assert not added, (
+        "these files newly import the legacy label adapter:\n  "
+        + "\n  ".join(added)
+        + f"\nUse `@/lib/localisation` instead. If this import is genuinely "
+          f"unavoidable, adding it here is an explicit, reviewed act.")
+    assert not gone, (
+        "these files no longer import the legacy adapter — delete their lines "
+        "from ADAPTER_IMPORTERS, so the count keeps meaning what it says:\n  "
+        + "\n  ".join(gone))
 
 
 def test_the_map_constructor_name_appears_nowhere_else():
@@ -604,6 +707,25 @@ def test_negative_control_an_unclassified_export_is_a_fault(tmp_path):
     assert scanned.unclassified == ("prettyStatus",)
 
 
+def test_negative_control_a_privately_built_map_is_a_fault(tmp_path):
+    """The classification reads `export const X = legacyLabelMap(`. A map built
+    without that prefix and exported through a clause would be a hand-written
+    value map the ledger never hears about — a debt with no owner, which is the
+    one thing this gate exists to refuse."""
+    scanned, faults = write_console(
+        tmp_path,
+        adapter=ADAPTER_SOURCE
+        + f"\nconst sneakyLabel = {MAP_CONSTRUCTOR}({{ a: \"A\" }});\n")
+    assert only(faults) == codes.ADAPTER_ESCAPED
+    assert f"{ADAPTER}::sneakyLabel" not in scanned.sites
+
+
+def test_negative_control_an_export_clause_is_a_fault(tmp_path):
+    _, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE + "\nexport { roleRank as rank };\n")
+    assert only(faults) == codes.ADAPTER_ESCAPED
+
+
 def test_negative_control_a_second_humaniser_is_a_fault(tmp_path):
     _, faults = write_console(
         tmp_path, adapter=ADAPTER_SOURCE,
@@ -621,13 +743,51 @@ def test_a_file_importing_the_humaniser_becomes_a_site(tmp_path):
     assert f"{CONSOLE_ROOT}/features/x.ts::{HUMANISER}" in scanned.sites
 
 
-def test_a_file_importing_something_else_is_not_a_site(tmp_path):
-    """The allowlist is over reaching the HUMANISER, not over importing the
-    module: fifty-one files import a label map, and #210 is explicit that
-    rewriting them is not slice 0's job."""
+def test_a_single_quoted_import_is_seen_too(tmp_path):
+    """The console's eslint declares no `quotes` rule, so `'…'` is lint-clean.
+    A `"`-only pattern would have made the whole allowlist optional."""
+    scanned, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f"import {{ {HUMANISER} }} from '{ADAPTER_SPECIFIER}';\n")])
+    assert not faults
+    assert f"{CONSOLE_ROOT}/features/x.ts::{HUMANISER}" in scanned.sites
+
+
+def test_a_namespace_import_counts_as_reaching_the_humaniser(tmp_path):
+    """`import * as labels` reaches every export, so the gate cannot tell
+    whether the humaniser is used and must assume it is. Conservative in the
+    only direction that is safe."""
+    scanned, faults = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f'import * as labels from "{ADAPTER_SPECIFIER}";\n')])
+    assert not faults
+    assert f"{CONSOLE_ROOT}/features/x.ts::{HUMANISER}" in scanned.sites
+
+
+def test_a_re_export_of_the_humaniser_is_a_site(tmp_path):
+    """`export { humanize } from …` hands the retired behaviour to files that
+    never name the adapter at all."""
+    scanned, _ = write_console(
+        tmp_path, adapter=ADAPTER_SOURCE,
+        others=[("features/x.ts",
+                 f'export {{ {HUMANISER} }} from "{ADAPTER_SPECIFIER}";\n')])
+    assert f"{CONSOLE_ROOT}/features/x.ts::{HUMANISER}" in scanned.sites
+
+
+def test_a_file_importing_something_else_is_an_importer_but_not_a_site(tmp_path):
+    """The two questions, and the reason both are asked.
+
+    Importing a map is not humanising, so the file is not a ledgered site —
+    #210 is explicit that rewriting the fifty-one importers is not slice 0's
+    job. But the map it imports still falls back to the humaniser, so the file
+    IS an importer, and the pinned set is what stops a fifty-second appearing.
+    """
     scanned, faults = write_console(
         tmp_path, adapter=ADAPTER_SOURCE,
         others=[("features/x.ts",
                  f'import {{ widgetStateLabel }} from "{ADAPTER_SPECIFIER}";\n')])
     assert not faults
     assert scanned.humanisers == ()
+    assert scanned.importers == (f"{CONSOLE_ROOT}/features/x.ts",)

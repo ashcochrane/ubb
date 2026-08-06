@@ -1,12 +1,13 @@
 // THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
 // This module used to be the console's whole labelling layer, and ADR-0008 §4
-// retired the idea it rests on. It hand-writes ~50 value maps and falls back to
-// `humanize`, which turns `meter_only` into "Meter only" — manufacturing
-// user-facing terminology out of an implementation token. #154 §9.1 called that
-// a safe soft-landing; ADR-0008 §4.3 REVERSES that ruling and calls it a defect.
-// A system that has just spent thirteen documents deciding what things are
-// called must not then let a string transformation invent a name nobody chose.
+// retired the idea it rests on. It hand-writes thirty-two value maps and falls
+// back to `humanize`, which title-cases a raw token into something that reads
+// like English — manufacturing user-facing terminology out of an implementation
+// token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that
+// ruling and calls it a defect. A system that has just spent thirteen documents
+// deciding what things are called must not then let a string transformation
+// invent a name nobody chose.
 //
 // The replacement is `@/lib/localisation` reading `@/locales`: keys generated
 // from the registry into `@/lib/vocabulary`, wording owned by the console, and
