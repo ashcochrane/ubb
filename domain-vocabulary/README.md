@@ -11,7 +11,8 @@ this vocabulary and nothing in the repository knew about any of it, so "the
 console and the API agree about what things are called" was a check nobody could
 run: `openapi/v1.json` declares an allowed value list in 3 of its 165 component
 schemas, by design under ADR-0003's open-enum stance. The registry is the
-missing oracle.
+missing oracle — and it stays the oracle, which is why #208 gave the contract
+*documentation metadata* rather than turning those 3 into 165.
 
 ## Status: complete, and deliberately at odds with the code
 
@@ -20,8 +21,11 @@ CI in one complete path — carrying a representative concept of each of the fou
 kinds and nothing more. Issue #200 added the first generated consumer, the
 backend constants. Issue **#202** filled it in: the complete reconciled
 end-state vocabulary, from ADR-0006 and the decision records. Issue **#207**
-added the other two consumers, in the two other languages. The published
-contract's known-value metadata arrives with **#208**.
+added the other two consumers, in the two other languages. Issue **#208** added
+the published contract's known-value metadata — and, because nothing in the
+tree serves a concept yet, advertised none of it: the spec states a value only
+where the backend already serves it, so all twenty-nine concepts the registry
+gives an `openapi` consumer are migration-ledger entries instead.
 
 **On the day it filled in, the registry disagreed with almost the entire
 codebase. That is the design** (#191 decision 1). Every value here is the one
@@ -54,12 +58,21 @@ generated or verified (ADR-0008 §3).
 | `ubb-platform/core/vocabulary.py` | the Django platform, which **imports** the constants | #200 |
 | `apps/ui/src/lib/vocabulary.ts` | the React console — value lists, union types and stable label **keys** | #207 |
 | `ubb-sdk/ubb/vocabulary.py` | the Python SDK, so a value the API can return is a value the SDK can name | #207 |
-| OpenAPI known-value metadata | the committed tenant contract | #208 |
+| `openapi/known-values.json` | the committed tenant contract, which the spec export applies at render time | #208 |
 
 Consumer code is never scanned for matching string literals. Each consumer
 imports its generated artifact, so agreement is **structural rather than
 textual** — the difference between a check a coincidence can satisfy and one it
 cannot.
+
+**The contract is the exception, and it proves the rule.** A JSON document
+cannot import anything, so it holds no value by reference and the census
+refuses to answer `serves(concept, "openapi")` at all. What the fourth artifact
+carries is therefore not values but a **decision**: what the spec would say for
+each concept, by its kind, and whether it may say it yet. A schema field names
+its concept and the export supplies the values, so the platform's source still
+spells nothing the registry owns. `openapi/README.md` has the rules and the
+order they force on a slice.
 
 The two Python artifacts bind the same values from one authored source and
 differ only in the account each gives of itself. That is not duplication to be
@@ -269,19 +282,22 @@ Three things a reader may go looking for, and why they are not here.
   real slice, which would admit these entries. #201 deliberately went further
   (its README, *"Beyond what #201 asked for"*, item 1): an entry may only name
   an **installed** gate, because a debt against a check that cannot fail
-  anything is a note nothing will ever prove, clear or notice. The four gates
-  that compare a consumer against the registry — G2, G3, G4, G6 — are all still
-  owned, so the entries are inadmissible under the stricter rule.
+  anything is a note nothing will ever prove, clear or notice. When #202
+  landed, the four gates that compare a consumer against the registry — G2, G3,
+  G4, G6 — were all still owned, so the entries were inadmissible under the
+  stricter rule.
 
   The stricter rule is kept, on its own merits and because loosening it to admit
   ~40 hand-typed entries against checks nothing runs is exactly what it was
   written to prevent. Nor is the disagreement measurable another way: #191
   decision 3 rules out scanning backend modules for matching string literals,
   because they are meant to *import* the generated module. So the entries are
-  seeded by the pull request that installs each gate, per `gates/README.md`;
-  what is enforced now is that each of those four rows names this registry as
-  the input it will be seeded from, and is owed to a slice that has not landed
-  — see `tests/contracts/test_gate_manifest.py`.
+  seeded by the pull request that installs each gate, per `gates/README.md` —
+  which is what has since happened: **#227 installed G2 and G3 and recorded 54
+  disagreeing consumers; #208 installed G4 and recorded the 29 concepts the
+  contract may not advertise yet.** Only G6 is still owed, to #210, and
+  `tests/contracts/test_gate_manifest.py` is what holds that last row to naming
+  this registry as its input and a slice that has not landed.
 - **Anything the tenant owns.** No Event Type key, Task or Subtask kind,
   Grouping Field value, instance display name, provider outcome or free-text
   description is enumerated anywhere, by construction (the schema forbids the

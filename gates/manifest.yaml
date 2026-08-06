@@ -229,12 +229,76 @@ gates:
       `enum` array.
     oracle: the vocabulary registry, compared against openapi/v1.json
     source: ADR-0008 §2, #158 §3.6
-    status: owned_by_slice_0
-    blocked_on: >-
-      The registry does not yet say where in the spec a concept appears, so
-      there is nothing to compare a schema against. #208 generates the
-      known-value metadata and with it the concept-to-schema mapping this gate
-      reads, from the open concepts domain-vocabulary/ declares (#202).
+    status: installed
+    notes: >-
+      THE CONCEPT-TO-SCHEMA MAPPING IS CARRIED BY THE DOCUMENT ITSELF. This row
+      was blocked on the registry not saying where in the spec a concept
+      appears, and #208 answers that without teaching the registry about schema
+      internals: a schema field names its concept and nothing else
+      (`x-ubb-concept`), the values arrive at export time from
+      `openapi/known-values.json`, and the marker survives into the published
+      document — so the mapping this gate walks is a fact the contract states
+      rather than one inferred by comparing spellings, which is the literal
+      scan #191 decision 3 rules out.
+      THE KIND DECIDES THE REPRESENTATION, in one function, and nothing
+      downstream reads the kind again. An `open` concept gets
+      `x-ubb-known-values` beside an untouched `type: string`; a `closed` one
+      gets a real `enum`; a `tenant_defined` or `free_text` one, and any
+      concept the registry gives no `openapi` consumer, contributes nothing and
+      a marker on it is REFUSED. So converting an open concept to an enum is
+      not a mistake this mechanism can make quietly — it is not a mistake it
+      can make at all without changing that mapping.
+      THE SECOND HALF IS WHAT SEES A *SILENT* CONVERSION, and it is why this
+      row names two gate nodes rather than one. A hand-written `Literal[...]`
+      produces an `enum` on a node carrying no marker, which the walk above
+      would never reach. So every `enum` in the committed contract is
+      accounted for by JSON pointer — three today, all pre-registry, each with
+      a stated reason — checked in both directions. It is an INVENTORY and not
+      a ledger, for `test_undeclared_value_sets.py`'s reason: two of the three
+      enumerate something the registry describes no concept for, so there is no
+      canonical term to expect and no slice that owes a rename.
+      THE SPEC ADVERTISES A VALUE ONLY WHERE THE BACKEND SERVES IT, asked
+      through `tools.consumers`' census — G2 and G3's predicate, consumed
+      rather than reimplemented, which is the acceptance criterion #227 wrote
+      for this ticket. Nothing in the tree serves any concept yet, so the
+      contract carries no metadata today and the twenty-nine concepts the
+      registry says appear in it are individually identified ledger entries
+      owed by the slices that rename them. That is the correct outcome for
+      slice 0 rather than a shortfall, and it makes the marker-driven half
+      vacuous on the committed document — which is why the enum inventory, the
+      fixed-point check over the committed contract, and a positive control
+      that makes `advertised` reachable at all are all named below.
+    enforced_by:
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_g4_no_open_concept_is_a_closed_enum_in_the_contract
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_g4_every_enum_in_the_contract_is_accounted_for
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_g4_every_unadvertised_concept_is_an_identified_debt
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_g4_every_seeded_entry_is_still_a_real_violation
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_g4_every_entrys_extent_is_exactly_what_the_document_records
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_a_concept_is_advertised_exactly_where_the_backend_serves_it
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_the_committed_contract_is_a_fixed_point_of_the_applier
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_an_open_concept_becomes_documentation_metadata_never_an_enum
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_positive_control_a_converted_consumer_makes_the_contract_advertise
+      - suite: contracts
+        node: >-
+          tests/contracts/test_openapi_known_values.py::test_the_gate_read_the_committed_contract
 
   G5:
     statement: >-

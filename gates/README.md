@@ -184,6 +184,7 @@ as slice 0 proceeds rather than arriving pre-written.
 | #222 | — (thirteen webhook renames paid) | **16** | 1 |
 | #206 | G7 — the forbidden-term sweep | **175** | 1 |
 | #227 | G2, G3 — the consumer census | **229** | 1 |
+| #208 | G4 — the contract's known-value metadata | **258** | 1 |
 
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
@@ -340,6 +341,52 @@ occurrence, **gets no concept**: it is not a public value set, and
 `tests/contracts/test_product_fee_type_is_not_public.py` is what makes that
 claim falsifiable rather than a note — the day it reaches the spec, the SDK or
 the console, #191 story 15 binds and the concept is owed.
+
+**#208 then installed G4 and seeded twenty-nine — a seeding that changes
+`openapi/v1.json` by zero bytes, and both halves of that are the point.** The
+committed contract begins carrying known-value metadata generated from the
+registry according to each concept's kind: an `open` concept's recognised
+values as `x-ubb-known-values` beside an untouched `type: string`, a `closed`
+one's as a real `enum`, and nothing at all for a concept whose values the
+tenant owns. ADR-0003's open-enum stance is not reversed — forcing the spec to
+be the vocabulary oracle would turn every new status into a breaking-gate
+event, which is the thing that stance exists to prevent.
+
+**The rule that keeps it honest is that the spec advertises a value only where
+the backend already SERVES it**, asked through #227's census predicate rather
+than a second copy of it. Nothing in the tree serves any concept yet, so the
+contract advertises nothing and all twenty-nine concepts the registry says
+appear in it are entries here. Emitting the final values on a field that still
+returns the retired one would put a falsehood into a *published* document,
+which is worse than saying nothing because a consumer can act on it.
+
+Its `site` is `openapi/v1.json::<concept>` and its `found` is the extent the
+generated `openapi/known-values.json` records — the same `<held> of <total>
+values` shape G2 and G3 use, and **the same owner slice for the same concept**.
+That is not a coincidence to be tidied: paying a G4 entry is the second half of
+paying that slice's G2 or G3 entry. Convert the consumer, then mark the schema
+field — and the spec export *refuses* a marker whose concept the backend does
+not serve, so the two halves cannot be done in the wrong order or half done.
+
+**The gate has two halves, and the second is the one worth knowing about.** The
+first walks the concept-to-schema mapping the contract itself carries: every
+node naming a concept must represent it by its kind. But a *silent* conversion
+— somebody typing `Literal[...]` onto a field for an open concept — produces an
+`enum` on a node carrying no marker, which that walk would never reach. So
+**every `enum` in the committed contract is accounted for by JSON pointer**,
+three today, checked in both directions. That is an inventory and not a ledger,
+for #206's reason: two of the three enumerate something the registry describes
+no concept for, so there is no canonical term to expect and no slice owes a
+rename. It is also what makes a new one a reviewer's decision, and the
+reviewer's question is the only one that matters here — *is this an open
+concept?*
+
+Two entries have **no positive owner**, which is now the third and fourth time
+this shape has appeared after #206's `meter_only` and #227's `audit_action`.
+`audit_action` arrives again for the same reason, and `customer_billing_mode`
+joins it: no slice's issue says it rebuilds the mode, and its siblings gate on
+payment-rail activation. Both sit against the cutover for want of an owner
+rather than because anyone chose one.
 
 **A gate installed in the platform or SDK suite keeps its allowlist there**, in
 the language that suite is written in, and a contract test holds the two to each

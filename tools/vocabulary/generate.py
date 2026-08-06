@@ -13,16 +13,20 @@ of them.
 
 A target is anything carrying ``path`` and ``render(registry)``. Issue #200
 shipped the first — the backend constants; #207 added the console value lists
-and the SDK constants, in the two other languages; the OpenAPI known-value
-metadata (#208) is a new entry in :data:`TARGETS` and inherits the zero-diff
-gate, the ``--write`` command and the CLI's report without touching this
-contract.
+and the SDK constants, in the two other languages; #208 added the OpenAPI
+known-value decisions, which are data rather than source. Each is an entry in
+:data:`TARGETS` and inherits the zero-diff gate, the ``--write`` command and
+the CLI's report without touching this contract.
 
 Four rules hold for every target, and all four are tested:
 
-- **Deterministic.** Same registry, same bytes, on any machine and in any
-  order. A zero-diff gate over an unstable renderer fails at random, and a gate
-  that cries wolf gets disabled rather than obeyed.
+- **Deterministic.** Same registry and same working tree, same bytes, on any
+  machine and in any order. A zero-diff gate over an unstable renderer fails at
+  random, and a gate that cries wolf gets disabled rather than obeyed. Three of
+  the four targets read nothing but the registry; :class:`OpenApiKnownValues`
+  also reads the consumer census, because *whether* the contract may advertise
+  a value is a fact about the tree and not about the registry — see its own
+  docstring.
 - **Refusal over a plausible-looking lie.** Where the registry is valid but
   cannot be rendered honestly — two concepts whose constants would collide on
   one name — generation raises :class:`GenerationFailed`. Silently emitting the
@@ -576,14 +580,84 @@ class ConsoleVocabulary(_Target):
                 else self.type_name(concept))
 
 
+# ---------------------------------------------------------------------------
+# The committed contract's known-value decisions
+# ---------------------------------------------------------------------------
+
+class OpenApiKnownValues(_Target):
+    """What the published contract may say about each concept (#208).
+
+    The odd one out, in two ways that are both deliberate.
+
+    **It is data, not source.** A JSON document cannot import anything, so
+    nothing here is bound to a name and :meth:`handles` yields nothing: the
+    committed contract holds no value BY REFERENCE, which is precisely why
+    `tools/consumers` refuses to answer `serves(concept, "openapi")` at all.
+    What this artifact carries instead is a decision the spec export applies —
+    see :mod:`tools.known_values`.
+
+    **It reads the tree as well as the registry.** The other three targets are
+    pure functions of `domain-vocabulary/`; this one consults the consumer
+    census, because the question it answers is not *what values does this
+    concept have?* but *may the published contract state them yet?* — and #208's
+    rule is that it may only where the backend consumer already serves them.
+    That fact lives in the tree.
+
+    The consequence is worth having rather than merely tolerating: on the day a
+    slice converts a backend consumer to import `core.vocabulary`, this
+    artifact goes stale, CI says so, regenerating flips the concept to
+    advertised, and the spec drift gate then demands the contract be
+    regenerated too. The migration arms its own next step.
+    """
+
+    path = "openapi/known-values.json"
+
+    def render(self, registry):
+        # Deferred: `tools.consumers` imports this module for the naming rules
+        # each surface binds, so importing it at module scope would be a cycle.
+        # Deferring it is not a workaround for a layering mistake — the
+        # dependency genuinely runs this way round, and only the generator's
+        # own render needs the answer.
+        from tools.consumers import take_census
+
+        from tools.known_values import build
+
+        census = take_census(registry.repo_root, registry)
+        document = build(registry, census)
+        # `sort_keys` rather than a curated order: `@generated` sorts first
+        # anyway, and a renderer whose output order depends on dictionary
+        # construction is one insertion away from a zero-diff gate that fails
+        # at random. `ensure_ascii=False` keeps the banner's punctuation as the
+        # UTF-8 it is committed as, which is what the byte comparison reads.
+        return json.dumps(document, indent=2, sort_keys=True,
+                          ensure_ascii=False) + "\n"
+
+    def handles(self, concept):
+        """Nothing. A JSON document binds no name a consumer could reference.
+
+        Stated as an override rather than inherited, because the base class's
+        answer — the concept's whole set, under its generated name — would be a
+        lie here, and a census that believed it would report the committed
+        contract as a served consumer of every concept in the registry.
+        """
+        return {}
+
+    def _claims(self, concept):
+        """Nothing can collide: the document is keyed by concept name, and the
+        registry already refuses to define one term twice."""
+        return []
+
+
 BACKEND_CONSTANTS = BackendConstants()
 CONSOLE_VOCABULARY = ConsoleVocabulary()
 SDK_CONSTANTS = SdkConstants()
+OPENAPI_KNOWN_VALUES = OpenApiKnownValues()
 
 #: Every artifact generated from the registry. Adding one here gives it the
 #: zero-diff gate, `--write`, and the CLI's report at once — which is the point
 #: of the list existing at all.
-TARGETS = (BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS)
+TARGETS = (BACKEND_CONSTANTS, CONSOLE_VOCABULARY, SDK_CONSTANTS,
+           OPENAPI_KNOWN_VALUES)
 
 
 # ---------------------------------------------------------------------------

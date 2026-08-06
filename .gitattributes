@@ -15,19 +15,21 @@ ubb-sdk/ubb/_spec_revision.py text eol=lf
 # become the reason a regeneration check disagrees.
 domain-vocabulary/** text eol=lf
 
-# ...and the output. The generated backend constants (#200) and the console and
-# SDK artifacts beside them (#207) are byte-compared by
-# tests/contracts/test_generated_vocabulary.py against what the generator
-# writes, which is LF on every platform. Without this pin, a checkout with
-# core.autocrlf set turns the working copy into CRLF and the gate goes red for
-# a reason that has nothing to do with the vocabulary.
+# ...and the output. The generated backend constants (#200), the console and
+# SDK artifacts beside them (#207) and the contract's known-value decisions
+# (#208) are byte-compared by tests/contracts/test_generated_vocabulary.py
+# against what the generator writes, which is LF on every platform. Without
+# this pin, a checkout with core.autocrlf set turns the working copy into CRLF
+# and the gate goes red for a reason that has nothing to do with the
+# vocabulary.
 #
-# All three are listed by name rather than matched by a pattern: they live in
-# three different subtrees under three different toolchains, and a pattern wide
+# All four are listed by name rather than matched by a pattern: they live in
+# four different subtrees under different toolchains, and a pattern wide
 # enough to catch them would catch hand-written neighbours too.
 ubb-platform/core/vocabulary.py text eol=lf
 apps/ui/src/lib/vocabulary.ts text eol=lf
 ubb-sdk/ubb/vocabulary.py text eol=lf
+openapi/known-values.json text eol=lf
 
 # The SDK's coverage manifest (#204), for exactly the same reason: it is
 # generated from openapi/v1.json and ubb-sdk/ubb/, and byte-compared by
