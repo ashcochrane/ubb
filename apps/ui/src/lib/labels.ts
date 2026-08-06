@@ -1,19 +1,53 @@
-// Human-readable labels for the API's categorical fields.
+// THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
-// The contract deliberately has NO closed enums (ADR-003 "open enums"): every
-// status/kind/mode is an open string, and new values may appear without a
-// schema change. Every lookup here therefore falls back to a humanised form
-// of the raw value — never render a raw snake_case/UPPER_SNAKE token, and
-// never assume the value sets below are exhaustive.
+// This module used to be the console's whole labelling layer, and ADR-0008 §4
+// retired the idea it rests on. It hand-writes thirty-two value maps and falls
+// back to `humanize`, which title-cases a raw token into something that reads
+// like English — manufacturing user-facing terminology out of an implementation
+// token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that
+// ruling and calls it a defect. A system that has just spent thirteen documents
+// deciding what things are called must not then let a string transformation
+// invent a name nobody chose.
+//
+// The replacement is `@/lib/localisation` reading `@/locales`: keys generated
+// from the registry into `@/lib/vocabulary`, wording owned by the console, and
+// strict lookup with no fallback at all. Write new code against that.
+//
+// This file survives only because it is imported by fifty-one others, and #210
+// is explicit that slice 0 ends when the mechanism is active and regressions
+// are impossible — not when every importer has been rewritten. So:
+//
+//   * every map below and every file importing `humanize` is an individually
+//     identified entry in `gates/migration-ledger.yaml`, owned by the slice
+//     that rebuilds that vocabulary;
+//   * the ledger only ever shrinks, so a NEW map or a NEW humanising import
+//     fails CI (`tools/gates ratchet`) — the old architecture cannot spread;
+//   * `tests/contracts/test_label_catalogue.py` holds this file to that ledger
+//     in both directions, so paying a debt and deleting its entry are one act.
+//
+// The contract still has NO closed enums (ADR-003 "open enums") and that has
+// not changed. What changed is what an unfamiliar value renders as: a
+// deliberate generic form, never a title-cased guess at English.
 
-/** "failed_permanent" → "Failed permanent", "TOP_UP" → "Top up". */
+/** "failed_permanent" → "Failed permanent", "TOP_UP" → "Top up".
+ *
+ * The humaniser ADR-0008 §4.3 retires. Reachable only from the sites the
+ * migration ledger allowlists; a call from anywhere else fails CI.
+ */
 export function humanize(value: string): string {
   if (!value) return "—";
   const spaced = value.replace(/[_-]+/g, " ").trim().toLowerCase();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-function label(map: Record<string, string>) {
+/** A hand-written value map with a humanising fallback — the shape being retired.
+ *
+ * Named `legacyLabelMap` rather than `label` so the gate can take the set of
+ * maps mechanically: `label` appears in this console as a prop, a variable and
+ * a string hundreds of times, so a check keyed on it would be a check keyed on
+ * a coincidence. This name appears nowhere else in the tree.
+ */
+function legacyLabelMap(map: Record<string, string>) {
   return (value: string | null | undefined): string => {
     if (value === null || value === undefined || value === "") return "—";
     return map[value] ?? humanize(value);
@@ -26,13 +60,13 @@ function label(map: Record<string, string>) {
 export const BILLING_MODES = ["meter_only", "prepaid", "postpaid"] as const;
 export type BillingMode = (typeof BILLING_MODES)[number];
 
-export const billingModeLabel = label({
+export const billingModeLabel = legacyLabelMap({
   meter_only: "Meter only",
   prepaid: "Prepaid credits",
   postpaid: "Postpaid",
 });
 
-export const billingModeDescription = label({
+export const billingModeDescription = legacyLabelMap({
   meter_only:
     "Track usage, provider cost, and margin. No money movement in UBB.",
   prepaid:
@@ -50,7 +84,7 @@ export const PRODUCTS = [
 ] as const;
 export type Product = (typeof PRODUCTS)[number];
 
-export const productLabel = label({
+export const productLabel = legacyLabelMap({
   metering: "Metering",
   billing: "Billing",
   subscriptions: "Subscriptions",
@@ -58,7 +92,7 @@ export const productLabel = label({
   metering_async: "Async ingestion",
 });
 
-export const productDescription = label({
+export const productDescription = legacyLabelMap({
   metering: "Usage events, pricing, analytics, and the audit trail.",
   billing: "Wallets, credit grants, budgets, invoices, and spend control.",
   subscriptions: "Stripe subscription mirror, plans, and seat management.",
@@ -66,7 +100,7 @@ export const productDescription = label({
   metering_async: "High-throughput asynchronous event ingestion lane.",
 });
 
-export const enforcementModeLabel = label({
+export const enforcementModeLabel = legacyLabelMap({
   off: "Off",
   enforcing: "Enforcing",
 });
@@ -74,7 +108,7 @@ export const enforcementModeLabel = label({
 // ---------------------------------------------------------------------------
 // Team
 
-export const roleLabel = label({ admin: "Admin", write: "Write", read: "Read" });
+export const roleLabel = legacyLabelMap({ admin: "Admin", write: "Write", read: "Read" });
 export const ROLES = ["read", "write", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -83,8 +117,8 @@ export function roleRank(role: string | null | undefined): number {
   return role === "admin" ? 2 : role === "write" ? 1 : role === "read" ? 0 : -1;
 }
 
-export const memberStatusLabel = label({ pending: "Pending", active: "Active" });
-export const invitationStatusLabel = label({
+export const memberStatusLabel = legacyLabelMap({ pending: "Pending", active: "Active" });
+export const invitationStatusLabel = legacyLabelMap({
   pending: "Pending",
   accepted: "Accepted",
   revoked: "Revoked",
@@ -93,7 +127,7 @@ export const invitationStatusLabel = label({
 // ---------------------------------------------------------------------------
 // Billing / wallet
 
-export const transactionTypeLabel = label({
+export const transactionTypeLabel = legacyLabelMap({
   TOP_UP: "Top up",
   USAGE_DEDUCTION: "Usage deduction",
   WITHDRAWAL: "Withdrawal",
@@ -107,21 +141,21 @@ export const transactionTypeLabel = label({
   GRANT_VOID: "Grant void",
 });
 
-export const grantKindLabel = label({ paid: "Paid", promo: "Promo" });
-export const grantStatusLabel = label({
+export const grantKindLabel = legacyLabelMap({ paid: "Paid", promo: "Promo" });
+export const grantStatusLabel = legacyLabelMap({
   active: "Active",
   depleted: "Depleted",
   expired: "Expired",
   voided: "Voided",
 });
-export const grantSourceLabel = label({
+export const grantSourceLabel = legacyLabelMap({
   checkout: "Checkout",
   auto_topup: "Auto top-up",
   api: "API",
   other: "Other",
 });
 
-export const usageInvoiceStatusLabel = label({
+export const usageInvoiceStatusLabel = legacyLabelMap({
   pending: "Pending",
   pushing: "Pushing",
   pushed: "Pushed",
@@ -130,7 +164,7 @@ export const usageInvoiceStatusLabel = label({
   failed_permanent: "Failed permanently",
 });
 
-export const tenantInvoiceStatusLabel = label({
+export const tenantInvoiceStatusLabel = legacyLabelMap({
   draft: "Draft",
   finalized: "Finalized",
   paid: "Paid",
@@ -138,19 +172,19 @@ export const tenantInvoiceStatusLabel = label({
   uncollectible: "Uncollectible",
 });
 
-export const billingPeriodStatusLabel = label({
+export const billingPeriodStatusLabel = legacyLabelMap({
   open: "Open",
   closed: "Closed",
   invoicing: "Invoicing",
   invoiced: "Invoiced",
 });
 
-export const budgetEnforceModeLabel = label({
+export const budgetEnforceModeLabel = legacyLabelMap({
   alert_only: "Alert only",
   blocking: "Blocking",
 });
 
-export const preCheckReasonLabel = label({
+export const preCheckReasonLabel = legacyLabelMap({
   insufficient_funds: "Insufficient funds",
   account_closed: "Account closed",
   customer_stopped: "Customer is stopped",
@@ -166,16 +200,16 @@ export const preCheckReasonLabel = label({
 // ---------------------------------------------------------------------------
 // Metering / events
 
-export const cardTypeLabel = label({ cost: "Cost card", price: "Price card" });
-export const pricingModelLabel = label({ per_unit: "Per unit", flat: "Flat" });
+export const cardTypeLabel = legacyLabelMap({ cost: "Cost card", price: "Price card" });
+export const pricingModelLabel = legacyLabelMap({ per_unit: "Per unit", flat: "Flat" });
 
-export const stopScopeLabel = label({
+export const stopScopeLabel = legacyLabelMap({
   task: "Task",
   subtask: "Subtask",
   customer: "Customer",
 });
 
-export const stopReasonLabel = label({
+export const stopReasonLabel = legacyLabelMap({
   task_limit: "Task limit reached",
   subtask_limit: "Subtask limit reached",
   customer_floor: "Customer balance floor",
@@ -187,7 +221,7 @@ export const stopReasonLabel = label({
   suspended: "Customer suspended",
 });
 
-export const ingestRejectionLabel = label({
+export const ingestRejectionLabel = legacyLabelMap({
   billing_period_closed: "Billing period closed",
   effective_at_in_future: "Timestamp in the future",
   effective_at_naive: "Timestamp missing timezone",
@@ -197,25 +231,25 @@ export const ingestRejectionLabel = label({
   validation_error: "Validation failed",
 });
 
-export const ingestModeLabel = label({
+export const ingestModeLabel = legacyLabelMap({
   async: "Async",
   sync_fallback: "Sync fallback",
 });
 
-export const taskStatusLabel = label({
+export const taskStatusLabel = legacyLabelMap({
   active: "Active",
   completed: "Completed",
   failed: "Failed",
   killed: "Killed",
 });
 
-export const pastLimitFamilyLabel = label({
+export const pastLimitFamilyLabel = legacyLabelMap({
   floor_stop: "Balance floor stop",
   soft_floor: "Soft floor",
   task: "Task limit",
 });
 
-export const revenueModeLabel = label({
+export const revenueModeLabel = legacyLabelMap({
   billed: "Billed revenue",
   metered_only: "Metered only",
 });
@@ -237,7 +271,7 @@ export const TIMESERIES_GROUP_BY = [
   "dim3",
 ] as const;
 
-export const dimensionLabel = label({
+export const dimensionLabel = legacyLabelMap({
   provider: "Provider",
   event_type: "Event type",
   customer: "Customer",
@@ -249,7 +283,7 @@ export const dimensionLabel = label({
 // ---------------------------------------------------------------------------
 // Audit
 
-export const actorKindLabel = label({
+export const actorKindLabel = legacyLabelMap({
   member: "Team member",
   api_key: "API key",
   operator: "UBB operator",
@@ -260,13 +294,13 @@ export const actorKindLabel = label({
 // ---------------------------------------------------------------------------
 // Referrals
 
-export const rewardTypeLabel = label({
+export const rewardTypeLabel = legacyLabelMap({
   flat_fee: "Flat fee",
   revenue_share: "Revenue share",
   profit_share: "Profit share",
 });
 
-export const referralProgramStatusLabel = label({
+export const referralProgramStatusLabel = legacyLabelMap({
   active: "Active",
   deactivated: "Deactivated",
 });
@@ -274,7 +308,7 @@ export const referralProgramStatusLabel = label({
 // ---------------------------------------------------------------------------
 // Subscriptions (Stripe mirror — Stripe's own vocabulary)
 
-export const subscriptionStatusLabel = label({
+export const subscriptionStatusLabel = legacyLabelMap({
   active: "Active",
   trialing: "Trialing",
   past_due: "Past due",
@@ -285,7 +319,7 @@ export const subscriptionStatusLabel = label({
   paused: "Paused",
 });
 
-export const planIntervalLabel = label({ month: "Monthly", year: "Yearly" });
+export const planIntervalLabel = legacyLabelMap({ month: "Monthly", year: "Yearly" });
 
 // ---------------------------------------------------------------------------
 // Webhooks — the event-type catalog (35 types; "*" = all events)

@@ -35,3 +35,42 @@ exceptions:
       canonicalisation with a judgement step in it is one nobody can predict,
       and one stated exception is cheaper than a rule that argues back
       (#154 §6.4, ADR-0006 §9).
+
+  # --- G6: vocabulary a foreign system owns (#210) ---------------------------
+  #
+  # Two of the legacy adapter's thirty-two value maps word STRIPE's vocabulary,
+  # and they are not debts for a reason the ledger cannot express. Every entry
+  # there says "this becomes a registry label key in slice N". These never do:
+  # map #137 constraint 5 forbids UBB shipping a vendor catalogue, so the
+  # registry must never declare a concept for a value set Stripe owns, so no
+  # label key can ever exist to move them to. A ledger entry for either would
+  # be a debt nobody could pay, and G22's "the ledger is at zero" would be
+  # unreachable by construction.
+  #
+  # The rule is not waived, only the mechanism. The wording here is still
+  # chosen rather than derived, and a `humanize` fallback over a Stripe status
+  # would still be the defect ADR-0008 §4.3 names — which is why these two
+  # entries are what let the gate hold every OTHER map to the catalogue.
+
+  - id: g6-plan-interval-label-is-stripes-vocabulary
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::planIntervalLabel
+    reason: >-
+      The recurring interval of a Stripe Price — `month` and `year`, Stripe's
+      values under Stripe's names. Same reasoning as `subscriptionStatusLabel`
+      beside it: a foreign system's vocabulary has no registry concept to key
+      against, by construction rather than by omission.
+
+  - id: g6-subscription-status-label-is-stripes-vocabulary
+    gate: G6
+    site: apps/ui/src/lib/labels.ts::subscriptionStatusLabel
+    reason: >-
+      Stripe's subscription statuses, mirrored verbatim from the subscription
+      object. UBB neither owns these values nor chose their wording —
+      `past_due` and `incomplete_expired` are Stripe's, and its own dashboard
+      says "Past due" and "Incomplete". Map #137 constraint 5 forbids UBB
+      shipping a vendor catalogue, so the registry must never declare this
+      concept, so no label key will ever exist to move this map to. It is an
+      exception to the mechanism, not to the rule: the wording is still chosen
+      rather than derived, and a `humanize` fallback here would still be a
+      defect.

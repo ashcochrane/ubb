@@ -31,6 +31,15 @@ apps/ui/src/lib/vocabulary.ts text eol=lf
 ubb-sdk/ubb/vocabulary.py text eol=lf
 openapi/known-values.json text eol=lf
 
+# The SDK's operation registry (#209). Generated from openapi/v1.json and the
+# migration ledger, and byte-compared by
+# tests/contracts/test_sdk_operations.py::test_the_registry_regenerates_with_zero_diff
+# and by the `--write` step in CI — so it belongs in this list for the same
+# reason as the four above, and was missed when it landed. Without the pin, a
+# checkout with core.autocrlf set fails that gate on Windows for a reason that
+# has nothing to do with the contract.
+ubb-sdk/ubb/_operations.py text eol=lf
+
 # The SDK's coverage manifest (#204), for exactly the same reason: it is
 # generated from openapi/v1.json and ubb-sdk/ubb/, and byte-compared by
 # tests/contracts/test_sdk_operations.py and the `--write` step in CI. Its
