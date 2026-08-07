@@ -1,7 +1,9 @@
 """Subtasks — the #38 acceptance pins (spec §L, subtask legs).
 
-Pin 1 (subtask leg)  — the tipping event on a sync subtask limit lands and
-                       bills; async subtask limit detected at settle.
+Pin 1 (subtask leg)  — the tipping event on a subtask limit lands and bills,
+                       and the ceiling bites on the one recording path — at
+                       record time, with nothing deferred to a later sweep
+                       (#192).
 Pin 13               — subtask killed ALONE (parent keeps running and
                        counting); rollup into the parent's provider total;
                        parent trip kills the parent and cascades to active
@@ -22,7 +24,7 @@ from django.test import TestCase, TransactionTestCase, Client
 
 from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import RawIngestEvent, UsageEvent
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
@@ -41,7 +43,7 @@ class SubtaskPinMixin:
         reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Subtasks", products=["metering", "billing", "metering_async"],
+            name="Subtasks", products=["metering", "billing"],
             billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
@@ -89,7 +91,7 @@ class SubtaskPinTestBase(SubtaskPinMixin, TestCase):
 
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
-    def test_sync_subtask_tipping_event_lands_bills_and_kills_alone(self, _mock):
+    def test_subtask_tipping_event_lands_bills_and_kills_alone(self, _mock):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
         # The kill executes on the recording transaction's on_commit (#112).
@@ -127,38 +129,27 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
 
-    def test_async_subtask_limit_detected_at_settle(self, _mock):
-        from apps.metering.usage.tasks import settle_raw_events
+    def test_subtask_limit_bites_at_record_time_with_nothing_deferred(self, _mock):
+        """Preserves: the Subtask COGS ceiling kills the subtask alone, and
+        the tipping event's provider cost rolls up into the parent's total.
 
+        This pin used to prove that on the deferred lane, where both the kill
+        and the rollup waited for a later sweep. The surviving path does both
+        inline, so the same guarantee now holds with nothing deferred."""
         parent = self._task()
         sub = self._task(limit=5_000_000, parent=parent)
-        resp = self.http_client.post(
-            "/api/v1/metering/usage/ingest",
-            data=json.dumps({"events": [{
-                "customer_id": str(self.customer.id),
-                "request_id": "r-async", "idempotency_key": "i-async",
-                "task_id": str(sub.id),
-                "provider_cost_micros": 6_000_000,
-                "billed_cost_micros": 6_000_000,
-            }]}),
-            content_type="application/json", **self._auth())
-
-        # Accept never rejects for limit reasons and never kills.
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["results"][0]["accepted"])
-        sub.refresh_from_db()
-        self.assertEqual(sub.status, "active")
-
-        # Settle: same verdicts, kill flow, and event as the sync path. The
-        # kill executes on the settle transaction's on_commit (#112).
+        # The kill executes on the recording transaction's on_commit (#112).
         with self.captureOnCommitCallbacks(execute=True):
-            settle_raw_events()
-        self.assertEqual(RawIngestEvent.objects.get().status, "settled")
+            resp = self._record(task_id=str(sub.id),
+                                provider_cost_micros=6_000_000,
+                                billed_cost_micros=6_000_000)
+        self.assertEqual(resp.status_code, 200)
+
+        # Containment and rollup are both already true on this response.
         sub.refresh_from_db()
         parent.refresh_from_db()
         self.assertEqual(sub.status, "killed")
         self.assertEqual(parent.status, "active")
-        # Rollup happened at settle too.
         self.assertEqual(parent.total_provider_cost_micros, 6_000_000)
         self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
 

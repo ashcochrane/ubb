@@ -1,7 +1,8 @@
 """One-rule enforcement — the #37 acceptance pins (spec §L, task legs).
 
-Pin 1  — the tipping event lands and bills: sync task limit, async task limit
-         at settle.
+Pin 1  — the tipping event lands and bills, and the task limit bites on the
+         one recording path — at record time, with nothing deferred to a
+         later sweep (#192).
 Pin 2  — events on a killed task land, bill, and count into both totals.
 Pin 3  — Wallet carries no floor CHECK constraint (ADR-002 pin): spend policy
          is enforced in application code, never a DB constraint on the ledger.
@@ -33,7 +34,7 @@ from django.test import TestCase, Client
 from apps.billing.gating.models import RiskConfig
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import RawIngestEvent, UsageEvent
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
@@ -48,7 +49,7 @@ class OneRulePinTestBase(TestCase):
         reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="OneRule", products=["metering", "billing", "metering_async"],
+            name="OneRule", products=["metering", "billing"],
             billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
@@ -126,38 +127,30 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin1AsyncSettleTest(OneRulePinTestBase):
-    def test_async_task_limit_detected_at_settle(self, _mock):
-        from apps.metering.usage.tasks import settle_raw_events
+class Pin1NothingDeferredTest(OneRulePinTestBase):
+    """Preserves: the Task COGS ceiling bites, and the tipping event lands and
+    bills with its exact provider cost counted into the task's total.
 
+    This pin used to prove that on the deferred lane, where the ceiling was
+    rolled up on a later sweep and accept deliberately rejected nothing, so
+    the ceiling bit only after the caller had been told the event was taken.
+    The surviving path prices exactly and rolls the total up inline, so the
+    same guarantee now holds with **nothing deferred** — which is what this
+    case asserts, and the claim #149 §6.5 rests on."""
+
+    def test_task_limit_bites_at_record_time_with_nothing_deferred(self, _mock):
         task = self._task(limit=10_000_000)
-        resp = self.http_client.post(
-            "/api/v1/metering/usage/ingest",
-            data=json.dumps({"events": [{
-                "customer_id": str(self.customer.id),
-                "request_id": "r-async", "idempotency_key": "i-async",
-                "task_id": str(task.id),
-                "provider_cost_micros": 12_000_000,
-                "billed_cost_micros": 12_000_000,
-            }]}),
-            content_type="application/json", **self._auth())
-
-        # Accept never rejects for limit reasons and never kills.
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["results"][0]["accepted"])
-        task.refresh_from_db()
-        self.assertEqual(task.status, "active")
-        self.assertEqual(self._limit_events().count(), 0)
-
-        # Settle runs the accumulate primitive with exact costs -> the same
-        # verdicts, kill flow, and event as the sync path. The kill executes
-        # on the settle transaction's on_commit (#112).
+        # The kill executes on the recording transaction's on_commit (#112).
         with self.captureOnCommitCallbacks(execute=True):
-            settle_raw_events()
-        raw = RawIngestEvent.objects.get()
-        self.assertEqual(raw.status, "settled")
-        self.assertEqual(raw.task_id, task.id)
-        event = UsageEvent.objects.get()
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=12_000_000,
+                                billed_cost_micros=12_000_000)
+        self.assertEqual(resp.status_code, 200)
+
+        # Everything the deferred lane made the caller wait for is already
+        # true by the time this response is readable: the exact provider cost
+        # is recorded and counted, the task is killed, the event has fired.
+        event = UsageEvent.objects.get(id=resp.json()["event_id"])
         self.assertEqual(event.task_id, task.id)
         self.assertEqual(event.provider_cost_micros, 12_000_000)
         task.refresh_from_db()
@@ -165,6 +158,11 @@ class Pin1AsyncSettleTest(OneRulePinTestBase):
         self.assertEqual(task.total_provider_cost_micros, 12_000_000)
         self.assertEqual(self._limit_events().count(), 1)
         self.assertEqual(self._limit_events().get().payload["reason"], "task_limit")
+
+        # The stop verdict rides the same 200 — no later call is needed to
+        # learn that the ceiling bit.
+        self.assertTrue(resp.json()["stop"])
+        self.assertEqual(resp.json()["stop_reason"], "task_limit")
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -411,26 +409,18 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_neither_retired_redis_key_family_is_ever_written(self, _mock):
-        # Drive both ingest lanes end to end (the paths that once wrote
-        # ubb:runcost:* and ubb:taskcost:*), then scan the whole test Redis DB.
+        # Drive the recording path end to end — there is one, and it is the
+        # path that once wrote ubb:runcost:* and ubb:taskcost:* — then scan
+        # the whole test Redis DB.
         import redis
         from django.conf import settings
-        from apps.metering.usage.tasks import settle_raw_events
 
         self.tenant.enforcement_mode = "enforcing"
         self.tenant.save(update_fields=["enforcement_mode"])
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
                      billed_cost_micros=2_000_000, tags={"task": "labelled"})
-        self.http_client.post(
-            "/api/v1/metering/usage/ingest",
-            data=json.dumps({"events": [{
-                "customer_id": str(self.customer.id),
-                "request_id": "r17", "idempotency_key": "i17",
-                "task_id": str(task.id), "billed_cost_micros": 3_000_000,
-            }]}),
-            content_type="application/json", **self._auth())
-        settle_raw_events()
+        self._record(task_id=str(task.id), billed_cost_micros=3_000_000)
 
         client = redis.from_url(settings.REDIS_URL)
         for family in (b"ubb:runcost:*", b"ubb:taskcost:*"):

@@ -2,8 +2,8 @@
 
 Spec pins (docs/plans/2026-07-15-one-rule-enforcement-spec.md §L):
   Pin 2 (completes) — events on a killed task carry stop-context per the §H
-           schema; the tipping event carries arrived_after=false. Sync,
-           batch, and async-settle parity.
+           schema; the tipping event carries arrived_after=false. Single and
+           batch parity — the two surviving recording surfaces (#192).
   Pin 9  — the past-limit report reconstructs an episode end-to-end in ONE
            call: stop → itemized events → totals in both denominations →
            resume. Soft-floor episodes appear as marker rows with no
@@ -165,28 +165,26 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         self.assertEqual(item["stop_context"][0]["limit"], "task_limit")
         self.assertTrue(item["stop_context"][0]["arrived_after"])
 
-    def test_async_settle_tags_the_event(self, _mock):
-        from apps.metering.usage.tasks import settle_raw_events
-        tenant = self.tenant
-        tenant.products = tenant.products + ["metering_async"]
-        tenant.save(update_fields=["products"])
+    def test_the_stored_row_carries_the_context_not_just_the_ack(self, _mock):
+        """Preserves: the tipping event's §H context is written onto the
+        durable row with the exact provider cost that tripped the limit —
+        not merely returned on the ack.
+
+        This pin used to prove it for the deferred lane, where the row was
+        written by a later sweep and the ack could not have carried it. The
+        surviving path writes the row and answers the ack in one act, so the
+        assertion is now that the stored row still carries the full §H
+        context — the half that outlives the response."""
         task = self._task(limit=10_000_000)
-        resp = self.http_client.post(
-            "/api/v1/metering/usage/ingest", data=json.dumps({"events": [{
-                "customer_id": str(self.customer.id),
-                "request_id": "ra1", "idempotency_key": "ia1",
-                "task_id": str(task.id),
-                "provider_cost_micros": 12_000_000,
-                "billed_cost_micros": 1_000_000,
-            }]}), content_type="application/json", **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        settle_raw_events()
+        resp = self._record(task_id=str(task.id),
+                            provider_cost_micros=12_000_000,
+                            billed_cost_micros=1_000_000)
         event = UsageEvent.objects.get()
-        # Settle-time detection: the async tipping event carries the same
-        # §H context as the sync path's.
+        self.assertEqual(event.provider_cost_micros, 12_000_000)
         self.assertEqual(event.stop_context[0]["limit"], "task_limit")
         self.assertFalse(event.stop_context[0]["arrived_after"])
         self.assertEqual(set(event.stop_context[0]), _CONTEXT_KEYS)
+        self.assertEqual(event.stop_context, resp["stop_context"])
 
     def test_replay_returns_the_original_context(self, _mock):
         task = self._task(limit=1_000_000)

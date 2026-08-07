@@ -1,24 +1,29 @@
 """#46 acceptance pins — the arrival-signals switch (delivery spec §E).
 
 One switch, two honest postures: ``Tenant.arrival_signals_enabled`` (default
-ON, read only through ``flags.arrival_signals_on``) governs the whole
-arrival-time fast lane as ONE unit — accept-time holds, live counters,
-arrival-moment floor detection, and the upward repair. OFF is the honest
-degraded posture: accept writes no live-counter Redis keys and detection
-happens at settle, at settle latency. The durable lane — settle-time
-detection, the signal ledger, the patrol jobs, webhook delivery, ack
-verdicts — never switches off, and maintains the ack-verdict flag in both
-postures, so the tenant-facing contract is identical either way.
+ON, read only through ``flags.arrival_signals_on``) governs the arrival-time
+fast lane as ONE unit — the live counters, arrival-moment floor detection,
+and the upward repair. OFF is the honest degraded posture: recording writes
+no live-counter Redis keys and detection happens on the durable drawdown
+lane, at its latency. That durable lane — the signal ledger, the patrol
+jobs, webhook delivery, ack verdicts — never switches off, and maintains the
+ack-verdict flag in both postures, so the tenant-facing contract is
+identical either way.
 
-Pin 9 — switch OFF: accept writes no Redis counter keys (both accept paths,
-        both billing modes); acks keep the identical schema with verdicts
-        from the durable-maintained flag; a floor crossing signals at settle
-        latency; OFF→ON re-seeds via the immediate reconcile; the flag is
-        read only through the flags module; default is ON.
+**Every posture below is driven through ``POST /api/v1/metering/usage`` —
+the one way to report usage (#192).** These assertions were always about the
+guarantee rather than the route: each one names the guarantee it preserves
+so that a later reader can tell a preserved invariant from a deleted one.
+
+Pin 9 — switch OFF: recording writes no Redis counter keys (both billing
+        modes); acks keep the identical schema with verdicts from the
+        durable-maintained flag; a floor crossing signals at the durable
+        lane's latency; OFF→ON re-seeds via the immediate reconcile; the
+        flag is read only through the flags module; default is ON.
 Plus  — the upward repair is inert with the lane off; patrol jobs 1–4
         (missed-transition drive, flag re-alignment, re-mint, sweep) run
-        identically with the lane off; outstanding holds still drain at
-        settle after ON→OFF (the "needs nothing" flip direction).
+        identically with the lane off; ON→OFF needs no drain, because the
+        recording path debits the exact cost as it records it.
 """
 import ast
 import json
@@ -41,7 +46,7 @@ from apps.billing.gating.tasks import (
 )
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import RawIngestEvent, UsageEvent
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
@@ -53,7 +58,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 
 def _tenant(mode="prepaid", arrival=True, enf="enforcing"):
     return Tenant.objects.create(
-        name="T", products=["metering", "billing", "metering_async"],
+        name="T", products=["metering", "billing"],
         billing_mode=mode, enforcement_mode=enf,
         arrival_signals_enabled=arrival)
 
@@ -69,19 +74,12 @@ def _auth(t):
     return {"HTTP_AUTHORIZATION": f"Bearer {raw}"}
 
 
-def _ingest(client, auth, events):
-    return client.post("/api/v1/metering/usage/ingest",
-                       data=json.dumps({"events": events}),
-                       content_type="application/json", **auth)
+def _record(client, auth, c, billed=1_000_000, key=None):
+    """The one way to report usage — every posture assertion drives this.
 
-
-def _event(c, billed=1_000_000):
-    return {"customer_id": str(c.id), "request_id": f"req-{uuid.uuid4()}",
-            "idempotency_key": f"idem-{uuid.uuid4()}",
-            "billed_cost_micros": billed}
-
-
-def _record_sync(client, auth, c, billed, key=None):
+    There is no second recording helper here any more: the module used to run
+    each posture twice, once per lane, and the lanes have collapsed into one.
+    """
     key = key or f"k-{uuid.uuid4()}"
     return client.post("/api/v1/metering/usage", data=json.dumps({
         "customer_id": str(c.id), "request_id": key, "idempotency_key": key,
@@ -108,44 +106,47 @@ class TestDefaultAndAccessor:
 
 @pytest.mark.django_db
 class TestPin9AcceptWritesNoRedisKeys:
-    """Switch OFF: the fast lane is off as one unit at accept — no hold, no
-    live counter, no arrival crossing detection — on both accept paths and
-    both billing modes. (Idempotency SETNX keys are ingest dedup plumbing,
-    not part of the arrival-signals lane, and are out of scope here.)"""
+    """Switch OFF: the fast lane is off as one unit at record time — no live
+    counter, no arrival crossing detection — in both billing modes.
+
+    Preserves: with the lane off, recording writes no live-counter Redis key,
+    and the event still lands and bills. (Idempotency SETNX keys are dedup
+    plumbing, not part of the arrival-signals lane, and are out of scope.)"""
 
     def setup_method(self):
         cache.clear()
 
-    def test_async_accept_prepaid_no_hold_no_counter_no_flag(self):
+    def test_prepaid_recording_writes_no_counter_and_no_flag(self):
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=1_000_000)
-        # Would cross the (default 0) floor if the arrival lane were on.
-        r = _ingest(Client(), _auth(t), [_event(c, billed=900_000),
-                                         _event(c, billed=200_000)])
-        assert r.status_code == 200
-        results = r.json()["results"]
-        assert all(x["accepted"] for x in results)
+        # Together these would cross the (default 0) floor if the lane were on.
+        client, auth = Client(), _auth(t)
+        first = _record(client, auth, c, billed=900_000)
+        second = _record(client, auth, c, billed=200_000)
+        assert first.status_code == 200 and second.status_code == 200
         # No arrival-moment detection: the crossing is real but undetected
-        # until settle — the honest degraded posture.
-        assert all(x["stop"] is False for x in results)
-        assert results[0]["estimated_cost_micros"] == 900_000  # ack unchanged
-        assert Door.balance(c.id) is None                      # no counter
-        assert Door.stop_reason(c.id) is None                  # no flag
-        for raw in RawIngestEvent.objects.all():
-            assert raw.held is False                           # no hold taken
-            assert raw.estimate_micros > 0                     # estimate kept
+        # until the durable drawdown lane runs — the honest degraded posture.
+        assert first.json()["stop"] is False
+        assert second.json()["stop"] is False
+        # The ack still reports the cost — now the settled one, since the
+        # recording path prices exactly and there is no estimate to carry.
+        assert first.json()["billed_cost_micros"] == 900_000
+        assert Door.balance(c.id) is None                       # no counter
+        assert Door.stop_reason(c.id) is None                   # no flag
+        # Both events landed and billed — nothing was reserved anywhere.
+        assert UsageEvent.objects.filter(tenant=t).count() == 2
 
-    def test_async_accept_postpaid_no_livespend(self):
+    def test_postpaid_recording_writes_no_livespend(self):
         t = _tenant(mode="postpaid", arrival=False)
         c = _customer(t)
-        r = _ingest(Client(), _auth(t), [_event(c, billed=5_000_000)])
+        r = _record(Client(), _auth(t), c, billed=5_000_000)
         assert r.status_code == 200
         assert Door.spend(c.id) is None
 
-    def test_sync_accept_no_counter_and_event_still_lands_and_bills(self):
+    def test_recording_no_counter_and_event_still_lands_and_bills(self):
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=5_000_000)
-        r = _record_sync(Client(), _auth(t), c, billed=8_000_000, key="k1")
+        r = _record(Client(), _auth(t), c, billed=8_000_000, key="k1")
         assert r.status_code == 200
         assert r.json()["stop"] is False          # no arrival detection
         ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
@@ -163,53 +164,68 @@ class TestPin9AckContractIdentical:
     def setup_method(self):
         cache.clear()
 
-    def test_async_ack_schema_identical_on_vs_off(self):
-        on_t = _tenant(arrival=True)
-        off_t = _tenant(arrival=False)
-        on_r = _ingest(Client(), _auth(on_t),
-                       [_event(_customer(on_t, 10_000_000, ext="a"))])
-        off_r = _ingest(Client(), _auth(off_t),
-                        [_event(_customer(off_t, 10_000_000, ext="b"))])
-        on_item, off_item = on_r.json()["results"][0], off_r.json()["results"][0]
-        assert set(on_item.keys()) == set(off_item.keys())
+    def test_ack_verdict_identical_on_vs_off(self):
+        """Preserves: the tenant-facing verdict is the same in both postures.
+
+        This used to compare the two acks' KEY SETS, which was falsifiable
+        when the lane built its own verdict dict. The surviving route answers
+        through a fixed-field response schema, so an equal key set is now
+        true by construction and would pin nothing. What is still falsifiable
+        — and is what the pin always meant — is that the VERDICT FIELDS agree:
+        the durable-maintained flag is read in both postures, so a stopped
+        owner reads as stopped whether the fast lane is on or off. Only the
+        counter differs, which is the latency profile and nothing else."""
+        on_t, off_t = _tenant(arrival=True), _tenant(arrival=False)
+        on_c = _customer(on_t, 10_000_000, ext="a")
+        off_c = _customer(off_t, 10_000_000, ext="b")
+        # A durable transition both postures must surface identically.
+        LiveCounter.ensure_stop_flag(on_c.id, CUSTOMER_WIDE_STOP)
+        LiveCounter.ensure_stop_flag(off_c.id, CUSTOMER_WIDE_STOP)
+        on_ack = _record(Client(), _auth(on_t), on_c).json()
+        off_ack = _record(Client(), _auth(off_t), off_c).json()
+
+        verdict = ("stop", "stop_reason", "stop_scope")
+        assert ({k: on_ack[k] for k in verdict}
+                == {k: off_ack[k] for k in verdict}
+                == {"stop": True, "stop_reason": CUSTOMER_WIDE_STOP,
+                    "stop_scope": "customer"})
+        # ... and the only difference is the fast-lane counter itself.
+        assert Door.balance(on_c.id) is not None
+        assert Door.balance(off_c.id) is None
 
     def test_acks_carry_verdict_from_the_durable_maintained_flag(self):
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=10_000_000)
         # The durable lane set the flag (as its winning transition does in
-        # both postures); both accept paths surface it — a READ, not a write.
+        # both postures); the recording path surfaces it — a READ, not a write.
         LiveCounter.ensure_stop_flag(c.id, CUSTOMER_WIDE_STOP)
-        client, auth = Client(), _auth(t)
-        item = _ingest(client, auth, [_event(c)]).json()["results"][0]
-        assert item["stop"] is True
-        assert item["stop_reason"] == CUSTOMER_WIDE_STOP
-        assert item["stop_scope"] == "customer"
-        sync = _record_sync(client, auth, c, billed=1_000).json()
-        assert sync["stop"] is True
-        assert sync["stop_reason"] == CUSTOMER_WIDE_STOP
+        ack = _record(Client(), _auth(t), c).json()
+        assert ack["stop"] is True
+        assert ack["stop_reason"] == CUSTOMER_WIDE_STOP
+        assert ack["stop_scope"] == "customer"
         assert Door.balance(c.id) is None  # still no counter
 
 
 @pytest.mark.django_db
-class TestPin9CrossingSignalsAtSettleLatency:
+class TestPin9CrossingSignalsAtDurableLaneLatency:
     def setup_method(self):
         cache.clear()
 
-    def test_durable_lane_detects_at_settle_and_next_ack_shows_it(self):
+    def test_durable_lane_detects_the_crossing_and_next_ack_shows_it(self):
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=5_000_000)
         client, auth = Client(), _auth(t)
-        r = _record_sync(client, auth, c, billed=8_000_000)
+        r = _record(client, auth, c, billed=8_000_000)
         assert r.json()["stop"] is False            # nothing at arrival
         assert not _events("stop.fired").exists()
-        # Settle latency: the durable drawdown lane processes the event and
+        # Durable-lane latency: the drawdown lane processes the event and
         # detects the floor crossing — signal + flag, never an ack change.
         handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         assert _events("stop.fired").count() == 1
         assert LiveCounter.read(c.id, t)["stop"] is True
-        nxt = _record_sync(client, auth, c, billed=1_000).json()
+        nxt = _record(client, auth, c, billed=1_000).json()
         assert nxt["stop"] is True                  # verdict via the flag
         assert nxt["stop_reason"] == CUSTOMER_WIDE_STOP
 
@@ -322,67 +338,71 @@ class TestPatrolUnaffectedByTheSwitch:
 
 
 @pytest.mark.django_db
-class TestOnToOffHoldsDrainAtSettle:
+class TestOnToOffNeedsNoDrain:
+    """Preserves: the ON→OFF flip leaves the live counter CONVERGED with
+    durable truth, rather than wedged away from it until the TTL.
+
+    Convergence is the proposition; only the threat to it changed. It used to
+    be threatened by a reservation caught mid-flight by the flip — an
+    estimate held while ON that only a later settle would true up — so the
+    pin drove that settle and watched the counter close the gap. The
+    recording path debits the EXACT cost as it records, so the counter is
+    already equal to durable truth at the moment of the flip and there is
+    nothing outstanding to drain. The assertion below is therefore the
+    agreement itself, checked across the flip, rather than the closing of a
+    gap that can no longer open."""
+
     def setup_method(self):
         cache.clear()
 
-    def test_outstanding_hold_still_trues_up_after_the_flip(self):
-        # ON→OFF needs nothing: a hold acquired while ON drains at settle
-        # even though the lane is now off — the counter converges instead of
-        # being wedged low until the TTL.
+    def test_counter_agrees_with_durable_truth_across_the_flip(self):
         t = _tenant(arrival=True)
         c = _customer(t, balance_micros=20_000_000)
-        r = _ingest(Client(), _auth(t), [_event(c, billed=1_500_000)])
-        assert r.status_code == 200
+        client, auth = Client(), _auth(t)
+        assert _record(client, auth, c, billed=1_500_000).status_code == 200
         assert Door.balance(c.id) == 18_500_000
         t.arrival_signals_enabled = False
         t.save(update_fields=["arrival_signals_enabled"])
-        raw = RawIngestEvent.objects.get()
-        assert raw.held is True
-        # Widen the recorded estimate so the settle delta (estimate − exact)
-        # is a visible +500_000 credit-back.
-        raw.estimate_micros = 2_000_000
-        raw.save(update_fields=["estimate_micros"])
-        from apps.metering.usage.services.usage_service import UsageService
-        assert UsageService.settle_raw(raw) == "settled"
-        assert Door.balance(c.id) == 19_000_000
+
+        # Durable truth catches up on the drawdown lane, which never switches
+        # off. The counter written while ON must already agree with it — that
+        # agreement is what "the flip needs nothing" means.
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            tenant_id=t.id, customer_id=c.id,
+            event_id=str(uuid.uuid4()), cost_micros=1_500_000)))
+        wallet = Wallet.objects.get(customer=c)
+        assert wallet.balance_micros == 18_500_000
+        assert Door.balance(c.id) == wallet.balance_micros
 
 
 @pytest.mark.django_db
-class TestSettleWritesNothingWithLaneOff:
-    """Off as one unit, at settle too: a row accepted with the lane off
-    (held=False) must not have its full-debit true-up create or move a
-    fast-lane counter while the lane is still off — for postpaid that INCRBY
-    would BIRTH the livespend key and quietly maintain a counter whose
-    MAX-merge is switched off. (A genuinely held row still drains — see
-    TestOnToOffHoldsDrainAtSettle.)"""
+class TestLaneOffWritesNoCounterOnTheRecordingPath:
+    """Preserves: a lane-off recording must not create or move a fast-lane
+    counter.
+
+    The hazard is asymmetric, which is why both modes are pinned. For
+    postpaid the debit is an INCRBY, so a lane-off write would BIRTH the
+    livespend key and quietly maintain a counter whose MAX-merge is switched
+    off. For prepaid the key may already exist — left over from before an
+    ON→OFF flip — and a lane-off write must leave it exactly as it found it
+    rather than debiting it."""
 
     def setup_method(self):
         cache.clear()
 
-    def test_postpaid_settle_births_no_livespend(self):
-        from apps.metering.usage.services.usage_service import UsageService
+    def test_postpaid_recording_births_no_livespend(self):
         t = _tenant(mode="postpaid", arrival=False)
         c = _customer(t)
-        assert _ingest(Client(), _auth(t),
-                       [_event(c, billed=5_000_000)]).status_code == 200
-        raw = RawIngestEvent.objects.get()
-        assert raw.held is False
-        assert UsageService.settle_raw(raw) == "settled"
+        assert _record(Client(), _auth(t), c, billed=5_000_000).status_code == 200
         assert Door.spend(c.id) is None
 
-    def test_prepaid_settle_leaves_a_present_counter_untouched(self):
-        from apps.metering.usage.services.usage_service import UsageService
+    def test_prepaid_recording_leaves_a_present_counter_untouched(self):
         t = _tenant(arrival=False)
         c = _customer(t, balance_micros=20_000_000)
-        assert _ingest(Client(), _auth(t),
-                       [_event(c, billed=1_500_000)]).status_code == 200
-        # A leftover counter from before the ON→OFF flip: the lane-off
-        # settle must not debit it (that would be fast-lane maintenance).
+        # A leftover counter from before the ON→OFF flip: a lane-off record
+        # must not debit it (that would be fast-lane maintenance).
         Door.set_balance(c.id, 10_000_000)
-        raw = RawIngestEvent.objects.get()
-        assert raw.held is False
-        assert UsageService.settle_raw(raw) == "settled"
+        assert _record(Client(), _auth(t), c, billed=1_500_000).status_code == 200
         assert Door.balance(c.id) == 10_000_000
 
 

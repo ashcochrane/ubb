@@ -584,7 +584,7 @@ entries:
     gate: G7
     site: backend::metering_async
     expected: tenant_product
-    found: 14 files
+    found: 10 files
     owner_slice: slice_1
     reason: >-
       The fast lane's product flag. #149 established the lane had no

@@ -336,7 +336,7 @@ This table is the acceptance gate made auditable: run any row yourself.
 
 | Pin | Holds | Named test |
 |---|---|---|
-| 1 | The tipping event lands and bills — sync task, sync subtask, async at settle | `api/v1/tests/test_one_rule_pins.py::Pin1SyncTippingEventTest`, `::Pin1AsyncSettleTest`; `test_subtask_pins.py::Pin1SubtaskTippingEventTest` |
+| 1 | The tipping event lands and bills — task and subtask, on the one recording path, with nothing deferred to a later sweep (#192) | `api/v1/tests/test_one_rule_pins.py::Pin1SyncTippingEventTest`, `::Pin1NothingDeferredTest`; `test_subtask_pins.py::Pin1SubtaskTippingEventTest` |
 | 2 | Events on a killed task land, bill, count into both totals, carry stop-context | `test_one_rule_pins.py::Pin2KilledTaskStillCountsTest`; `test_past_limit_pins.py::Pin2StopContextOnKilledTaskTest` |
 | 3 | A below-floor event lands and bills; `Wallet` carries no floor CHECK (ADR-002) | `test_one_rule_pins.py::Pin3BelowFloorLandsTest` |
 | 4 | Durable lane fires at the **configured** floor with Redis down; exactly one stop per crossing | `apps/billing/gating/tests/test_stop_resume_pins.py::TestPin4DurableLane` |
