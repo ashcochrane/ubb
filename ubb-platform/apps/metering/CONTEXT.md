@@ -82,7 +82,11 @@ event. What remains is the settle half over the existing rows, and it goes next.
 (`apps/metering/usage/models.py:RawIngestEvent`,
 `apps/metering/usage/services/usage_service.py:settle_raw`)
 _Avoid_: reading this entry as a description of a live intake path — there is now exactly one way
-to report usage, `POST /api/v1/metering/usage` and its batch sibling.
+to report usage, `POST /api/v1/metering/usage` and its batch sibling. The per-item adapters those
+two routes share (`record_sync_item` and friends) sit in `api/v1/metering_endpoints.py` beside
+them, because the endpoints are now their only caller; the recording work itself stays in
+`UsageService`, and that is the line to hold — an endpoint module may map a request item onto the
+service and classify its errors, never grow pricing, kill or ledger logic of its own.
 
 **Estimate**:
 The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will
