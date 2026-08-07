@@ -180,10 +180,6 @@ API_V1_METERING_ENDPOINTS_GET_USAGE_EVENT = Operation(
     'api_v1_metering_endpoints_get_usage_event',
     'get',
     '/api/v1/metering/usage/{event_id}')
-API_V1_METERING_ENDPOINTS_INGEST_USAGE_BATCH = Operation(
-    'api_v1_metering_endpoints_ingest_usage_batch',
-    'post',
-    '/api/v1/metering/usage/ingest')
 API_V1_METERING_ENDPOINTS_LIST_BOOKS = Operation(
     'api_v1_metering_endpoints_list_books',
     'get',

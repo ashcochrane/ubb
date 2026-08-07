@@ -23,7 +23,6 @@ _EXEMPT = {
     # Usage ingestion — the firehose of metered telemetry (ADR-004 excludes it).
     ("POST", "/metering/usage"),
     ("POST", "/metering/usage/batch"),
-    ("POST", "/metering/usage/ingest"),
     # Task close finalises a metering task — the tail of usage ingestion, and
     # any settlement it triggers is automatic, not a principal moving money.
     ("POST", "/metering/tasks/{task_id}/close"),
@@ -53,8 +52,14 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # governance/config, not telemetry. +1 (task 7) PUT /metering/task-types
 # records task_type.declared — a task type's COGS ceiling is a pricing-rule
 # change, not telemetry. 62 + 2 = 64.
-_EXPECTED_MUTATING = 64
-_EXPECTED_EXEMPT = 6
+#
+# one published way to report usage (slice 1): -1, POST /metering/usage/ingest
+# is deleted as this slice's one reviewed contract break. 64 - 1 = 63. The
+# EXEMPT side falls with it, 6 - 1 = 5 — the row goes, the PRINCIPLE does not:
+# the two surviving usage routes are still telemetry rather than governance,
+# and still keep their rows above.
+_EXPECTED_MUTATING = 63
+_EXPECTED_EXEMPT = 5
 
 
 def _iter_mutating_ops():

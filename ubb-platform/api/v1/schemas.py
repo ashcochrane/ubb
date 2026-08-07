@@ -129,34 +129,12 @@ class UsageBatchRequest(Schema):
 
 
 class UsageBatchResponse(Schema):
-    # Per-item VERDICTS (#78: one verdict field set with async ingest),
-    # positionally aligned with the request's events[]. Success items mirror
+    # Per-item VERDICTS — the field set #78 unified across this route and the
+    # async ingest route, which slice 1 deleted; this is the surviving shape.
+    # Positionally aligned with the request's events[]. Success items mirror
     # the single-call success body plus {"accepted": true}; rejected items are
     # {"accepted": false, "code", "detail", "stop": false, "stop_reason":
     # null, "stop_scope": null} with `code` from the registry.
-    results: list[dict]
-    accepted: int
-    rejected: int
-
-
-class IngestEventIn(RecordUsageRequest):
-    """One item in an async ingest batch (POST /usage/ingest). Field-for-field
-    identical to RecordUsageRequest (the sync batch item) — a distinct name so
-    the ingest request/response schemas are independently versionable."""
-    pass
-
-
-class IngestBatchRequest(Schema):
-    events: list[IngestEventIn] = Field(min_length=1, max_length=1000)
-
-
-class IngestBatchResponse(Schema):
-    # Per-item VERDICTS (#78: one verdict field set with the sync batch),
-    # positionally aligned with the request's events[]. Each entry:
-    # {accepted, code, detail, estimated_cost_micros, stop, stop_reason,
-    # stop_scope, mode, duplicate_suspect} plus (for accepted sync_fallback
-    # items) event_id — kept as `dict` (not a strict sub-schema) to match the
-    # UsageBatchResponse precedent above. `code` words come from the registry.
     results: list[dict]
     accepted: int
     rejected: int

@@ -465,7 +465,7 @@ entries:
     gate: G7
     site: backend::card_type
     expected: pricing_book_name
-    found: 35 files
+    found: 33 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
@@ -487,7 +487,7 @@ entries:
     gate: G7
     site: backend::cost_limit_exceeded
     expected: reason_code
-    found: 3 files
+    found: 2 files
     owner_slice: slice_6
     reason: >-
       A refusal reason spelling the retired field word. Slice 6's
@@ -584,7 +584,7 @@ entries:
     gate: G7
     site: backend::metering_async
     expected: tenant_product
-    found: 10 files
+    found: 4 files
     owner_slice: slice_1
     reason: >-
       The fast lane's product flag. #149 established the lane had no
@@ -607,7 +607,7 @@ entries:
     gate: G7
     site: backend::metric_name
     expected: measurement_key
-    found: 30 files
+    found: 28 files
     owner_slice: slice_2
     reason: >-
       The declared measurement's key. Slice 2's `value_type` / `unit` /
@@ -627,7 +627,7 @@ entries:
     gate: G7
     site: backend::pricing_model
     expected: rate_structure
-    found: 24 files
+    found: 22 files
     owner_slice: slice_4
     reason: >-
       It sat one character from `pricing_mode` and meant something
@@ -667,7 +667,7 @@ entries:
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 25 files
+    found: 24 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -705,7 +705,7 @@ entries:
     gate: G7
     site: backend::request_id
     expected: idempotency_key
-    found: 70 files
+    found: 68 files
     owner_slice: slice_5
     reason: >-
       A second caller-supplied correlation value with no uniqueness
@@ -780,7 +780,7 @@ entries:
     gate: G7
     site: backend::stop.fired
     expected: webhook_event_type
-    found: 17 files
+    found: 16 files
     owner_slice: slice_6
     reason: >-
       An event owned by a mechanism rather than by the customer whose
@@ -834,7 +834,7 @@ entries:
     gate: G7
     site: backend::task.limit_exceeded
     expected: webhook_event_type
-    found: 18 files
+    found: 16 files
     owner_slice: slice_5
     reason: >-
       Replaced by TWO events rather than renamed to one: #140 §4.3
@@ -846,7 +846,7 @@ entries:
     gate: G7
     site: backend::task_limit
     expected: reason_code
-    found: 16 files
+    found: 14 files
     owner_slice: slice_6
     reason: >-
       The same, at Task granularity. Slice 6's ceiling family replaces
@@ -875,7 +875,7 @@ entries:
     gate: G7
     site: backend::usage_metrics
     expected: measurement_key
-    found: 23 files
+    found: 20 files
     owner_slice: slice_2
     reason: >-
       The bag of measured quantities on one event. Slice 2 replaces it
@@ -1961,7 +1961,7 @@ entries:
     gate: G7
     site: sdk::dimensions
     expected: analytics_grouping_kind
-    found: 19 files
+    found: 18 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -2073,7 +2073,7 @@ entries:
     gate: G7
     site: sdk::request_id
     expected: idempotency_key
-    found: 13 files
+    found: 12 files
     owner_slice: slice_5
     reason: >-
       A second caller-supplied correlation value with no uniqueness
@@ -2110,7 +2110,7 @@ entries:
     gate: G7
     site: sdk::tags
     expected: metadata_key
-    found: 7 files
+    found: 6 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
@@ -2142,7 +2142,7 @@ entries:
     gate: G7
     site: sdk::usage_metrics
     expected: measurement_key
-    found: 9 files
+    found: 8 files
     owner_slice: slice_2
     reason: >-
       The bag of measured quantities on one event. Slice 2 replaces it

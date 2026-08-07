@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 134
-  unwrapped: 56
+  operations: 133
+  unwrapped: 55
   wrapped: 78
-  generated_only: 56
+  generated_only: 55
   not_yet_wrapped: 0
 
 operations:
@@ -302,10 +302,6 @@ operations:
   - operation_id: api_v1_metering_endpoints_get_usage_event
     method: GET
     path: /api/v1/metering/usage/{event_id}
-    disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_ingest_usage_batch
-    method: POST
-    path: /api/v1/metering/usage/ingest
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_book_rates
     method: GET

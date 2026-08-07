@@ -1,15 +1,17 @@
 """#113: the async accept pipeline behind the metering seam — accept_batch
 exercised BELOW HTTP.
 
-The endpoint keeps only HTTP shape (auth/product gates, envelope counters,
-problem mapping); everything the pipeline decides — verdicts, holds, raw
-durability, idempotency routing, the sync fallback — is asserted here against
-the service interface directly. Wire-shape parity for the same flows stays
-pinned by api/v1/tests/test_ingest_endpoint.py.
+Everything the pipeline decides — verdicts, holds, raw durability, idempotency
+routing, the sync fallback — is asserted here against the service interface
+directly. The endpoint that kept the HTTP shape of these flows is gone: it was
+the async ingest route, deleted as this slice's one reviewed contract break.
 
-Items are built as real IngestEventIn schema objects: the seam's items are
+Items are built as real RecordUsageRequest schema objects: the seam's items are
 request-item SHAPED (duck-typed — the service never imports api.*), and using
-the real schema keeps this suite honest about that shape.
+the real schema keeps this suite honest about that shape. They were built as
+IngestEventIn, which was that class field-for-field under a second name so the
+deleted route's schemas could version independently; with one published way to
+report usage there is one request-item schema.
 
 Same Redis DB-15 cleanup idiom as the endpoint suite — cache.clear()
 FLUSHDBs the dedicated test db.
@@ -20,7 +22,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import TestCase
 
-from api.v1.schemas import IngestEventIn
+from api.v1.schemas import RecordUsageRequest
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.services.pricing_service import Unpriceable
@@ -58,7 +60,7 @@ class AcceptBatchTestBase(TestCase):
             "billed_cost_micros": 1_000_000,
         }
         base.update(overrides)
-        return IngestEventIn(**base)
+        return RecordUsageRequest(**base)
 
 
 class AcceptBatchVerdictsTest(AcceptBatchTestBase):

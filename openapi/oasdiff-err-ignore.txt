@@ -152,3 +152,28 @@ components webhook `margin.customer_unprofitable` removed
 components webhook `margin.provider_cost_spike` removed
 components webhook `usage.invoice_push_failed_permanent` removed
 components webhook `usage.invoice_pushed` removed
+
+# 2026-08-07 one published way to report usage (slice 1, #236). PRE-LIVE LANE —
+# map #137 constraint 1, reaffirmed by migration/cutover §7.1. Not a
+# deprecation.
+#
+# Unlike every entry above, this one is a REMOVAL rather than a relocation or a
+# rename: nothing takes this path's place. `POST /metering/usage` is not a new
+# address for the deleted route — it is the route that was always there beside
+# it, and after this change it is the only published way to report usage. The
+# batch route survives as an efficiency the generated integration code may use,
+# not as a second concept a developer has to choose between.
+#
+# The clean break is the licence ADR-0006's Consequences reserve for exactly
+# this, and #137 constraint 1 is what makes it available: no tenant is
+# integrated against v1. docs/api-compatibility.md carries the standing note
+# naming the day that ends.
+#
+# RECORDED RATHER THAN ABSORBED (#149 §12). What goes here was deliberately
+# built, reviewed and shipped — the accept seam (#113), the arrival-signals
+# work (#46) in the portion that served reservations, and the upward repair
+# (#45). Deleting working, tested, spend-control-integrated code is a real
+# cost, and it is not free because it is justified. The distinction that must
+# survive: they served a lane that should not exist, NOT that they were wrongly
+# built.
+POST /api/v1/metering/usage/ingest api path removed without deprecation

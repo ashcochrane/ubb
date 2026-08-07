@@ -19,7 +19,6 @@ from django.utils import timezone
 from api.v1.schemas import (
     RecordUsageRequest, RecordUsageResponse,
     UsageBatchRequest, UsageBatchResponse,
-    IngestBatchRequest, IngestBatchResponse,
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
@@ -45,8 +44,7 @@ from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.ingest_accept import (
-    IngestAppendFailed, accept_batch, record_sync_item, usage_error,
-    usage_kwargs, with_uncosted)
+    record_sync_item, usage_error, usage_kwargs, with_uncosted)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.models import UsageEvent
 from apps.platform.dimensions.services import DimensionError, DimensionService
@@ -116,32 +114,6 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     results = [record_sync_item(tenant, item, customers, task_exists)
                for item in payload.events]
     accepted = sum(1 for r in results if r.get("accepted"))
-    return {"results": results, "accepted": accepted,
-            "rejected": len(results) - accepted}
-
-
-# --- Async ingest (estimate -> atomic hold -> durable append) ---
-
-@metering_router.post("/usage/ingest", response={200: IngestBatchResponse})
-@role_floor(WRITE)
-def ingest_usage_batch(request, payload: IngestBatchRequest):
-    """Async accept path: estimate -> atomic hold -> durable raw append -> 202-style
-    verdicts. Exact pricing settles in workers (estimate-hold-settle; see
-    docs/plans/2026-07-03-async-ingestion-hard-stop-design.md). Settlement is
-    claimed by the settle_raw_events task (wired in the settlement change) —
-    this endpoint's only durability contract is that every held/duplicate-
-    suspect item lands in RawIngestEvent before the response is returned.
-    """
-    _product_check(request)
-    tenant = request.auth.tenant
-    if "metering_async" not in (tenant.products or []):
-        raise Problem("feature_not_enabled",
-                      "metering_async is not enabled for this tenant")
-    try:
-        results = accept_batch(tenant, payload.events)
-    except IngestAppendFailed:
-        raise Problem("service_unavailable", "raw ingest append failed")
-    accepted = sum(1 for r in results if r["accepted"])
     return {"results": results, "accepted": accepted,
             "rejected": len(results) - accepted}
 

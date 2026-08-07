@@ -617,7 +617,10 @@ class UsageService:
         must fire before the hold true-up after it (kills → true-up, the
         order the old inline loop guaranteed) — an ambient transaction would
         silently defer kills past the true-up. Pinned by
-        test_settlement.SettleKillOrderingPinTest.
+        test_settle_kill_ordering_pin.SettleKillOrderingPinTest, which was split
+        out of the settlement module when that module went with the deleted
+        ingest route: this ordering is an invariant of code that still ships,
+        so its proof outlives the lane that used to reach it.
         """
         from apps.billing.queries import settle_ingest_hold, release_ingest_hold
 
@@ -730,8 +733,10 @@ class UsageService:
                 # it untouched (a fixed point, not a correction). The drift
                 # persists (bounded, over-restrictive, DRIFT_ALERT_MICROS-
                 # visible) until a credit/top-up, the enforcement-transition
-                # cleanup, or the 62-day TTL heals it; see test_settlement.py's
-                # orphan-hold pin.
+                # cleanup, or the 62-day TTL heals it. The orphan-hold pin that
+                # showed this went with the deleted ingest route's test modules,
+                # along with the accept path that was the only producer of the
+                # holds it described.
                 # Rows accepted while arrival signals were OFF land here too
                 # once the lane is back ON: the full debit keeps the freshly
                 # re-seeded counter honest for spend the seed missed.
