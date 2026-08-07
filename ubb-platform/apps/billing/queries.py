@@ -164,57 +164,6 @@ def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):
             .first())
 
 
-def acquire_ingest_holds(owner_id, tenant, items):
-    """Accept-time atomic estimate-hold for the async ingest path (Task 4) —
-    the cross-product PORT for the metering ingest choke point.
-
-    items: [{"estimate_micros": int, "effective_at": datetime|None}]
-
-    effective_at (optional, default None == current month) gates the I9
-    postpaid prior-month guard in LiveCounter.hold (a backdated item's
-    livespend move is skipped).
-
-    One-rule (#37): the acquire ALWAYS holds, against the wallet only — no
-    item is ever rejected (the accept-time unit-cap lane is retired; task
-    limits are detected at settle with exact provider costs). Returns one
-    verdict dict per item, same order as `items`: {"held": True,
-    "stop": bool, "stop_reason": str|None, "stop_scope": str|None}. No-op
-    passthrough (every item held, unstopped) when the tenant's
-    enforcement_mode is off. NEVER raises — fails open on any Redis error
-    (the durable start-gate remains the backstop), mirroring
-    record_live_usage_debit.
-    """
-    from apps.billing.gating.services.live_counter import LiveCounter
-    return LiveCounter.hold(owner_id, tenant, items)
-
-
-def settle_ingest_hold(owner_id, tenant, delta_micros, *, effective_at=None):
-    """Settle a prior estimate hold once the actual billed cost is known
-    (Task 6) — cross-product port. delta_micros = estimate − exact: positive
-    credits back the over-hold, negative debits further. Routes through
-    LiveCounter.settle -> LiveCounter.credit (the same MIN-merge-safe
-    site every other credit hook uses). Never raises.
-
-    effective_at (optional, default None == current month): forwards to
-    LiveCounter.settle's prior-month guard — a POSTPAID event backdated to a
-    prior calendar month skips the livespend adjustment (I9 parity; its
-    matching hold() already skipped the hold-time move). Omitting it
-    preserves every pre-existing caller's behavior exactly."""
-    from apps.billing.gating.services.live_counter import LiveCounter
-    LiveCounter.settle(owner_id, tenant, delta_micros, effective_at=effective_at)
-
-
-def release_ingest_hold(owner_id, tenant, estimate_micros, *, effective_at=None):
-    """Fully release (credit back) a prior estimate hold — duplicate
-    ingest, failed append, or any path that must undo the hold entirely.
-    Cross-product port; equivalent to
-    settle_ingest_hold(delta_micros=estimate_micros). Never raises.
-    effective_at forwards to the same prior-month guard as
-    settle_ingest_hold (optional, default None == current month)."""
-    from apps.billing.gating.services.live_counter import LiveCounter
-    LiveCounter.release(owner_id, tenant, estimate_micros, effective_at=effective_at)
-
-
 def is_usage_period_closed(owner_id, period_start) -> bool:
     """True when the billing owner's postpaid usage invoice for the calendar
     month starting at ``period_start`` (date) is FROZEN — i.e. matches the

@@ -7,20 +7,25 @@ MIN/MAX reconcile directions, and pooled-owner postpaid aggregation.
 """
 import datetime
 import json
+import threading
 from unittest.mock import patch
 
 import pytest
+import redis
+from django.conf import settings
 from django.core.cache import cache
 from django.test import Client
 from django.utils import timezone
 
 from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.live_counter import Door, LiveCounter
+from apps.billing.gating.services.live_counter import (Door, LiveCounter,
+                                                       stop_channel)
 from apps.billing.wallets.models import Wallet
 from apps.metering.queries import get_billing_owner_billed_total
 from apps.metering.usage.models import UsageEvent
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
+from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
 
@@ -294,6 +299,210 @@ class TestStopFlag:
         assert not OutboxEvent.objects.filter(event_type="stop.fired").exists()
         c.refresh_from_db()
         assert c.status == "active"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_debits_at_floor_race():
+    """20 threads x 1_500_000 against a 20_000_000 balance: every debit is
+    atomic, the final balance is exactly 20_000_000 - 20*1_500_000, and the
+    stop flag is set — the crossing detected exactly, no lost updates.
+
+    Money-gate concurrency correctness under REAL threads against REAL Redis
+    and real Lua. This pin rode ``LiveCounter.hold`` until #239; its subject
+    was never the reservation but ``_SEED_AND_DECR`` — the seed-if-absent
+    then DECRBY script — which is what ``debit`` runs on the surviving
+    recording path. It is the only threaded test over this module's Lua, and
+    ``test_seed_once_across_repeated_first_use`` does not replace it: that one
+    is sequential, so it proves the seed fires once but not that concurrent
+    decrements never lose an update.
+
+    Needs transaction=True: real threads open separate DB connections, which
+    (under the default rollback-wrapped django_db marker) cannot see the
+    fixture's uncommitted Tenant/Customer/Wallet rows — a query deep in
+    _crossed() (BillingTenantConfig.get_or_create's FK to tenant_id) would
+    then fail invisibly-to-the-thread and get masked by debit's fail-open
+    contract. transaction=True commits the rows for real so every thread's
+    connection sees them, letting the race actually exercise Redis-level
+    atomicity rather than each thread independently fail-opening.
+    """
+    cache.clear()
+    t = _tenant()  # prepaid, enforcing; default min_balance floor = 0
+    c = Customer.objects.create(tenant=t, external_id="race-owner")
+    Wallet.objects.create(customer=c, balance_micros=20_000_000)
+
+    results = []
+
+    def go():
+        try:
+            results.append(LiveCounter.debit(c.id, t, 1_500_000,
+                                             now=timezone.now()))
+        finally:
+            from django.db import connections
+            connections.close_all()
+
+    ts = [threading.Thread(target=go) for _ in range(20)]
+    [thread.start() for thread in ts]
+    [thread.join() for thread in ts]
+
+    assert Door.balance(c.id) == 20_000_000 - 30_000_000
+    # Fail-open returns None; a lost debit would show up in the balance above,
+    # so this asserts every call actually reached the counter.
+    assert all(r is not None for r in results)
+    assert any(r["stop"] for r in results)
+
+
+@pytest.mark.django_db
+class TestStopPropagation:
+    """``_set_stop``'s two best-effort fan-out legs, driven by the ONE
+    surviving counter write.
+
+    These pins used to ride ``LiveCounter.hold``; the reservation trio went
+    with the async recording lane (#239) and the pins came here rather than
+    going with it, because their subject is ``_set_stop`` — a mechanism the
+    synchronous debit path still runs on every crossing. Losing them with the
+    lane would have left the pub/sub publish, the one PUBLIC key-shaped name
+    this module exposes, pinned by nothing but its own format test.
+
+    The pub/sub leg is the reason this class exists: the ``stop.fired``
+    emission guard is pinned durably elsewhere (test_stop_resume_pins.py,
+    test_patrol_pins.py), the publish is not.
+    """
+
+    def setup_method(self):
+        cache.clear()
+
+    @staticmethod
+    def _raw_client():
+        return redis.from_url(settings.REDIS_URL)
+
+    @classmethod
+    def _subscribe(cls, owner_id):
+        client = cls._raw_client()
+        # ignore_subscribe_messages: get_message() should only ever surface the
+        # real published payload, never the channel's own "subscribe" ack.
+        pubsub = client.pubsub(ignore_subscribe_messages=True)
+        # PubSub.__init__ only keeps a reference to client.connection_pool, NOT
+        # to `client` itself. Without this, `client` (a plain local var) would
+        # be garbage-collected the moment this method returns, and
+        # redis.Redis.__del__ calls close() ->
+        # connection_pool.disconnect(inuse_connections=True) — which tears down
+        # the very (in-use!) socket `pubsub` just subscribed on, silently. The
+        # pubsub object doesn't notice: its next get_message() call
+        # transparently reconnects + re-subscribes (redis-py's on_connect
+        # hook), so there's no exception — but any publish sent during that
+        # dead window is lost with zero visible error. Keeping `client` alive
+        # on the pubsub object for the caller's lifetime prevents this.
+        pubsub._keepalive_client = client
+        pubsub.subscribe(stop_channel(owner_id))
+        # Force the SUBSCRIBE round-trip to complete before returning, so a
+        # publish emitted immediately after this call is guaranteed to be seen.
+        pubsub.get_message(timeout=1)
+        return pubsub
+
+    @staticmethod
+    def _funded_owner(t, balance_micros=20_000_000):
+        c = Customer.objects.create(tenant=t, external_id="owner1")
+        Wallet.objects.create(customer=c, balance_micros=balance_micros)
+        return c
+
+    def test_floor_crossing_publishes_once_and_emits_one_outbox_row(self):
+        t = _tenant()  # prepaid, enforcing; default min_balance floor = 0
+        c = self._funded_owner(t)
+        pubsub = self._subscribe(c.id)
+        try:
+            LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
+            assert pubsub.get_message(timeout=0.2) is None  # no crossing yet
+
+            out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
+            assert out["stop"] is True
+
+            msg = pubsub.get_message(timeout=1)
+            assert msg is not None and msg["type"] == "message"
+            assert msg["data"].decode() == "customer_wide_stop"
+            assert pubsub.get_message(timeout=0.2) is None  # exactly one
+
+            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+            event = OutboxEvent.objects.get(event_type="stop.fired")
+            assert event.payload["owner_id"] == str(c.id)
+            assert event.payload["reason"] == "customer_wide_stop"
+            assert event.payload["scope"] == "customer"
+            assert event.payload["tenant_id"] == str(t.id)
+        finally:
+            pubsub.close()
+
+    def test_second_crossing_while_flag_set_does_not_spam(self):
+        t = _tenant()
+        c = self._funded_owner(t)
+        LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+
+        pubsub = self._subscribe(c.id)
+        try:
+            # Still stopped (flag already set) -> another crossing must NOT
+            # publish/emit again (transition-only, no spam).
+            out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
+            assert out["stop"] is True
+            assert pubsub.get_message(timeout=0.3) is None
+            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        finally:
+            pubsub.close()
+
+    def test_flag_only_delete_does_not_re_emit_but_a_real_clear_re_arms(self):
+        """#39: emission dedup lives on the signal ledger, not the Redis flag.
+
+        A bare flag delete (a Redis flush / blind window, not a real recovery)
+        re-arms the FAST LANE's pub/sub + flag, but the re-driven ledger
+        transition loses (the episode is still open) — no duplicate
+        stop.fired. Closing the episode through the guard (as every real
+        clearing path does) re-arms emission: the next crossing opens episode
+        2 and fires again.
+        """
+        from apps.billing.gating.services.stop_signal_service import (
+            CLEAR_BALANCE_RECOVERED, StopSignalService)
+
+        t = _tenant()
+        c = self._funded_owner(t)
+        LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
+        LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+
+        Door.delete_stop(c.id)
+
+        pubsub = self._subscribe(c.id)
+        try:
+            out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
+            assert out["stop"] is True
+            msg = pubsub.get_message(timeout=1)
+            assert msg is not None and msg["data"].decode() == "customer_wide_stop"
+            # Episode still open on the ledger -> the re-set lost the transition.
+            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        finally:
+            pubsub.close()
+
+        # A REAL clear (through the guard) closes episode 1...
+        StopSignalService.drive_clear(c.id, t, reason=CLEAR_BALANCE_RECOVERED)
+        Door.delete_stop(c.id)
+        # ...so the next crossing opens episode 2 and emits exactly once more.
+        LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
+        fired = OutboxEvent.objects.filter(event_type="stop.fired").order_by("created_at")
+        assert fired.count() == 2
+        assert [e.payload["episode_seq"] for e in fired] == [1, 2]
+
+    def test_publish_failure_does_not_raise_into_the_debit(self, monkeypatch):
+        def _boom_publish(self, *args, **kwargs):
+            raise ConnectionError("redis publish down")
+
+        monkeypatch.setattr(redis.Redis, "publish", _boom_publish)
+
+        t = _tenant()
+        c = self._funded_owner(t)
+        LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
+        out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
+        assert out["stop"] is True
+        # The outbox event (a separate best-effort side effect) still fires even
+        # though pub/sub publish blew up.
+        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
 
 
 @pytest.mark.django_db

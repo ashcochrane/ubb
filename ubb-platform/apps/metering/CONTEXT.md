@@ -88,16 +88,6 @@ recording work itself stays in `UsageService`, and that is the line to hold — 
 may map a request item onto the service and classify its errors, never grow pricing, kill or
 ledger logic of its own.
 
-**Estimate**:
-A read-only price computed ahead of recording, never knowingly lower than what recording will
-charge. Exact for caller-supplied, linear, and markup pricing — equal to `price()` *by
-construction*: both run the ONE compute spine (`PricingService._compute`), differing only in which
-cards resolve (CardCache current cards vs `as_of`-exact cards).
-(`apps/metering/pricing/services/pricing_service.py:PricingService.estimate`)
-_Avoid_: "quote" — the domain word is estimate; and never fork a second pricing body — change the
-spine. Nothing calls this today: its one caller went with the intake path it priced, and the
-entry survives only until the ticket that disposes of it.
-
 **Refund**:
 A record linked one-to-one to a usage event, created only when billing emits `refund.requested`.
 (`apps/metering/usage/models.py:Refund`)

@@ -177,9 +177,16 @@ SWEPT = {
 #: without one of them being the retired sense.
 #:
 #:   * `flat` is Django's `values_list(..., flat=True)`, about a hundred times.
-#:   * `hold` is `LiveCounter.hold`, the atomic accept-time reservation in the
-#:     estimate-hold-settle sequence — a live first-class mechanism.
-#:   * `estimate` is `PricingService.estimate`, the call that precedes it.
+#:   * `hold` was `LiveCounter.hold`, the atomic accept-time reservation in the
+#:     estimate-hold-settle sequence.
+#:   * `estimate` was `PricingService.estimate`, the call that precedes it.
+#:
+#: #239 DELETED BOTH OF THOSE MECHANISMS and re-took the count against the tree
+#: it produced. The two words stay here: they survive as the ordinary English
+#: verb and noun on every surface they appear, and still name no
+#: `pricing_status` value anywhere. The re-taken numbers, the method, and the
+#: reading of every residual occurrence are in the registry beside the words —
+#: `domain-vocabulary/concepts/economics.yaml`, `pricing_status.retired_senses`.
 #:
 #: All three were retired as values of `rate_structure` and `pricing_status`,
 #: and `pricing_status` is a new concept whose values have never shipped — so

@@ -216,24 +216,61 @@ pricing_status:
     # Both were `retired_aliases` until #206 built the sweep and ran it. Neither
     # can be one, and the evidence is unusually clean: `pricing_status` is a new
     # concept whose values have never shipped, so there is not one occurrence of
-    # either word as a status value anywhere in the tree — while `hold` returns
-    # 419 hits and `estimate` 271, every single one of them the OTHER sense.
-    # A sweep term with a 100% false-positive rate does not need weighing up.
+    # either word as a status value anywhere in the tree, while both words are
+    # common English carrying an unrelated sense on every living surface.
+    #
+    # THE EVIDENCE WAS RE-TAKEN IN #239, and it had to be. #206 justified the
+    # exclusion on a hit count — `hold` 419, `estimate` 271 — against a tree
+    # that still contained the arrival-time reservation lane, and #239 deleted
+    # exactly the two mechanisms the `survives_as` clauses below used to name.
+    # Nothing pins a `survives_as` clause against real code and this directory
+    # is a permanent sweep exclusion, so an inherited count would have gone on
+    # excusing two false sentences with CI green — ADR-0008 §9's failure mode
+    # landing on the registry itself.
+    #
+    # Re-taken against the tree #239 produces, over the sweep's OWN swept set
+    # (`sweep.partition` under `gates/forbidden-term-sweep.yaml`: 1,460 of
+    # 1,798 tracked files) and its own token matcher (`sweep.pattern` — the
+    # token with a non-identifier character required on each side). That is
+    # the measure which answers the question being re-opened: what the gate
+    # would see if these words were input. It also excludes this directory, so
+    # the file can record its own number without changing it — a whole-tree
+    # count could not. (#206 did not record the method behind 419/271, which
+    # is why this entry records one; its numbers are closest to a whole-tree
+    # occurrence count, which is not comparable to what follows.)
+    #
+    #     hold      49 files,  78 occurrences
+    #     estimate  15 files,  21 occurrences
+    #
+    # OUTCOME: THE RETIRED-SENSE CLASSIFICATION STANDS, on re-taken evidence.
+    # Every residual occurrence was read. `hold` is the ordinary English verb
+    # throughout — a lock held, a column that may hold rows, an invariant that
+    # holds, "customers hold prepaid credit" in the console's own labels —
+    # plus prose recording that the reservation was deleted. `estimate` is a
+    # row-count estimate in the export UI, a query-planner estimate in two
+    # analytics tests, and the same historical prose. Not one occurrence of
+    # either word is a `pricing_status` value, so neither becomes a retired
+    # alias and this slice adds no ledger entry.
     - term: estimate
       retired_as: >-
         a `pricing_status` value naming a provisional price. `known` is the
         only thing a settled price is, and an unsettled one is `unknown`.
       survives_as: >-
-        `PricingService.estimate`, the accept-time call in the async recording
-        path — the verb for what that path does before the worker settles it.
+        the ordinary English noun for an approximate quantity, used on living
+        surfaces UBB does not price with — the export page's live row-count
+        estimate, and the query planner's own estimates in the analytics
+        tests. It named a mechanism until #239: `PricingService.estimate`,
+        the accept-time price the deleted recording lane reserved against.
     - term: hold
       retired_as: >-
         a `pricing_status` value naming money set aside against a price not yet
         known. Under #148 §8 the resolved price is the price.
       survives_as: >-
-        the spend-control hold: `LiveCounter.hold`, the atomic Redis reservation
-        taken at accept time in the estimate-hold-settle sequence. That is a
-        live first-class mechanism, not a status a row carries.
+        the ordinary English verb, on nearly every module in the tree — a lock
+        held, a column that may hold rows, an invariant that holds, a customer
+        who holds prepaid credit. It named a mechanism until #239:
+        `LiveCounter.hold`, the atomic Redis reservation the deleted recording
+        lane took at accept time. No reservation is taken anywhere now.
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py

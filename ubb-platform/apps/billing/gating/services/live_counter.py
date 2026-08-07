@@ -136,8 +136,7 @@ return tonumber(cur)
 """
 
 # Postpaid spend INCRBY (creates at amount on first use). KEYS[1]=livespend;
-# ARGV[1]=amount (negative at settle: a positive over-hold delta LOWERS the
-# spend); ARGV[2]=ttl. Returns the running month-to-date spend.
+# ARGV[1]=amount; ARGV[2]=ttl. Returns the running month-to-date spend.
 _SPEND_INCR = """
 local v = redis.call('INCRBY', KEYS[1], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
@@ -169,42 +168,6 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 return tonumber(cur)
 """
 
-# The batch-hold move (one eval per item, pipelined across the batch).
-# KEYS[1] = balance/spend key (livebal for prepaid, livespend for postpaid)
-# ARGV[1] = seed (prepaid: durable wallet balance; postpaid: unused, pass 0)
-# ARGV[2] = estimate_micros — ALWAYS POSITIVE. ARGV[4] (not the sign of this
-#           value) selects the balance-move direction.
-# ARGV[3] = ttl seconds — refreshed (EXPIRE) on every key this script touches.
-# ARGV[4] = '1' => postpaid (INCRBY the spend counter — _SPEND_INCR's move);
-#           '0' => prepaid (seed-if-absent then DECRBY — _SEED_AND_DECR's).
-# ARGV[5] = '1' => skip the balance/spend move entirely (I9 parity: a
-#           postpaid item backdated to a PRIOR month must not inflate THIS
-#           month's live spend counter — mirrors debit()'s same_month guard).
-#           Prepaid callers always pass '0' here (livebal is not month-scoped
-#           — a backfill still legitimately reduces spendable balance). When
-#           skipped, returns the CURRENT (untouched) KEYS[1] value (0 if
-#           absent) so the caller's crossing check still sees whatever a
-#           SIBLING item in the same batch already moved it to.
-# Returns the post-hold counter value. Always holds — nothing here rejects.
-_ACQUIRE = """
-if tonumber(ARGV[5]) == 1 then
-    local cur = redis.call('GET', KEYS[1])
-    return cur and tonumber(cur) or 0
-end
-local v
-if tonumber(ARGV[4]) == 1 then
-    v = redis.call('INCRBY', KEYS[1], ARGV[2])
-else
-    if redis.call('EXISTS', KEYS[1]) == 0 then
-        redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
-    end
-    v = redis.call('DECRBY', KEYS[1], ARGV[2])
-end
-redis.call('EXPIRE', KEYS[1], ARGV[3])
-return v
-"""
-
-
 def _client():
     import redis
     return redis.from_url(settings.REDIS_URL)
@@ -234,12 +197,6 @@ def stop_channel(owner_id) -> str:
     (subscribers are outside the module by definition; Plan 2's future SSE
     endpoint reads it). Everything else about the key space is private."""
     return f"ubb:stopchan:{owner_id}"
-
-
-def _held_verdict() -> dict:
-    """A fresh held/not-stopped verdict dict (never share a single mutable
-    instance across items — callers may mutate their own copy)."""
-    return {"held": True, "stop": False, "stop_reason": None, "stop_scope": None}
 
 
 class LiveCounter:
@@ -310,208 +267,6 @@ class LiveCounter:
                            extra={"data": {"owner_id": str(owner_id)}})
             return None
 
-    # ---- accept-time hold for the async ingest path (estimate-hold-settle) ----
-    @staticmethod
-    def hold(owner_id, tenant, items):
-        """Atomically reserve an estimated cost for each item — always holds.
-
-        The money mirror for async ingestion: the ONLY place an ESTIMATED
-        cost is reserved before the async worker records the real usage
-        event. Same counters, same stop flag as ``debit`` — there is only ONE
-        live counter per owner, so a hold taken here is immediately visible
-        to (and races fairly against) the synchronous path, and vice versa.
-
-        items: [{"estimate_micros": int, "effective_at": datetime|None}]
-
-        effective_at (I9 parity with ``debit``): for a POSTPAID tenant, an
-        item backdated to a PRIOR calendar month does not move the livespend
-        counter (a legitimate backfill must not inflate THIS month's spend
-        uncorrectably — the reconcile MAX-merge only ever RAISES, so an
-        inflated value could never self-correct). PREPAID is untouched:
-        livebal is not month-scoped, so a backfill still legitimately reduces
-        the spendable balance.
-
-        One-rule (#37): the acquire ALWAYS holds, against the wallet only —
-        task limits are provider-cost denominated, so unit-limit detection
-        lives where exact provider cost exists, not here. Nothing on this path
-        ever rejects an item.
-
-        Per item, ONE Lua eval (``_ACQUIRE``), pipelined across the whole
-        batch so an N-item batch is still N atomic server-side ops. Back in
-        Python the owner's crossing threshold is resolved ONCE per call
-        (``_threshold`` — not per item, to avoid an ORM query per item) and
-        every held item's post-hold value is compared against it in Python.
-        A crossing sets the cooperative stop flag; this NEVER rejects or
-        rolls back the hold that crossed it (I3 — cooperative, not
-        transactional).
-
-        Returns one verdict dict per item, in the SAME order as `items`:
-        {"held": bool, "stop": bool, "stop_reason": str|None,
-         "stop_scope": str|None}. ``held`` reports whether a hold was
-        actually reserved, so a caller only ever trues up a hold that was
-        really taken. **No caller remains** — the path that took these holds
-        was deleted in slice 1, and this whole lane goes with the ticket
-        after it.
-
-        Arrival signals OFF (#46, §E — enforcing, switch off): the whole
-        fast lane is off as one unit — NO Redis write of any kind here (no
-        hold, no crossing check); every item is ``held: False``. The stop
-        fields still carry the verdict READ from the durable-maintained flag
-        (``read``), so the ack schema is identical in both postures — only
-        the latency profile changes (detection happens at settle).
-
-        Disabled (enforcement_mode == "off"): every item is held, unstopped
-        — a cheap no-op passthrough, matching every other Tier-2 gate (the
-        durable start-gate, e.g. RiskService, remains the real backstop).
-
-        NEVER raises: any error (Redis unreachable, etc.) fails OPEN — every
-        item is held, unstopped — identical fail-open contract to ``debit``.
-        """
-        if not enforcing(tenant):
-            return [_held_verdict() for _ in items]
-        if not arrival_signals_on(tenant):
-            verdict = LiveCounter.read(owner_id, tenant)
-            out = []
-            for _ in items:
-                o = _held_verdict()
-                o["held"] = False
-                o.update(verdict)
-                out.append(o)
-            return out
-
-        from django.utils import timezone
-        from apps.billing.queries import get_customer_balance
-
-        postpaid = tenant.billing_mode == "postpaid"
-        now = timezone.now()
-        try:
-            if postpaid:
-                label, _, _ = month_label_bounds(now)
-                bal_key = _livespend_key(owner_id, label)
-                seed = 0
-            else:
-                bal_key = _livebal_key(owner_id)
-                seed = int(get_customer_balance(owner_id))
-
-            client = _client()
-            pipe = client.pipeline()
-            for it in items:
-                skip_balance = postpaid and not same_month(it.get("effective_at"), now)
-                pipe.eval(
-                    _ACQUIRE, 1, bal_key,
-                    seed, int(it["estimate_micros"]), COUNTER_TTL_SECONDS,
-                    1 if postpaid else 0,
-                    1 if skip_balance else 0,
-                )
-            raw_results = pipe.execute()
-
-            # Threshold-crossing bound resolved ONCE per owner for this whole
-            # batch (not per item — that would be an ORM query per item) and
-            # compared in plain Python below.
-            mode = "postpaid" if postpaid else "prepaid"
-            threshold = LiveCounter._threshold(mode, owner_id, tenant)
-            out = []
-            crossed = False
-            crossing_value = 0
-            for post in raw_results:
-                value = int(post)
-                # The crossing module owns both orientations (#110) — this is
-                # the same compare the fast lane's _crossed makes, against the
-                # once-per-batch threshold.
-                if crossed_live(mode, value, threshold) and not crossed:
-                    crossed = True
-                    crossing_value = value
-                out.append(_held_verdict())
-
-            if crossed:
-                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
-                LiveCounter._set_stop(
-                    owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
-                    balance_micros=crossing_value if mode == "prepaid" else 0)
-            verdict = LiveCounter.read(owner_id, tenant)
-            for o in out:
-                o.update(verdict)
-            return out
-        except Exception:
-            # A failure THIS late (e.g. in _threshold's ORM lookup, _set_stop,
-            # or the verdict read) already ran the Redis pipe -- money already
-            # moved -- so this fail-open only means a crossing here goes
-            # UNDETECTED for one batch; the next hold()/debit() call
-            # re-evaluates the now-updated counter and catches it then (a
-            # one-batch stop-flag delay, not a lost debit).
-            logger.warning("live_counter.hold_failed",
-                           extra={"data": {"owner_id": str(owner_id)}})
-            return [_held_verdict() for _ in items]  # fail-open
-
-    @staticmethod
-    def settle(owner_id, tenant, delta_micros, *, effective_at=None):
-        """delta = estimate − exact. Positive => credit back the over-hold
-        (the actual cost came in lower than the estimate); negative =>
-        debit further (an underestimate).
-
-        PREPAID: routes the balance-side adjustment through ``credit`` — the
-        SAME MIN-merge-safe site every other credit hook (top-up,
-        refund-reversal, manual credit) uses, so a fast-path drop here fails
-        the SAME safe direction (over-restrictive, never under-restrictive)
-        as every other credit path.
-
-        POSTPAID: ``credit`` is a deliberate no-op for postpaid ("no
-        spendable balance"), so settle applies the delta DIRECTLY to the
-        CURRENT month's livespend counter (INCRBY −delta via the module's
-        ``_SPEND_INCR`` — the same script the debit lane runs: a positive
-        over-hold delta LOWERS the spend, a negative delta raises it
-        further). Without this, every over-estimate would permanently
-        inflate the counter — the postpaid reconcile MAX-merge only ever
-        RAISES, so it could never self-correct, and budget caps would fire
-        increasingly early for the rest of the month.
-
-        Prior-month settle guard (I9 parity): `effective_at` is the settled
-        event's effective instant (optional; None == "treat as current
-        month", so every pre-existing caller that omits it is unaffected). For
-        POSTPAID, when `effective_at` falls in a PRIOR calendar month relative
-        to settle wall-clock time, the livespend adjustment is skipped
-        entirely — the matching ``hold`` already skipped this event's
-        hold-time move for the same reason (see its `skip_balance` guard), so
-        applying a delta here would adjust a counter this event never
-        touched. PREPAID is untouched (livebal is not month-scoped — a
-        backfill still legitimately reduces spendable balance).
-
-        Month-rollover window (postpaid, same-month case): a hold acquired in
-        month M that settles in month M+1 adjusts M+1's livespend key (the
-        hold inflated M's). The exposure is only the few seconds of ingest
-        latency straddling the rollover instant, and the MAX-merge reconcile
-        toward each month's durable billed total re-corrects both months'
-        counters within one reconcile cycle.
-
-        Best-effort everywhere; NEVER raises. Does NOT clear stop flags —
-        recovery stays with reconcile/credit(), matching existing semantics.
-        """
-        delta_micros = int(delta_micros)
-        if delta_micros:
-            if tenant.billing_mode == "postpaid":
-                if enforcing(tenant):
-                    from django.utils import timezone
-                    now = timezone.now()
-                    if same_month(effective_at, now):
-                        try:
-                            label, _, _ = month_label_bounds(now)
-                            key = _livespend_key(owner_id, label)
-                            _client().eval(_SPEND_INCR, 1, key,
-                                           -delta_micros, COUNTER_TTL_SECONDS)
-                        except Exception:
-                            logger.warning("live_counter.settle_failed",
-                                           extra={"data": {"owner_id": str(owner_id)}})
-            else:
-                LiveCounter.credit(owner_id, tenant, delta_micros)
-
-    @staticmethod
-    def release(owner_id, tenant, estimate_micros, *, effective_at=None):
-        """Full credit-back of a hold — duplicate ingest, failed append, or
-        any path that must UNDO a hold() entirely. Equivalent to
-        settle(delta_micros=estimate_micros). `effective_at` forwards to
-        settle()'s prior-month guard — see its docstring."""
-        LiveCounter.settle(owner_id, tenant, estimate_micros, effective_at=effective_at)
-
     # ---- customer-wide stop flag (P3) ----
     @staticmethod
     def _threshold(mode, owner_id, tenant):
@@ -524,9 +279,10 @@ class LiveCounter:
         BudgetService.resolve_config_for, or CustomerBillingProfile/
         BillingTenantConfig via get_customer_min_balance).
 
-        Kept separate from ``_crossed`` so the batch lane (``hold``)
-        resolves this ONCE per call and compares every item's post-hold
-        value against it in plain Python, instead of re-querying per item."""
+        Separate from ``_crossed`` — resolving the line and comparing against
+        it are two jobs, and the billing glossary names this one as the seam
+        that answers "which line does this owner cross?". ``_crossed`` is its
+        only caller."""
         if mode == "postpaid":
             from apps.billing.gating.services.budget_service import BudgetService
             return budget_stop_threshold(
@@ -540,10 +296,7 @@ class LiveCounter:
         prepaid balance below the wallet floor (-min_balance), or postpaid
         month-to-date spend at/over the budget stop line. Resolves the
         threshold via ``_threshold`` (ONE ORM query per call) and compares
-        via ``crossing.crossed_live`` — the one owner of both orientations.
-        A caller evaluating many items per owner in one batch should instead
-        call ``_threshold`` once and compare each item in Python (see
-        ``hold``)."""
+        via ``crossing.crossed_live`` — the one owner of both orientations."""
         return crossed_live(
             mode, value, LiveCounter._threshold(mode, owner_id, tenant))
 
@@ -567,8 +320,8 @@ class LiveCounter:
         is what dedups emission (a re-set after a Redis flush or blind window
         drives the ledger again and simply loses).
 
-        NEVER raises into the caller — this runs on the accept-time money
-        path (debit / hold). The pub/sub publish is guarded by try/except
+        NEVER raises into the caller — this runs on the recording money
+        path (``debit``). The pub/sub publish is guarded by try/except
         (not a DB statement, so that suffices). drive_stop opens its own
         ``transaction.atomic`` — a SAVEPOINT inside the sync path's ambient
         transaction (the budget_service.check_thresholds pattern): a DB-level

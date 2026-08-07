@@ -1,8 +1,8 @@
 """The ONE owner of the Crossing decision (#110).
 
 Every lane that compares a balance/spend value against a configured money
-line imports THESE predicates — the fast lane (``LiveCounter.debit`` /
-``LiveCounter.hold``), the durable lane (``handlers.py`` drawdown), the
+line imports THESE predicates — the fast lane (``LiveCounter.debit``),
+the durable lane (``handlers.py`` drawdown), the
 start-gate (``RiskService``), reconcile (``LiveCounter``), the upward
 repair (``repair.py``), the budget gate (``BudgetService.check``) and the
 dispute clawback (Stripe webhooks). Pure module: no ORM, no Redis — the
@@ -97,7 +97,7 @@ def past_budget_stop(spend_micros, stop_threshold_micros) -> bool:
     return spend_micros >= stop_threshold_micros
 
 
-# --- the live-counter dispatch (fast lane / hold batch / reconcile) --------
+# --- the live-counter dispatch (fast lane / reconcile) ---------------------
 
 def crossed_live(mode, value_micros, threshold_micros) -> bool:
     """The live-counter compare, one orientation per mode, against a
