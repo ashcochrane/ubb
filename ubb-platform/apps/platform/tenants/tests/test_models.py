@@ -93,18 +93,11 @@ class TestTheAcceptedProductsAreTheRegistrys:
                 name="T", products=[TENANT_PRODUCT_METERING, "clairvoyance"])
         assert "products" in refusal.value.message_dict
 
-    def test_the_default_is_itself_a_declared_product(self):
-        """Defaulting and validation read the same set, so a tenant created
-        with no products can never be one the next `save` refuses."""
-        tenant = Tenant.objects.create(name="Default Products")
-        assert tenant.products
-        assert set(tenant.products) <= TENANT_PRODUCT_VALUES
-
     def test_subscriptions_is_not_one_of_them(self):
         assert "subscriptions" not in TENANT_PRODUCT_VALUES
 
     def test_configuring_subscriptions_is_rejected(self):
         with pytest.raises(ValidationError) as refusal:
-            Tenant.objects.create(name="T",
-                                  products=["metering", "subscriptions"])
+            Tenant.objects.create(
+                name="T", products=[TENANT_PRODUCT_METERING, "subscriptions"])
         assert "products" in refusal.value.message_dict

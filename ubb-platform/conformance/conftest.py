@@ -20,6 +20,7 @@ from django.db import close_old_connections
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.vocabulary import TENANT_PRODUCT_VALUES
 from core.widget_auth import create_widget_token
 
 
@@ -62,7 +63,10 @@ def conformance_principal(db):
     tenant = Tenant.objects.create(
         name="Conformance",
         stripe_connected_account_id="acct_conformance",
-        products=["metering", "billing", "referrals"],
+        # "every product" as the registry defines it, not as a literal list
+        # that goes stale the next time one is retired — which is exactly what
+        # happened to this fixture, and why #240 had to edit it.
+        products=sorted(TENANT_PRODUCT_VALUES),
         billing_mode="prepaid",
     )
     _, raw_key = TenantApiKey.create_key(tenant, label="conformance")

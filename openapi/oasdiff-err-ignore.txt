@@ -191,10 +191,22 @@ POST /api/v1/metering/usage/ingest api path removed without deprecation
 # still accepts something else. The value set is written at export time from
 # openapi/known-values.json; neither schema spells a value.
 #
-# This is a NARROWING of a field that was `type: string` with no constraint, so
-# a request naming an unknown product now fails at the schema instead of at the
-# model's own validation. Same refusal, moved forward to where an integrator
-# reads it — the first `x-ubb-concept` marker in the committed contract, and
+# This is a NARROWING of a field that was `type: string` with no constraint —
+# and it is a narrowing of the DOCUMENT, not of the runtime. Nothing here adds
+# a second enforcement point: `json_schema_extra` renders the enum and does not
+# validate, and typing the field `Literal[...]` is forbidden outright
+# (docs/conventions/api-contract.md — "a second copy of a value set the
+# registry owns"). An unknown product is refused where it always was, by the
+# model, as `422 invalid_config`.
+#
+# That is the change worth having. The set the contract ADVERTISES and the set
+# the backend ENFORCES are now the same set by construction — both are the
+# registry's, one rendered at export time and one imported at
+# `apps/platform/tenants/models.py` — where before, the contract advertised
+# nothing and a client had to discover the vocabulary by being rejected.
+# `test_tenant_endpoints.py` pins the refusal that survives.
+#
+# It is also the first `x-ubb-concept` marker in the committed contract, and
 # the reason the marker-driven half of G4 stops being vacuous.
 #
 # ONLY THE REQUEST SIDE APPEARS. The same enum lands on the response schema

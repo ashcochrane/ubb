@@ -1,10 +1,20 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { PRODUCTS, productDescription, productLabel } from "@/lib/labels";
-
 import { renderWithQuery } from "../test-utils";
 import { ProductsPage } from "./products-page";
+
+// The three products the contract enumerates, spelled out here rather than
+// read from the module the page renders from. Two reasons, and both are rules
+// this repo already holds: a loop over `PRODUCTS` compares the page against
+// its own source, so it could only fail if rendering broke wholesale; and
+// importing `@/lib/labels` into a new file grows the legacy adapter's importer
+// ratchet, which may only shrink.
+const EXPECTED_PRODUCTS = [
+  ["Metering", /Usage events, pricing, analytics/],
+  ["Billing", /Wallets, credit grants, budgets/],
+  ["Referrals", /Referral programs, attribution/],
+] as const;
 
 describe("ProductsPage", () => {
   it("shows the current billing mode and every product with its description", async () => {
@@ -16,20 +26,11 @@ describe("ProductsPage", () => {
 
     // Exhaustive over the declared products rather than naming one of them.
     // The predecessor pinned "Async ingestion" and its endpoint, and both
-    // outlived the product: the test named the row instead of the rule, so it
-    // asserted the page still rendered something the contract had deleted.
-    //
-    // The card maps `PRODUCTS` too, so this pins that every product gets a
-    // switch AND a description — not that the SET is right. Nothing here can
-    // check that yet: `PRODUCTS` is still the console's own literal. It
-    // becomes checkable when the console binds to the generated vocabulary.
-    for (const product of PRODUCTS) {
-      expect(
-        screen.getByRole("switch", { name: productLabel(product) }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(productDescription(product)),
-      ).toBeInTheDocument();
+    // outlived the product: it named the row instead of the rule, so it went
+    // on asserting the page rendered something the contract had deleted.
+    for (const [label, description] of EXPECTED_PRODUCTS) {
+      expect(screen.getByRole("switch", { name: label })).toBeInTheDocument();
+      expect(screen.getByText(description)).toBeInTheDocument();
     }
 
     // Prerequisites panel

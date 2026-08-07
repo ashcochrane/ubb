@@ -155,6 +155,25 @@ time from `openapi/known-values.json`:
 status: str = Field(json_schema_extra={"x-ubb-concept": "task_status"})
 ```
 
+**On a list field the marker goes on the ITEM**, because the concept names what
+a member of the list *is*, not the array around it — and the applier refuses a
+node that is not string-shaped, which an array is not. Declare the item once and
+reuse it, so a field and its optional twin cannot drift:
+
+```python
+TenantProduct = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "tenant_product"})]
+
+products: list[TenantProduct]                 # renders items: {type: string, …}
+products: Optional[list[TenantProduct]] = None  # anyOf[array|null]; same item
+```
+
+`json_schema_extra` renders metadata; it does not validate. A `closed` concept's
+`enum` therefore documents the value set rather than enforcing it, and the
+enforcement stays where the backend imports the same set from `core.vocabulary`
+— which is the agreement #208 exists to make structural. Do not add a second
+enforcement point (see the `Literal[...]` rule below).
+
 An `open` concept keeps `type: string` and gets `x-ubb-known-values`; it is
 **never** converted to an `enum`, because a value UBB has never seen is legal
 (ADR-0003) and a schema enumerating the set would make UBB learning a new one a
