@@ -42,7 +42,6 @@ _WRITE_ROUTES = {
     # usage ingestion & tasks
     ("POST", "/metering/usage"),
     ("POST", "/metering/usage/batch"),
-    ("POST", "/metering/usage/ingest"),
     ("POST", "/metering/tasks/{task_id}/close"),
     # spend pre-check (may start a task)
     ("POST", "/billing/pre-check"),
@@ -89,7 +88,13 @@ _WRITE_ROUTES = {
 # and GET /metering/tasks/{task_id} [Read] — the task read surface over the
 # materialized cost rollups. +1 (task 16) GET /metering/analytics/tasks
 # [Read] — the per-task-type unit economics rollup. 116 + 8 = 124.
-_EXPECTED_FLOORED = 124
+#
+# one published way to report usage (slice 1): -1, POST /metering/usage/ingest
+# is deleted as this slice's one reviewed contract break, taking its Write
+# entry above with it. 124 - 1 = 123. The exempt count does NOT move: the
+# ingest route was floored, not exempt, and the one ops route in _EXEMPT_EXACT
+# (GET /metering/ops/ingest-health) is a separate removal.
+_EXPECTED_FLOORED = 123
 _EXPECTED_EXEMPT = 11
 
 

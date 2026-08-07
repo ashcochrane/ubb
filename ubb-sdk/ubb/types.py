@@ -17,8 +17,9 @@ class PreCheckResult:
 
 @dataclass(frozen=True)
 class BatchItemResult:
-    """One item's VERDICT from record_batch (#78: one verdict field set with
-    async ingest). ``data`` is the full raw per-item body (accepted: the same
+    """One item's VERDICT from record_batch — the field set #78 unified across
+    the batch route and the async ingest route, which slice 1 deleted; this is
+    the surviving shape. ``data`` is the full raw per-item body (accepted: the same
     fields as RecordUsageResult; rejected: {accepted, code, detail} plus null
     stop fields). ``code`` words come from the platform's error-code
     registry."""

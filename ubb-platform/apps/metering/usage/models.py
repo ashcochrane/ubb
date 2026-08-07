@@ -174,7 +174,7 @@ class RawIngestEvent(BaseModel):
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE)
     billing_owner_id = models.UUIDField(db_index=True)
     task_id = models.UUIDField(null=True, blank=True)
-    # 500, matching IngestEventIn/RecordUsageRequest's schema max_length and
+    # 500, matching RecordUsageRequest's schema max_length and
     # UsageEvent.idempotency_key: a 256-500 char caller key must not DataError
     # the whole batch's bulk_create (which the endpoint's failure path retries
     # forever, since the same over-long key would poison every retry too).

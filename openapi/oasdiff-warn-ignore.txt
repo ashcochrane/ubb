@@ -42,7 +42,13 @@ GET /api/v1/margin/by-dimension deleted the `query` request parameter `product`
 # and bypassed the dimension cardinality cap (no admit, no declaration required):
 POST /api/v1/metering/usage removed the request property `product_id`
 POST /api/v1/metering/usage/batch removed the request property `events/items/product_id`
-POST /api/v1/metering/usage/ingest removed the request property `events/items/product_id`
+# The third line of this wave named POST /metering/usage/ingest. It was deleted
+# when slice 1 (#236) removed that path outright: a path removal supersedes a
+# property removal on the same path, so the finding it suppressed stopped
+# existing and the gate reported the entry INERT. That verdict is the only
+# licence this file gives for shortening it (openapi/README.md), and the break
+# it used to describe is now covered by the path-removal entry in
+# oasdiff-err-ignore.txt.
 
 # 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE — see the matching
 # block in oasdiff-err-ignore.txt for the api-v1-launch status and its rationale.
