@@ -82,9 +82,10 @@ _Avoid_: re-deriving a task-scoped floor check anywhere — one floor, one cross
 **Negative since (aged negatives)**:
 `Wallet.negative_since` — when the balance last crossed ≥0 → <0; null whenever the balance is ≥ 0.
 Maintained as a sign-consistency invariant by the wallet's own save (every mutation path keeps it
-true), surfaced on the balance API and as the ops aged-negatives metric (count + max age on
-ingest-health). Purely observational: no reminder events, no auto-close — collections stay between
-the tenant, their customer, and Stripe. (`apps/billing/wallets/models.py:Wallet`)
+true), surfaced on the balance API and, as an aged-negatives count + max age, on the
+`get_negative_balance_stats` read contract (the ops route that used to serve it went with the
+ingest pipeline it watched). Purely observational: no reminder events, no auto-close — collections
+stay between the tenant, their customer, and Stripe. (`apps/billing/wallets/models.py:Wallet`)
 _Avoid_: wiring any automatic reaction to it.
 
 **Soft floor**:
@@ -207,8 +208,8 @@ missed signal transitions in both directions for both families, re-aligns the fa
 durable truth, re-mints unannounced signal rows and killed tasks as fresh current-state events
 (`re_announcement: true`, bottom line only), sweeps active tasks at-or-past their
 provider-cost limit into the idempotent kill flow, and runs the upward live-balance repair.
-Outcomes land as day-bucketed counters on the ops/ingest-health surface. Worst-case emission
-latency after a crash: one patrol interval plus the delivery retry schedule.
+Outcomes land as day-bucketed counters, read through `apps.billing.queries.get_patrol_stats`.
+Worst-case emission latency after a crash: one patrol interval plus the delivery retry schedule.
 _Avoid_: a separate patrol schedule — the reconcile pass IS the patrol; touching the shared
 outbox retry/dead-letter policy — the patrol re-mints around a dead-lettered row, never mutates it.
 (`apps/billing/gating/patrol.py`)

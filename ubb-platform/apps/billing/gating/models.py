@@ -97,8 +97,8 @@ class PatrolOutcome(BaseModel):
     spec §F): re-minted announcements, fast-flag re-alignments, task-sweep
     kills, and the upward live-balance repairs (#45 — count, micros applied,
     and lapsed candidates; the ``repaired_micros`` bucket's ``count`` IS the
-    amount). Written by the patrol leg of ``reconcile_live_ledgers``; read by
-    the ops/ingest-health surface (``apps.billing.queries.get_patrol_stats``).
+    amount). Written by the patrol leg of ``reconcile_live_ledgers``; read
+    through ``apps.billing.queries.get_patrol_stats``.
     Visibility only — a nonzero count means a crash/blind-window corner was
     actually healed, and a persistent spike means a lane is unhealthy.
     """

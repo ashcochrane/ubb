@@ -29,7 +29,6 @@ _EXEMPT_PREFIXES = ("/me/",)
 _EXEMPT_EXACT = {
     ("GET", "/health"),
     ("GET", "/ready"),
-    ("GET", "/metering/ops/ingest-health"),
 }
 
 # The single GET that floors above Read (deliberate, per #62).
@@ -91,11 +90,15 @@ _WRITE_ROUTES = {
 #
 # one published way to report usage (slice 1): -1, POST /metering/usage/ingest
 # is deleted as this slice's one reviewed contract break, taking its Write
-# entry above with it. 124 - 1 = 123. The exempt count does NOT move: the
-# ingest route was floored, not exempt, and the one ops route in _EXEMPT_EXACT
-# (GET /metering/ops/ingest-health) is a separate removal.
+# entry above with it. 124 - 1 = 123. The exempt count did NOT move on that
+# ticket: the ingest route was floored, not exempt.
+#
+# The exempt count moves HERE instead: GET /metering/ops/ingest-health is
+# deleted with the pipeline it watched, so _EXEMPT_EXACT loses its only ops
+# entry and the exempt total goes 11 - 1 = 10. The floored count is untouched
+# — an exempt route was never in it.
 _EXPECTED_FLOORED = 123
-_EXPECTED_EXEMPT = 11
+_EXPECTED_EXEMPT = 10
 
 
 def _iter_ops():

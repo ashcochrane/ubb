@@ -103,8 +103,8 @@ def read_live_stop(owner_id, tenant) -> dict:
 
 
 def get_negative_balance_stats(tenant_id=None):
-    """Aged-negatives ops metric (#41, pin 10) — the cross-product read for
-    the ops/ingest-health surface. Counts wallets currently below zero and
+    """Aged-negatives ops metric (#41, pin 10) — a cross-product read.
+    Counts wallets currently below zero and
     the age of the oldest, from Wallet.negative_since (the ≥0 → <0 transition
     stamp; soft-deleted wallets excluded by the default manager). Visibility
     only: no reminder events, no auto-close — collections stay between the
@@ -124,7 +124,7 @@ def get_negative_balance_stats(tenant_id=None):
 
 
 def get_patrol_stats(tenant_id=None):
-    """Patrol-outcome counters for the ops/ingest-health surface (#44,
+    """Patrol-outcome counters (#44,
     delivery spec §F) — trailing 7 days of day-bucketed ``PatrolOutcome``
     rows, summed per outcome. Visibility only: a nonzero count means the
     patrol actually healed a crash/blind-window corner (re-minted a lost

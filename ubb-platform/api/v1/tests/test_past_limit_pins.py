@@ -18,7 +18,7 @@ import uuid
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase
 
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
@@ -39,8 +39,6 @@ _CONTEXT_KEYS = {"limit", "stop_scope", "tripped_at", "episode_seq",
 class PastLimitPinTestBase(TestCase):
     def setUp(self):
         cache.clear()
-        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
-        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="PastLimit", products=["metering", "billing"],
@@ -361,8 +359,6 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
 
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin10NegativeSinceTest(PastLimitPinTestBase):
-    OPS = {"HTTP_X_OPS_TOKEN": "s3cret"}
-
     def _balance(self):
         resp = self.http_client.get(
             f"/api/v1/billing/customers/{self.customer.id}/balance",
@@ -370,7 +366,20 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
         self.assertEqual(resp.status_code, 200)
         return resp.json()
 
-    @override_settings(UBB_OPS_TOKEN="s3cret")
+    def _negative_stats(self):
+        """The aged-negatives counters, read straight off billing's
+        `queries.py` contract.
+
+        These used to be read through GET /metering/ops/ingest-health, which
+        composed them onto the ingest pipeline's health surface. That route
+        was deleted with the pipeline it watched; the counters were never the
+        pipeline's, so the guarantee below outlives it and is asserted
+        against the read contract itself — the same way test_patrol_pins.py
+        already asserts get_patrol_stats.
+        """
+        from apps.billing.queries import get_negative_balance_stats
+        return get_negative_balance_stats(tenant_id=self.tenant.id)
+
     def test_negative_since_set_on_crossing_cleared_on_recovery(self, _mock):
         self.assertIsNone(self._balance()["negative_since"])
 
@@ -390,12 +399,10 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.negative_since, stamped)
 
-        # The ops surface counts aged negatives.
-        resp = self.http_client.get("/api/v1/metering/ops/ingest-health", **self.OPS)
-        self.assertEqual(resp.status_code, 200)
-        ops = resp.json()
-        self.assertEqual(ops["negative_balance_count"], 1)
-        self.assertGreaterEqual(ops["oldest_negative_age_seconds"], 0.0)
+        # A wallet below zero is counted as an aged negative.
+        stats = self._negative_stats()
+        self.assertEqual(stats["negative_balance_count"], 1)
+        self.assertGreaterEqual(stats["oldest_negative_age_seconds"], 0.0)
 
         # Recovery clears it — nothing else happens (no reminder events, no
         # auto-close; the event catalog carries no such types to emit).
@@ -403,8 +410,7 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
         self.wallet.refresh_from_db()
         self.assertIsNone(self.wallet.negative_since)
         self.assertIsNone(self._balance()["negative_since"])
-        resp = self.http_client.get("/api/v1/metering/ops/ingest-health", **self.OPS)
-        self.assertEqual(resp.json()["negative_balance_count"], 0)
+        self.assertEqual(self._negative_stats()["negative_balance_count"], 0)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
