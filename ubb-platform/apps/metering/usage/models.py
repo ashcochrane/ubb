@@ -159,36 +159,3 @@ class Refund(BaseModel):
 
     def __str__(self):
         return f"Refund({self.usage_event.request_id}: {self.amount_micros})"
-
-
-RAW_INGEST_STATUS = [("pending", "Pending"), ("settled", "Settled"),
-                     ("duplicate", "Duplicate"), ("failed", "Failed")]
-
-
-class RawIngestEvent(BaseModel):
-    """Durable raw event accepted by the async ingest path, awaiting exact
-    settlement. NO unique constraint on idempotency_key: a retried batch
-    appends again (at-least-once log); UsageEvent's unique constraint at
-    settle is the exactly-once authority."""
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE)
-    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE)
-    billing_owner_id = models.UUIDField(db_index=True)
-    task_id = models.UUIDField(null=True, blank=True)
-    # 500, matching RecordUsageRequest's schema max_length and
-    # UsageEvent.idempotency_key: a 256-500 char caller key must not DataError
-    # the whole batch's bulk_create (which the endpoint's failure path retries
-    # forever, since the same over-long key would poison every retry too).
-    idempotency_key = models.CharField(max_length=500)
-    payload = models.JSONField(default=dict)
-    estimate_micros = models.BigIntegerField(default=0)
-    estimate_exact = models.BooleanField(default=False)
-    held = models.BooleanField(default=True)
-    status = models.CharField(max_length=12, choices=RAW_INGEST_STATUS,
-                              default="pending", db_index=True)
-    attempts = models.IntegerField(default=0)
-    last_error = models.TextField(blank=True, default="")
-
-    class Meta:
-        db_table = "ubb_raw_ingest_event"
-        indexes = [models.Index(fields=["status", "created_at"],
-                                name="idx_rawingest_claim")]

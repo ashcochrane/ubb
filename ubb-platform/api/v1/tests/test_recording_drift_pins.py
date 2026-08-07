@@ -4,7 +4,10 @@ live balance?
 The upward live-balance repair (``apps/billing/gating/repair.py``, #45) exists
 because a wallet counter can be left reading BELOW the truth: money the tenant
 has not spent shows as spent, and once the drift is large enough the tenant is
-FALSELY STOPPED. Its docstring names exactly one cause:
+FALSELY STOPPED. Its docstring, as it read when this ruling was taken, named
+exactly one cause — quoted verbatim below as the evidence the ruling overturned,
+so the symbols in it are deliberately not updated (the table it names was
+dropped in #238, and the docstring itself was corrected in #234):
 
     "An orphaned hold — acquired on the fast lane, its ``RawIngestEvent`` row
     rolled back with a crashed request — leaves the prepaid live counter

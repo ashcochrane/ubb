@@ -7,7 +7,7 @@ of work.
 
 The collision is real and current. `apps/platform/work/` holds the Task model
 (#196 moved it out of `apps/platform/tasks/` precisely so the domain noun and
-the queue's noun stopped being the same import path), and eighteen modules named
+the queue's noun stopped being the same import path), and thirteen modules named
 `tasks.py` hold Celery's scheduled work. A domain module writing
 
     from apps.platform.work import tasks
@@ -167,8 +167,8 @@ def _touches_infrastructure(target):
     """Does this import reach into scheduled work at all, however it binds?
 
     Broader than either rule above on purpose — it counts
-    ``from apps.x.tasks import settle_raw_events``, which is the CORRECT form
-    and therefore invisible to a violation count. This is the vacuity guard's
+    ``from apps.platform.work.tasks import close_abandoned_tasks``, which is the
+    CORRECT form and therefore invisible to a violation count. This is the vacuity guard's
     input, and a guard that only counted the shapes the rules reject would read
     zero on a clean tree, which is precisely when the walker's reach is
     unproven.
@@ -265,7 +265,7 @@ def test_the_walker_reached_the_imports_it_judges():
     for expected in (
         "apps.platform.work.tasks",
         "apps.platform.events.tasks",
-        "apps.metering.usage.tasks",
+        "apps.billing.wallets.tasks",
         "core.tasks",
         "config.celery",
     ):

@@ -159,8 +159,6 @@ CELERY_TASK_QUEUES = [
     Queue("ubb_metering"),
 ]
 
-from datetime import timedelta
-
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
@@ -278,14 +276,6 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-invoice-payment-status": {
         "task": "apps.billing.invoicing.tasks.reconcile_invoice_payment_status",
         "schedule": crontab(minute=15),
-    },
-    "settle-raw-events": {
-        "task": "apps.metering.usage.tasks.settle_raw_events",
-        # Straggler sweeper for the async ingest settlement path: the ingest
-        # endpoint's on_commit dispatch is the primary trigger; this catches a
-        # lost dispatch or a crashed worker mid-batch. Sub-minute cadence
-        # (crontab has no seconds field) — a plain float/timedelta schedule.
-        "schedule": timedelta(seconds=10),
     },
 }
 

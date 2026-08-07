@@ -13,12 +13,13 @@ priced provider and billed cost; never updated or deleted once written.
 _Avoid_: treating a usage event as a mutable row.
 
 **Recording core**:
-The ONE recording body both ingest lanes run (price → create → accumulate → stop-context tag →
-dirty marker → `usage.recorded` → kill registration on its own `on_commit`); `record_usage` (sync)
-and `settle_raw` (async) are thin input adapters over it, so the lanes structurally cannot drift.
+The recording body (price → create → accumulate → stop-context tag → dirty marker →
+`usage.recorded` → kill registration on its own `on_commit`); `record_usage` is a thin input
+adapter over it. It was extracted when there were two lanes to keep from drifting; only one
+lane remains, and the core stays because the seam is where a recording side effect belongs.
 (`apps/metering/usage/services/usage_service.py:UsageService._record_core`)
-_Avoid_: adding a recording side effect to one lane's adapter — it belongs in the core, or it will
-silently miss the other lane.
+_Avoid_: adding a recording side effect to the adapter rather than the core — the adapter's job
+is to turn a request into a `RecordingInput`, nothing more.
 
 **effective_at**:
 When the usage economically *happened* — caller-suppliable, bounded by the tenant's backfill window
@@ -74,38 +75,28 @@ not tags'. (`apps/metering/usage/models.py`)
 _Avoid_: "group_keys" — renamed to `tags`; "dimensional tags" — dimensions and tags are now two
 separate mechanisms, not one.
 
-**Async ingest / settle**:
-The raw, at-least-once intake path: a raw event was accepted, then later *settled* exactly-once
-into a durable priced usage event. **The accept half no longer exists** — the published route and
-the `accept_batch` pipeline behind it were both deleted in slice 1, so nothing writes a new raw
-event. What remains is the settle half over the existing rows, and it goes next.
-(`apps/metering/usage/models.py:RawIngestEvent`,
-`apps/metering/usage/services/usage_service.py:settle_raw`)
-_Avoid_: reading this entry as a description of a live intake path — there is now exactly one way
-to report usage, `POST /api/v1/metering/usage` and its batch sibling. The per-item adapters those
-two routes share (`record_sync_item` and friends) sit in `api/v1/metering_endpoints.py` beside
-them, because the endpoints are now their only caller; the recording work itself stays in
-`UsageService`, and that is the line to hold — an endpoint module may map a request item onto the
-service and classify its errors, never grow pricing, kill or ledger logic of its own.
+**Recording**:
+Turning one reported use into a durable priced `UsageEvent` — price, create, accumulate the task's
+totals, debit the live counter, emit `usage.recorded`. There is exactly **one** way in:
+`POST /api/v1/metering/usage` and its batch sibling, both of which adapt a request item onto
+`UsageService.record_usage`. (`apps/metering/usage/services/usage_service.py:UsageService`)
+_Avoid_: "ingest", "accept", "settle" and "raw event" — the two-step accept-then-settle intake path
+(a staging table drained by a beat sweep) was deleted in slice 1, producer first and then consumer,
+and nothing replaced it. Its per-item adapters (`record_sync_item` and friends) sit in
+`api/v1/metering_endpoints.py` beside the routes, because the endpoints are their only caller; the
+recording work itself stays in `UsageService`, and that is the line to hold — an endpoint module
+may map a request item onto the service and classify its errors, never grow pricing, kill or
+ledger logic of its own.
 
 **Estimate**:
-The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will
+A read-only price computed ahead of recording, never knowingly lower than what recording will
 charge. Exact for caller-supplied, linear, and markup pricing — equal to `price()` *by
 construction*: both run the ONE compute spine (`PricingService._compute`), differing only in which
-cards resolve (CardCache current cards at accept vs `as_of`-exact cards at settle).
+cards resolve (CardCache current cards vs `as_of`-exact cards).
 (`apps/metering/pricing/services/pricing_service.py:PricingService.estimate`)
-_Avoid_: "quote" — the domain word is estimate (it is on `RawIngestEvent.estimate_micros` and the
-estimate–hold–settle story); and never fork a second pricing body — change the spine.
-
-**Settle sweep**:
-The claim of pending raw events from the durable table itself — the accepted row *is* the queue
-entry; the broker dispatch is only a doorbell, the beat sweep the guarantee.
-_Avoid_: treating the broker message as the source of truth — a lost dispatch delays settlement,
-never loses the event.
-
-**Poisoned raw**:
-A raw event that exhausted its settle attempts; parked `failed` with its hold released — an
-operator incident, never a silent drop.
+_Avoid_: "quote" — the domain word is estimate; and never fork a second pricing body — change the
+spine. Nothing calls this today: its one caller went with the intake path it priced, and the
+entry survives only until the ticket that disposes of it.
 
 **Refund**:
 A record linked one-to-one to a usage event, created only when billing emits `refund.requested`.

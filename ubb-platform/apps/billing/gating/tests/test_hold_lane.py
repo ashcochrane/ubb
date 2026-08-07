@@ -9,8 +9,8 @@ taken here is visible to (and raced against) the synchronous path.
 One-rule (#37): acquire ALWAYS holds — nothing on this path ever rejects an
 item. Per-item verdicts carry only {held, stop, stop_reason, stop_scope};
 the retired accept-time per-unit cap lane (ubb:runcost:* keys, the
-check-then-increment reject branch) is gone, so unit-limit detection lives at
-settle (UsageService.settle_raw), never here.
+check-then-increment reject branch) is gone, so unit-limit detection lives
+where exact provider cost exists, never here.
 
 Money-gate concurrency correctness is the whole point of this module, so
 test_concurrent_holds_at_floor_race drives 20 REAL threads against REAL
