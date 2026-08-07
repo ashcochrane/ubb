@@ -1828,8 +1828,8 @@ entries:
       with declared measurements, which is what makes them costable.
 
   # Two words #210 spread to this surface, and would not have without it.
-  # `tests/contracts/test_label_catalogue.py` pins the fifty-one files that
-  # import the legacy label adapter, as a shrink-only set — and two of them are
+  # `tests/contracts/test_label_catalogue.py` pins the files that import the
+  # legacy label adapter, as a shrink-only set — and two of them are
   # NAMED after retired concepts, so pinning the path spells the word. There is
   # no version of that list that does not; the alternative was a count, which
   # would let one file be converted while another was added. So the debt is
@@ -3933,7 +3933,7 @@ seeding_authorisations:
       enumerating a vendor's catalogue, so no label key will ever exist to move
       them to and no slice owes the work.
       The ledger IS the allowlist this gate enforces. There is no second list
-      of permitted sites anywhere: a thirty-first map or a twelfth humanising
+      of permitted sites anywhere: one more map or one more humanising
       import is an addition the ratchet refuses without its own authorisation,
       which is what makes "reachable from allowlisted sites and nowhere else"
       mechanical rather than a review habit.

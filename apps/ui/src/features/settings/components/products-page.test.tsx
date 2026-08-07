@@ -38,19 +38,24 @@ describe("ProductsPage", () => {
     expect(screen.getByText("Current")).toBeInTheDocument();
     expect(screen.getByText("Prepaid credits")).toBeInTheDocument();
 
-    // EXACTLY the declared products: the set of toggles, compared with the
-    // registry's set, so an extra row fails as loudly as a missing one. The
-    // products card holds the only switches on this page. The predecessor
+    // EXACTLY the declared products: every one of them present, and no fourth
+    // toggle beside them, so an extra row fails as loudly as a missing one.
+    // The products card holds the only switches on this page. The predecessor
     // pinned "Async ingestion" and its endpoint, and both outlived the
     // product — it named the rows instead of the rule.
-    const rendered = screen
-      .getAllByRole("switch")
-      .map((toggle) => toggle.getAttribute("aria-label"));
-    expect(rendered.sort()).toEqual(
-      TENANT_PRODUCT_VALUES.map(productWords).sort(),
+    //
+    // Queried by ACCESSIBLE NAME rather than by reading `aria-label` off the
+    // element: the attribute is one of several ways that name can be computed,
+    // and a card that moved the words into a `<label>` would still read
+    // correctly to a user while failing an attribute comparison.
+    expect(screen.getAllByRole("switch")).toHaveLength(
+      TENANT_PRODUCT_VALUES.length,
     );
 
     for (const product of TENANT_PRODUCT_VALUES) {
+      expect(
+        screen.getByRole("switch", { name: productWords(product) }),
+      ).toBeInTheDocument();
       expect(screen.getByText(DESCRIPTION_OF[product])).toBeInTheDocument();
     }
 

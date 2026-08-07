@@ -375,11 +375,12 @@ def test_the_adapter_gains_no_new_importer(legacy):
 
     The ledger owes each MAP, which bounds what the adapter still does. It does
     not bound who calls it — and every map falls back to the humaniser for a
-    value it does not recognise, so a fifty-second importer spreads the retired
+    value it does not recognise, so ONE MORE importer spreads the retired
     behaviour without adding a single ledger entry. None of these files is a
     separate debt (each imports a map somebody already owes), so they are pinned
-    here rather than seeded as fifty more entries that would double the
-    ledger and clear at exactly the same moment.
+    here rather than seeded as one entry per importing file — which would have
+    doubled the ledger and cleared at exactly the same moment. The live count is
+    the pin below; restating it in prose is what goes stale.
 
     It is a RATCHET, not a target: the set may only shrink. Converting a file to
     `@/lib/localisation` means deleting its line, which is the diff that shows
@@ -781,7 +782,7 @@ def test_a_file_importing_something_else_is_an_importer_but_not_a_site(tmp_path)
     Importing a map is not humanising, so the file is not a ledgered site —
     #210 is explicit that rewriting the fifty-one importers is not slice 0's
     job. But the map it imports still falls back to the humaniser, so the file
-    IS an importer, and the pinned set is what stops a fifty-second appearing.
+    IS an importer, and the pinned set is what stops another appearing.
     """
     scanned, faults = write_console(
         tmp_path, adapter=ADAPTER_SOURCE,
