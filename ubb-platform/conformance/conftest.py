@@ -62,10 +62,7 @@ def conformance_principal(db):
     tenant = Tenant.objects.create(
         name="Conformance",
         stripe_connected_account_id="acct_conformance",
-        products=[
-            "metering", "billing", "referrals",
-            "metering_async",
-        ],
+        products=["metering", "billing", "referrals"],
         billing_mode="prepaid",
     )
     _, raw_key = TenantApiKey.create_key(tenant, label="conformance")

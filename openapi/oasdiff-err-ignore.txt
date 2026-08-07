@@ -153,9 +153,14 @@ components webhook `margin.provider_cost_spike` removed
 components webhook `usage.invoice_push_failed_permanent` removed
 components webhook `usage.invoice_pushed` removed
 
-# 2026-08-07 one published way to report usage (slice 1, #236). PRE-LIVE LANE —
-# map #137 constraint 1, reaffirmed by migration/cutover §7.1. Not a
-# deprecation.
+# 2026-08-07 slice 1's contract break: one published way to report usage
+# (#236), and the tenant's products advertised as the set UBB owns (#240).
+# PRE-LIVE LANE — map #137 constraint 1, reaffirmed by migration/cutover §7.1.
+# Neither is a deprecation.
+#
+# ONE BLOCK, TWO CHANGES, BECAUSE ONE SLICE REVIEWED THEM TOGETHER. A second
+# block would say the slice broke the contract twice, which is a different
+# claim about how much coordination the one known consumer needs.
 #
 # Unlike every entry above, this one is a REMOVAL rather than a relocation or a
 # rename: nothing takes this path's place. `POST /metering/usage` is not a new
@@ -177,3 +182,23 @@ components webhook `usage.invoice_pushed` removed
 # survive: they served a lane that should not exist, NOT that they were wrongly
 # built.
 POST /api/v1/metering/usage/ingest api path removed without deprecation
+
+# ...and the narrowing (#240). `tenant_product` is a CLOSED concept — UBB owns
+# the whole value set — and the tenant model now imports it from the generated
+# `core.vocabulary` instead of restating it. That is what licenses the contract
+# to say so: the export advertises a concept's values only where the backend
+# already serves them (#208), so the enum below cannot appear on a field that
+# still accepts something else. The value set is written at export time from
+# openapi/known-values.json; neither schema spells a value.
+#
+# This is a NARROWING of a field that was `type: string` with no constraint, so
+# a request naming an unknown product now fails at the schema instead of at the
+# model's own validation. Same refusal, moved forward to where an integrator
+# reads it — the first `x-ubb-concept` marker in the committed contract, and
+# the reason the marker-driven half of G4 stops being vacuous.
+#
+# ONLY THE REQUEST SIDE APPEARS. The same enum lands on the response schema
+# (`TenantConfigOut.products`) in this commit and oasdiff reports nothing for
+# it, correctly: a server promising FEWER values than before cannot break a
+# reader. Do not go looking for a second line to pair with this one.
+PATCH /api/v1/tenant/config request property `products/anyOf[subschema #1]/items/` was restricted to a list of enum values

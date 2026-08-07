@@ -75,29 +75,28 @@ export const billingModeDescription = legacyLabelMap({
     "Usage accrues per period and is pushed to Stripe as invoice line items at period close.",
 });
 
-export const PRODUCTS = [
-  "metering",
-  "billing",
-  "subscriptions",
-  "referrals",
-  "metering_async",
-] as const;
+// Three, and they are the three the published contract now enumerates: #240
+// marked `TenantConfigIn/Out.products` with its registry concept, so the
+// generated `TenantConfig` types carry a closed union and a fourth value here
+// would not typecheck. Subscriptions is a capability of billing rather than a
+// product of its own, and the second recording lane went with the lane.
+//
+// This array is still the console's OWN list — binding it to the generated
+// `TENANT_PRODUCT_VALUES` beside it, and these two maps to the label
+// catalogue, is the console's G2/G6 payment and belongs to its own change.
+export const PRODUCTS = ["metering", "billing", "referrals"] as const;
 export type Product = (typeof PRODUCTS)[number];
 
 export const productLabel = legacyLabelMap({
   metering: "Metering",
   billing: "Billing",
-  subscriptions: "Subscriptions",
   referrals: "Referrals",
-  metering_async: "Async ingestion",
 });
 
 export const productDescription = legacyLabelMap({
   metering: "Usage events, pricing, analytics, and the audit trail.",
   billing: "Wallets, credit grants, budgets, invoices, and spend control.",
-  subscriptions: "Stripe subscription mirror, plans, and seat management.",
   referrals: "Referral programs, attribution, rewards, and payouts.",
-  metering_async: "High-throughput asynchronous event ingestion lane.",
 });
 
 export const enforcementModeLabel = legacyLabelMap({

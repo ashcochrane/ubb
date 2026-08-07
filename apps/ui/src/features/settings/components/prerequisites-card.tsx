@@ -15,9 +15,7 @@ import type { TenantConfig } from "../api/types";
 /** What some products need before they can actually do their job. */
 export function PrerequisitesCard({ config }: { config: TenantConfig }) {
   const needsStripe =
-    config.billing_mode === "prepaid" ||
-    config.billing_mode === "postpaid" ||
-    config.products.includes("subscriptions");
+    config.billing_mode === "prepaid" || config.billing_mode === "postpaid";
   const status = useConnectStatus({ enabled: needsStripe });
 
   return (
@@ -25,7 +23,7 @@ export function PrerequisitesCard({ config }: { config: TenantConfig }) {
       <CardHeader>
         <CardTitle>Prerequisites</CardTitle>
         <CardDescription>
-          Things some products need before they can charge or ingest.
+          Things some products need before they can charge.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -62,21 +60,6 @@ export function PrerequisitesCard({ config }: { config: TenantConfig }) {
             title="Couldn't load the Stripe connection status"
           />
         )}
-
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Async ingestion scope</p>
-            <p className="max-w-md text-[13px] text-muted-foreground">
-              The Async ingestion product only gates the high-throughput
-              ingest endpoint (<span className="font-mono text-[12px]">POST /usage/ingest</span>).
-              Standard usage recording works for every workspace with
-              Metering.
-            </p>
-          </div>
-          <Badge variant={config.products.includes("metering_async") ? "secondary" : "outline"}>
-            {config.products.includes("metering_async") ? "Enabled" : "Disabled"}
-          </Badge>
-        </div>
       </CardContent>
     </Card>
   );

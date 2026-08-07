@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { PRODUCTS, productDescription, productLabel } from "@/lib/labels";
+
 import { renderWithQuery } from "../test-utils";
 import { ProductsPage } from "./products-page";
 
@@ -12,16 +14,27 @@ describe("ProductsPage", () => {
     expect(screen.getByText("Current")).toBeInTheDocument();
     expect(screen.getByText("Prepaid credits")).toBeInTheDocument();
 
-    expect(screen.getByText("Async ingestion")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Wallets, credit grants, budgets/),
-    ).toBeInTheDocument();
+    // Exhaustive over the declared products rather than naming one of them.
+    // The predecessor pinned "Async ingestion" and its endpoint, and both
+    // outlived the product: the test named the row instead of the rule, so it
+    // asserted the page still rendered something the contract had deleted.
+    //
+    // The card maps `PRODUCTS` too, so this pins that every product gets a
+    // switch AND a description — not that the SET is right. Nothing here can
+    // check that yet: `PRODUCTS` is still the console's own literal. It
+    // becomes checkable when the console binds to the generated vocabulary.
+    for (const product of PRODUCTS) {
+      expect(
+        screen.getByRole("switch", { name: productLabel(product) }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(productDescription(product)),
+      ).toBeInTheDocument();
+    }
 
     // Prerequisites panel
     expect(screen.getByText("Prerequisites")).toBeInTheDocument();
-    expect(
-      screen.getByText(/POST \/usage\/ingest/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Stripe account")).toBeInTheDocument();
   });
 
   it("keeps metering always-on and locks billing while the mode needs it", async () => {

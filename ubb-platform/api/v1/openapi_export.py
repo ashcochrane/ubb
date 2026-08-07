@@ -66,15 +66,55 @@ def _apply_known_values(schema: dict) -> dict:
     git-root JSON file and acquiring a sys.path entry, which is a coupling the
     platform does not otherwise have. ADR-002 is what makes the trade cheap:
     the COMMITTED document is the single source of truth for the tenant
-    surface, and the served one is a development convenience. The divergence is
-    also empty today — no concept is advertised — so the first slice to
-    advertise one inherits a visible decision rather than a surprise.
+    surface, and the served one is a development convenience. The divergence
+    WAS empty — no concept was advertised — so the first slice to advertise one
+    inherited a visible decision rather than a surprise. Slice 1 (#240) is that
+    slice; it took the decision this paragraph argues for, and
+    :func:`without_known_values` states what the two documents now promise
+    each other.
     """
-    if str(GIT_ROOT) not in sys.path:
-        sys.path.append(str(GIT_ROOT))
+    _known_values_on_path()
     from tools.known_values import apply_known_values, read_decisions
 
     return apply_known_values(schema, read_decisions(KNOWN_VALUES_PATH))
+
+
+def without_known_values(document: dict) -> dict:
+    """``document`` with #208's metadata removed — the applier's own inverse.
+
+    THE DIVERGENCE #208 LEFT FOR THE FIRST SLICE TO ADVERTISE A CONCEPT IS NOW
+    REAL, and this is how it is stated rather than hidden. Slice 1 marks the
+    tenant's `products` field, so the committed document carries an `enum` and
+    an `x-ubb-concept` the served `/api/v1/openapi.json` does not, and the two
+    are no longer byte-identical.
+
+    THE DECISION, inherited from `_apply_known_values` above and from
+    `_ProblemDocumentingNinjaAPI`: the divergence stays, and the pin that
+    compared the two documents is narrowed to what is actually guaranteed.
+    Both of those docstrings argue the same thing in advance — a Django request
+    path must not acquire a git-root file read and a `sys.path` entry to serve
+    a document ADR-002 says is not the contract — and closing the gap the other
+    way would mean overruling them for a route that exists as a development
+    convenience. The canonical path a generator uses (`pnpm ui:api:sync`, the
+    SDK's codegen, the conformance sweep) reads the COMMITTED file, and
+    `pnpm ui:api:check` turns red if anything is generated from anything else.
+
+    So this is not a softening: `strip_known_values` removes exactly what
+    `apply_known_values` writes and nothing else, which is the same inverse the
+    contract suite uses to prove the committed document is a fixed point of the
+    applier. A route added, a schema changed or a hand edit still fails the pin.
+    """
+    _known_values_on_path()
+    from tools.known_values import strip_known_values
+
+    return strip_known_values(document)
+
+
+def _known_values_on_path() -> None:
+    """Put the git root on the path for the two functions above. Appended, so
+    its `apps/`, `tests/` and `tools/` never shadow the platform's own."""
+    if str(GIT_ROOT) not in sys.path:
+        sys.path.append(str(GIT_ROOT))
 
 
 def _refuse_duplicate_operation_ids(schema) -> None:

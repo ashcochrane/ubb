@@ -86,7 +86,10 @@ export async function updateTenantConfig(
     if (unknown.length > 0) {
       throw invalidConfig(`Unknown products: ${unknown.join(", ")}`);
     }
-    const normalized = patch.products.length === 0 ? ["metering"] : [...new Set(patch.products)].sort();
+    // Annotated: the contract enumerates `products` since #240, so the empty
+    // branch's bare literal widens to `string[]` without a target type.
+    const normalized: TenantConfig["products"] =
+      patch.products.length === 0 ? ["metering"] : [...new Set(patch.products)].sort();
     if (!normalized.includes("metering")) {
       throw invalidConfig("The metering product cannot be disabled.");
     }

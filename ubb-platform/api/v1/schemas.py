@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 
 from ninja import Schema, Field
 from pydantic import field_validator
@@ -950,10 +950,27 @@ class TaskTypeRegistryOut(Schema):
     task_types: list[TaskTypeOut]
 
 
+#: One enabled product, as the published contract carries it.
+#:
+#: The concept names the VALUE, not the array, so the marker sits on the item
+#: rather than on the field — `tenant_product` is what a member of the list is,
+#: and a marker on the array would be naming the wrong node. The item renders
+#: `type: string`, which is what the applier requires; the input's array is
+#: nullable and renders as an `anyOf`, but the item inside it is the same plain
+#: string node either way.
+#:
+#: `tenant_product` is a CLOSED concept, so the export writes a real `enum`
+#: here from `openapi/known-values.json`. This file spells no value: the set is
+#: the registry's, and the agreement is structural rather than a coincidence
+#: of spelling (#208, ADR-0006 §4).
+TenantProduct = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "tenant_product"})]
+
+
 class TenantConfigOut(Schema):
     name: str
     billing_mode: str
-    products: list[str]
+    products: list[TenantProduct]
     require_cost_card_coverage: bool
     default_currency: str
     stripe_connected_account_id: str
@@ -981,7 +998,7 @@ class TenantConfigOut(Schema):
 
 class TenantConfigIn(Schema):
     billing_mode: Optional[str] = None
-    products: Optional[list[str]] = None
+    products: Optional[list[TenantProduct]] = None
     require_cost_card_coverage: Optional[bool] = None
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).

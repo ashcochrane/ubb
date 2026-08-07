@@ -1,7 +1,7 @@
 // The console bootstrap: GET /api/v1/tenant/config carries the two fields
 // that gate the whole UI — `billing_mode` (meter_only | prepaid | postpaid)
-// and `products` (metering | billing | subscriptions | referrals |
-// metering_async) — plus enforcement posture, floors, and the workspace
+// and `products` (metering | billing | referrals — the closed set the
+// contract enumerates) — plus enforcement posture, floors, and the workspace
 // currency. There is no console "/me" endpoint; this is the source of truth.
 
 import { queryOptions, useQuery } from "@tanstack/react-query";
@@ -21,7 +21,7 @@ export type TenantConfig = TenantSchemas["TenantConfigOut"];
 let mockTenantConfig: TenantConfig = {
   name: "Acme AI",
   billing_mode: "prepaid",
-  products: ["metering", "billing", "subscriptions", "referrals", "metering_async"],
+  products: ["metering", "billing", "referrals"],
   require_cost_card_coverage: false,
   default_currency: "usd",
   stripe_connected_account_id: "acct_mock123",

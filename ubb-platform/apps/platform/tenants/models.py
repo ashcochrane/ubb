@@ -9,18 +9,23 @@ from core.models import BaseModel
 from core.vocabulary import (
     CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID,
+    TENANT_PRODUCT_METERING,
+    TENANT_PRODUCT_VALUES,
 )
 
 
-# "metering_async" is a metering SUB-feature flag (POST /metering/usage/ingest),
-# not a separate billable product — it still requires "metering" to be present
-# (enforced nowhere else; the endpoint gate checks it directly via
-# tenant.products) and rides the same products JSONField for zero extra schema.
+# Which products a tenant may enable is the registry's answer, not this
+# model's: `TENANT_PRODUCT_VALUES` is imported from the generated
+# `core.vocabulary` rather than restated here, so adding or removing a product
+# is one edit in `domain-vocabulary/` instead of four across the surfaces that
+# name the set. `clean` below validates against it and `save` defaults from it.
 #
 # "subscriptions" was retired 2026-07-27: it is not a standalone product but a
 # capability of billing (a wrapper over Stripe Billing, valuable only next to
 # metering and margin). Plans and subscription lifecycle gate on "billing".
-VALID_PRODUCTS = {"metering", "billing", "referrals", "metering_async"}
+# The second recording lane's flag went the same way in slice 1, with the lane
+# it switched on (#149 §6) — there is one recording core, so there is nothing
+# for a tenant to choose between.
 
 # CUR-1's SUPPORTED_CURRENCIES now lives in ``core.money``, beside the table
 # that says how many minor units each of them has — one place, both facts about
@@ -149,9 +154,9 @@ class Tenant(BaseModel):
     def clean(self):
         from django.core.exceptions import ValidationError
         super().clean()
-        if not self.products or "metering" not in self.products:
+        if not self.products or TENANT_PRODUCT_METERING not in self.products:
             raise ValidationError({"products": "metering must always be present in products."})
-        unknown = set(self.products) - VALID_PRODUCTS
+        unknown = set(self.products) - TENANT_PRODUCT_VALUES
         if unknown:
             raise ValidationError(
                 {"products": f"Unknown products: {', '.join(sorted(unknown))}"}
@@ -171,7 +176,7 @@ class Tenant(BaseModel):
             self.widget_secret = secrets.token_urlsafe(48)
         # Default to metering if no products set
         if not self.products:
-            self.products = ["metering"]
+            self.products = [TENANT_PRODUCT_METERING]
         # Sort and deduplicate products
         self.products = sorted(set(self.products))
         self.clean()

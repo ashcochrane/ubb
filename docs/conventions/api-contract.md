@@ -105,19 +105,22 @@ past-limit report, usage summary): cursor-exempt but **parameter-bounded** —
 explicit date windows are refused past 366 days (hourly timeseries: 92) with
 `validation_error`.
 
-## Ingest verdicts: data, not errors
+## Usage verdicts: data, not errors
 
-The 200-always doctrine stands: on the usage-ingest surface a non-200 always
+The 200-always doctrine stands: on the usage-recording surface a non-200 always
 means "not recorded"; per-event verdicts ride the body as **data**, never
-problem+json. Batch and async ingest speak **one verdict field set**:
+problem+json. #78 unified one verdict field set across three routes; slice 1
+deleted the third (#236), so what follows is the surviving shape — the batch
+route's items, against the single-call body they mirror:
 
-- Shared core: `accepted` (bool), `code` (rejection word, null when
-  accepted), `detail` (prose, null except sync-fallback rejections), and the
-  stop trio `stop`/`stop_reason`/`stop_scope`.
-- Batch extras: accepted items carry the full priced receipt (the single-call
-  success body). Envelope counters: `accepted`/`rejected`.
-- Async extras: `estimated_cost_micros`, `mode` (`async`/`sync_fallback`),
-  `duplicate_suspect`, and `event_id` on accepted sync-fallback items.
+- A **rejected** item is `accepted: false` with `code` (the rejection word,
+  from the registry) and `detail` (prose), and the stop trio
+  `stop`/`stop_reason`/`stop_scope` constant: nothing was recorded, so nothing
+  can have stopped.
+- An **accepted** item is `accepted: true` plus the single-call success body
+  verbatim, its stop verdict included. It carries no `code` and no `detail` —
+  there is nothing to report.
+- Envelope counters: `accepted`/`rejected`.
 
 Verdict words come from the same registry (`verdicts` section):
 `ingest_rejections` reference problem codes; `stop_reasons`, `stop_scopes`,

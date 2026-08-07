@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -31,7 +32,7 @@ class TenantConfigIn:
             default_task_provider_cost_limit_micros (int | None | Unset):
             enforcement_mode (None | str | Unset):
             min_balance_micros (int | None | Unset):
-            products (list[str] | None | Unset):
+            products (list[TenantConfigInProductsType0Item] | None | Unset):
             require_cost_card_coverage (bool | None | Unset):
             soft_min_balance_micros (int | None | Unset):
      """
@@ -43,7 +44,7 @@ class TenantConfigIn:
     default_task_provider_cost_limit_micros: int | None | Unset = UNSET
     enforcement_mode: None | str | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
-    products: list[str] | None | Unset = UNSET
+    products: list[TenantConfigInProductsType0Item] | None | Unset = UNSET
     require_cost_card_coverage: bool | None | Unset = UNSET
     soft_min_balance_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -99,7 +100,10 @@ class TenantConfigIn:
         if isinstance(self.products, Unset):
             products = UNSET
         elif isinstance(self.products, list):
-            products = self.products
+            products = []
+            for products_type_0_item_data in self.products:
+                products_type_0_item = products_type_0_item_data.value
+                products.append(products_type_0_item)
 
 
         else:
@@ -220,7 +224,7 @@ class TenantConfigIn:
         min_balance_micros = _parse_min_balance_micros(d.pop("min_balance_micros", UNSET))
 
 
-        def _parse_products(data: object) -> list[str] | None | Unset:
+        def _parse_products(data: object) -> list[TenantConfigInProductsType0Item] | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -228,12 +232,19 @@ class TenantConfigIn:
             try:
                 if not isinstance(data, list):
                     raise TypeError()
-                products_type_0 = cast(list[str], data)
+                products_type_0 = []
+                _products_type_0 = data
+                for products_type_0_item_data in (_products_type_0):
+                    products_type_0_item = TenantConfigInProductsType0Item(products_type_0_item_data)
+
+
+
+                    products_type_0.append(products_type_0_item)
 
                 return products_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(list[str] | None | Unset, data)
+            return cast(list[TenantConfigInProductsType0Item] | None | Unset, data)
 
         products = _parse_products(d.pop("products", UNSET))
 

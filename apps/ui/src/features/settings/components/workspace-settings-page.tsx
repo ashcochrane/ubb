@@ -43,8 +43,7 @@ export function WorkspaceSettingsPage({
   }
 
   const cfg = config.data;
-  const showConnect =
-    cfg.products.includes("billing") || cfg.products.includes("subscriptions");
+  const showConnect = cfg.products.includes("billing");
 
   return (
     <div className="max-w-3xl space-y-6">
