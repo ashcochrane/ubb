@@ -1,36 +1,49 @@
 """Upward live-balance repair — the honesty repair (#45, delivery spec §D).
 
-"We CANNOT have a wallet balance that does not show reality." An orphaned
-hold — acquired on the fast lane, its ``RawIngestEvent`` row rolled back with
-a crashed request — leaves the prepaid live counter (the owner-keyed balance)
-permanently below reality: the stingy direction, false stops when it drifts
-far enough. The MIN-merge can only lower; this is its grace-gated upward
-sibling, the fifth patrol job (rides ``run_patrol`` on the hourly reconcile
-beat; enforcing tenants only).
+"We CANNOT have a wallet balance that does not show reality." A crashed
+SYNCHRONOUS recording request leaves the prepaid live counter (the
+owner-keyed balance) permanently below reality: the stingy direction, false
+stops when it drifts far enough. The MIN-merge can only lower; this is its
+grace-gated upward sibling, the fifth patrol job (rides ``run_patrol`` on the
+hourly reconcile beat; enforcing tenants only).
+
+THE CAUSE, per Ruling A2 (#233, slice 1 / #192), quoted: "the drift CAN occur
+on the surviving path... The repair's stated cause is therefore incomplete:
+the reservation is one cause, not the cause."
+``UsageService.record_usage`` is ``@transaction.atomic``; the ``UsageEvent``
+row is created inside an INNER atomic — a savepoint — and the live-counter
+debit is issued AFTER that savepoint commits while the OUTER transaction is
+still open. Everything from the debit to the outer commit (stop-context
+tagging, the backfill-dirty marker, the outbox insert) is a window in which
+the row can still be rolled back and the Redis debit, which has no rollback,
+cannot. This module was written for a reservation taken on the arrival-time
+fast lane, whose row rolled back the same way; that lane is deleted in slice 1
+and the window above is what survives it. Pinned, on the route, by
+``api/v1/tests/test_recording_drift_pins.py``.
 
 Per owner, from one snapshot under ``lock_for_billing`` (the lock every
-credit/drawdown/settle path takes): **expected** = durable balance −
-Σ(genuinely pending holds, via the ``apps.metering.queries`` contract); then
-the live counter is read; **deficit** = expected − live, when past the
+credit/drawdown path takes): **expected** = the durable balance; then the
+live counter is read; **deficit** = expected − live, when past the
 de-minimis (below it, drift is noise, not dishonesty). Two-pass grace: the
 first pass observing a deficit writes a ``LiveBalanceRepair`` candidate and
 changes nothing; the immediately-next pass (staleness-guarded) still
 measuring one applies **min(first, second)** — the amount proven stable
 across a full hour — as a **relative INCRBY**, never an absolute SET, so a
-transient in-flight window (holds land in Redis before their rows; settles
-flip rows before crediting back) can inflate one measurement but never the
-repair. A vanished deficit lapses the candidate.
+transient in-flight window (the debit lands in Redis inside a recording
+transaction that has not committed yet, and the durable drawdown it
+anticipates is an outbox hop behind it) can inflate one measurement but never
+the repair. A vanished deficit lapses the candidate.
 
 Resume on repair: a repair that lifts a wedged stop drives the clearing
 transition through the same ``StopSignalState`` guard as every other
 clearing — ``stop.cleared`` exactly once — and re-aligns the fast flag.
 
-Untouched neighbors: the MIN-merge stays byte-identical (live may transiently
-sit ABOVE expected by up to the pending sum — the generous direction,
-draining at settle). The postpaid spend counter is out of scope: its drift
-lane is the MAX-merge + budget reconcile, and the repair exists only where
-holds exist. The repair is part of the fast lane and switches off with it
-(the arrival-signals switch, #46).
+Untouched neighbors: the MIN-merge stays byte-identical. The postpaid spend
+counter is out of scope: its drift lane is the MAX-merge + budget reconcile,
+and the repair is the prepaid wallet lane's alone. The repair hangs off the
+arrival-signals switch (#46) — the same switch that governs the synchronous
+debit and its crossing check, so the repair is armed exactly where its cause
+can occur and inert where it cannot.
 """
 import logging
 from datetime import timedelta
@@ -74,11 +87,11 @@ def repair_live_balances(tenant):
 
     counts = {OUTCOME_REPAIRED: 0, OUTCOME_REPAIRED_MICROS: 0,
               OUTCOME_REPAIR_LAPSED: 0}
-    # The repair exists only where holds exist: the prepaid wallet lane.
-    # Postpaid spend drift is owned by the MAX-merge + budget reconcile.
-    # Part of the fast lane, so it switches off with it (#46, §E): with
-    # arrival signals off nothing holds and nothing reads the counter — a
-    # deficit is moot, and the repair is inert.
+    # The repair is the prepaid wallet lane's alone. Postpaid spend drift is
+    # owned by the MAX-merge + budget reconcile. The arrival-signals switch
+    # (#46, §E) is the same one that arms the synchronous debit and its
+    # crossing check: with it off nothing debits and nothing reads the
+    # counter — a deficit is moot, and the repair is inert.
     if not arrival_signals_on(tenant) or tenant.billing_mode == "postpaid":
         return counts
     for owner_id in Wallet.objects.filter(
@@ -100,14 +113,14 @@ def repair_live_balances(tenant):
 def _repair_owner(owner_id, tenant):
     """One owner, one pass: measure, then advance the candidate lifecycle.
 
-    Everything runs inside ``lock_for_billing`` — the durable balance and the
-    pending-hold sum come from one snapshot serialized against every
-    credit/drawdown/settle path, and concurrent passes serialize on the same
-    lock so a candidate resolves exactly once. The live counter is read
-    AFTER the DB snapshot (spec order); in-flight fast-lane movement can
-    only inflate a single measurement, which min(d1, d2) discards. Lock
-    order: Wallet -> Customer (lock_for_billing) -> LiveBalanceRepair;
-    ``drive_clear`` nests cleanly. Returns an outcome-count fragment.
+    Everything runs inside ``lock_for_billing`` — the durable balance is read
+    from one snapshot serialized against every credit/drawdown path, and
+    concurrent passes serialize on the same lock so a candidate resolves
+    exactly once. The live counter is read AFTER the DB snapshot (spec
+    order); in-flight movement can only inflate a single measurement, which
+    min(d1, d2) discards. Lock order: Wallet -> Customer (lock_for_billing)
+    -> LiveBalanceRepair; ``drive_clear`` nests cleanly. Returns an
+    outcome-count fragment.
     """
     from apps.billing.gating.models import LiveBalanceRepair
     from apps.billing.gating.patrol import (OUTCOME_REPAIR_LAPSED,
@@ -116,14 +129,12 @@ def _repair_owner(owner_id, tenant):
     from apps.billing.locking import lock_for_billing
     from apps.billing.queries import get_customer_balance
     from apps.billing.gating.services.live_counter import LiveCounter
-    from apps.metering.queries import get_pending_held_estimate_total
 
     now = timezone.now()
     counts = {}
     with transaction.atomic():
         lock_for_billing(owner_id)
         durable = int(get_customer_balance(owner_id))
-        pending = int(get_pending_held_estimate_total(tenant.id, owner_id))
         position = LiveCounter.read(owner_id, tenant, counter=True)
         if position["counter_blind"]:
             # Redis blind: nothing can be measured or applied. An open
@@ -135,7 +146,7 @@ def _repair_owner(owner_id, tenant):
         live = position["counter_micros"]
         # No counter, no deficit: an absent key is seeded from durable at
         # first use, so there is nothing to repair.
-        deficit = None if live is None else durable - pending - live
+        deficit = None if live is None else durable - live
 
         candidate = (LiveBalanceRepair.objects.select_for_update()
                      .filter(owner_id=owner_id, status=STATUS_CANDIDATE)
@@ -155,17 +166,18 @@ def _repair_owner(owner_id, tenant):
                     tenant=tenant, owner_id=owner_id,
                     status=STATUS_CANDIDATE, first_deficit_micros=deficit,
                     durable_balance_micros=durable,
-                    pending_hold_micros=pending)
+                    # Retired term, surviving column: see the model.
+                    pending_hold_micros=0)
                 logger.info("live_balance.repair_candidate", extra={"data": {
                     "owner_id": str(owner_id), "deficit_micros": deficit,
-                    "durable_micros": durable, "pending_micros": pending}})
+                    "durable_micros": durable}})
             return counts
 
         if not qualifying:
-            # The deficit drained between passes (settle backlog, credit) —
-            # or the counter vanished. Lapse with the second bottom line.
-            _lapse(candidate, now, second_deficit=deficit,
-                   durable=durable, pending=pending)
+            # The deficit drained between passes (a credit, or an in-flight
+            # debit's transaction landing) — or the counter vanished. Lapse
+            # with the second bottom line.
+            _lapse(candidate, now, second_deficit=deficit, durable=durable)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -175,8 +187,7 @@ def _repair_owner(owner_id, tenant):
             # The key vanished between the read and the apply (or Redis went
             # blind): nothing was moved; the deficit is moot without a
             # counter. Lapse rather than claim a repair that never applied.
-            _lapse(candidate, now, second_deficit=deficit,
-                   durable=durable, pending=pending)
+            _lapse(candidate, now, second_deficit=deficit, durable=durable)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -187,26 +198,24 @@ def _repair_owner(owner_id, tenant):
         candidate.live_before_micros = live
         candidate.live_after_micros = live_after
         candidate.durable_balance_micros = durable
-        candidate.pending_hold_micros = pending
         candidate.resolved_at = now
         candidate.save(update_fields=[
             "status", "second_deficit_micros", "applied_micros",
             "live_before_micros", "live_after_micros",
-            "durable_balance_micros", "pending_hold_micros", "resolved_at",
-            "updated_at"])
+            "durable_balance_micros", "resolved_at", "updated_at"])
         logger.warning("live_balance.repaired", extra={"data": {
             "owner_id": str(owner_id), "applied_micros": amount,
             "first_deficit_micros": candidate.first_deficit_micros,
             "second_deficit_micros": deficit,
             "live_before_micros": live, "live_after_micros": live_after,
-            "durable_micros": durable, "pending_micros": pending}})
+            "durable_micros": durable}})
         counts[OUTCOME_REPAIRED] = 1
         counts[OUTCOME_REPAIRED_MICROS] = amount
         _resume_if_wedge_lifted(owner_id, tenant, live_after)
     return counts
 
 
-def _lapse(candidate, now, second_deficit=None, durable=None, pending=None):
+def _lapse(candidate, now, second_deficit=None, durable=None):
     """Close a candidate without repairing. With a second measurement
     (vanished deficit / nothing to apply) the row gains the resolving bottom
     line and snapshot; a stale lapse passes none — ``second_deficit_micros``
@@ -217,9 +226,7 @@ def _lapse(candidate, now, second_deficit=None, durable=None, pending=None):
     if second_deficit is not None or durable is not None:
         candidate.second_deficit_micros = second_deficit
         candidate.durable_balance_micros = durable
-        candidate.pending_hold_micros = pending
-        fields += ["second_deficit_micros", "durable_balance_micros",
-                   "pending_hold_micros"]
+        fields += ["second_deficit_micros", "durable_balance_micros"]
     candidate.save(update_fields=fields)
 
 

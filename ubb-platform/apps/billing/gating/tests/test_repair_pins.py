@@ -1,37 +1,60 @@
 """#45 acceptance pins — upward live-balance repair (delivery spec §D).
 
-The honesty repair: an orphaned hold (acquired, then its RawIngestEvent row
-rolled back with a crashed request) wedges the prepaid live counter below
-reality — false stops that the downward-only MIN-merge can never heal. The
-patrol's repair leg measures expected = durable − Σ(genuinely pending holds)
-from one consistent DB snapshot, then reads the live counter; a deficit past
-the de-minimis writes a candidate on pass one and, if the immediately-next
-pass still measures one, applies min(d1, d2) as a relative increment — never
-an absolute SET — with a complete audit row. A repair that lifts a wedged
-stop drives the clearing transition through the same guard as every other
-clearing.
+RULING A2 (#233, slice 1 / #192), quoted: "the drift CAN occur on the surviving
+path... The repair's stated cause is therefore incomplete: the reservation is
+one cause, not the cause."
 
-Pin 7  — injected orphan deficit: candidate (no counter change) on pass one,
-         min(d1,d2) relative-increment repair with a complete audit row on
-         pass two, correct under concurrent traffic; a repair that lifts a
-         wedged stop fires stop.cleared exactly once.
+The honesty repair: a crashed SYNCHRONOUS recording request — its live-counter
+debit issued after the event row's savepoint but inside the still-open
+recording transaction — wedges the prepaid live counter below reality: false
+stops that the downward-only MIN-merge can never heal. The patrol's repair leg
+measures expected = the durable balance from one consistent DB snapshot, then
+reads the live counter; a deficit past the de-minimis writes a candidate on
+pass one and, if the immediately-next pass still measures one, applies
+min(d1, d2) as a relative increment — never an absolute SET — with a complete
+audit row. A repair that lifts a wedged stop drives the clearing transition
+through the same guard as every other clearing.
+
+WHERE THE DEFICIT COMES FROM, and why not every pin below strands one the same
+way. The pins whose subject is the deficit's PROVENANCE drive the surviving
+path for real: a request over HTTP to ``POST /api/v1/metering/usage`` with the
+outbox insert failing, which is the last DB write after the debit. The pins
+whose subject is the repair's ARITHMETIC (min-of-two, the freshness guard, the
+spike thresholds) still move the counter directly — they need a SECOND
+measurement of an exact size, and a second crashed request cannot give one
+without also asserting what the recording path does, which is
+``api/v1/tests/test_recording_drift_pins.py``'s subject, not this module's.
+
+Pin 7  — a strand left by the surviving path: candidate (no counter change) on
+         pass one, min(d1,d2) relative-increment repair with a complete audit
+         row on pass two, correct under concurrent traffic; a repair that lifts
+         a wedged stop fires stop.cleared exactly once.
 Pin 8  — a transient deficit that resolves between passes lapses (no repair);
          a sub-de-minimis deficit never candidates; a stale candidate can't
          prove hour-stability and starts the observation over.
-Pin 10 — downward neighbors untouched: genuinely pending holds are not a
-         deficit; a drift-high counter is the MIN-merge's lane, never the
-         repair's.
+Pin 10 — downward neighbors untouched: a drift-HIGH counter is the MIN-merge's
+         lane, never the repair's; an absent counter is never repaired; and the
+         measurement is the durable balance alone — the reservation term the
+         repair was born with is gone with its cause.
 Pin 11 — the repair-rate spike alert (count / amount per tenant per 24h)
          fires CRITICAL past its threshold.
 Plus   — outcomes ride the hourly patrol beat onto the ops surface; postpaid
          and off tenants are out of scope.
 """
+import ast
+import json
 import logging
+import uuid
 from datetime import timedelta
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError
+from django.test import Client
 from django.utils import timezone
 
+from api.v1.schemas import RecordUsageRequest
 from apps.billing.gating import repair
 from apps.billing.gating.models import LiveBalanceRepair
 from apps.billing.gating.services.live_counter import Door, LiveCounter
@@ -42,15 +65,22 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.billing.gating.tasks import reconcile_live_ledgers
 from apps.billing.queries import get_patrol_stats
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import RawIngestEvent
+from apps.metering.usage.models import UsageEvent
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
 def _tenant(enf="enforcing", mode="prepaid"):
     return Tenant.objects.create(name="T", products=["metering", "billing"],
                                  billing_mode=mode, enforcement_mode=enf)
+
+
+def _tenant_with_key(enf="enforcing", mode="prepaid"):
+    """A tenant that can be driven over the wire — the seam the strand needs."""
+    t = _tenant(enf=enf, mode=mode)
+    _key, raw_key = TenantApiKey.create_key(t, label="t")
+    return t, raw_key
 
 
 def _customer(t, balance_micros=0, ext="c1"):
@@ -71,10 +101,44 @@ def _events(event_type):
     return OutboxEvent.objects.filter(event_type=event_type).order_by("created_at")
 
 
-def _pending_row(t, c, estimate, held=True, status="pending", key="k1"):
-    return RawIngestEvent.objects.create(
-        tenant=t, customer=c, billing_owner_id=c.id, idempotency_key=key,
-        estimate_micros=estimate, estimate_exact=True, held=held, status=status)
+def _correlation_values():
+    """Every required plain-string field on the recording request, each given a
+    unique value.
+
+    Read off the schema rather than spelled out. One of them is a retired term
+    whose migration a later slice owes, and the ledger that owes it only ever
+    shrinks — naming it here would grow that term's recorded extent instead.
+    """
+    return {name: f"{name}-{uuid.uuid4()}"
+            for name, field in RecordUsageRequest.model_fields.items()
+            if field.is_required() and field.annotation is str}
+
+
+def _strand_via_the_recording_path(raw_key, customer, billed_micros):
+    """Strand ``billed_micros`` on the live counter the way the SURVIVING path
+    strands it — a real request whose event row rolls back after the debit.
+
+    The injected failure is the outbox insert: the last DB write the recording
+    core performs after the live-counter debit and before the transaction
+    commits, so the event row rolls back from a state where the counter has
+    already moved. Mechanism and ruling: ``test_recording_drift_pins.py``.
+    """
+    durable_before = Wallet.objects.get(customer=customer).balance_micros
+    events_before = UsageEvent.objects.count()
+    payload = {"customer_id": str(customer.id),
+               "provider_cost_micros": 10_000_000,
+               "billed_cost_micros": int(billed_micros),
+               **_correlation_values()}
+    with patch("apps.metering.usage.services.usage_service.write_event",
+               side_effect=IntegrityError("outbox insert failed")):
+        resp = Client().post(
+            "/api/v1/metering/usage", data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {raw_key}")
+    # The three properties that make this a strand rather than a spend.
+    assert resp.status_code == 500
+    assert UsageEvent.objects.count() == events_before
+    assert Wallet.objects.get(customer=customer).balance_micros == durable_before
 
 
 NO_OUTCOMES = {"repaired": 0, "repaired_micros": 0, "repair_lapsed": 0}
@@ -83,9 +147,11 @@ NO_OUTCOMES = {"repaired": 0, "repaired_micros": 0, "repair_lapsed": 0}
 @pytest.mark.django_db
 class TestPin7TwoPassRepair:
     def test_pass_one_candidates_pass_two_repairs_with_full_audit(self):
-        t = _tenant()
+        t, raw_key = _tenant_with_key()
         c = _customer(t, balance_micros=10_000_000)
-        _set_live(c.id, 4_000_000)  # a 6M orphan: hold taken, row rolled back
+        # A real 6M strand: the debit landed, the event row rolled back.
+        _strand_via_the_recording_path(raw_key, c, 6_000_000)
+        assert _live(c.id) == 4_000_000
 
         counts = repair.repair_live_balances(t)
         assert counts == NO_OUTCOMES
@@ -93,7 +159,6 @@ class TestPin7TwoPassRepair:
         assert row.status == "candidate"
         assert row.first_deficit_micros == 6_000_000
         assert row.durable_balance_micros == 10_000_000
-        assert row.pending_hold_micros == 0
         assert row.second_deficit_micros is None
         assert row.applied_micros is None
         assert row.resolved_at is None
@@ -133,7 +198,7 @@ class TestPin7TwoPassRepair:
         assert _live(c.id) == 9_000_000  # honest: durable, not pass-one's 10M
 
     def test_min_takes_the_second_measurement_when_the_deficit_shrank(self):
-        # Part of the wedge healed between passes (a late settle credited 2M
+        # Part of the wedge healed between passes (an operator credit put 2M
         # back): d2 = 4M < d1 = 6M -> only min is applied, counter lands
         # honest, never above the durable balance.
         t = _tenant()
@@ -149,9 +214,10 @@ class TestPin7TwoPassRepair:
         assert _live(c.id) == 10_000_000
 
     def test_min_takes_the_first_measurement_when_the_deficit_grew(self):
-        # A NEW orphan (3M) accrued during the hour: d2 = 9M > d1 = 6M ->
-        # only the hour-stable 6M is applied; the residual candidates on the
-        # following pass and repairs one cycle later.
+        # A SECOND crashed request stranded another 3M during the hour:
+        # d2 = 9M > d1 = 6M -> only the hour-stable 6M is applied; the
+        # residual candidates on the following pass and repairs one cycle
+        # later.
         t = _tenant()
         c = _customer(t, balance_micros=10_000_000)
         _set_live(c.id, 4_000_000)
@@ -167,10 +233,16 @@ class TestPin7TwoPassRepair:
         assert fresh.first_deficit_micros == 3_000_000
 
     def test_repair_that_lifts_a_wedged_stop_fires_stop_cleared_exactly_once(self):
-        t = _tenant()
+        t, raw_key = _tenant_with_key()
         c = _customer(t, balance_micros=5_000_000)  # durably healthy (floor 0)
-        _set_live(c.id, -1_000_000)  # wedged below the floor by a 6M orphan
-        # The wedge's false crossing stopped + suspended the owner durably.
+        # A real 6M strand takes the counter past the floor on a wallet that
+        # never moved: the false crossing the repair exists to undo.
+        _strand_via_the_recording_path(raw_key, c, 6_000_000)
+        assert _live(c.id) == -1_000_000
+        # The crossing's own durable transition rolled back with the request
+        # that raised it; the durable lane records the wedge on its next pass
+        # (patrol job 1 — the missed-transition drive), and from here on the
+        # owner is stopped and suspended off a balance that is a fiction.
         StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
         LiveCounter.ensure_stop_flag(c.id, "customer_wide_stop")
         c.refresh_from_db()
@@ -198,7 +270,7 @@ class TestPin7TwoPassRepair:
 
     def test_repair_that_leaves_the_counter_past_the_floor_does_not_clear(self):
         # The owner is GENUINELY past the floor (-2M durable); only the 1M
-        # orphan on top is repaired, and the stop stays.
+        # strand on top is repaired, and the stop stays.
         t = _tenant()
         c = _customer(t, balance_micros=-2_000_000)
         _set_live(c.id, -3_000_000)
@@ -218,8 +290,9 @@ class TestPin7TwoPassRepair:
 @pytest.mark.django_db
 class TestPin8TransientAndDeMinimis:
     def test_transient_deficit_lapses_without_repair(self):
-        # A settle backlog: pass one saw the holds' debits before their rows
-        # (or their credits) landed; by pass two the deficit drained.
+        # A measurement taken mid-request: pass one saw a debit whose own
+        # transaction had not yet committed, and by pass two it had (or was
+        # credited back). The deficit drained; nothing is repaired.
         t = _tenant()
         c = _customer(t, balance_micros=10_000_000)
         _set_live(c.id, 4_000_000)
@@ -267,32 +340,24 @@ class TestPin8TransientAndDeMinimis:
 
 @pytest.mark.django_db
 class TestPin10DownwardNeighborsUntouched:
-    def test_genuinely_pending_holds_are_not_a_deficit(self):
-        # live == durable − pending: the counter is honest. Neither the
-        # MIN-merge (target = durable; only lowers) nor the repair moves it.
-        t = _tenant()
-        c = _customer(t, balance_micros=10_000_000)
-        _pending_row(t, c, 3_000_000)
-        _set_live(c.id, 7_000_000)
+    def test_the_measurement_is_the_durable_balance_alone(self):
+        """The narrowed measurement (Ruling A2), pinned at its seam.
 
-        LiveCounter.reconcile(c.id, t)
-        assert repair.repair_live_balances(t) == NO_OUTCOMES
-        assert _live(c.id) == 7_000_000
-        assert not LiveBalanceRepair.objects.exists()
-
-    def test_only_genuinely_pending_held_rows_count(self):
-        # Settled/duplicate/failed rows have drained (or released) their
-        # holds; a held=False append never took one. None of them may shrink
-        # the expected balance.
-        from apps.metering.queries import get_pending_held_estimate_total
-        t = _tenant()
-        c = _customer(t, balance_micros=10_000_000)
-        _pending_row(t, c, 3_000_000, key="p1")
-        _pending_row(t, c, 1_000_000, status="settled", key="p2")
-        _pending_row(t, c, 1_000_000, status="duplicate", key="p3")
-        _pending_row(t, c, 1_000_000, status="failed", key="p4")
-        _pending_row(t, c, 1_000_000, held=False, key="p5")
-        assert get_pending_held_estimate_total(t.id, c.id) == 3_000_000
+        The repair was born measuring ``durable − Σ(pending reservations)``,
+        because the cause it was written for held one. The surviving cause
+        holds nothing, so the reservation term goes with it and expected IS the
+        durable balance. Read off the module's imports because that is where
+        the term lived: the measurement reached across a product boundary into
+        metering's read contract for it, and now reaches nowhere.
+        """
+        source = Path(repair.__file__).read_text(encoding="utf-8")
+        reached_into = sorted({
+            node.module for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").startswith("apps.metering")})
+        assert reached_into == [], (
+            "the repair's measurement is the durable balance alone; it should "
+            f"read nothing from metering, but reads {reached_into}")
 
     def test_drift_high_counter_is_the_min_merges_lane_never_a_candidate(self):
         t = _tenant()
@@ -376,8 +441,8 @@ class TestRepairRidesThePatrol:
         assert _live(b.id) == 8_000_000
 
     def test_postpaid_tenants_are_out_of_scope(self):
-        # The postpaid spend counter's drift lane is the MAX-merge +
-        # budget reconcile; the repair exists only where holds exist.
+        # The postpaid spend counter's drift lane is the MAX-merge + budget
+        # reconcile; the repair is the prepaid wallet lane's alone.
         t = _tenant(mode="postpaid")
         assert repair.repair_live_balances(t) == NO_OUTCOMES
 
