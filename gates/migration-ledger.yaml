@@ -1828,8 +1828,8 @@ entries:
       with declared measurements, which is what makes them costable.
 
   # Two words #210 spread to this surface, and would not have without it.
-  # `tests/contracts/test_label_catalogue.py` pins the fifty-one files that
-  # import the legacy label adapter, as a shrink-only set — and two of them are
+  # `tests/contracts/test_label_catalogue.py` pins the files that import the
+  # legacy label adapter, as a shrink-only set — and two of them are
   # NAMED after retired concepts, so pinning the path spells the word. There is
   # no version of that list that does not; the alternative was a count, which
   # would let one file be converted while another was added. So the debt is
@@ -2693,19 +2693,6 @@ entries:
       when the billing mode it is derived from is rebuilt, alongside
       `customer_billing_mode` at the cutover.
 
-  - id: g2-console-tenant_product
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::tenant_product
-    expected: tenant_product
-    found: 0 of 3 values
-    owner_slice: slice_1
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. `metering_async` goes with the fire-and-forget
-      ingest lane, which #149 deletes outright — the largest deletion in the
-      map, and Demolition's work.
-
   - id: g2-console-usage_event_kind
     gate: G2
     site: apps/ui/src/lib/labels.ts::usage_event_kind
@@ -3304,13 +3291,13 @@ entries:
 
   # --- G6: the console's hand-written value maps (#210) ---------------------
   #
-  # Thirty of the thirty-two maps in the legacy adapter. Each one keys English
-  # off a raw token and falls back to `humanize`, which is what ADR-0008 §4.3
-  # retires. `expected` names the registry concept whose generated label keys
-  # replace the map; where the registry declares no concept for the value set,
-  # it names `label_key` — the thing that must exist there — rather than a
-  # concept name nobody has decided, which would be provisional vocabulary
-  # recorded as fact.
+  # Twenty-seven of the twenty-nine maps in the legacy adapter. Each one keys
+  # English off a raw token and falls back to `humanize`, which is what
+  # ADR-0008 §4.3 retires. `expected` names the registry concept whose
+  # generated label keys replace the map; where the registry declares no
+  # concept for the value set, it names `label_key` — the thing that must
+  # exist there — rather than a concept name nobody has decided, which would
+  # be provisional vocabulary recorded as fact.
   #
   # OWNERS ARE INHERITED, NOT CHOSEN. Where the concept exists, the owner is
   # the slice its G2/G3 entry already names, so the map and its value list are
@@ -3457,17 +3444,6 @@ entries:
       slice's subject contains it. Owned by the cutover, where the ledger
       reaches zero; pulling it earlier is the ratchet's one free move.
 
-  - id: g6-map-ingest-mode-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::ingestModeLabel
-    expected: tenant_product
-    owner_slice: slice_1
-    reason: >-
-      `ingestModeLabel` words which ingest lane took an event. #149 deletes the
-      fast lane in full and the registry retires `ingest_mode` into
-      `tenant_product`, so slice 1 removes the map rather than rewiring it:
-      there is no second lane left to name.
-
   - id: g6-map-ingest-rejection-label
     gate: G6
     site: apps/ui/src/lib/labels.ts::ingestRejectionLabel
@@ -3544,29 +3520,6 @@ entries:
       that vocabulary — the same slice the concept's own value-list entry
       names, because a value list and the words for it cannot honestly move
       apart.
-
-  - id: g6-map-product-description
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::productDescription
-    expected: tenant_product
-    owner_slice: slice_1
-    reason: >-
-      A sentence of explanatory copy per product, keyed on the raw token.
-      ADR-0008 §4.5 keeps prose out of the registry permanently, so this owes a
-      stable label key rather than a concept — and it owes it in slice 1, which
-      deletes `metering_async` and takes one of its rows with it.
-
-  - id: g6-map-product-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::productLabel
-    expected: tenant_product
-    owner_slice: slice_1
-    reason: >-
-      `productLabel` hand-writes the wording for the enabled products, and
-      falls back to `humanize` for anything it does not recognise. It becomes
-      `labelMap(TENANT_PRODUCT_LABEL_KEYS)` in the slice that rebuilds that
-      vocabulary — the same slice the concept's own value-list entry names,
-      because a value list and the words for it cannot honestly move apart.
 
   - id: g6-map-referral-program-status-label
     gate: G6
@@ -3980,7 +3933,7 @@ seeding_authorisations:
       enumerating a vendor's catalogue, so no label key will ever exist to move
       them to and no slice owes the work.
       The ledger IS the allowlist this gate enforces. There is no second list
-      of permitted sites anywhere: a thirty-first map or a twelfth humanising
+      of permitted sites anywhere: one more map or one more humanising
       import is an addition the ratchet refuses without its own authorisation,
       which is what makes "reachable from allowlisted sites and nowhere else"
       mechanical rather than a review habit.

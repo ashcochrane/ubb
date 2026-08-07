@@ -9,14 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import {
-  PRODUCTS,
-  billingModeLabel,
-  productDescription,
-  productLabel,
-  type Product,
-} from "@/lib/labels";
+import { PRODUCTS, billingModeLabel, type Product } from "@/lib/labels";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
+import { PRODUCT_DESCRIPTIONS, productLabel } from "@/lib/products";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
@@ -85,7 +80,7 @@ export function ProductsCard({
               <div>
                 <p className="text-sm font-medium">{productLabel(product)}</p>
                 <p className="text-[13px] text-muted-foreground">
-                  {productDescription(product)}
+                  {PRODUCT_DESCRIPTIONS[product]}
                 </p>
                 {isMetering && (
                   <p className="mt-1 text-[12px] text-muted-foreground">
@@ -130,7 +125,7 @@ export function ProductsCard({
         description={
           pending
             ? pending.enable
-              ? `${productDescription(pending.product)} Its console sections and API become available immediately.`
+              ? `${PRODUCT_DESCRIPTIONS[pending.product]} Its console sections and API become available immediately.`
               : `Its console sections disappear for everyone and its API starts answering "feature not enabled" errors immediately. Data is preserved — you can re-enable it at any time.`
             : ""
         }
