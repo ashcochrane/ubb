@@ -66,8 +66,9 @@ CANDIDATE_FRESH_WINDOW = timedelta(hours=2, minutes=30)
 
 # Repair-rate spike alert (§D): repairs per tenant per trailing 24h past
 # either threshold log CRITICAL — a repair epidemic reads as the bug it is
-# (a broken hold/settle path), never as silent self-healing. The Stage D
-# drawdown-repair spike is the prior art.
+# (a recording path debiting the counter and then losing the event row),
+# never as silent self-healing. The Stage D drawdown-repair spike is the
+# prior art.
 REPAIR_SPIKE_COUNT_24H = 10
 REPAIR_SPIKE_AMOUNT_MICROS_24H = 100_000_000  # $100
 

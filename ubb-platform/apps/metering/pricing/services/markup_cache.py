@@ -10,11 +10,18 @@ compares cached entries against it. TenantMarkup.save()/.delete() bump the
 version at the MODEL layer so no write path can bypass invalidation; a bump
 therefore propagates within one request boundary + TTL.
 
-Money rule (never-under-hold): a missing markup would under-ESTIMATE and
-therefore under-hold, so every fallback — L1 miss, stale version, Redis
-failure — is a live ORM resolve via MarkupService.resolve, never "assume no
-markup". The settle path does not use this cache at all (exact live-ORM
-pricing via PricingService, unchanged).
+Money rule: a missing markup would under-price, so every fallback — L1 miss,
+stale version, Redis failure — is a live ORM resolve via
+MarkupService.resolve, never "assume no markup". The rule was written against
+the accept-time reservation this cache fed, where under-pricing meant
+under-reserving; #239 deleted that path, and the rule stands on the plainer
+ground that a dropped markup is lost margin.
+
+**Nothing in production reads this cache.** ``MarkupCache.apply`` had one
+caller — the accept-time estimate — and the recording path prices through
+``MarkupService`` against live ORM. Only the model-layer ``invalidate`` hook
+is still wired. Disposing of it belongs to a later slice-1 ticket, with
+``card_cache.py``, which is caller-less for the same reason.
 """
 import contextvars
 import time
@@ -78,7 +85,8 @@ class MarkupCache:
 
     @staticmethod
     def apply(provider_cost_micros, *, tenant, customer):
-        """MarkupService.apply semantics via the cache (estimation hot path)."""
+        """MarkupService.apply semantics via the cache. No production caller
+        since #239 — see the module docstring."""
         markup = MarkupCache.resolve(tenant, customer)
         if markup is None:
             return provider_cost_micros

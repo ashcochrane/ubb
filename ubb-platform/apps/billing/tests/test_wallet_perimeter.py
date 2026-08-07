@@ -19,9 +19,10 @@ asserts, for every file OUTSIDE the perimeter:
    and lots are born and mutated only behind the seam (reads stay free);
 5. no ``LiveCounter.credit`` call — the Tier-2 credit mirror is derived
    from the op's balance delta INSIDE the module (decision 4; the five
-   hand-wired sites died with #109). The one sanctioned non-ledger site is
-   the live counter's own ``settle`` (a hold release is not a ledger
-   movement — since #111 that call lives inside ``live_counter.py``).
+   hand-wired sites died with #109). There is no sanctioned non-ledger site
+   left: the one that existed was the live counter's own reservation settle,
+   deleted with the reservation lane in #239, so the rule now stands with an
+   empty allowlist.
 
 Instance-level ``.save()`` on a fetched model can't be attributed statically —
 rules 2/3 cover the fields such a write would have to touch first, which is
@@ -58,13 +59,13 @@ MANAGER_MUTATORS = frozenset({
     "delete",
 })
 
-# Rule 5 allowlist: the ONE sanctioned non-ledger LiveCounter.credit site —
-# the hold-settle inside the live counter itself (a hold release is not a
-# ledger movement). Defining credit() is free — only
-# `LiveCounter.credit(...)` call sites are pinned.
-MIRROR_ALLOWLIST = frozenset({
-    "apps/billing/gating/services/live_counter.py",
-})
+# Rule 5 allowlist: EMPTY since #239. Its one entry was
+# `live_counter.py` — the reservation settle credited the counter back from
+# inside the live counter itself, which is not a ledger movement — and that
+# path went with the reservation lane. Defining credit() is free; only
+# `LiveCounter.credit(...)` call sites are pinned, so the module that owns the
+# function needs no exemption to declare it.
+MIRROR_ALLOWLIST = frozenset()
 
 _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}
 
@@ -170,8 +171,8 @@ def check_source(tree, label, module_parts):
                 violations.append((RULE_MIRROR_CALL, (
                     f"{label}:{node.lineno} calls LiveCounter.credit — "
                     f"the credit mirror is derived inside the wallet module "
-                    f"(the live counter's own settle is the one sanctioned "
-                    f"non-ledger site) — see {ISSUE}")))
+                    f"from the op's balance delta, and there is no sanctioned "
+                    f"non-ledger site — see {ISSUE}")))
     return violations
 
 

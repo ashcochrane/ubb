@@ -14,6 +14,14 @@ request/context-scoped, so a stale concurrent request can never clobber the
 version a fresher request observed — and resolve compares cached entries
 against it. A publish-time invalidation therefore propagates within one
 request boundary + TTL.
+
+**Nothing in production reads this cache.** ``resolve`` and ``begin_request``
+had one caller — the accept-time estimate deleted in #239 — and the recording
+path resolves cards against live ORM through ``PricingService``. Only
+``invalidate`` is still wired, from ``book_service.py``. The request-scoped
+version discipline above describes how the read path worked, and is kept
+because it is the contract any future reader inherits; disposing of the module
+belongs to a later slice-1 ticket, with ``markup_cache.py``.
 """
 import contextvars
 import time

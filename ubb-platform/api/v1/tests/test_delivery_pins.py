@@ -24,7 +24,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 class BrokerDownAtAcceptTest(TestCase):
     """Prepaid + enforcing tenant, one customer with a funded wallet, Redis
     DB-15 wiped between tests (``cache.clear()`` FLUSHDBs the dedicated test
-    db — the idiom in apps/billing/gating/tests/test_hold_lane.py).
+    db — the idiom in apps/billing/gating/tests/test_live_counter.py).
 
     This fixture is the module's own. The pin rode the async ingest endpoint's
     shared base class until that route was deleted, and the second case here

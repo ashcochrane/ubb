@@ -126,7 +126,7 @@ class TestBudgetStopThreshold:
 
 
 class TestCrossedLive:
-    """The mode dispatch the fast lane / hold batch / reconcile share: one
+    """The mode dispatch the fast lane and reconcile share: one
     orientation per mode, threshold pre-resolved once per owner."""
 
     def test_postpaid_spend_rises_across_the_stop_line(self):

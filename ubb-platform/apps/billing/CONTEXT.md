@@ -32,8 +32,8 @@ _Avoid_: "error" — infrastructure faults raise; refusals return.
 **Mirror invariant**:
 The rule that every credit-raising wallet mutation schedules a matching live-counter credit on
 commit — enforced structurally at the wallet-operations seam, since the MIN-merge reconcile can
-never re-raise a missed credit. The one sanctioned non-ledger credit site is estimate-hold-settle
-(inside the live counter itself since #111).
+never re-raise a missed credit. There is no sanctioned non-ledger credit site: the one that
+existed was the reservation lane's settle, removed with it in slice 1 (#239).
 _Avoid_: wiring `LiveCounter.credit` by hand at call sites.
 
 **Drawdown**:
@@ -144,7 +144,7 @@ never a usage report.
 THE one module owning every piece of Tier-2 Redis state (#111): the billing-owner-keyed live
 balance/spend counters maintained synchronously at record time (so the API response carries a real
 stop verdict), the cooperative stop flag, the seat-keyed budget counter, and every key format, Lua
-script, and TTL behind them. Interface: `debit · hold · settle · release · credit · read ·
+script, and TTL behind them. Interface: `debit · credit · read ·
 reconcile · repair_incr · resume · cleanup · budget_incr/read/reconcile`, plus a deliberate
 TEST-ONLY door (`Door`) for fabricating counter/flag state. Key formats are frozen once in the
 module's own pin test; a perimeter walker (ADR-001 style) keeps the keyspace, the Lua, and the
@@ -157,12 +157,12 @@ thing.
 
 **Arrival signals (fast lane)**:
 The per-tenant posture (`Tenant.arrival_signals_enabled`, default ON, read only through
-`flags.arrival_signals_on`) governing the whole arrival-time fast lane as ONE unit — accept-time
-holds, live counters, arrival-moment floor detection, and the upward repair. Two honest latency
-profiles: ON detects crossings at arrival (stop latency bounded, independent of settle-queue
-depth — the ≤5s p99 presumes ON); OFF is the competitor-normal degraded posture — accept does no
-live-counter Redis work and detection happens at settle, so latency degrades exactly when a
-runaway spender floods the queue. The durable lane (settle-time detection, signal ledger, patrol,
+`flags.arrival_signals_on`) governing the whole arrival-time fast lane as ONE unit — the live
+counters, record-time floor detection, and the upward repair. Two honest latency
+profiles: ON detects crossings as the event is recorded (stop latency bounded, independent of
+drawdown-queue depth — the ≤5s p99 presumes ON); OFF is the competitor-normal degraded posture —
+recording does no live-counter Redis work and detection waits for the drawdown, so latency
+degrades exactly when a runaway spender floods the queue. The durable lane (signal ledger, patrol,
 webhook delivery, ack verdicts) never switches off and maintains the ack-verdict flag in both
 postures, so flipping never changes the tenant-facing contract. Flipping either way enqueues an
 immediate per-tenant reconcile (OFF→ON re-seeds honest counters; ON→OFF drains at settle).
@@ -258,17 +258,8 @@ _Avoid_: assuming a budget crossing stops anything on prepaid/meter_only — it 
 wallet floor does. "Fixing" the seat/owner divergence by pointing both counters at the same key —
 that reintroduces the mid-month-adoption footgun this design deliberately avoided.
 
-**Hold**:
-The arrival-time reservation of one async event's estimated price on the live counter, taken
-*before* the event is durably appended; trued up at settle. Always holds, against the wallet only
-— task limits are detected at settle with exact costs. With arrival signals off, nothing is held
-(`held: false` on the raw row) and settle trues up nothing. An op of the live counter
-(`LiveCounter.hold`) since #111 — the old standalone HoldService was a second implementation of
-the same counter and was folded in.
-_Avoid_: "pre-auth" — a hold reserves an amount; it never blocks the event from landing.
-
 **Crossing**:
-The instant a debit or hold pushes an owner's live counter past its threshold (wallet floor or
+The instant a debit pushes an owner's live counter past its threshold (wallet floor or
 budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
 The compare itself — both sign orientations (wallet balance FALLS below the line, budget spend
 RISES over it), the transition/level/recovery forms, the budget stop line's `enforce_mode`
@@ -280,13 +271,6 @@ repair, budget gate, dispute clawback) imports those predicates rather than re-d
 comparison.
 _Avoid_: writing `balance < -floor` / `spend >= cap * pct // 100` inline anywhere — that is the
 exact re-sprawl #110 retired.
-
-**Orphan hold**:
-A hold whose event never durably landed (crash between the hold and the append); the live balance
-reads *lower* than reality — the safe direction — until credited or expired. The MIN-merge
-reconcile cannot heal it (it only ever lowers), and the **upward repair no longer measures it**:
-Ruling A2 (#233) narrowed the repair to the cause that outlives the arrival-time lane, and the
-lane that takes this hold is removed in slice 1.
 
 **Upward repair**:
 The patrol's honesty repair of the prepaid live counter (#45): a deficit against the expected

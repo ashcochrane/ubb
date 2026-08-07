@@ -259,11 +259,18 @@ change being recorded, not an inconvenience.
 Three words moved OUT of the sweep's input in the same change rather than into
 the ledger. `flat`, `hold` and `estimate` produced 1,069 hits between them and
 not one was the retired sense: `flat` is Django's `values_list(..., flat=True)`,
-`hold` is `LiveCounter.hold`, `estimate` is `PricingService.estimate`. They are
+`hold` was `LiveCounter.hold`, `estimate` was `PricingService.estimate`. They are
 now `retired_senses`, which is #202's own stated rule applied — a word retired
 in one sense while live in another "would force the sweep into exclusions broad
 enough to disarm it". **This is the ticket's largest judgement call and it
 weakens what G7 can catch**, so it is recorded here rather than left in a diff.
+
+**#239 deleted both of those mechanisms and re-took the count.** The exclusion
+survives it: `hold` and `estimate` are now the ordinary English verb and noun
+on every surface they appear, so the classification holds on evidence taken
+against the current tree rather than inherited from #206's. The numbers, the
+method behind them and the reading of every residual occurrence are recorded
+beside the words themselves, in `domain-vocabulary/concepts/economics.yaml`.
 
 It costs exactly one live occurrence, and that is written down too:
 `ProductFeeConfig.fee_type == "flat"` is the retired sense, and no gate now sees

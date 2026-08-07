@@ -413,7 +413,7 @@ entries:
     gate: G7
     site: backend::budget
     expected: control_family
-    found: 37 files
+    found: 36 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
@@ -465,7 +465,7 @@ entries:
     gate: G7
     site: backend::card_type
     expected: pricing_book_name
-    found: 33 files
+    found: 32 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
@@ -497,7 +497,7 @@ entries:
     gate: G7
     site: backend::customer_wide_stop
     expected: reason_code
-    found: 19 files
+    found: 18 files
     owner_slice: slice_6
     reason: >-
       A refusal reason naming a mechanism rather than the customer whose
@@ -507,7 +507,7 @@ entries:
     gate: G7
     site: backend::dimension
     expected: grouping_field_value
-    found: 38 files
+    found: 37 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
@@ -595,7 +595,7 @@ entries:
     gate: G7
     site: backend::metric
     expected: measurement_key
-    found: 19 files
+    found: 18 files
     owner_slice: slice_2
     reason: >-
       The industry uses this word for the metered ENTITY rather than for
@@ -607,7 +607,7 @@ entries:
     gate: G7
     site: backend::metric_name
     expected: measurement_key
-    found: 28 files
+    found: 27 files
     owner_slice: slice_2
     reason: >-
       The declared measurement's key. Slice 2's `value_type` / `unit` /
@@ -627,7 +627,7 @@ entries:
     gate: G7
     site: backend::pricing_model
     expected: rate_structure
-    found: 22 files
+    found: 21 files
     owner_slice: slice_4
     reason: >-
       It sat one character from `pricing_mode` and meant something
@@ -667,7 +667,7 @@ entries:
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 24 files
+    found: 23 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -780,7 +780,7 @@ entries:
     gate: G7
     site: backend::stop.fired
     expected: webhook_event_type
-    found: 16 files
+    found: 15 files
     owner_slice: slice_6
     reason: >-
       An event owned by a mechanism rather than by the customer whose
@@ -875,7 +875,7 @@ entries:
     gate: G7
     site: backend::usage_metrics
     expected: measurement_key
-    found: 19 files
+    found: 18 files
     owner_slice: slice_2
     reason: >-
       The bag of measured quantities on one event. Slice 2 replaces it

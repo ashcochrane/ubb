@@ -1,5 +1,3 @@
-from collections import namedtuple
-
 from django.db.models import Q
 from django.utils import timezone
 
@@ -10,20 +8,6 @@ PRICING_ENGINE_VERSION = "2.1.0"
 
 class PricingError(Exception):
     pass
-
-
-class Unpriceable(Exception):
-    """Estimation cannot proceed safely — route this item down the sync path.
-
-    Raised by ``PricingService.estimate`` exactly where ``price`` raises
-    ``PricingError`` (they share one compute spine, #112), so the sync
-    fallback surfaces the real pricing error to the caller."""
-
-
-# ``exact`` is belt-and-braces provenance: it records that the estimate was
-# exact at accept time, and stays load-bearing if a future pricing model
-# reintroduces inexact estimates.
-Estimate = namedtuple("Estimate", "micros exact")
 
 
 class PricingService:
@@ -95,12 +79,15 @@ class PricingService:
     def _compute(*, tenant, usage_metrics, caller_provider_cost, caller_billed,
                  units, resolve_card, apply_markup):
         """The ONE compute spine (#112): coverage → cost → price → markup
-        fallback. ``price`` and ``estimate`` are this spine under two card
-        resolvers — ``resolve_card(card_type, metric)`` and the matching
-        ``apply_markup(provider_cost)`` are the ONLY things that differ — so
-        estimate-vs-price equality holds by construction, not convention.
-        Raises PricingError exactly where strict cost coverage fails; always
-        returns (provider_cost, billed, provenance)."""
+        fallback. ``price`` is this spine under one card resolver —
+        ``resolve_card(card_type, metric)`` and the matching
+        ``apply_markup(provider_cost)`` are the parameters — and it is the
+        only rider left since #239 deleted the accept-time estimate that was
+        the second. The parameterisation stays: it is what kept the two in
+        agreement by construction, and what a future second rider would use
+        rather than forking a pricing body. Raises PricingError exactly where
+        strict cost coverage fails; always returns
+        (provider_cost, billed, provenance)."""
         usage_metrics = usage_metrics or {}
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
@@ -193,56 +180,3 @@ class PricingService:
             caller_provider_cost=caller_provider_cost,
             caller_billed=caller_billed, units=units,
             resolve_card=resolve_card, apply_markup=apply_markup)
-
-    @staticmethod
-    def estimate(tenant, customer, *, selectors, usage_metrics,
-                 currency, caller_billed, caller_provider_cost, units):
-        """Accept-time cost estimation for async ingestion: the SAME compute
-        spine as ``price``, over CardCache current-card resolution and the
-        cached markup — read-only, never charges a wallet, and the receipt is
-        discarded (no event row exists yet to carry it).
-
-        **This has no caller.** The accept pipeline that estimated a cost to
-        reserve against was deleted in slice 1; the method itself is disposed
-        of separately, with the reservation methods it fed.
-
-        ``selectors`` is the same full ten-key map ``price`` takes (see
-        ``price``'s docstring) — the CALLER is responsible for making it the
-        SAME inherited selector set ``price`` will resolve at settle. The
-        deleted pipeline mirrored usage_service.py's ``_inherit_dimensions``
-        for exactly this reason: Task 12 closed a gap where accept wildcarded
-        task_type/dim1..dim6 while settle resolved them for real, letting the
-        two instants match different rates. Given equal selectors, the one remaining
-        accept-vs-settle difference is WHICH cards resolve — CURRENT cards
-        here (the hot accept path keeps its L1 cache), as_of-exact cards at
-        settle — i.e. rate-card config drift between the two instants. With
-        per_unit/flat-only pricing (ADR-0003 deleted tiered pricing), every
-        estimate therefore equals what price() will charge by construction,
-        MODULO that config-drift window and the caller keeping selectors in
-        sync — this method cannot verify either from here, so ``exact=True``
-        below is a claim about the compute spine, not a guarantee over
-        every possible caller.
-
-        Unpriceable is raised exactly where price() raises PricingError
-        (strict cost coverage — one spine, one failure surface), so the
-        ingest endpoint can route the item down the sync path to surface the
-        real error."""
-        from apps.metering.pricing.services.card_cache import CardCache
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-
-        def resolve_card(card_type, metric):
-            return CardCache.resolve(tenant, customer, card_type, selectors,
-                                     metric, currency)
-
-        def apply_markup(provider_cost):
-            return MarkupCache.apply(provider_cost, tenant=tenant, customer=customer)
-
-        try:
-            _, billed, _ = PricingService._compute(
-                tenant=tenant, usage_metrics=usage_metrics,
-                caller_provider_cost=caller_provider_cost,
-                caller_billed=caller_billed, units=units,
-                resolve_card=resolve_card, apply_markup=apply_markup)
-        except PricingError as exc:
-            raise Unpriceable(str(exc)) from exc
-        return Estimate(billed, True)

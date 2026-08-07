@@ -83,8 +83,8 @@ rule needs judgment; the legitimate shapes are:
   `UsageService.record_usage`, then run the billing handler, then assert the wallet ledger — the way
   `apps/billing/gating/tests/test_budget_e2e.py` does.
 - **Assert invariants**, since so much of this domain is money and idempotency: a redelivered event
-  debits exactly once, accept-hold plus settle-delta nets to the exact price, a stale task gets
-  reaped. Prefer an invariant assertion over a single golden value.
+  debits exactly once, a crossing sets the stop flag without rolling the tipping event back, a
+  stale task gets reaped. Prefer an invariant assertion over a single golden value.
 - **Money in micros**, as integers, everywhere in fixtures and assertions.
 - **Outbox payloads are typed, even in tests** (#114): build any payload a consumer will *parse*
   as `asdict(SchemaClass(...))` from `apps/platform/events/schemas.py`, never as a literal payload
