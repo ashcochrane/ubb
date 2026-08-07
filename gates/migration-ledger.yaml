@@ -584,7 +584,7 @@ entries:
     gate: G7
     site: backend::metering_async
     expected: tenant_product
-    found: 3 files
+    found: 1 files
     owner_slice: slice_1
     reason: >-
       The fast lane's product flag. #149 established the lane had no
@@ -1027,7 +1027,7 @@ entries:
     gate: G7
     site: console::metering_async
     expected: tenant_product
-    found: 5 files
+    found: 1 files
     owner_slice: slice_1
     reason: >-
       The fast lane's product flag. #149 established the lane had no
@@ -2487,18 +2487,6 @@ entries:
       today. It becomes real when the billing mode it is derived from is
       rebuilt, alongside `customer_billing_mode` at the cutover.
 
-  - id: g2-backend-tenant_product
-    gate: G2
-    site: ubb-platform/apps/platform/tenants/models.py::tenant_product
-    expected: tenant_product
-    found: 0 of 3 values
-    owner_slice: slice_1
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. `metering_async` goes with
-      the fire-and-forget ingest lane, which #149 deletes outright — the
-      largest deletion in the map, and Demolition's work.
-
   - id: g2-backend-usage_event_kind
     gate: G2
     site: ubb-platform/apps/metering/usage/models.py::usage_event_kind
@@ -3271,19 +3259,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. No slice's issue says it rebuilds the tenant's posture, and the
       cutover is where it lands. The metadata appears in that slice.
-
-  - id: g4-openapi-tenant_product
-    gate: G4
-    site: openapi/v1.json::tenant_product
-    expected: tenant_product
-    found: 0 of 3 values
-    owner_slice: slice_1
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 1 is Demolition, which is where the retired product flags go.
-      The metadata appears in that slice.
 
   - id: g4-openapi-trigger_source
     gate: G4

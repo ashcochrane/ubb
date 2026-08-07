@@ -18,6 +18,7 @@ from django.test import Client, TestCase
 from api.v1.openapi_export import (
     COMMITTED_SPEC_PATH as COMMITTED,
     generated_document_text,
+    without_known_values,
 )
 
 
@@ -32,12 +33,41 @@ class CommittedDocumentDriftTest(TestCase):
         committed = COMMITTED.read_text(encoding="utf-8")
         self.assertEqual(committed, generated_document_text())
 
-    def test_runtime_document_matches_committed(self):
+    def test_runtime_document_is_the_committed_one_without_the_vocabulary(self):
+        """The served document is the committed one MINUS #208's metadata.
+
+        It used to be byte-identical, and #208 said in advance why that would
+        stop: the known-value applier reads a generated file at the git root
+        and a request path must not acquire that. Until slice 1 nothing was
+        advertised, so the gap was empty and equality held by accident of
+        emptiness. #240 marks the tenant's `products` field and the gap opens.
+
+        Narrowed to the exact truth rather than deleted. `without_known_values`
+        is the applier's declared inverse — it removes precisely what the
+        export writes — so a route added or removed, a schema changed, or a
+        hand edit to the committed file still turns this red. What it no longer
+        claims is the one thing that is no longer so.
+        """
         resp = Client().get("/api/v1/openapi.json")
         self.assertEqual(resp.status_code, 200)
         runtime = json.loads(resp.content)
         committed = json.loads(COMMITTED.read_text(encoding="utf-8"))
-        self.assertEqual(committed, runtime)
+        self.assertEqual(without_known_values(committed), runtime)
+
+    def test_the_stripped_comparison_is_weaker_than_equality(self):
+        """The vacuity guard on the pin above.
+
+        Stripping is only a concession while there is something to strip. If
+        the committed document ever carries no marker again, the pin above
+        becomes plain equality wearing a weaker claim, and nothing would say
+        so — this does.
+        """
+        committed = json.loads(COMMITTED.read_text(encoding="utf-8"))
+        self.assertNotEqual(
+            committed, without_known_values(committed),
+            "the committed contract advertises no concept, so the pin above "
+            "no longer needs to strip anything — restore it to equality, or "
+            "find out why the metadata went")
 
 
 class WebhooksSectionTest(TestCase):

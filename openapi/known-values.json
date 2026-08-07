@@ -230,10 +230,15 @@
       "representation": "enum"
     },
     "tenant_product": {
-      "advertised": false,
-      "backend_serves": "0 of 3 values",
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "metering",
+        "billing",
+        "referrals"
+      ]
     },
     "trigger_source": {
       "advertised": false,

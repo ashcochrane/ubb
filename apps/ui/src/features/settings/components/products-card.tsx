@@ -98,11 +98,6 @@ export function ProductsCard({
                     billing mode — switch to Meter only first.
                   </p>
                 )}
-                {product === "metering_async" && (
-                  <p className="mt-1 text-[12px] text-muted-foreground">
-                    Only gates the high-throughput ingest endpoint.
-                  </p>
-                )}
               </div>
               <Switch
                 checked={enabled}

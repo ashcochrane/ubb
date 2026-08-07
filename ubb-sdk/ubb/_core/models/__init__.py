@@ -166,7 +166,9 @@ from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
 from .tenant_billing_period_out import TenantBillingPeriodOut
 from .tenant_config_in import TenantConfigIn
+from .tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from .tenant_config_out import TenantConfigOut
+from .tenant_config_out_products_item import TenantConfigOutProductsItem
 from .tenant_invoice_list_response import TenantInvoiceListResponse
 from .tenant_invoice_out import TenantInvoiceOut
 from .tenant_markup_in import TenantMarkupIn
@@ -380,7 +382,9 @@ __all__ = (
     "TenantBillingPeriodListResponse",
     "TenantBillingPeriodOut",
     "TenantConfigIn",
+    "TenantConfigInProductsType0Item",
     "TenantConfigOut",
+    "TenantConfigOutProductsItem",
     "TenantInvoiceListResponse",
     "TenantInvoiceOut",
     "TenantMarkupIn",

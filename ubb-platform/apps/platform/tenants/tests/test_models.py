@@ -2,7 +2,8 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from apps.platform.tenants.models import VALID_PRODUCTS, Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.vocabulary import TENANT_PRODUCT_METERING, TENANT_PRODUCT_VALUES
 
 
 class TenantModelTest(TestCase):
@@ -58,11 +59,45 @@ class TenantProductsFieldTest(TestCase):
 
 
 @pytest.mark.django_db
-class TestSubscriptionsFlagRetired:
-    def test_subscriptions_is_not_a_valid_product(self):
-        assert "subscriptions" not in VALID_PRODUCTS
+class TestTheAcceptedProductsAreTheRegistrys:
+    """The model keeps no product vocabulary of its own (#240).
+
+    It used to: a literal set sat beside these rules, so a product retired in
+    `domain-vocabulary/` stayed configurable here until somebody remembered
+    this file. What the class pins is the consequence — every value the
+    registry declares configures, and anything else is refused — so the
+    accepted set moves when the registry moves and at no other time.
+
+    That the set arrives BY IMPORT rather than by agreeing with the registry
+    coincidentally is not asserted here and cannot be: it is G2's question, and
+    `tests/contracts/test_consumer_census.py` answers it off the import graph
+    for the same reason #191 decision 3 refuses a literal scan.
+
+    Every refusal below goes through `save`, and asserts that the complaint
+    names `products`. The predecessor called `full_clean()` on an unsaved
+    `Tenant`, where `branding_config` and `metadata` are blank and raise on
+    their own — so it would have passed with the products rule deleted.
+    """
+
+    def test_every_declared_product_configures(self):
+        for product in sorted(TENANT_PRODUCT_VALUES):
+            tenant = Tenant.objects.create(
+                name=f"Declared {product}",
+                products=sorted({TENANT_PRODUCT_METERING, product}))
+            tenant.refresh_from_db()
+            assert product in tenant.products
+
+    def test_a_product_the_registry_does_not_declare_is_refused(self):
+        with pytest.raises(ValidationError) as refusal:
+            Tenant.objects.create(
+                name="T", products=[TENANT_PRODUCT_METERING, "clairvoyance"])
+        assert "products" in refusal.value.message_dict
+
+    def test_subscriptions_is_not_one_of_them(self):
+        assert "subscriptions" not in TENANT_PRODUCT_VALUES
 
     def test_configuring_subscriptions_is_rejected(self):
-        t = Tenant(name="T", products=["metering", "subscriptions"])
-        with pytest.raises(ValidationError):
-            t.full_clean()
+        with pytest.raises(ValidationError) as refusal:
+            Tenant.objects.create(
+                name="T", products=[TENANT_PRODUCT_METERING, "subscriptions"])
+        assert "products" in refusal.value.message_dict

@@ -5493,7 +5493,13 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "enum": [
+                    "metering",
+                    "billing",
+                    "referrals"
+                  ],
+                  "type": "string",
+                  "x-ubb-concept": "tenant_product"
                 },
                 "type": "array"
               },
@@ -5579,7 +5585,13 @@
           },
           "products": {
             "items": {
-              "type": "string"
+              "enum": [
+                "metering",
+                "billing",
+                "referrals"
+              ],
+              "type": "string",
+              "x-ubb-concept": "tenant_product"
             },
             "title": "Products",
             "type": "array"

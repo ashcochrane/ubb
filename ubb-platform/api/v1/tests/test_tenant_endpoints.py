@@ -4,6 +4,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from core.vocabulary import TENANT_PRODUCT_VALUES
 
 
 class TenantBillingPeriodsEndpointTest(TestCase):
@@ -125,6 +126,48 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(response.status_code, 422)
         body = response.json()
         self.assertEqual(body.get("code"), "no_cost_cards")
+
+    # --- PATCH: a product the registry does not declare → 422 ---
+
+    def test_patch_unknown_product_returns_422(self):
+        """The refusal the advertised enum documents (#240).
+
+        `TenantConfigIn.products` carries `x-ubb-concept: tenant_product`, so
+        the committed contract enumerates the three declared values. That is
+        the DOCUMENT narrowing: `json_schema_extra` renders an enum and does
+        not validate, and typing the field `Literal[...]` is forbidden — the
+        registry owns the set and the platform may not keep a second copy of
+        it. So this pins the two halves agreeing: an unknown product is
+        refused, by the model that imports the same set the export advertises.
+        """
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"products": ["metering", "clairvoyance"]}),
+            content_type="application/json",
+            **self._auth(),
+        )
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertEqual(body.get("code"), "invalid_config")
+        self.assertIn("clairvoyance", body.get("detail", ""))
+
+    def test_the_contract_advertises_exactly_what_that_refusal_enforces(self):
+        """The other direction, and the reason the pin above is not enough.
+
+        A contract that enumerated four values while the model accepted three
+        would leave every request above still refused and the published
+        document still lying. Read off the committed bytes rather than the
+        runtime document — the committed one is the contract (ADR-002), and it
+        is the only one carrying the metadata.
+        """
+        import json as _json
+        from api.v1.openapi_export import COMMITTED_SPEC_PATH
+
+        document = _json.loads(COMMITTED_SPEC_PATH.read_text(encoding="utf-8"))
+        schemas = document["components"]["schemas"]
+        advertised = set(
+            schemas["TenantConfigOut"]["properties"]["products"]["items"]["enum"])
+        self.assertEqual(advertised, set(TENANT_PRODUCT_VALUES))
 
     # --- PATCH: billing_mode=prepaid with no billing product → 422 ---
 

@@ -46,8 +46,16 @@ class _ProblemDocumentingNinjaAPI(NinjaAPI):
     acquire that dependency — nor a ``sys.path`` entry — to serve a document
     ADR-002 says is not the contract. So the served schema carries the error
     dialect and the committed one carries the error dialect **and** the
-    vocabulary metadata. The divergence is empty until a concept is advertised;
-    ``openapi_export._apply_known_values`` carries the reasoning."""
+    vocabulary metadata. ``openapi_export._apply_known_values`` carries the
+    reasoning.
+
+    THE DIVERGENCE IS NO LONGER EMPTY. Slice 1 (#240) marked the tenant's
+    `products` field — the first ``x-ubb-concept`` in the committed contract —
+    and confirmed this seam's judgement rather than overturning it: the applier
+    stays out of the request path. What the two documents promise each other is
+    stated by ``openapi_export.without_known_values`` and pinned by
+    ``test_openapi_contract.py``, so "identical by construction" holds for
+    everything except exactly what that function removes."""
 
     def get_openapi_schema(self, **kwargs):
         return document_problem_media_type(super().get_openapi_schema(**kwargs))

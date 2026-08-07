@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_config_out_products_item import TenantConfigOutProductsItem
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,7 +30,7 @@ class TenantConfigOut:
             default_currency (str):
             is_active (bool):
             name (str):
-            products (list[str]):
+            products (list[TenantConfigOutProductsItem]):
             require_cost_card_coverage (bool):
             stripe_connected_account_id (str):
             arrival_signals_enabled (bool | Unset):  Default: True.
@@ -44,7 +45,7 @@ class TenantConfigOut:
     default_currency: str
     is_active: bool
     name: str
-    products: list[str]
+    products: list[TenantConfigOutProductsItem]
     require_cost_card_coverage: bool
     stripe_connected_account_id: str
     arrival_signals_enabled: bool | Unset = True
@@ -69,7 +70,10 @@ class TenantConfigOut:
 
         name = self.name
 
-        products = self.products
+        products = []
+        for products_item_data in self.products:
+            products_item = products_item_data.value
+            products.append(products_item)
 
 
 
@@ -136,7 +140,14 @@ class TenantConfigOut:
 
         name = d.pop("name")
 
-        products = cast(list[str], d.pop("products"))
+        products = []
+        _products = d.pop("products")
+        for products_item_data in (_products):
+            products_item = TenantConfigOutProductsItem(products_item_data)
+
+
+
+            products.append(products_item)
 
 
         require_cost_card_coverage = d.pop("require_cost_card_coverage")

@@ -105,19 +105,22 @@ past-limit report, usage summary): cursor-exempt but **parameter-bounded** —
 explicit date windows are refused past 366 days (hourly timeseries: 92) with
 `validation_error`.
 
-## Ingest verdicts: data, not errors
+## Usage verdicts: data, not errors
 
-The 200-always doctrine stands: on the usage-ingest surface a non-200 always
+The 200-always doctrine stands: on the usage-recording surface a non-200 always
 means "not recorded"; per-event verdicts ride the body as **data**, never
-problem+json. Batch and async ingest speak **one verdict field set**:
+problem+json. #78 unified one verdict field set across three routes; slice 1
+deleted the third (#236), so what follows is the surviving shape — the batch
+route's items, against the single-call body they mirror:
 
-- Shared core: `accepted` (bool), `code` (rejection word, null when
-  accepted), `detail` (prose, null except sync-fallback rejections), and the
-  stop trio `stop`/`stop_reason`/`stop_scope`.
-- Batch extras: accepted items carry the full priced receipt (the single-call
-  success body). Envelope counters: `accepted`/`rejected`.
-- Async extras: `estimated_cost_micros`, `mode` (`async`/`sync_fallback`),
-  `duplicate_suspect`, and `event_id` on accepted sync-fallback items.
+- A **rejected** item is `accepted: false` with `code` (the rejection word,
+  from the registry) and `detail` (prose), and the stop trio
+  `stop`/`stop_reason`/`stop_scope` constant: nothing was recorded, so nothing
+  can have stopped.
+- An **accepted** item is `accepted: true` plus the single-call success body
+  verbatim, its stop verdict included. It carries no `code` and no `detail` —
+  there is nothing to report.
+- Envelope counters: `accepted`/`rejected`.
 
 Verdict words come from the same registry (`verdicts` section):
 `ingest_rejections` reference problem codes; `stop_reasons`, `stop_scopes`,
@@ -151,6 +154,25 @@ time from `openapi/known-values.json`:
 ```python
 status: str = Field(json_schema_extra={"x-ubb-concept": "task_status"})
 ```
+
+**On a list field the marker goes on the ITEM**, because the concept names what
+a member of the list *is*, not the array around it — and the applier refuses a
+node that is not string-shaped, which an array is not. Declare the item once and
+reuse it, so a field and its optional twin cannot drift:
+
+```python
+TenantProduct = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "tenant_product"})]
+
+products: list[TenantProduct]                 # renders items: {type: string, …}
+products: Optional[list[TenantProduct]] = None  # anyOf[array|null]; same item
+```
+
+`json_schema_extra` renders metadata; it does not validate. A `closed` concept's
+`enum` therefore documents the value set rather than enforcing it, and the
+enforcement stays where the backend imports the same set from `core.vocabulary`
+— which is the agreement #208 exists to make structural. Do not add a second
+enforcement point (see the `Literal[...]` rule below).
 
 An `open` concept keeps `type: string` and gets `x-ubb-known-values`; it is
 **never** converted to an `enum`, because a value UBB has never seen is legal
