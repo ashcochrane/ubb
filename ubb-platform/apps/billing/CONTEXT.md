@@ -282,18 +282,24 @@ exact re-sprawl #110 retired.
 
 **Orphan hold**:
 A hold whose event never durably landed (crash between the hold and the append); the live balance
-reads *lower* than reality — the safe direction — until credited, repaired, or expired. The
-MIN-merge reconcile cannot heal it (it only ever lowers); the upward repair is what heals it.
+reads *lower* than reality — the safe direction — until credited or expired. The MIN-merge
+reconcile cannot heal it (it only ever lowers), and the **upward repair no longer measures it**:
+Ruling A2 (#233) narrowed the repair to the cause that outlives the arrival-time lane, and the
+lane that takes this hold is removed in slice 1.
 
 **Upward repair**:
 The patrol's honesty repair of the prepaid live counter (#45): a deficit against the expected
-balance (durable − genuinely pending holds, one locked snapshot) past the $1 de-minimis writes a
+balance (the durable balance, one locked snapshot) past the $1 de-minimis writes a
 candidate on one hourly pass and, if the immediately-next pass still measures one, applies
 min(first, second) — the amount proven stable across the hour — as a relative increment. A repair
 that lifts a wedged stop drives the clearing transition (`stop.cleared`, reason
 `balance_repaired`); candidate/repaired/lapsed live on the `LiveBalanceRepair` audit trail, and a
 repair-rate spike per tenant per 24h alerts CRITICAL — an epidemic is a bug, never silent
-self-healing. Part of the fast lane: inert with arrival signals off.
+self-healing. The cause it measures (Ruling A2, #233) is a crashed **synchronous** recording
+request: the debit is issued after the event row's savepoint but inside the still-open recording
+transaction, so a failure before the commit rolls the row back and leaves the debit standing.
+Hangs off the arrival-signals switch — the same switch that arms that debit, so the repair is
+inert exactly where its cause cannot occur.
 _Avoid_: an absolute SET on the counter — unsafe under concurrent traffic; touching the postpaid
 spend counter — its drift lane is the MAX-merge + budget reconcile.
 (`apps/billing/gating/repair.py`)

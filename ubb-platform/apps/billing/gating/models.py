@@ -130,7 +130,7 @@ LIVE_BALANCE_REPAIR_STATUS = [
 class LiveBalanceRepair(BaseModel):
     """Audit trail of the upward live-balance repair (#45, delivery spec §D)
     — one row per grace-gated observation of a prepaid live-counter deficit
-    (expected = durable − Σ pending holds; deficit = expected − live).
+    (expected = the durable balance; deficit = expected − live).
 
     Lifecycle: the first patrol pass measuring a past-de-minimis deficit
     writes a ``candidate`` (first measurement + snapshot; nothing applied).
@@ -140,9 +140,9 @@ class LiveBalanceRepair(BaseModel):
     resolving snapshot) — vanished, or too stale to prove hour-stability →
     ``lapsed`` (``second_deficit_micros`` stays null on a stale lapse: the
     in-window second measurement never happened). ``durable_balance_micros``
-    and ``pending_hold_micros`` always describe the row's LATEST recorded
-    measurement. At most one open candidate per owner (partial unique);
-    passes serialize on ``lock_for_billing``, so a repair applies once.
+    always describes the row's LATEST recorded measurement. At most one open
+    candidate per owner (partial unique); passes serialize on
+    ``lock_for_billing``, so a repair applies once.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -157,6 +157,12 @@ class LiveBalanceRepair(BaseModel):
     live_before_micros = models.BigIntegerField(null=True, blank=True)
     live_after_micros = models.BigIntegerField(null=True, blank=True)
     durable_balance_micros = models.BigIntegerField()
+    # The reservation term of the measurement this repair was born with
+    # (Ruling A2, #233: the reservation was one cause of the drift, not the
+    # cause). The surviving cause reserves nothing, so the repair stopped
+    # measuring it and writes 0; historical rows keep what they recorded.
+    # Non-null with no default, so the column outlives the term until the
+    # reservation's own migration takes it.
     pending_hold_micros = models.BigIntegerField()
     resolved_at = models.DateTimeField(null=True, blank=True)
 
