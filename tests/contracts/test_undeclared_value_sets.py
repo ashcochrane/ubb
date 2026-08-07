@@ -75,7 +75,6 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,
     "ubb-platform/apps/metering/pricing/models.py": 3,
-    "ubb-platform/apps/metering/usage/models.py": 1,
     "ubb-platform/apps/platform/customers/models.py": 3,
     "ubb-platform/apps/platform/dimensions/models.py": 2,
     "ubb-platform/apps/platform/events/models.py": 1,

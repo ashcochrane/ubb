@@ -537,7 +537,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 31 files
+    found: 30 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.

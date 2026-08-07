@@ -100,7 +100,7 @@ worst case from us, with the mitigations, rather than discover an unstated one.
 The launch stop-propagation contract is a triad
 (decision: [#12](https://github.com/ashcochrane/ubb/issues/12)):
 
-1. **Every `record_usage`/ingest response** carries `stop` / `stop_reason` / `stop_scope`
+1. **Every `record_usage` response** carries `stop` / `stop_reason` / `stop_scope`
    (plus `stop_context`) — for workers posting continuously, this is push-equivalent latency
    on a channel that cannot disconnect.
 2. **Webhook push** covers idle and sibling workers — stop *and* resume events, for the hard
@@ -116,14 +116,16 @@ The delivery fine print, in one place: signals are **at-least-once — late, nev
 unreachable endpoint gets the **current bottom line** on recovery, never a replay of
 intermediate flaps; the worst-case crash corner is **one patrol interval plus delivery
 retries** (§6); and the ≤5s signal p99 presumes **arrival signals ON** — OFF is the
-documented settle-latency posture (§8).
+documented durable-lane-latency posture (§8).
 
 Signal latency is not asserted in this document — it is **measured**. The locked launch SLOs
-(recorded in [the proof plan](https://github.com/ashcochrane/ubb/issues/15)): ingest-accept
+(recorded in [the proof plan](https://github.com/ashcochrane/ubb/issues/15)): recording
 p99 ≤ 200ms and stop-signal p99 ≤ 5s, under a 1-hour storm at 500 events/s (~5× the first
 tenant's peak) with limit and floor crossings mid-storm — plus a hard pass/fail of **zero**
 events lost or mis-tagged. The ≤5s number presumes arrival signals ON (the default posture —
-see §8). Executing that proof (load, chaos drills, live Stripe money test — three legs) is
+see §8). The 200ms number was locked against the async accept route, which slice 1 deleted;
+it is carried over unchanged onto the one recording route, not re-derived — #15 owns any
+change to the value itself. Executing that proof (load, chaos drills, live Stripe money test — three legs) is
 deferred to the testing stage that follows this map.
 
 ## 3. What the database itself refuses to break — and what it deliberately doesn't
@@ -222,12 +224,13 @@ The key namespace, so you can audit the ledger yourself:
 | `expiry:{grant_id}` | grant expiry | `apps/billing/wallets/grants.py:94` |
 | `dispute:{dispute_id}` | dispute deduction | `apps/billing/connectors/stripe/webhooks.py:305` |
 
-One deliberate asymmetry on the async path: the raw ingest table (`RawIngestEvent`) has **no**
-uniqueness constraint at all. It is an at-least-once append log — accepting your events must
-never wait on a dedup check. Exactly-once is enforced downstream, where it counts: settle
-writes the `UsageEvent` under `uq_usage_event_idempotency_v2`, and the debit under
-`usage_deduction:{usage_event_id}`. Duplicates die at the money boundary, not the front door
-(`apps/metering/usage/models.py:156`).
+There used to be a deliberate asymmetry here: the async path's staging table carried **no**
+uniqueness constraint at all, because accepting your events must never wait on a dedup check,
+and exactly-once was enforced downstream instead. **That table and the sweep that drained it
+were deleted in slice 1**, the last of the async path to go. Nothing is lost by it: the
+downstream enforcement was always the real one, and it is untouched — the `UsageEvent` is
+written under `uq_usage_event_idempotency_v2` and its debit under
+`usage_deduction:{usage_event_id}`. Duplicates still die at the money boundary.
 
 ## 6. When our infrastructure fails
 
@@ -242,18 +245,17 @@ failure equation, because of the one rule: there is no door to fail open or clos
 One structural fact first, because every cell below follows from it: **a single Redis
 instance is simultaneously the live-counter store, the Django cache, and the Celery broker**
 (`ubb-platform/config/settings.py:107-118`). "Redis down" therefore means crossing detection
-goes blind *and* all async work (outbox drain, webhook delivery, wallet drawdown, settle,
-every reconcile) pauses — all of it Postgres-durable, all of it drains on recovery. And on
-both ingest paths, **the durable write is Postgres and it commits before anything else
-matters**: the sync path writes the `UsageEvent` in-request; the async path bulk-inserts
-`RawIngestEvent` rows and only acks after that commit. The wallet drawdown is *never*
-synchronous — it rides the outbox to a worker on both paths.
+goes blind *and* all async work (outbox drain, webhook delivery, wallet drawdown, every
+reconcile) pauses — all of it Postgres-durable, all of it drains on recovery. And on the
+recording path, **the durable write is Postgres and it commits before anything else
+matters**: the `UsageEvent` is written in-request. The wallet drawdown is *never*
+synchronous — it rides the outbox to a worker.
 
-| Failure | Sync path (`record_usage`) | Async path (`ingest`) | What accumulates → how it heals |
-|---|---|---|---|
-| **Redis down** | Every enforcement Redis touch fails open with a log warning — limit checks, live debit, stop publish (`live_ledger_service.py:187-380`). The `UsageEvent` still commits, and the post-commit dispatch (the "doorbell") carries a broker-down guard: the response stays **200**, the durable row is the queue, and delivery resumes within a minute of broker recovery *(delivery pin 12, `api/v1/tests/test_delivery_pins.py`)*. | Same shape: idempotency pre-filter and holds fail open (`hold_service.py:209-218`), the `RawIngestEvent` batch still commits, and the same guarded doorbell keeps the accept a 200. | Signals are what's lost *in the moment*: no crossing detection, no stop flags fire while blind (the durable start-gate on task start still works — it reads Postgres). Outbox rows and raw events pile up Postgres-durable. On recovery the 1-min sweep drains the outbox, the 10s sweeper settles raws, hourly reconciles re-merge counters — and the durable lane fires **at most one net stop/resume per customer per family** for anything crossed while blind: the reconcile has SET power and the hourly patrol re-aligns the fast flag to durable truth *(pin 5, `test_stop_resume_pins.py`; delivery pin 1, `test_patrol_pins.py`)*. |
-| **Celery workers dead** (broker up) | Clean 200s. Pricing, the durable `UsageEvent`, and the live Redis counter + stop flag are all in-request, so **stop verdicts stay accurate and immediate**. What stalls: the wallet drawdown, durable suspend, and webhook delivery — all worker-side. | Clean 2xx accepts with accurate hold/stop verdicts (holds are synchronous Redis). Nothing settles. | Pending outbox rows, broker queues, unsettled raws, and unsettled estimate holds accumulate. Note the drift direction: unsettled holds leave the live balance *over-restrictive* (pessimistic), and durable wallets read stale-*high* — the fast lane errs toward stopping you early, never toward hiding spend. Workers return → backlogs drain, reconciles run; the 6h drawdown grace is sized above the outbox retry horizon so repair never races live delivery. |
-| **Postgres down** | Immediate 5xx, **before any money state changes**: the first statement is a Postgres read, and the Redis debit sits after the durable write, so it is never reached. Nothing acked, nothing mutated. | **Path removed in slice 1** — the accept pipeline that took the hold and unwound the idempotency keys is deleted, along with the route in front of it. No request can reach this column. | Redis live counters and stop flags freeze untouched (they can't be reconciled without Postgres, and can't drift without new events). Recovery: reconciles re-merge; nothing to repair because nothing was accepted. |
+| Failure | The recording path (`record_usage`) | What accumulates → how it heals |
+|---|---|---|
+| **Redis down** | Every enforcement Redis touch fails open with a log warning — limit checks, live debit, stop publish (`live_ledger_service.py:187-380`). The `UsageEvent` still commits, and the post-commit dispatch (the "doorbell") carries a broker-down guard: the response stays **200**, the durable row is the queue, and delivery resumes within a minute of broker recovery *(delivery pin 12, `api/v1/tests/test_delivery_pins.py`)*. | Signals are what's lost *in the moment*: no crossing detection, no stop flags fire while blind (the durable start-gate on task start still works — it reads Postgres). Outbox rows pile up Postgres-durable. On recovery the 1-min sweep drains the outbox, hourly reconciles re-merge counters — and the durable lane fires **at most one net stop/resume per customer per family** for anything crossed while blind: the reconcile has SET power and the hourly patrol re-aligns the fast flag to durable truth *(pin 5, `test_stop_resume_pins.py`; delivery pin 1, `test_patrol_pins.py`)*. |
+| **Celery workers dead** (broker up) | Clean 200s. Pricing, the durable `UsageEvent`, and the live Redis counter + stop flag are all in-request, so **stop verdicts stay accurate and immediate**. What stalls: the wallet drawdown, durable suspend, and webhook delivery — all worker-side. | Pending outbox rows and broker queues accumulate. Note the drift direction: durable wallets read stale-*high* while the live counter is already debited — the fast lane errs toward stopping you early, never toward hiding spend. Workers return → backlogs drain, reconciles run; the 6h drawdown grace is sized above the outbox retry horizon so repair never races live delivery. |
+| **Postgres down** | Immediate 5xx, **before any money state changes**: the first statement is a Postgres read, and the Redis debit sits after the durable write, so it is never reached. Nothing acked, nothing mutated. | Redis live counters and stop flags freeze untouched (they can't be reconciled without Postgres, and can't drift without new events). Recovery: reconciles re-merge; nothing to repair because nothing was recorded. |
 
 The direction of every degradation is the same, and it is the decided one
 ([#11](https://github.com/ashcochrane/ubb/issues/11)): **failure degrades toward
@@ -287,7 +289,7 @@ its own.
 | the hourly patrol | rides the :25 pass | the signal suite's backstop, traffic-independent: drives missed stop/soft-floor transitions (both directions), re-aligns the fast `ubb:stop` flag to durable truth, **re-mints a fresh current-state announcement** for any signal that never reached you, sweeps active tasks sitting at-or-past their provider-cost limit and kills them idempotently | `apps/billing/gating/patrol.py:51`; announcement bookkeeping via `announce_outbox_id` stamps, re-mints marked `re_announcement: true`, at most one in-flight announcement per signal row; `PatrolOutcome` counters surface as `patrol_*_7d` through `apps.billing.queries.get_patrol_stats` *(delivery pins 1–6, `test_patrol_pins.py`)* |
 | live-balance upward repair | rides the :25 pass | a crashed **synchronous** recording request leaves the live counter wedged low — the debit is issued after the event row's savepoint but inside the still-open recording transaction, so a failure before the commit rolls the row back and leaves the debit standing (Ruling A2, [#233](https://github.com/ashcochrane/ubb/issues/233), pinned by `api/v1/tests/test_recording_drift_pins.py`). The stingy direction, false stops. Expected = the durable balance; a deficit must persist across **two consecutive hourly passes** and repairs by **min(first, second)** as a relative increment, never an absolute set; every repair audited (`LiveBalanceRepair`), repair-rate spike alerts, and a repair that lifts a wedged stop fires `stop.cleared` through the same guard as every other clearing | `apps/billing/gating/repair.py`, `apps/billing/gating/models.py:130`; principle, verbatim ([#12](https://github.com/ashcochrane/ubb/issues/12)): "we CANNOT have a wallet balance that does not show reality" *(delivery pins 7–8/10–11, `test_repair_pins.py`)* |
 | `expire_credit_grants` | hourly at :10 | expires past-due credit grants | key `expiry:{grant_id}`; clamped so expiry never takes back spent credit (`apps/billing/wallets/tasks.py:178-256`) |
-| `settle_raw_events` | every 10s | straggler sweeper: settles async raw events the inline settle missed | settle itself is exactly-once via `uq_usage_event_idempotency_v2` + the debit key (`apps/metering/usage/tasks.py:19-96`) |
+| ~~`settle_raw_events`~~ | — | **Deleted in slice 1**, with the staging table it drained and the settle path it called. Its producer had already gone, so it swept a table nothing could add to. | Exactly-once never depended on it: `uq_usage_event_idempotency_v2` and the `usage_deduction:{id}` key are where it was enforced, and both are untouched. Every scheduled entry that remains is checked against real, importable code by `apps/platform/tests/test_beat_schedule.py`. |
 | ~~`monitor_ingest_health`~~ | — | **Deleted in slice 1**, with the ingest-health module it read and the ops route beside it. It alerted on lag/queue-depth/failed-count for a lane that no longer accepts anything. | The known weakness it carried — it was itself a Celery task, in-band with the failure it reported — is retired with it. If an ingest-style health probe is ever wanted again, [#11](https://github.com/ashcochrane/ubb/issues/11)'s decided shape (pull-based, Redis probe, watched by an outside poller) is the one to build, not this. |
 
 Two properties worth stating explicitly, because they're where reconcile designs usually go
@@ -313,15 +315,15 @@ evaluation and 5-minute webhook delivery; Orb caps the *invoice* rather than sto
 OpenAI's own prepaid platform bills overrun as a negative balance. No surveyed vendor
 documents arrival-time cost estimation or balance holds. UBB's arrival-time crossing
 detection is (as far as vendor docs show) unique — and since the MVP dropped tiered pricing
-(ADR-0003), the arrival-time price is **exact**, not an estimate: per-unit and flat pricing
-compute the same number at accept and at settle. It is also an honest per-tenant choice
+(ADR-0003), the price is **exact**, not an estimate: per-unit and flat pricing compute one
+number, once, when the event is recorded. It is also an honest per-tenant choice
 (`Tenant.arrival_signals_enabled`, read only through `flags.arrival_signals_on` —
 *delivery pin 9, `test_switch_pins.py`*): arrival
-signals **ON** (the default) buys stop-signal latency that is independent of settle-pipeline
-health; **OFF** is the documented competitor-normal posture — detection at settle, where the
-alarm slows down exactly when a runaway spender floods the queue. Same contract, same events,
-two latency profiles. The industry default is not a truer balance; it is slower signals
-against a staler one.
+signals **ON** (the default) buys stop-signal latency that is independent of the async
+pipeline's health; **OFF** is the documented competitor-normal posture — detection at
+durable-lane latency, where the alarm slows down exactly when a runaway spender floods the
+queue. Same contract, same events, two latency profiles. The industry default is not a truer
+balance; it is slower signals against a staler one.
 
 ## 9. The pin ledger — every promise's named test
 
@@ -368,14 +370,14 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 6 | A crashed kill is swept and announced within one interval; a subtask alone | `test_patrol_pins.py::TestPin6TaskSweep` |
 | 7 | Two-pass repair of a strand left by the recording path: candidate on pass one, `min(d1,d2)` relative increment + full audit on pass two; a lifting repair fires `stop.cleared` once | `test_repair_pins.py::TestPin7TwoPassRepair` |
 | 8 | A transient deficit lapses; sub-de-minimis never candidates | `test_repair_pins.py::TestPin8TransientAndDeMinimis` |
-| 9 | Switch OFF: no Redis writes on accept, identical ack schema, verdicts from the durable flag, a floor crossing signals at settle latency, OFF→ON re-seeds, flag read only through `flags.py`, default ON | `apps/billing/gating/tests/test_switch_pins.py` (20 tests incl. the AST doctrine scan) |
+| 9 | Switch OFF: no Redis writes on the recording path, identical ack schema, verdicts from the durable flag, a floor crossing signals at durable-lane latency, OFF→ON re-seeds, flag read only through `flags.py`, default ON | `apps/billing/gating/tests/test_switch_pins.py` (20 tests incl. the AST doctrine scan) |
 | 10 | MIN-merge downward behavior byte-identical; a drift-*high* counter is never a deficit; the measurement is the durable balance alone | `test_repair_pins.py::TestPin10DownwardNeighborsUntouched` |
 | 11 | The repair-rate spike alert fires past its threshold | `test_repair_pins.py::TestPin11RepairSpikeAlert` |
 | 12 | Broker down at accept: durable row written, response 200, delivery within a minute of recovery | `api/v1/tests/test_delivery_pins.py::BrokerDownAtAcceptTest` |
 
 **What still stands between here and launch** — outside this document's guarantees, stated
 so nothing is blurred: **the proof stage**, deferred to the testing phase — three legs: load
-(the §2 SLOs: accept p99 ≤ 200ms, signal p99 ≤ 5s, zero lost/mis-tagged events under a
+(the §2 SLOs: recording p99 ≤ 200ms, signal p99 ≤ 5s, zero lost/mis-tagged events under a
 1h/500eps storm), chaos drills (the §6 failure modes, observed live), and the operator-run
 real-money Stripe test — plus the balance ≡ Σ ledger hard assertion. The soak leg was
 dropped with advisory mode. [The proof plan](https://github.com/ashcochrane/ubb/issues/15)

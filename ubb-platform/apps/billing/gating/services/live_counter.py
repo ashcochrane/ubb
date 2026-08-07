@@ -332,10 +332,9 @@ class LiveCounter:
         the spendable balance.
 
         One-rule (#37): the acquire ALWAYS holds, against the wallet only —
-        task limits are provider-cost denominated and exact provider cost
-        exists only at settle, so unit-limit detection lives there
-        (UsageService.settle_raw), not here. Nothing on this path ever
-        rejects an item.
+        task limits are provider-cost denominated, so unit-limit detection
+        lives where exact provider cost exists, not here. Nothing on this path
+        ever rejects an item.
 
         Per item, ONE Lua eval (``_ACQUIRE``), pipelined across the whole
         batch so an N-item batch is still N atomic server-side ops. Back in
@@ -349,8 +348,10 @@ class LiveCounter:
         Returns one verdict dict per item, in the SAME order as `items`:
         {"held": bool, "stop": bool, "stop_reason": str|None,
          "stop_scope": str|None}. ``held`` reports whether a hold was
-        actually reserved — the caller records it on the RawIngestEvent row
-        so settle only ever trues up a hold that was really taken.
+        actually reserved, so a caller only ever trues up a hold that was
+        really taken. **No caller remains** — the path that took these holds
+        was deleted in slice 1, and this whole lane goes with the ticket
+        after it.
 
         Arrival signals OFF (#46, §E — enforcing, switch off): the whole
         fast lane is off as one unit — NO Redis write of any kind here (no
