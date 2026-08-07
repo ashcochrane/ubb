@@ -45,8 +45,6 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 class OneRulePinTestBase(TestCase):
     def setUp(self):
         cache.clear()
-        from apps.metering.usage.services.ingest_accept import reset_task_meta_cache
-        reset_task_meta_cache()
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="OneRule", products=["metering", "billing"],
@@ -366,15 +364,21 @@ _RUN_ERA_TOKENS = (
 
 _PLATFORM_ROOT = Path(__file__).resolve().parents[3]
 
-# The public surfaces the clean cut renames wholesale. ingest_accept.py is
-# in the list because the ingest verdict builders moved behind the metering
-# seam (#113) — its strings still answer on the wire.
+# The public surfaces the clean cut renames wholesale — every file whose
+# strings can still answer on the wire.
+#
+# ingest_accept.py used to be in this list: #113 moved the verdict builders
+# behind the metering seam, so its strings reached the wire from there. The
+# async accept pipeline is deleted and the module with it; the per-item
+# verdict builders that survive moved into metering_endpoints.py, already
+# listed above. An inventory that goes on naming a deleted file is exactly
+# what this pin exists to prevent, so the list shrinks rather than
+# substitutes.
 _SURFACE_FILES = [
     _PLATFORM_ROOT / "api" / "v1" / "schemas.py",
     _PLATFORM_ROOT / "api" / "v1" / "metering_endpoints.py",
     _PLATFORM_ROOT / "api" / "v1" / "billing_endpoints.py",
     _PLATFORM_ROOT / "api" / "v1" / "tenant_endpoints.py",
-    _PLATFORM_ROOT / "apps" / "metering" / "usage" / "services" / "ingest_accept.py",
     _PLATFORM_ROOT / "apps" / "platform" / "events" / "schemas.py",
     _PLATFORM_ROOT / "apps" / "platform" / "events" / "catalog.py",
 ]

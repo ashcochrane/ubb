@@ -75,13 +75,14 @@ _Avoid_: "group_keys" — renamed to `tags`; "dimensional tags" — dimensions a
 separate mechanisms, not one.
 
 **Async ingest / settle**:
-The raw, at-least-once intake path: a raw event is accepted, then later *settled* exactly-once into
-a durable priced usage event. The accept half (estimate → hold → durable raw append → verdicts) is
-the metering-owned `accept_batch` seam; the endpoint keeps HTTP shape only.
+The raw, at-least-once intake path: a raw event was accepted, then later *settled* exactly-once
+into a durable priced usage event. **The accept half no longer exists** — the published route and
+the `accept_batch` pipeline behind it were both deleted in slice 1, so nothing writes a new raw
+event. What remains is the settle half over the existing rows, and it goes next.
 (`apps/metering/usage/models.py:RawIngestEvent`,
-`apps/metering/usage/services/ingest_accept.py:accept_batch`)
-_Avoid_: growing accept logic in `api/v1/metering_endpoints.py` — the pipeline lives behind the
-seam, testable below HTTP.
+`apps/metering/usage/services/usage_service.py:settle_raw`)
+_Avoid_: reading this entry as a description of a live intake path — there is now exactly one way
+to report usage, `POST /api/v1/metering/usage` and its batch sibling.
 
 **Estimate**:
 The read-only arrival-time price reserved by a hold; never knowingly lower than what settle will

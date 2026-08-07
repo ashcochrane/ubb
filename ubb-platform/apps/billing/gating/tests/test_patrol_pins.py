@@ -7,7 +7,7 @@ drive, both families), the fast Redis flag matches durable truth, unannounced
 signal rows are re-minted as fresh current-state events
 (``re_announcement: true``, bottom-line only), and active tasks sitting
 at-or-past their provider-cost limit are swept into the idempotent kill flow.
-Patrol outcomes land as counters on the ops/ingest-health surface; the shared
+Patrol outcomes land as counters read through ``get_patrol_stats``; the shared
 outbox retry policy and dead-letter alerting are untouched.
 
 Pin 1  — ambient-rollback corner: orphaned Redis flag re-aligned; a durably

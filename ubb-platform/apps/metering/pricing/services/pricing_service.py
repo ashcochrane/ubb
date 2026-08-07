@@ -202,14 +202,17 @@ class PricingService:
         cached markup — read-only, never charges a wallet, and the receipt is
         discarded (no event row exists yet to carry it).
 
+        **This has no caller.** The accept pipeline that estimated a cost to
+        reserve against was deleted in slice 1; the method itself is disposed
+        of separately, with the reservation methods it fed.
+
         ``selectors`` is the same full ten-key map ``price`` takes (see
         ``price``'s docstring) — the CALLER is responsible for making it the
-        SAME inherited selector set ``price`` will resolve at settle
-        (ingest_accept.py's ``_inherited_selectors_for_estimate`` mirrors
-        usage_service.py's ``_inherit_dimensions`` for exactly this reason;
-        Task 12 closed a gap where accept wildcarded task_type/dim1..dim6
-        while settle resolved them for real, letting the two instants match
-        different rates). Given equal selectors, the one remaining
+        SAME inherited selector set ``price`` will resolve at settle. The
+        deleted pipeline mirrored usage_service.py's ``_inherit_dimensions``
+        for exactly this reason: Task 12 closed a gap where accept wildcarded
+        task_type/dim1..dim6 while settle resolved them for real, letting the
+        two instants match different rates. Given equal selectors, the one remaining
         accept-vs-settle difference is WHICH cards resolve — CURRENT cards
         here (the hot accept path keeps its L1 cache), as_of-exact cards at
         settle — i.e. rate-card config drift between the two instants. With

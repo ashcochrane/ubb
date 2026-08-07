@@ -43,9 +43,8 @@ from apps.platform.work.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.pricing.services.pricing_service import PricingError
-from apps.metering.usage.services.ingest_accept import (
-    record_sync_item, usage_error, usage_kwargs, with_uncosted)
-from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.services.usage_service import (
+    EffectiveAtError, UsageService)
 from apps.metering.usage.models import UsageEvent
 from apps.platform.dimensions.services import DimensionError, DimensionService
 
@@ -54,6 +53,109 @@ logger = logging.getLogger(__name__)
 metering_router = Router(auth=ApiKeyAuth())
 
 _product_check = ProductAccess("metering")
+
+
+# --- The request-item adapters over UsageService.record_usage ---------------
+#
+# These moved here when the async accept pipeline was deleted. They were
+# lifted out of this module by #113 to be SHARED between the endpoints and
+# that pipeline; with the pipeline gone the two recording routes below are
+# their only callers, so the seam that justified a separate module no longer
+# has two sides. Written once, here, rather than twice: the single route and
+# the batch route must map fields and classify errors identically or the
+# batch stops being "N sequential singles".
+
+
+def usage_kwargs(item):
+    """The single↔batch pass-through, written ONCE (#112): the field-for-
+    field map from a request item (RecordUsageRequest — the single and batch
+    items share the schema) onto record_usage's keyword surface."""
+    return dict(
+        request_id=item.request_id,
+        idempotency_key=item.idempotency_key,
+        provider_cost_micros=item.provider_cost_micros,
+        billed_cost_micros=item.billed_cost_micros,
+        units=item.units,
+        currency=item.currency,
+        metadata=item.metadata,
+        event_type=item.event_type,
+        provider=item.provider,
+        tags=item.tags,
+        task_id=item.task_id,
+        usage_metrics=item.usage_metrics,
+        effective_at=item.effective_at,
+    )
+
+
+def usage_error(e):
+    """The ONE record_usage error map (#112): exception → (code, detail).
+    The specific-before-general order lives HERE and only here —
+    PricingError first, then EffectiveAtError (which IS a ValueError, so it
+    must be tested before the generic branch), then plain ValueError. The
+    single endpoint raises the code as a Problem; the batch wraps the same
+    code in a verdict dict."""
+    if isinstance(e, PricingError):
+        return "pricing_error", str(e)
+    if isinstance(e, EffectiveAtError):
+        return e.code, str(e)
+    return "validation_error", str(e)
+
+
+def with_uncosted(result):
+    """Surface the provenance receipt's uncosted-metrics list on a success
+    body — both recording surfaces return it."""
+    provenance = result.get("pricing_provenance") or {}
+    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
+    return result
+
+
+def _rejected(code, detail):
+    """A batch-item rejection verdict: the typed code plus the constant stop
+    trio — a rejected item was never recorded, so nothing can have stopped."""
+    return {"accepted": False, "code": code, "detail": detail,
+            "stop": False, "stop_reason": None, "stop_scope": None}
+
+
+def record_sync_item(tenant, item, customers, task_exists):
+    """One batch item == one independent POST /usage, error mapping included.
+
+    Mirrors the single endpoint's contract byte-for-byte as per-item VERDICT
+    dicts: a success mirrors the single-call success body (stop-verdict
+    fields included) plus {"accepted": true}. 404s become per-item
+    {"code": "not_found"}; the generic ValueError branch becomes
+    {"code": "validation_error"} - every code from the registry. One-rule
+    parity: a crossing verdict runs the same kill flow and the batch
+    CONTINUES — later items on the killed task still land, bill, and carry
+    the task_not_active stop verdict, identical to firing the same items as
+    sequential singles.
+    """
+    cid = str(item.customer_id)
+    if cid not in customers:
+        customers[cid] = Customer.objects.filter(id=item.customer_id, tenant=tenant).first()
+    customer = customers[cid]
+    if customer is None:
+        return _rejected("not_found", "Customer not found")
+    if item.task_id is not None:
+        task_key = (cid, str(item.task_id))
+        if task_key not in task_exists:
+            task_exists[task_key] = Task.objects.filter(
+                id=item.task_id, tenant=tenant, customer=customer).exists()
+        if not task_exists[task_key]:
+            return _rejected("not_found", "Task not found")
+    # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
+    # dimension is THIS item's rejection, same as any other validation
+    # failure below, and never reaches record_usage.
+    try:
+        dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+    except DimensionError as exc:
+        return _rejected("validation_error", str(exc))
+    try:
+        result = UsageService.record_usage(
+            tenant=tenant, customer=customer, dimension_slots=dimension_slots,
+            **usage_kwargs(item))
+    except (PricingError, ValueError) as e:
+        return _rejected(*usage_error(e))
+    return {"accepted": True, **with_uncosted(result)}
 
 
 @metering_router.post("/usage", response={200: RecordUsageResponse})
@@ -116,47 +218,6 @@ def record_usage_batch(request, payload: UsageBatchRequest):
     accepted = sum(1 for r in results if r.get("accepted"))
     return {"results": results, "accepted": accepted,
             "rejected": len(results) - accepted}
-
-
-@metering_router.get("/ops/ingest-health", auth=None, include_in_schema=False)
-def ops_ingest_health(request, tenant_id: str = None):
-    """Operator-facing pipeline health (spec §3) — deliberately NOT behind
-    ApiKeyAuth: tenant keys must not grant ops visibility. Gated on the
-    deployment-level UBB_OPS_TOKEN via constant-time compare; when the
-    setting is unset the endpoint 404s (fail closed, invisible).
-    Excluded from the OpenAPI schema/docs (include_in_schema=False) — the
-    schema is public and unauthenticated, so listing this route there would
-    fingerprint it regardless of the token gate below."""
-    import hmac
-    from django.conf import settings as dj_settings
-    from django.views.defaults import page_not_found
-    token = getattr(dj_settings, "UBB_OPS_TOKEN", "")
-    if not token:
-        # Same handler Django uses for an unmatched route in production —
-        # NOT ninja's JSON 404 — so this response is byte-for-byte
-        # indistinguishable from a path that was never registered at all.
-        return page_not_found(request, exception=None)
-    supplied = request.headers.get("X-Ops-Token", "")
-    if not hmac.compare_digest(supplied.encode(), token.encode()):
-        raise Problem("unauthorized")
-    # Manual parse, AFTER both token gates: keeping the param typed as `str`
-    # (not `UUID`) means ninja never 422s a malformed tenant_id before the
-    # token check runs — that would let an unauthenticated caller distinguish
-    # "wrong shape" from "not found" and re-open the fingerprinting hole.
-    parsed_tenant_id = None
-    if tenant_id:
-        try:
-            parsed_tenant_id = UUID(tenant_id)
-        except ValueError:
-            raise Problem("invalid_tenant_id", "tenant_id must be a UUID")
-    from apps.metering.usage.services.ingest_health import ingest_health
-    from apps.billing.queries import get_negative_balance_stats, get_patrol_stats
-    # #41 pin 10 / #44 §F: the aged-negatives and patrol-outcome metrics ride
-    # the existing ops surface — composed HERE (the api layer may import both
-    # products; the metering service must not reach into billing).
-    return {**ingest_health(tenant_id=parsed_tenant_id),
-            **get_negative_balance_stats(tenant_id=parsed_tenant_id),
-            **get_patrol_stats(tenant_id=parsed_tenant_id)}
 
 
 def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):

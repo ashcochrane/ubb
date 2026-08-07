@@ -507,7 +507,7 @@ entries:
     gate: G7
     site: backend::dimension
     expected: grouping_field_value
-    found: 39 files
+    found: 38 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
@@ -537,7 +537,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 32 files
+    found: 31 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -584,7 +584,7 @@ entries:
     gate: G7
     site: backend::metering_async
     expected: tenant_product
-    found: 4 files
+    found: 3 files
     owner_slice: slice_1
     reason: >-
       The fast lane's product flag. #149 established the lane had no
@@ -595,7 +595,7 @@ entries:
     gate: G7
     site: backend::metric
     expected: measurement_key
-    found: 20 files
+    found: 19 files
     owner_slice: slice_2
     reason: >-
       The industry uses this word for the metered ENTITY rather than for
@@ -638,7 +638,7 @@ entries:
     gate: G7
     site: backend::pricing_provenance
     expected: pricing_receipt_subject_type
-    found: 10 files
+    found: 9 files
     owner_slice: slice_4
     reason: >-
       What a price receipt is about. Slice 4 introduces Pricing Receipts
@@ -705,7 +705,7 @@ entries:
     gate: G7
     site: backend::request_id
     expected: idempotency_key
-    found: 68 files
+    found: 66 files
     owner_slice: slice_5
     reason: >-
       A second caller-supplied correlation value with no uniqueness
@@ -822,7 +822,7 @@ entries:
     gate: G7
     site: backend::tags
     expected: metadata_key
-    found: 25 files
+    found: 24 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
@@ -834,7 +834,7 @@ entries:
     gate: G7
     site: backend::task.limit_exceeded
     expected: webhook_event_type
-    found: 16 files
+    found: 15 files
     owner_slice: slice_5
     reason: >-
       Replaced by TWO events rather than renamed to one: #140 §4.3
@@ -875,7 +875,7 @@ entries:
     gate: G7
     site: backend::usage_metrics
     expected: measurement_key
-    found: 20 files
+    found: 19 files
     owner_slice: slice_2
     reason: >-
       The bag of measured quantities on one event. Slice 2 replaces it

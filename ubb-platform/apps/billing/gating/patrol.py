@@ -24,8 +24,10 @@ down. The jobs here join the existing hourly reconcile pass
    one pass, min-of-two-measurements relative increment on the next), with
    its repaired/amount/lapsed outcomes folded into the same record.
 
-Outcomes are recorded as day-bucketed ``PatrolOutcome`` counters for the
-ops/ingest-health surface (§F). The shared outbox retry policy and the
+Outcomes are recorded as day-bucketed ``PatrolOutcome`` counters, read
+through ``apps.billing.queries.get_patrol_stats`` (§F). The ops route that
+used to serve them was deleted with the ingest pipeline it watched; the
+counters and their read contract are unchanged. The shared outbox retry policy and the
 dead-letter CRITICAL alert are untouched for every product — the patrol
 re-mints AROUND a dead-lettered row, never mutates it. Worst-case emission
 latency after a crash: one patrol interval plus the delivery retry schedule.
