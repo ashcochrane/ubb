@@ -12,11 +12,11 @@ produced it is gone.
 
 **And nothing renders a name any other way.** Coverage alone proves the
 catalogue is complete, not that it is *used*. `apps/ui/src/lib/labels.ts` still
-hand-writes thirty-two value maps and eleven files still import its humaniser,
+hand-writes twenty-nine value maps and eleven files still import its humaniser,
 and ADR-0008 §4.3 reverses #154 §9.1 to call that a defect rather than a soft
 landing: title-casing a retired token manufactures user-facing terminology out
-of an implementation token. #210 does not delete it — fifty-one files import
-that module — so it survives as an explicit legacy adapter, and every one of its
+of an implementation token. #210 does not delete it — fifty files import that
+module — so it survives as an explicit legacy adapter, and every one of its
 debts is a migration-ledger entry with an owner slice.
 
 **The ledger IS the allowlist.** There is no second list of permitted sites: a
@@ -121,7 +121,6 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/webhooks/lib/event-groups.ts",
     "apps/ui/src/features/webhooks/lib/schemas.test.ts",
     "apps/ui/src/hooks/use-current-role.ts",
-    "apps/ui/src/hooks/use-tenant-config.ts",
 )
 
 #: The module specifier of any `import ... from "x"` — what a file actually
@@ -251,7 +250,7 @@ def test_every_key_is_a_prefix_and_a_value(shipped):
 def test_the_legacy_adapter_is_where_the_gate_thinks_it_is(legacy):
     """Vacuity guard for section 3. A moved or renamed adapter would turn every
     comparison below into a comparison of two empty sets, and the ledger's
-    forty-two entries into unreachable ones."""
+    thirty-nine entries into unreachable ones."""
     scanned, faults = legacy
     assert not faults, "\n".join(str(fault) for fault in faults)
     assert (REPO_ROOT / ADAPTER).is_file()
@@ -379,7 +378,7 @@ def test_the_adapter_gains_no_new_importer(legacy):
     value it does not recognise, so a fifty-second importer spreads the retired
     behaviour without adding a single ledger entry. None of these files is a
     separate debt (each imports a map somebody already owes), so they are pinned
-    here rather than seeded as fifty-one more entries that would double the
+    here rather than seeded as fifty more entries that would double the
     ledger and clear at exactly the same moment.
 
     It is a RATCHET, not a target: the set may only shrink. Converting a file to

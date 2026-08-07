@@ -1,20 +1,34 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { labelMap } from "@/lib/localisation";
+import {
+  TENANT_PRODUCT_LABEL_KEYS,
+  TENANT_PRODUCT_VALUES,
+  type TenantProduct,
+} from "@/lib/vocabulary";
+
 import { renderWithQuery } from "../test-utils";
 import { ProductsPage } from "./products-page";
 
-// The three products the contract enumerates, spelled out here rather than
-// read from the module the page renders from. Two reasons, and both are rules
-// this repo already holds: a loop over `PRODUCTS` compares the page against
-// its own source, so it could only fail if rendering broke wholesale; and
-// importing `@/lib/labels` into a new file grows the legacy adapter's importer
-// ratchet, which may only shrink.
-const EXPECTED_PRODUCTS = [
-  ["Metering", /Usage events, pricing, analytics/],
-  ["Billing", /Wallets, credit grants, budgets/],
-  ["Referrals", /Referral programs, attribution/],
-] as const;
+/** The registry's products, in the catalogue's words — reached independently
+ * of `@/lib/products`, which is what the page renders through. #240 left this
+ * test naming the three by hand because the page rendered from the console's
+ * OWN literal, and a loop over that array could only fail if rendering broke
+ * wholesale. The page now renders from the generated vocabulary, so this
+ * compares what a reader sees against the registry itself. */
+const productWords = labelMap(TENANT_PRODUCT_LABEL_KEYS);
+
+/** Each product's row copy, spelled out rather than imported: the sentences
+ * are console-owned (ADR-0008 §4.5), and reading them from the module the page
+ * renders them from would be the comparison-with-itself this test just left
+ * behind. Total over the generated type, so a fourth product cannot be added
+ * to the registry without someone writing the row this test then demands. */
+const DESCRIPTION_OF = {
+  metering: /Usage events, pricing, analytics/,
+  billing: /Wallets, credit grants, budgets/,
+  referrals: /Referral programs, attribution/,
+} as const satisfies Record<TenantProduct, RegExp>;
 
 describe("ProductsPage", () => {
   it("shows the current billing mode and every product with its description", async () => {
@@ -24,13 +38,20 @@ describe("ProductsPage", () => {
     expect(screen.getByText("Current")).toBeInTheDocument();
     expect(screen.getByText("Prepaid credits")).toBeInTheDocument();
 
-    // Exhaustive over the declared products rather than naming one of them.
-    // The predecessor pinned "Async ingestion" and its endpoint, and both
-    // outlived the product: it named the row instead of the rule, so it went
-    // on asserting the page rendered something the contract had deleted.
-    for (const [label, description] of EXPECTED_PRODUCTS) {
-      expect(screen.getByRole("switch", { name: label })).toBeInTheDocument();
-      expect(screen.getByText(description)).toBeInTheDocument();
+    // EXACTLY the declared products: the set of toggles, compared with the
+    // registry's set, so an extra row fails as loudly as a missing one. The
+    // products card holds the only switches on this page. The predecessor
+    // pinned "Async ingestion" and its endpoint, and both outlived the
+    // product — it named the rows instead of the rule.
+    const rendered = screen
+      .getAllByRole("switch")
+      .map((toggle) => toggle.getAttribute("aria-label"));
+    expect(rendered.sort()).toEqual(
+      TENANT_PRODUCT_VALUES.map(productWords).sort(),
+    );
+
+    for (const product of TENANT_PRODUCT_VALUES) {
+      expect(screen.getByText(DESCRIPTION_OF[product])).toBeInTheDocument();
     }
 
     // Prerequisites panel

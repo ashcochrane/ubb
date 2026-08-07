@@ -10,7 +10,7 @@ import { tenantApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 import type { TenantSchemas } from "@/api/types";
 import { API_PROVIDER, mockDelay } from "@/lib/api-provider";
-import type { Product } from "@/lib/labels";
+import type { TenantProduct } from "@/lib/vocabulary";
 
 export type TenantConfig = TenantSchemas["TenantConfigOut"];
 
@@ -64,13 +64,13 @@ export function useTenantConfig() {
 
 export function hasProduct(
   config: TenantConfig | undefined,
-  product: Product,
+  product: TenantProduct,
 ): boolean {
   return config?.products.includes(product) ?? false;
 }
 
 /** Product gate as a hook; false while config is loading. */
-export function useHasProduct(product: Product): boolean {
+export function useHasProduct(product: TenantProduct): boolean {
   const { data } = useTenantConfig();
   return hasProduct(data, product);
 }
