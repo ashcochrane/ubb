@@ -144,12 +144,12 @@ never a usage report.
 THE one module owning every piece of Tier-2 Redis state (#111): the billing-owner-keyed live
 balance/spend counters maintained synchronously at record time (so the API response carries a real
 stop verdict), the cooperative stop flag, the seat-keyed budget counter, and every key format, Lua
-script, and TTL behind them. Interface: `debit · credit · read · reconcile · repair_incr · resume ·
-cleanup · budget_incr/read/reconcile`, plus a deliberate TEST-ONLY door (`Door`) for fabricating
-counter/flag state. Key formats are frozen once in the module's own pin test; a perimeter walker
-(ADR-001 style) keeps the keyspace, the Lua, and the test door private everywhere else. The counter
-writes hang off the arrival-signals switch — unmaintained at record time when it is off; the verdict
-reads never switch off.
+script, and TTL behind them. Interface: `debit · credit · read · reconcile · repair_incr ·
+resume · cleanup · budget_incr/read/reconcile`, plus a deliberate TEST-ONLY door (`Door`) for
+fabricating counter/flag state. Key formats are frozen once in the module's own pin test; a
+perimeter walker (ADR-001 style) keeps the keyspace, the Lua, and the test door private everywhere
+else. The counter writes hang off the arrival-signals switch — unmaintained at record time when it
+is off; the verdict reads never switch off.
 (`apps/billing/gating/services/live_counter.py`;
 pins: `apps/billing/tests/test_live_counter_perimeter.py`)
 _Avoid_: "live ledger" — "ledger" now means the signal ledger (`StopSignalState`); one word, one
@@ -159,17 +159,16 @@ thing.
 The per-tenant posture (`Tenant.arrival_signals_enabled`, default ON, read only through
 `flags.arrival_signals_on`) governing **real-time counter maintenance** — the synchronous
 live-counter write on the recording path, the counter legs of both reconciles, and the upward
-repair. Its meaning NARROWED in slice 1 (#149 §6.5): it used to switch a whole arrival-time fast
-lane off as one unit, and that lane no longer exists, so what it selects now is whether the counters
-are maintained as events are recorded — never whether an event takes a different route in. Two
-honest latency profiles: ON detects crossings as the event is recorded (stop latency bounded,
-independent of drawdown-queue depth — the ≤5s p99 presumes ON); OFF is the competitor-normal
-degraded posture — recording does no live-counter Redis work and detection waits for the durable
-drawdown, so latency degrades exactly when a runaway spender floods the queue. The durable lane
-(signal ledger, patrol, webhook delivery, ack verdicts) never switches off and maintains the
-ack-verdict flag in both postures, so flipping never changes the tenant-facing contract. Flipping
-either way enqueues an immediate per-tenant reconcile: OFF→ON re-seeds honest counters, and ON→OFF
-has nothing to drain, because nothing on the recording path was ever deferred.
+repair. It selects WHEN the counters are maintained, never which route an event takes in; that
+narrowing is slice 1's (#149 §6.5), which deleted the arrival-time lane the switch once turned off
+as one unit. Two honest latency profiles: ON detects crossings as the event is recorded (stop
+latency bounded, independent of drawdown-queue depth — the ≤5s p99 presumes ON); OFF is the
+competitor-normal degraded posture — recording does no live-counter Redis work and detection waits
+for the durable drawdown, so latency degrades exactly when a runaway spender floods the queue. The
+durable lane (signal ledger, patrol, webhook delivery, ack verdicts) never switches off and
+maintains the ack-verdict flag in both postures, so flipping never changes the tenant-facing
+contract. Flipping either way enqueues an immediate per-tenant reconcile: OFF→ON re-seeds honest
+counters, and ON→OFF has nothing to drain, because nothing on the recording path was ever deferred.
 _Avoid_: a `products` entry — products gate ACCESS (403s); this is a behavior posture, meaningful
 only when enforcing; reading the column anywhere but the flags module; "fast lane" as its scope —
 the arrival-time lane it once named is gone, and #246 owns the rename that follows.

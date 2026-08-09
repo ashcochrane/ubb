@@ -21,7 +21,7 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
 ## The contract, in one box
 
 - **Bootstrap**: `GET /tenant/config` → `billing_mode` (`meter_only|prepaid|postpaid`) +
-  `products[]` (`metering|billing|referrals` — the three the contract declares, held by reference
+  `products[]` (`metering|billing|referrals` — the set the contract declares, held by reference
   from `src/lib/vocabulary.ts`) gate nav and pages (`useTenantConfig`, `useHasProduct`,
   `ProductGate`). There is no console `/me` endpoint.
 - **`/api/v1/me/**` is the END-CUSTOMER widget portal** (different auth) — never call it here.

@@ -675,8 +675,9 @@ def update_tenant_config(request, payload: TenantConfigIn):
     if arrival_flipped:
         # Toggle choreography (#46, delivery spec §E): flipping either way
         # enqueues an immediate per-tenant reconcile — OFF→ON re-seeds honest
-        # counters from durable truth within minutes; ON→OFF needs nothing
-        # (outstanding holds drain at settle). Broker errors are swallowed:
+        # counters from durable truth within minutes; ON→OFF needs nothing,
+        # because nothing on the recording path was ever deferred and so
+        # there is nothing to drain (#149 §6.5). Broker errors are swallowed:
         # the flip itself is already committed, and the hourly reconcile beat
         # is the guaranteed backstop for a lost enqueue.
         from django.db import transaction

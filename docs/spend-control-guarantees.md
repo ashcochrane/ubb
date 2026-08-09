@@ -185,7 +185,7 @@ can check them against a live database.
 |---|---|---|
 | `Wallet.balance_micros` == Σ ledger (it's a cached running total; the DB does not force them equal) | hourly auditor `reconcile_wallet_balances` logs any drift loud; the proof asserts exact equality as a hard pass/fail after the load storm (assertion recorded in [the proof plan](https://github.com/ashcochrane/ubb/issues/15); the proof stage itself is deferred to the testing phase) | `apps/billing/wallets/tasks.py:11` |
 | Full grant-conservation equation (spans parent + child rows, so not expressible as one CHECK) | same hourly auditor; randomized fuzz pin in CI | `apps/billing/wallets/tasks.py:11-45` |
-| Every recorded usage event on a prepaid wallet has its debit, even if outbox delivery died mid-flight | `reconcile_usage_drawdowns` repairs exactly-once (see §7) | `apps/billing/wallets/tasks.py:105` |
+| Every recorded usage event on a prepaid wallet has its debit, even if outbox delivery died mid-flight | `reconcile_usage_drawdowns` repairs exactly-once (see §7) | `apps/billing/wallets/tasks.py:110` |
 | Every succeeded top-up charge is credited, even if our webhook never arrived | `reconcile_topups_with_stripe` repairs from Stripe's ledger (see §7) | `apps/billing/connectors/stripe/tasks.py:118` |
 | The fast-lane (Redis) balance tracks the durable one | `reconcile_prepaid` MIN-merges hourly + drift alarm; the upward auto-repair rides the same pass for a debit stranded by a crashed recording request (see §7) | `apps/billing/gating/services/live_ledger_service.py:530`, `apps/billing/gating/repair.py` |
 | A true crossing always eventually produces exactly one signal, and that signal always eventually reaches you | the durable signal ledger (`StopSignalState`, one row per owner per family) + atomic transition-and-emit through one winning-transition guard (`drive_stop`/`drive_clear`) + the hourly patrol | `apps/billing/gating/models.py:38`, `apps/billing/gating/services/stop_signal_service.py:79`, `apps/billing/gating/patrol.py:51` |
@@ -218,7 +218,7 @@ The key namespace, so you can audit the ledger yourself:
 
 | Key format | Written by | Where |
 |---|---|---|
-| `usage_deduction:{usage_event_id}` | the live drawdown handler, and the reconcile repair — deliberately the **same key**, so live and repair can race and one wins | `apps/billing/handlers.py:54`, `apps/billing/wallets/tasks.py:136` |
+| `usage_deduction:{usage_event_id}` | the live drawdown handler, and the reconcile repair — deliberately the **same key**, and literally the same line, so live and repair can race and one wins | `apps/billing/wallets/operations.py:478`, reached from `apps/billing/handlers.py:48` and `wallets/tasks.py:144` |
 | `auto_topup:{payment_intent_id}` | the charge task, the `payment_intent.succeeded` webhook, and the Stripe reconcile — three paths, one key, one credit | `apps/billing/topups/services.py:76` |
 | `topup:{checkout_session_id}` | Stripe Checkout top-up webhook | `apps/billing/connectors/stripe/webhooks.py:95` |
 | `expiry:{grant_id}` | grant expiry | `apps/billing/wallets/grants.py:94` |
@@ -282,7 +282,7 @@ its own.
 | Job | Schedule | Repairs / detects | Exactly-once & windows |
 |---|---|---|---|
 | `sweep_outbox` | every 1 min | re-dispatches outbox events due for retry; reclaims rows stuck `processing` > 5 min; alerts on dead-letter | backoff 30s → 2m → 10m → 30m → 2h, max 5 attempts (`apps/platform/events/tasks.py:23,85`); per-handler dedup via `uq_checkpoint_event_handler`. The post-commit dispatch "doorbell" carries a broker-down guard — the row is the queue, the doorbell is a latency optimization *(delivery pin 12, `api/v1/tests/test_delivery_pins.py`)* |
-| `reconcile_usage_drawdowns` | hourly at :40 | any recorded usage event on a prepaid wallet whose debit never landed (e.g. outbox dead-lettered) — repairs the debit | anti-join on `WalletTransaction.usage_event_id` + key `usage_deduction:{id}`; **6h grace, deliberately > the ~2h43m outbox retry horizon** so live delivery always gets to finish first; 7-day lookback; repair-rate spike alarm (`apps/billing/wallets/tasks.py:105-171`) |
+| `reconcile_usage_drawdowns` | hourly at :40 | any recorded usage event on a prepaid wallet whose debit never landed (e.g. outbox dead-lettered) — repairs the debit | anti-join on `WalletTransaction.usage_event_id` + key `usage_deduction:{id}`; **6h grace, deliberately > the ~2h43m outbox retry horizon** so live delivery always gets to finish first; 7-day lookback; repair-rate spike alarm (`apps/billing/wallets/tasks.py:110-158`) |
 | `reconcile_topups_with_stripe` | hourly at :20 | any *succeeded* Stripe PaymentIntent with no local wallet credit — credits it from Stripe's ledger (Stripe is the source of truth for money movement); secondary amount/refund audit | key `auto_topup:{pi_id}`; **4-day lookback, > Stripe's ~3-day webhook retry horizon**; 48h audit window (`apps/billing/connectors/stripe/tasks.py:118-208`) |
 | `reconcile_wallet_balances` | hourly at :00 | **auditor, not repairer**: checks `balance == Σ ledger` and grant conservation on every wallet; any drift logs loud | detect-and-alarm by design — an automated "fix" would hide the bug that caused the drift (`apps/billing/wallets/tasks.py:11-96`) |
 | `reconcile_live_ledgers` → `reconcile_prepaid` | hourly at :25 | MIN-merges the fast-lane (Redis) prepaid balance toward the durable wallet balance; alarms on drift spikes; both **clears** stale stop flags for recovered customers and **sets** missed ones — the crossed-while-blind-then-went-quiet hole is closed (decision: [#11](https://github.com/ashcochrane/ubb/issues/11)) | conservative merge direction — the fast lane may only be *more* cautious than durable truth, never less (`apps/billing/gating/services/live_ledger_service.py:530`); *(pin 5, `test_stop_resume_pins.py`)* |
@@ -292,8 +292,8 @@ its own.
 
 Every `CELERY_BEAT_SCHEDULE` entry above is checked against real, importable code by
 `apps/platform/tests/test_beat_schedule.py` — a schedule naming a task that no longer resolves is a
-red build, not a job that silently stops running. (The patrol and the upward repair are the two rows
-that are not beat entries of their own: both ride the :25 pass.)
+red build, not a job that silently stops running. (The patrol and the upward repair are not beat
+entries of their own — both ride the :25 pass.)
 
 **Two jobs left this table in slice 1**, with the two-step intake path they served: the sweep that
 drained the staging table, and the health monitor that watched the queue behind it. Exactly-once

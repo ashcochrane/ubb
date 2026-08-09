@@ -110,11 +110,13 @@ def reconcile_tenant_live_counters(tenant_id):
     tenant reconcile pass enqueued when ``arrival_signals_enabled`` flips
     either way. OFF→ON re-seeds honest counters from durable truth within
     minutes (the hourly beat alone could leave up to an hour of dishonest
-    counters); ON→OFF needs nothing counter-wise (outstanding holds drain at
-    settle) but the same pass harmlessly re-runs the durable-basis signal
-    catch-up. Best-effort by design — the hourly ``reconcile_live_ledgers``
-    beat is the guaranteed backstop for a lost enqueue. The patrol's other
-    legs stay hourly: this pass is about counter honesty, not delivery."""
+    counters); ON→OFF needs nothing counter-wise — nothing on the recording
+    path was ever deferred, so the counters simply stop being written (slice 1
+    deleted the reservation lane that once had to drain; #239) — but the same
+    pass harmlessly re-runs the durable-basis signal catch-up. Best-effort by
+    design — the hourly ``reconcile_live_ledgers`` beat is the guaranteed
+    backstop for a lost enqueue. The patrol's other legs stay hourly: this
+    pass is about counter honesty, not delivery."""
     from apps.platform.tenants.flags import enforcing
     from apps.platform.tenants.models import Tenant
     from apps.billing.gating import patrol
