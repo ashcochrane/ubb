@@ -93,7 +93,16 @@ def suites(**overrides):
     return document
 
 
-def owned(slice_key="slice_0", **overrides):
+#: The slice the synthetic rows are owed by. It MUST be one that has not landed:
+#: a baseline row owed by a landed slice is rejected for `landed_slice_owns_gate`
+#: in every control, none of which is testing that. Slice 8 is the cutover, the
+#: last thing in the programme to land, so this outlives every slice that could
+#: invalidate it — and `test_a_landed_slice_may_not_still_owe_a_gate` mutates
+#: THIS slice, so the two cannot drift apart.
+UNLANDED_SLICE = "slice_8"
+
+
+def owned(slice_key=UNLANDED_SLICE, **overrides):
     """A minimal valid `owned_by_<slice>` row — the baseline most rows use."""
     body = {
         "statement": "A synthetic gate, used to exercise the compiler.",
