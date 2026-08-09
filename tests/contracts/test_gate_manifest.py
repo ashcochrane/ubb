@@ -172,28 +172,36 @@ def test_every_deferred_obligation_carries_its_reason_owner_and_evidence(program
             assert row.body[field].strip(), f"{name} carries no {field}"
 
 
-#: The script that would have performed O3's live-money check, deleted in slice
-#: 1 (#242). Its path is spelled out here because absence is the assertion: a
-#: note claiming the deletion happened is prose until something reads the tree.
+#: The script that would have performed O3's live-money check, deleted by #242.
+#: O3's `notes` carry what it was and why it went; this file holds only the path,
+#: because the path is the part an assertion can be wrong about.
 DELETED_MONEY_SCRIPT = "ubb-platform/scripts/integration_test.py"
+
+#: A surviving sibling, and the vacuity guard for the absence above. `scripts/`
+#: moving or being re-rooted would make the absence true for the wrong reason.
+SURVIVING_SIBLING_SCRIPT = "ubb-platform/scripts/export_openapi.py"
 
 
 def test_the_deleted_money_script_did_not_take_its_obligation_with_it(programme):
     """#242, and the one guarantee that ticket is about: the mechanism went, the
     obligation did not.
 
-    `scripts/integration_test.py` was the only end-to-end money run this
-    repository had — 1,680 lines, in no CI job since 2026-02-15, still calling a
-    route #141 retires. The manifest header names that failure without naming
-    the file; #155 §11.4 recorded the file so a cleanup could not take the
-    obligation with it, and #158 §11 then amended the timing rather than the
-    debt.
+    #155 §11.4 recorded the script so a cleanup could not take the obligation
+    with it, and #158 §11 then amended the timing rather than the debt. Deleting
+    it left the tie between the two living ONLY in frozen dated plans, which may
+    not be edited and which nobody greps on the way past a deletion — so O3
+    carries the pointer instead.
 
-    Deleting it left the tie between the two living ONLY in frozen dated plans,
-    which cannot be edited and which nobody greps on the way past. So O3 carries
-    the pointer, and this asserts both halves together — separately each is
-    weak, and it is the pairing that says the deletion was not a discharge.
+    Both halves are asserted together because separately each is weak: an
+    absence says nothing about the debt, and a note claiming a deletion is prose
+    until something reads the tree. The pairing is what says the deletion was
+    not a discharge.
     """
+    assert (REPO_ROOT / SURVIVING_SIBLING_SCRIPT).exists(), (
+        f"{SURVIVING_SIBLING_SCRIPT} is gone, so the absence asserted below is "
+        f"no longer evidence of anything — `ubb-platform/scripts/` has moved or "
+        f"been re-rooted and both paths here need respelling"
+    )
     assert not (REPO_ROOT / DELETED_MONEY_SCRIPT).exists(), (
         f"{DELETED_MONEY_SCRIPT} is back. O3's note says it was deleted and the "
         f"obligation outlived it; if a live-money runner returns, that note is "
