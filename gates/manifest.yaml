@@ -363,11 +363,13 @@ gates:
       two only for as long as no live value collides with a retired one.
       THE LAST SUITE NODE IS THE HALF THAT MATTERS MOST. Coverage proves the catalogue is
       complete, not that anything USES it. `apps/ui/src/lib/labels.ts` still
-      hand-writes thirty-two value maps and eleven files still import the
-      humaniser ADR-0008 §4.3 retires, so #210 keeps it as an explicit legacy
-      adapter and makes every one of its debts a migration-ledger entry with an
-      owner slice — thirty maps, one renderer and eleven importing files, 42 in
-      all. THE LEDGER IS THE ALLOWLIST: a new map or a new humanising import is
+      hand-writes value maps and files still import the humaniser ADR-0008 §4.3
+      retires, so #210 keeps it as an explicit legacy adapter and makes every
+      one of its debts a migration-ledger entry with an owner slice — one per
+      map, per renderer and per humanising importer, 42 of them when it was
+      seeded and fewer with every slice that pays one. The live count is the
+      ledger's to state and is deliberately not restated here.
+      THE LEDGER IS THE ALLOWLIST: a new map or a new humanising import is
       a ledger addition and the ratchet refuses it without a reviewed
       authorisation. That is what makes "reachable from allowlisted sites and
       nowhere else" mechanical rather than a review habit, and it is why this
@@ -376,8 +378,8 @@ gates:
       THE IMPORTER RATCHET IS THE OTHER HALF OF THAT SENTENCE, and it is not
       the ledger. #210 also says new code "may not reach the adapter" — and
       every map it exports falls back to the humaniser for a value it does not
-      recognise, so a fifty-second importer spreads the retired behaviour
-      without adding one ledger entry. None of the fifty-one is a separate debt
+      recognise, so ONE MORE importer spreads the retired behaviour without
+      adding one ledger entry. None of the fifty-one seeded is a separate debt
       (each imports a map somebody already owes), so they are pinned in the
       test as a shrink-only set rather than seeded as fifty-one entries that
       would double the ledger and clear at exactly the same moment.

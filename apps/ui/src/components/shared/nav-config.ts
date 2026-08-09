@@ -12,14 +12,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { Product } from "@/lib/labels";
+import type { TenantProduct } from "@/lib/vocabulary";
 
 export interface NavItem {
   title: string;
   url: string;
   icon: LucideIcon;
   /** Only show when this product is enabled for the tenant. */
-  product?: Product;
+  product?: TenantProduct;
 }
 
 export interface NavSection {

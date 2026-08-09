@@ -1,7 +1,7 @@
 // THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
 // This module used to be the console's whole labelling layer, and ADR-0008 §4
-// retired the idea it rests on. It hand-writes thirty-two value maps and falls
+// retired the idea it rests on. It hand-writes twenty-nine value maps and falls
 // back to `humanize`, which title-cases a raw token into something that reads
 // like English — manufacturing user-facing terminology out of an implementation
 // token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that
@@ -13,7 +13,7 @@
 // from the registry into `@/lib/vocabulary`, wording owned by the console, and
 // strict lookup with no fallback at all. Write new code against that.
 //
-// This file survives only because it is imported by fifty-one others, and #210
+// This file survives only because it is imported by forty-eight others, and #210
 // is explicit that slice 0 ends when the mechanism is active and regressions
 // are impossible — not when every importer has been rewritten. So:
 //
@@ -28,6 +28,8 @@
 // The contract still has NO closed enums (ADR-003 "open enums") and that has
 // not changed. What changed is what an unfamiliar value renders as: a
 // deliberate generic form, never a title-cased guess at English.
+
+import { TENANT_PRODUCT_VALUES, type TenantProduct } from "@/lib/vocabulary";
 
 /** "failed_permanent" → "Failed permanent", "TOP_UP" → "Top up".
  *
@@ -75,29 +77,22 @@ export const billingModeDescription = legacyLabelMap({
     "Usage accrues per period and is pushed to Stripe as invoice line items at period close.",
 });
 
-// Three, and they are the three the published contract now enumerates: #240
-// marked `TenantConfigIn/Out.products` with its registry concept, so the
-// generated `TenantConfig` types carry a closed union and a fourth value here
-// would not typecheck. Subscriptions is a capability of billing rather than a
-// product of its own, and the second recording lane went with the lane.
+// The registry's three, held BY REFERENCE (#241). `domain-vocabulary/` names
+// this file as the console's consumer of `tenant_product`, which is why the
+// names stay here rather than moving: the alias is what that declaration
+// resolves to, and re-homing it is a registry edit, not a console one.
 //
-// This array is still the console's OWN list — binding it to the generated
-// `TENANT_PRODUCT_VALUES` beside it, and these two maps to the label
-// catalogue, is the console's G2/G6 payment and belongs to its own change.
-export const PRODUCTS = ["metering", "billing", "referrals"] as const;
-export type Product = (typeof PRODUCTS)[number];
-
-export const productLabel = legacyLabelMap({
-  metering: "Metering",
-  billing: "Billing",
-  referrals: "Referrals",
-});
-
-export const productDescription = legacyLabelMap({
-  metering: "Usage events, pricing, analytics, and the audit trail.",
-  billing: "Wallets, credit grants, budgets, invoices, and spend control.",
-  referrals: "Referral programs, attribution, rewards, and payouts.",
-});
+// The words for these values are no longer here at all — `@/lib/products`
+// binds them to the label catalogue, and carries the console's own
+// per-product description copy (ADR-0008 §4.5).
+//
+// So NOTHING here needs a console consumer any more, and a file that wants
+// only the type takes `TenantProduct` from `@/lib/vocabulary` directly rather
+// than reaching this module for it: the tenant-config hook, the nav config and
+// the product gate all do. What still imports these two names does so because
+// it is already here for a map somebody else owes.
+export const PRODUCTS = TENANT_PRODUCT_VALUES;
+export type Product = TenantProduct;
 
 export const enforcementModeLabel = legacyLabelMap({
   off: "Off",
@@ -228,11 +223,6 @@ export const ingestRejectionLabel = legacyLabelMap({
   not_found: "Unknown customer or task",
   pricing_error: "Pricing failed",
   validation_error: "Validation failed",
-});
-
-export const ingestModeLabel = legacyLabelMap({
-  async: "Async",
-  sync_fallback: "Sync fallback",
 });
 
 export const taskStatusLabel = legacyLabelMap({

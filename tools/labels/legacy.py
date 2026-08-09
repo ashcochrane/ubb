@@ -8,7 +8,7 @@ not repeat the retired word, because #206's sweep is right that a debt is not a
 licence for it to reach further.)
 
 The old behaviour cannot simply be deleted — `apps/ui/src/lib/labels.ts` is
-imported by fifty-one files, and #210 is explicit that slice 0 ends when the
+imported by forty-eight files, and #210 is explicit that slice 0 ends when the
 mechanism is active and regressions are impossible, **not** when all of them
 have been rewritten. So it survives as an **explicit legacy adapter**, and this
 module is what makes "reachable from allowlisted sites and nowhere else" a fact
@@ -52,10 +52,12 @@ exists because that copy was made once already.
    here. That is #227's ruling applied rather than an oversight: a TypeScript
    `as const` object is as often a query key or a hint as it is vocabulary, and
    a pinned count over all of them would pin noise and be raised until it
-   stopped failing. The two live cases are recorded instead — `AUDIT_NOUN_LABELS`
-   in that file's own ledger entry, and `REWARD_TYPE_HINTS` in
-   `features/referrals/components/program-form.tsx`, which is explanatory hint
-   copy and therefore permanently out of scope under ADR-0008 §4.5.
+   stopped failing. The three live cases are recorded instead —
+   `AUDIT_NOUN_LABELS` in that file's own ledger entry; `REWARD_TYPE_HINTS` in
+   `features/referrals/components/program-form.tsx`; and `PRODUCT_DESCRIPTIONS`
+   in `lib/products.ts` (#241). The last two are explanatory copy rather than
+   the name of a value, and therefore permanently out of scope under ADR-0008
+   §4.5 — which is also why neither is a debt this gate could ever clear.
 """
 
 import re
@@ -100,6 +102,10 @@ MAP_CONSTRUCTOR = "legacyLabelMap"
 _VALUE_SET = ("a canonical value set the console still restates. Not this "
               "gate's subject: G2 and G3 ask whether a consumer holds a value "
               "BY REFERENCE, and this file already has their ledger entries")
+_BY_REFERENCE = ("a canonical value set this file now holds BY REFERENCE, "
+                 "aliasing the generated `@/lib/vocabulary` (#241). It stays "
+                 "here because the registry names this file as the console's "
+                 "consumer of the concept; it carries no words either way")
 _DERIVED_TYPE = ("a type derived from the value list beside it. A type carries "
                  "no words, so there is nothing for a catalogue to own")
 DECLARED_NON_LABEL_EXPORTS = {
@@ -110,13 +116,13 @@ DECLARED_NON_LABEL_EXPORTS = {
         "ranks a role for a floor comparison and returns a number. It carries "
         "no words, so there is nothing for a catalogue to own"),
     "BILLING_MODES": _VALUE_SET,
-    "PRODUCTS": _VALUE_SET,
+    "PRODUCTS": _BY_REFERENCE,
     "ROLES": _VALUE_SET,
     "ANALYTICS_DIMENSIONS": _VALUE_SET,
     "TIMESERIES_GROUP_BY": _VALUE_SET,
     "WEBHOOK_EVENT_TYPES": _VALUE_SET,
     "BillingMode": _DERIVED_TYPE,
-    "Product": _DERIVED_TYPE,
+    "Product": _BY_REFERENCE,
     "Role": _DERIVED_TYPE,
 }
 

@@ -40,9 +40,18 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   editing `src/locales/en.json`, never by writing a map. **This reverses the old "never render a
   raw snake_case token" rule** — that rule was right when the alternative was humanising it; now
   the alternative is a placeholder that discards what the server sent. Branch on `kind` to style it.
-- **`src/lib/labels.ts` is the LEGACY adapter** — every export is a migration debt recorded in
-  `gates/migration-ledger.yaml` with an owner slice. Do not add a map to it, and do not import its
+- **`src/lib/labels.ts` is the LEGACY adapter** — every value map in it is a migration debt recorded
+  in `gates/migration-ledger.yaml` with an owner slice. Do not add a map to it, and do not import its
   `humanize` into a new file: both fail CI, because the ledger is the allowlist and it only shrinks.
+  A concept that has been migrated leaves nothing behind but its value list, held BY REFERENCE from
+  the generated module because `domain-vocabulary/` names this file as the console's consumer of it
+  (`PRODUCTS` / `Product` are the worked example, #241). Don't reach here for a canonical type —
+  import `TenantProduct` and friends from `src/lib/vocabulary.ts` directly.
+- **A migrated concept gets its own small `src/lib/` module** — `src/lib/products.ts` is the first:
+  the label bound once (`labelMap(TENANT_PRODUCT_LABEL_KEYS)`), plus any console-owned explanatory
+  copy beside it as a constant total over the generated type, so a value with no sentence is a `tsc`
+  failure. Explanatory prose is NOT catalogue content (ADR-0008 §4.5) and has no label key: keys must
+  decompose into a declared concept prefix and a declared value of it, both ways.
 - **Canonical values**: `src/lib/vocabulary.ts` is **generated** from the repo's vocabulary registry
   (`domain-vocabulary/`) — value lists, union types and stable label *keys*, never the English.
   Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates

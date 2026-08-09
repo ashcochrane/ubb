@@ -418,7 +418,7 @@ map seeded as an entry with an owner, and the legacy adapter reachable only from
 allowlisted sites — and building them as two lists would have produced the exact
 shape rule 2 exists to refuse: a suppression list nobody owes, beside a debt list
 nothing enforces. One list does both, because the ratchet already refuses an
-addition without a reviewed authorisation. A thirty-first map is a ledger
+addition without a reviewed authorisation. One more map is a ledger
 addition. That is the whole mechanism.
 
 **Owners are inherited rather than chosen**, which is new here and worth copying.
@@ -435,7 +435,7 @@ the fifth and largest appearance of the no-positive-owner shape — and the firs
 where the absence is a *registry* gap rather than an unassigned rename.
 
 **One thing here is NOT in the ledger, deliberately.** #210 also asks that new
-code may not *reach* the adapter, and fifty-one files import it today. None is a
+code may not *reach* the adapter, and fifty-one files imported it then. None is a
 separate debt — each imports a map the ledger already owes, and both clear at the
 same moment — so seeding them would double the ledger while changing nothing
 about when it reaches zero. They are pinned instead as a shrink-only set in
@@ -444,8 +444,8 @@ false debt attached. Worth knowing for the next gate that meets this shape: a
 list that only shrinks is the mechanism, and the ledger is one *use* of it.
 
 **And that pin cost two G7 entries, which is the first authorisation here that
-licenses growth for a reason other than a gate being installed.** Two of the
-fifty-one files are NAMED after retired concepts, so pinning their paths spells
+licenses growth for a reason other than a gate being installed.** Two of those
+files are NAMED after retired concepts, so pinning their paths spells
 those words on a surface that did not carry them, and the sweep said so. There
 is no version of the list that avoids it — the alternative was pinning a count,
 which would let one file be converted while another was added and read as

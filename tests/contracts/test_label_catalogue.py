@@ -12,10 +12,10 @@ produced it is gone.
 
 **And nothing renders a name any other way.** Coverage alone proves the
 catalogue is complete, not that it is *used*. `apps/ui/src/lib/labels.ts` still
-hand-writes thirty-two value maps and eleven files still import its humaniser,
+hand-writes twenty-nine value maps and eleven files still import its humaniser,
 and ADR-0008 §4.3 reverses #154 §9.1 to call that a defect rather than a soft
 landing: title-casing a retired token manufactures user-facing terminology out
-of an implementation token. #210 does not delete it — fifty-one files import
+of an implementation token. #210 does not delete it — forty-eight files import
 that module — so it survives as an explicit legacy adapter, and every one of its
 debts is a migration-ledger entry with an owner slice.
 
@@ -71,9 +71,7 @@ GATES_DIR = REPO_ROOT / "gates"
 #: count alone would let one file be converted while another was added, and the
 #: net zero would read as "nothing happened".
 ADAPTER_IMPORTERS = (
-    "apps/ui/src/components/shared/nav-config.ts",
     "apps/ui/src/components/shared/nav-shell.tsx",
-    "apps/ui/src/components/shared/product-gate.tsx",
     "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
     "apps/ui/src/features/customers/components/adjust-dialogs.tsx",
     "apps/ui/src/features/customers/components/budget-section.tsx",
@@ -121,7 +119,6 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/webhooks/lib/event-groups.ts",
     "apps/ui/src/features/webhooks/lib/schemas.test.ts",
     "apps/ui/src/hooks/use-current-role.ts",
-    "apps/ui/src/hooks/use-tenant-config.ts",
 )
 
 #: The module specifier of any `import ... from "x"` — what a file actually
@@ -251,7 +248,7 @@ def test_every_key_is_a_prefix_and_a_value(shipped):
 def test_the_legacy_adapter_is_where_the_gate_thinks_it_is(legacy):
     """Vacuity guard for section 3. A moved or renamed adapter would turn every
     comparison below into a comparison of two empty sets, and the ledger's
-    forty-two entries into unreachable ones."""
+    thirty-nine entries into unreachable ones."""
     scanned, faults = legacy
     assert not faults, "\n".join(str(fault) for fault in faults)
     assert (REPO_ROOT / ADAPTER).is_file()
@@ -376,11 +373,12 @@ def test_the_adapter_gains_no_new_importer(legacy):
 
     The ledger owes each MAP, which bounds what the adapter still does. It does
     not bound who calls it — and every map falls back to the humaniser for a
-    value it does not recognise, so a fifty-second importer spreads the retired
+    value it does not recognise, so ONE MORE importer spreads the retired
     behaviour without adding a single ledger entry. None of these files is a
     separate debt (each imports a map somebody already owes), so they are pinned
-    here rather than seeded as fifty-one more entries that would double the
-    ledger and clear at exactly the same moment.
+    here rather than seeded as one entry per importing file — which would have
+    doubled the ledger and cleared at exactly the same moment. The live count is
+    the pin below; restating it in prose is what goes stale.
 
     It is a RATCHET, not a target: the set may only shrink. Converting a file to
     `@/lib/localisation` means deleting its line, which is the diff that shows
@@ -782,7 +780,7 @@ def test_a_file_importing_something_else_is_an_importer_but_not_a_site(tmp_path)
     Importing a map is not humanising, so the file is not a ledgered site —
     #210 is explicit that rewriting the fifty-one importers is not slice 0's
     job. But the map it imports still falls back to the humaniser, so the file
-    IS an importer, and the pinned set is what stops a fifty-second appearing.
+    IS an importer, and the pinned set is what stops another appearing.
     """
     scanned, faults = write_console(
         tmp_path, adapter=ADAPTER_SOURCE,

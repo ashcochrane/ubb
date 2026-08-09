@@ -38,7 +38,7 @@ exceptions:
 
   # --- G6: vocabulary a foreign system owns (#210) ---------------------------
   #
-  # Two of the legacy adapter's thirty-two value maps word STRIPE's vocabulary,
+  # Two of the legacy adapter's value maps word STRIPE's vocabulary,
   # and they are not debts for a reason the ledger cannot express. Every entry
   # there says "this becomes a registry label key in slice N". These never do:
   # map #137 constraint 5 forbids UBB shipping a vendor catalogue, so the
