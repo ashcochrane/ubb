@@ -13,7 +13,7 @@
 // from the registry into `@/lib/vocabulary`, wording owned by the console, and
 // strict lookup with no fallback at all. Write new code against that.
 //
-// This file survives only because it is imported by fifty others, and #210
+// This file survives only because it is imported by forty-eight others, and #210
 // is explicit that slice 0 ends when the mechanism is active and regressions
 // are impossible — not when every importer has been rewritten. So:
 //
@@ -84,9 +84,13 @@ export const billingModeDescription = legacyLabelMap({
 //
 // The words for these values are no longer here at all — `@/lib/products`
 // binds them to the label catalogue, and carries the console's own
-// per-product description copy (ADR-0008 §4.5). A file that needs only the
-// TYPE can take `TenantProduct` from `@/lib/vocabulary` directly and not reach
-// this module at all, which is what `@/hooks/use-tenant-config` now does.
+// per-product description copy (ADR-0008 §4.5).
+//
+// So NOTHING here needs a console consumer any more, and a file that wants
+// only the type takes `TenantProduct` from `@/lib/vocabulary` directly rather
+// than reaching this module for it: the tenant-config hook, the nav config and
+// the product gate all do. What still imports these two names does so because
+// it is already here for a map somebody else owes.
 export const PRODUCTS = TENANT_PRODUCT_VALUES;
 export type Product = TenantProduct;
 

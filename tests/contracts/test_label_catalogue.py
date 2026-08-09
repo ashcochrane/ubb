@@ -15,8 +15,8 @@ catalogue is complete, not that it is *used*. `apps/ui/src/lib/labels.ts` still
 hand-writes twenty-nine value maps and eleven files still import its humaniser,
 and ADR-0008 §4.3 reverses #154 §9.1 to call that a defect rather than a soft
 landing: title-casing a retired token manufactures user-facing terminology out
-of an implementation token. #210 does not delete it — fifty files import that
-module — so it survives as an explicit legacy adapter, and every one of its
+of an implementation token. #210 does not delete it — forty-eight files import
+that module — so it survives as an explicit legacy adapter, and every one of its
 debts is a migration-ledger entry with an owner slice.
 
 **The ledger IS the allowlist.** There is no second list of permitted sites: a
@@ -71,9 +71,7 @@ GATES_DIR = REPO_ROOT / "gates"
 #: count alone would let one file be converted while another was added, and the
 #: net zero would read as "nothing happened".
 ADAPTER_IMPORTERS = (
-    "apps/ui/src/components/shared/nav-config.ts",
     "apps/ui/src/components/shared/nav-shell.tsx",
-    "apps/ui/src/components/shared/product-gate.tsx",
     "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
     "apps/ui/src/features/customers/components/adjust-dialogs.tsx",
     "apps/ui/src/features/customers/components/budget-section.tsx",

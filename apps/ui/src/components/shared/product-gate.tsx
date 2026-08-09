@@ -4,8 +4,8 @@ import { Lock } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantConfig } from "@/hooks/use-tenant-config";
-import type { Product } from "@/lib/labels";
 import { PRODUCT_DESCRIPTIONS, productLabel } from "@/lib/products";
+import type { TenantProduct } from "@/lib/vocabulary";
 
 /**
  * Gate a page (or section) on an enabled tenant product. Direct URL access to
@@ -16,7 +16,7 @@ export function ProductGate({
   product,
   children,
 }: {
-  product: Product;
+  product: TenantProduct;
   children: ReactNode;
 }) {
   const { data: config, isLoading } = useTenantConfig();

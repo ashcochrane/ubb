@@ -45,7 +45,8 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   `humanize` into a new file: both fail CI, because the ledger is the allowlist and it only shrinks.
   A concept that has been migrated leaves nothing behind but its value list, held BY REFERENCE from
   the generated module because `domain-vocabulary/` names this file as the console's consumer of it
-  (`PRODUCTS` / `Product` are the worked example, #241).
+  (`PRODUCTS` / `Product` are the worked example, #241). Don't reach here for a canonical type —
+  import `TenantProduct` and friends from `src/lib/vocabulary.ts` directly.
 - **A migrated concept gets its own small `src/lib/` module** — `src/lib/products.ts` is the first:
   the label bound once (`labelMap(TENANT_PRODUCT_LABEL_KEYS)`), plus any console-owned explanatory
   copy beside it as a constant total over the generated type, so a value with no sentence is a `tsc`
