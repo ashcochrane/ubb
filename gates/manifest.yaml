@@ -907,3 +907,17 @@ obligations:
       one controlled live-mode transaction, reconciliation and idempotency
       confirmed, runbooks owned, and a named approver — per rail, so one
       successful transaction on one rail is never read as readiness for another.
+    notes: >-
+      The header's "the only end-to-end money test sat in no CI job" had an
+      address: `ubb-platform/scripts/integration_test.py`, which drove a
+      customer through top-up, usage, withdrawal and refund against a real
+      Stripe account. Slice 1 deleted it (#242) — untouched since 2026-02-15, in
+      no job, still calling a route #141 retires. It is named here because it is
+      the closest thing to a live-money runner this repository has held, and its
+      deletion must not read as this row being discharged. **It discharges
+      nothing.** The obligation is #158 §11's and ADR-0008 §6's, not the
+      script's: at most the script was one way to produce the evidence above,
+      and a manual script no job ran is not that evidence. Until slice 1 the tie
+      between the two was recorded only in frozen dated plans — exactly the
+      "carried in prose in a frozen document" this section exists to end — so
+      the pointer is restated here, where the obligation itself lives.
