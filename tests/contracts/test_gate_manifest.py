@@ -31,6 +31,7 @@ from _gate_helpers import (
     SUITE_ROOT,
     TEST_FILE,
     TEST_NODE,
+    UNLANDED_SLICE,
     copy_real_programme,
     gates,
     installed,
@@ -509,9 +510,19 @@ def test_a_gate_the_inventory_does_not_declare_is_rejected(tmp_path):
 
 def test_a_landed_slice_may_not_still_owe_a_gate(tmp_path):
     """The manifest's half of #155 §17: a slice cannot land owing an
-    installation it never did, and this is what says so."""
+    installation it never did, and this is what says so.
+
+    The mutation must bite, so it names the slice the baseline rows are actually
+    owed by. Pointing it at a slice that has already landed would make this pass
+    on a mutation of nothing — which is how slices 0 and 1 landing turned the
+    original `slice_0` reading vacuous.
+    """
     slices = yaml.safe_load(real("slices.yaml"))
-    slices["slices"]["slice_0"]["landed"] = True
+    assert not slices["slices"][UNLANDED_SLICE]["landed"], (
+        f"{UNLANDED_SLICE} has landed, so this control mutates nothing and "
+        f"proves nothing — re-point it, and `UNLANDED_SLICE` with it, at a "
+        f"slice that has not")
+    slices["slices"][UNLANDED_SLICE]["landed"] = True
     invalid = rejection(tmp_path, slices=slices)
     assert invalid.codes() == {codes.LANDED_SLICE_OWNS_GATE}
 

@@ -16,6 +16,14 @@
 # it fails CI, and every manifest row still claiming that slice owns it fails
 # too. That is the mechanism closing #155 §17 — an entry cannot survive to slice
 # 8 because everyone assumed somebody else owned it.
+#
+# Slices 0 and 1 were flipped together, after the fact, rather than by their own
+# last ticket: neither slice's ticket chain named the flip, so both closed (#191,
+# #192) with it still `false`. Nothing was owed to either — the ledger's earliest
+# owner is `slice_2` and the manifest's is `slice_3` — so the two declarations
+# were provable on the spot and cost nothing to make. Later slices should flip
+# their own flag in their last ticket, which is what makes the declaration a
+# check rather than a formality.
 
 version: 1
 
@@ -24,13 +32,13 @@ slices:
     issue: 191
     title: Gates and money primitives
     order: 0
-    landed: false
+    landed: true
 
   slice_1:
     issue: 192
     title: Demolition
     order: 1
-    landed: false
+    landed: true
 
   slice_2:
     issue: 193
