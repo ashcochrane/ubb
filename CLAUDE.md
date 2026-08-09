@@ -31,9 +31,10 @@ lazy function-body imports too. Full matrix + rationale:
 `apps/*/api`) may import any product; products never import `api.*`.
 
 Tenant billing modes (`Tenant.billing_mode`): `meter_only` · `prepaid` · `postpaid`. Tenant-enabled
-products (`Tenant.products`): `metering`, `billing`, `referrals`, `metering_async` —
-`subscriptions` was retired as a gating flag; plans and subscription lifecycle now gate on
-`billing`.
+products (`Tenant.products`): `metering`, `billing`, `referrals` — three, declared once in
+`domain-vocabulary/` and imported by the model rather than restated there. Two flags were retired
+rather than renamed: `subscriptions`, because plans and subscription lifecycle gate on `billing`,
+and the async-ingest sub-feature flag, which went with the lane it switched (slice 1, #149 §6).
 Domain vocabulary: `CONTEXT-MAP.md` → per-product `CONTEXT.md`.
 
 ## Running the suite

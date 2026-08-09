@@ -219,10 +219,10 @@ class LiveCounter:
         remains the backstop).
 
         Arrival signals OFF (#46, §E — enforcing, switch off): no counter
-        debit, no crossing check — the fast lane is off as one unit. Returns
-        the bare stop verdict READ from the durable-maintained flag so the
-        ack carries the identical fields in both postures; detection happens
-        at settle (the durable drawdown lane)."""
+        debit, no crossing check — real-time counter maintenance is off
+        (#149 §6.5). Returns the bare stop verdict READ from the
+        durable-maintained flag so the ack carries the identical fields in
+        both postures; detection happens on the durable drawdown lane."""
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
         if not arrival_signals_on(tenant):

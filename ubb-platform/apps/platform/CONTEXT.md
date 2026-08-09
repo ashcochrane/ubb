@@ -15,11 +15,14 @@ A tenant's test-mode sibling that inherits its shape but never any real Stripe l
 `ubb_test_` keys can only ever reach test-mode Stripe. (`apps/platform/tenants/models.py:Tenant.is_sandbox`)
 
 **Product**:
-An enabled product app on a tenant, drawn from `{metering, billing, referrals, metering_async}`;
-`metering_async` is a metering sub-feature flag, not a peer product, and `metering` is always
-present. `subscriptions` was retired as a product flag — plans and subscription lifecycle now gate
-on `billing`. (`apps/platform/tenants/models.py:VALID_PRODUCTS`)
-_Avoid_: "module", "service" when you mean an enabled product.
+An enabled product app on a tenant, drawn from the registry's `tenant_product` concept —
+`{metering, billing, referrals}` — which the model imports as `core.vocabulary.TENANT_PRODUCT_VALUES`
+rather than restating (#240). `metering` is always present. Two flags were retired rather than
+renamed: `subscriptions`, because plans and subscription lifecycle gate on `billing`, and the
+async-ingest sub-feature flag, which was never a peer product and went with the lane it switched
+(slice 1, #149 §6). (`apps/platform/tenants/models.py:Tenant.products`)
+_Avoid_: "module", "service" when you mean an enabled product; a behavior posture as a product entry
+— products gate ACCESS (403s), and a posture is a column of its own.
 
 **billing_mode**:
 A tenant's revenue posture — `meter_only` (default), `prepaid`, or `postpaid`; `prepaid`/`postpaid`
