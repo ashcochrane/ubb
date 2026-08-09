@@ -97,6 +97,12 @@
       "kind": "free_text",
       "representation": "none"
     },
+    "live_counter_maintenance_enabled": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
     "measure_status": {
       "advertised": false,
       "backend_serves": "0 of 4 values",

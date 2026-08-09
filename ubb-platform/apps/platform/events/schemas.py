@@ -424,7 +424,7 @@ class StopFired(EventSchema):
 
     Emitted through the ``StopSignalState`` transition guard
     (apps/billing/gating/services/stop_signal_service.py): every lane that
-    detects a floor/cap crossing — the fast Redis lane at arrival, the durable
+    detects a floor/cap crossing — the real-time counter write, the durable
     drawdown handler, the hourly reconcile — drives a transition on the
     owner's per-family ledger row, and only the WINNING stop transition emits
     this event, so a crossing observed by several lanes fires exactly once per

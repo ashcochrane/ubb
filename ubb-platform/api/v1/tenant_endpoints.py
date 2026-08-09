@@ -459,7 +459,7 @@ def _config_out(t):
         "is_active": t.is_active,
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
-        "arrival_signals_enabled": t.arrival_signals_enabled,
+        "live_counter_maintenance_enabled": t.live_counter_maintenance_enabled,
         "default_task_provider_cost_limit_micros":
             rc.default_task_provider_cost_limit_micros if rc else None,
         "min_balance_micros": bc.min_balance_micros,
@@ -624,10 +624,11 @@ def update_tenant_config(request, payload: TenantConfigIn):
                           f"enforcement_mode must be one of {sorted(valid_modes)}")
         enforcement_changed = payload.enforcement_mode != t.enforcement_mode
         t.enforcement_mode = payload.enforcement_mode
-    arrival_flipped = False
-    if payload.arrival_signals_enabled is not None:
-        arrival_flipped = payload.arrival_signals_enabled != t.arrival_signals_enabled
-        t.arrival_signals_enabled = payload.arrival_signals_enabled
+    maintenance_flipped = False
+    if payload.live_counter_maintenance_enabled is not None:
+        maintenance_flipped = (payload.live_counter_maintenance_enabled
+                               != t.live_counter_maintenance_enabled)
+        t.live_counter_maintenance_enabled = payload.live_counter_maintenance_enabled
     try:
         t.save()
     except ValidationError as e:
@@ -672,7 +673,7 @@ def update_tenant_config(request, payload: TenantConfigIn):
         from django.db import transaction
         from apps.billing.gating.services.live_counter import LiveCounter
         transaction.on_commit(lambda: LiveCounter.cleanup(t))
-    if arrival_flipped:
+    if maintenance_flipped:
         # Toggle choreography (#46, delivery spec §E): flipping either way
         # enqueues an immediate per-tenant reconcile — OFF→ON re-seeds honest
         # counters from durable truth within minutes; ON→OFF needs nothing,
@@ -689,7 +690,7 @@ def update_tenant_config(request, payload: TenantConfigIn):
                 reconcile_tenant_live_counters.delay(tenant_id)
             except Exception:
                 logging.getLogger("ubb.billing").warning(
-                    "arrival_signals.toggle_reconcile_enqueue_failed",
+                    "live_counter_maintenance.toggle_reconcile_enqueue_failed",
                     extra={"data": {"tenant_id": tenant_id}})
 
         transaction.on_commit(_kick_reconcile)

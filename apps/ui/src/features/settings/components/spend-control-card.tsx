@@ -24,7 +24,7 @@ export function SpendControlCard({
   isAdmin: boolean;
 }) {
   const enforcement = useUpdateTenantConfig();
-  const arrival = useUpdateTenantConfig();
+  const maintenance = useUpdateTenantConfig();
   const [pendingMode, setPendingMode] = React.useState<
     "off" | "enforcing" | null
   >(null);
@@ -65,29 +65,33 @@ export function SpendControlCard({
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-medium">Arrival signals</p>
+            <p className="text-sm font-medium">Live spend counters</p>
             <p className="max-w-sm text-[13px] text-muted-foreground">
-              Detect limit crossings the moment usage arrives (the fastest
-              reaction). When off, crossings are detected slightly later, at
-              settlement. This only changes reaction speed — never what
-              customers are billed.
+              Keep each customer's running spend up to date as you report
+              usage, so the reply to a usage call already tells you whether
+              they've been stopped. When off, UBB skips that work and catches
+              crossings on its durable path instead — the same stops, a little
+              later, and the lag grows the faster a customer is spending. This
+              only changes reaction speed — never what customers are billed.
             </p>
           </div>
           <Switch
-            checked={config.arrival_signals_enabled ?? true}
-            disabled={!isAdmin || arrival.isPending}
-            aria-label="Arrival signals"
+            checked={config.live_counter_maintenance_enabled ?? true}
+            disabled={!isAdmin || maintenance.isPending}
+            aria-label="Live spend counters"
             onCheckedChange={(checked: boolean) =>
-              arrival.mutate(
-                { arrival_signals_enabled: checked },
+              maintenance.mutate(
+                { live_counter_maintenance_enabled: checked },
                 {
                   onSuccess: () =>
                     toastSuccess(
                       checked
-                        ? "Arrival signals enabled"
-                        : "Arrival signals disabled",
+                        ? "Live spend counters enabled"
+                        : "Live spend counters disabled",
                     ),
-                  onError: toastOnError("Couldn't update arrival signals"),
+                  onError: toastOnError(
+                    "Couldn't update live spend counters",
+                  ),
                 },
               )
             }

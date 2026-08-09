@@ -5410,17 +5410,6 @@
       },
       "TenantConfigIn": {
         "properties": {
-          "arrival_signals_enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrival Signals Enabled"
-          },
           "automatic_tax_enabled": {
             "anyOf": [
               {
@@ -5477,6 +5466,17 @@
               }
             ],
             "title": "Enforcement Mode"
+          },
+          "live_counter_maintenance_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Counter Maintenance Enabled"
           },
           "min_balance_micros": {
             "anyOf": [
@@ -5537,11 +5537,6 @@
       },
       "TenantConfigOut": {
         "properties": {
-          "arrival_signals_enabled": {
-            "default": true,
-            "title": "Arrival Signals Enabled",
-            "type": "boolean"
-          },
           "automatic_tax_enabled": {
             "title": "Automatic Tax Enabled",
             "type": "boolean"
@@ -5572,6 +5567,11 @@
           },
           "is_active": {
             "title": "Is Active",
+            "type": "boolean"
+          },
+          "live_counter_maintenance_enabled": {
+            "default": true,
+            "title": "Live Counter Maintenance Enabled",
             "type": "boolean"
           },
           "min_balance_micros": {
@@ -15931,7 +15931,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the fast Redis lane at arrival, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);\n              the paired ``stop.cleared`` carries the same id, and the\n              stop-context tagging / past-limit report (#41) key on it.",
+                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);\n              the paired ``stop.cleared`` carries the same id, and the\n              stop-context tagging / past-limit report (#41) key on it.",
                     "properties": {
                       "episode_seq": {
                         "default": 0,

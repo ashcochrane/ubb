@@ -22,7 +22,7 @@ const baseConfig: TenantConfig = {
   is_active: true,
   automatic_tax_enabled: false,
   enforcement_mode: "enforcing",
-  arrival_signals_enabled: true,
+  live_counter_maintenance_enabled: true,
   min_balance_micros: 25_000_000,
   soft_min_balance_micros: -10_000_000,
   default_task_provider_cost_limit_micros: 5_000_000,

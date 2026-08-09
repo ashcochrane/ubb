@@ -41,9 +41,9 @@ clearing — ``stop.cleared`` exactly once — and re-aligns the fast flag.
 Untouched neighbors: the MIN-merge stays byte-identical. The postpaid spend
 counter is out of scope: its drift lane is the MAX-merge + budget reconcile,
 and the repair is the prepaid wallet lane's alone. The repair hangs off the
-arrival-signals switch (#46) — the same switch that governs the synchronous
-debit and its crossing check, so the repair is armed exactly where its cause
-can occur and inert where it cannot.
+live-counter-maintenance switch (#46) — the same switch that governs the
+synchronous debit and its crossing check, so the repair is armed exactly where
+its cause can occur and inert where it cannot.
 """
 import logging
 from datetime import timedelta
@@ -51,7 +51,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.platform.tenants.flags import arrival_signals_on
+from apps.platform.tenants.flags import live_counter_maintenance_on
 
 logger = logging.getLogger("ubb.billing")
 
@@ -89,11 +89,12 @@ def repair_live_balances(tenant):
     counts = {OUTCOME_REPAIRED: 0, OUTCOME_REPAIRED_MICROS: 0,
               OUTCOME_REPAIR_LAPSED: 0}
     # The repair is the prepaid wallet lane's alone. Postpaid spend drift is
-    # owned by the MAX-merge + budget reconcile. The arrival-signals switch
-    # (#46, §E) is the same one that arms the synchronous debit and its
+    # owned by the MAX-merge + budget reconcile. The live-counter-maintenance
+    # switch (#46, §E) is the same one that arms the synchronous debit and its
     # crossing check: with it off nothing debits and nothing reads the
     # counter — a deficit is moot, and the repair is inert.
-    if not arrival_signals_on(tenant) or tenant.billing_mode == "postpaid":
+    if (not live_counter_maintenance_on(tenant)
+            or tenant.billing_mode == "postpaid"):
         return counts
     for owner_id in Wallet.objects.filter(
             customer__tenant=tenant).values_list("customer_id", flat=True):

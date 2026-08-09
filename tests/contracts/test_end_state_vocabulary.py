@@ -194,8 +194,17 @@ SWEPT = {
 #: tree. Nothing is lost by the move: the value `flat` only ever appears beside
 #: the field `pricing_model`, which IS swept, and G2 refuses a consumer that
 #: declares a value the registry does not own.
+#: `arrival` joins them from #246, and it is the clearest case of the pattern:
+#: as a name for real-time spend detection — or for the switch that governs it —
+#: it named an ingest lane slice 1 deleted, and the switch it named never was
+#: that lane's switch. As the analytics time BASIS it is load-bearing and
+#: unretirable: `basis="arrival"` windows on `created_at` (when UBB received the
+#: event) against `effective` (when it happened), and the drawdown repair and
+#: the platform-fee window both depend on the distinction. Putting the bare word
+#: into the sweep's input would have demanded either a false statement or an
+#: exclusion over every file that does honest arrival-basis work.
 SENSE_RETIRED = {"limit", "operation", "job", "step", "ingest",
-                 "flat", "hold", "estimate"}
+                 "flat", "hold", "estimate", "arrival"}
 
 
 def test_retired_terms_are_registry_data(registry):

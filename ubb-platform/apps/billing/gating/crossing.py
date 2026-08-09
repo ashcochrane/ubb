@@ -1,8 +1,8 @@
 """The ONE owner of the Crossing decision (#110).
 
-Every lane that compares a balance/spend value against a configured money
-line imports THESE predicates — the fast lane (``LiveCounter.debit``),
-the durable lane (``handlers.py`` drawdown), the
+Every path that compares a balance/spend value against a configured money
+line imports THESE predicates — the real-time counter write
+(``LiveCounter.debit``), the durable lane (``handlers.py`` drawdown), the
 start-gate (``RiskService``), reconcile (``LiveCounter``), the upward
 repair (``repair.py``), the budget gate (``BudgetService.check``) and the
 dispute clawback (Stripe webhooks). Pure module: no ORM, no Redis — the

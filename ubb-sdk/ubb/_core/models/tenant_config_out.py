@@ -33,9 +33,9 @@ class TenantConfigOut:
             products (list[TenantConfigOutProductsItem]):
             require_cost_card_coverage (bool):
             stripe_connected_account_id (str):
-            arrival_signals_enabled (bool | Unset):  Default: True.
             default_task_provider_cost_limit_micros (int | None | Unset):
             enforcement_mode (str | Unset):  Default: 'off'.
+            live_counter_maintenance_enabled (bool | Unset):  Default: True.
             min_balance_micros (int | Unset):  Default: 0.
             soft_min_balance_micros (int | None | Unset):
      """
@@ -48,9 +48,9 @@ class TenantConfigOut:
     products: list[TenantConfigOutProductsItem]
     require_cost_card_coverage: bool
     stripe_connected_account_id: str
-    arrival_signals_enabled: bool | Unset = True
     default_task_provider_cost_limit_micros: int | None | Unset = UNSET
     enforcement_mode: str | Unset = 'off'
+    live_counter_maintenance_enabled: bool | Unset = True
     min_balance_micros: int | Unset = 0
     soft_min_balance_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -81,8 +81,6 @@ class TenantConfigOut:
 
         stripe_connected_account_id = self.stripe_connected_account_id
 
-        arrival_signals_enabled = self.arrival_signals_enabled
-
         default_task_provider_cost_limit_micros: int | None | Unset
         if isinstance(self.default_task_provider_cost_limit_micros, Unset):
             default_task_provider_cost_limit_micros = UNSET
@@ -90,6 +88,8 @@ class TenantConfigOut:
             default_task_provider_cost_limit_micros = self.default_task_provider_cost_limit_micros
 
         enforcement_mode = self.enforcement_mode
+
+        live_counter_maintenance_enabled = self.live_counter_maintenance_enabled
 
         min_balance_micros = self.min_balance_micros
 
@@ -112,12 +112,12 @@ class TenantConfigOut:
             "require_cost_card_coverage": require_cost_card_coverage,
             "stripe_connected_account_id": stripe_connected_account_id,
         })
-        if arrival_signals_enabled is not UNSET:
-            field_dict["arrival_signals_enabled"] = arrival_signals_enabled
         if default_task_provider_cost_limit_micros is not UNSET:
             field_dict["default_task_provider_cost_limit_micros"] = default_task_provider_cost_limit_micros
         if enforcement_mode is not UNSET:
             field_dict["enforcement_mode"] = enforcement_mode
+        if live_counter_maintenance_enabled is not UNSET:
+            field_dict["live_counter_maintenance_enabled"] = live_counter_maintenance_enabled
         if min_balance_micros is not UNSET:
             field_dict["min_balance_micros"] = min_balance_micros
         if soft_min_balance_micros is not UNSET:
@@ -154,8 +154,6 @@ class TenantConfigOut:
 
         stripe_connected_account_id = d.pop("stripe_connected_account_id")
 
-        arrival_signals_enabled = d.pop("arrival_signals_enabled", UNSET)
-
         def _parse_default_task_provider_cost_limit_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -167,6 +165,8 @@ class TenantConfigOut:
 
 
         enforcement_mode = d.pop("enforcement_mode", UNSET)
+
+        live_counter_maintenance_enabled = d.pop("live_counter_maintenance_enabled", UNSET)
 
         min_balance_micros = d.pop("min_balance_micros", UNSET)
 
@@ -189,9 +189,9 @@ class TenantConfigOut:
             products=products,
             require_cost_card_coverage=require_cost_card_coverage,
             stripe_connected_account_id=stripe_connected_account_id,
-            arrival_signals_enabled=arrival_signals_enabled,
             default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
             enforcement_mode=enforcement_mode,
+            live_counter_maintenance_enabled=live_counter_maintenance_enabled,
             min_balance_micros=min_balance_micros,
             soft_min_balance_micros=soft_min_balance_micros,
         )

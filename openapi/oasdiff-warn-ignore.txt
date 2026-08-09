@@ -63,3 +63,40 @@ POST /api/v1/billing/pre-check removed the optional property `floor_snapshot_mic
 GET /api/v1/tenant/config removed the optional property `default_task_floor_snapshot_micros` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the request property `default_task_floor_snapshot_micros`
 PATCH /api/v1/tenant/config removed the optional property `default_task_floor_snapshot_micros` from the response with the `200` status
+
+# 2026-08-09 the arrival-signals switch takes the name of what it governs
+# (#246). PRE-LIVE LANE — map #137 constraint 1; ADR-0007 §5's "licence with one
+# use remaining", spent deliberately rather than by accident, and the standing
+# no-tenant-is-live note in docs/api-compatibility.md is what makes it
+# available. Not a deprecation.
+#
+# A RENAME, NOT A REMOVAL. `live_counter_maintenance_enabled` takes this field's
+# place with the same type, the same default and the same meaning; the column is
+# carried across by RenameField (ADR-0007 §1) so no tenant's stored posture
+# moves. oasdiff reports three findings because it compares property sets and
+# has no way to see a rename — read the removals below together with the three
+# additions the same diff makes, which are not breaks and so appear nowhere.
+#
+# WHY THE OLD NAME HAD TO GO. It named the arrival-time ingest lane. Slice 1
+# (#192) deleted that lane and kept the switch, because the switch never was the
+# lane's: it gates the synchronous live-counter debit and its crossing check,
+# both reconciles' counter legs, and the upward repair — and it leaves the
+# ingest path, the durable lane and the ack schema untouched in both postures.
+# The conflation was not theoretical. `repair.py` was read under the lane
+# meaning and #233 had to run as its own ticket to establish which reading was
+# true; the answer (Ruling A2) changed what #234 was allowed to delete.
+#
+# WHY NOW AND NOT LATER. This is the whole timing argument and it is an act, not
+# a date: before platform admission (#158's audit) a rename is coordinated by
+# hand through these files; after it, ADR-0003 §4 governs with no judgement left
+# — `deprecated: true`, a Sunset header, a dated changelog entry, an email and
+# 90 days. The word would cost a deprecation cycle to fix.
+#
+# WARN, NOT ERR, AND THAT IS THE GATE'S VERDICT RATHER THAN A PREFERENCE. The
+# ticket that raised this asked for the block to go in oasdiff-err-ignore.txt.
+# `contract_gate.py --emit` classified all three findings WARN, and the two
+# flags filter by level before matching text — so an entry in the err file would
+# have suppressed nothing and quietly reported success.
+GET /api/v1/tenant/config removed the optional property `arrival_signals_enabled` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the optional property `arrival_signals_enabled` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the request property `arrival_signals_enabled`

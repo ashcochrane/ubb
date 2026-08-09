@@ -7,6 +7,12 @@
 # have no closed value set to hang beside. Every other retirement lives on the
 # concept whose value set replaced it, in that concept's own domain file.
 #
+# #246 added the first BOOLEAN to this file, which stretches the category above:
+# a switch's replacement is neither a tenant's set nor a caller's prose, it is
+# two positions UBB owns outright. It is here because the alternative was worse
+# — see `live_counter_maintenance_enabled` below, where the choice is argued in
+# the open rather than settled by where the entry was filed.
+#
 # It exists as one file because the forbidden-term sweep (#206) reads the whole
 # registry anyway, and a reviewer asking "is #154 §8's table accounted for?"
 # should not have to reconstruct the answer from five domain files. The rest of
@@ -68,6 +74,60 @@ pricing_book_name:
       path: ubb-platform/apps/metering/pricing/models.py
     - surface: openapi
       path: openapi/v1.json
+
+live_counter_maintenance_enabled:
+  kind: free_text
+  summary: >-
+    The per-tenant switch selecting WHEN the live spend counters are
+    maintained: ON debits them synchronously on the recording path and checks
+    the crossing there, so the ack itself carries the stop verdict; OFF does no
+    counter work at record time and the durable drawdown detects instead, at
+    its own latency. It was named for the arrival-time ingest lane. Slice 1
+    (#192) deleted that lane and kept the switch, because it never was the
+    lane's switch — it also gates both reconciles' counter legs and the upward
+    repair, none of which is arrival-shaped, and the conflation cost a whole
+    ticket (#233) to unpick when `repair.py` was read under the wrong meaning.
+    Renamed by #246 while the pre-live contract window was still open
+    (ADR-0007 §5), because after platform admission the same word costs a
+    90-day deprecation cycle.
+  # `kind: free_text` is a DELIBERATE STRETCH and the first boolean in the
+  # registry — no other boolean field is registered here (not
+  # `automatic_tax_enabled`, not `require_cost_card_coverage`). None of
+  # schema.yaml's four kinds is built for one: `closed` and `open` both demand
+  # a value set plus a `label_key_prefix`, and `tenant_defined` is for values
+  # the tenant owns. `free_text`'s own summary — "Not vocabulary. Recorded here
+  # so that 'is this a value set?' is answered once, in data" — describes a
+  # boolean exactly; only its NAME misfits. A fifth kind was the alternative,
+  # and it was not taken for one entry. If a second boolean ever needs
+  # registering, mint the kind then and move this with it.
+  retired_aliases:
+    # Three spellings, not one. The sweep matches the token as spelled with a
+    # non-identifier character required on each side, and `_` IS an identifier
+    # character — so `arrival_signals` does not match inside
+    # `arrival_signals_enabled`, and each live spelling needs its own entry.
+    - arrival_signals
+    - arrival_signals_enabled
+    - arrival_signals_on
+  retired_senses:
+    - term: arrival
+      retired_as: >-
+        a name for real-time spend detection or for the switch that governs
+        it. The arrival-time ingest lane it referred to was deleted in slice 1
+        (#192) and there is now exactly one recording path.
+      survives_as: >-
+        the analytics time basis — `basis="arrival"` windows on `created_at`
+        (when UBB received the event) as against `effective` (when it
+        happened). `apps/metering/CONTEXT.md` keeps that distinction, and the
+        drawdown repair and platform-fee windows both depend on it.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: sdk
+      path: ubb-sdk/ubb/_core/models/tenant_config_out.py
+    - surface: console
+      path: apps/ui/src/features/settings/components/spend-control-card.tsx
 
 idempotency_key:
   kind: free_text

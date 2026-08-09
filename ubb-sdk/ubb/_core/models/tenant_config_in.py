@@ -25,24 +25,24 @@ T = TypeVar("T", bound="TenantConfigIn")
 class TenantConfigIn:
     """ 
         Attributes:
-            arrival_signals_enabled (bool | None | Unset):
             automatic_tax_enabled (bool | None | Unset):
             billing_mode (None | str | Unset):
             default_currency (None | str | Unset):
             default_task_provider_cost_limit_micros (int | None | Unset):
             enforcement_mode (None | str | Unset):
+            live_counter_maintenance_enabled (bool | None | Unset):
             min_balance_micros (int | None | Unset):
             products (list[TenantConfigInProductsType0Item] | None | Unset):
             require_cost_card_coverage (bool | None | Unset):
             soft_min_balance_micros (int | None | Unset):
      """
 
-    arrival_signals_enabled: bool | None | Unset = UNSET
     automatic_tax_enabled: bool | None | Unset = UNSET
     billing_mode: None | str | Unset = UNSET
     default_currency: None | str | Unset = UNSET
     default_task_provider_cost_limit_micros: int | None | Unset = UNSET
     enforcement_mode: None | str | Unset = UNSET
+    live_counter_maintenance_enabled: bool | None | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
     products: list[TenantConfigInProductsType0Item] | None | Unset = UNSET
     require_cost_card_coverage: bool | None | Unset = UNSET
@@ -54,12 +54,6 @@ class TenantConfigIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        arrival_signals_enabled: bool | None | Unset
-        if isinstance(self.arrival_signals_enabled, Unset):
-            arrival_signals_enabled = UNSET
-        else:
-            arrival_signals_enabled = self.arrival_signals_enabled
-
         automatic_tax_enabled: bool | None | Unset
         if isinstance(self.automatic_tax_enabled, Unset):
             automatic_tax_enabled = UNSET
@@ -89,6 +83,12 @@ class TenantConfigIn:
             enforcement_mode = UNSET
         else:
             enforcement_mode = self.enforcement_mode
+
+        live_counter_maintenance_enabled: bool | None | Unset
+        if isinstance(self.live_counter_maintenance_enabled, Unset):
+            live_counter_maintenance_enabled = UNSET
+        else:
+            live_counter_maintenance_enabled = self.live_counter_maintenance_enabled
 
         min_balance_micros: int | None | Unset
         if isinstance(self.min_balance_micros, Unset):
@@ -126,8 +126,6 @@ class TenantConfigIn:
         field_dict.update(self.additional_properties)
         field_dict.update({
         })
-        if arrival_signals_enabled is not UNSET:
-            field_dict["arrival_signals_enabled"] = arrival_signals_enabled
         if automatic_tax_enabled is not UNSET:
             field_dict["automatic_tax_enabled"] = automatic_tax_enabled
         if billing_mode is not UNSET:
@@ -138,6 +136,8 @@ class TenantConfigIn:
             field_dict["default_task_provider_cost_limit_micros"] = default_task_provider_cost_limit_micros
         if enforcement_mode is not UNSET:
             field_dict["enforcement_mode"] = enforcement_mode
+        if live_counter_maintenance_enabled is not UNSET:
+            field_dict["live_counter_maintenance_enabled"] = live_counter_maintenance_enabled
         if min_balance_micros is not UNSET:
             field_dict["min_balance_micros"] = min_balance_micros
         if products is not UNSET:
@@ -154,16 +154,6 @@ class TenantConfigIn:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        def _parse_arrival_signals_enabled(data: object) -> bool | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(bool | None | Unset, data)
-
-        arrival_signals_enabled = _parse_arrival_signals_enabled(d.pop("arrival_signals_enabled", UNSET))
-
-
         def _parse_automatic_tax_enabled(data: object) -> bool | None | Unset:
             if data is None:
                 return data
@@ -212,6 +202,16 @@ class TenantConfigIn:
             return cast(None | str | Unset, data)
 
         enforcement_mode = _parse_enforcement_mode(d.pop("enforcement_mode", UNSET))
+
+
+        def _parse_live_counter_maintenance_enabled(data: object) -> bool | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(bool | None | Unset, data)
+
+        live_counter_maintenance_enabled = _parse_live_counter_maintenance_enabled(d.pop("live_counter_maintenance_enabled", UNSET))
 
 
         def _parse_min_balance_micros(data: object) -> int | None | Unset:
@@ -270,12 +270,12 @@ class TenantConfigIn:
 
 
         tenant_config_in = cls(
-            arrival_signals_enabled=arrival_signals_enabled,
             automatic_tax_enabled=automatic_tax_enabled,
             billing_mode=billing_mode,
             default_currency=default_currency,
             default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
             enforcement_mode=enforcement_mode,
+            live_counter_maintenance_enabled=live_counter_maintenance_enabled,
             min_balance_micros=min_balance_micros,
             products=products,
             require_cost_card_coverage=require_cost_card_coverage,

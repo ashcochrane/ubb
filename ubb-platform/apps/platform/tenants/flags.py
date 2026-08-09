@@ -32,21 +32,19 @@ def enforcing(tenant) -> bool:
     return enforcement_mode(tenant) == "enforcing"
 
 
-def arrival_signals_on(tenant) -> bool:
+def live_counter_maintenance_on(tenant) -> bool:
     """Is real-time counter maintenance on (#46, delivery spec §E; NARROWED by
-    #149 §6.5)? True only when the tenant is enforcing AND has not opted out of
-    arrival signals — the flag is a behavior posture within enforcing,
-    meaningless outside it.
+    #149 §6.5)? True only when the tenant is enforcing AND has not opted out —
+    the flag is a behavior posture within enforcing, meaningless outside it.
 
     Governs the recording-path live debit + crossing check
     (LiveCounter.debit), the reconcile's counter jobs (seed/MIN-merge) and the
-    upward repair. It used to switch a whole arrival-time fast lane off as one
-    unit; slice 1 deleted that lane, so this selects WHEN the counters are
-    maintained, never which route an event takes in. #246 owns the rename that
-    follows. The durable lane — the drawdown handler's detection, the signal
-    ledger, the patrol, webhook delivery, ack
+    upward repair. It selects WHEN the counters are maintained, never which
+    route an event takes in. The durable lane — the drawdown handler's
+    detection, the signal ledger, the patrol, webhook delivery, ack
     verdicts read from the durable-maintained stop flag — hangs off
     ``enforcing`` and NEVER reads this. Defaults True on a
     partially-constructed tenant (the field's own default; posture, not
     access)."""
-    return enforcing(tenant) and getattr(tenant, "arrival_signals_enabled", True)
+    return enforcing(tenant) and getattr(
+        tenant, "live_counter_maintenance_enabled", True)

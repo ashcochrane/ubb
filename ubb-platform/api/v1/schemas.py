@@ -978,12 +978,13 @@ class TenantConfigOut(Schema):
     automatic_tax_enabled: bool
     # Tier-2 spend-control mode (read-only here; two positions: off|enforcing).
     enforcement_mode: str = "off"
-    # Arrival-signals switch (#46; narrowed by #149 §6.5): whether real-time
-    # counter maintenance (the synchronous live-counter write and its crossing
-    # check, the reconciles' counter jobs, the upward repair) is on. OFF = the
-    # honest durable-lane-latency posture; the durable lane and the ack schema
-    # never change. Meaningful only when enforcing.
-    arrival_signals_enabled: bool = True
+    # Live-counter-maintenance switch (#46; narrowed by #149 §6.5, renamed by
+    # #246): whether real-time counter maintenance (the synchronous
+    # live-counter write and its crossing check, the reconciles' counter jobs,
+    # the upward repair) is on. OFF = the honest durable-lane-latency posture;
+    # the durable lane and the ack schema never change. Meaningful only when
+    # enforcing.
+    live_counter_maintenance_enabled: bool = True
     # Spend-safety defaults. min_balance_micros is the allowed OVERDRAFT
     # magnitude (balance may go to -min_balance before blocking), not a
     # positive floor. BillingTenantConfig-backed (#52) — the row
@@ -1004,12 +1005,12 @@ class TenantConfigIn(Schema):
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).
     enforcement_mode: Optional[str] = None
-    # Arrival-signals switch (#46): flipping either way enqueues an immediate
-    # per-tenant reconcile (OFF→ON re-seeds honest counters from durable
-    # truth within minutes; ON→OFF has nothing to drain, because nothing on
-    # the recording path was ever deferred). Omit = unchanged. Never a
-    # contract change — only the latency profile.
-    arrival_signals_enabled: Optional[bool] = None
+    # Live-counter-maintenance switch (#46, renamed by #246): flipping either
+    # way enqueues an immediate per-tenant reconcile (OFF→ON re-seeds honest
+    # counters from durable truth within minutes; ON→OFF has nothing to drain,
+    # because nothing on the recording path was ever deferred). Omit =
+    # unchanged. Never a contract change — only the latency profile.
+    live_counter_maintenance_enabled: Optional[bool] = None
     # CUR-1: lowercase ISO code from core.money.SUPPORTED_CURRENCIES
     # (2-decimal only); 409 once any money exists for the tenant.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
