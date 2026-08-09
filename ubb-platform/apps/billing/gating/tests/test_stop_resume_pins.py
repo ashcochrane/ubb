@@ -109,7 +109,8 @@ class TestPin4DurableLane:
     def test_fast_and_durable_lanes_fire_exactly_one_stop_and_one_suspend(self):
         t = _tenant()
         c = _customer(t)
-        # Fast lane sees the crossing at arrival (live counter seeds from the
+        # The real-time write sees the crossing at record time (live
+        # counter seeds from the
         # durable balance, then debits past the floor) and wins the episode.
         out = LiveCounter.debit(c.id, t, 6_000_000)
         assert out["stop"] is True

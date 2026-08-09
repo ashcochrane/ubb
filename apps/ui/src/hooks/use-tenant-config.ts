@@ -28,7 +28,7 @@ let mockTenantConfig: TenantConfig = {
   is_active: true,
   automatic_tax_enabled: false,
   enforcement_mode: "enforcing",
-  arrival_signals_enabled: true,
+  live_counter_maintenance_enabled: true,
   min_balance_micros: 0,
   soft_min_balance_micros: null,
   default_task_provider_cost_limit_micros: null,

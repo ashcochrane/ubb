@@ -94,12 +94,12 @@ class Tenant(BaseModel):
     enforcement_mode = models.CharField(
         max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
     )
-    # The arrival-signals switch (#46, delivery spec §E; NARROWED by #149 §6.5):
+    # The live-counter-maintenance switch (#46, delivery spec §E;
+    # NARROWED by #149 §6.5; renamed by #246):
     # governs REAL-TIME COUNTER MAINTENANCE — the synchronous live-counter
     # write on the recording path, the counter legs of both reconciles, and
-    # the upward repair. It used to switch a whole arrival-time fast lane off
-    # as one unit; slice 1 deleted that lane, so this selects when the counters
-    # are maintained, never which route an event takes in. ON: crossings
+    # the upward repair. It selects when the counters are maintained, never
+    # which route an event takes in. ON: crossings
     # detected as the event is recorded, stop latency bounded independent of
     # drawdown-queue depth. OFF: the honest degraded posture — recording does
     # no live-counter Redis work; detection happens on the durable drawdown
@@ -109,9 +109,10 @@ class Tenant(BaseModel):
     # ack-verdict cache in both postures — flipping this never changes the
     # tenant-facing contract, only the latency profile. A behavior posture
     # beside enforcement_mode (products gates ACCESS; this selects behavior),
-    # meaningful only when enforcing. #246 owns the rename this narrowing
-    # earns. Read ONLY via apps.platform.tenants.flags.arrival_signals_on.
-    arrival_signals_enabled = models.BooleanField(default=True)
+    # meaningful only when enforcing. Named for the arrival-time lane until
+    # #246; that lane died in slice 1 and the switch never was its switch.
+    # Read ONLY via apps.platform.tenants.flags.live_counter_maintenance_on.
+    live_counter_maintenance_enabled = models.BooleanField(default=True)
     # Tier-2 P5: how long an ENFORCING task may go without a metered event
     # (heartbeat, stamped by accumulate_cost) before the reaper kills it as
     # stale. On Tenant (not RiskConfig) so the platform reaper can read it

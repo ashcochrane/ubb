@@ -137,8 +137,8 @@ export async function updateTenantConfig(
     }
     next.enforcement_mode = patch.enforcement_mode;
   }
-  if (patch.arrival_signals_enabled != null) {
-    next.arrival_signals_enabled = patch.arrival_signals_enabled;
+  if (patch.live_counter_maintenance_enabled != null) {
+    next.live_counter_maintenance_enabled = patch.live_counter_maintenance_enabled;
   }
   if (patch.min_balance_micros != null) {
     if (patch.min_balance_micros < 0) {

@@ -106,6 +106,6 @@ un-spend calls already dispatched to the provider** when the line was crossed
 that overshoot honestly instead of refusing to see it. Residual overshoot ≈
 (concurrent in-flight calls) × (per-call cost), bounded by your **per-task
 limit** and **concurrency limit**, and by how frequently you report (per-step
-beats per-task). It is deterministic, not a guessed buffer. Async ingestion
-detects task limits at settle time (seconds), the wallet floor at arrival
-time.
+beats per-task). It is deterministic, not a guessed buffer. Both are detected
+on the one recording path; with live counter maintenance off, the wallet floor
+is detected on the durable path instead, at its latency.

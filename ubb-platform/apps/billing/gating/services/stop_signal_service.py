@@ -4,7 +4,7 @@ The single emission choke point for the customer-wide stop/resume pair
 (``stop.fired`` / ``stop.cleared``) and the soft-floor pair
 (``soft_floor.crossed`` / ``soft_floor.cleared`` — its own family, its own
 episode sequence, never a suspension). Every lane that detects a crossing —
-the fast Redis lane at arrival (the live counter's ``_set_stop``), the durable
+the real-time counter write (the live counter's ``_set_stop``), the durable
 drawdown handler (``apps.billing.handlers``), the hourly reconcile — drives a
 transition on the owner's ``StopSignalState`` row; only the WINNING transition
 emits the outbox event, and the emission commits atomically with the ledger

@@ -11,9 +11,9 @@ this module's own pin test, never by scattered private imports.
 
 Gated by ``enforcing(tenant)`` — when the tenant's ``enforcement_mode`` is
 ``off`` every operation is a cheap no-op and behavior is byte-for-byte
-unchanged. The arrival-signals switch (#46) turns the fast-lane WRITES off as
-one unit; the durable-lane legs (verdict reads, signal catch-up, flag
-re-alignment) never switch off.
+unchanged. The live-counter-maintenance switch (#46) turns the real-time
+counter WRITES off as one unit; the durable-lane legs (verdict reads, signal
+catch-up, flag re-alignment) never switch off.
 
 Two parallel live counters, one per billing mode, both keyed on the resolved
 billing OWNER (``resolve_billing_owner``) so a pooled business is one counter
@@ -72,7 +72,7 @@ from apps.billing.gating.crossing import (budget_stop_threshold, crossed_live,
                                           floor_line, month_label_bounds,
                                           past_floor, recovered_floor,
                                           same_month)
-from apps.platform.tenants.flags import arrival_signals_on, enforcing
+from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 
 logger = logging.getLogger("ubb.billing")
 
@@ -218,14 +218,14 @@ class LiveCounter:
         Redis failure logs and returns None (fail-open; the durable start-gate
         remains the backstop).
 
-        Arrival signals OFF (#46, §E — enforcing, switch off): no counter
-        debit, no crossing check — real-time counter maintenance is off
+        Live-counter maintenance OFF (#46, §E — enforcing, switch off): no
+        counter debit, no crossing check — real-time counter maintenance is off
         (#149 §6.5). Returns the bare stop verdict READ from the
         durable-maintained flag so the ack carries the identical fields in
         both postures; detection happens on the durable drawdown lane."""
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
-        if not arrival_signals_on(tenant):
+        if not live_counter_maintenance_on(tenant):
             return LiveCounter.read(owner_id, tenant)
         try:
             if tenant.billing_mode == "postpaid":
@@ -654,20 +654,20 @@ class LiveCounter:
         down (crashed drawdown handler, dropped savepoint) is re-driven here
         from the reconciled position, and a stale one is cleared.
 
-        Arrival signals OFF (#46, §E): the COUNTER jobs (drift read,
+        Live-counter maintenance OFF (#46, §E): the COUNTER jobs (drift read,
         MIN-merge/seed) are real-time counter maintenance and skip; the signal
         catch-up + flag re-alignment below are the durable lane — they never
         switch off, and run on the durable balance as their basis."""
         if not enforcing(tenant):
             return None
-        lane_on = arrival_signals_on(tenant)
+        maintenance_on = live_counter_maintenance_on(tenant)
         from django.db import transaction
         from apps.billing.locking import lock_for_billing
         from apps.billing.queries import (get_customer_balance,
                                           get_customer_soft_min_balance)
         try:
             before = None
-            if lane_on:
+            if maintenance_on:
                 try:
                     before = LiveCounter._read_livebal(owner_id)
                 except Exception:
@@ -680,7 +680,7 @@ class LiveCounter:
                         "owner_id": str(owner_id), "mode": "prepaid",
                         "live_micros": before, "durable_micros": durable}})
                 v = None
-                if lane_on:
+                if maintenance_on:
                     try:
                         v = int(_client().eval(_RECONCILE_MIN, 1, _livebal_key(owner_id),
                                                durable, COUNTER_TTL_SECONDS))
@@ -723,13 +723,13 @@ class LiveCounter:
         cycle. No soft-family leg: the soft floor is a wallet line,
         prepaid-only.
 
-        Arrival signals OFF (#46, §E): the counter jobs (drift read,
+        Live-counter maintenance OFF (#46, §E): the counter jobs (drift read,
         MAX-merge) are real-time counter maintenance and skip; the
         durable-basis signal catch-up + flag re-alignment below never switch
         off."""
         if not enforcing(tenant):
             return None
-        lane_on = arrival_signals_on(tenant)
+        maintenance_on = live_counter_maintenance_on(tenant)
         from django.utils import timezone
         from apps.metering.queries import get_billing_owner_billed_total
         now = now or timezone.now()
@@ -737,7 +737,7 @@ class LiveCounter:
         try:
             durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
             before = None
-            if lane_on:
+            if maintenance_on:
                 try:
                     before = LiveCounter._read_livespend(owner_id, label)
                 except Exception:
@@ -747,7 +747,7 @@ class LiveCounter:
                     "owner_id": str(owner_id), "mode": "postpaid",
                     "live_micros": before, "durable_micros": durable}})
             v = None
-            if lane_on:
+            if maintenance_on:
                 try:
                     v = int(_client().eval(_RECONCILE_MAX, 1, _livespend_key(owner_id, label),
                                            durable, COUNTER_TTL_SECONDS))

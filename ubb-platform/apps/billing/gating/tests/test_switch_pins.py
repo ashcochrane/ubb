@@ -1,17 +1,17 @@
-"""#46 acceptance pins — the arrival-signals switch (delivery spec §E).
+"""#46 acceptance pins — the live-counter-maintenance switch (delivery spec §E).
 
-One switch, two honest postures: ``Tenant.arrival_signals_enabled`` (default
-ON, read only through ``flags.arrival_signals_on``) governs real-time counter
-maintenance — the synchronous live-counter write and its crossing check on the
-recording path, the reconciles' counter jobs, and the upward repair. It once
-governed a whole arrival-time lane as ONE unit; slice 1 deleted that lane, so
-it now selects WHEN the counters are maintained rather than which route an
-event takes in (#149 §6.5). OFF is the honest degraded posture: recording writes
-no live-counter Redis keys and detection happens on the durable drawdown
-lane, at its latency. That durable lane — the signal ledger, the patrol
-jobs, webhook delivery, ack verdicts — never switches off, and maintains the
-ack-verdict flag in both postures, so the tenant-facing contract is
-identical either way.
+One switch, two honest postures: ``Tenant.live_counter_maintenance_enabled``
+(default ON, read only through ``flags.live_counter_maintenance_on``) governs
+real-time counter maintenance — the synchronous live-counter write and its
+crossing check on the recording path, the reconciles' counter jobs, and the
+upward repair. It selects WHEN the counters are maintained rather than which
+route an event takes in (#149 §6.5); it was named for an arrival-time lane
+until #246, and that lane died in slice 1 without ever having owned it. OFF is
+the honest degraded posture: recording writes no live-counter Redis keys and
+detection happens on the durable drawdown lane, at its latency. That durable
+lane — the signal ledger, the patrol jobs, webhook delivery, ack verdicts —
+never switches off, and maintains the ack-verdict flag in both postures, so
+the tenant-facing contract is identical either way.
 
 **Every posture below is driven through ``POST /api/v1/metering/usage`` —
 the one way to report usage (#192).** These assertions were always about the
@@ -23,9 +23,9 @@ Pin 9 — switch OFF: recording writes no Redis counter keys (both billing
         durable-maintained flag; a floor crossing signals at the durable
         lane's latency; OFF→ON re-seeds via the immediate reconcile; the
         flag is read only through the flags module; default is ON.
-Plus  — the upward repair is inert with the lane off; patrol jobs 1–4
+Plus  — the upward repair is inert with maintenance off; patrol jobs 1–4
         (missed-transition drive, flag re-alignment, re-mint, sweep) run
-        identically with the lane off; ON→OFF needs no drain, because the
+        identically with maintenance off; ON→OFF needs no drain, because the
         recording path debits the exact cost as it records it.
 """
 import ast
@@ -55,15 +55,15 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.work.models import Task
 from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
-from apps.platform.tenants.flags import arrival_signals_on
+from apps.platform.tenants.flags import live_counter_maintenance_on
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
-def _tenant(mode="prepaid", arrival=True, enf="enforcing"):
+def _tenant(mode="prepaid", maintenance=True, enf="enforcing"):
     return Tenant.objects.create(
         name="T", products=["metering", "billing"],
         billing_mode=mode, enforcement_mode=enf,
-        arrival_signals_enabled=arrival)
+        live_counter_maintenance_enabled=maintenance)
 
 
 def _customer(t, balance_micros=0, ext="c1"):
@@ -98,13 +98,13 @@ def _events(event_type):
 class TestDefaultAndAccessor:
     def test_default_is_on_including_a_plain_new_tenant(self):
         t = Tenant.objects.create(name="fresh", products=["metering"])
-        assert t.arrival_signals_enabled is True
+        assert t.live_counter_maintenance_enabled is True
 
     def test_accessor_truth_table(self):
         # The flag is a posture WITHIN enforcing — meaningless outside it.
-        assert arrival_signals_on(_tenant(arrival=True)) is True
-        assert arrival_signals_on(_tenant(arrival=False)) is False
-        assert arrival_signals_on(_tenant(arrival=True, enf="off")) is False
+        assert live_counter_maintenance_on(_tenant(maintenance=True)) is True
+        assert live_counter_maintenance_on(_tenant(maintenance=False)) is False
+        assert live_counter_maintenance_on(_tenant(maintenance=True, enf="off")) is False
 
 
 @pytest.mark.django_db
@@ -120,14 +120,14 @@ class TestPin9RecordingWritesNoRedisKeys:
         cache.clear()
 
     def test_prepaid_recording_writes_no_counter_and_no_flag(self):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=1_000_000)
-        # Together these would cross the (default 0) floor if the lane were on.
+        # Together these would cross the (default 0) floor if maintenance were on.
         client, auth = Client(), _auth(t)
         first = _record(client, auth, c, billed=900_000)
         second = _record(client, auth, c, billed=200_000)
         assert first.status_code == 200 and second.status_code == 200
-        # No arrival-moment detection: the crossing is real but undetected
+        # No record-time detection: the crossing is real but undetected
         # until the durable drawdown lane runs — the honest degraded posture.
         assert first.json()["stop"] is False
         assert second.json()["stop"] is False
@@ -140,18 +140,18 @@ class TestPin9RecordingWritesNoRedisKeys:
         assert UsageEvent.objects.filter(tenant=t).count() == 2
 
     def test_postpaid_recording_writes_no_livespend(self):
-        t = _tenant(mode="postpaid", arrival=False)
+        t = _tenant(mode="postpaid", maintenance=False)
         c = _customer(t)
         r = _record(Client(), _auth(t), c, billed=5_000_000)
         assert r.status_code == 200
         assert Door.spend(c.id) is None
 
     def test_recording_no_counter_and_event_still_lands_and_bills(self):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=5_000_000)
         r = _record(Client(), _auth(t), c, billed=8_000_000, key="k1")
         assert r.status_code == 200
-        assert r.json()["stop"] is False          # no arrival detection
+        assert r.json()["stop"] is False          # no record-time detection
         ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
         assert ev.billed_cost_micros == 8_000_000  # lands and bills
         assert Door.balance(c.id) is None
@@ -176,9 +176,9 @@ class TestPin9AckContractIdentical:
         true by construction and would pin nothing. What is still falsifiable
         — and is what the pin always meant — is that the VERDICT FIELDS agree:
         the durable-maintained flag is read in both postures, so a stopped
-        owner reads as stopped whether the fast lane is on or off. Only the
+        owner reads as stopped whether maintenance is on or off. Only the
         counter differs, which is the latency profile and nothing else."""
-        on_t, off_t = _tenant(arrival=True), _tenant(arrival=False)
+        on_t, off_t = _tenant(maintenance=True), _tenant(maintenance=False)
         on_c = _customer(on_t, 10_000_000, ext="a")
         off_c = _customer(off_t, 10_000_000, ext="b")
         # A durable transition both postures must surface identically.
@@ -192,12 +192,12 @@ class TestPin9AckContractIdentical:
                 == {k: off_ack[k] for k in verdict}
                 == {"stop": True, "stop_reason": CUSTOMER_WIDE_STOP,
                     "stop_scope": "customer"})
-        # ... and the only difference is the fast-lane counter itself.
+        # ... and the only difference is the live counter itself.
         assert Door.balance(on_c.id) is not None
         assert Door.balance(off_c.id) is None
 
     def test_acks_carry_verdict_from_the_durable_maintained_flag(self):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=10_000_000)
         # The durable lane set the flag (as its winning transition does in
         # both postures); the recording path surfaces it — a READ, not a write.
@@ -215,11 +215,11 @@ class TestPin9CrossingSignalsAtDurableLaneLatency:
         cache.clear()
 
     def test_durable_lane_detects_the_crossing_and_next_ack_shows_it(self):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=5_000_000)
         client, auth = Client(), _auth(t)
         r = _record(client, auth, c, billed=8_000_000)
-        assert r.json()["stop"] is False            # nothing at arrival
+        assert r.json()["stop"] is False            # nothing at record time
         assert not _events("stop.fired").exists()
         # Durable-lane latency: the drawdown lane processes the event and
         # detects the floor crossing — signal + flag, never an ack change.
@@ -245,24 +245,24 @@ class TestPin9ToggleChoreography:
             with django_capture_on_commit_callbacks(execute=True):
                 resp = Client().patch(
                     "/api/v1/tenant/config",
-                    data=json.dumps({"arrival_signals_enabled": value}),
+                    data=json.dumps({"live_counter_maintenance_enabled": value}),
                     content_type="application/json", **_auth(t))
         return resp, delay
 
     def test_flip_either_way_enqueues_the_immediate_reconcile(
             self, django_capture_on_commit_callbacks):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         resp, delay = self._patch(t, True, django_capture_on_commit_callbacks)
         assert resp.status_code == 200
-        assert resp.json()["arrival_signals_enabled"] is True
+        assert resp.json()["live_counter_maintenance_enabled"] is True
         assert delay.call_args == mock.call(str(t.id))
         t.refresh_from_db()
         resp, delay = self._patch(t, False, django_capture_on_commit_callbacks)
-        assert resp.json()["arrival_signals_enabled"] is False
+        assert resp.json()["live_counter_maintenance_enabled"] is False
         assert delay.call_args == mock.call(str(t.id))
 
     def test_no_flip_no_enqueue(self, django_capture_on_commit_callbacks):
-        t = _tenant(arrival=True)
+        t = _tenant(maintenance=True)
         resp, delay = self._patch(t, True, django_capture_on_commit_callbacks)
         assert resp.status_code == 200
         assert delay.call_count == 0
@@ -270,19 +270,19 @@ class TestPin9ToggleChoreography:
     def test_off_to_on_reseeds_the_counter_from_durable_truth(self):
         # While OFF, accept wrote nothing — no counter exists. The immediate
         # reconcile after the flip seeds it from the durable balance, so the
-        # fast lane restarts honest within minutes, not at first-use luck.
-        t = _tenant(arrival=True)   # post-flip state
+        # maintenance restarts honest within minutes, not at first-use luck.
+        t = _tenant(maintenance=True)   # post-flip state
         c = _customer(t, balance_micros=7_000_000)
         assert Door.balance(c.id) is None
         reconcile_tenant_live_counters(str(t.id))
         assert Door.balance(c.id) == 7_000_000
 
-    def test_reconcile_with_lane_off_drives_signals_but_no_counter(self):
+    def test_reconcile_with_maintenance_off_drives_signals_but_no_counter(self):
         # The same per-tenant pass in the OFF posture: counter jobs skip
-        # (part of the fast lane) while the durable-basis signal catch-up —
+        # (real-time maintenance) while the durable-basis signal catch-up —
         # the lane that never switches off — still stops a durably crossed
         # owner and re-aligns the verdict flag.
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=-1_000_000)  # past the (default 0) floor
         reconcile_tenant_live_counters(str(t.id))
         assert Door.balance(c.id) is None                     # no seed
@@ -292,17 +292,17 @@ class TestPin9ToggleChoreography:
 
 @pytest.mark.django_db
 class TestRepairInertWithLaneOff:
-    def test_injected_deficit_never_candidates_with_the_lane_off(self):
-        t = _tenant(arrival=False)
+    def test_injected_deficit_never_candidates_with_maintenance_off(self):
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=20_000_000)
-        # A deficit the repair would candidate if the lane were on.
+        # A deficit the repair would candidate if maintenance were on.
         Door.set_balance(c.id, 5_000_000)
         counts = repair.repair_live_balances(t)
         assert not any(counts.values())
         assert not LiveBalanceRepair.objects.exists()
 
     def test_same_deficit_candidates_with_the_lane_on(self):
-        t = _tenant(arrival=True)
+        t = _tenant(maintenance=True)
         c = _customer(t, balance_micros=20_000_000)
         Door.set_balance(c.id, 5_000_000)
         repair.repair_live_balances(t)
@@ -312,12 +312,12 @@ class TestRepairInertWithLaneOff:
 
 @pytest.mark.django_db
 class TestPatrolUnaffectedByTheSwitch:
-    """Patrol jobs 1–4 are the durable lane: with the lane off they run
+    """Patrol jobs 1–4 are the durable lane: with maintenance off they run
     identically on the hourly beat — re-mint, sweep, missed-transition
     drive, flag re-alignment."""
 
-    def test_dead_lettered_stop_is_reminted_with_the_lane_off(self):
-        t = _tenant(arrival=False)
+    def test_dead_lettered_stop_is_reminted_with_maintenance_off(self):
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=-1_000_000)  # durably crossed: no
         StopSignalService.drive_stop(                # clearing interference
             c.id, t, reason=CUSTOMER_WIDE_STOP, balance_micros=-1_000_000)
@@ -328,8 +328,8 @@ class TestPatrolUnaffectedByTheSwitch:
         assert fired.count() == 2
         assert fired.last().payload["re_announcement"] is True
 
-    def test_over_limit_task_is_swept_with_the_lane_off(self):
-        t = _tenant(arrival=False)
+    def test_over_limit_task_is_swept_with_maintenance_off(self):
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=10_000_000)
         task = Task.objects.create(
             tenant=t, customer=c, status="active", balance_snapshot_micros=0,
@@ -359,13 +359,13 @@ class TestOnToOffNeedsNoDrain:
         cache.clear()
 
     def test_counter_agrees_with_durable_truth_across_the_flip(self):
-        t = _tenant(arrival=True)
+        t = _tenant(maintenance=True)
         c = _customer(t, balance_micros=20_000_000)
         client, auth = Client(), _auth(t)
         assert _record(client, auth, c, billed=1_500_000).status_code == 200
         assert Door.balance(c.id) == 18_500_000
-        t.arrival_signals_enabled = False
-        t.save(update_fields=["arrival_signals_enabled"])
+        t.live_counter_maintenance_enabled = False
+        t.save(update_fields=["live_counter_maintenance_enabled"])
 
         # Durable truth catches up on the drawdown lane, which never switches
         # off. The counter written while ON must already agree with it — that
@@ -380,30 +380,30 @@ class TestOnToOffNeedsNoDrain:
 
 @pytest.mark.django_db
 class TestLaneOffWritesNoCounterOnTheRecordingPath:
-    """Preserves: a lane-off recording must not create or move a fast-lane
+    """Preserves: a maintenance-off recording must not create or move a live
     counter.
 
     The hazard is asymmetric, which is why both modes are pinned. For
-    postpaid the debit is an INCRBY, so a lane-off write would BIRTH the
+    postpaid the debit is an INCRBY, so a maintenance-off write would BIRTH the
     livespend key and quietly maintain a counter whose MAX-merge is switched
     off. For prepaid the key may already exist — left over from before an
-    ON→OFF flip — and a lane-off write must leave it exactly as it found it
+    ON→OFF flip — and a maintenance-off write must leave it exactly as it found it
     rather than debiting it."""
 
     def setup_method(self):
         cache.clear()
 
     def test_postpaid_recording_births_no_livespend(self):
-        t = _tenant(mode="postpaid", arrival=False)
+        t = _tenant(mode="postpaid", maintenance=False)
         c = _customer(t)
         assert _record(Client(), _auth(t), c, billed=5_000_000).status_code == 200
         assert Door.spend(c.id) is None
 
     def test_prepaid_recording_leaves_a_present_counter_untouched(self):
-        t = _tenant(arrival=False)
+        t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=20_000_000)
-        # A leftover counter from before the ON→OFF flip: a lane-off record
-        # must not debit it (that would be fast-lane maintenance).
+        # A leftover counter from before the ON→OFF flip: a maintenance-off record
+        # must not debit it (that would be real-time maintenance).
         Door.set_balance(c.id, 10_000_000)
         assert _record(Client(), _auth(t), c, billed=1_500_000).status_code == 200
         assert Door.balance(c.id) == 10_000_000
@@ -413,7 +413,8 @@ PLATFORM_ROOT = Path(__file__).resolve().parents[4]
 
 # The ONLY sanctioned attribute-access sites for the column outside the flags
 # module's getattr: the tenant-config endpoint (the write path + config echo).
-# Everything else must ask flags.arrival_signals_on — the single read point.
+# Everything else must ask flags.live_counter_maintenance_on — the single read
+# point.
 ALLOWED_ATTRIBUTE_SITES = {
     Path("api") / "v1" / "tenant_endpoints.py",
 }
@@ -429,15 +430,16 @@ def _attribute_sites():
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if (isinstance(node, ast.Attribute)
-                        and node.attr == "arrival_signals_enabled"):
+                        and node.attr == "live_counter_maintenance_enabled"):
                     hits.add(rel)
     return hits
 
 
 class TestFlagReadOnlyThroughFlagsModule:
     def test_no_attribute_access_outside_the_allowlist(self):
-        # Pin 9's doctrine leg, AST-enforced like ADR-001: `x.arrival_
-        # signals_enabled` anywhere outside the allowlist is a second read
-        # point waiting to diverge from `flags.arrival_signals_on` (which
-        # itself uses getattr — no Attribute node, deliberately).
+        # Pin 9's doctrine leg, AST-enforced like ADR-001:
+        # `x.live_counter_maintenance_enabled` anywhere outside the allowlist
+        # is a second read point waiting to diverge from
+        # `flags.live_counter_maintenance_on` (which itself uses getattr — no
+        # Attribute node, deliberately).
         assert _attribute_sites() == ALLOWED_ATTRIBUTE_SITES

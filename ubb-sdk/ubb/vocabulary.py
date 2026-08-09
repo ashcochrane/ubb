@@ -538,6 +538,31 @@ CUSTOMER_BILLING_MODE_VALUES = frozenset({
 # generator lost.
 
 
+# --- live_counter_maintenance_enabled ----------------------------------------
+#
+# free_text — Not vocabulary. Recorded here so that "is this a value set?" is
+# answered once, in data, rather than re-litigated by whoever next wants to add
+# an enum to it.
+#
+# The per-tenant switch selecting WHEN the live spend counters are maintained:
+# ON debits them synchronously on the recording path and checks the crossing
+# there, so the ack itself carries the stop verdict; OFF does no counter work
+# at record time and the durable drawdown detects instead, at its own latency.
+# It was named for the arrival-time ingest lane. Slice 1 (#192) deleted that
+# lane and kept the switch, because it never was the lane's switch — it also
+# gates both reconciles' counter legs and the upward repair, none of which is
+# arrival-shaped, and the conflation cost a whole ticket (#233) to unpick when
+# `repair.py` was read under the wrong meaning. Renamed by #246 while the
+# pre-live contract window was still open (ADR-0007 §5), because after platform
+# admission the same word costs a 90-day deprecation cycle.
+#
+# Declared in concepts/retired.yaml.
+#
+# No constants: this kind declares no values by construction. The section is
+# here so that fact is visible, rather than looking like a concept the
+# generator lost.
+
+
 # --- measure_status ----------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

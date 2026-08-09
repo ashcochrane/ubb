@@ -29,10 +29,10 @@ def reconcile_budget_counters():
 
 def _per_owner_reconcile(tenant):
     """One tenant's per-owner reconcile loop — the shared body of the hourly
-    beat and the arrival-signals toggle choreography (#46, §E). Drives the
-    MIN/MAX counter merges (fast lane on) and the durable-basis signal
-    catch-up + flag re-alignment (never off) for every billing owner. Never
-    raises; returns the flag-realignment count (#44 §C.2)."""
+    beat and the live-counter-maintenance toggle choreography (#46, §E).
+    Drives the MIN/MAX counter merges (maintenance on) and the durable-basis
+    signal catch-up + flag re-alignment (never off) for every billing owner.
+    Never raises; returns the flag-realignment count (#44 §C.2)."""
     from apps.platform.customers.models import Customer
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
@@ -89,9 +89,9 @@ def reconcile_live_ledgers():
     families and re-aligns the fast stop flag to durable truth; the
     tenant-level ``run_patrol`` leg then re-mints unannounced announcements,
     sweeps over-limit tasks into the kill flow, and records the outcome
-    counters for the ops surface. With arrival signals off (#46) the counter
-    merges skip inside the per-owner reconcile; every durable-lane leg here
-    runs identically in both postures."""
+    counters for the ops surface. With live-counter maintenance off (#46) the
+    counter merges skip inside the per-owner reconcile; every durable-lane leg
+    here runs identically in both postures."""
     from apps.platform.tenants.models import Tenant
     from apps.billing.gating import patrol
 
@@ -107,8 +107,8 @@ def reconcile_live_ledgers():
 @shared_task(queue="ubb_billing")
 def reconcile_tenant_live_counters(tenant_id):
     """Toggle choreography (#46, delivery spec §E): the immediate single-
-    tenant reconcile pass enqueued when ``arrival_signals_enabled`` flips
-    either way. OFF→ON re-seeds honest counters from durable truth within
+    tenant reconcile pass enqueued when ``live_counter_maintenance_enabled``
+    flips either way. OFF→ON re-seeds honest counters from durable truth within
     minutes (the hourly beat alone could leave up to an hour of dishonest
     counters); ON→OFF needs nothing counter-wise — nothing on the recording
     path was ever deferred, so the counters simply stop being written (slice 1

@@ -115,14 +115,14 @@ The launch stop-propagation contract is a triad
 The delivery fine print, in one place: signals are **at-least-once — late, never lost**; an
 unreachable endpoint gets the **current bottom line** on recovery, never a replay of
 intermediate flaps; the worst-case crash corner is **one patrol interval plus delivery
-retries** (§6); and the ≤5s signal p99 presumes **arrival signals ON** — OFF is the
+retries** (§6); and the ≤5s signal p99 presumes **live counter maintenance ON** — OFF is the
 documented durable-lane-latency posture (§8).
 
 Signal latency is not asserted in this document — it is **measured**. The locked launch SLOs
 (recorded in [the proof plan](https://github.com/ashcochrane/ubb/issues/15)): recording
 p99 ≤ 200ms and stop-signal p99 ≤ 5s, under a 1-hour storm at 500 events/s (~5× the first
 tenant's peak) with limit and floor crossings mid-storm — plus a hard pass/fail of **zero**
-events lost or mis-tagged. The ≤5s number presumes arrival signals ON (the default posture —
+events lost or mis-tagged. The ≤5s number presumes live counter maintenance ON (the default —
 see §8). The 200ms number was locked against the async accept route, which slice 1 deleted;
 it is carried over unchanged onto the one recording route, not re-derived — #15 owns any
 change to the value itself. Executing that proof (load, chaos drills, live Stripe money test — three legs) is
@@ -329,10 +329,10 @@ longer: it had both, and slice 1 deleted them, because since the MVP dropped tie
 (ADR-0003) the price is **exact** rather than estimated — per-unit and flat pricing compute
 one number, once, when the event is recorded — so there is nothing to estimate and nothing
 to reserve against. What survives them, and is (as far as vendor docs show) unique, is the
-arrival-time crossing detection itself. It is also an honest per-tenant choice
-(`Tenant.arrival_signals_enabled`, read only through `flags.arrival_signals_on` —
-*delivery pin 9, `test_switch_pins.py`*): arrival
-signals **ON** (the default) buys stop-signal latency that is independent of how deep the
+record-time crossing detection itself. It is also an honest per-tenant choice
+(`Tenant.live_counter_maintenance_enabled`, read only through
+`flags.live_counter_maintenance_on` — *delivery pin 9, `test_switch_pins.py`*): live counter
+maintenance **ON** (the default) buys stop-signal latency that is independent of how deep the
 drawdown queue is; **OFF** is the documented competitor-normal posture — detection at
 durable-lane latency, where the alarm slows down exactly when a runaway spender floods the
 queue. Same contract, same events, two latency profiles. The industry default is not a truer
