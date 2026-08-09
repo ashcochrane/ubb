@@ -185,7 +185,7 @@ can check them against a live database.
 |---|---|---|
 | `Wallet.balance_micros` == Σ ledger (it's a cached running total; the DB does not force them equal) | hourly auditor `reconcile_wallet_balances` logs any drift loud; the proof asserts exact equality as a hard pass/fail after the load storm (assertion recorded in [the proof plan](https://github.com/ashcochrane/ubb/issues/15); the proof stage itself is deferred to the testing phase) | `apps/billing/wallets/tasks.py:11` |
 | Full grant-conservation equation (spans parent + child rows, so not expressible as one CHECK) | same hourly auditor; randomized fuzz pin in CI | `apps/billing/wallets/tasks.py:11-45` |
-| Every settled usage event on a prepaid wallet has its debit, even if the async pipeline died mid-flight | `reconcile_usage_drawdowns` repairs exactly-once (see §7) | `apps/billing/wallets/tasks.py:105` |
+| Every recorded usage event on a prepaid wallet has its debit, even if outbox delivery died mid-flight | `reconcile_usage_drawdowns` repairs exactly-once (see §7) | `apps/billing/wallets/tasks.py:110` |
 | Every succeeded top-up charge is credited, even if our webhook never arrived | `reconcile_topups_with_stripe` repairs from Stripe's ledger (see §7) | `apps/billing/connectors/stripe/tasks.py:118` |
 | The fast-lane (Redis) balance tracks the durable one | `reconcile_prepaid` MIN-merges hourly + drift alarm; the upward auto-repair rides the same pass for a debit stranded by a crashed recording request (see §7) | `apps/billing/gating/services/live_ledger_service.py:530`, `apps/billing/gating/repair.py` |
 | A true crossing always eventually produces exactly one signal, and that signal always eventually reaches you | the durable signal ledger (`StopSignalState`, one row per owner per family) + atomic transition-and-emit through one winning-transition guard (`drive_stop`/`drive_clear`) + the hourly patrol | `apps/billing/gating/models.py:38`, `apps/billing/gating/services/stop_signal_service.py:79`, `apps/billing/gating/patrol.py:51` |
@@ -218,7 +218,7 @@ The key namespace, so you can audit the ledger yourself:
 
 | Key format | Written by | Where |
 |---|---|---|
-| `usage_deduction:{usage_event_id}` | live drawdown on settle, and the reconcile repair — deliberately the **same key**, so live and repair can race and one wins | `apps/billing/handlers.py:54`, `apps/billing/wallets/tasks.py:136` |
+| `usage_deduction:{usage_event_id}` | the live drawdown handler, and the reconcile repair — deliberately the **same key**, and literally the same line, so live and repair can race and one wins | `apps/billing/wallets/operations.py:478`, reached from `apps/billing/handlers.py:48` and `wallets/tasks.py:144` |
 | `auto_topup:{payment_intent_id}` | the charge task, the `payment_intent.succeeded` webhook, and the Stripe reconcile — three paths, one key, one credit | `apps/billing/topups/services.py:76` |
 | `topup:{checkout_session_id}` | Stripe Checkout top-up webhook | `apps/billing/connectors/stripe/webhooks.py:95` |
 | `expiry:{grant_id}` | grant expiry | `apps/billing/wallets/grants.py:94` |
@@ -282,15 +282,26 @@ its own.
 | Job | Schedule | Repairs / detects | Exactly-once & windows |
 |---|---|---|---|
 | `sweep_outbox` | every 1 min | re-dispatches outbox events due for retry; reclaims rows stuck `processing` > 5 min; alerts on dead-letter | backoff 30s → 2m → 10m → 30m → 2h, max 5 attempts (`apps/platform/events/tasks.py:23,85`); per-handler dedup via `uq_checkpoint_event_handler`. The post-commit dispatch "doorbell" carries a broker-down guard — the row is the queue, the doorbell is a latency optimization *(delivery pin 12, `api/v1/tests/test_delivery_pins.py`)* |
-| `reconcile_usage_drawdowns` | hourly at :40 | any settled usage event on a prepaid wallet whose debit never landed (e.g. outbox dead-lettered) — repairs the debit | anti-join on `WalletTransaction.usage_event_id` + key `usage_deduction:{id}`; **6h grace, deliberately > the ~2h43m outbox retry horizon** so live delivery always gets to finish first; 7-day lookback; repair-rate spike alarm (`apps/billing/wallets/tasks.py:105-171`) |
+| `reconcile_usage_drawdowns` | hourly at :40 | any recorded usage event on a prepaid wallet whose debit never landed (e.g. outbox dead-lettered) — repairs the debit | anti-join on `WalletTransaction.usage_event_id` + key `usage_deduction:{id}`; **6h grace, deliberately > the ~2h43m outbox retry horizon** so live delivery always gets to finish first; 7-day lookback; repair-rate spike alarm (`apps/billing/wallets/tasks.py:110-158`) |
 | `reconcile_topups_with_stripe` | hourly at :20 | any *succeeded* Stripe PaymentIntent with no local wallet credit — credits it from Stripe's ledger (Stripe is the source of truth for money movement); secondary amount/refund audit | key `auto_topup:{pi_id}`; **4-day lookback, > Stripe's ~3-day webhook retry horizon**; 48h audit window (`apps/billing/connectors/stripe/tasks.py:118-208`) |
 | `reconcile_wallet_balances` | hourly at :00 | **auditor, not repairer**: checks `balance == Σ ledger` and grant conservation on every wallet; any drift logs loud | detect-and-alarm by design — an automated "fix" would hide the bug that caused the drift (`apps/billing/wallets/tasks.py:11-96`) |
 | `reconcile_live_ledgers` → `reconcile_prepaid` | hourly at :25 | MIN-merges the fast-lane (Redis) prepaid balance toward the durable wallet balance; alarms on drift spikes; both **clears** stale stop flags for recovered customers and **sets** missed ones — the crossed-while-blind-then-went-quiet hole is closed (decision: [#11](https://github.com/ashcochrane/ubb/issues/11)) | conservative merge direction — the fast lane may only be *more* cautious than durable truth, never less (`apps/billing/gating/services/live_ledger_service.py:530`); *(pin 5, `test_stop_resume_pins.py`)* |
 | the hourly patrol | rides the :25 pass | the signal suite's backstop, traffic-independent: drives missed stop/soft-floor transitions (both directions), re-aligns the fast `ubb:stop` flag to durable truth, **re-mints a fresh current-state announcement** for any signal that never reached you, sweeps active tasks sitting at-or-past their provider-cost limit and kills them idempotently | `apps/billing/gating/patrol.py:51`; announcement bookkeeping via `announce_outbox_id` stamps, re-mints marked `re_announcement: true`, at most one in-flight announcement per signal row; `PatrolOutcome` counters surface as `patrol_*_7d` through `apps.billing.queries.get_patrol_stats` *(delivery pins 1–6, `test_patrol_pins.py`)* |
 | live-balance upward repair | rides the :25 pass | a crashed **synchronous** recording request leaves the live counter wedged low — the debit is issued after the event row's savepoint but inside the still-open recording transaction, so a failure before the commit rolls the row back and leaves the debit standing (Ruling A2, [#233](https://github.com/ashcochrane/ubb/issues/233), pinned by `api/v1/tests/test_recording_drift_pins.py`). The stingy direction, false stops. Expected = the durable balance; a deficit must persist across **two consecutive hourly passes** and repairs by **min(first, second)** as a relative increment, never an absolute set; every repair audited (`LiveBalanceRepair`), repair-rate spike alerts, and a repair that lifts a wedged stop fires `stop.cleared` through the same guard as every other clearing | `apps/billing/gating/repair.py`, `apps/billing/gating/models.py:130`; principle, verbatim ([#12](https://github.com/ashcochrane/ubb/issues/12)): "we CANNOT have a wallet balance that does not show reality" *(delivery pins 7–8/10–11, `test_repair_pins.py`)* |
 | `expire_credit_grants` | hourly at :10 | expires past-due credit grants | key `expiry:{grant_id}`; clamped so expiry never takes back spent credit (`apps/billing/wallets/tasks.py:178-256`) |
-| ~~`settle_raw_events`~~ | — | **Deleted in slice 1**, with the staging table it drained and the settle path it called. Its producer had already gone, so it swept a table nothing could add to. | Exactly-once never depended on it: `uq_usage_event_idempotency_v2` and the `usage_deduction:{id}` key are where it was enforced, and both are untouched. Every scheduled entry that remains is checked against real, importable code by `apps/platform/tests/test_beat_schedule.py`. |
-| ~~`monitor_ingest_health`~~ | — | **Deleted in slice 1**, with the ingest-health module it read and the ops route beside it. It alerted on lag/queue-depth/failed-count for a lane that no longer accepts anything. | The known weakness it carried — it was itself a Celery task, in-band with the failure it reported — is retired with it. If an ingest-style health probe is ever wanted again, [#11](https://github.com/ashcochrane/ubb/issues/11)'s decided shape (pull-based, Redis probe, watched by an outside poller) is the one to build, not this. |
+
+Every `CELERY_BEAT_SCHEDULE` entry above is checked against real, importable code by
+`apps/platform/tests/test_beat_schedule.py` — a schedule naming a task that no longer resolves is a
+red build, not a job that silently stops running. (The patrol and the upward repair are not beat
+entries of their own — both ride the :25 pass.)
+
+**Two jobs left this table in slice 1**, with the two-step intake path they served: the sweep that
+drained the staging table, and the health monitor that watched the queue behind it. Exactly-once
+never depended on either — `uq_usage_event_idempotency_v2` and the `usage_deduction:{id}` key are
+where it is enforced, and both are untouched. The monitor also carried a known weakness, retired
+with it: it was itself a Celery task, in-band with the failure it reported. If a health probe of
+that kind is ever wanted again, [#11](https://github.com/ashcochrane/ubb/issues/11)'s decided shape
+— pull-based, a Redis probe watched by an outside poller — is the one to build.
 
 Two properties worth stating explicitly, because they're where reconcile designs usually go
 wrong:
@@ -313,14 +324,16 @@ alerts against an eventually-consistent balance, overrun tolerated and settled f
 afterwards, stopping delegated to the tenant's app.** Metronome documents 3-minute threshold
 evaluation and 5-minute webhook delivery; Orb caps the *invoice* rather than stopping usage;
 OpenAI's own prepaid platform bills overrun as a negative balance. No surveyed vendor
-documents arrival-time cost estimation or balance holds. UBB's arrival-time crossing
-detection is (as far as vendor docs show) unique — and since the MVP dropped tiered pricing
-(ADR-0003), the price is **exact**, not an estimate: per-unit and flat pricing compute one
-number, once, when the event is recorded. It is also an honest per-tenant choice
+documents arrival-time cost estimation or balance reservations — and neither does UBB any
+longer: it had both, and slice 1 deleted them, because since the MVP dropped tiered pricing
+(ADR-0003) the price is **exact** rather than estimated — per-unit and flat pricing compute
+one number, once, when the event is recorded — so there is nothing to estimate and nothing
+to reserve against. What survives them, and is (as far as vendor docs show) unique, is the
+arrival-time crossing detection itself. It is also an honest per-tenant choice
 (`Tenant.arrival_signals_enabled`, read only through `flags.arrival_signals_on` —
 *delivery pin 9, `test_switch_pins.py`*): arrival
-signals **ON** (the default) buys stop-signal latency that is independent of the async
-pipeline's health; **OFF** is the documented competitor-normal posture — detection at
+signals **ON** (the default) buys stop-signal latency that is independent of how deep the
+drawdown queue is; **OFF** is the documented competitor-normal posture — detection at
 durable-lane latency, where the alarm slows down exactly when a runaway spender floods the
 queue. Same contract, same events, two latency profiles. The industry default is not a truer
 balance; it is slower signals against a staler one.

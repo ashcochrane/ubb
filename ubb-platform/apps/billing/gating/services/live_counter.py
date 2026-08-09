@@ -219,10 +219,10 @@ class LiveCounter:
         remains the backstop).
 
         Arrival signals OFF (#46, §E — enforcing, switch off): no counter
-        debit, no crossing check — the fast lane is off as one unit. Returns
-        the bare stop verdict READ from the durable-maintained flag so the
-        ack carries the identical fields in both postures; detection happens
-        at settle (the durable drawdown lane)."""
+        debit, no crossing check — real-time counter maintenance is off
+        (#149 §6.5). Returns the bare stop verdict READ from the
+        durable-maintained flag so the ack carries the identical fields in
+        both postures; detection happens on the durable drawdown lane."""
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
         if not arrival_signals_on(tenant):
@@ -655,7 +655,7 @@ class LiveCounter:
         from the reconciled position, and a stale one is cleared.
 
         Arrival signals OFF (#46, §E): the COUNTER jobs (drift read,
-        MIN-merge/seed) are part of the fast lane and skip; the signal
+        MIN-merge/seed) are real-time counter maintenance and skip; the signal
         catch-up + flag re-alignment below are the durable lane — they never
         switch off, and run on the durable balance as their basis."""
         if not enforcing(tenant):
@@ -724,8 +724,9 @@ class LiveCounter:
         prepaid-only.
 
         Arrival signals OFF (#46, §E): the counter jobs (drift read,
-        MAX-merge) skip with the fast lane; the durable-basis signal
-        catch-up + flag re-alignment below never switch off."""
+        MAX-merge) are real-time counter maintenance and skip; the
+        durable-basis signal catch-up + flag re-alignment below never switch
+        off."""
         if not enforcing(tenant):
             return None
         lane_on = arrival_signals_on(tenant)

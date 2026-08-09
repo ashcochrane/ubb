@@ -1,9 +1,12 @@
 """#46 acceptance pins — the arrival-signals switch (delivery spec §E).
 
 One switch, two honest postures: ``Tenant.arrival_signals_enabled`` (default
-ON, read only through ``flags.arrival_signals_on``) governs the arrival-time
-fast lane as ONE unit — the live counters, arrival-moment floor detection,
-and the upward repair. OFF is the honest degraded posture: recording writes
+ON, read only through ``flags.arrival_signals_on``) governs real-time counter
+maintenance — the synchronous live-counter write and its crossing check on the
+recording path, the reconciles' counter jobs, and the upward repair. It once
+governed a whole arrival-time lane as ONE unit; slice 1 deleted that lane, so
+it now selects WHEN the counters are maintained rather than which route an
+event takes in (#149 §6.5). OFF is the honest degraded posture: recording writes
 no live-counter Redis keys and detection happens on the durable drawdown
 lane, at its latency. That durable lane — the signal ledger, the patrol
 jobs, webhook delivery, ack verdicts — never switches off, and maintains the
@@ -105,13 +108,13 @@ class TestDefaultAndAccessor:
 
 
 @pytest.mark.django_db
-class TestPin9AcceptWritesNoRedisKeys:
-    """Switch OFF: the fast lane is off as one unit at record time — no live
-    counter, no arrival crossing detection — in both billing modes.
+class TestPin9RecordingWritesNoRedisKeys:
+    """Switch OFF: real-time counter maintenance is off at record time — no
+    live counter, no crossing detection — in both billing modes.
 
-    Preserves: with the lane off, recording writes no live-counter Redis key,
+    Preserves: with the switch off, recording writes no live-counter Redis key,
     and the event still lands and bills. (Idempotency SETNX keys are dedup
-    plumbing, not part of the arrival-signals lane, and are out of scope.)"""
+    plumbing, not counter maintenance, and are out of scope.)"""
 
     def setup_method(self):
         cache.clear()

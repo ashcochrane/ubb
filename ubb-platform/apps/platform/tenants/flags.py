@@ -33,14 +33,18 @@ def enforcing(tenant) -> bool:
 
 
 def arrival_signals_on(tenant) -> bool:
-    """Is the arrival-time fast lane on (#46, delivery spec §E)? True only
-    when the tenant is enforcing AND has not opted out of arrival signals —
-    the flag is a behavior posture within enforcing, meaningless outside it.
+    """Is real-time counter maintenance on (#46, delivery spec §E; NARROWED by
+    #149 §6.5)? True only when the tenant is enforcing AND has not opted out of
+    arrival signals — the flag is a behavior posture within enforcing,
+    meaningless outside it.
 
-    Governs the whole fast lane as ONE unit: the recording-path live debit +
-    crossing check (LiveCounter.debit), the reconcile's counter jobs
-    (seed/MIN-merge) and the upward repair. The durable lane — the drawdown
-    handler's detection, the signal ledger, the patrol, webhook delivery, ack
+    Governs the recording-path live debit + crossing check
+    (LiveCounter.debit), the reconcile's counter jobs (seed/MIN-merge) and the
+    upward repair. It used to switch a whole arrival-time fast lane off as one
+    unit; slice 1 deleted that lane, so this selects WHEN the counters are
+    maintained, never which route an event takes in. #246 owns the rename that
+    follows. The durable lane — the drawdown handler's detection, the signal
+    ledger, the patrol, webhook delivery, ack
     verdicts read from the durable-maintained stop flag — hangs off
     ``enforcing`` and NEVER reads this. Defaults True on a
     partially-constructed tenant (the field's own default; posture, not

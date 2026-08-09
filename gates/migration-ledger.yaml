@@ -580,17 +580,6 @@ entries:
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
 
-  - id: g7-backend-metering_async
-    gate: G7
-    site: backend::metering_async
-    expected: tenant_product
-    found: 1 files
-    owner_slice: slice_1
-    reason: >-
-      The fast lane's product flag. #149 established the lane had no
-      successor and slice 1 removes it in full, so the flag goes with
-      the lane rather than being renamed to anything.
-
   - id: g7-backend-metric
     gate: G7
     site: backend::metric
@@ -1022,17 +1011,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-console-metering_async
-    gate: G7
-    site: console::metering_async
-    expected: tenant_product
-    found: 1 files
-    owner_slice: slice_1
-    reason: >-
-      The fast lane's product flag. #149 established the lane had no
-      successor and slice 1 removes it in full, so the flag goes with
-      the lane rather than being renamed to anything.
 
   - id: g7-console-metric
     gate: G7
@@ -1882,17 +1860,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-repo-metering_async
-    gate: G7
-    site: repo::metering_async
-    expected: tenant_product
-    found: 1 files
-    owner_slice: slice_1
-    reason: >-
-      The fast lane's product flag. #149 established the lane had no
-      successor and slice 1 removes it in full, so the flag goes with
-      the lane rather than being renamed to anything.
 
   - id: g7-repo-tags
     gate: G7

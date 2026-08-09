@@ -31,9 +31,9 @@ queries take an explicit `basis`.
 The immutable, system-owned array a usage event carries when it landed past a stop — one entry per
 limit (`task_limit` / `subtask_limit` / `customer_wide_stop` / `suspended` / `task_not_active`),
 each naming the scope, the trip time, the stop episode (customer scope), and whether the event
-*tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record (sync) /
-settle (async) inside the recording transaction; never from tenant tags or metadata. Soft-floor
-crossings never tag events. (`apps/metering/usage/services/stop_context.py`)
+*tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record, inside the
+recording transaction; never from tenant tags or metadata. Soft-floor crossings never tag events.
+(`apps/metering/usage/services/stop_context.py`)
 _Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row;
 a value's meaning can be renamed later (`customer_floor` → `customer_wide_stop`,
 billing-surface-correctness task 1) but the historical row itself never changes, so a reader keyed
@@ -157,8 +157,8 @@ billing-owner billed total, backfill markers) — never returns ORM objects.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
 **usage.recorded**:
-The event emitted on every recorded/settled usage event — the backbone consumed by billing
-drawdown, subscriptions economics, and referrals rewards.
+The event emitted on every recorded usage event — the backbone consumed by billing drawdown,
+subscriptions economics, and referrals rewards.
 
 **usage.refunded**:
 Emitted after a refund record is created.

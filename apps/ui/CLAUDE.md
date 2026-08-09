@@ -21,8 +21,9 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
 ## The contract, in one box
 
 - **Bootstrap**: `GET /tenant/config` → `billing_mode` (`meter_only|prepaid|postpaid`) +
-  `products[]` (`metering|billing|subscriptions|referrals|metering_async`) gate nav and pages
-  (`useTenantConfig`, `useHasProduct`, `ProductGate`). There is no console `/me` endpoint.
+  `products[]` (`metering|billing|referrals` — the set the contract declares, held by reference
+  from `src/lib/vocabulary.ts`) gate nav and pages (`useTenantConfig`, `useHasProduct`,
+  `ProductGate`). There is no console `/me` endpoint.
 - **`/api/v1/me/**` is the END-CUSTOMER widget portal** (different auth) — never call it here.
 - **Money**: integer micros everywhere (1e6 = 1 unit); `markup_percentage_micros` is micros of a
   PERCENT. Use `src/lib/format.ts`; convert inputs with `Math.round(x * 1e6)`; no float math.
@@ -57,8 +58,8 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates
   and fails on any diff (`python -m tools.vocabulary --write` at the git root). An `open` concept's
   type admits any string on purpose, so don't write an exhaustive `switch` over one.
-- **Verdict bodies**: HTTP 200 ≠ success for pre-check (`allowed:false`) and usage ingest
-  (`stop`/per-item `accepted`) — branch on the body.
+- **Verdict bodies**: HTTP 200 ≠ success for pre-check (`allowed:false`) or usage recording (`stop`
+  on `POST /metering/usage`, per-item `accepted` on its batch sibling) — branch on the body.
 - **Identity**: path `customer_id` = UBB UUID; `credit`/`debit` bodies + platform routes use
   `external_id`.
 - Regen after backend changes: `pnpm api:sync` (copies `../../openapi/v1.json` + regenerates types).
@@ -83,7 +84,7 @@ imports; no client calls from components (go through the feature's queries.ts); 
 
 ```
 Overview /  ·  Events /events  ·  Customers /customers
-REVENUE: Pricing /pricing · Billing /billing [billing] · Subscriptions /subscriptions [subscriptions] · Referrals /referrals [referrals]
+REVENUE: Pricing /pricing · Billing /billing [billing] · Plans /plans [billing] · Referrals /referrals [referrals]
 PLATFORM: Webhooks /webhooks · Developers /developers · Settings /settings (+ /team /products /billing /audit)
 ```
 Bracketed = product-gated (hidden from nav; direct URL renders `ProductGate` explanation).
