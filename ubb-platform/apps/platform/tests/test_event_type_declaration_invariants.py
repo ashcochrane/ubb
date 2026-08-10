@@ -1,4 +1,4 @@
-"""What the declaration must never grow (#262, extended by #263 and #264).
+"""What the declaration must never grow (#262, extended by #263, #264 and #266).
 
 Four of the six rules below are **absences**, and three of those are an absence
 a merged decision once required: the grouping axes were on the cost key, the
@@ -23,7 +23,12 @@ registry, so they are classified here.
                               other half of the same ruling: a quantity has a
                               unit, a reported supplier cost has a currency, and
                               the second is a SIBLING of the quantities rather
-                              than one of them.
+                              than one of them. On that sibling it is sharper
+                              still — the mapping may NAME money, because it has
+                              to say what currency and what representation, and
+                              it may never hold a number: one stored there is a
+                              fixed per-call supplier cost, which is the source
+                              kind a reported cost rejects.
 ``one-response-shape``        One active response shape per Event Type, and one
                               model that declares one. The named extension for a
                               second is a sparse mapping profile BENEATH the
@@ -80,6 +85,7 @@ from apps.platform.event_types.models import (
     Measurement,
     MeasurementConcept,
     Provider,
+    ReportedCostMapping,
 )
 from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 # One definition of "every model a UBB app declares", and one definition of what
@@ -111,7 +117,22 @@ CATALOGUE_APP = "apps.platform.event_types"
 #: tuple is "what these two rules are stated about" and not "what a declaration
 #: is made of" — ``DECLARATION_PARTS`` below is the second of those and is
 #: deliberately not the same list.
-DECLARATION_MODELS = (EventType, Measurement, MeasurementConcept)
+DECLARATION_MODELS = (EventType, Measurement, MeasurementConcept,
+                      ReportedCostMapping)
+
+#: The one record that may NAME money, and the exact fields by which it does.
+#: A reported-cost mapping says where a supplier's number is READ FROM and what
+#: it means when it gets there; it never holds the number. Naming that here
+#: rather than leaving the record out of ``DECLARATION_MODELS`` is what keeps
+#: the rule pointed at it — the TYPE half below is not excused for anything, so
+#: a ``DecimalField`` on the mapping is still refused, and a fixed per-call
+#: supplier cost is exactly what arrives as one (#266). That refusal is the
+#: structural form of *"a constant is not a reported cost"*: the validator can
+#: be gone round, and a column cannot.
+MONEY_NAMING_ALLOWED = {
+    "event_types.ReportedCostMapping": frozenset({
+        "amount_representation", "currency", "currency_path"}),
+}
 
 #: Who may point at the opt-in grouping. Exactly the declared quantity: the
 #: grouping exists to say two quantities mean the same thing, and any other
@@ -144,6 +165,7 @@ GROUPING_IDENTIFIER_NAMES = frozenset({
 #: a line somebody writes rather than a rule that quietly stopped applying.
 DECLARATION_PARTS = {
     "event_types.Measurement": frozenset({"event_type"}),
+    "event_types.ReportedCostMapping": frozenset({"event_type"}),
 }
 
 RULE_GROUPING = "no-grouping-axis"
@@ -211,10 +233,22 @@ def classify_grouping_axis(model, field):
 
 
 def classify_cost_amount(model, field):
-    """``no-cost-amount`` — a declaration is not a price list."""
+    """``no-cost-amount`` — a declaration is not a price list.
+
+    The allowance is by NAME and never by type. A reported-cost mapping has to
+    say what currency a supplier's number is in and what it represents, so it
+    names money three times and holds none — and the moment it holds one, that
+    number is a fixed per-call supplier cost, which is a configured cost rule
+    and the one source kind a reported cost outright rejects (#266). So a
+    ``DecimalField`` arriving there is refused whatever it is called, which is
+    the version of that ruling a validator cannot be gone round on.
+    """
     named_money = sorted(field_words(field.name) & MONETARY_FIELD_WORDS)
     typed_money = field.get_internal_type() in MONETARY_FIELD_TYPES
     if not named_money and not typed_money:
+        return None
+    if not typed_money and field.name in MONEY_NAMING_ALLOWED.get(
+            model_label(model), frozenset()):
         return None
     why = f"is named for money ({', '.join(named_money)})" if named_money \
         else f"is a {field.get_internal_type()}"
@@ -227,7 +261,8 @@ def classify_cost_amount(model, field):
         f"be a second answer to what a call cost, with no rule for which wins. "
         f"A Measurement is a quantity with a unit; a reported supplier cost is "
         f"money with a currency, and it is a SIBLING of the quantities rather "
-        f"than one of them (#263)",
+        f"than one of them (#263) — one that says where the supplier's number "
+        f"is read from and never holds it (#266)",
     )
 
 
@@ -419,6 +454,7 @@ def test_the_walk_actually_saw_the_declaration():
     for expected in ("event_types.EventType", "event_types.Provider",
                      "event_types.EventCategory", "event_types.Measurement",
                      "event_types.MeasurementConcept",
+                     "event_types.ReportedCostMapping",
                      "grouping_fields.GroupingField", "usage.UsageEvent"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
     assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
@@ -426,6 +462,13 @@ def test_the_walk_actually_saw_the_declaration():
         "the Event Type's own fields were not read")
     assert len(_local_fields(Measurement)) >= 9, (
         "the Measurement's own fields were not read")
+    # The mapping's three money-naming fields, by name. The allowance above is
+    # spelled out, so a walk that missed the record would report a clean sweep
+    # over the one model the allowance is for — and a field renamed out from
+    # under the allowance would then be silently unguarded rather than flagged.
+    assert (MONEY_NAMING_ALLOWED["event_types.ReportedCostMapping"]
+            <= {field.name for field in _local_fields(ReportedCostMapping)}), (
+        "the money-naming allowance names a field the mapping does not have")
     # The grouping's own relation, read from the far side. The rule that
     # matters most about this record is about who POINTS at it, and a walk that
     # could not see the one legitimate holder could not tell it from the
@@ -611,6 +654,86 @@ def test_positive_control_a_unit_is_not_a_currency():
 
     assert [classify_cost_amount(Measurement, field)
             for field in _local_fields(Measurement)] == [None] * 3
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_stored_amount_on_the_mapping_is_flagged():
+    """A constant supplier cost, arriving as a column (#266 §D3).
+
+    The mapping is allowed to NAME money and this is what that allowance must
+    not cover. A number stored here is a fixed per-call supplier cost, which is
+    a configured cost rule rather than a number that arrives with the event —
+    the one source kind a reported cost rejects outright. The validator says so
+    and can be gone round; the absence of the column cannot.
+    """
+    class ReportedCostMapping(models.Model):
+        amount_micros = models.BigIntegerField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        ReportedCostMapping,
+        ReportedCostMapping._meta.get_field("amount_micros"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_mapping_allowance_does_not_cover_a_decimal():
+    """The allowance is by name, so the evasion is to reuse an allowed name.
+
+    ``amount_representation`` is a declared token and is permitted. The same
+    word carrying a ``DecimalField`` is a supplier cost wearing the allowance's
+    clothes, and the type check is why that does not work.
+    """
+    class ReportedCostMapping(models.Model):
+        amount_representation = models.DecimalField(max_digits=12,
+                                                    decimal_places=6)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        ReportedCostMapping,
+        ReportedCostMapping._meta.get_field("amount_representation"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_mapping_may_say_what_the_number_means():
+    """The control the allowance exists for, and the one that keeps the rule
+    honest: without it the mapping could not be built at all, and a rule that
+    makes its own subject unbuildable gets weakened until it stops."""
+    class ReportedCostMapping(models.Model):
+        amount_representation = models.CharField(max_length=32)
+        currency = models.CharField(max_length=3, blank=True, default="")
+        currency_path = models.JSONField(default=list, blank=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert [classify_cost_amount(ReportedCostMapping, field)
+            for field in _local_fields(ReportedCostMapping)] == [None] * 4
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_allowance_is_the_mappings_alone():
+    """Keyed on the model label, so the Event Type cannot borrow it.
+
+    Somewhere to pin a currency looks equally reasonable on the record above,
+    and it was one of the two placements the spec sanctioned. One had to be
+    chosen — two would be two encodings of one fact — and this is the choice
+    stated where a second one would go red.
+    """
+    class EventType(models.Model):
+        currency = models.CharField(max_length=3, blank=True, default="")
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(EventType,
+                               EventType._meta.get_field("currency"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
 
 
 @isolate_apps(CATALOGUE_APP)
