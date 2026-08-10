@@ -17,6 +17,7 @@ Two claims, and each is a *direction* rather than a behaviour:
   conversion available and the silent reinterpretation is the worst outcome on
   the table.
 """
+import time
 from decimal import Decimal
 
 import pytest
@@ -24,6 +25,7 @@ import pytest
 from apps.platform.event_types.reported_cost import (
     AmountNotRepresentable,
     CurrencyDisagreement,
+    MICROS_LIMIT,
     pin_currency,
     to_micros,
 )
@@ -88,17 +90,15 @@ class TestWhatTheNumberMeans:
                          AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
                          USD) == -500_000
 
-    def test_an_exact_conversion_survives_absurd_length(self):
-        """Thirty-four significant digits, exactly representable.
+    def test_the_widest_holdable_amount_converts_exactly(self):
+        """Nineteen digits of micros, to the last one.
 
-        Decimal's default context carries twenty-eight, so an implementation
-        that multiplied through the ambient context would round this and then
-        find the rounded product perfectly integral — a wrong answer arriving
-        through the very check meant to catch wrong answers.
+        The largest amount UBB has anywhere to put, arriving as a decimal. An
+        implementation that lost the tail would lose it here.
         """
-        amount = Decimal("1234567890123456789012345678.901234")
-        assert to_micros(amount, AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
-                         USD) == 1234567890123456789012345678901234
+        assert to_micros(Decimal("9223372036854.775807"),
+                         AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
+                         USD) == MICROS_LIMIT
 
 
 class TestOverPrecisionIsRefusedNeverRounded:
@@ -129,6 +129,21 @@ class TestOverPrecisionIsRefusedNeverRounded:
         with pytest.raises(AmountNotRepresentable):
             to_micros(Decimal("1E-9"),
                       AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL, USD)
+
+    def test_a_thirty_second_significant_digit_is_still_precision(self):
+        """The refusal that a context-rounded implementation would MISS.
+
+        Decimal's default context carries twenty-eight significant digits, so
+        an implementation that reached the answer through any Decimal operation
+        — a multiplication, or a `normalize()` to strip trailing zeros — would
+        shorten this to `1.000000000000000000000000000`, find it perfectly
+        integral, and accept a number that is not a whole micro. Every wrong
+        answer of that shape looks exactly like a right one, which is why the
+        arithmetic here is on the digits and never on the Decimal.
+        """
+        with pytest.raises(AmountNotRepresentable):
+            to_micros(Decimal("1.0000000000000000000000000000001"),
+                      AMOUNT_REPRESENTATION_MICROS, USD)
 
     def test_the_refusal_spells_the_amount_out(self):
         """`1E-9` is what `str` gives for a small Decimal, and a tenant reading
@@ -171,6 +186,49 @@ class TestWhatIsNotANumber:
         with pytest.raises(AmountNotRepresentable):
             to_micros(Decimal("Infinity"), AMOUNT_REPRESENTATION_MICROS, USD)
 
+    def test_an_absurd_exponent_is_refused_without_computing_it(self):
+        """A finite, legally-constructed Decimal that would hang the process.
+
+        `Decimal` admits an exponent up to 999,999,999 and a supplier's JSON can
+        carry one. Every other refusal here happens after the arithmetic; this
+        one has to happen before it, because `10 ** 999999999` is not a slow
+        refusal, it is a process that stops answering. Timed, so a regression
+        that removes the bound fails rather than hangs the suite.
+        """
+        started = time.monotonic()
+        for absurd in (Decimal("1E+999999999"), Decimal("1E-999999999")):
+            with pytest.raises(AmountNotRepresentable):
+                to_micros(absurd, AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL, USD)
+        assert time.monotonic() - started < 1.0
+
+    def test_padding_past_the_exponent_bound_is_still_not_precision(self):
+        """The bound is on the exponent, so the zero-stripping has to come
+        first: `1.000...0` with fifty decimal places is one, and refusing it
+        would be the bound deciding a question about magnitude on the strength
+        of how a supplier chose to pad."""
+        assert to_micros(Decimal("1." + "0" * 50),
+                         AMOUNT_REPRESENTATION_MICROS, USD) == 1
+
+    def test_an_amount_too_large_for_a_money_column_is_refused(self):
+        """Exact and unstorable is still unstorable.
+
+        Every money column here is a signed 64-bit integer. An amount past that
+        converts perfectly and then has nowhere to go, and the refusal that
+        names the supplier's own number is more use than the one the database
+        would eventually raise.
+        """
+        with pytest.raises(AmountNotRepresentable) as refused:
+            to_micros(Decimal("10_000_000_000_000".replace("_", "")),
+                      AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL, USD)
+
+        assert str(MICROS_LIMIT) in str(refused.value)
+
+    def test_the_largest_holdable_amount_still_converts(self):
+        """The boundary from the other side, without which the rule above
+        could be "any large amount is refused"."""
+        assert to_micros(MICROS_LIMIT, AMOUNT_REPRESENTATION_MICROS,
+                         USD) == MICROS_LIMIT
+
     def test_a_representation_ubb_does_not_own_is_refused(self):
         with pytest.raises(AmountNotRepresentable) as refused:
             to_micros(1, "hundredths_of_a_farthing", USD)
@@ -209,6 +267,29 @@ class TestTheCurrencyIsPinnedAndDisagreementFails:
 
         message = str(refused.value)
         assert "eur" in message and USD in message
+
+    def test_the_declared_code_is_folded_too_and_not_only_the_supplier_s(self):
+        """A currency compared against itself is not a disagreement.
+
+        Folding one side and not the other reports the loudest failure this
+        module has about two spellings of one code — and the declared side is
+        the one no database constraint bounds, because which currencies UBB
+        holds is a table that grows.
+        """
+        assert pin_currency("USD", "usd") == "usd"
+        assert pin_currency(" Usd ", None) == "usd"
+
+    def test_a_declared_currency_ubb_cannot_hold_is_refused_too(self):
+        """The fixed form gets the same check as the path form.
+
+        Its validator refuses one at declaration time, but that runs under
+        `full_clean()` — a courtesy to the ordinary path (ADR-0007 §2), which a
+        `create()` or an `update()` goes round. This is the side that cannot be
+        gone round, and leaving it out would have made the path form the only
+        one actually checked.
+        """
+        with pytest.raises(UnknownCurrency):
+            pin_currency("xyz", None)
 
     def test_a_supplier_returned_currency_alone_is_the_pinned_one(self):
         """The second sanctioned way to pin it: no fixed code, a structured path

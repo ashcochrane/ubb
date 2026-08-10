@@ -17,10 +17,11 @@ taken it off.
                                 Type mean two different things, which is the
                                 hand-written multiplier arriving by the front
                                 door.
-``no-server-side-conversion``   Nothing behavioural imports the conversion.
-                                UBB never repeats it: the amount it receives
-                                has already been converted, and a second
-                                conversion is a second answer.
+``no-server-side-conversion``   No module that decides money — nor the layer
+                                the request arrives at — imports the
+                                conversion. UBB never repeats it: the amount it
+                                receives has already been converted, and a
+                                second conversion is a second answer.
 ==============================  ===============================================
 
 **Why the wire is the subject and not the model.** The mapping's own shape —
@@ -110,6 +111,18 @@ REPRESENTATION_WORD = "representation"
 CONVERSION_MODULE = "apps.platform.event_types.reported_cost"
 CONVERSION_LEAF = "reported_cost"
 CONVERSION_FUNCTIONS = ("to_micros", "pin_currency")
+
+#: Where a server-side conversion would actually be written. The modules that
+#: decide money, shared with the gate next door — plus **the composition
+#: layer**, which that gate deliberately leaves out and this one cannot.
+#:
+#: ``BEHAVIOURAL_SURFACES`` answers "who may READ the catalogue", and `api/v1`
+#: legitimately may: it is the layer ADR-001 allows to import any product. But
+#: the request arrives THERE, so it is the first place a raw supplier number
+#: could be converted on the way in, and a rule about repeating the conversion
+#: that could not see the request handler would be a rule about everywhere the
+#: number has already passed through.
+CONVERTING_SURFACES = (*BEHAVIOURAL_SURFACES, "api")
 
 
 def field_words(name):
@@ -274,20 +287,23 @@ def _dotted_name(node):
 
 
 def _walk_sources():
-    hits, scanned = [], []
-    behavioural = {label for _, label in
-                   _iter_production_sources(BEHAVIOURAL_SURFACES)}
-    for path, label in _iter_production_sources(("apps", "core", "api")):
-        scanned.append(label)
-        if label not in behavioural:
-            continue
+    """Every module this rule is stated about, PARSED — and only those.
+
+    ``read`` counts the trees actually parsed rather than the paths considered,
+    which is the difference between a vacuity guard and a comforting number: a
+    walk whose two label sets had drifted apart would still have "considered"
+    every file in the tree while classifying none of it.
+    """
+    hits, read = [], []
+    for path, label in _iter_production_sources(CONVERTING_SURFACES):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        read.append(label)
         hits.extend(filter(None, [classify_conversion_reach(label, tree)]))
-    return hits, scanned, behavioural
+    return hits, read
 
 
 _WIRE_HITS, _WIRE_FIELDS = _walk_wire()
-_SOURCE_HITS, _SCANNED, _BEHAVIOURAL = _walk_sources()
+_SOURCE_HITS, _READ = _walk_sources()
 
 
 def _failures(rule):
@@ -316,17 +332,24 @@ def test_the_wire_walk_actually_read_the_recording_request():
         assert expected in _WIRE_FIELDS, f"the walk did not read {expected}"
 
 
-def test_the_source_walk_actually_read_the_behavioural_surfaces():
-    """The third rule is an absence over every module that decides money."""
-    assert len(_SCANNED) > 200, f"only scanned {len(_SCANNED)} modules"
-    for expected in ("apps/metering/pricing/models.py",
+def test_the_source_walk_actually_parsed_the_converting_surfaces():
+    """The third rule is an absence over every module that could convert.
+
+    ``_READ`` is what was PARSED, not what was considered — a guard over the
+    second would stay green on a walk that classified nothing. The composition
+    layer is named among them because it is the addition this rule makes to the
+    set next door, and a silently-dropped root would leave the rule true of
+    everywhere except the place the request actually arrives.
+    """
+    assert len(_READ) > 100, f"only parsed {len(_READ)} modules"
+    for expected in ("apps/metering/queries.py",
                      "apps/metering/usage/models.py",
-                     "apps/metering/queries.py",
                      "apps/billing/tenant_billing/services.py",
-                     "core/money.py"):
-        assert expected in _BEHAVIOURAL, (
-            f"{expected} is not in the behavioural set, so the rule said "
-            f"nothing about the modules it is about")
+                     "core/money.py",
+                     "api/v1/schemas.py"):
+        assert expected in _READ, (
+            f"{expected} was not parsed, so the rule said nothing about the "
+            f"module it is about")
 
 
 def test_the_conversion_module_is_where_it_says_it_is():
@@ -490,6 +513,20 @@ def test_negative_control_a_behavioural_import_of_the_conversion_is_flagged():
 def test_negative_control_the_module_imported_whole_is_flagged():
     hit = _classify_source(
         "from apps.platform.event_types import reported_cost\n")
+    assert hit is not None and hit[0] == RULE_CONVERSION
+
+
+def test_negative_control_the_composition_layer_is_watched_too():
+    """The addition this rule makes to the set next door, exercised.
+
+    The request arrives at `api/v1`, so it is the first place a raw supplier
+    number could be converted on the way in — and it is exactly the module the
+    gate it borrows its surfaces from deliberately does not cover.
+    """
+    hit = classify_conversion_reach(
+        "api/v1/metering_endpoints.py",
+        ast.parse("from apps.platform.event_types.reported_cost "
+                  "import to_micros\n"))
     assert hit is not None and hit[0] == RULE_CONVERSION
 
 

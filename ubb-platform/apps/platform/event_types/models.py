@@ -228,6 +228,16 @@ class DeclarationIncomplete(UBBError):
             f"{DECLARATION_STATUS_DRAFT}: {', '.join(self.blockers)}")
 
 
+class DeclarationMisplaced(UBBError):
+    """A part of one declaration cannot be moved to another.
+
+    Raised rather than quietly handled, because the tidy-looking alternative —
+    revise both Event Types and carry on — makes one edit do two things and
+    leaves the second invisible. Withdrawing and re-declaring says the same
+    thing in two acts that each read as what they are.
+    """
+
+
 class ValueTypeMismatch(UBBError):
     """This number is not the kind of number the declaration says it is.
 
@@ -326,6 +336,117 @@ class PinnedDeclaration(models.Model):
         wrote_all = (update_fields is None
                      or set(self.PINNED) <= set(update_fields))
         self._pinned_as_loaded = self._pinned_declaration() if wrote_all else None
+
+
+class DeclarationPart(PinnedDeclaration):
+    """A record that is PART of one Event Type's declaration, and behaves like one.
+
+    Two of them exist — the declared quantity and the reported-cost mapping —
+    and everything below was written twice before it was written here. That is
+    not a tidiness argument: :class:`PinnedDeclaration` above records that the
+    second copy of the baseline machinery shipped without ``update_fields``
+    widening and un-published declarations over changes that were never
+    written, and the third copy went in beside it before review caught the
+    shape. Two encodings of one rule drift, and the one that drifts is the one
+    nobody is looking at.
+
+    What a part does that its parent does not: declaring one, changing one, or
+    withdrawing one is a **revised publication** of the Event Type above it,
+    because the code a tenant generated and deployed was generated against the
+    declaration that included it.
+    """
+
+    #: The field by which this part hangs off its Event Type. A name rather
+    #: than an assumption, so a part that spells it differently declares that
+    #: rather than silently losing every rule below.
+    PARENT = "event_type"
+
+    class Meta:
+        abstract = True
+
+    def save(self, *, update_fields=None, **kwargs):
+        """A change to a part revises the publication above it.
+
+        Including ADDING one: a published Event Type that grows a required
+        quantity, or a mapping, is a different declaration from the one a
+        tenant generated their integration against.
+
+        ``update_fields`` is widened by whichever pinned elements actually
+        changed. Naming only the field being changed is the obvious way round a
+        save-time guard, and a declaration returned to draft over a change the
+        row never received would be a third state nobody declared.
+
+        ``QuerySet.update()`` goes round this as it goes round every
+        model-level guard in this repository — ADR-0007 §2 is explicit that
+        these are a courtesy to the ordinary path and never the enforcement.
+        """
+        self._refuse_reparenting()
+        baseline = self._pinned_baseline()
+        revised = baseline is None or self._pinned_declaration() != baseline
+        if revised and baseline is not None:
+            update_fields = self._widened(update_fields, baseline)
+
+        super().save(update_fields=update_fields, **kwargs)
+        self._remember_pinned(update_fields)
+        if revised:
+            self.parent.revise_declaration()
+
+    def delete(self, *args, **kwargs):
+        """Withdrawing a part revises the publication too.
+
+        The declaration a tenant's deployed integration was generated against
+        no longer describes what UBB will accept, which is the same event as a
+        changed path arriving at it from the other direction.
+
+        A real delete rather than the data plane's soft delete
+        (``docs/conventions/coding-standards.md``): that rule protects rows
+        carrying money history, and a part of a declaration carries none —
+        withdrawing one is an edit to a declaration. ``Provider`` earns
+        ``retired_at`` because supplier COGS attribution keys on its identity;
+        nothing keys on a part's. The ticket that first attaches a posting to a
+        declaration is the one that can revisit this, and the one that could
+        test the answer.
+        """
+        parent = self.parent
+        outcome = super().delete(*args, **kwargs)
+        parent.revise_declaration()
+        return outcome
+
+    @property
+    def parent(self):
+        return getattr(self, self.PARENT)
+
+    def _refuse_reparenting(self):
+        """A part belongs to the declaration it was declared under.
+
+        Moving one is two edits wearing the clothes of one, and the half it
+        hides is the damaging half: the Event Type it LEFT keeps its published
+        status while losing a part of what was published — for the mapping,
+        that is a live `reported` declaration with nowhere to read its cost
+        from, which is precisely what :meth:`EventType.publication_blockers`
+        exists to prevent and never gets asked again after publication.
+        Withdraw it and declare a new one: each of those revises the right
+        publication, and both are visible.
+
+        Read from the ROW rather than from a cached load, on the same footing
+        as :meth:`_pinned_baseline` and for the same reason — a guard that
+        answered "unchanged" because nobody told it otherwise would fail open
+        on exactly the careful caller who loaded the record narrowly.
+        """
+        if self._state.adding or self.pk is None:
+            return
+        column = f"{self.PARENT}_id"
+        was = (type(self)._base_manager.filter(pk=self.pk)
+               .values_list(column, flat=True).first())
+        if was is None or was == getattr(self, column):
+            return
+        raise DeclarationMisplaced(
+            f"this {type(self).__name__} was declared under Event Type {was} "
+            f"and cannot be moved to {getattr(self, column)}. A part belongs "
+            f"to the declaration it is part of: moving one leaves the Event "
+            f"Type it left published while a part of what was published is "
+            f"gone. Withdraw it and declare a new one under the other Event "
+            f"Type — each of those revises the publication it should.")
 
 
 class Provider(BaseModel):
@@ -807,7 +928,7 @@ class MeasurementConcept(BaseModel):
         return f"MeasurementConcept({self.key})"
 
 
-class Measurement(PinnedDeclaration, BaseModel):
+class Measurement(DeclarationPart, BaseModel):
     """One declared quantity beneath an Event Type — the record this slice is for.
 
     Before this, the measured quantities reaching the pricing engine travelled
@@ -1020,58 +1141,6 @@ class Measurement(PinnedDeclaration, BaseModel):
                 f"yours — but one noun spelled two ways across two declarations "
                 f"reads as two different things on one invoice.",)
 
-    # -- publication reaches down here too ------------------------------------
-
-    def save(self, *, update_fields=None, **kwargs):
-        """Declaring a quantity, or changing one, revises the publication.
-
-        Including ADDING one: a published Event Type that grows a required
-        quantity is a different declaration from the one a tenant generated
-        their integration against, and leaving it published would mean the
-        deployed code was generated against a contract that has moved.
-
-        ``update_fields`` is widened by whichever pinned elements actually
-        changed, exactly as the parent's own guard widens: without it,
-        ``save(update_fields=["display_name"])`` after editing a path would
-        return the declaration to draft over a change the row never received.
-
-        ``QuerySet.update()`` goes round this as it goes round every
-        model-level guard here — ADR-0007 §2 is explicit that these are a
-        courtesy to the ordinary path and never the enforcement. What defends
-        the emitted code itself is :func:`source_paths.render`, which re-asks
-        the grammar at the moment a path becomes code.
-        """
-        baseline = self._pinned_baseline()
-        revised = baseline is None or self._pinned_declaration() != baseline
-        if revised and baseline is not None:
-            update_fields = self._widened(update_fields, baseline)
-
-        super().save(update_fields=update_fields, **kwargs)
-        self._remember_pinned(update_fields)
-        if revised:
-            self.event_type.revise_declaration()
-
-    def delete(self, *args, **kwargs):
-        """Withdrawing a quantity revises the publication too.
-
-        The declaration a tenant's deployed integration was generated against
-        no longer describes what UBB will accept, and that is the same event as
-        a changed path arriving at it from the other direction.
-
-        A real delete rather than the data plane's soft delete
-        (``docs/conventions/coding-standards.md``): that rule protects rows
-        carrying money history, and this record carries none — it is part of a
-        declaration, and withdrawing a quantity is an edit to one. ``Provider``
-        next door earns ``retired_at`` because supplier COGS attribution keys
-        on its identity; nothing keys on a Measurement's. The ticket that first
-        attaches a posting to a declaration is the one that can revisit this,
-        and it is the one that could test the answer.
-        """
-        event_type = self.event_type
-        outcome = super().delete(*args, **kwargs)
-        event_type.revise_declaration()
-        return outcome
-
     # -- validation -----------------------------------------------------------
 
     def clean(self):
@@ -1157,7 +1226,7 @@ class Measurement(PinnedDeclaration, BaseModel):
         return None
 
 
-class ReportedCostMapping(PinnedDeclaration, BaseModel):
+class ReportedCostMapping(DeclarationPart, BaseModel):
     """Where a supplier's own cost figure comes from — a SIBLING of the quantities.
 
     When an Event Type is costed from a number the supplier reports, that number
@@ -1297,49 +1366,6 @@ class ReportedCostMapping(PinnedDeclaration, BaseModel):
         shape = self.event_type.source_shape_id
         return (*advisories(shape, self.source_path),
                 *advisories(shape, self.currency_path))
-
-    # -- publication reaches down here too ------------------------------------
-
-    def save(self, *, update_fields=None, **kwargs):
-        """Declaring the mapping, or changing it, revises the publication.
-
-        The same rule and the same machinery as the declared quantity beside it:
-        an incorrect mapping produces an incorrect COGS, so a changed one is a
-        different declaration from the one a tenant generated their integration
-        against. ``update_fields`` is widened by whichever pinned elements
-        actually changed, because naming one field is the obvious way round a
-        save-time guard.
-
-        ``QuerySet.update()`` goes round this as it goes round every model-level
-        guard here — ADR-0007 §2 is explicit that these are a courtesy to the
-        ordinary path and never the enforcement.
-        """
-        baseline = self._pinned_baseline()
-        revised = baseline is None or self._pinned_declaration() != baseline
-        if revised and baseline is not None:
-            update_fields = self._widened(update_fields, baseline)
-
-        super().save(update_fields=update_fields, **kwargs)
-        self._remember_pinned(update_fields)
-        if revised:
-            self.event_type.revise_declaration()
-
-    def delete(self, *args, **kwargs):
-        """Withdrawing the mapping revises the publication and blocks the next one.
-
-        The deployed integration reads a cost from somewhere this declaration no
-        longer describes, which is the same event as a changed path arriving
-        from the other direction — and a `reported` Event Type with no mapping
-        cannot be published again until one is declared.
-
-        A real delete rather than the data plane's soft delete: that rule
-        protects rows carrying money history, and this record carries none. It
-        is part of a declaration, and withdrawing it is an edit to one.
-        """
-        event_type = self.event_type
-        outcome = super().delete(*args, **kwargs)
-        event_type.revise_declaration()
-        return outcome
 
     # -- validation -----------------------------------------------------------
 

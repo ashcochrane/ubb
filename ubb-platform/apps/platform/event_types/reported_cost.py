@@ -41,6 +41,23 @@ from decimal import Decimal, InvalidOperation
 
 from core.exceptions import UBBError
 from core.money import MICROS_PER_UNIT, minor_units
+
+#: The largest whole number of micros a money column in this repository can
+#: hold: every one of them is a ``BigIntegerField``, which is a signed 64-bit
+#: integer. An amount past it is not a rounding question — it is one UBB has
+#: nowhere to put — so it is refused by the same function and for the same
+#: reason as a fractional micro.
+MICROS_LIMIT = 2 ** 63 - 1
+
+#: How far a reported cost's decimal exponent may run once its trailing zeros
+#: are gone. Beyond it in either direction the answer is already known — past
+#: any money column one way, smaller than a micro the other — and knowing it
+#: in advance matters: ``Decimal`` admits an exponent up to 999,999,999, a
+#: supplier's JSON can carry one, and ``10 ** 999999999`` is not a refusal, it
+#: is an unresponsive process. Comfortably wider than the nineteen digits a
+#: money column holds and the six a major unit is divided into, so no amount
+#: this rejects was ever convertible.
+EXPONENT_LIMIT = 40
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
     AMOUNT_REPRESENTATION_MICROS,
@@ -88,15 +105,26 @@ def to_micros(amount, representation, currency):
     check written to catch wrong answers. Nothing below rounds, because nothing
     below is a Decimal operation.
 
-    Trailing zeros need no special handling for the same reason. ``1.000`` is
-    one however a supplier chose to write it, and the exact division below says
-    so by leaving no remainder.
+    Trailing zeros are stripped from the digits rather than left to the
+    division, and that is the exponent bound's doing: ``1.000`` is one however
+    a supplier chose to write it, and padding it out past
+    :data:`EXPONENT_LIMIT` must not turn a whole number into a refusal.
     """
     multiplier = _multiplier(representation, currency)
-    sign, digits, exponent = _as_exact_decimal(amount).as_tuple()
+    sign, digits, exponent = _stripped(_as_exact_decimal(amount).as_tuple())
     unsigned = 0
     for digit in digits:
         unsigned = unsigned * 10 + digit
+
+    if abs(exponent) > EXPONENT_LIMIT:
+        raise AmountNotRepresentable(
+            f"a reported cost with an exponent of {exponent} is not an amount "
+            f"of money UBB can hold: it is either far past the largest a money "
+            f"column takes or far smaller than one micro. Refused on the "
+            f"exponent alone, before the arithmetic, because a decimal may "
+            f"legally carry an exponent of hundreds of millions and computing "
+            f"that power of ten is not a refusal — it is a process that stops "
+            f"answering.")
 
     if exponent >= 0:
         micros = unsigned * 10 ** exponent * multiplier
@@ -112,7 +140,31 @@ def to_micros(amount, representation, currency):
                 f"UBB computes, and reshaping an observation makes a "
                 f"supplier's invoice and UBB's ledger disagree by an amount "
                 f"neither of them recorded.")
+
+    if micros > MICROS_LIMIT:
+        raise AmountNotRepresentable(
+            f"{_spelled(sign, digits, exponent)} {representation} is "
+            f"{micros} micros, and the largest a money column holds is "
+            f"{MICROS_LIMIT}. Exact and unstorable is still unstorable, and "
+            f"it is refused here rather than at the column so that what comes "
+            f"back names the supplier's own number.")
     return -micros if sign else micros
+
+
+def _stripped(tuple_of_decimal):
+    """``as_tuple`` with trailing zeros removed from a fractional part.
+
+    On the tuple rather than through ``normalize()``, which is a context-rounded
+    operation and would quietly shorten exactly the long amounts this module
+    exists to convert correctly. The last digit is kept whatever it is, so zero
+    keeps a digit to be.
+    """
+    sign, digits, exponent = tuple_of_decimal
+    digits = list(digits)
+    while exponent < 0 and len(digits) > 1 and digits[-1] == 0:
+        digits.pop()
+        exponent += 1
+    return sign, tuple(digits), exponent
 
 
 def pin_currency(declared, reported):
@@ -125,13 +177,20 @@ def pin_currency(declared, reported):
     declaration is written — this is the runtime half, and it fails closed on
     the case that enforcement cannot reach.
 
-    Case and padding are folded, and that is canonicalisation rather than
-    conversion: ``USD`` and ``usd`` are one code spelled twice, and refusing the
-    capitals would fail loudly about nothing while the real disagreement — a
-    different currency — went to the same place.
+    **Both sides are treated identically, and that is the whole shape of it.**
+    Case and padding are folded on each, which is canonicalisation rather than
+    conversion: ``USD`` and ``usd`` are one code spelled twice, and a version
+    that folded only the supplier's side would report a disagreement between a
+    currency and itself. Whichever side ends up naming the code, UBB has to be
+    able to hold it — ``minor_units`` is the one place that knows which
+    currencies those are, and it raises for the rest rather than inventing an
+    exponent. Validating only the path form would leave the fixed form resting
+    on ``clean()``, which ADR-0007 §2 is explicit is a courtesy to the ordinary
+    path and never the enforcement.
     """
+    pinned = (declared or "").strip().lower()
     supplied = (reported or "").strip().lower()
-    if not declared and not supplied:
+    if not pinned and not supplied:
         raise CurrencyDisagreement(
             "this cost is denominated in no currency: the declaration pins "
             "none and the supplier returned none. `core.money` keeps a "
@@ -139,24 +198,19 @@ def pin_currency(declared, reported):
             "it is deliberately out of reach here — a reported cost "
             "denominated by a default nobody declared is exactly the silent "
             "reinterpretation this refusal exists to prevent.")
-    if not declared:
-        # Nothing to disagree with, so the supplier's own answer stands — but
-        # only if UBB can hold it. `minor_units` is the one place that knows
-        # which currencies those are, and it raises for the rest rather than
-        # inventing an exponent.
-        minor_units(supplied)
-        return supplied
-    if supplied and supplied != declared:
+    if pinned and supplied and pinned != supplied:
         raise CurrencyDisagreement(
             f"the supplier reported this cost in '{supplied}' and the "
-            f"declaration is denominated in '{declared}'. UBB fails here "
+            f"declaration is denominated in '{pinned}'. UBB fails here "
             f"rather than converting: v1 is single-currency with no exchange "
             f"rates, so there is no correct conversion to perform — and "
             f"reading the amount under the wrong currency would be the worst "
             f"outcome available, because it looks like a number that worked. "
             f"Either the declaration names the wrong currency or the supplier "
             f"billed in an unexpected one, and both are somebody's decision.")
-    return declared
+    code = pinned or supplied
+    minor_units(code)
+    return code
 
 
 def _multiplier(representation, currency):

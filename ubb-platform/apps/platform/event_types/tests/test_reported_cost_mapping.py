@@ -32,6 +32,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
 from apps.platform.event_types.models import (
+    DeclarationMisplaced,
     EventType,
     Measurement,
     REPORTED_COST_PARAMETER,
@@ -323,6 +324,16 @@ class TestTheCurrencyIsPinnedExactlyOnce:
                 amount_representation=AMOUNT_REPRESENTATION_MICROS,
                 currency="usd", currency_path=["usage", "currency"])
 
+        # And the other half the name claims. An XOR is two rules, and a test
+        # that exercised one of them would leave the other resting on a
+        # constraint nobody had watched fire.
+        with pytest.raises(IntegrityError), transaction.atomic():
+            ReportedCostMapping.objects.create(
+                event_type=event_type,
+                source_kind=SOURCE_KIND_CALLER_SUPPLIED,
+                amount_representation=AMOUNT_REPRESENTATION_MICROS,
+                currency="", currency_path=[])
+
     def test_a_currency_ubb_cannot_hold_is_refused(self):
         """UBB holds money in micros of a currency whose minor unit it knows.
         A code with no known minor unit cannot reach Stripe, and a declaration
@@ -489,6 +500,45 @@ class TestPublicationPinsTheMapping:
         stored = EventType.objects.get(pk=event_type.pk)
         assert stored.declaration_status == DECLARATION_STATUS_DRAFT
         assert stored.publication_blockers()
+
+    def test_a_mapping_cannot_be_moved_to_another_event_type(self):
+        """The edit that revises the wrong publication, and hides the half that
+        matters.
+
+        Moving a mapping is two acts wearing the clothes of one. The Event Type
+        it arrives at is revised, which looks like the rule working — and the
+        one it LEFT keeps its published status while losing the thing that made
+        it publishable, so a live `reported` declaration is left with nowhere
+        to read its cost from. `publication_blockers` is never asked again
+        after publication, so nothing downstream notices.
+        """
+        tenant = _tenant()
+        here = _event_type(tenant, key="acme.embed")
+        there = _event_type(tenant, key="acme.rerank")
+        mapping = _declared(here)
+        here.refresh_from_db()
+        here.publish()
+
+        mapping.event_type = there
+        with pytest.raises(DeclarationMisplaced):
+            mapping.save()
+
+        kept = EventType.objects.get(pk=here.pk)
+        assert kept.declaration_status == DECLARATION_STATUS_PUBLISHED
+        assert kept.publication_blockers() == ()
+
+    def test_withdrawing_and_re_declaring_is_the_supported_move(self):
+        """The positive control: the refusal above names a way through, and a
+        refusal whose alternative does not work is a wall."""
+        tenant = _tenant()
+        here = _event_type(tenant, key="acme.embed")
+        there = _event_type(tenant, key="acme.rerank")
+        _declared(here).delete()
+
+        _declared(there)
+
+        assert EventType.objects.get(pk=here.pk).publication_blockers()
+        assert not EventType.objects.get(pk=there.pk).publication_blockers()
 
     def test_the_mapping_goes_when_its_event_type_does(self):
         """Part of a declaration rather than a record of money that happened —
