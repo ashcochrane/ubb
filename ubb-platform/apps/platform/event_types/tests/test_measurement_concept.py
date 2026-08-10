@@ -20,6 +20,8 @@ it, and that no rating or billing module can even see it — is a property of th
 tree and lives in ``apps/platform/tests/test_event_type_declaration_invariants.py``
 next door.
 """
+from uuid import uuid4
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -141,6 +143,22 @@ class TestSpellingProvesNothing:
         mine, theirs = _tenant("mine"), _tenant("theirs")
         declared = _measurement(_event_type(mine))
         declared.concept = _concept(theirs)
+
+        with pytest.raises(ValidationError) as raised:
+            declared.full_clean()
+        assert "concept" in raised.value.message_dict
+
+    def test_a_grouping_that_names_no_row_is_refused_the_same_way(self):
+        """A validator that can raise something else is one every caller wraps.
+
+        Walking the relation to ask whose it is would raise ``DoesNotExist``
+        here instead, out of a method whose entire contract is that it raises
+        ``ValidationError`` — so the owner is read narrowly and the two ways of
+        not being this tenant's grouping arrive as one refusal.
+        """
+        tenant = _tenant()
+        declared = _measurement(_event_type(tenant))
+        declared.concept_id = uuid4()
 
         with pytest.raises(ValidationError) as raised:
             declared.full_clean()
@@ -336,5 +354,7 @@ class TestItConsumesNoSlot:
         concept = _concept(tenant, key="region")
 
         assert slot_map(tenant.id) == {"region": "dim2"}
-        assert not hasattr(concept, "slot")
+        assert "slot" not in {field.name for field
+                              in MeasurementConcept._meta.get_fields()}
         assert MeasurementConcept.objects.filter(key="region").count() == 1
+        assert concept.measurements.count() == 0

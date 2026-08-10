@@ -656,6 +656,14 @@ class MeasurementConcept(BaseModel):
     groups measurement RECORDS. It consumes no slot, appears nowhere in the slot
     map, and is not a role on that vocabulary.
 
+    **It carries no ``retired_at``, and that is a ruling rather than an
+    oversight** — the same one ``EventCategory`` records above, for the same
+    reason. Retirement earns its place on ``Provider`` because a Provider is
+    load-bearing for historical *money* attribution; nothing here is. What a
+    tenant does with a heading they have finished with is unassign it, which
+    the declarations' ``PROTECT`` makes them do explicitly rather than by a
+    delete that silently un-groups last quarter.
+
     **"Concept" here is the domain's word, not the vocabulary registry's.** The
     registry's concepts are UBB-owned value sets with generated artifacts behind
     them; this is a tenant's own row, holding a tenant's own key, which UBB
@@ -995,12 +1003,19 @@ class Measurement(PinnedDeclaration, BaseModel):
         """
         if self.concept_id is None or self.event_type_id is None:
             return None
-        if self.concept.tenant_id == self.event_type.tenant_id:
+        # The owner by a narrow read rather than by walking the relation: a
+        # `concept_id` naming no row would raise `DoesNotExist` out of
+        # `full_clean`, and a validator that can raise something other than a
+        # `ValidationError` is one every caller has to wrap.
+        owner = (MeasurementConcept.objects.filter(pk=self.concept_id)
+                 .values_list("tenant_id", flat=True).first())
+        if owner == self.event_type.tenant_id:
             return None
-        return ("belongs to another tenant. A grouping is tenant-level, and one "
-                "reaching across tenants would put one tenant's numbers on "
-                "another's chart — which is the whole of what this feature does, "
-                "aimed at the one place it must never point.")
+        return ("is not one of this tenant's groupings. A grouping is "
+                "tenant-level, and one reaching across tenants would put one "
+                "tenant's numbers on another's chart — which is the whole of "
+                "what this feature does, aimed at the one place it must never "
+                "point.")
 
     def _path_obligation_error(self):
         """Which source kinds owe a path, and which may not carry one.

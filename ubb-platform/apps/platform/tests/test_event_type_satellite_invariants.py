@@ -55,7 +55,9 @@ passed and not that the declarations were worth making:
   ``posting.event_type.provider_id`` inside a rating service names neither the
   app nor the class, and no token check can see it. What catches that is the
   ordinary import matrix plus review; what this file catches is a behavioural
-  module that reaches for the catalogue directly.
+  module that reaches for the catalogue directly. The same is true of
+  ``posting.measurement.concept`` (#264), which is the shortest route from a
+  rating path to the opt-in grouping and names none of the tokens below.
 """
 import ast
 import re
@@ -148,9 +150,15 @@ BEHAVIOURAL_SURFACES = (
 #: reach for first. ``MeasurementConcept`` joined it in #264, where the reach
 #: is not merely unwired but forbidden outright: the grouping is analytics-only
 #: and a rating path that can see it has made an analytics heading into a
-#: costing input. That claim is stated twice on purpose and the two halves
-#: catch different things — the model-registry rule next door catches a
-#: relation, and this catches a module that reads one without holding one.
+#: costing input.
+#:
+#: What that last one catches is a module that NAMES the class — an import, an
+#: ``apps.get_model``, a queryset. It does not catch ``posting.measurement
+#: .concept``, which is now the shortest route to the grouping from a rating
+#: path and names none of these tokens. That is the same limit the docstring
+#: records for reaching a satellite through the Event Type, and it is stated
+#: rather than half-closed: a token list that caught one spelling of an
+#: attribute walk and not another would read as coverage while providing none.
 CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType",
                     "MeasurementConcept")
 

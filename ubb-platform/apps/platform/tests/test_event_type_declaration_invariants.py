@@ -119,6 +119,22 @@ DECLARATION_MODELS = (EventType, Measurement, MeasurementConcept)
 #: reaching it is the whole of what "analytics-only" forbids.
 CONCEPT_HOLDERS = frozenset({"event_types.Measurement"})
 
+#: The grouping held as a value rather than as a relation — the evasion that
+#: gets past every rule above at once, because it carries the identity while
+#: declaring nothing to walk. #261's review found exactly this shape for the
+#: supplier (a bare ``provider_id = UUIDField()``) and closed it by name; the
+#: same hole is open on anything a later slice adds, so it is closed here in
+#: the same way rather than found again.
+#:
+#: Asked of every model INCLUDING the one holder, because the objection is
+#: different there: the declared quantity may hold this grouping, and holding it
+#: as a loose identifier is still unconstrained, uncascaded and dangling the
+#: moment the far side goes.
+GROUPING_IDENTIFIER_NAMES = frozenset({
+    "concept_id", "concept_key", "concept_uuid", "concept_ref",
+    "measurement_concept", "measurement_concept_id", "measurement_concept_key",
+})
+
 #: The records that are PART of one Event Type's declaration, and the single
 #: field on each by which they hang off it. A part necessarily names an Event
 #: Type — that is what makes it a part — and naming its own parent is not the
@@ -283,21 +299,38 @@ def classify_analytics_only(model, field):
     Keyed on the model LABEL rather than on class identity for #262's reason:
     a synthetic control has to be able to carry the real record's identity, or
     the allowance branch is the one rule here nothing ever exercises.
+
+    Two shapes, because the tidier one gets past a relation check entirely: a
+    column that holds the grouping's identity while declaring no relation is
+    the same reach with nothing to walk.
     """
-    if not field.is_relation or field.related_model is not MeasurementConcept:
-        return None
-    if model_label(model) in CONCEPT_HOLDERS:
+    if field.is_relation:
+        if field.related_model is not MeasurementConcept:
+            return None
+        if model_label(model) in CONCEPT_HOLDERS:
+            return None
+        return (
+            RULE_ANALYTICS, site_of(model, field),
+            f"{site_of(model, field)} reaches the opt-in grouping. Only "
+            f"{sorted(CONCEPT_HOLDERS)} may (#264): the grouping is "
+            f"ANALYTICS-ONLY, so it can never become a costing input and can "
+            f"never block recording — and a rate, a posting or a ceiling that "
+            f"can see it has made it one of those by the ordinary route, which "
+            f"is a reasonable-looking foreign key rather than a decision "
+            f"anybody took. Adding a holder is a modelling decision, so it "
+            f"belongs in a decision record and in this list, in that order",
+        )
+    if field.name not in GROUPING_IDENTIFIER_NAMES:
         return None
     return (
         RULE_ANALYTICS, site_of(model, field),
-        f"{site_of(model, field)} reaches the opt-in grouping. Only "
-        f"{sorted(CONCEPT_HOLDERS)} may (#264): the grouping is ANALYTICS-ONLY, "
-        f"so it can never become a costing input and can never block recording "
-        f"— and a rate, a posting or a ceiling that can see it has made it one "
-        f"of those by the ordinary route, which is a reasonable-looking foreign "
-        f"key rather than a decision anybody took. Adding a holder is a "
-        f"modelling decision, so it belongs in a decision record and in this "
-        f"list, in that order",
+        f"{site_of(model, field)} holds the opt-in grouping's identity without "
+        f"holding the grouping. It passes every rule that walks a relation, "
+        f"because there is no relation to walk (#264) — nothing constrains it, "
+        f"nothing cascades, and a delete on the far side leaves it pointing at "
+        f"a row that is gone. If a declared quantity is opting in, declare the "
+        f"ForeignKey; if anything else is reading the grouping, that is the "
+        f"reach this rule refuses",
     )
 
 
@@ -374,10 +407,10 @@ def _failures(rule):
 
 
 def test_the_walk_actually_saw_the_declaration():
-    """Vacuity guard: three of the four rules below are absences.
+    """Vacuity guard: four of the six rules below are absences.
 
     The Event Type by name, because it is the subject and a walk that lost it
-    would report four clean absences over a tree it never read; the satellites
+    would report a clean sweep of absences over a tree it never read; the satellites
     and the Grouping Field registry because they are what the rules are stated
     AGAINST, and a walk that could not see them could not tell a relation to one
     from a relation to anything else.
@@ -935,6 +968,69 @@ def test_positive_control_the_declared_quantity_may_hold_one():
     # ticket earlier: optional, and to exactly one.
     assert [classify_optional_grouping(Measurement, field)
             for field in _local_fields(Measurement)] == [None] * 3
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_bare_grouping_identifier_is_flagged():
+    """The reach with nothing to walk, and the tidiest of the lot.
+
+    It passes the relation branch (there is no relation), it looks like it
+    honours "keys on identity", and it does neither: nothing constrains it and
+    a delete on the far side leaves it dangling. #261's review found this exact
+    shape for the supplier; the fence is closed here rather than found twice.
+    """
+    class Rate(models.Model):
+        measurement_concept_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = Rate._meta.get_field("measurement_concept_id")
+    hit = classify_analytics_only(Rate, field)
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+    assert "no relation to walk" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_holder_may_not_hold_it_loosely_either():
+    """The one model allowed to opt in is not allowed to opt in by UUID.
+
+    The allowance is for the relation, and the objection to a loose identifier
+    is a different one — so the model label cannot excuse this shape.
+    """
+    class Measurement(models.Model):
+        concept_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in CONCEPT_HOLDERS, (
+        "the control has to be the model the allowance is about")
+    hit = classify_analytics_only(Measurement,
+                                  Measurement._meta.get_field("concept_id"))
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_real_foreign_key_is_not_a_bare_identifier():
+    """The rule must not fire on the shape it is asking for.
+
+    Django gives a ForeignKey an ``attname`` of ``concept_id``, and a check
+    that read the attname rather than the field name would fail the very column
+    #264 shipped — which is how a gate gets weakened until it stops meaning
+    anything.
+    """
+    class Measurement(models.Model):
+        concept = models.ForeignKey(MeasurementConcept, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = Measurement._meta.get_field("concept")
+    assert field.attname in GROUPING_IDENTIFIER_NAMES, (
+        "the control is only meaningful while the attname is a listed name")
+    assert classify_analytics_only(Measurement, field) is None
 
 
 @isolate_apps(CATALOGUE_APP)
