@@ -28,11 +28,114 @@ headcount: anything may import the kernel, and no product may import another
 except through a sanctioned channel — so a table several products read cannot sit
 inside any one of them.
 
-**Why this module is empty.** It declares no model yet, and it exists anyway
-because ``domain-vocabulary/`` names it as the end-state backend consumer for
-the concepts whose values the entities here will hold by reference — and the
-registry compiler refuses a declared consumer path that does not exist. So the
-module lands before the models that fill it, and the recorded consumer debts
-naming this path stay open until the fields that serve them are built. The
-entities arrive in the tickets that follow.
+**What is here so far.** The two optional satellites the Event Type hangs off —
+``Provider`` and ``EventCategory`` — and nothing else. The Event Type itself, the
+declared quantities and the reported-cost mapping arrive in the tickets that
+follow, and the recorded consumer debts naming this path stay open until the
+fields that serve them are built. Neither satellite is wired to anything: no
+rating path reads them, no cost resolves through them, no spend ceiling consults
+them. Slice 2 owns the declaration; slice 3 owns every behaviour the declaration
+selects. ``apps/platform/tests/test_event_type_satellite_invariants.py`` is where
+that claim is held to the tree rather than asserted here.
 """
+
+from django.db import models
+
+from core.models import BaseModel
+
+
+class Provider(BaseModel):
+    """The supplier behind a call — a per-tenant record, optional on an Event Type.
+
+    **Why an entity and not a string.** Supplier cost resolution keys on this
+    record's identity — the primary key — and never on parsing a supplier's name
+    out of an Event Type key. A tenant may rename ``key`` (it is their own handle
+    for their own supplier, and handles get corrected); the identity everything
+    else holds does not move when they do. Parsing the name out of a key would
+    have made the two inseparable, so a rename would silently re-attribute cost,
+    and a key that happens to contain a dot or a slash would have decided what a
+    call cost. That is the whole reason this is a record.
+
+    **Retired, never deleted.** ``retired_at`` stops new use and leaves the past
+    readable. Deleting would silently rewrite it: historical postings would lose
+    their attribution and stop being reportable, which is the failure a finance
+    owner discovers a quarter later and cannot repair. Same rule, and the same
+    reasoning, as the Grouping Field registry next door.
+
+    The manager is deliberately unfiltered, and there is deliberately no
+    ``selectable()`` beside it. Retirement is about what may be *attached* next,
+    never about what may be *read* — so hiding retired rows by default would
+    make reading last quarter the clever path and the wrong answer the easy one.
+    The filter that refuses a retired supplier belongs to the ticket that first
+    attaches one to something, which is the ticket that can also test that the
+    refusal happened. Declaring it here would be an unconsumed read in a slice
+    that owns declarations only.
+
+    **Optional, and no fictitious row.** A tenant metering its own internal work
+    has no supplier, and must not be made to invent one to satisfy a schema. An
+    Event Type with no Provider is a normal Event Type. A fictitious Provider is
+    a defect, not a workaround — it puts a name UBB invented into a tenant's own
+    COGS attribution.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="providers")
+    # The tenant's own handle. Renameable BY DESIGN — see the class docstring —
+    # and a plain CharField rather than a slug, because UBB does not enumerate
+    # or second-guess a tenant's own catalogue of suppliers and calls, and a
+    # charset UBB invented would be doing exactly that to a supplier whose real
+    # name carries a slash or a space. Matches the Grouping Field key next door.
+    key = models.CharField(max_length=64)
+    # Retire, never delete. NULL means live.
+    retired_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_provider"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "key"],
+                                    name="uq_provider_key"),
+        ]
+
+    def __str__(self):
+        return f"Provider({self.key})"
+
+
+class EventCategory(BaseModel):
+    """An optional, tenant-defined grouping for Event Types. One level, current.
+
+    Deliberately the smallest thing that answers the question asked of it, and
+    the limits are worth stating because the originating decision required more
+    than this and was later amended:
+
+    * **No hierarchy.** One level. There is no parent, and adding one is a
+      decision, not a refinement.
+    * **Current, not effective-dated.** The effective-dating and the historical
+      reproducibility that decision required were retired when the category left
+      the pricing ladder and became analytics-only. Dating a value that reaches
+      no money reproduces nothing — it would be machinery built for a
+      requirement that no longer exists.
+    * **Never a monetary input.** It cannot reach a cost or a price by any path.
+      That is what makes the point above safe rather than merely cheap.
+    * **Optional.** An Event Type with no category is a normal Event Type, not
+      an incomplete one.
+
+    It carries no ``retired_at``, and that absence is a ruling rather than an
+    oversight: retirement earns its place on ``Provider`` because a Provider is
+    load-bearing for historical *money* attribution. Nothing here is, so the
+    boring shape wins until something asks for more.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="event_categories")
+    # A plain CharField for the reason given on ``Provider.key``.
+    key = models.CharField(max_length=64)
+
+    class Meta:
+        db_table = "ubb_event_category"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "key"],
+                                    name="uq_event_category_key"),
+        ]
+
+    def __str__(self):
+        return f"EventCategory({self.key})"
