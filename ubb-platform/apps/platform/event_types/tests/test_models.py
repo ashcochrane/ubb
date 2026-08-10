@@ -59,14 +59,24 @@ class TestProviderIsRetiredNeverDeleted:
         assert still_there.key == "acme-inference"
         assert still_there.retired_at is not None
 
-    def test_retirement_removes_it_from_what_a_new_declaration_may_select(self):
+    def test_retirement_is_readable_as_a_state_without_hiding_the_row(self):
+        """The two readings retirement has to keep separate.
+
+        "Which may a new declaration choose" is a filter, and "which existed"
+        is the unfiltered manager. There is no ``selectable()`` helper on the
+        model and deliberately so — the filter belongs to the ticket that first
+        attaches a supplier to something, which is the ticket that can also
+        test that a retired one was refused. What this pins is that both
+        readings are available and that they differ.
+        """
         t = _tenant()
         live = Provider.objects.create(tenant=t, key="acme-inference")
-        retired = Provider.objects.create(tenant=t, key="legacy-vendor",
-                                          retired_at=timezone.now())
+        Provider.objects.create(tenant=t, key="legacy-vendor",
+                                retired_at=timezone.now())
 
-        selectable = set(Provider.objects.selectable().values_list("pk", flat=True))
-        assert selectable == {live.pk}
+        choosable = set(Provider.objects.filter(retired_at__isnull=True)
+                        .values_list("pk", flat=True))
+        assert choosable == {live.pk}
         # ...and the unfiltered manager still sees both, which is the half that
         # keeps the past readable.
         assert Provider.objects.count() == 2
@@ -78,7 +88,7 @@ class TestProviderIsRetiredNeverDeleted:
         p.save(update_fields=["retired_at"])
 
         assert Provider.objects.filter(tenant=t).count() == 1
-        assert Provider.objects.selectable().filter(tenant=t).count() == 0
+        assert Provider.objects.filter(tenant=t, retired_at__isnull=True).count() == 0
 
 
 @pytest.mark.django_db
@@ -92,23 +102,29 @@ class TestSupplierCostResolutionKeysOnIdentity:
     would break name-parsing.
     """
 
-    def test_identity_survives_a_key_rename(self):
+    def test_a_freed_spelling_does_not_take_the_old_supplier_with_it(self):
+        """The failure a name-parsing resolver produces, made concrete.
+
+        A tenant renames their supplier and later reuses the freed handle for a
+        different one — an ordinary sequence, not a contrived one. A resolver
+        that had parsed "acme" out of an Event Type key would now attribute the
+        first supplier's historical cost to the second. Identity does not move.
+        """
         t = _tenant()
-        p = Provider.objects.create(tenant=t, key="acme-inference")
-        identity = p.pk
+        original = Provider.objects.create(tenant=t, key="acme")
+        # What a historical posting holds.
+        attribution = original.pk
 
-        # A tenant corrects their own handle. Nothing about which supplier this
-        # is has changed.
-        p.key = "acme-ai"
-        p.save(update_fields=["key"])
+        original.key = "acme-ai"
+        original.save(update_fields=["key"])
+        reused = Provider.objects.create(tenant=t, key="acme")
 
-        resolved = Provider.objects.get(pk=identity)
-        assert resolved.pk == identity
-        assert resolved.key == "acme-ai"
-        # A resolver that had parsed "acme-inference" out of an Event Type key
-        # would now be attributing this tenant's cost to a supplier that no
-        # longer exists under that name.
-        assert not Provider.objects.filter(tenant=t, key="acme-inference").exists()
+        # The spelling now answers with a supplier that did not exist when the
+        # posting was written...
+        assert Provider.objects.get(tenant=t, key="acme").pk == reused.pk
+        # ...and the identity still answers with the one that did.
+        assert Provider.objects.get(pk=attribution).pk == original.pk
+        assert attribution != reused.pk
 
     def test_identity_is_not_the_key(self):
         """Two tenants may spell the same supplier the same way.

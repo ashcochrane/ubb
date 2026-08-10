@@ -41,23 +41,38 @@ called, instead of being argued about after it is built.
 next door): every rule has a negative control that pushes a synthetic violation
 through the real entry point, and every walk has a vacuity guard, because a
 check over an absence that silently read nothing is worse than no check at all.
+
+**What these walkers cannot see**, stated rather than left to be discovered,
+because ADR-0008 §9's rule is that a green board proves the declared invariants
+passed and not that the declarations were worth making:
+
+* **Local aliasing.** ``key = event_type.key`` followed by ``key.split("/")``
+  two lines later is dataflow, and the walker is syntactic. The shortcut is
+  caught where it is written, not where it is laundered.
+* **Reaching a satellite through the Event Type.** Once the foreign keys land,
+  ``posting.event_type.provider_id`` inside a rating service names neither the
+  app nor the class, and no token check can see it. What catches that is the
+  ordinary import matrix plus review; what this file catches is a behavioural
+  module that reaches for the catalogue directly.
 """
 import ast
 import re
 from pathlib import Path
 
-from django.apps import apps
 from django.db import models
 from django.test.utils import isolate_apps
 
 from apps.platform.event_types.models import EventCategory, Provider
+# One definition of "every model a UBB app declares", shared with the gate next
+# door rather than copied: two encodings of that fact could drift, and the one
+# that drifted would be the one nobody was looking at.
+from apps.platform.tests.test_model_naming import first_party_models
 
 # apps/platform/tests/test_event_type_satellite_invariants.py -> ubb-platform/
 PLATFORM_ROOT = Path(__file__).resolve().parents[3]
 
 TICKET = "#261"
 CATALOGUE_APP = "apps.platform.event_types"
-FIRST_PARTY_PACKAGE = "apps."
 
 RULE_OPTIONAL = "optional-satellite"
 RULE_BENEATH = "no-record-beneath"
@@ -96,29 +111,48 @@ MONETARY_FIELD_WORDS = frozenset({
 })
 MONETARY_FIELD_TYPES = frozenset({"DecimalField", "FloatField"})
 
-#: A supplier named as a string rather than held as a relation. The usage row
-#: still carries exactly this shape and is deliberately out of scope: it is the
-#: world slice 2 replaces, and the posting split owns its removal. The rule is
-#: about the catalogue, which is being built now and has no excuse.
+#: A supplier named as a value rather than held as a relation. A bare
+#: ``provider_id`` column is in the list on purpose: it is the most natural
+#: evasion of every rule here at once, because it holds an identity while
+#: declaring no relation, so nothing walks it and nothing constrains it.
+#:
+#: The usage row still carries the free-text shape and is deliberately out of
+#: scope: it is the world slice 2 replaces, and the posting split owns its
+#: removal. The rule is about the catalogue, which is being built now and has
+#: no excuse.
 STRINGLY_TYPED_SUPPLIER_NAMES = frozenset({
     "provider", "provider_key", "provider_name", "provider_slug",
+    "provider_id", "provider_uuid", "provider_ref",
     "supplier", "supplier_key", "supplier_name", "supplier_slug",
+    "supplier_id", "supplier_uuid", "supplier_ref",
+    "vendor", "vendor_key", "vendor_name", "vendor_id",
 })
 
 #: Where a cost, a price or a spend ceiling is decided. If a satellite is
-#: reachable from any of these, "nothing behavioural is wired" is false.
+#: reachable from any of these, "nothing behavioural is wired" is false. Both
+#: products entire rather than the modules that look relevant: metering's read
+#: contract and its outbox handlers decide money too, and naming subdirectories
+#: would have left them out for no reason a reader could reconstruct.
 BEHAVIOURAL_SURFACES = (
-    "apps/metering/pricing",   # rating and rate selection
-    "apps/metering/usage",     # the posting and what it cost
-    "apps/billing",            # drawdown, invoicing and the spend ceilings
-    "core/money.py",           # the money primitives themselves
+    "apps/metering",   # rating, rate selection, the posting and its read contract
+    "apps/billing",    # drawdown, invoicing and the spend ceilings
+    "core/money.py",   # the money primitives themselves
 )
 
-#: What reaching the catalogue looks like from another module, whether it is
-#: imported or fetched by label.
-CATALOGUE_TOKENS = ("event_types", "EventCategory")
+#: What reaching the catalogue looks like from another module: its app label,
+#: however it is spelled, or either class by name.
+CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory")
 
-_SPLIT_METHODS = frozenset({"split", "rsplit", "partition", "rpartition"})
+#: Taking a key apart. ``startswith``/``endswith`` are here because a shortcut
+#: that only *tests* the prefix has still decided which supplier it is looking
+#: at from the spelling of a key.
+_SPLIT_METHODS = frozenset({
+    "split", "rsplit", "partition", "rpartition",
+    "removeprefix", "removesuffix", "startswith", "endswith",
+})
+#: The regular-expression entry points, matched on the METHOD NAME alone. A
+#: precompiled ``_PATTERN.match(...)`` names no module, so requiring an ``re.``
+#: receiver would have missed the tidier half of the shortcut.
 _REGEX_FUNCTIONS = frozenset({"match", "search", "fullmatch", "split", "findall"})
 
 _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}
@@ -127,19 +161,6 @@ _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}
 # ---------------------------------------------------------------------------
 # The model registry: what may hold a satellite, and what a satellite may hold
 # ---------------------------------------------------------------------------
-
-def first_party_models():
-    """Every model a UBB app declares.
-
-    ``django.contrib`` and third-party tables are somebody else's vocabulary,
-    the same reason ``test_model_naming.py`` gives for the same exclusion.
-    """
-    return [
-        model for model in apps.get_models()
-        if model._meta.app_config is not None
-        and model._meta.app_config.name.startswith(FIRST_PARTY_PACKAGE)
-    ]
-
 
 def model_label(model):
     return f"{model._meta.app_label}.{model.__name__}"
@@ -162,26 +183,42 @@ def _local_fields(model):
     return list(model._meta.concrete_fields) + list(model._meta.many_to_many)
 
 
+def _satellite_of(field):
+    if field.is_relation and field.related_model in (Provider, EventCategory):
+        return field.related_model
+    return None
+
+
 def classify_holder(model, field):
     """``optional-satellite`` and ``no-record-beneath``, on one relation."""
-    if not field.is_relation or field.related_model not in (Provider, EventCategory):
+    satellite = _satellite_of(field)
+    if satellite is None:
         return None
-    satellite = field.related_model.__name__
+    name = satellite.__name__
 
     if model_label(model) not in SATELLITE_HOLDERS:
         return (
             RULE_BENEATH, site_of(model, field),
-            f"{site_of(model, field)} holds a {satellite}. Only "
+            f"{site_of(model, field)} holds a {name}. Only "
             f"{sorted(SATELLITE_HOLDERS)} may — the account-level record "
             f"beneath the supplier was removed from the model by a later "
             f"decision and must not be rebuilt ({TICKET}). Adding a second "
             f"holder is a modelling decision, so it belongs in a decision "
             f"record and in this list, in that order",
         )
+    if field.many_to_many:
+        return (
+            RULE_BENEATH, site_of(model, field),
+            f"{site_of(model, field)} holds MANY {name} records. An Event Type "
+            f"has one optional supplier and one primary category ({TICKET}) — "
+            f"a many-to-many says something the model does not mean, and it "
+            f"cannot express which one is primary. Declare a nullable "
+            f"ForeignKey",
+        )
     if not (field.null and field.blank):
         return (
             RULE_OPTIONAL, site_of(model, field),
-            f"{site_of(model, field)} REQUIRES a {satellite}. Both satellites "
+            f"{site_of(model, field)} REQUIRES a {name}. Both satellites "
             f"are optional: a tenant metering its own internal work has no "
             f"supplier and must not be made to invent a fictitious one to "
             f"satisfy a schema, and an Event Type with no category is a normal "
@@ -189,6 +226,30 @@ def classify_holder(model, field):
             f"`null=True, blank=True`",
         )
     return None
+
+
+def classify_holder_arity(model, fields):
+    """``no-record-beneath`` — one supplier and one primary category, at most.
+
+    On the model rather than on a field, because "one primary per Event Type"
+    is a statement about how many relations there are and no single relation
+    can see the others. A ``secondary_category`` beside the primary one passes
+    every field-level rule in this file and still contradicts the ticket.
+    """
+    hits = []
+    for satellite in (Provider, EventCategory):
+        held = [f for f in fields if _satellite_of(f) is satellite]
+        if len(held) < 2:
+            continue
+        hits.append((
+            RULE_BENEATH, site_of(model),
+            f"{site_of(model)} holds {len(held)} {satellite.__name__} "
+            f"relations ({', '.join(f.name for f in held)}). One optional "
+            f"supplier and ONE PRIMARY category ({TICKET}) — a second relation "
+            f"is a second answer to a question with one answer, and nothing "
+            f"downstream would know which of them meant it",
+        ))
+    return hits
 
 
 def classify_category_shape(field):
@@ -231,15 +292,23 @@ def classify_monetary_field(model, field):
 
 
 def classify_stringly_typed_supplier(model, field):
-    """``identity-not-spelling`` — the catalogue names no supplier as a string."""
+    """``identity-not-spelling`` — the catalogue names no supplier as a value.
+
+    A real ForeignKey named ``provider`` is not caught by this, and must not
+    be: its ``name`` is ``provider`` and its ``is_relation`` is True, so it
+    leaves by the first line. What is caught is the column that carries an
+    identity or a spelling while declaring no relation — the shape that holds a
+    Provider without being walkable as one.
+    """
     if field.is_relation or field.name not in STRINGLY_TYPED_SUPPLIER_NAMES:
         return None
     return (
         RULE_IDENTITY, site_of(model, field),
-        f"{site_of(model, field)} names a supplier as a value rather than "
-        f"holding one by identity. Supplier cost resolution keys on the "
-        f"Provider record's identity, which is what survives a tenant "
-        f"renaming their own handle ({TICKET}) — declare a ForeignKey",
+        f"{site_of(model, field)} names a supplier without holding one. "
+        f"Supplier cost resolution keys on the Provider record's IDENTITY, and "
+        f"a column that carries a key or a bare identifier is neither walkable "
+        f"nor constrained — a rename or a delete on the far side leaves it "
+        f"pointing at nothing, silently ({TICKET}). Declare a ForeignKey",
     )
 
 
@@ -249,7 +318,9 @@ def _walk_registry():
     for model in first_party_models():
         seen.add(model_label(model))
         in_catalogue = model._meta.app_config.name == CATALOGUE_APP
-        for field in _local_fields(model):
+        fields = _local_fields(model)
+        hits.extend(classify_holder_arity(model, fields))
+        for field in fields:
             hits.extend(filter(None, [
                 classify_holder(model, field),
                 classify_monetary_field(model, field)
@@ -269,8 +340,15 @@ def _registry_failures(rule):
 
 
 def test_the_registry_walk_actually_saw_the_models():
-    """Vacuity guard: an absence proved over an empty registry proves nothing."""
-    assert len(_MODELS_SEEN) > 30, f"only walked {len(_MODELS_SEEN)} models"
+    """Vacuity guard: an absence proved over an empty registry proves nothing.
+
+    The floor is a floor rather than the exact count, because the exact count
+    moves with every model any slice adds, and a guard that has to be edited by
+    unrelated work is a guard that gets raised until it stops failing. What
+    carries the weight is the named list beneath it: those six must be visible,
+    and a walk that lost the app registry loses all of them at once.
+    """
+    assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
     for expected in ("event_types.Provider", "event_types.EventCategory",
                      "grouping_fields.GroupingField", "work.TaskType",
                      "tenants.Tenant", "usage.UsageEvent"):
@@ -278,23 +356,28 @@ def test_the_registry_walk_actually_saw_the_models():
 
 
 def test_no_model_requires_a_satellite():
-    assert not _registry_failures(RULE_OPTIONAL), "\n" + _registry_failures(RULE_OPTIONAL)
+    failures = _registry_failures(RULE_OPTIONAL)
+    assert not failures, "\n" + failures
 
 
 def test_no_record_sits_beneath_the_supplier():
-    assert not _registry_failures(RULE_BENEATH), "\n" + _registry_failures(RULE_BENEATH)
+    failures = _registry_failures(RULE_BENEATH)
+    assert not failures, "\n" + failures
 
 
 def test_the_category_has_no_hierarchy_and_no_effective_dating():
-    assert not _registry_failures(RULE_SMALL), "\n" + _registry_failures(RULE_SMALL)
+    failures = _registry_failures(RULE_SMALL)
+    assert not failures, "\n" + failures
 
 
 def test_neither_satellite_carries_money():
-    assert not _registry_failures(RULE_MONETARY), "\n" + _registry_failures(RULE_MONETARY)
+    failures = _registry_failures(RULE_MONETARY)
+    assert not failures, "\n" + failures
 
 
 def test_the_catalogue_names_no_supplier_as_a_string():
-    assert not _registry_failures(RULE_IDENTITY), "\n" + _registry_failures(RULE_IDENTITY)
+    failures = _registry_failures(RULE_IDENTITY)
+    assert not failures, "\n" + failures
 
 
 # ---------------------------------------------------------------------------
@@ -316,21 +399,39 @@ def _iter_production_sources(roots):
             yield path, rel.as_posix()
 
 
-def classify_catalogue_reach(label, source):
+def classify_catalogue_reach(label, tree):
     """``never-monetary`` — a behavioural module that can see the catalogue.
 
-    Token-level rather than import-level on purpose. ``apps.get_model(
-    "event_types", "Provider")`` is not an import, and it is exactly how a
-    boundary gets crossed by someone who has read a boundary test.
+    Over the parsed tree rather than the raw text, and matching whole name
+    segments rather than substrings, because both halves of that are load
+    bearing. A raw-text scan would fail a billing module for mentioning the
+    catalogue in a comment, which is the shape of gate that gets deleted rather
+    than obeyed; and a substring match would fail ``queries.py`` for the word
+    "Provider" inside an English sentence.
+
+    Wider than an import check for one reason: ``apps.get_model("event_types",
+    "Provider")`` imports nothing, and it is exactly how a boundary gets
+    crossed by someone who has read a boundary test.
     """
-    found = sorted({token for token in CATALOGUE_TOKENS if token in source})
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            found |= set(_dotted_name(node).split(".")) & set(CATALOGUE_TOKENS)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            # The label or class name as data — whole, so prose never matches.
+            found |= {node.value} & set(CATALOGUE_TOKENS)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            imported = [getattr(node, "module", "") or ""]
+            imported += [alias.name for alias in node.names]
+            for name in imported:
+                found |= set(name.split(".")) & set(CATALOGUE_TOKENS)
     if not found:
         return None
     return (
         RULE_MONETARY, label,
-        f"{label} names {', '.join(found)}. Nothing behavioural reads either "
-        f"satellite in slice 2: no rating path, no cost resolution and no "
-        f"spend ceiling. Slice 2 owns the declaration; slice 3 owns every "
+        f"{label} names {', '.join(sorted(found))}. Nothing behavioural reads "
+        f"either satellite in slice 2: no rating path, no cost resolution and "
+        f"no spend ceiling. Slice 2 owns the declaration; slice 3 owns every "
         f"behaviour the declaration selects ({TICKET})",
     )
 
@@ -362,8 +463,21 @@ def _dotted_name(node):
     return ".".join(reversed(parts))
 
 
+#: A name segment that IS a tenant's Event Type key: ``event_type`` itself or a
+#: qualified form of it. Two exclusions, and both are the point rather than
+#: tidiness. ``webhook_event_type`` is a UBB-owned notification name, dotted by
+#: design (``usage.recorded``), and splitting one is correct code. The plural
+#: ``event_types`` is this app's own label, so ``event_types.__name__.split(
+#: ".")`` is a module path being read and not a key being taken apart. A
+#: substring test would have failed both, and a gate that fails correct code is
+#: a gate that gets deleted rather than obeyed.
+_EVENT_TYPE_KEY_SEGMENT = re.compile(r"^event_type(_[a-z0-9_]+)?$")
+
+
 def _is_event_type_expression(node):
-    return "event_type" in _dotted_name(node)
+    """Whether an expression names a tenant's Event Type key."""
+    return any(_EVENT_TYPE_KEY_SEGMENT.match(segment)
+               for segment in _dotted_name(node).split("."))
 
 
 def classify_key_parsing(label, tree):
@@ -377,18 +491,22 @@ def classify_key_parsing(label, tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.Name, ast.Attribute)) and _is_event_type_expression(node):
             subjects += 1
-        if not isinstance(node, ast.Call):
-            continue
 
         parsed = None
-        func = node.func
-        if isinstance(func, ast.Attribute) and func.attr in _SPLIT_METHODS \
-                and _is_event_type_expression(func.value):
-            parsed = f"{func.attr}()"
-        elif isinstance(func, ast.Attribute) and func.attr in _REGEX_FUNCTIONS \
-                and _dotted_name(func.value) == "re" \
-                and any(_is_event_type_expression(arg) for arg in node.args):
-            parsed = f"re.{func.attr}()"
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) \
+                and _is_event_type_expression(node.value):
+            # `event_type.key[:6]` — the same decision, spelled shorter.
+            parsed = "a slice"
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr in _SPLIT_METHODS \
+                    and _is_event_type_expression(func.value):
+                parsed = f"{func.attr}()"
+            elif isinstance(func, ast.Attribute) and func.attr in _REGEX_FUNCTIONS \
+                    and any(_is_event_type_expression(arg) for arg in node.args):
+                # Receiver-agnostic: `re.match(p, k)` and `_PATTERN.match(k)`
+                # decide the same thing, and only one of them names `re`.
+                parsed = f"{func.attr}()"
 
         if parsed is not None:
             hits.append((
@@ -408,13 +526,13 @@ def _walk_sources():
     reach, parsing, scanned, subjects = [], [], [], 0
     behavioural = {label for _, label in _iter_production_sources(BEHAVIOURAL_SURFACES)}
     for path, label in _iter_production_sources(("apps", "core", "api")):
-        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         scanned.append(label)
         if label in behavioural:
-            hit = classify_catalogue_reach(label, source)
+            hit = classify_catalogue_reach(label, tree)
             if hit is not None:
                 reach.append(hit)
-        found, seen = classify_key_parsing(label, ast.parse(source, filename=str(path)))
+        found, seen = classify_key_parsing(label, tree)
         parsing.extend(found)
         subjects += seen
     return reach, parsing, scanned, subjects, behavioural
@@ -433,11 +551,13 @@ def test_the_source_walk_actually_read_the_behavioural_surfaces():
     assert len(_SCANNED) > 200, f"only scanned {len(_SCANNED)} modules"
     for expected in ("apps/metering/pricing/models.py",
                      "apps/metering/usage/models.py",
+                     "apps/metering/queries.py",
+                     "apps/metering/handlers.py",
                      "apps/billing/gating/services/risk_service.py",
                      "core/money.py"):
         assert expected in _BEHAVIOURAL, f"the walk did not read {expected}"
         assert expected in _SCANNED, f"the walk did not read {expected}"
-    assert _KEY_SUBJECTS > 10, (
+    assert _KEY_SUBJECTS > 40, (
         f"only {_KEY_SUBJECTS} Event-Type-key expressions were classified — the "
         f"parsing check may be reading a tree it cannot see the subject in")
 
@@ -562,6 +682,48 @@ def test_positive_control_an_event_type_carrying_neither_is_valid():
 
 
 @isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_second_category_relation_is_flagged():
+    """"One primary per Event Type" — the rule no single field can see."""
+    class EventType(models.Model):
+        category = models.ForeignKey(EventCategory, on_delete=models.PROTECT,
+                                     null=True, blank=True,
+                                     related_name="primary_for")
+        secondary_category = models.ForeignKey(EventCategory,
+                                               on_delete=models.PROTECT,
+                                               null=True, blank=True,
+                                               related_name="secondary_for")
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    # Every field passes on its own, which is exactly why the arity rule exists.
+    assert [classify_holder(EventType, field)
+            for field in _local_fields(EventType)] == [None] * 3
+
+    hits = classify_holder_arity(EventType, _local_fields(EventType))
+    assert len(hits) == 1
+    rule, _, message = hits[0]
+    assert rule == RULE_BENEATH
+    assert "ONE PRIMARY category" in message
+    assert "category, secondary_category" in message
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_many_to_many_satellite_is_flagged():
+    class EventType(models.Model):
+        providers = models.ManyToManyField(Provider, blank=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_holder(EventType, EventType._meta.get_field("providers"))
+    assert hit is not None
+    rule, _, message = hit
+    assert rule == RULE_BENEATH
+    assert "MANY Provider records" in message
+
+
+@isolate_apps(CATALOGUE_APP)
 def test_negative_control_a_category_parent_is_flagged():
     class Nested(models.Model):
         parent = models.ForeignKey("self", on_delete=models.CASCADE, null=True)
@@ -661,8 +823,49 @@ def test_negative_control_a_stringly_typed_supplier_is_flagged():
     assert "ForeignKey" in message
 
 
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_bare_identifier_column_is_flagged():
+    """Holding an identity while declaring no relation — the tidiest evasion.
+
+    It passes ``no-record-beneath`` (there is no relation to walk) and looks
+    like it honours "keys on identity". It does neither: nothing constrains it,
+    nothing cascades, and a delete on the far side leaves it dangling.
+    """
+    class Detached(models.Model):
+        provider_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = Detached._meta.get_field("provider_id")
+    assert classify_holder(Detached, field) is None, "no relation to walk"
+    hit = classify_stringly_typed_supplier(Detached, field)
+    assert hit is not None
+    assert hit[0] == RULE_IDENTITY
+    assert "bare identifier" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_a_real_foreign_key_named_provider_is_not_flagged():
+    """The rule must not fire on the shape it is asking for."""
+    class EventType(models.Model):
+        provider = models.ForeignKey(Provider, on_delete=models.PROTECT,
+                                     null=True, blank=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = EventType._meta.get_field("provider")
+    assert classify_stringly_typed_supplier(EventType, field) is None
+    assert classify_holder(EventType, field) is None
+
+
+def _reach(label, source):
+    return classify_catalogue_reach(label, ast.parse(source))
+
+
 def test_negative_control_a_behavioural_module_naming_the_catalogue_is_flagged():
-    hit = classify_catalogue_reach(
+    hit = _reach(
         "apps/metering/pricing/services/rating.py",
         "from apps.platform.event_types.models import Provider\n",
     )
@@ -674,11 +877,26 @@ def test_negative_control_a_behavioural_module_naming_the_catalogue_is_flagged()
 
 def test_negative_control_a_catalogue_fetched_by_label_is_flagged():
     """The crossing that is not an import, and would survive an import check."""
-    hit = classify_catalogue_reach(
+    hit = _reach(
         "apps/billing/gating/services/risk_service.py",
         'Category = apps.get_model("event_types", "EventCategory")\n',
     )
     assert hit is not None and hit[0] == RULE_MONETARY
+
+
+def test_positive_control_prose_about_a_provider_is_not_a_crossing():
+    """The gate must not fail a module for the English word in a sentence.
+
+    ``apps/metering/queries.py`` really does say "Provider + billed cost
+    totals" in a docstring, and a raw-text scan would have failed it on day one
+    — which is how a gate gets deleted instead of obeyed.
+    """
+    assert _reach(
+        "apps/metering/queries.py",
+        '"""Provider + billed cost totals for one customer."""\n'
+        "# event_types is where the catalogue will live\n"
+        "total = provider_cost_micros + markup_micros\n",
+    ) is None
 
 
 def _classify_snippet(source, label="apps/metering/pricing/synthetic.py"):
@@ -711,7 +929,47 @@ def test_negative_control_a_regex_over_an_event_type_key_is_flagged():
         'name = re.match(r"^([a-z]+)", event_type.key)\n'
     )
     assert len(hits) == 1
-    assert "re.match()" in hits[0][2]
+    assert "match()" in hits[0][2]
+
+
+def test_negative_control_a_precompiled_pattern_is_flagged_too():
+    """It names no module, so a check anchored on ``re.`` would have missed it."""
+    hits, _ = _classify_snippet("name = _SUPPLIER_PATTERN.match(event_type_key)\n")
+    assert len(hits) == 1 and hits[0][0] == RULE_IDENTITY
+
+
+def test_negative_control_slicing_an_event_type_key_is_flagged():
+    hits, _ = _classify_snippet('vendor = event_type.key[:6]\n')
+    assert len(hits) == 1
+    assert "a slice" in hits[0][2]
+
+
+def test_negative_control_trimming_a_prefix_is_flagged():
+    hits, _ = _classify_snippet('rest = event_type_key.removeprefix("acme/")\n')
+    assert len(hits) == 1 and "removeprefix()" in hits[0][2]
+
+
+def test_negative_control_merely_testing_a_prefix_is_flagged():
+    """A test rather than a parse, and the same decision either way."""
+    hits, _ = _classify_snippet('if event_type.key.startswith("acme/"):\n    pass\n')
+    assert len(hits) == 1 and "startswith()" in hits[0][2]
+
+
+def test_positive_control_a_webhook_event_type_may_be_split():
+    """UBB's own notification names are dotted BY DESIGN.
+
+    ``webhook_event_type`` is a live registered concept whose values look like
+    ``usage.recorded``; splitting one is correct code, and a substring match on
+    "event_type" would have turned this gate red on the first module to do it.
+    """
+    hits, _ = _classify_snippet('domain, _, name = webhook_event_type.partition(".")\n')
+    assert hits == []
+
+
+def test_positive_control_this_apps_own_label_is_not_a_key():
+    """``event_types`` plural is the app, not a tenant's Event Type key."""
+    assert _classify_snippet('app, _, mod = event_types.__name__.rpartition(".")\n')[0] == []
+    assert _classify_snippet('names = config.event_types.split(",")\n')[0] == []
 
 
 def test_positive_control_following_the_foreign_key_is_not_flagged():

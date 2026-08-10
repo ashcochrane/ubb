@@ -44,19 +44,6 @@ from django.db import models
 from core.models import BaseModel
 
 
-class ProviderQuerySet(models.QuerySet):
-    def selectable(self):
-        """The Providers a NEW declaration may choose.
-
-        The default manager stays deliberately unfiltered: retirement is about
-        what may be *attached* next, never about what may be *read*. A report
-        over last quarter must still resolve the supplier behind last quarter's
-        postings, and a manager that hid retired rows by default would make that
-        the hard path and the wrong answer the easy one.
-        """
-        return self.filter(retired_at__isnull=True)
-
-
 class Provider(BaseModel):
     """The supplier behind a call — a per-tenant record, optional on an Event Type.
 
@@ -75,6 +62,15 @@ class Provider(BaseModel):
     owner discovers a quarter later and cannot repair. Same rule, and the same
     reasoning, as the Grouping Field registry next door.
 
+    The manager is deliberately unfiltered, and there is deliberately no
+    ``selectable()`` beside it. Retirement is about what may be *attached* next,
+    never about what may be *read* — so hiding retired rows by default would
+    make reading last quarter the clever path and the wrong answer the easy one.
+    The filter that refuses a retired supplier belongs to the ticket that first
+    attaches one to something, which is the ticket that can also test that the
+    refusal happened. Declaring it here would be an unconsumed read in a slice
+    that owns declarations only.
+
     **Optional, and no fictitious row.** A tenant metering its own internal work
     has no supplier, and must not be made to invent one to satisfy a schema. An
     Event Type with no Provider is a normal Event Type. A fictitious Provider is
@@ -84,12 +80,14 @@ class Provider(BaseModel):
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="providers")
-    # The tenant's own handle. Renameable BY DESIGN — see the class docstring.
-    key = models.SlugField(max_length=64)
+    # The tenant's own handle. Renameable BY DESIGN — see the class docstring —
+    # and a plain CharField rather than a slug, because UBB does not enumerate
+    # or second-guess a tenant's own catalogue of suppliers and calls, and a
+    # charset UBB invented would be doing exactly that to a supplier whose real
+    # name carries a slash or a space. Matches the Grouping Field key next door.
+    key = models.CharField(max_length=64)
     # Retire, never delete. NULL means live.
     retired_at = models.DateTimeField(null=True, blank=True)
-
-    objects = ProviderQuerySet.as_manager()
 
     class Meta:
         db_table = "ubb_provider"
@@ -129,7 +127,8 @@ class EventCategory(BaseModel):
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="event_categories")
-    key = models.SlugField(max_length=64)
+    # A plain CharField for the reason given on ``Provider.key``.
+    key = models.CharField(max_length=64)
 
     class Meta:
         db_table = "ubb_event_category"
