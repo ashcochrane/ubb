@@ -195,9 +195,9 @@
     },
     "source_kind": {
       "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "none"
     },
     "source_shape_id": {
       "advertised": false,
@@ -272,7 +272,7 @@
     },
     "unit": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "5 of 5 values",
       "kind": "open",
       "representation": "none"
     },

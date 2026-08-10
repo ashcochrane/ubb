@@ -76,6 +76,7 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/topups/models.py": 2,
     "ubb-platform/apps/metering/pricing/models.py": 3,
     "ubb-platform/apps/platform/customers/models.py": 3,
+    "ubb-platform/apps/platform/event_types/models.py": 1,
     "ubb-platform/apps/platform/events/models.py": 1,
     "ubb-platform/apps/platform/grouping_fields/models.py": 2,
     "ubb-platform/apps/platform/membership/models.py": 4,

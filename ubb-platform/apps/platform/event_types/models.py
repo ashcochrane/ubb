@@ -28,10 +28,10 @@ headcount: anything may import the kernel, and no product may import another
 except through a sanctioned channel — so a table several products read cannot sit
 inside any one of them.
 
-**What is here so far.** ``EventType`` — the aggregate root — and the two
-optional satellites it hangs off, ``Provider`` and ``EventCategory``. The
-declared quantities and the reported-cost mapping arrive in the tickets that
-follow, and the recorded consumer debts naming this path stay open until the
+**What is here so far.** ``EventType`` — the aggregate root — the two optional
+satellites it hangs off, ``Provider`` and ``EventCategory``, and ``Measurement``,
+the declared quantity. The reported-cost mapping arrives in the ticket that
+follows, and the recorded consumer debts naming this path stay open until the
 fields that serve them are built. Nothing here is wired to anything: no rating
 path reads it, no cost resolves through it, no spend ceiling consults it. Slice 2
 owns the declaration; slice 3 owns every behaviour the declaration selects.
@@ -39,6 +39,7 @@ owns the declaration; slice 3 owns every behaviour the declaration selects.
 ``test_event_type_declaration_invariants.py`` are where those claims are held to
 the tree rather than asserted here.
 """
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -52,9 +53,14 @@ from core.vocabulary import (
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
     DECLARATION_STATUS_VALUES,
+    SOURCE_KIND_PROVIDER_RESPONSE,
+    SOURCE_KIND_VALUES,
     SOURCE_SHAPE_ID_CUSTOM,
     SOURCE_SHAPE_ID_KNOWN_VALUES,
+    UNIT_KNOWN_VALUES,
 )
+
+from .source_paths import advisories, path_errors
 
 #: The shapes UBB can actually check a declared path against — every response
 #: shape it knows, minus the one that names no shape at all. `custom` is a known
@@ -71,6 +77,23 @@ RECOGNISED_RESPONSE_SHAPES = SOURCE_SHAPE_ID_KNOWN_VALUES - {SOURCE_SHAPE_ID_CUS
 #: named once. It is declared beneath the Event Type and arrives in #266.
 REPORTED_COST_MAPPING = "reported_cost_mapping"
 
+#: What a declared quantity's number may be. Two values, and the distinction is
+#: the whole of it: a count of calls that arrived as 2.5 is a defect somewhere
+#: upstream, and a declaration that cannot say so cannot catch it.
+#:
+#: UBB owns this pair and the registry declares no concept for it — legal, and
+#: legal VISIBLY, which is what `tests/contracts/test_undeclared_value_sets.py`
+#: exists to count. It stays a `choices=` list rather than becoming a concept
+#: because nothing outside this model reads it: it is not on the contract, not
+#: in the console's catalogue and not in the generated integration's vocabulary.
+VALUE_TYPE_INTEGER = "integer"
+VALUE_TYPE_DECIMAL = "decimal"
+VALUE_TYPE_CHOICES = (
+    (VALUE_TYPE_INTEGER, "Integer"),
+    (VALUE_TYPE_DECIMAL, "Decimal"),
+)
+VALUE_TYPE_VALUES = frozenset(value for value, _ in VALUE_TYPE_CHOICES)
+
 
 class DeclarationIncomplete(UBBError):
     """Publication refused: the declaration does not yet pin what it must.
@@ -86,6 +109,17 @@ class DeclarationIncomplete(UBBError):
         super().__init__(
             f"the declaration is incomplete and stays in "
             f"{DECLARATION_STATUS_DRAFT}: {', '.join(self.blockers)}")
+
+
+class ValueTypeMismatch(UBBError):
+    """This number is not the kind of number the declaration says it is.
+
+    A refusal rather than a coercion, and that direction is the decision: the
+    two repairs available — round it, or widen the declaration — are both
+    somebody's commercial call, and a quantity silently rounded at the door is
+    a quantity nobody can reconcile back to what the supplier reported.
+    """
+
 
 
 class Provider(BaseModel):
@@ -227,8 +261,12 @@ class EventType(BaseModel):
     #: resolution rather than to the code a tenant deploys — unpublishing a
     #: tenant's live integration because they re-filed it under a different
     #: analytics grouping would be a cost with no benefit on the other side.
-    #: The structured paths and the mapping join this tuple with the records
-    #: that carry them.
+    #: The structured paths turned out not to fit here: they arrived on rows
+    #: BENEATH the Event Type (#263), and a tuple of this record's own field
+    #: names cannot reach them. They pin the publication all the same, through
+    #: :meth:`revise_declaration`, which the child calls. The mapping still
+    #: joins this tuple, and the tripwire for that is in
+    #: ``event_types/tests/test_event_type.py``.
     PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label")
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -306,7 +344,47 @@ class EventType(BaseModel):
     def __str__(self):
         return f"EventType({self.key})"
 
+    # -- what the declared quantities say about this Event Type ---------------
+
+    def missing_required_measurements(self, quantities):
+        """Which declared quantities this Event Type needed and did not get.
+
+        The reason ``required_for_costing`` is a field rather than a comment:
+        with it, UBB can tell *"this event is fully costed"* from *"this event
+        is missing an input"*, and without it the two are the same silence.
+
+        ``quantities`` is whatever arrived, by code. A code this Event Type
+        never declared contributes nothing here — which is the ticket's
+        headline stated as a return value. A misspelled quantity used to hit a
+        ``continue`` on the price side and be silently free; now the
+        declaration it failed to match is reported as missing, and the event is
+        visibly not fully costed. What becomes of the unrecognised code itself
+        — quarantine, remediation, replay — is #265's, and is deliberately not
+        answered here: this method reports on DECLARATIONS.
+        """
+        arrived = set(quantities)
+        return tuple(sorted(
+            declared.code for declared in self.measurements.all()
+            if declared.required_for_costing and declared.code not in arrived))
+
     # -- the declaration lifecycle -------------------------------------------
+
+    def revise_declaration(self):
+        """A change to a record BENEATH this declaration is a revised publication.
+
+        The structured paths belong to the published contract exactly as the
+        response shape does (#193 §B7) — an incorrect path produces an
+        incorrect supplier cost — but they live on rows of their own, so
+        ``PINNED`` cannot reach them and the child calls this instead.
+
+        Returns whether anything moved, so a caller can tell "the declaration
+        was live and has been returned to draft" from "it was already a draft".
+        """
+        if self.declaration_status != DECLARATION_STATUS_PUBLISHED:
+            return False
+        self.declaration_status = DECLARATION_STATUS_DRAFT
+        self.save(update_fields=["declaration_status"])
+        return True
 
     def publication_blockers(self):
         """What stands between this declaration and publication, if anything.
@@ -478,3 +556,311 @@ class EventType(BaseModel):
                     f"name. Name the wrapper, so a reader of this declaration "
                     f"can tell what the paths beneath it are written against.")
         return None
+
+
+class Measurement(BaseModel):
+    """One declared quantity beneath an Event Type — the record this slice is for.
+
+    Before this, the measured quantities reaching the pricing engine travelled
+    in a bare JSON bag whose only validation was that the numbers were not
+    negative, and **a misspelled quantity was silently free**: on the price side
+    it hit a ``continue``, contributed nothing, and told nobody. Every attribute
+    below exists because its absence was a way for a number to mean less than
+    the reader thought it did.
+
+    * **A code and a display name**, so a quantity can be referred to and read.
+    * **A value type**, so a count that must be whole cannot arrive as a
+      fraction.
+    * **A unit**, so a reader of an invoice line can tell what was counted. Held
+      by reference to the generated vocabulary and OPEN: a tenant may declare a
+      unit UBB has never heard of, because the quantity a tenant sells is the
+      tenant's to choose (#193 §C5).
+    * **Whether its absence blocks a complete cost**, which is what lets UBB
+      tell a fully costed event from one missing an input.
+    * **A source kind**, held by reference, and **a structured source path** —
+      where the number comes from, and how the builder is to reach it.
+
+    **Declarations are Event-Type-local, and that is the correctness boundary.**
+    The same code on two Event Types is two independent records that happen to
+    share a spelling, which is why the uniqueness constraint is on the pair.
+    Name-equality was never what made a declaration right: one correctly named
+    and mapped to the wrong supplier field is wrong, and an oddly named one
+    mapped correctly is right. One tenant's two supplier integrations never have
+    to agree about spelling to both be correct.
+
+    **Only a declared quantity may participate in monetary calculation** — which
+    is a property of this table rather than an instruction to a later reader.
+    There is exactly one place a quantity can be declared, it is keyed by the
+    Event Type, and this record carries no amount and no currency of its own
+    (a reported supplier cost is money with a currency and is a SIBLING of these,
+    not one of them — #193 §D2, #266). ``no-cost-amount`` in
+    ``apps/platform/tests/test_event_type_declaration_invariants.py`` is what
+    holds that to the tree.
+
+    **Nothing rates against these.** No rating path reads this table; slice 3
+    wires it. Unknown-key handling — quarantine, remediation, replay — is #265's,
+    and the only thing said about it here is that an undeclared code contributes
+    nothing to :meth:`EventType.missing_required_measurements`.
+    """
+
+    #: What a change to one of these revises. The publication pins the
+    #: structured paths because an incorrect path produces an incorrect supplier
+    #: cost (#193 §B7) — and once a path is pinned so is everything that decides
+    #: what the generated integration does with it: which quantity it names,
+    #: whether it must supply one, where it reads it and what shape the number
+    #: is. ``display_name`` is deliberately absent: it names the quantity for a
+    #: human and reaches no emitted behaviour, so returning a live integration
+    #: to draft over a corrected caption would be a cost with nothing on the
+    #: other side.
+    PINNED = ("code", "value_type", "unit", "required_for_costing",
+              "source_kind", "source_path")
+
+    event_type = models.ForeignKey(EventType, on_delete=models.CASCADE,
+                                   related_name="measurements")
+    # The tenant's own name for their own quantity, and UBB never enumerates
+    # these either. Its length matches the Event Type's key beside it.
+    code = models.CharField(max_length=100)
+    display_name = models.CharField(max_length=200, blank=True, default="")
+
+    value_type = models.CharField(max_length=16, choices=VALUE_TYPE_CHOICES,
+                                  default=VALUE_TYPE_INTEGER)
+    # OPEN, so there is no constraint on WHICH unit — only that there is one.
+    # A quantity with no noun beside it is a number an invoice reader cannot
+    # interpret, and that is the failure this column is here to stop.
+    unit = models.CharField(max_length=64)
+
+    # The flag that makes an incomplete cost visible instead of silent.
+    required_for_costing = models.BooleanField(default=False)
+
+    # The closed vocabulary, held BY REFERENCE — from `core.vocabulary` at
+    # every point that reads it, `clean` below and the database constraint in
+    # `Meta`, so this model cannot keep a second copy that drifts.
+    source_kind = models.CharField(max_length=32)
+
+    # Canonical segments, never an executable expression: the builder emits
+    # more than one language, and a stored expression is portable to none of
+    # them. `source_paths.py` owns the whole of what that means.
+    source_path = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = "ubb_measurement"
+        constraints = [
+            # THE LOCALITY, at the database. Two Event Types may each declare
+            # `prompt_tokens`; one Event Type may not declare it twice.
+            models.UniqueConstraint(fields=["event_type", "code"],
+                                    name="uq_measurement_code"),
+            models.CheckConstraint(
+                condition=models.Q(source_kind__in=sorted(SOURCE_KIND_VALUES)),
+                name="ck_measurement_source_kind",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(value_type__in=sorted(VALUE_TYPE_VALUES)),
+                name="ck_measurement_value_type",
+            ),
+            # The only thing a database can say about an OPEN set: not which
+            # unit, but that one was declared.
+            models.CheckConstraint(
+                condition=~models.Q(unit=""),
+                name="ck_measurement_unit_is_declared",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Measurement({self.code})"
+
+    # -- the value type, which is the point of declaring one ------------------
+
+    def validate_value(self, value):
+        """``value`` as an exact quantity, or refuse it. Never rounds.
+
+        The check the bare bag could not make. A count of calls declared whole
+        and reported as 2.5 is a defect upstream, and the two ways to make it
+        go away — round it, or widen the declaration — are both somebody's
+        commercial decision rather than this method's.
+
+        A binary float is read through its shortest round-tripping text rather
+        than through its exact binary expansion, because ``0.1`` in a supplier's
+        JSON means a tenth and reading it as
+        ``0.1000000000000000055511151231257827`` would be UBB inventing
+        precision nobody sent. What the wire may carry, and where it is parsed,
+        is slice 3's.
+        """
+        quantity = self._as_quantity(value)
+        if (self.value_type == VALUE_TYPE_INTEGER
+                and quantity != quantity.to_integral_value()):
+            raise ValueTypeMismatch(
+                f"{self.code} is declared as a whole number and {value!r} is "
+                f"not one. UBB does not round a quantity to fit a declaration: "
+                f"either the value is wrong or the declaration is, and both "
+                f"repairs are a commercial decision.")
+        return quantity
+
+    def _as_quantity(self, value):
+        """A quantity, or a refusal. ``True`` is not the number one.
+
+        ``bool`` is a subclass of ``int`` in Python, so a flag reaching a
+        quantity column passes every numeric test there is. It is refused by
+        name for that reason and no other.
+        """
+        if isinstance(value, bool) or value is None:
+            raise ValueTypeMismatch(
+                f"{self.code} is a quantity and {value!r} is not a number.")
+        try:
+            quantity = Decimal(str(value)) if isinstance(value, float) \
+                else Decimal(value)
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueTypeMismatch(
+                f"{self.code} is a quantity and {value!r} is not a number.")
+        if not quantity.is_finite():
+            raise ValueTypeMismatch(
+                f"{self.code} is a quantity and {value!r} is not a finite one.")
+        return quantity
+
+    # -- what UBB has to say, and will never do ------------------------------
+
+    def declaration_advisories(self):
+        """Everything UBB advises about this declaration. It never acts on any of it.
+
+        Two kinds, one surface, because they are the same product stance seen
+        twice: UBB says what looks wrong and changes nothing. A quiet rewrite of
+        a tenant's own mapping — or of their own noun — is the failure mode
+        being designed out, so advice is the entire product.
+        """
+        return (*self._unit_advisories(), *self._path_advisories())
+
+    def _path_advisories(self):
+        """The path, against the shape its Event Type declares."""
+        return advisories(self.event_type.source_shape_id, self.source_path)
+
+    def _unit_advisories(self):
+        """A unit UBB has met, spelled another way.
+
+        A unit outside the five UBB has met is **accepted in silence** — the
+        concept is open, and advising on it would be UBB leaning on a tenant to
+        use UBB's catalogue. What is worth saying is the near miss: `Tokens` and
+        `token` are one noun spelled twice, and two spellings on two
+        declarations read as two different things on one invoice.
+        """
+        declared = self.unit.strip()
+        if not declared or declared in UNIT_KNOWN_VALUES:
+            return ()
+        folded = declared.lower().rstrip("s")
+        if folded not in UNIT_KNOWN_VALUES:
+            return ()
+        return (f"`{declared}` is how UBB spells `{folded}` after a change of "
+                f"case or number. Both are accepted and UBB will not change "
+                f"yours — but one noun spelled two ways across two declarations "
+                f"reads as two different things on one invoice.",)
+
+    # -- publication reaches down here too ------------------------------------
+
+    def _pinned_declaration(self):
+        return tuple(getattr(self, name) for name in self.PINNED)
+
+    def _pinned_baseline(self):
+        """What this row's pinned elements said when this instance met them.
+
+        The same lazy read as the Event Type's, and for the same reason: a
+        baseline taken only at load time is absent on a deferred load, absent is
+        indistinguishable from unchanged, and the guard would fail open on
+        exactly the spelling a careful caller reaches for.
+        """
+        cached = getattr(self, "_pinned_as_loaded", None)
+        if cached is not None or self._state.adding or self.pk is None:
+            return cached
+        row = (type(self)._base_manager.filter(pk=self.pk)
+               .values_list(*self.PINNED).first())
+        return tuple(row) if row is not None else None
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if set(cls.PINNED) <= set(field_names):
+            instance._pinned_as_loaded = instance._pinned_declaration()
+        return instance
+
+    def save(self, *, update_fields=None, **kwargs):
+        """Declaring a quantity, or changing one, revises the publication.
+
+        Including ADDING one: a published Event Type that grows a required
+        quantity is a different declaration from the one a tenant generated
+        their integration against, and leaving it published would mean the
+        deployed code was generated against a contract that has moved.
+
+        ``QuerySet.update()`` goes round this as it goes round every
+        model-level guard here — ADR-0007 §2 is explicit that these are a
+        courtesy to the ordinary path and never the enforcement.
+        """
+        baseline = self._pinned_baseline()
+        revised = baseline is None or self._pinned_declaration() != baseline
+
+        super().save(update_fields=update_fields, **kwargs)
+        self._pinned_as_loaded = self._pinned_declaration()
+        if revised:
+            self.event_type.revise_declaration()
+
+    def delete(self, *args, **kwargs):
+        """Withdrawing a quantity revises the publication too.
+
+        The declaration a tenant's deployed integration was generated against
+        no longer describes what UBB will accept, and that is the same event as
+        a changed path arriving at it from the other direction.
+        """
+        event_type = self.event_type
+        outcome = super().delete(*args, **kwargs)
+        event_type.revise_declaration()
+        return outcome
+
+    # -- validation -----------------------------------------------------------
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if self.source_kind not in SOURCE_KIND_VALUES:
+            errors["source_kind"] = (
+                f"'{self.source_kind}' is not a source kind. UBB owns this "
+                f"whole value set: {', '.join(sorted(SOURCE_KIND_VALUES))}.")
+        if self.value_type not in VALUE_TYPE_VALUES:
+            errors["value_type"] = (
+                f"'{self.value_type}' is not a value type. UBB owns this whole "
+                f"value set: {', '.join(sorted(VALUE_TYPE_VALUES))}.")
+        if not self.unit.strip():
+            errors["unit"] = (
+                "a quantity needs a noun beside it, or a reader of an invoice "
+                "line cannot tell what was counted. UBB records the spellings "
+                "it has met and never bounds the set — declare your own.")
+
+        problems = path_errors(self.source_path)
+        obligation = None if problems else self._path_obligation_error()
+        if problems:
+            errors["source_path"] = [f"the source path {problem}"
+                                     for problem in problems]
+        elif obligation:
+            errors["source_path"] = f"the source path {obligation}"
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _path_obligation_error(self):
+        """Which source kinds owe a path, and which may not carry one.
+
+        Only ``provider_response`` READS one, so only it needs one — and a path
+        on any other kind would be a read nothing performs, sitting in the one
+        column a builder is about to emit from. The kinds that owe something
+        else owe something this slice has not designed: a `derived` quantity
+        needs a named transformation and the transformation vocabulary has no
+        design and no owner (#193 §D4), and a single path cannot express one.
+        """
+        if self.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
+            if not self.source_path:
+                return ("is empty, and a quantity read from the supplier's "
+                        "response has to say where in it. Declare the segments, "
+                        "or declare a source kind that reads no response.")
+            return None
+        if self.source_path:
+            return (f"reads a supplier response, and this quantity is declared "
+                    f"as '{self.source_kind}', which reads none. A path here "
+                    f"would be emitted by nothing.")
+        return None
+

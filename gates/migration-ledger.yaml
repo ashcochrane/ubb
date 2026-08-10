@@ -2367,21 +2367,6 @@ entries:
       engine with declared measurements, and slice 4 rebuilds the rates that
       carry the structure.
 
-  - id: g2-backend-source_kind
-    gate: G2
-    site: ubb-platform/apps/platform/event_types/models.py::source_kind
-    expected: source_kind
-    found: 0 of 4 values
-    owner_slice: slice_2
-    reason: >-
-      Not a restated value set — an empty one. The app landed ahead of its
-      models so the registry could name this path at all (spec §A2), so this
-      consumer holds none of the concept's values because no field yet exists
-      to hold them. Where a measurement's value comes from — #145's
-      `source_path`, enforced by code generation rather than validation. The
-      debt is paid by the ticket that builds that field, importing its values
-      from `core.vocabulary`.
-
   - id: g2-backend-spend_pool_enforce_mode
     gate: G2
     site: ubb-platform/apps/billing/gating/models.py::spend_pool_enforce_mode
@@ -3107,19 +3092,6 @@ entries:
       that. Slice 6 rebuilds spend control, where #150's four families rewrite
       the stop reasons — and one value is already held by reference in the
       backend (#200). The metadata appears in that slice.
-
-  - id: g4-openapi-source_kind
-    gate: G4
-    site: openapi/v1.json::source_kind
-    expected: source_kind
-    found: 0 of 4 values
-    owner_slice: slice_2
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 2 rebuilds the measurement catalogue this describes the
-      origin of. The metadata appears in that slice.
 
   - id: g4-openapi-spend_pool_enforce_mode
     gate: G4
