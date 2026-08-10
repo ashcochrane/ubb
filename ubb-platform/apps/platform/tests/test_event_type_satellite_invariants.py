@@ -145,8 +145,14 @@ BEHAVIOURAL_SURFACES = (
 #: however it is spelled, or any of its classes by name. ``EventType`` joined
 #: the list with the record (#262) — nothing behavioural may read the
 #: declaration either, and the aggregate root is the name a rating path would
-#: reach for first.
-CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType")
+#: reach for first. ``MeasurementConcept`` joined it in #264, where the reach
+#: is not merely unwired but forbidden outright: the grouping is analytics-only
+#: and a rating path that can see it has made an analytics heading into a
+#: costing input. That claim is stated twice on purpose and the two halves
+#: catch different things — the model-registry rule next door catches a
+#: relation, and this catches a module that reads one without holding one.
+CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType",
+                    "MeasurementConcept")
 
 #: Taking a key apart. ``startswith``/``endswith`` are here because a shortcut
 #: that only *tests* the prefix has still decided which supplier it is looking
@@ -889,6 +895,22 @@ def test_negative_control_a_behavioural_module_naming_the_catalogue_is_flagged()
     rule, _, message = hit
     assert rule == RULE_MONETARY
     assert "event_types" in message
+
+
+def test_negative_control_a_rating_path_reading_the_grouping_is_flagged():
+    """The analytics opt-in, read where money is decided (#264).
+
+    Nothing here holds a relation, so the model-registry rule next door has
+    nothing to walk — and grouping rates by a heading a tenant edits for a
+    chart is exactly what "analytics-only" refuses.
+    """
+    hit = _reach(
+        "apps/metering/pricing/services/rating.py",
+        "def rate_for(measurement):\n"
+        "    return MeasurementConcept.objects.get(pk=measurement.concept_id)\n",
+    )
+    assert hit is not None
+    assert hit[0] == RULE_MONETARY and "MeasurementConcept" in hit[2]
 
 
 def test_negative_control_a_catalogue_fetched_by_label_is_flagged():
