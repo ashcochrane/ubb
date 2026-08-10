@@ -17,8 +17,8 @@
 #
 #   1. ENUMERATED. A pattern is an exact tracked path or a `dir/**` prefix.
 #      There is no wildcard language, on purpose: `**/migrations/**` would be
-#      one character from `**/m*/**`, so the eighteen migration directories are
-#      written out and a nineteenth app has to be added deliberately.
+#      one character from `**/m*/**`, so the nineteen migration directories are
+#      written out and a twentieth app has to be added deliberately.
 #   2. COUNTED. Each rule declares exactly how many tracked files it removes.
 #      Widening one changes the number, and the number is in the diff.
 #   3. TOTALLY ACCOUNTED. Every tracked file is swept or matched by exactly one
@@ -110,7 +110,7 @@ exclusions:
 
   - id: historical-migrations
     permanence: until_slice_8
-    files: 185
+    files: 186
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**
@@ -123,6 +123,7 @@ exclusions:
       - ubb-platform/apps/platform/audit/migrations/**
       - ubb-platform/apps/platform/customers/migrations/**
       - ubb-platform/apps/platform/dimensions/migrations/**
+      - ubb-platform/apps/platform/event_types/migrations/**
       - ubb-platform/apps/platform/events/migrations/**
       - ubb-platform/apps/platform/membership/migrations/**
       - ubb-platform/apps/platform/plans/migrations/**
@@ -137,11 +138,11 @@ exclusions:
       of the history it exists to be.
       This exclusion ENDS AT slice_8, and it ends by DELETION rather than
       renewal: #155 §5.4's cutover squash deletes this entire category, so the
-      exclusion goes with the files. Eighteen directories are written out
-      rather than matched by a wildcard so that a nineteenth app's migrations
+      exclusion goes with the files. Nineteen directories are written out
+      rather than matched by a wildcard so that a twentieth app's migrations
       are a deliberate addition here, visible in a diff.
       STATED RESIDUAL: this covers migrations not yet written as well as the
-      183 that exist, so a NEW migration introducing a retired word is not
+      ones that exist, so a NEW migration introducing a retired word is not
       caught. Narrowing it to today's files would be the tighter rule and is
       the wrong one — slices 1 to 7 are largely renames, and a `RenameField`
       naming the word it retires is the correct migration rather than a
