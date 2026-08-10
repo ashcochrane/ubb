@@ -12,7 +12,7 @@ coincidence can satisfy"*. So the census cannot see it, will never be able to
 see it, and the honest response is not to pretend otherwise but to **count it**.
 
 That is what this module does. **Every Django `choices=` in living backend code
-is pinned below, by file and by count** — all 46 of them across 19 files,
+is pinned below, by file and by count** — all 48 of them across 19 files,
 whether or not the registry declares a consumer for that file.
 
 Pinning the whole inventory rather than only the unmatched part is deliberate,
@@ -76,7 +76,7 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/topups/models.py": 2,
     "ubb-platform/apps/metering/pricing/models.py": 3,
     "ubb-platform/apps/platform/customers/models.py": 3,
-    "ubb-platform/apps/platform/event_types/models.py": 1,
+    "ubb-platform/apps/platform/event_types/models.py": 3,
     "ubb-platform/apps/platform/events/models.py": 1,
     "ubb-platform/apps/platform/grouping_fields/models.py": 2,
     "ubb-platform/apps/platform/membership/models.py": 4,

@@ -30,15 +30,17 @@ inside any one of them.
 
 **What is here so far.** ``EventType`` — the aggregate root — the two optional
 satellites it hangs off, ``Provider`` and ``EventCategory``, ``Measurement``,
-the declared quantity, and ``MeasurementConcept``, the opt-in grouping two
-declarations may share. The reported-cost mapping arrives in the ticket that
-follows, and the recorded consumer debts naming this path stay open until the
-fields that serve them are built. Nothing here is wired to anything: no rating
-path reads it, no cost resolves through it, no spend ceiling consults it. Slice 2
-owns the declaration; slice 3 owns every behaviour the declaration selects.
-``apps/platform/tests/test_event_type_satellite_invariants.py`` and its sibling
-``test_event_type_declaration_invariants.py`` are where those claims are held to
-the tree rather than asserted here.
+the declared quantity, ``MeasurementConcept``, the opt-in grouping two
+declarations may share, and ``QuarantinedKey`` — the one record here that is
+about a name the catalogue does NOT contain. The reported-cost mapping arrives
+in the ticket that follows, and the recorded consumer debts naming this path
+stay open until the fields that serve them are built. Nothing here is wired to
+anything: no rating path reads it, no cost resolves through it, no spend ceiling
+consults it. Slice 2 owns the declaration; slice 3 owns every behaviour the
+declaration selects. ``apps/platform/tests/test_event_type_satellite_invariants.py``
+and its siblings ``test_event_type_declaration_invariants.py`` and
+``test_quarantine_invariants.py`` are where those claims are held to the tree
+rather than asserted here.
 """
 from decimal import Decimal, InvalidOperation
 
@@ -94,6 +96,47 @@ VALUE_TYPE_CHOICES = (
     (VALUE_TYPE_DECIMAL, "Decimal"),
 )
 VALUE_TYPE_VALUES = frozenset(value for value, _ in VALUE_TYPE_CHOICES)
+
+#: Which of the two names UBB failed to recognise. They are one record because
+#: the answer to both is the same three words — accept, quarantine, replay —
+#: and the same three remediation paths; they are told apart because what a
+#: tenant maps an unrecognised Event Type to is a different declaration from
+#: what they map an unrecognised quantity to.
+UNRECOGNISED_EVENT_TYPE = "event_type"
+UNRECOGNISED_MEASUREMENT_KEY = "measurement_key"
+UNRECOGNISED_CHOICES = (
+    (UNRECOGNISED_EVENT_TYPE, "Event Type"),
+    (UNRECOGNISED_MEASUREMENT_KEY, "Measurement key"),
+)
+UNRECOGNISED_VALUES = frozenset(value for value, _ in UNRECOGNISED_CHOICES)
+
+#: The three remediation paths, plus the state before any of them is taken.
+#: Every one of them is something a TENANT does: UBB never picks one, because
+#: each is a commercial call — mapping says two names were always one thing,
+#: registering says a new thing exists, and dismissing says a name reaching
+#: UBB was never economic at all.
+#:
+#: The unresolved state is the empty string rather than a token, so that "is
+#: this still open" is one comparison in Python, in SQL and in a database
+#: constraint, and so no row can be unresolved in one of those and resolved in
+#: another.
+RESOLUTION_UNRESOLVED = ""
+RESOLUTION_MAPPED = "mapped"
+RESOLUTION_REGISTERED = "registered"
+RESOLUTION_DISMISSED = "dismissed"
+RESOLUTION_CHOICES = (
+    (RESOLUTION_UNRESOLVED, "Unresolved"),
+    (RESOLUTION_MAPPED, "Mapped to an existing declaration"),
+    (RESOLUTION_REGISTERED, "Registered as a new declaration"),
+    (RESOLUTION_DISMISSED, "Dismissed as non-economic"),
+)
+RESOLUTION_VALUES = frozenset(value for value, _ in RESOLUTION_CHOICES)
+
+#: The two resolutions that end with the held name MEANING a declared one. The
+#: third does the opposite, and keeping the pair named once is what stops the
+#: database constraint and the validator drifting into two different rules.
+RESOLUTIONS_NAMING_A_DECLARATION = frozenset({RESOLUTION_MAPPED,
+                                              RESOLUTION_REGISTERED})
 
 
 class DeclarationIncomplete(UBBError):
@@ -1037,5 +1080,290 @@ class Measurement(PinnedDeclaration, BaseModel):
             return (f"reads a supplier response, and this quantity is declared "
                     f"as '{self.source_kind}', which reads none. A path here "
                     f"would be emitted by nothing.")
+        return None
+
+
+class QuarantinedKeyQuerySet(models.QuerySet):
+    """The one question anything asks of this table: what is still open."""
+
+    def unresolved(self):
+        return self.filter(resolution=RESOLUTION_UNRESOLVED)
+
+
+class QuarantinedKey(BaseModel):
+    """A name UBB has never seen, held rather than thrown away (#193 §B5, §C4).
+
+    Something arrives naming an Event Type this tenant never declared, or
+    carrying a quantity code beneath a declared Event Type that the declaration
+    does not mention. Two answers suggest themselves and both are wrong.
+
+    **Throwing it away throws away real money.** A supplier has already charged
+    the tenant for that call. Discarding the event because UBB did not
+    recognise a name does not make the cost go away; it makes it invisible, and
+    the margin it eats is found a month later as a gap nobody can explain.
+
+    **Registering it automatically makes a typo permanent.** A misspelling that
+    arrives twice would become billing vocabulary — a declared name, on an
+    invoice, that nobody chose. There is no later moment at which UBB could
+    tell that name from a real one, because by then it looks exactly like one.
+
+    So the answer is neither: **accept, quarantine, replay.** The event is
+    accepted and preserved, the unrecognised name is held here and marked
+    unresolved, and remediation is a thing a tenant does. This record is the
+    held name.
+
+    **What this record is not.** It is not a declaration and it is not on the
+    way to becoming one. Registering the name is a tenant act that creates a
+    declaration by the ordinary route, and this record then says only that it
+    happened; nothing here is promoted, copied or migrated into the catalogue.
+    That is why it relates to no declaration at all — see ``resolved_key``
+    below — and ``apps/platform/tests/test_quarantine_invariants.py`` is where
+    that claim is held to the model registry rather than asserted here.
+
+    **One row per event, not one per distinct name.** Folding identical names
+    into a counter is the obvious shape and it destroys the thing this record
+    exists for: replay is *from the event's own timestamp*, and a row standing
+    for four thousand events has four thousand original timestamps and can
+    offer none of them. What a console wants — "this name arrived 4,000 times"
+    — is a query over these rows, and ADR-0006 §4 says a fact derived like that
+    is not stored anyway.
+
+    **And no uniqueness constraint, which is the same ruling from the other
+    side.** Four of the columns below are the cost key (#193 §B2), and a unique
+    constraint over them would read as tidiness. What it would do is refuse the
+    second of two events that genuinely share a timestamp — a refusal at the
+    door, which is the one outcome this whole record exists to prevent.
+    """
+
+    #: Which of the two names was not recognised.
+    #:
+    #: UBB owns this pair and the registry declares no concept for it, the same
+    #: ruling ``Measurement.value_type`` records above and for the same reason:
+    #: nothing outside this app reads it. It is not on the public contract, not
+    #: in the console's label catalogue and not in the vocabulary a generated
+    #: integration carries. ``tests/contracts/test_undeclared_value_sets.py``
+    #: is what keeps that legality VISIBLE rather than merely true.
+    unrecognised = models.CharField(max_length=32,
+                                    choices=UNRECOGNISED_CHOICES)
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="quarantined_keys")
+
+    # The two names, held exactly as they arrived. `event_type_key` is always
+    # populated: on an unrecognised quantity it names the declared Event Type
+    # the quantity arrived beneath, and on an unrecognised Event Type it is the
+    # name nothing matched. Neither is ever taken apart — a supplier is a
+    # Provider record's identity and never a substring of a key (#261).
+    event_type_key = models.CharField(max_length=100)
+    measurement_key = models.CharField(max_length=100, blank=True, default="")
+
+    #: The number that arrived, verbatim, as text.
+    #:
+    #: Text rather than a numeric column, and this is the whole of "nothing is
+    #: zeroed": a numeric column has a scale, the declaration that would say
+    #: which scale is legal is precisely the declaration that does not exist,
+    #: and a quantity quietly rounded to fit a column UBB chose is a quantity
+    #: partly discarded. Held as sent, and read by whoever resolves it.
+    #:
+    #: Empty means the event carried no number for this name — a different fact
+    #: from a number that was zero, and a column that could not tell those
+    #: apart would answer "0" to both.
+    quantity = models.CharField(max_length=64, blank=True, default="")
+
+    #: When the event happened. **The load-bearing column of this record.**
+    #: Remediation happens whenever somebody gets round to it, and a cost
+    #: incurred in one period must not surface in another because a spelling
+    #: was fixed on a Tuesday. Everything downstream reads this and never
+    #: ``resolved_at``.
+    occurred_at = models.DateTimeField(db_index=True)
+
+    # How it left quarantine, and when. Empty means it has not: an unresolved
+    # row is an economic value nobody has accounted for, which is exactly what
+    # the period-close safeguard reads.
+    resolution = models.CharField(max_length=16, blank=True, default="",
+                                  choices=RESOLUTION_CHOICES)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    #: What the held name now means: the key of the declaration a tenant mapped
+    #: it to, or registered for it. Empty on a dismissal, because a name
+    #: dismissed as non-economic means nothing — recording a declaration
+    #: against it would be a mapping wearing a dismissal's name.
+    #:
+    #: A key rather than a foreign key, and it is a decision rather than a
+    #: shortcut. A relation from here into the catalogue is the
+    #: auto-registration path rebuilt as a graph: once a held typo POINTS at a
+    #: declaration, the next event carrying that typo can be resolved through
+    #: it without a tenant deciding anything — the fence that matters most,
+    #: taken down by a foreign key nobody thought was about that. It would also
+    #: let a quarantine row from two years ago refuse the deletion of a
+    #: declaration, under ``PROTECT``, on behalf of a typo. What guarantees
+    #: this key names something real is the service that writes it, which is
+    #: handed the declaration and reads the key off it.
+    resolved_key = models.CharField(max_length=100, blank=True, default="")
+
+    objects = QuarantinedKeyQuerySet.as_manager()
+
+    class Meta:
+        db_table = "ubb_quarantined_key"
+        constraints = [
+            # The two closed sets, at the database. A `clean()` alone defends
+            # nothing against what writes without validating, which is most of
+            # what writes (ADR-0007 §2).
+            models.CheckConstraint(
+                condition=models.Q(unrecognised__in=sorted(UNRECOGNISED_VALUES)),
+                name="ck_quarantined_key_unrecognised",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(resolution__in=sorted(RESOLUTION_VALUES)),
+                name="ck_quarantined_key_resolution",
+            ),
+            # An unrecognised quantity has a quantity name; an unrecognised
+            # Event Type has none. Without this a row could claim to be about a
+            # quantity while naming none, and the remediation paths would have
+            # nothing to resolve.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
+                             measurement_key__gt="")
+                    | models.Q(unrecognised=UNRECOGNISED_EVENT_TYPE,
+                               measurement_key="")),
+                name="ck_quarantined_key_names_what_it_is_about",
+            ),
+            # Resolved and dated move together, in both directions. A
+            # resolution with no date is a repair nobody can place in time; a
+            # date with no resolution is a row that reads as unresolved to
+            # every query and as finished to every reader.
+            models.CheckConstraint(
+                condition=(models.Q(resolution=RESOLUTION_UNRESOLVED,
+                                    resolved_at__isnull=True)
+                           | (~models.Q(resolution=RESOLUTION_UNRESOLVED)
+                              & models.Q(resolved_at__isnull=False))),
+                name="ck_quarantined_key_resolution_is_dated",
+            ),
+            # A dismissal names no declaration and the other two name one.
+            # This is "dismiss as NON-ECONOMIC" enforced rather than described:
+            # a dismissal able to carry a declaration key would be a fourth
+            # remediation path with no name and no rule.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        resolution__in=sorted(RESOLUTIONS_NAMING_A_DECLARATION),
+                        resolved_key__gt="")
+                    | models.Q(resolution=RESOLUTION_DISMISSED, resolved_key="")
+                    | models.Q(resolution=RESOLUTION_UNRESOLVED,
+                               resolved_key="")),
+                name="ck_quarantined_key_a_dismissal_names_nothing",
+            ),
+        ]
+        indexes = [
+            # Exactly the period-close safeguard's query: this tenant's open
+            # rows, by when the event happened. Indexed on the column a close
+            # reads and never on the repair date — the storage-level statement
+            # of the rule the services enforce.
+            models.Index(fields=["tenant", "occurred_at"],
+                         condition=models.Q(resolution=RESOLUTION_UNRESOLVED),
+                         name="ix_quarantined_key_open"),
+        ]
+
+    def __str__(self):
+        return f"QuarantinedKey({self.held_name})"
+
+    @property
+    def held_name(self):
+        """The name UBB did not recognise — the subject of this row.
+
+        Which of the two columns that is depends on ``unrecognised``, and the
+        constraints above are what make reading it this way total: a row about
+        a quantity always has one, and a row about an Event Type never does.
+        """
+        return self.measurement_key or self.event_type_key
+
+    @property
+    def is_unresolved(self):
+        """Whether this still stands between an event and a complete cost.
+
+        A property rather than a column, per ADR-0006 §4: it is derived from
+        ``resolution`` entire, and a second column agreeing with it until the
+        day it did not is the shape that rule exists to refuse.
+        """
+        return self.resolution == RESOLUTION_UNRESOLVED
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if self.unrecognised not in UNRECOGNISED_VALUES:
+            errors["unrecognised"] = (
+                f"'{self.unrecognised}' is not something UBB can hold a name "
+                f"for. UBB owns this whole value set: "
+                f"{', '.join(sorted(UNRECOGNISED_VALUES))}.")
+        if self.resolution not in RESOLUTION_VALUES:
+            named = sorted(value for value in RESOLUTION_VALUES if value)
+            errors["resolution"] = (
+                f"'{self.resolution}' is not a remediation. UBB owns this "
+                f"whole value set: {', '.join(named)}, or empty while the "
+                f"name is still held.")
+        if not self.event_type_key:
+            errors["event_type_key"] = (
+                "is empty. Every held name arrived under some Event Type key, "
+                "including the case where that key is itself what UBB did not "
+                "recognise.")
+
+        about = self._subject_error()
+        if about:
+            errors["measurement_key"] = about
+        dated = self._resolution_dating_error()
+        if dated:
+            errors["resolved_at"] = dated
+        named_declaration = self._resolution_naming_error()
+        if named_declaration:
+            errors["resolved_key"] = named_declaration
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _subject_error(self):
+        """A row says which name it is about by carrying that name."""
+        if self.unrecognised == UNRECOGNISED_MEASUREMENT_KEY:
+            if not self.measurement_key:
+                return ("is empty on a row about an unrecognised quantity. The "
+                        "name UBB did not recognise is the whole of what is "
+                        "held here, and a row that lost it has nothing left to "
+                        "resolve.")
+            return None
+        if self.measurement_key:
+            return ("names a quantity on a row about an unrecognised Event "
+                    "Type. The Event Type is what UBB did not recognise, so "
+                    "nothing beneath it was ever looked up — naming a quantity "
+                    "here would claim a lookup that never happened.")
+        return None
+
+    def _resolution_dating_error(self):
+        """Resolved and dated move together, asked in both directions."""
+        if self.is_unresolved and self.resolved_at is not None:
+            return ("is set on a row that is still unresolved. A repair date "
+                    "with no repair reads as open to every query and as "
+                    "finished to every reader.")
+        if not self.is_unresolved and self.resolved_at is None:
+            return (f"is empty on a row resolved as '{self.resolution}'. When "
+                    f"the repair happened is what makes it auditable — and it "
+                    f"is deliberately not the moment anything replays from.")
+        return None
+
+    def _resolution_naming_error(self):
+        """A dismissal names nothing; the other two name a declaration."""
+        if self.resolution in RESOLUTIONS_NAMING_A_DECLARATION:
+            if not self.resolved_key:
+                return (f"is empty on a row resolved as '{self.resolution}'. "
+                        f"Both of those resolutions say what the held name now "
+                        f"MEANS, and a row that does not say it has recorded a "
+                        f"decision nobody can act on.")
+            return None
+        if self.resolved_key:
+            return ("names a declaration on a row that names none. A "
+                    "dismissal says the held name is not economic, and a row "
+                    "still held says nothing yet — either one carrying a "
+                    "declaration key is a mapping that avoided both of the "
+                    "paths a tenant would otherwise have had to choose.")
         return None
 
