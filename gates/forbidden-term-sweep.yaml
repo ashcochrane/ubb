@@ -110,7 +110,7 @@ exclusions:
 
   - id: historical-migrations
     permanence: until_slice_8
-    files: 186
+    files: 188
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**
@@ -122,9 +122,9 @@ exclusions:
       - ubb-platform/apps/metering/usage/migrations/**
       - ubb-platform/apps/platform/audit/migrations/**
       - ubb-platform/apps/platform/customers/migrations/**
-      - ubb-platform/apps/platform/dimensions/migrations/**
       - ubb-platform/apps/platform/event_types/migrations/**
       - ubb-platform/apps/platform/events/migrations/**
+      - ubb-platform/apps/platform/grouping_fields/migrations/**
       - ubb-platform/apps/platform/membership/migrations/**
       - ubb-platform/apps/platform/plans/migrations/**
       - ubb-platform/apps/platform/tenants/migrations/**
@@ -194,7 +194,6 @@ exclusions:
       - tests/contracts/_webhook_helpers.py
       - tests/contracts/test_end_state_vocabulary.py
       - tests/contracts/test_forbidden_terms.py
-      - tests/contracts/test_undeclared_value_sets.py
       - tests/contracts/test_vocabulary_registry.py
       - tests/contracts/test_webhook_catalogue.py
       - tests/contracts/test_webhook_rename_migration.py
@@ -202,6 +201,7 @@ exclusions:
       - tools/webhook_catalogue/shape.py
       - ubb-platform/api/v1/tests/test_contract_gate.py
       - ubb-platform/apps/platform/events/tests/test_webhook_event_rename.py
+      - ubb-platform/apps/platform/grouping_fields/tests/test_app_label_move.py
     reason: >-
       Files whose SUBJECT is the retired vocabulary: the ADR that retires the
       words and lists them under "retired and not to reappear"; the two oasdiff
@@ -210,19 +210,24 @@ exclusions:
       refuses in order to explain the rule; the tests that prove a rename
       happened, which must spell the old name to prove it; and this sweep's own
       negative controls, which plant retired words on purpose.
-      #227 adds one of a slightly different kind, and it is called out rather
-      than folded in: `test_undeclared_value_sets.py` names no retired word in
-      prose. It pins an INVENTORY OF REAL PATHS, and one directory UBB has not
-      yet renamed is spelled with a retired word. The path is data, and editing
-      it to satisfy this sweep would falsify the inventory to keep a gate
-      quiet — which is the frozen-document argument arriving from a live file.
       The test for admission is NOT "this file is inconvenient" but "no slice
       will ever remove this word from this file, because naming it is what the
       file is for" — which is also why these are exclusions rather than ledger
-      entries. A debt needs somebody who will pay it. The new entry passes it
-      the same way the rename tests do: the word leaves when the directory is
-      renamed, and the inventory line moves with it in the same change.
+      entries. A debt needs somebody who will pay it.
+      #227 admitted `test_undeclared_value_sets.py` on a WEAKER version of that
+      test, and it is worth recording that the weaker version held. That file
+      named no retired word in prose; it pinned an inventory of real paths, one
+      of which was a directory UBB had not yet renamed, and the admission said
+      the word would leave when the directory did. #259 renamed the directory,
+      the inventory line moved with it in the same change, and the entry is
+      gone — so a promise of that shape is now evidence rather than an
+      argument. `grouping_fields/tests/test_app_label_move.py` replaces it and
+      is admitted on the ordinary test: it pins the replacement chain of an app
+      label that moved, which means naming the label that was replaced.
       Every path is an EXACT file rather than a directory, so the rule cannot
-      spread to a neighbour: `tests/contracts/` holds eighteen modules and six
-      are named here. Permanent, and each file is small enough that a reviewer
-      can check the claim by opening it.
+      spread to a neighbour: `tests/contracts/` holds twenty-two Python modules
+      and six are named here. (The basis is spelled out because the previous
+      wording said "eighteen modules and six" while seven were named — a count
+      nobody re-measured. It is `git ls-files tests/contracts | grep '\.py$'`.)
+      Permanent, and each file is small enough that a reviewer can check the
+      claim by opening it.

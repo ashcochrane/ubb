@@ -17,7 +17,7 @@ import pytest
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.dimensions.models import DimensionDef
+from apps.platform.grouping_fields.models import GroupingField
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 
@@ -68,7 +68,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     # dimensions= now resolves through the registry (#128 rework); an
     # identity declaration (key == slot) lets a declared dim1 value stay
     # groupable by "dim1".
-    DimensionDef.objects.create(tenant=tenant, key="dim1", slot="dim1", scope="event")
+    GroupingField.objects.create(tenant=tenant, key="dim1", slot="dim1", scope="event")
     # 2 micros per input token: per_unit, unit_quantity=1 token == 1 unit.
     # Rate.compute(units) == (units * rate + unit_quantity // 2) // unit_quantity + fixed
     #                         == (1000 * 2 + 0) // 1 + 0 == 2000.

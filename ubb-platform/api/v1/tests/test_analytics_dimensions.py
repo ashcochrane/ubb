@@ -10,7 +10,7 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import UsageEvent
-from apps.platform.dimensions.models import DimensionDef
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.models import Task
 
 
@@ -31,7 +31,7 @@ class TestAnalyticsDimensions:
         return self.client.get(path, HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _seed(self):
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task")
         parent = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                      balance_snapshot_micros=0,

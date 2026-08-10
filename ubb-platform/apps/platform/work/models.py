@@ -93,7 +93,7 @@ class Task(BaseModel):
     subtask_type = models.CharField(max_length=64, blank=True, default="",
                                     db_index=True)
     # Task-scoped dimension values (design D6), bound to slots by the tenant's
-    # DimensionDef registry. Inherited by EVERY event in this task's tree,
+    # GroupingField registry. Inherited by EVERY event in this task's tree,
     # including events on its subtasks, so a caller sets them once per job
     # instead of on every metered call. Immutable with the task.
     dim1 = models.CharField(max_length=100, blank=True, default="")

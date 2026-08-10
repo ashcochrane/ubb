@@ -9,6 +9,20 @@ class Migration(migrations.Migration):
 
     initial = True
 
+    # The app label moved 'dimensions' -> 'grouping_fields' (#259, slice 2 §A3).
+    # A label is the key django_migrations is written under, so without this the
+    # app would read as unapplied on an existing database and Django would try
+    # to CREATE tables that are already there.
+    #
+    # A 1:1 replacement, not a squash — the same shape apps/platform/work uses
+    # (#196). Django's loader marks a replacing migration applied when its
+    # replaced target is applied, so on a populated database this resolves to
+    # "already applied" and NO SQL runs: every row, key, index and constraint
+    # survives. On a fresh database it runs normally and builds the schema under
+    # the names it was written with, and 0003 renames them exactly as it does on
+    # a populated one — one code path, both databases.
+    replaces = [("dimensions", "0001_initial")]
+
     dependencies = [
         ('tenants', '0022_tenantapikey_role'),
     ]

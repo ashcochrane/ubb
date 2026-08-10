@@ -1,0 +1,82 @@
+# The app label moved 'dimensions' -> 'grouping_fields' (#259, slice 2 §A3).
+#
+# 0001 carries `replaces` so an existing database resolves it to "already
+# applied" and runs no SQL. That is exactly what preserves the tables — but it
+# also means nothing in that chain executes on the databases that need fixing.
+# django_content_type still holds rows under the retired label, and post_migrate
+# would add a second row per model under the new one, leaving every admin log
+# entry and permission attached to the stale pair.
+#
+# So this migration carries no `replaces`: it runs on every database. On a fresh
+# one there is nothing under the old label and it is a no-op; on a populated one
+# it re-labels the existing rows in place, which keeps their primary keys and so
+# keeps everything pointing at them intact. No schema is touched either way.
+#
+# It runs BEFORE 0003's model renames, and that order is load-bearing rather
+# than tidy. `contenttypes` injects a `RenameContentType` after each
+# `RenameModel`, and that operation looks the row up by the migration's own —
+# that is, the NEW — app label. Run the other way round the lookup misses, is
+# swallowed, and the content type is stranded under a model name nothing uses.
+#
+# The pattern is apps/platform/work/migrations/0012 (#196), which moved a label
+# the same way and for the same reason.
+
+import logging
+
+from django.db import migrations
+
+logger = logging.getLogger(__name__)
+
+OLD_LABEL = "dimensions"
+NEW_LABEL = "grouping_fields"
+
+
+def _relabel(apps, *, source, target):
+    ContentType = apps.get_model("contenttypes", "ContentType")
+
+    stale = ContentType.objects.filter(app_label=source)
+    # A row already under the target label means some earlier run created it.
+    # Re-labelling onto it would break (app_label, model) uniqueness, so leave
+    # that pair alone and move only the ones with a free destination.
+    taken = set(
+        ContentType.objects.filter(
+            app_label=target, model__in=stale.values_list("model", flat=True)
+        ).values_list("model", flat=True)
+    )
+    if taken:
+        # Skipping is the safe choice, but it is also the case this migration
+        # exists to prevent: the rows left behind keep whatever admin log
+        # entries and permissions point at them, now orphaned. Say so, because
+        # a silent skip reads exactly like a successful one.
+        logger.warning(
+            "content types %s already exist under %r, so the %r rows for them "
+            "stay put; admin log entries and permissions still reference those",
+            sorted(taken), target, source,
+        )
+    stale.exclude(model__in=taken).update(app_label=target)
+    # `ContentTypeManager` memoises by `(app_label, model)` and is
+    # `use_in_migrations`, so the historical model carries the cache too — and a
+    # bulk `update()` writes straight past it. Django's own `RenameContentType`
+    # clears it for exactly this reason; 0003 runs that operation immediately
+    # after this one, against rows this just moved.
+    ContentType.objects.clear_cache()
+
+
+def forwards(apps, schema_editor):
+    _relabel(apps, source=OLD_LABEL, target=NEW_LABEL)
+
+
+def backwards(apps, schema_editor):
+    _relabel(apps, source=NEW_LABEL, target=OLD_LABEL)
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("grouping_fields", "0001_initial"),
+        ("contenttypes", "0002_remove_content_type_name"),
+    ]
+
+    operations = [
+        migrations.RunPython(forwards, backwards),
+    ]

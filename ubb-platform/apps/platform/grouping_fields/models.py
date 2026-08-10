@@ -21,7 +21,7 @@ FORBIDDEN_KEYS = ("task_id", "subtask_id", "request_id", "idempotency_key",
                   "customer_id", "event_id")
 
 
-class DimensionDef(BaseModel):
+class GroupingField(BaseModel):
     """One declared slicing axis, binding a tenant's own key to a physical slot.
 
     The registry is the SINGLE vocabulary for analytics grouping and rate
@@ -34,7 +34,7 @@ class DimensionDef(BaseModel):
     from. `key` is a display label and may be renamed; the slot is identity.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
-                               related_name="dimension_defs")
+                               related_name="grouping_fields")
     key = models.CharField(max_length=64)
     slot = models.CharField(max_length=8, choices=SLOT_CHOICES)
     scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default="event")
@@ -46,7 +46,16 @@ class DimensionDef(BaseModel):
     retired_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        db_table = "ubb_dimension_def"
+        db_table = "ubb_grouping_field"
+        # The CONSTRAINT names still spell the retired noun, and deliberately.
+        # A table is renamed in place (`AlterModelTable` -> `ALTER TABLE ...
+        # RENAME TO`), which carries its rows, keys, indexes and constraints
+        # with it. A constraint has no such operation: Django can only
+        # `RemoveConstraint` then `AddConstraint`, which is a DROP and a CREATE
+        # — the add-plus-remove ADR-0007 §1 refuses, on a unique index that is
+        # load-bearing while it is gone. ADR-0006 §9's rule is about the TABLE
+        # name, and the table now tracks its model; these names are physical
+        # identifiers no query spells and no gate reads.
         constraints = [
             models.UniqueConstraint(fields=["tenant", "key"],
                                     name="uq_dimension_def_key"),
@@ -55,10 +64,10 @@ class DimensionDef(BaseModel):
         ]
 
     def __str__(self):
-        return f"DimensionDef({self.key} -> {self.slot}, {self.scope})"
+        return f"GroupingField({self.key} -> {self.slot}, {self.scope})"
 
 
-class DimensionValue(BaseModel):
+class GroupingFieldValue(BaseModel):
     """The distinct-value ledger backing the cardinality cap (D4).
 
     One row per (tenant, key, value) ever admitted. Also the read model for
@@ -66,12 +75,13 @@ class DimensionValue(BaseModel):
     build a filter dropdown.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
-                               related_name="dimension_values")
+                               related_name="grouping_field_values")
     key = models.CharField(max_length=64)
     value = models.CharField(max_length=100)
 
     class Meta:
-        db_table = "ubb_dimension_value"
+        db_table = "ubb_grouping_field_value"
+        # Kept for the reason stated on the model above.
         constraints = [
             models.UniqueConstraint(fields=["tenant", "key", "value"],
                                     name="uq_dimension_value"),
@@ -81,4 +91,4 @@ class DimensionValue(BaseModel):
         ]
 
     def __str__(self):
-        return f"DimensionValue({self.key}={self.value})"
+        return f"GroupingFieldValue({self.key}={self.value})"

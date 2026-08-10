@@ -3,7 +3,7 @@ from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
-from apps.platform.dimensions.models import DimensionDef
+from apps.platform.grouping_fields.models import GroupingField
 
 
 @pytest.mark.django_db
@@ -17,7 +17,7 @@ class TestTaskTypeRegistry:
         # required_dimensions is validated against the declared dimension
         # registry (slot_map) — "region" must exist before a task type can
         # require it.
-        DimensionDef.objects.create(tenant=self.tenant, key="region",
+        GroupingField.objects.create(tenant=self.tenant, key="region",
                                     slot="dim1", scope="task")
 
     def _auth(self):

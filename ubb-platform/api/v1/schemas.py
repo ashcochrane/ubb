@@ -115,7 +115,7 @@ class RecordUsageRequest(Schema):
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
     # Declared EVENT-scoped dimension values (design D1/D6). Keys must be in the
-    # tenant's DimensionDef registry and declared at event scope; task- and
+    # tenant's GroupingField registry and declared at event scope; task- and
     # subtask-scoped values are set at the start-gate and inherited, not sent
     # here. Values are cardinality-capped on write.
     dimensions: dict = Field(default_factory=dict)

@@ -523,26 +523,22 @@ entries:
       The audit action for declaring one. It is renamed with the thing
       it records, in the slice that replaces the declaration itself.
 
-  - id: g7-backend-dimension_def
-    gate: G7
-    site: backend::dimension_def
-    expected: grouping_field_value
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The declaration record behind a dimension value. Replaced by the
-      Grouping Field slot slice 2 declares.
-
   - id: g7-backend-dimensions
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 30 files
+    found: 20 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
+      Ten of the original thirty were the kernel app's own modules and the
+      import lines naming them, and #259 renamed that app. The OWNER does not
+      move — slice 7 still owes what is left — but ten files stopped violating
+      in slice 2, and a recorded extent that overstates is an excuse with no
+      upper bound. So the number comes down now, in the commit that cleared
+      them, rather than waiting for the slice that owes the rest.
 
   - id: g7-backend-markup.deleted
     gate: G7

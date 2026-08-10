@@ -15,7 +15,7 @@ class RiskService:
         (key, slot_values, limit_micros); a None limit means "no type-level
         opinion" — the caller applies the existing RiskConfig fallback.
         """
-        from apps.platform.dimensions.services import DimensionError, DimensionService
+        from apps.platform.grouping_fields.services import DimensionError, DimensionService
         from apps.platform.work.queries import task_type_policy
 
         kind = "subtask" if is_subtask else "task"

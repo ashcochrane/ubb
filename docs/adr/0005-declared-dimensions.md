@@ -13,16 +13,16 @@ event, and a write contract that returned fields it could not accept.
 
 ## Decision
 
-One per-tenant `DimensionDef` registry is the sole vocabulary for analytics grouping and
+One per-tenant `GroupingField` registry is the sole vocabulary for analytics grouping and
 rate selection. Four reserved keys (`provider`, `event_type`, `task_type`, `subtask_type`)
 plus six tenant slots (`dim1`..`dim6`) exist as indexed columns on both `UsageEvent` and
 `Rate`. In a `Rate`, `""` is a wildcard and the most-pinned match wins.
 
-**Invariants (enforced by `apps/platform/tests/test_dimension_invariants.py`):**
+**Invariants (enforced by `apps/platform/tests/test_grouping_field_invariants.py`):**
 
-1. `DimensionDef.slot` is immutable. Re-slotting would silently change the meaning of every
+1. `GroupingField.slot` is immutable. Re-slotting would silently change the meaning of every
    historical row in that column.
-2. `DimensionDef.scope` is immutable. Changing it changes inheritance, so old and new rows
+2. `GroupingField.scope` is immutable. Changing it changes inheritance, so old and new rows
    would disagree about where a value came from.
 3. `max_cardinality` may be raised, never lowered.
 4. Retirement blocks new values; it never removes a def from the slot map, so historical
@@ -50,7 +50,7 @@ match short-circuits the walk before the `""` book's more specific override is e
 A tenant's narrowly-dimensioned override in the `""` book is therefore silently shadowed by
 any provider-book rate on the same metric — not a bug, but a sharp edge worth knowing before
 writing overrides. Pinned by
-`test_dimension_invariants.py::test_book_tier_dominates_rate_specificity`.
+`test_grouping_field_invariants.py::test_book_tier_dominates_rate_specificity`.
 
 **D8's `key` is renameable in principle, but there is no rename path.** The design doc (D8)
 declares `key` a mutable display label — "the slot is identity" — but `DimensionService.declare`

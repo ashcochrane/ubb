@@ -526,7 +526,7 @@ grouping_field_value:
     - dimension_def
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/dimensions/models.py
+      path: ubb-platform/apps/platform/grouping_fields/models.py
     - surface: openapi
       path: openapi/v1.json
 

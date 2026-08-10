@@ -5,7 +5,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.platform.dimensions.models import DimensionDef
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.models import TenantMarkup
@@ -504,7 +504,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # dimensions= now resolves through the registry (#128 rework); an
         # identity declaration (key == slot) is the porting move for tests
         # that grouped by a raw column name before the rework.
-        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         other = Customer.objects.create(tenant=self.tenant, external_id="c_other")
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
@@ -547,9 +547,9 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # dimensions= now resolves through the registry (#128 rework); the
         # tag:region escape hatch is gone (tags are no longer groupable), so
         # this ports "region" to a declared dimension bound to dim4.
-        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
-        DimensionDef.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim4", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim4", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
         UsageEvent.objects.create(
             tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
@@ -588,7 +588,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
     def test_usage_analytics_breakdowns_include_provider_cost(self):
         from apps.metering.usage.models import UsageEvent
-        DimensionDef.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         UsageEvent.objects.create(
             tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
@@ -764,7 +764,7 @@ class DimensionBreakdownReconciliationTest(TestCase):
             name="Reconcile Tenant", products=["metering"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        DimensionDef.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_reconcile"
         )
