@@ -1,7 +1,7 @@
 import pytest
 from apps.platform.tenants.models import Tenant
-from apps.platform.dimensions.models import DimensionDef, DimensionValue
-from apps.platform.dimensions.services import DimensionService, DimensionError
+from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
+from apps.platform.grouping_fields.services import DimensionService, DimensionError
 
 
 @pytest.mark.django_db
@@ -63,13 +63,13 @@ class TestAdmit:
     def test_admit_records_the_value(self):
         t = self._t()
         DimensionService.admit(t, {"model": "gpt-4"}, scope="event")
-        assert DimensionValue.objects.filter(tenant=t, key="model", value="gpt-4").exists()
+        assert GroupingFieldValue.objects.filter(tenant=t, key="model", value="gpt-4").exists()
 
     def test_admit_is_idempotent_on_repeat_value(self):
         t = self._t()
         DimensionService.admit(t, {"model": "gpt-4"}, scope="event")
         DimensionService.admit(t, {"model": "gpt-4"}, scope="event")
-        assert DimensionValue.objects.filter(tenant=t, key="model").count() == 1
+        assert GroupingFieldValue.objects.filter(tenant=t, key="model").count() == 1
 
     def test_unknown_key_rejected(self):
         t = self._t()
@@ -97,7 +97,7 @@ class TestAdmit:
     def test_retired_def_rejects_novel_value(self):
         t = self._t()
         DimensionService.admit(t, {"model": "gpt-4"}, scope="event")
-        DimensionDef.objects.filter(tenant=t, key="model").update(
+        GroupingField.objects.filter(tenant=t, key="model").update(
             retired_at="2026-07-27T00:00:00Z")
         with pytest.raises(DimensionError, match="retired"):
             DimensionService.admit(t, {"model": "gpt-5"}, scope="event")
@@ -114,4 +114,4 @@ class TestAdmit:
         with pytest.raises(DimensionError, match="scope"):
             DimensionService.admit(t, {"model": "gpt-4", "region": "eu"}, scope="event")
         # Verify model's value was NOT recorded due to atomicity
-        assert not DimensionValue.objects.filter(tenant=t, key="model", value="gpt-4").exists()
+        assert not GroupingFieldValue.objects.filter(tenant=t, key="model", value="gpt-4").exists()

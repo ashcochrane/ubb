@@ -2,7 +2,7 @@ import pytest
 from django.test import Client
 
 from apps.metering.usage.models import UsageEvent
-from apps.platform.dimensions.models import DimensionDef
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 
@@ -20,9 +20,9 @@ class TestUsageDimensions:
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
     def _declare(self):
-        DimensionDef.objects.create(tenant=self.tenant, key="model", slot="dim2",
+        GroupingField.objects.create(tenant=self.tenant, key="model", slot="dim2",
                                     scope="event", max_cardinality=2)
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task")
 
     def _post(self, **extra):

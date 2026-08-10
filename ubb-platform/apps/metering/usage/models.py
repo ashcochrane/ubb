@@ -23,7 +23,7 @@ class UsageEvent(BaseModel):
     currency = models.CharField(max_length=3, default="usd")
     # --- The ten selector columns (design D2/D3) ---
     # One vocabulary for analytics grouping AND rate selection. Four reserved
-    # keys plus six tenant slots bound by the DimensionDef registry. "" means
+    # keys plus six tenant slots bound by the GroupingField registry. "" means
     # "not set" on an event and "matches anything" on a Rate; specificity =
     # the count of non-empty selectors.
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)

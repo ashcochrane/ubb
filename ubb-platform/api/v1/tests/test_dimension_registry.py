@@ -2,7 +2,7 @@ import pytest
 from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.dimensions.models import DimensionDef, DimensionValue
+from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 
 
 @pytest.mark.django_db
@@ -31,10 +31,10 @@ class TestDimensionRegistry:
                             "max_cardinality": 20},
                            {"key": "model", "slot": "dim2", "scope": "event"}]})
         assert r.status_code == 200
-        assert DimensionDef.objects.filter(tenant=self.tenant).count() == 2
+        assert GroupingField.objects.filter(tenant=self.tenant).count() == 2
 
     def test_get_lists_declared_dimensions(self):
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task", max_cardinality=20)
         r = self._get("/api/v1/metering/dimensions")
         assert r.status_code == 200
@@ -63,7 +63,7 @@ class TestDimensionRegistry:
         looked an existing def up by `key`, never by `slot`. An admin's
         copy-paste mistake (reusing dim1 for a second axis) must be a 422
         DimensionError instead."""
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task")
         r = self._put("/api/v1/metering/dimensions",
                        {"dimensions": [
@@ -72,12 +72,12 @@ class TestDimensionRegistry:
         assert "dim1" in r.json()["detail"]
         assert "region" in r.json()["detail"]
         # The collision is rejected whole — no partial write.
-        assert not DimensionDef.objects.filter(tenant=self.tenant, key="product").exists()
+        assert not GroupingField.objects.filter(tenant=self.tenant, key="product").exists()
 
     def test_values_endpoint_lists_admitted_values(self):
-        DimensionDef.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
                                     scope="task")
-        DimensionValue.objects.create(tenant=self.tenant, key="region", value="eu-west-1")
+        GroupingFieldValue.objects.create(tenant=self.tenant, key="region", value="eu-west-1")
         r = self._get("/api/v1/metering/dimensions/region/values")
         assert r.status_code == 200
         assert r.json()["values"] == ["eu-west-1"]

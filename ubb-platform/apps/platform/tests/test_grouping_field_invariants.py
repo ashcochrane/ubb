@@ -3,12 +3,12 @@ are enforced here, not merely documented."""
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.dimensions.models import DimensionDef
-from apps.platform.dimensions.services import DimensionError, DimensionService
+from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
 
 @pytest.mark.django_db
-class TestDimensionInvariants:
+class TestGroupingFieldInvariants:
     def _t(self):
         return Tenant.objects.create(name="T")
 
@@ -34,14 +34,14 @@ class TestDimensionInvariants:
 
     def test_every_correlation_id_is_refused_as_a_dimension(self):
         t = self._t()
-        from apps.platform.dimensions.models import FORBIDDEN_KEYS
+        from apps.platform.grouping_fields.models import FORBIDDEN_KEYS
         for key in FORBIDDEN_KEYS:
             with pytest.raises(DimensionError, match="correlation"):
                 DimensionService.declare(t, key=key, slot="dim1", scope="event")
 
     def test_every_reserved_key_is_refused_as_a_dimension(self):
         t = self._t()
-        from apps.platform.dimensions.models import RESERVED_KEYS
+        from apps.platform.grouping_fields.models import RESERVED_KEYS
         for key in RESERVED_KEYS:
             with pytest.raises(DimensionError, match="reserved"):
                 DimensionService.declare(t, key=key, slot="dim1", scope="event")
@@ -50,10 +50,10 @@ class TestDimensionInvariants:
         """Retirement blocks new VALUES, not reads — historical rows must stay
         groupable (design D8)."""
         from django.utils import timezone
-        from apps.platform.dimensions.queries import slot_map
+        from apps.platform.grouping_fields.queries import slot_map
         t = self._t()
         DimensionService.declare(t, key="region", slot="dim1", scope="task")
-        DimensionDef.objects.filter(tenant=t, key="region").update(
+        GroupingField.objects.filter(tenant=t, key="region").update(
             retired_at=timezone.now())
         assert slot_map(t.id)["region"] == "dim1"
 

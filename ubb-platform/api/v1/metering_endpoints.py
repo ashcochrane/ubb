@@ -46,7 +46,7 @@ from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import UsageEvent
-from apps.platform.dimensions.services import DimensionError, DimensionService
+from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ def record_usage(request, payload: RecordUsageRequest):
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
-    # Task 9: admission is a WRITE (records DimensionValue rows), so it runs
+    # Task 9: admission is a WRITE (records GroupingFieldValue rows), so it runs
     # BEFORE the recording core, outside record_usage's own retry/replay
     # machinery — a bad dimension is a whole-request 422, never a partial
     # record.
@@ -526,7 +526,7 @@ def _resolve_dimension(tenant, dim):
     Anything else — notably a correlation id like task_id (design D9) — is a
     422, so an unbounded key can never become a group-by.
     """
-    from apps.platform.dimensions.queries import slot_map
+    from apps.platform.grouping_fields.queries import slot_map
 
     if dim in _RESERVED_ANALYTICS_DIMS:
         return "customer__external_id" if dim == "customer" else dim
@@ -948,8 +948,8 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
     an identical declaration is a no-op. `slot` and `scope` are immutable once
     bound and `max_cardinality` may only be raised (D8)."""
     _product_check(request)
-    from apps.platform.dimensions.queries import declared_dimensions
-    from apps.platform.dimensions.services import DimensionError, DimensionService
+    from apps.platform.grouping_fields.queries import declared_dimensions
+    from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
     tenant = request.auth.tenant
     try:
@@ -977,7 +977,7 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
 def list_dimensions(request):
     """This tenant's declared dimension vocabulary."""
     _product_check(request)
-    from apps.platform.dimensions.queries import declared_dimensions
+    from apps.platform.grouping_fields.queries import declared_dimensions
     return {"dimensions": declared_dimensions(request.auth.tenant.id)}
 
 
@@ -988,11 +988,11 @@ def list_dimension_values(request, key: str):
     """Every value admitted for one dimension — the read model a dashboard
     filter dropdown needs. Bounded by the key's max_cardinality (D4)."""
     _product_check(request)
-    from apps.platform.dimensions.models import DimensionDef, DimensionValue
+    from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 
-    if not DimensionDef.objects.filter(tenant=request.auth.tenant, key=key).exists():
+    if not GroupingField.objects.filter(tenant=request.auth.tenant, key=key).exists():
         raise Problem("not_found", f"dimension {key!r} is not declared")
-    values = list(DimensionValue.objects.filter(
+    values = list(GroupingFieldValue.objects.filter(
         tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
     return 200, {"key": key, "values": values}
 
@@ -1007,7 +1007,7 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     markup.set/rate_card.* do, so it takes the write-default Admin floor rather
     than a Write carve-out."""
     _product_check(request)
-    from apps.platform.dimensions.queries import slot_map
+    from apps.platform.grouping_fields.queries import slot_map
     from apps.platform.work.models import TaskType
     from apps.platform.work.queries import declared_task_types
 

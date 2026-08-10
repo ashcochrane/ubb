@@ -129,9 +129,9 @@ API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
 
 **Dimension**:
 A bounded, declared slicing axis usable for both analytics grouping and rate selection — the
-tenant's `DimensionDef` registry is the single vocabulary for both, so nothing may be grouped by
+tenant's `GroupingField` registry is the single vocabulary for both, so nothing may be grouped by
 or priced on that was not declared. Unlike a `tags` value, a dimension's keyspace is capped on
-write. (ADR-0005; `apps/platform/dimensions/models.py:DimensionDef`)
+write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
 
 **Slot**:
 The physical column (`dim1`..`dim6`) a declared dimension key is bound to on both `UsageEvent`

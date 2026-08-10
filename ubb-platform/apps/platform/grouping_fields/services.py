@@ -2,8 +2,8 @@ import re
 
 from django.db import IntegrityError, transaction
 
-from apps.platform.dimensions.models import (
-    FORBIDDEN_KEYS, RESERVED_KEYS, DimensionDef, DimensionValue,
+from apps.platform.grouping_fields.models import (
+    FORBIDDEN_KEYS, RESERVED_KEYS, GroupingField, GroupingFieldValue,
 )
 
 KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{1,63}")
@@ -29,20 +29,20 @@ class DimensionService:
                 f"{key!r} is a correlation identifier, not a dimension: it is "
                 "unbounded, so it is a filter parameter and cannot be grouped by")
 
-        existing = DimensionDef.objects.filter(tenant=tenant, key=key).first()
+        existing = GroupingField.objects.filter(tenant=tenant, key=key).first()
         if existing is None:
             # uq_dimension_def_slot is (tenant, slot) — a slot binds to ONE
             # key at a time, regardless of scope. Check for that collision
             # here (a different key already bound to this slot) so a
             # copy-paste mistake is a 422 DimensionError, not a raw
             # IntegrityError the endpoint doesn't catch (500).
-            slot_holder = DimensionDef.objects.filter(tenant=tenant, slot=slot).first()
+            slot_holder = GroupingField.objects.filter(tenant=tenant, slot=slot).first()
             if slot_holder is not None:
                 raise DimensionError(
                     f"slot {slot!r} is already bound to key {slot_holder.key!r}: "
                     f"cannot also bind {key!r} to it — a slot holds exactly one "
                     "key at a time")
-            return DimensionDef.objects.create(
+            return GroupingField.objects.create(
                 tenant=tenant, key=key, slot=slot, scope=scope,
                 max_cardinality=max_cardinality)
 
@@ -69,7 +69,7 @@ class DimensionService:
     def admit(tenant, values, scope):
         """Validate a {key: value} map for one scope and return {slot: value}.
 
-        Records novel values in the DimensionValue ledger, refusing any that
+        Records novel values in the GroupingFieldValue ledger, refusing any that
         would push a key past its cap (D4). The cap is a keyspace guard, not
         an invariant: concurrent novel values at the boundary may overshoot by
         the number of writers, which is harmless.
@@ -80,7 +80,7 @@ class DimensionService:
         values = values or {}
         if not values:
             return {}
-        defs = {d.key: d for d in DimensionDef.objects.filter(
+        defs = {d.key: d for d in GroupingField.objects.filter(
             tenant=tenant, key__in=list(values))}
         out = {}
         with transaction.atomic():
@@ -101,26 +101,26 @@ class DimensionService:
         return out
 
     @staticmethod
-    def _record_value(tenant, dimension_def, value):
-        if DimensionValue.objects.filter(
-                tenant=tenant, key=dimension_def.key, value=value).exists():
+    def _record_value(tenant, grouping_field, value):
+        if GroupingFieldValue.objects.filter(
+                tenant=tenant, key=grouping_field.key, value=value).exists():
             return
-        if dimension_def.retired_at is not None:
+        if grouping_field.retired_at is not None:
             raise DimensionError(
-                f"dimension {dimension_def.key!r} is retired and accepts no new "
+                f"dimension {grouping_field.key!r} is retired and accepts no new "
                 f"values (got {value!r})")
-        count = DimensionValue.objects.filter(
-            tenant=tenant, key=dimension_def.key).count()
-        if count >= dimension_def.max_cardinality:
+        count = GroupingFieldValue.objects.filter(
+            tenant=tenant, key=grouping_field.key).count()
+        if count >= grouping_field.max_cardinality:
             raise DimensionError(
-                f"dimension {dimension_def.key!r} cardinality exceeded: "
+                f"dimension {grouping_field.key!r} cardinality exceeded: "
                 f"{count} distinct values already recorded (max "
-                f"{dimension_def.max_cardinality}); {value!r} refused. High-"
+                f"{grouping_field.max_cardinality}); {value!r} refused. High-"
                 "cardinality data belongs in tags or a filter, not a dimension")
         try:
             with transaction.atomic():
-                DimensionValue.objects.create(
-                    tenant=tenant, key=dimension_def.key, value=value)
+                GroupingFieldValue.objects.create(
+                    tenant=tenant, key=grouping_field.key, value=value)
         except IntegrityError:
             # A concurrent writer admitted the same novel value — benign.
             pass

@@ -97,7 +97,7 @@ def margin_by_dimension(request, group_by: str = "provider",
     if tag_key:
         rows = get_dimensional_margin(request.auth.tenant.id, tag_key=tag_key, start_date=s, end_date=e)
     else:
-        from apps.platform.dimensions.queries import slot_map
+        from apps.platform.grouping_fields.queries import slot_map
 
         col = group_by
         if group_by not in ("provider", "event_type", "task_type", "subtask_type"):
