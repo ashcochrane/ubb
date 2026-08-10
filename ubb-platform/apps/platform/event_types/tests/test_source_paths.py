@@ -96,6 +96,27 @@ class TestThePathIsStructuredData:
         """One pass, so a tenant fixing a path is not told about it twice."""
         assert len(path_errors(["a.b", "c[0]"])) == 2
 
+    def test_a_backslash_is_refused(self):
+        """It is what quoting is made of, so it composes exactly as a quote does.
+
+        A segment ending in one escapes the closing quote of the string it is
+        rendered into, and emission runs on into the next line of a tenant's
+        generated integration.
+        """
+        assert path_errors(["a\\b"])
+        assert path_errors(["trailing\\"])
+
+    def test_a_control_character_is_refused(self):
+        """A newline inside a key is not a key anybody typed.
+
+        Nobody composes with one, so it is not an expression character — but it
+        ends the LINE of generated code the segment goes into, which is the same
+        harm arriving by a different door.
+        """
+        assert path_errors(["a\nb"])
+        assert path_errors(["a\tb"])
+        assert path_errors(["a\x00b"])
+
     def test_a_supplier_key_ubb_would_not_have_chosen_is_accepted(self):
         """UBB does not impose a charset on a supplier's own field names.
 
@@ -166,6 +187,23 @@ class TestTheRendererNeverTranslatesAFieldName:
         """The other half: refusing a style is not refusing the path."""
         assert render(["headers", "x-request-id"], ACCESS_SUBSCRIPT) == (
             'response["headers"]["x-request-id"]')
+
+    @pytest.mark.parametrize("access", ACCESS_STYLES)
+    @pytest.mark.parametrize("segment", ['a"b', "a\\b", "trailing\\", "a\nb",
+                                         "usage.tokens"])
+    def test_a_segment_that_is_not_a_key_is_never_emitted(self, access, segment):
+        """The renderer re-asks the grammar, and that is not belt-and-braces.
+
+        `clean()` is a courtesy to the ordinary path (ADR-0007 §2) — a
+        `create()` or an `update()` that skips validation goes round it, as it
+        goes round every model-level guard here. The other guards defend a
+        column; this one defends the moment the value becomes code in a tenant's
+        repository, which is the only place the harm can actually happen. Each
+        segment below would otherwise have closed, escaped or ended the string
+        literal it was rendered into and left the emitted line running on.
+        """
+        with pytest.raises(SourcePathNotRenderable):
+            render([segment], access)
 
 
 class TestTheCheckerAdvisesAndNeverSubstitutes:

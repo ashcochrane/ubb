@@ -146,6 +146,27 @@ class TestOnlyADeclaredQuantityReachesACost:
 
         assert missing == ("prompt_tokens",)
 
+    def test_the_undeclared_code_itself_reaches_nothing(self):
+        """The other half, asserted rather than left to be inferred.
+
+        The misspelling must not appear in the answer either — there is no
+        declaration behind it, so there is nothing for a rate to key on and
+        nothing here for a caller to mistake for one. Every code that comes back
+        is one this Event Type declared. What BECOMES of the unrecognised code —
+        quarantine, remediation, replay — is #265's, and nothing here pretends
+        to answer it.
+        """
+        declared = _event_type(_tenant())
+        _measurement(declared, code="prompt_tokens", required_for_costing=True)
+
+        missing = declared.missing_required_measurements(
+            {"promt_tokens", "cache_reads", ""})
+
+        assert "promt_tokens" not in missing
+        assert set(missing) <= set(
+            declared.measurements.values_list("code", flat=True))
+        assert not declared.measurements.filter(code="promt_tokens").exists()
+
     def test_a_declared_quantity_that_arrived_is_not_missing(self):
         """The positive control. A check nothing can satisfy is not a check."""
         declared = _event_type(_tenant())
@@ -571,29 +592,73 @@ class TestTheDeclarationBeneathAPublishedEventType:
                 == DECLARATION_STATUS_DRAFT)
         assert EventType.objects.get(pk=declared.pk).published_revision == 0
 
+    def test_a_narrowed_save_still_writes_the_change_that_caused_the_revision(self):
+        """Naming one field is the obvious way round a save-time guard.
 
-@pytest.mark.django_db
-class TestTheAnalyticsGroupingIsStillOwed:
-
-    def test_the_grouping_arrives_optional_or_this_goes_red(self):
-        """A tripwire for the ticket that builds the grouping (#264).
-
-        The grouping is tenant-level, opt-in and analytics-only, and the record
-        it points at does not exist here — so the attribute cannot be built in
-        this commit. What CAN be built is the check that fires when it lands:
-        an assignment that is not optional would make an analytics grouping a
-        precondition for declaring a quantity, which is the one thing #264's
-        three fences all forbid. Written the way ``SATELLITE_HOLDERS`` was, a
-        ticket before its model existed: vacuous today, red on the commit that
-        lands the relation without making it optional.
+        Without widening, this returns the declaration to draft over a path the
+        row never received — a third state nobody declared — and then caches the
+        unwritten path as the baseline, so the real save that followed would
+        read as no change at all and never revise anything.
         """
-        grouping = [field for field in Measurement._meta.get_fields()
-                    if getattr(field, "is_relation", False)
-                    and field.name not in {"event_type"}
-                    and field.concrete]
+        declared = self._published()
+        quantity = _measurement(declared,
+                                source_kind=SOURCE_KIND_PROVIDER_RESPONSE,
+                                source_path=["usage", "prompt_tokens"])
+        declared.refresh_from_db()
+        declared.publish()
 
-        for field in grouping:
-            assert field.null and field.blank, (
-                f"Measurement.{field.name} has arrived and is not optional. A "
-                f"measurement declaration records a quantity whether or not a "
-                f"tenant has grouped it for analytics (#264)")
+        quantity.source_path = ["usage", "input_tokens"]
+        quantity.save(update_fields=["display_name"])
+
+        assert (EventType.objects.get(pk=declared.pk).declaration_status
+                == DECLARATION_STATUS_DRAFT)
+        assert Measurement.objects.get(pk=quantity.pk).source_path == [
+            "usage", "input_tokens"], (
+            "the declaration was returned to draft over a change the row never "
+            "received")
+
+    def test_a_narrowed_save_that_changes_nothing_pinned_is_not_a_revision(self):
+        """The other direction: widening is a repair, not a blanket.
+
+        A narrowed save that moves nothing pinned is an honest narrowing and
+        stays one. If widening fired here the declaration would drop to draft
+        every time somebody corrected a caption through the careful spelling.
+        """
+        declared = self._published()
+        quantity = _measurement(declared, code="prompt_tokens")
+        declared.refresh_from_db()
+        declared.publish()
+
+        quantity.display_name = "Prompt tokens"
+        quantity.save(update_fields=["display_name"])
+        quantity.refresh_from_db()
+
+        assert quantity.display_name == "Prompt tokens"
+        assert quantity.code == "prompt_tokens"
+        assert (EventType.objects.get(pk=declared.pk).declaration_status
+                == DECLARATION_STATUS_PUBLISHED)
+
+    def test_a_stale_parent_does_not_silence_the_revision(self):
+        """"Is this published?" is asked of the ROW, not of the instance.
+
+        A child reaches its parent through `self.event_type`, which may be an
+        instance loaded before the declaration was published. A stale `draft` in
+        memory would make the revision a silent no-op — failing open on exactly
+        the reading that matters.
+        """
+        declared = _event_type(_tenant())
+        quantity = _measurement(declared)
+
+        # Publish through a DIFFERENT instance, so the one the child holds is
+        # stale in the direction that fails open.
+        EventType.objects.get(pk=declared.pk).publish()
+        assert quantity.event_type.declaration_status == DECLARATION_STATUS_DRAFT
+
+        quantity.unit = "second"
+        quantity.save()
+
+        assert (EventType.objects.get(pk=declared.pk).declaration_status
+                == DECLARATION_STATUS_DRAFT)
+        assert EventType.objects.get(pk=declared.pk).published_revision == 1
+
+

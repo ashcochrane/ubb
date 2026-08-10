@@ -59,20 +59,30 @@ ACCESS_STYLES = (ACCESS_ATTRIBUTE, ACCESS_SUBSCRIPT)
 DEFAULT_ROOT = "response"
 
 #: What makes a stored value an EXPRESSION rather than a key. A segment is one
-#: key, so anything that composes, calls or quotes is refused.
+#: key, so anything that composes, calls or quotes is refused — and the
+#: BACKSLASH is here for the same reason the quote is: it is what quoting is
+#: made of, and a segment ending in one escapes the closing quote of the string
+#: it is rendered into, so emission runs on into the next line of a tenant's
+#: generated integration.
 #:
 #: Deliberately a list of what an expression is made of, and NOT an identifier
 #: pattern. `x-request-id` is a real JSON key and `Content-Type` is a real
 #: header; a charset UBB invented would be UBB deciding what a supplier is
 #: allowed to call its own fields, which is the same objection that made the
 #: catalogue's keys plain character fields rather than slugs.
-EXPRESSION_CHARACTERS = tuple(".[]()\"'`,{}$")
+EXPRESSION_CHARACTERS = tuple(".[]()\"'`,{}$\\")
 
 #: An identifier, for the one question this module asks about a segment's
 #: spelling: can a target language reach it by attribute access at all? Not a
 #: rule about what a segment may BE — see above — only about what can be
 #: rendered without inventing a name.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: A newline, tab or other control character inside a key. Not an expression
+#: character — nobody composes with one — but it ends the LINE of generated code
+#: the segment is emitted into, which is the same harm arriving by a different
+#: door.
+_CONTROL_CHARACTERS = frozenset(chr(code) for code in range(0x20)) | {chr(0x7F)}
 
 #: Two field-naming conventions, which is as many as the trap needs: one
 #: supplier's wire format and its own SDK spell the same field differently, and
@@ -148,6 +158,12 @@ def path_errors(segments):
                 f"segment {index} ({segment!r}) is an expression, not a key: it "
                 f"carries {''.join(found) or 'whitespace'}. Split it — "
                 f"`a.b` is two segments, and `a[\"b\"]` is the same two")
+            continue
+        if any(character in segment for character in _CONTROL_CHARACTERS):
+            errors.append(
+                f"segment {index} ({segment!r}) carries a control character. A "
+                f"newline inside a key is not a key anybody typed, and it ends "
+                f"the line of generated code the segment is emitted into")
     return tuple(errors)
 
 
@@ -161,10 +177,25 @@ def render(segments, access, root=DEFAULT_ROOT):
     The whole of "the renderer may change syntax and never names": every
     segment appears in the output exactly as it was declared, and the only
     thing ``access`` chooses is the punctuation between them.
+
+    **The grammar is re-asked here, and that is not belt-and-braces.** The
+    column this reads is a ``JSONField`` and the grammar is enforced in
+    ``clean()``, which is a courtesy to the ordinary path rather than the
+    enforcement (ADR-0007 §2) — a ``QuerySet.update()`` or a ``create()`` that
+    skips validation goes round it, exactly as it goes round every model-level
+    guard in this repository. The other guards defend a column; this one defends
+    the moment the value becomes code in a tenant's repository, and it is the
+    only place that harm can actually happen. A segment that is not a key is
+    refused in either style rather than emitted.
     """
     if access not in ACCESS_STYLES:
         raise ValueError(f"{access!r} is not an access style; the styles are "
                          f"{', '.join(ACCESS_STYLES)}")
+    ungrammatical = path_errors(segments)
+    if ungrammatical:
+        raise SourcePathNotRenderable(
+            "this is not a structured path and nothing may be emitted from it: "
+            + "; ".join(ungrammatical))
     if access == ACCESS_SUBSCRIPT:
         return root + "".join(f'["{segment}"]' for segment in segments)
 

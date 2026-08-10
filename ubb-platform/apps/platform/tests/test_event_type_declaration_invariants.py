@@ -109,6 +109,7 @@ RULE_GROUPING = "no-grouping-axis"
 RULE_AMOUNT = "no-cost-amount"
 RULE_SHAPE = "one-response-shape"
 RULE_VARIANTS = "variants-stay-independent"
+RULE_OPTIONAL = "a-quantity-stands-alone"
 
 #: The named extension for a second response shape, recorded here because the
 #: rule below is only half a ruling without it. Refusing the second shape
@@ -242,6 +243,48 @@ def classify_response_shape(model, fields):
     )
 
 
+def classify_optional_grouping(model, field):
+    """``a-quantity-stands-alone`` — a tripwire for #264, live before its model.
+
+    The Measurement Concept is **tenant-level, opt-in and analytics-only**, and
+    the record it points at does not exist yet — so the attribute cannot be
+    built here. What CAN be built is the check that fires when it lands, written
+    the way ``SATELLITE_HOLDERS`` was a ticket before its model existed.
+
+    Two ways for it to land wrong, and both are one of #264's own fences taken
+    down. A REQUIRED assignment makes an analytics grouping a precondition for
+    declaring a quantity, when *"an event whose declaration carries no grouping
+    records exactly as one whose declaration does"*. And a MANY assignment makes
+    "which grouping is this quantity in" a question with several answers, when
+    the opt-in is to one.
+
+    Stated over everything a declaration part points at other than its own
+    parent, rather than over a field name nobody has chosen yet: a rule keyed on
+    a guessed spelling is a rule the real commit walks past. Keyed on the model
+    LABEL rather than on class identity, so a synthetic control can carry the
+    real record's identity and actually reach this branch — #262 shipped the
+    other spelling and review caught it.
+    """
+    parent = DECLARATION_PARTS.get(model_label(model))
+    if parent is None or not field.is_relation or field.name in parent:
+        return None
+    if field.many_to_many:
+        why = "may be assigned to MANY of them"
+    elif not (field.null and field.blank):
+        why = "is required"
+    else:
+        return None
+    return (
+        RULE_OPTIONAL, site_of(model, field),
+        f"{site_of(model, field)} {why}. A declared quantity stands alone: the "
+        f"analytics grouping is tenant-level, OPT-IN and to ONE grouping "
+        f"(#264), so a quantity records identically whether or not a tenant has "
+        f"grouped it — and it can never block recording. If this is that "
+        f"grouping arriving, make it optional and singular; if it is something "
+        f"else, it is a relation on a declaration that nothing has decided",
+    )
+
+
 def _walk_registry():
     hits, seen, fields_seen = [], set(), 0
     for model in first_party_models():
@@ -253,6 +296,7 @@ def _walk_registry():
             declares = model in DECLARATION_MODELS
             hits.extend(filter(None, [
                 classify_variant_relation(model, field),
+                classify_optional_grouping(model, field),
                 # The two absences are the declaration's own. Asking them of the
                 # whole tree would fail every model that legitimately carries a
                 # price or an axis, which is most of the money-bearing ones.
@@ -307,6 +351,11 @@ def test_exactly_one_response_shape_is_declared_per_event_type():
 
 def test_no_event_type_names_another_event_type():
     failures = _failures(RULE_VARIANTS)
+    assert not failures, "\n" + failures
+
+
+def test_a_declared_quantity_stands_alone():
+    failures = _failures(RULE_OPTIONAL)
     assert not failures, "\n" + failures
 
 
@@ -666,6 +715,71 @@ def test_negative_control_a_part_may_not_gather_event_types():
     hit = classify_variant_relation(
         Measurement, Measurement._meta.get_field("event_type"))
     assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_required_grouping_is_flagged():
+    """#264's grouping, landed as a precondition for declaring a quantity.
+
+    The synthetic model carries the real one's label, so this reaches the rule
+    rather than being ignored as an unknown class — which is the difference
+    between a tripwire and a comment.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concept = models.ForeignKey(EventCategory, on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in DECLARATION_PARTS, (
+        "the control has to be the model the rule is about")
+    hit = classify_optional_grouping(Measurement,
+                                     Measurement._meta.get_field("concept"))
+    assert hit is not None and hit[0] == RULE_OPTIONAL
+    assert "required" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_grouping_to_many_is_flagged():
+    """The evasion the optionality check alone cannot see.
+
+    A many-to-many is optional in the sense that it may be empty, and it takes
+    #264's other fence down instead: the opt-in is to ONE grouping, and "which
+    grouping is this quantity in" is a question with one answer.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concepts = models.ManyToManyField(EventCategory)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_optional_grouping(Measurement,
+                                     Measurement._meta.get_field("concepts"))
+    assert hit is not None and hit[0] == RULE_OPTIONAL
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_an_optional_grouping_is_allowed():
+    """The shape #264 is supposed to land, shown to pass.
+
+    A rule that flagged every grouping would make #264 unbuildable, and the
+    registry walk would say so — identically to a walk that had simply gone
+    wrong. The parent link is exercised here too: it is required by
+    construction, and a rule that could not tell it from a grouping would fire
+    on every declaration part there will ever be.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concept = models.ForeignKey(EventCategory, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert [classify_optional_grouping(Measurement, field)
+            for field in _local_fields(Measurement)] == [None] * 3
 
 
 @isolate_apps(CATALOGUE_APP)

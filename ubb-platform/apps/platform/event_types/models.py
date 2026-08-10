@@ -122,6 +122,95 @@ class ValueTypeMismatch(UBBError):
 
 
 
+class PinnedDeclaration(models.Model):
+    """What a record remembers about itself so a change to it can be SEEN.
+
+    Publication pins a declaration, so every record that is part of one has to
+    be able to answer *"is what I am about to write different from what was
+    published?"* — and answering it wrongly in the safe-looking direction is how
+    a tenant's deployed integration comes to be a reading of a contract that has
+    moved.
+
+    Shared rather than copied, and the reason is a defect this file already
+    grew: the second copy of this machinery was written without
+    ``update_fields`` widening, so a partial save un-published a declaration
+    over a change that was never written and then cached the unwritten value as
+    the baseline. Two encodings of one rule drift, and the one that drifts is
+    the one nobody is looking at.
+
+    A subclass declares :attr:`PINNED` and decides what a change MEANS. This
+    holds only the reading of it.
+    """
+
+    #: The field names whose change makes a publication a new revision.
+    PINNED = ()
+
+    class Meta:
+        abstract = True
+
+    def _pinned_declaration(self):
+        return tuple(getattr(self, name) for name in self.PINNED)
+
+    def _pinned_baseline(self):
+        """What the row's pinned elements said when this instance met them.
+
+        Cached from the load where there was one, and otherwise READ, because
+        the alternative is a guard that fails open on exactly the load a caller
+        reaches for when they are being careful: ``objects.only("key")`` defers
+        the rest, so a baseline taken only at load time would be absent, and
+        absent is indistinguishable from unchanged. One query, and only on an
+        instance that has no baseline and a row behind it.
+        """
+        cached = getattr(self, "_pinned_as_loaded", None)
+        if cached is not None or self._state.adding or self.pk is None:
+            return cached
+        row = (type(self)._base_manager.filter(pk=self.pk)
+               .values_list(*self.PINNED).first())
+        return tuple(row) if row is not None else None
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        """Remember what was published, so a change to it can be seen.
+
+        Only when every pinned element was actually read — a deferred load
+        cannot answer the question and does not pretend to. What covers that
+        case is :meth:`_pinned_baseline`, which reads it rather than assuming
+        it.
+        """
+        instance = super().from_db(db, field_names, values)
+        if set(cls.PINNED) <= set(field_names):
+            instance._pinned_as_loaded = instance._pinned_declaration()
+        return instance
+
+    def _widened(self, update_fields, baseline, also=()):
+        """``update_fields`` plus every pinned element that actually changed.
+
+        Naming only the field being changed is the obvious way round a
+        save-time guard, and a record that reacted to a change it did not write
+        would be in a third state nobody declared. Widening by what CHANGED
+        rather than by the whole pinned tuple keeps the caller's narrowing
+        wherever it was honest.
+        """
+        if update_fields is None:
+            return None
+        changed = {name for name, was in zip(self.PINNED, baseline)
+                   if getattr(self, name) != was}
+        return tuple(set(update_fields) | changed | set(also))
+
+    def _remember_pinned(self, update_fields):
+        """Cache the baseline only where the save actually wrote all of it.
+
+        Otherwise forget it, so the next question is answered by reading the
+        row. A cache that recorded a value the database does not hold would
+        make the very next change read as no change at all — which is the
+        failure this whole mechanism exists to prevent, arriving through the
+        mechanism itself.
+        """
+        wrote_all = (update_fields is None
+                     or set(self.PINNED) <= set(update_fields))
+        self._pinned_as_loaded = self._pinned_declaration() if wrote_all else None
+
+
 class Provider(BaseModel):
     """The supplier behind a call — a per-tenant record, optional on an Event Type.
 
@@ -219,7 +308,7 @@ class EventCategory(BaseModel):
         return f"EventCategory({self.key})"
 
 
-class EventType(BaseModel):
+class EventType(PinnedDeclaration, BaseModel):
     """A tenant-declared metered call — the aggregate root the catalogue hangs off.
 
     What it owns: its key, one optional supplier, one optional primary category,
@@ -377,14 +466,27 @@ class EventType(BaseModel):
         incorrect supplier cost — but they live on rows of their own, so
         ``PINNED`` cannot reach them and the child calls this instead.
 
-        Returns whether anything moved, so a caller can tell "the declaration
-        was live and has been returned to draft" from "it was already a draft".
+        **"Is this published?" is asked of the ROW, not of this instance**, and
+        that is the whole shape of the method. A child reaches its parent
+        through ``self.event_type``, which may be an instance loaded before the
+        declaration was published — and a stale ``draft`` in memory would make
+        this a silent no-op, which is failing open on exactly the reading that
+        matters. The conditional update also cannot race with a concurrent
+        publication: either it finds a published row or the publication has not
+        happened yet.
+
+        ``QuerySet.update`` is used deliberately here, the one place in this
+        file it is: it goes round the model-level guard in :meth:`save`, and
+        there is nothing for that guard to do — this record's OWN pinned
+        elements have not moved, and the status is what is being written.
         """
-        if self.declaration_status != DECLARATION_STATUS_PUBLISHED:
-            return False
-        self.declaration_status = DECLARATION_STATUS_DRAFT
-        self.save(update_fields=["declaration_status"])
-        return True
+        moved = (type(self)._base_manager
+                 .filter(pk=self.pk,
+                         declaration_status=DECLARATION_STATUS_PUBLISHED)
+                 .update(declaration_status=DECLARATION_STATUS_DRAFT,
+                         updated_at=timezone.now()))
+        if moved:
+            self.declaration_status = DECLARATION_STATUS_DRAFT
 
     def publication_blockers(self):
         """What stands between this declaration and publication, if anything.
@@ -444,40 +546,6 @@ class EventType(BaseModel):
 
     # -- what makes a change a revision rather than a reinterpretation --------
 
-    def _pinned_declaration(self):
-        return tuple(getattr(self, name) for name in self.PINNED)
-
-    def _pinned_baseline(self):
-        """What the row's pinned elements said when this instance met them.
-
-        Cached from the load where there was one, and otherwise READ, because
-        the alternative is a guard that fails open on exactly the load a caller
-        reaches for when they are being careful: ``objects.only("key")`` defers
-        the rest, so a baseline taken only at load time would be absent, and
-        absent is indistinguishable from unchanged. One query, and only on an
-        instance that has no baseline and a row behind it.
-        """
-        cached = getattr(self, "_pinned_as_loaded", None)
-        if cached is not None or self._state.adding or self.pk is None:
-            return cached
-        row = (type(self)._base_manager.filter(pk=self.pk)
-               .values_list(*self.PINNED).first())
-        return tuple(row) if row is not None else None
-
-    @classmethod
-    def from_db(cls, db, field_names, values):
-        """Remember what was published, so a change to it can be seen.
-
-        Only when every pinned element was actually read — a deferred load
-        cannot answer the question and does not pretend to. What covers that
-        case is :meth:`_pinned_baseline`, which reads it rather than assuming
-        it.
-        """
-        instance = super().from_db(db, field_names, values)
-        if set(cls.PINNED) <= set(field_names):
-            instance._pinned_as_loaded = instance._pinned_declaration()
-        return instance
-
     def save(self, *, update_fields=None, **kwargs):
         """A change to a pinned element of a published declaration un-publishes it.
 
@@ -500,14 +568,11 @@ class EventType(BaseModel):
                 and self.declaration_status == DECLARATION_STATUS_PUBLISHED
                 and self._pinned_declaration() != baseline):
             self.declaration_status = DECLARATION_STATUS_DRAFT
-            if update_fields is not None:
-                changed = {name for name, was in zip(self.PINNED, baseline)
-                           if getattr(self, name) != was}
-                update_fields = tuple(
-                    set(update_fields) | changed | {"declaration_status"})
+            update_fields = self._widened(update_fields, baseline,
+                                          also={"declaration_status"})
 
         super().save(update_fields=update_fields, **kwargs)
-        self._pinned_as_loaded = self._pinned_declaration()
+        self._remember_pinned(update_fields)
 
     # -- validation ----------------------------------------------------------
 
@@ -558,7 +623,7 @@ class EventType(BaseModel):
         return None
 
 
-class Measurement(BaseModel):
+class Measurement(PinnedDeclaration, BaseModel):
     """One declared quantity beneath an Event Type — the record this slice is for.
 
     Before this, the measured quantities reaching the pricing engine travelled
@@ -744,7 +809,7 @@ class Measurement(BaseModel):
         declared = self.unit.strip()
         if not declared or declared in UNIT_KNOWN_VALUES:
             return ()
-        folded = declared.lower().rstrip("s")
+        folded = declared.lower().removesuffix("s")
         if folded not in UNIT_KNOWN_VALUES:
             return ()
         return (f"`{declared}` is how UBB spells `{folded}` after a change of "
@@ -754,31 +819,6 @@ class Measurement(BaseModel):
 
     # -- publication reaches down here too ------------------------------------
 
-    def _pinned_declaration(self):
-        return tuple(getattr(self, name) for name in self.PINNED)
-
-    def _pinned_baseline(self):
-        """What this row's pinned elements said when this instance met them.
-
-        The same lazy read as the Event Type's, and for the same reason: a
-        baseline taken only at load time is absent on a deferred load, absent is
-        indistinguishable from unchanged, and the guard would fail open on
-        exactly the spelling a careful caller reaches for.
-        """
-        cached = getattr(self, "_pinned_as_loaded", None)
-        if cached is not None or self._state.adding or self.pk is None:
-            return cached
-        row = (type(self)._base_manager.filter(pk=self.pk)
-               .values_list(*self.PINNED).first())
-        return tuple(row) if row is not None else None
-
-    @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
-        if set(cls.PINNED) <= set(field_names):
-            instance._pinned_as_loaded = instance._pinned_declaration()
-        return instance
-
     def save(self, *, update_fields=None, **kwargs):
         """Declaring a quantity, or changing one, revises the publication.
 
@@ -787,15 +827,24 @@ class Measurement(BaseModel):
         their integration against, and leaving it published would mean the
         deployed code was generated against a contract that has moved.
 
+        ``update_fields`` is widened by whichever pinned elements actually
+        changed, exactly as the parent's own guard widens: without it,
+        ``save(update_fields=["display_name"])`` after editing a path would
+        return the declaration to draft over a change the row never received.
+
         ``QuerySet.update()`` goes round this as it goes round every
         model-level guard here — ADR-0007 §2 is explicit that these are a
-        courtesy to the ordinary path and never the enforcement.
+        courtesy to the ordinary path and never the enforcement. What defends
+        the emitted code itself is :func:`source_paths.render`, which re-asks
+        the grammar at the moment a path becomes code.
         """
         baseline = self._pinned_baseline()
         revised = baseline is None or self._pinned_declaration() != baseline
+        if revised and baseline is not None:
+            update_fields = self._widened(update_fields, baseline)
 
         super().save(update_fields=update_fields, **kwargs)
-        self._pinned_as_loaded = self._pinned_declaration()
+        self._remember_pinned(update_fields)
         if revised:
             self.event_type.revise_declaration()
 
@@ -805,6 +854,15 @@ class Measurement(BaseModel):
         The declaration a tenant's deployed integration was generated against
         no longer describes what UBB will accept, and that is the same event as
         a changed path arriving at it from the other direction.
+
+        A real delete rather than the data plane's soft delete
+        (``docs/conventions/coding-standards.md``): that rule protects rows
+        carrying money history, and this record carries none — it is part of a
+        declaration, and withdrawing a quantity is an edit to one. ``Provider``
+        next door earns ``retired_at`` because supplier COGS attribution keys
+        on its identity; nothing keys on a Measurement's. The ticket that first
+        attaches a posting to a declaration is the one that can revisit this,
+        and it is the one that could test the answer.
         """
         event_type = self.event_type
         outcome = super().delete(*args, **kwargs)
