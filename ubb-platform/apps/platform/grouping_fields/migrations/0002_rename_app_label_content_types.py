@@ -54,6 +54,12 @@ def _relabel(apps, *, source, target):
             sorted(taken), target, source,
         )
     stale.exclude(model__in=taken).update(app_label=target)
+    # `ContentTypeManager` memoises by `(app_label, model)` and is
+    # `use_in_migrations`, so the historical model carries the cache too — and a
+    # bulk `update()` writes straight past it. Django's own `RenameContentType`
+    # clears it for exactly this reason; 0003 runs that operation immediately
+    # after this one, against rows this just moved.
+    ContentType.objects.clear_cache()
 
 
 def forwards(apps, schema_editor):

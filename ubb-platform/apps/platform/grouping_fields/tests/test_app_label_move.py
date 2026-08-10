@@ -252,6 +252,13 @@ class RenameIsARenameTest(TestCase):
                 self.assertTrue(op.reversible)
 
     def test_the_sql_renames_both_tables_in_place(self):
+        """This is also the vacuity guard for the two absences below.
+
+        An empty render — a migration that resolved to nothing, a loader that
+        read the wrong node — would satisfy "no CREATE TABLE" and "no DROP
+        TABLE" perfectly. Asserting the renames are PRESENT is what proves the
+        SQL was actually produced, so the absences mean something.
+        """
         sql = self._sql(backwards=False)
 
         for old, new in zip(OLD_TABLES, NEW_TABLES):
@@ -259,8 +266,8 @@ class RenameIsARenameTest(TestCase):
                 self.assertIn(f'ALTER TABLE "{old}" RENAME TO "{new}"', sql)
 
     def test_the_sql_neither_creates_nor_drops_a_table(self):
-        # The vacuity guard sits inside this one: an empty `sql` would satisfy
-        # both absences, so the rename above is what proves the render is real.
+        # Guarded against vacuity by the test above, which proves this same
+        # render is non-empty.
         sql = self._sql(backwards=False)
 
         self.assertNotIn("CREATE TABLE", sql)

@@ -534,9 +534,11 @@ entries:
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
       Ten of the original thirty were the kernel app's own modules and the
-      import lines naming them. #259 renamed that app, which paid those ten
-      early — an owner slice may move earlier but never later, and a recorded
-      extent that overstates is an excuse with no upper bound.
+      import lines naming them, and #259 renamed that app. The OWNER does not
+      move — slice 7 still owes what is left — but ten files stopped violating
+      in slice 2, and a recorded extent that overstates is an excuse with no
+      upper bound. So the number comes down now, in the commit that cleared
+      them, rather than waiting for the slice that owes the rest.
 
   - id: g7-backend-markup.deleted
     gate: G7
