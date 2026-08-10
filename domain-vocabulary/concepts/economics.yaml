@@ -74,7 +74,7 @@ costing_method:
   label_key_prefix: costing_method
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/events/models.py
+      path: ubb-platform/apps/platform/event_types/models.py
     - surface: console
       path: apps/ui/src/lib/labels.ts
     - surface: openapi
@@ -440,7 +440,7 @@ source_kind:
   label_key_prefix: source_kind
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/events/models.py
+      path: ubb-platform/apps/platform/event_types/models.py
     - surface: openapi
       path: openapi/v1.json
 
@@ -458,7 +458,7 @@ amount_representation:
   label_key_prefix: amount_representation
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/events/models.py
+      path: ubb-platform/apps/platform/event_types/models.py
     - surface: openapi
       path: openapi/v1.json
 
@@ -507,7 +507,7 @@ event_type_key:
     ship.
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/events/models.py
+      path: ubb-platform/apps/platform/event_types/models.py
     - surface: openapi
       path: openapi/v1.json
 

@@ -2167,15 +2167,18 @@ entries:
 
   - id: g2-backend-amount_representation
     gate: G2
-    site: ubb-platform/apps/platform/events/models.py::amount_representation
+    site: ubb-platform/apps/platform/event_types/models.py::amount_representation
     expected: amount_representation
     found: 0 of 3 values
     owner_slice: slice_2
     reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. It is declared on the Event
-      Type, beside the measurement whose supplier cost it converts (#179
-      §3.4). Slice 2 rebuilds that catalogue.
+      Not a restated value set — an empty one. The app landed ahead of its
+      models so the registry could name this path at all (spec §A2), so this
+      consumer holds none of the concept's values because no field yet exists
+      to hold them. It is declared on the Event Type, beside the measurement
+      whose supplier cost it converts (#179 §3.4). The debt is paid by the
+      ticket that builds that field, importing its values from
+      `core.vocabulary`.
 
   - id: g2-backend-analytics_grouping_kind
     gate: G2
@@ -2270,16 +2273,18 @@ entries:
 
   - id: g2-backend-costing_method
     gate: G2
-    site: ubb-platform/apps/platform/events/models.py::costing_method
+    site: ubb-platform/apps/platform/event_types/models.py::costing_method
     expected: costing_method
     found: 0 of 2 values
     owner_slice: slice_2
     reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #146 declares the costing
-      mode on the Event Type — the only shape under which a ceiling can know
-      in advance that the events it governs are costable. Slice 2 rebuilds the
-      Event Type.
+      Not a restated value set — an empty one. The app landed ahead of its
+      models so the registry could name this path at all (spec §A2), so this
+      consumer holds none of the concept's values because no field yet exists
+      to hold them. #146 declares the costing mode on the Event Type — the only
+      shape under which a ceiling can know in advance that the events it
+      governs are costable. The debt is paid by the ticket that builds that
+      field, importing its values from `core.vocabulary`.
 
   - id: g2-backend-costing_status
     gate: G2
@@ -2383,15 +2388,18 @@ entries:
 
   - id: g2-backend-source_kind
     gate: G2
-    site: ubb-platform/apps/platform/events/models.py::source_kind
+    site: ubb-platform/apps/platform/event_types/models.py::source_kind
     expected: source_kind
     found: 0 of 4 values
     owner_slice: slice_2
     reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. Where a measurement's value
-      comes from — #145's `source_path`, enforced by code generation rather
-      than validation. Slice 2 rebuilds the declaration it sits on.
+      Not a restated value set — an empty one. The app landed ahead of its
+      models so the registry could name this path at all (spec §A2), so this
+      consumer holds none of the concept's values because no field yet exists
+      to hold them. Where a measurement's value comes from — #145's
+      `source_path`, enforced by code generation rather than validation. The
+      debt is paid by the ticket that builds that field, importing its values
+      from `core.vocabulary`.
 
   - id: g2-backend-spend_pool_enforce_mode
     gate: G2
@@ -3904,3 +3912,29 @@ seeding_authorisations:
       import is an addition the ratchet refuses without its own authorisation,
       which is what makes "reachable from allowlisted sites and nowhere else"
       mechanical rather than a review habit.
+
+  - gate: G2
+    issue: 258
+    entries_added: 3
+    reason: >-
+      Neither a seeding nor a spread — a MOVE, recorded as one, and the second
+      authorisation in this file to license growth for a reason other than a
+      gate being installed. The Event Type catalogue's kernel app landed, and
+      the concepts that declared the event-*delivery* app's models as their
+      end-state backend consumer now declare its. The three debts are the same
+      three debts: same gate, same owner slice, same extent, nothing taken on
+      and nothing paid off. What moved is the place.
+      The ratchet sees three arrivals anyway, and that is the mechanism working
+      rather than misfiring — an entry's identity is deliberately the gate and
+      the place so that moving one cannot hide behind a stable id. So the count
+      goes past a reviewer, which is the whole design.
+      Their stated reason moved with them, because at the new path the old one
+      was false. All three said the consumer "holds its value sets as its own
+      `choices=` lists"; this app declares no model yet, and the app the
+      registry used to name holds exactly one such list and no Event Type at
+      all. The `found: 0 of N values` half was always accurate — nothing is
+      held either way — but a reader was being told the wrong thing about why.
+      Splitting this from the app's arrival is not available: the registry
+      compiler refuses a declared consumer path that does not exist, and the
+      stale-entry check at the old path and the unowed-consumer check at the
+      new one fail in opposite directions unless all of it lands together.
