@@ -508,6 +508,32 @@ export const CUSTOMER_BILLING_MODE_LABEL_KEYS = {
 } as const satisfies Record<CustomerBillingMode, string>;
 
 
+// --- declaration_status -----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Whether a tenant's declaration is still being drafted or has been published
+// for integrations to be generated against. Publication is what pins the
+// response shape, the structured paths and the reported-cost mapping, because
+// an incorrect mapping produces an incorrect supplier cost — so a later change
+// is a revised publication, never a silent reinterpretation of integrations
+// already generated and deployed (#193 §B7).
+//
+// Declared in concepts/economics.yaml.
+
+export const DECLARATION_STATUS_VALUES = [
+  "draft",
+  "published",
+] as const;
+
+export type DeclarationStatus = (typeof DECLARATION_STATUS_VALUES)[number];
+
+export const DECLARATION_STATUS_LABEL_KEYS = {
+  "draft": "declaration_status.draft",
+  "published": "declaration_status.published",
+} as const satisfies Record<DeclarationStatus, string>;
+
+
 // --- event_type_key ---------------------------------------------------------
 //
 // tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -971,6 +997,64 @@ export const SOURCE_KIND_LABEL_KEYS = {
 } as const satisfies Record<SourceKind, string>;
 
 
+// --- source_shape_id --------------------------------------------------------
+//
+// open — UBB records the values it knows; consumers accept future and external
+// ones. Checking is asymmetric — a registry-known value missing from a
+// UBB-owned consumer is a defect, a runtime value the registry has never seen
+// is legal.
+//
+// Which provider response shape a tenant's declared paths are written against,
+// declared once at the Event Type so two quantities beneath it can never
+// disagree about which client they are mapped to. UBB uses it to WARN that a
+// path looks inconsistent with a shape it knows, and never to substitute one:
+// rendering a supplier's own field name would make UBB's catalogue
+// commercially load-bearing by the back door.
+//
+// Declared in concepts/economics.yaml.
+
+export const SOURCE_SHAPE_ID_KNOWN_VALUES = [
+  "google.gemini.rest.v1",
+  "google.genai.python.v1",
+  "openai.responses.python.v1",
+  "custom",
+] as const;
+
+export type SourceShapeIdKnown = (typeof SOURCE_SHAPE_ID_KNOWN_VALUES)[number];
+
+// An `open` concept: a value UBB has never seen is legal (ADR-0003), so the
+// type admits any string. The intersection is what stops TypeScript collapsing
+// the union to `string` and losing the known values a reader is offered.
+export type SourceShapeId = SourceShapeIdKnown | (string & {});
+
+export const SOURCE_SHAPE_ID_LABEL_KEYS = {
+  "google.gemini.rest.v1": "source_shape_id.google.gemini.rest.v1",
+  "google.genai.python.v1": "source_shape_id.google.genai.python.v1",
+  "openai.responses.python.v1": "source_shape_id.openai.responses.python.v1",
+  "custom": "source_shape_id.custom",
+} as const satisfies Record<SourceShapeIdKnown, string>;
+
+
+// --- source_shape_label -----------------------------------------------------
+//
+// free_text — Not vocabulary. Recorded here so that "is this a value set?" is
+// answered once, in data, rather than re-litigated by whoever next wants to
+// add an enum to it.
+//
+// The name a tenant gives a response shape UBB does not recognise — their own
+// wrapper around a supplier's client. Prose a human typed, and deliberately
+// unvalidated: UBB generates from the declared path and performs no shape
+// checking at all in this case, so there is nothing to check the name against
+// and nothing for UBB to enumerate. Declaring a wrapper of one's own is a
+// supported case rather than a blocked one (#193 §C7).
+//
+// Declared in concepts/economics.yaml.
+//
+// No constants: this kind declares no values by construction. The section is
+// here so that fact is visible, rather than looking like a concept the
+// generator lost.
+
+
 // --- spend_pool_enforce_mode ------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -1211,6 +1295,45 @@ export const TRIGGER_SOURCE_LABEL_KEYS = {
   "pool_crossing": "trigger_source.pool_crossing",
   "stale_reaper": "trigger_source.stale_reaper",
 } as const satisfies Record<TriggerSourceKnown, string>;
+
+
+// --- unit -------------------------------------------------------------------
+//
+// open — UBB records the values it knows; consumers accept future and external
+// ones. Checking is asymmetric — a registry-known value missing from a
+// UBB-owned consumer is a defect, a runtime value the registry has never seen
+// is legal.
+//
+// What one declared quantity is counted in — the noun beside the number, so an
+// amount of 1,500 means something without the reader knowing which supplier
+// produced it. UBB owns the field and records the spellings it has met; it
+// never bounds the set, because the quantity a tenant sells is the tenant's to
+// choose.
+//
+// Declared in concepts/economics.yaml.
+
+export const UNIT_KNOWN_VALUES = [
+  "token",
+  "search",
+  "call",
+  "second",
+  "byte",
+] as const;
+
+export type UnitKnown = (typeof UNIT_KNOWN_VALUES)[number];
+
+// An `open` concept: a value UBB has never seen is legal (ADR-0003), so the
+// type admits any string. The intersection is what stops TypeScript collapsing
+// the union to `string` and losing the known values a reader is offered.
+export type Unit = UnitKnown | (string & {});
+
+export const UNIT_LABEL_KEYS = {
+  "token": "unit.token",
+  "search": "unit.search",
+  "call": "unit.call",
+  "second": "unit.second",
+  "byte": "unit.byte",
+} as const satisfies Record<UnitKnown, string>;
 
 
 // --- usage_event_kind -------------------------------------------------------

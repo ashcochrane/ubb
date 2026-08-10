@@ -203,8 +203,13 @@ SWEPT = {
 #: the platform-fee window both depend on the distinction. Putting the bare word
 #: into the sweep's input would have demanded either a false statement or an
 #: exclusion over every file that does honest arrival-basis work.
+#: `units` joins them from slice 2 (#260), and it is the widest case of the
+#: pattern yet: seventy-five swept files carry the bare plural token in four
+#: unrelated senses, and one of those senses is *unremovable by any commit* —
+#: see `measurement_key.retired_senses`, which records the re-taken count and
+#: the method beside the words.
 SENSE_RETIRED = {"limit", "operation", "job", "step", "ingest",
-                 "flat", "hold", "estimate", "arrival"}
+                 "flat", "hold", "estimate", "arrival", "units"}
 
 
 def test_retired_terms_are_registry_data(registry):
@@ -349,9 +354,14 @@ def test_the_payment_rail_vocabulary_is_declared_closed(registry):
 def test_the_payment_rail_concepts_are_visibly_unconsumed(registry):
     """The honest state, asserted rather than assumed. Nothing consumes these
     yet; a registry that hid the fact would be claiming coverage it does not
-    have, and the compiler reports them by name for the same reason."""
-    assert set(registry.concepts_without_consumers) == {"payment_rail",
-                                                        "payment_rail_environment"}
+    have, and the compiler reports them by name for the same reason.
+
+    Subject: these two. That the unconsumed set as a whole holds nothing
+    ELSE unaccounted for is a different claim, and it is made once, in
+    `test_every_unconsumed_concept_is_one_a_slice_is_coming_for` below.
+    """
+    assert {"payment_rail", "payment_rail_environment"} \
+        <= set(registry.concepts_without_consumers)
 
 
 # ---------------------------------------------------------------------------
@@ -390,3 +400,206 @@ def test_every_terminal_task_event_maps_to_a_status_value(registry):
     assert terminal, "no terminal Task events in the catalogue"
     for value in terminal:
         assert value.split(".", 1)[1] in statuses, value
+
+
+# ---------------------------------------------------------------------------
+# 7. Slice 2's own vocabulary (#193, #260)
+#
+# Four new concepts and one retired sense, registered before anything consumes
+# them. The subject here is the same as the rest of this file's — what the
+# registry SAYS — and every value traces to a merged decision rather than to a
+# judgement made here: #193 §C5 and §C7 for the two open concepts, §B6 for the
+# lifecycle, and §5.3 of the code-builder inputs decision for the shape names.
+# ---------------------------------------------------------------------------
+
+#: #193 §C7 / the code-builder inputs decision §5.3. Named here rather than
+#: derived from the registry, because a test that read its expectation out of
+#: its subject would pass on any four values at all.
+SHAPE_IDS = ("google.gemini.rest.v1", "google.genai.python.v1",
+             "openai.responses.python.v1", "custom")
+
+
+def test_the_declaration_lifecycle_is_closed_with_exactly_two_states(registry):
+    """#193 §B6. A coinage the slice owed: two merged decisions require the
+    lifecycle and neither named the token.
+
+    Closed because UBB authors both states and a declaration is in one of them
+    — there is no third a tenant could invent. `draft` generates nothing
+    binding; `published` is what pins the response shape, the structured paths
+    and the reported-cost mapping.
+    """
+    lifecycle = registry.concepts["declaration_status"]
+
+    assert lifecycle.kind == "closed"
+    assert lifecycle.values == ("draft", "published")
+    assert lifecycle.label_key_prefix, (
+        "a UBB-authored value with no label key has nowhere for its English "
+        "to hang (ADR-0008 §4)"
+    )
+
+
+def test_the_lifecycle_is_not_named_one_word_from_slice_4s_publish_record(registry):
+    """ADR-0006 §3's defect shape, refused at the point of coining.
+
+    Slice 4 introduces immutable pricing-book publish records. A field called
+    `publication_status` sitting one word away from a model named for a publish
+    record is two names that differ by little and mean something unrelated —
+    which is the failure §3 names, not a stylistic preference.
+    """
+    assert "publication_status" not in registry.concepts
+    assert "declaration_status" in registry.concepts
+
+
+def test_the_measurement_unit_is_open_so_a_tenant_may_measure_anything(registry):
+    """#193 §C5. The ruling the spec owed, as an assertion.
+
+    A closed set would cap what a tenant is permitted to measure, which map
+    #137 constraint 5 and ADR-0008 §2 both forbid. `allow_unknown` is the half
+    that makes it true at runtime: a unit UBB has never seen is legal, so this
+    set never decides a rejection (ADR-0003).
+    """
+    unit = registry.concepts["unit"]
+
+    assert unit.kind == "open"
+    assert unit.known_values == ("token", "search", "call", "second", "byte")
+    assert unit.allow_unknown is True
+    assert unit.label_key_prefix
+
+
+def test_the_response_shape_identifier_is_open_and_namespaced(registry):
+    """#193 §C7. "A stable, namespaced identifier validated against an
+    extensible registry, additive rather than a closed enum" IS ADR-0008 §2's
+    `open` kind, exactly — so it is registered as one rather than as a database
+    enumeration every new supplier SDK would have to migrate.
+    """
+    shape = registry.concepts["source_shape_id"]
+
+    assert shape.kind == "open"
+    assert shape.known_values == SHAPE_IDS
+    assert shape.allow_unknown is True
+
+
+def test_the_shape_identifier_carries_the_override_its_values_need(registry):
+    """The mechanism, and that it is genuinely load-bearing here.
+
+    The registry-wide pattern admits no dots, so without a per-concept override
+    the compiler rejects every namespaced value — which is asserted rather than
+    described, by running the shipped registry-wide pattern over the shipped
+    values. The override mechanism itself is not new: it arrived with the
+    webhook catalogue, so this is a declared use of shipped machinery.
+    """
+    shape = registry.concepts["source_shape_id"]
+    registry_wide = re.compile(registry.schema.token_pattern)
+
+    assert shape.token_pattern != registry.schema.token_pattern
+    namespaced = [v for v in shape.known_values if "." in v]
+    assert len(namespaced) == 3, namespaced
+    for value in namespaced:
+        assert not registry_wide.fullmatch(value), (
+            f"{value} needs no override — the registry-wide pattern already "
+            f"admits it, so this concept's override is excusing nothing"
+        )
+    # `custom` is the un-namespaced one, and it has to be: it names no shape
+    # UBB knows, which is the case `source_shape_label` exists to carry.
+    assert "custom" in shape.known_values
+
+
+def test_the_tenants_own_wrapper_is_free_text_and_never_validated(registry):
+    """#193 §C7's second half. Where a tenant declares a wrapper of their own,
+    UBB performs no shape validation at all — so there is nothing to enumerate
+    and nothing to check the label against."""
+    label = registry.concepts["source_shape_label"]
+
+    assert label.kind == "free_text"
+    assert label.declared_values == ()
+    assert label.label_key_prefix is None
+
+
+def test_the_plural_unit_word_is_sense_retired_and_not_sweep_input(registry):
+    """The one registration whose mechanics are not what they look like.
+
+    It is a retired SENSE, not a retired alias, and the difference is the whole
+    ticket: `retired_aliases` says "forbidden wherever this word appears", and
+    that is simply false of this word. Four unrelated senses carry it, and one
+    of them is unremovable by any commit — the generated vocabulary modules
+    render concept summaries from `domain-vocabulary/`, which is a permanent
+    sweep exclusion, so the registry may spell the word freely while its own
+    generated output may not.
+
+    Consequences asserted here, because they are what a later reader will doubt:
+    the word is NOT in the sweep's input, and the singular survives untouched.
+    """
+    senses = registry.retired_senses
+
+    assert "units" in senses, "the plural word is not registered at all"
+    concept_name, sense = senses["units"]
+    assert concept_name == "measurement_key"
+    assert sense.retired_as.strip() and sense.survives_as.strip()
+
+    assert "units" not in registry.retired_terms, (
+        "the plural word reached the forbidden-term sweep's input, which would "
+        "condemn currency minor units, rate arithmetic and a generated file "
+        "nobody may hand-edit"
+    )
+    assert "unit" in registry.concepts, (
+        "the singular is this slice's own canonical concept and survives: the "
+        "sweep matches whole tokens and `_` is an identifier character, which "
+        "is the same singular/plural split the ledger already runs elsewhere"
+    )
+
+
+def test_the_retired_sense_records_the_evidence_and_the_method(registry):
+    """ADR-0008 §9's failure mode, landing on the registry itself.
+
+    Nothing pins a `survives_as` clause against real code and this directory is
+    a permanent sweep exclusion, so an inherited or unmethodded count would go
+    on excusing a sentence with CI green — which is exactly why the
+    `pricing_status` precedent beside it records both. This asserts the entry
+    follows it rather than merely asserting the words are non-empty.
+    """
+    _, sense = registry.retired_senses["units"]
+    source = (REAL_REGISTRY / "concepts" / "retired.yaml").read_text(
+        encoding="utf-8")
+
+    # The count, and the swept-set size it was taken over. A bare number with
+    # no denominator is the thing #206 was corrected for.
+    assert re.search(r"\b75 files\b", source), (
+        "the entry records no re-taken file count"
+    )
+    assert "sweep.pattern" in source and "sweep.partition" in source, (
+        "the entry records no method — which matcher, over which swept set"
+    )
+    assert "generated" in sense.survives_as, (
+        "the survival clause omits the sense that no commit can remove, which "
+        "is the one that forces this to be a sense rather than an alias"
+    )
+
+
+def test_slice_2s_new_concepts_declare_no_consumer_yet(registry):
+    """#155 §3.2, as the reason rather than as tidiness.
+
+    A declared consumer that does not yet serve the concept's values is an
+    UNEXCUSED gate failure, and this slice is forbidden from adding a ledger
+    entry to excuse one. So each consumer is added by the ticket that builds
+    it, and until then the empty list is the honest declaration — legal, and
+    legal *visibly*, because the author had to write it and the compiler
+    reports it by name.
+    """
+    for name in ("declaration_status", "unit", "source_shape_id",
+                 "source_shape_label"):
+        assert registry.concepts[name].consumers == (), (
+            f"{name} declares a consumer this ticket does not build"
+        )
+
+
+def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
+    """The exact set, in one place, so a concept that quietly LOST its consumer
+    cannot join the list unremarked.
+
+    Two groups, both deliberate: the payment-rail names, declared in slice 0
+    and built in slice 8 (ADR-0008 §10.4), and slice 2's four above.
+    """
+    assert set(registry.concepts_without_consumers) == {
+        "payment_rail", "payment_rail_environment",
+        "declaration_status", "unit", "source_shape_id", "source_shape_label",
+    }
