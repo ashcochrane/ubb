@@ -437,6 +437,16 @@ unit:
   # The singular survives untouched: the sweep matches whole tokens with a
   # non-identifier character required on each side, and `_` IS an identifier
   # character, which is the same singular/plural split the ledger already runs.
+  #
+  # AND THE COLLISION WITH "MINOR UNITS" IS ACCEPTED RATHER THAN OVERLOOKED.
+  # ADR-0006 §3 forbids two DECLARED NAMES that differ by little and mean
+  # something unrelated — which is why `publication_status` was refused for the
+  # lifecycle above. This is not that: `amount_representation` is the declared
+  # name for how an amount is represented, and it owns "minor units" as its own
+  # English rather than as a competing concept. One noun for what a quantity is
+  # counted in is the plainest name available, and refusing it because an
+  # unrelated sentence elsewhere uses the plural would be letting prose veto
+  # vocabulary.
   summary: >-
     What one declared quantity is counted in — the noun beside the number, so
     an amount of 1,500 means something without the reader knowing which
