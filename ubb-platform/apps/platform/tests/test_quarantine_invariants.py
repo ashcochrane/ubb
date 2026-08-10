@@ -34,14 +34,23 @@ allowance has a positive control, and every walk has a vacuity guard — a check
 over an absence that silently read nothing is worse than no check at all.
 
 **What this cannot see**, stated rather than left to be discovered. The write
-rule is syntactic: ``target = EventType`` on one line and ``target.objects
-.create(...)`` on the next is dataflow, and it is the same limit the gate in
-``test_event_type_satellite_invariants.py`` records for local aliasing. The
-shortcut is caught where it is written, not where it is laundered. What
-narrows the exposure is that the module the rule is stated over is small,
-single-purpose, and read by anyone changing this behaviour.
+rule resolves local aliases to a fixpoint — it has to, because the real module
+reaches its declaration classes through a mapping and the rule would otherwise
+be blind to its own subject — but one shape is still outside it: a declaration
+arriving as a PARAMETER. ``register_the_held_name(held, declaration)`` calling
+``declaration.save()`` names nothing this walker can tie to a class, and no
+syntactic rule can, because the whole design of that function is to be handed a
+declaration somebody else made.
+
+That gap is closed behaviourally instead, and completely:
+``test_quarantine.py`` counts the declaration rows and re-reads their lifecycle
+either side of all three remediation paths, so a write through a parameter, an
+alias or anything else fails there whatever it is spelled. The division is
+deliberate — the source rule catches the shape at the line it is written, and
+the behavioural test catches the effect however it was reached.
 """
 import ast
+import re
 import textwrap
 from pathlib import Path
 
@@ -93,31 +102,37 @@ WRITE_METHODS = frozenset({
     "save", "asave", "update", "aupdate",
 })
 
-#: A declaration held as an identity rather than as a relation — the evasion
-#: that passes every check that walks a relation, because there is nothing to
-#: walk. #261 found this shape for the supplier and #264 for the analytics
-#: grouping; it is closed here in the same commit as the rule it evades rather
-#: than found a third time.
+#: Every column the held name carries, by name. An ALLOWLIST rather than a list
+#: of forbidden spellings, and the difference is the whole strength of the
+#: rule: a denylist of ``event_type_id``, ``declaration_ref`` and whatever else
+#: occurred to its author is walked past by ``resolves_to_id``, ``declared_pk``
+#: or ``origin_typo_id``, none of which anybody would think to list.
 #:
-#: The tenant's own KEYS are deliberately absent: ``event_type_key`` and
+#: This record has a fixed and small column set, so the total form is available
+#: — which the rules stated over the whole tree below cannot be. A new column
+#: here is a line somebody writes, exactly as ``SATELLITE_HOLDERS`` and
+#: ``DECLARATION_PARTS`` next door demand, and the refusal says so rather than
+#: claiming the column is necessarily a pointer.
+#:
+#: The tenant's own KEYS are on the list on purpose: ``event_type_key`` and
 #: ``resolved_key`` are names a tenant chose, they resolve to nothing on their
 #: own, and holding them is the design (see ``QuarantinedKey.resolved_key``).
-#: What is refused is a surrogate identity, which is a pointer wearing a
-#: column's clothes.
-DECLARATION_IDENTIFIER_NAMES = frozenset({
-    "event_type_id", "event_type_uuid", "event_type_ref",
-    "measurement_id", "measurement_uuid", "measurement_ref",
-    "declaration_id", "declaration_uuid", "declaration_ref",
-    "resolved_event_type_id", "resolved_measurement_id",
-    "resolved_declaration_id",
+#: What has no line is a surrogate identity — a pointer wearing a column's
+#: clothes.
+HELD_NAME_COLUMNS = frozenset({
+    "id", "created_at", "updated_at",
+    "unrecognised", "tenant", "event_type_key", "measurement_key",
+    "quantity", "quantities", "occurred_at",
+    "resolution", "resolved_at", "resolved_key",
 })
 
-#: And the same evasion pointing the other way.
-QUARANTINE_IDENTIFIER_NAMES = frozenset({
-    "quarantined_key_id", "quarantined_key_uuid", "quarantined_key_ref",
-    "quarantine_id", "quarantine_uuid", "quarantine_ref",
-    "held_name_id", "unrecognised_id",
-})
+#: The same evasion pointing the other way, and here only a pattern is
+#: available: the rule is stated over every model in the tree, so there is no
+#: fixed column set to enumerate. Matched as whole name segments — a stem that
+#: names this record, alone or qualified — which catches ``quarantine_pk`` and
+#: ``quarantined_key_ref`` without needing either to have been imagined.
+QUARANTINE_IDENTIFIER = re.compile(
+    r"^(quarantine|quarantined|quarantined_key|held_name)(_[a-z0-9_]+)?$")
 
 #: What a held name is allowed to relate to. The tenant, and nothing else: it
 #: is a record of something that arrived, and every other relation available to
@@ -128,6 +143,46 @@ QUARANTINE_MAY_RELATE_TO = frozenset({"tenant"})
 # ---------------------------------------------------------------------------
 # never-auto-register — the source of the quarantine path
 # ---------------------------------------------------------------------------
+
+def declaration_names(tree):
+    """Every local name in a module that could BE a declaration class.
+
+    The classes themselves, plus anything assigned from an expression that
+    mentions one, to a fixpoint. This is not decoration: the real module holds
+    ``RESOLVES_TO = {...: EventType, ...: Measurement}`` and then
+    ``expected = RESOLVES_TO[held.unrecognised]``, so ``expected.objects
+    .create(...)`` is a shipped alias for both declarations and a rule matching
+    only the class names would walk straight past it.
+
+    Deliberately generous — a name that merely *touches* a declaration class
+    counts. The cost of a false positive here is one line in a test explaining
+    why a write is legal; the cost of a false negative is a typo becoming
+    billing vocabulary.
+    """
+    assignments = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        bound = {t.id for t in targets if isinstance(t, ast.Name)}
+        if node.value is None or not bound:
+            continue
+        mentions = {segment
+                    for inner in ast.walk(node.value)
+                    if isinstance(inner, (ast.Name, ast.Attribute))
+                    for segment in _dotted_name(inner).split(".")}
+        assignments.append((bound, mentions))
+
+    names = set(DECLARATION_CLASSES)
+    grew = True
+    while grew:
+        grew = False
+        for bound, mentions in assignments:
+            if mentions & names and not bound <= names:
+                names |= bound
+                grew = True
+    return names
+
 
 def classify_declaration_write(label, tree):
     """Every declaration write in one module, and how many calls were read.
@@ -141,6 +196,7 @@ def classify_declaration_write(label, tree):
     ``Measurement.objects.get_or_create(...)`` — reads as "make sure it is
     there", which is the sentence auto-registration arrives in.
     """
+    subjects = declaration_names(tree)
     hits, calls = [], 0
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -150,10 +206,9 @@ def classify_declaration_write(label, tree):
         if not segments:
             continue
 
-        if len(segments) == 1 and segments[0] in DECLARATION_CLASSES:
-            how = f"constructs a {segments[0]}"
-        elif (segments[-1] in WRITE_METHODS
-              and set(segments[:-1]) & DECLARATION_CLASSES):
+        if len(segments) == 1 and segments[0] in subjects:
+            how = f"constructs a declaration via {segments[0]}"
+        elif segments[-1] in WRITE_METHODS and set(segments[:-1]) & subjects:
             how = f"writes a declaration via {'.'.join(segments)}"
         else:
             continue
@@ -243,6 +298,53 @@ def test_negative_control_a_bulk_write_is_flagged():
     assert hits and hits[0][0] == RULE_REGISTER
 
 
+def test_negative_control_a_write_through_an_alias_is_flagged():
+    """The escape that is a SHIPPED shape in the module under this rule.
+
+    ``RESOLVES_TO`` maps each kind of held name to the class that answers it,
+    and ``expected`` is that class. A rule matching only ``EventType`` and
+    ``Measurement`` reads this as a write to something called "expected" and
+    says nothing — while the line registers whichever declaration the held
+    name happens to be about.
+    """
+    hits = _classify_source("""
+        RESOLVES_TO = {"event_type": EventType, "measurement_key": Measurement}
+
+        def hold(held, tenant, key):
+            expected = RESOLVES_TO[held.unrecognised]
+            return expected.objects.create(tenant=tenant, key=key)
+    """)
+    assert hits and hits[0][0] == RULE_REGISTER
+    assert "expected.objects.create" in hits[0][2]
+
+
+def test_negative_control_a_one_line_alias_is_flagged():
+    """The plainest form of the same laundering."""
+    hits = _classify_source("""
+        def hold(tenant, key):
+            target = Measurement
+            target.objects.get_or_create(code=key)
+    """)
+    assert hits and hits[0][0] == RULE_REGISTER
+
+
+def test_the_alias_resolver_reaches_the_real_module_s_own_indirection():
+    """The fixpoint, exercised against the shipped source rather than a fixture.
+
+    ``declaration_names`` is only worth having if it actually resolves the
+    indirection this module ships. A test over synthetic source alone would
+    pass identically if the real module had been rewritten to route its
+    classes through something the resolver cannot follow.
+    """
+    source = (PLATFORM_ROOT / QUARANTINE_PATH[0]).read_text(encoding="utf-8")
+    names = declaration_names(ast.parse(source))
+
+    assert DECLARATION_CLASSES <= names
+    assert {"RESOLVES_TO", "expected"} <= names, (
+        "the module's own route to its declaration classes is not resolved, "
+        f"so a write through it would go unseen — resolved: {sorted(names)}")
+
+
 def test_positive_control_reading_a_declaration_is_not_writing_one():
     """The allowance branch — the half the rule is useless without.
 
@@ -301,8 +403,10 @@ def classify_quarantine_reach(model, field):
         else:
             why = f"relates to {field.related_model.__name__}, which is not " \
                   f"one of {sorted(QUARANTINE_MAY_RELATE_TO)}"
-    elif field.name in DECLARATION_IDENTIFIER_NAMES:
-        why = "holds a declaration's identity without holding the declaration"
+    elif field.name not in HELD_NAME_COLUMNS:
+        why = (f"is a column nothing has declared. If it holds a declaration's "
+               f"identity it is the evasion below; if it does not, add it to "
+               f"`HELD_NAME_COLUMNS`")
     else:
         return None
     return (
@@ -322,7 +426,7 @@ def classify_declaring_from_quarantine(model, field):
     """``nothing-declares-from-quarantine`` — inbound, relation or identity."""
     if field.is_relation and field.related_model is QuarantinedKey:
         why = "holds a QuarantinedKey"
-    elif not field.is_relation and field.name in QUARANTINE_IDENTIFIER_NAMES:
+    elif not field.is_relation and QUARANTINE_IDENTIFIER.match(field.name):
         why = "holds a held name's identity without holding the record"
     else:
         return None
@@ -427,6 +531,27 @@ def test_negative_control_a_bare_declaration_identifier_is_flagged():
 
 
 @isolate_apps(CATALOGUE_APP)
+def test_negative_control_an_identifier_nobody_would_have_listed_is_flagged():
+    """Why the outbound rule is an allowlist.
+
+    ``resolves_to_id`` names no class, no app and none of the words a list of
+    forbidden spellings would have been built from. It is still a pointer, and
+    on an allowlist it does not have to have been imagined to be caught.
+    """
+    class QuarantinedKey(models.Model):
+        resolves_to_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_quarantine_reach(
+        QuarantinedKey, QuarantinedKey._meta.get_field("resolves_to_id"))
+    assert hit is not None and hit[0] == RULE_HOLDS
+    assert "HELD_NAME_COLUMNS" in hit[2], (
+        "the refusal has to say what to do when the column is legitimate")
+
+
+@isolate_apps(CATALOGUE_APP)
 def test_negative_control_any_other_relation_on_the_held_name_is_flagged():
     """Stated as an allowlist, so a relation nobody anticipated is still a hit.
 
@@ -500,13 +625,18 @@ def test_negative_control_the_inbound_bare_identifier_is_flagged_too():
     first."""
     class Measurement(models.Model):
         quarantined_key_id = models.UUIDField(null=True)
+        quarantine_pk = models.UUIDField(null=True)
 
         class Meta:
             app_label = CATALOGUE_LABEL
 
-    hit = classify_declaring_from_quarantine(
-        Measurement, Measurement._meta.get_field("quarantined_key_id"))
-    assert hit is not None and hit[0] == RULE_DECLARES
+    hits = [classify_declaring_from_quarantine(Measurement, field)
+            for field in _local_fields(Measurement)
+            if field.name != "id"]
+    assert all(hit is not None and hit[0] == RULE_DECLARES for hit in hits)
+    assert len(hits) == 2, (
+        "the second spelling is here because the rule is a pattern rather "
+        "than a list — `quarantine_pk` is one nobody would have enumerated")
 
 
 @isolate_apps(CATALOGUE_APP)

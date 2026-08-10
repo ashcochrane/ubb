@@ -43,9 +43,9 @@ re-derived — differently — by whoever wires the close.
 """
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
-from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import UBBError
@@ -153,10 +153,16 @@ class Replay:
     """What re-costing an event needs, and nothing else.
 
     It is the cost key (#193 §B2) — tenant, Event Type, measurement, timestamp
-    — plus the number that arrived, because that is what identifies the thing
-    to be costed and there is nothing else about the event that costing reads.
-    No posting identifier travels here: the kernel may not point into a
-    product's tables (ADR-001), and it does not need to.
+    — plus the numbers that arrived. No posting identifier travels here: the
+    kernel may not point into a product's tables (ADR-001), and for the case
+    that matters most there is no posting to point at.
+
+    ``quantities`` is a bag on both branches even though the two branches fill
+    it from different places, because what re-costs an event should not have to
+    know which kind of repair produced it. On an unrecognised Event Type it is
+    everything the event carried, since nothing else holds it; on an
+    unrecognised quantity it is the single pair that was not costable, since
+    the posting holds the rest.
 
     ``effective_at`` is the moment the event happened. It is never the moment
     it was repaired, and it is a separate name from ``resolved_at`` on purpose
@@ -167,7 +173,7 @@ class Replay:
     tenant_id: UUID
     event_type_key: str
     measurement_key: str
-    quantity: str
+    quantities: dict
     effective_at: datetime
 
 
@@ -175,16 +181,25 @@ class Replay:
 # Accept
 # ---------------------------------------------------------------------------
 
-def hold_an_unrecognised_event_type(*, tenant, event_type_key, occurred_at):
+def hold_an_unrecognised_event_type(*, tenant, event_type_key, quantities,
+                                    occurred_at):
     """Hold a name that matched no declaration. Raises nothing at the door.
 
     ``event_type_key`` is written as it arrived: no case folding, no trimming,
     no punctuation tidied. The tenant is about to be asked what this name meant,
     and what they are shown has to be what they sent.
+
+    ``quantities`` is the whole measured bag, and it is a required argument
+    rather than an optional one because forgetting it loses the event's
+    numbers permanently. An event UBB cannot place is not recorded as a
+    posting at all (``docs/plans/2026-07-31-provider-supplied-cost-decision.md``
+    §3.4, "held outside the record until registered") — this row is the only
+    thing holding them. Pass ``{}`` for a call that measured nothing.
     """
     return _hold(tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
                  event_type_key=event_type_key, measurement_key="",
-                 quantity="", occurred_at=occurred_at)
+                 quantity="", quantities=_as_text(quantities),
+                 occurred_at=occurred_at)
 
 
 def hold_an_unrecognised_quantity(*, tenant, event_type_key, measurement_key,
@@ -197,27 +212,57 @@ def hold_an_unrecognised_quantity(*, tenant, event_type_key, measurement_key,
     apart: a supplier is a Provider record's identity, never a substring of a
     key (#261).
 
-    ``quantity`` is the number as sent, as text. A numeric column has a scale,
-    and the declaration that would say which scale is legal for this name is
-    precisely the one that is missing.
+    No bag travels with it: that event IS recorded as a posting, which carries
+    its own measured quantities. What the posting cannot explain is the single
+    number beside a name nothing matched, and that is what ``quantity`` holds —
+    as text, because a numeric column has a scale and the declaration that
+    would say which scale is legal for this name is precisely the one missing.
     """
     return _hold(tenant=tenant, unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
                  event_type_key=event_type_key,
-                 measurement_key=measurement_key, quantity=quantity,
-                 occurred_at=occurred_at)
+                 measurement_key=measurement_key, quantity=as_sent(quantity),
+                 quantities={}, occurred_at=occurred_at)
+
+
+def _as_text(quantities):
+    """The measured bag with its values as text."""
+    return {name: as_sent(value) for name, value in quantities.items()}
+
+
+def as_sent(value):
+    """A number as text, exactly and in the notation it was written in.
+
+    A JSON number is a float once it has been through a serialiser, and the
+    rounding that follows is the thing this record exists to refuse — so the
+    bag is text-valued, and this is what puts a number into it.
+
+    ``Decimal`` gets an explicit fixed-point format rather than ``str``,
+    which is the one case where the obvious call is wrong: ``str(Decimal(
+    "0.000000000000000001"))`` is ``'1E-18'``. Nothing is lost, but the tenant
+    who is about to be asked what this number meant did not write that, and a
+    repair screen showing them a value they do not recognise is the same defect
+    as rounding it, arriving as a display. ``Decimal`` is exactly what a
+    careful JSON reader produces, so this is the common path rather than a
+    corner.
+    """
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)
 
 
 def _hold(**fields):
-    """One row per event, validated, saved.
+    """One row per event, saved. Nothing about the NAME can refuse it.
 
-    ``full_clean`` is the courtesy layer (ADR-0007 §2) and it is here for a
-    narrow reason: a malformed CALL — a quantity row with no quantity name —
-    should read as a sentence rather than as an ``IntegrityError``. It is not
-    what makes an unrecognised NAME acceptable; nothing about an unrecognised
-    name is invalid, which is the whole premise.
+    ``full_clean`` is deliberately absent, and its absence is the accept rule.
+    It enforces ``max_length`` — and the likeliest garbage a broken client
+    sends is a name too LONG to be legal, which is exactly the event that must
+    not be refused at the door. The columns that hold what arrived carry no
+    length for the same reason. What still holds is every database constraint,
+    which is where the row's own coherence is enforced (ADR-0007 §2); a caller
+    that assembles an incoherent row gets an ``IntegrityError``, and no caller
+    can assemble one through the two functions above.
     """
     row = QuarantinedKey(**fields)
-    row.full_clean()
     row.save()
     return row
 
@@ -278,6 +323,14 @@ def _target_key(held, declaration):
     The tenant is checked first and on its own, before anything about shape or
     locality, so that the cross-tenant case can never be reported as some
     tidier-sounding mismatch and dismissed as a screen bug.
+
+    **The declaration's lifecycle is deliberately not consulted**, which looks
+    like an omission and is not. A declaration a tenant has just made is
+    ``draft`` by construction, so requiring ``published`` here would make
+    registration — the commonest remediation of the three — impossible until a
+    second, unrelated act. What a replay may legally cost against is a rating
+    question, and rating is slice 3's entire subject (#193 §L); deciding it
+    here would be this slice answering a question the next one owns.
     """
     expected = RESOLVES_TO[held.unrecognised]
     if not isinstance(declaration, expected):
@@ -334,13 +387,12 @@ def _remediate(held, resolution, declared_key):
     ``EventType.revise_declaration`` sets it.
     """
     now = timezone.now()
-    with transaction.atomic():
-        moved = (QuarantinedKey.objects.unresolved()
-                 .filter(pk=held.pk)
-                 .update(resolution=resolution, resolved_key=declared_key,
-                         resolved_at=now, updated_at=now))
-        if not moved:
-            raise AlreadyResolved(held)
+    moved = (QuarantinedKey.objects.unresolved()
+             .filter(pk=held.pk)
+             .update(resolution=resolution, resolved_key=declared_key,
+                     resolved_at=now, updated_at=now))
+    if not moved:
+        raise AlreadyResolved(held)
 
     held.resolution = resolution
     held.resolved_key = declared_key
@@ -360,12 +412,17 @@ def _replay(held):
     """
     if held.unrecognised == UNRECOGNISED_EVENT_TYPE:
         event_type_key, measurement_key = held.resolved_key, ""
+        quantities = dict(held.quantities)
     else:
         event_type_key, measurement_key = held.event_type_key, held.resolved_key
+        # Keyed by the DECLARED name, not the typo: this bag is what re-costing
+        # looks the quantity up by, and the misspelling matches no declaration
+        # by construction — it is the reason this row exists.
+        quantities = {held.resolved_key: held.quantity}
     return Replay(tenant_id=held.tenant_id,
                   event_type_key=event_type_key,
                   measurement_key=measurement_key,
-                  quantity=held.quantity,
+                  quantities=quantities,
                   effective_at=held.occurred_at)
 
 

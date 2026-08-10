@@ -18,16 +18,27 @@ vocabulary. Everything below is one of those two failures, held open.
   "The month is closed" must never mean "closed except for the parts nobody
   looked at."
 
-**What is deliberately not here.** Nothing in slice 2 is wired: no recording
-path calls any of this, no costing status is written and the coverage refusal
-is untouched — those are slice 3's, along with the flag and its raise sites.
-So "the event is marked not fully costed" is paid here as the state of the held
-row, which is the mark this slice can make and the thing slice 3's status
-column will read. The structural half — that a held name can never become a
-declaration by relation — is a property of the model registry and lives in
-``apps/platform/tests/test_quarantine_invariants.py`` next door.
+**What is deliberately not here, and one AC that cannot be paid in full.**
+Nothing in slice 2 is wired: no recording path calls any of this, no costing
+status is written and the coverage refusal is untouched — those are slice 3's,
+along with the flag and its raise sites (#193 §L). So the ticket's "its event
+is marked not fully costed" has **no mark to make**: there is no posting here
+to carry one. What is paid instead is the read that mark will be computed from
+— see
+``test_a_held_quantity_is_reported_as_unaccounted_for_until_resolved``, which
+is deliberately asserted through the query rather than through the row's own
+field, because the second would pass however badly the query behaved.
+
+The structural half — that a held name can never become a declaration, by
+relation or by identity — is a property of the model registry and of this
+module's source, and lives in
+``apps/platform/tests/test_quarantine_invariants.py`` next door. The one thing
+that gate cannot see, a declaration written through a PARAMETER, is closed here
+instead by ``TestNothingIsAutoRegistered``, which counts and re-reads the
+declaration rows either side of every path.
 """
 from datetime import datetime, timedelta, timezone as utc
+from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -112,7 +123,8 @@ class TestNothingIsThrownAway:
         tenant = _tenant()
 
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
 
         assert held.pk is not None
         assert held.unrecognised == UNRECOGNISED_EVENT_TYPE
@@ -129,7 +141,8 @@ class TestNothingIsThrownAway:
         as_sent = "  ACME.Embed-v2  "
 
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key=as_sent, occurred_at=JANUARY)
+            tenant=tenant, event_type_key=as_sent,
+            quantities={}, occurred_at=JANUARY)
 
         held.refresh_from_db()
         assert held.event_type_key == as_sent
@@ -154,6 +167,48 @@ class TestNothingIsThrownAway:
 
         held.refresh_from_db()
         assert held.quantity == awkward
+
+    def test_a_name_too_long_to_be_legal_is_still_accepted(self):
+        """The garbage most likely to arrive, and the one a bound would refuse.
+
+        A client that concatenated something into its call name sends a name
+        LONGER than any declared key may be. That is precisely the event whose
+        supplier cost is real and whose name is wrong — so a length check at
+        the door would refuse the one case the record exists for, and would do
+        it while reporting a validation error rather than a lost charge.
+        """
+        tenant = _tenant()
+        far_too_long = "acme.embed/" + "x" * 500
+
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key=far_too_long,
+            quantities={}, occurred_at=JANUARY)
+
+        held.refresh_from_db()
+        assert held.event_type_key == far_too_long
+        assert len(far_too_long) > EventType._meta.get_field("key").max_length
+
+    def test_an_unplaceable_event_keeps_every_number_it_carried(self):
+        """The bag, because for this case nothing else in UBB holds it.
+
+        `docs/plans/2026-07-31-provider-supplied-cost-decision.md` §3.4 draws
+        the line: an event whose Event Type is unknown is NOT recorded as a
+        usage event — "held outside the record until registered" — because
+        there is nothing to record it as. So the numbers it carried exist here
+        or nowhere, and a row without them would make the eventual replay
+        uncostable while looking complete.
+        """
+        tenant = _tenant()
+
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={"prompt_tokens": 4096,
+                        "reasoning_tokens": Decimal("0.000000000000000001")},
+            occurred_at=JANUARY)
+
+        held.refresh_from_db()
+        assert held.quantities == {"prompt_tokens": "4096",
+                                   "reasoning_tokens": "0.000000000000000001"}
 
     def test_a_number_that_was_absent_is_not_a_number_that_was_zero(self):
         """The distinction a zeroing implementation destroys.
@@ -197,14 +252,21 @@ class TestNothingIsThrownAway:
         assert held.event_type_key == declared.key
         assert held.measurement_key == "reasoning_tokens"
 
-    def test_the_event_is_not_fully_costed_while_the_name_is_held(self):
-        """The mark this slice can make.
+    def test_a_held_quantity_is_reported_as_unaccounted_for_until_resolved(self):
+        """AC 2's second half, paid as far as slice 2 can pay it — read this.
 
-        The costing status column that carries this onto the posting is slice
-        3's (#193 §L). What exists now is the held row's own state, and it is
-        what that column will read — so the claim "the event is not fully
-        costed until it is resolved" is asserted here as the thing slice 3
-        consults rather than as the column it has not built yet.
+        The ticket asks that the event be "marked not fully costed". **No such
+        mark exists in slice 2 and cannot**: the costing status is slice 3's by
+        #193 §L, and there is no posting here to carry one. So the honest thing
+        this slice can assert is the QUERY — that an event with a held name is
+        discoverable as unaccounted-for by the same read the period close uses,
+        and stops being so on resolution. That is what slice 3's column will be
+        computed from.
+
+        Asserted through ``unresolved_in_period`` rather than through
+        ``held.is_unresolved``, and the difference is the point: the second
+        would be re-reading the field the resolution had just written, which
+        passes whatever the read does and would go on passing if the read broke.
         """
         tenant = _tenant()
         declared = _event_type(tenant)
@@ -213,11 +275,15 @@ class TestNothingIsThrownAway:
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="12",
             occurred_at=JANUARY)
-        assert held.is_unresolved
 
-        dismiss_as_non_economic(held)
+        assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
+                                    closes_at=JANUARY_CLOSES) == (held,)
 
-        assert not held.is_unresolved
+        register_the_held_name(held, _measurement(declared,
+                                                  code="reasoning_tokens"))
+
+        assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
+                                    closes_at=JANUARY_CLOSES) == ()
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +306,8 @@ class TestNothingIsAutoRegistered:
 
         for _ in range(25):
             hold_an_unrecognised_event_type(
-                tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+                tenant=tenant, event_type_key="acme.embed",
+                quantities={}, occurred_at=JANUARY)
 
         assert EventType.objects.count() == 0
         assert Measurement.objects.count() == 0
@@ -279,10 +346,55 @@ class TestNothingIsAutoRegistered:
 
         for moment in moments:
             hold_an_unrecognised_event_type(
-                tenant=tenant, event_type_key="acme.embed", occurred_at=moment)
+                tenant=tenant, event_type_key="acme.embed",
+                quantities={}, occurred_at=moment)
 
         assert sorted(QuarantinedKey.objects.values_list("occurred_at",
                                                          flat=True)) == moments
+
+    def test_resolving_writes_no_declaration_and_alters_none(self):
+        """The gap the source rule next door cannot close, closed here.
+
+        ``test_quarantine_invariants.py`` walks this module's source for a
+        declaration write, and one shape is beyond any syntactic rule: the
+        declaration arrives as a PARAMETER, so ``declaration.save()`` names
+        nothing a walker can tie to a class. That is not a hypothetical hole —
+        it is the shape all three remediation paths are built around.
+
+        So it is closed by effect rather than by spelling. Every declaration in
+        the tenant's catalogue is read before and after all three paths run,
+        including the lifecycle columns: creating one fails, and so does
+        publishing somebody's draft on their behalf, which is the tidier
+        version of the same over-reach.
+        """
+        tenant = _tenant()
+        declared = _event_type(tenant, key="acme.embed")
+        quantity = _measurement(declared, code="prompt_tokens")
+
+        def snapshot():
+            return (
+                sorted(EventType.objects.values_list(
+                    "key", "declaration_status", "published_revision")),
+                sorted(Measurement.objects.values_list("code", "event_type_id")),
+            )
+
+        before = snapshot()
+        mapped = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
+        registered = hold_an_unrecognised_quantity(
+            tenant=tenant, event_type_key=declared.key,
+            measurement_key="prompt_tokens", quantity="7",
+            occurred_at=JANUARY)
+        dismissed = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.healthcheck",
+            quantities={}, occurred_at=JANUARY)
+
+        map_to_a_declaration(mapped, declared)
+        register_the_held_name(registered, quantity)
+        dismiss_as_non_economic(dismissed)
+
+        assert snapshot() == before
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +409,8 @@ class TestMappingToAnExistingDeclaration:
         tenant = _tenant()
         declared = _event_type(tenant, key="acme.embed")
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
 
         map_to_a_declaration(held, declared)
 
@@ -350,7 +463,8 @@ class TestMappingToAnExistingDeclaration:
         tenant = _tenant()
         declared = _event_type(tenant, key="acme.embed")
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
 
         with pytest.raises(NotTheHeldName):
             map_to_a_declaration(held, declared)
@@ -365,7 +479,8 @@ class TestMappingToAnExistingDeclaration:
         tenant = _tenant()
         theirs = _event_type(_tenant("Other"), key="acme.embed")
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
 
         with pytest.raises(NotThisTenants):
             map_to_a_declaration(held, theirs)
@@ -380,7 +495,8 @@ class TestMappingToAnExistingDeclaration:
         tenant = _tenant()
         quantity = _measurement(_event_type(tenant))
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
 
         with pytest.raises(WrongDeclaration):
             map_to_a_declaration(held, quantity)
@@ -400,7 +516,8 @@ class TestRegisteringTheHeldName:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
 
         declared = _event_type(tenant, key="acme.embed")
         register_the_held_name(held, declared)
@@ -432,7 +549,8 @@ class TestRegisteringTheHeldName:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
 
         declared = _event_type(tenant, key="acme.embed")
         with pytest.raises(NotTheHeldName):
@@ -454,7 +572,7 @@ class TestDismissingAsNonEconomic:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.healthcheck",
-            occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY)
 
         assert dismiss_as_non_economic(held) is None
 
@@ -476,7 +594,8 @@ class TestAResolutionHappensOnce:
     def test_a_resolved_name_cannot_be_resolved_again(self, second):
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
         dismiss_as_non_economic(held)
 
         declared = _event_type(tenant, key="acme.embed")
@@ -494,7 +613,8 @@ class TestAResolutionHappensOnce:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
         stale = QuarantinedKey.objects.get(pk=held.pk)
         dismiss_as_non_economic(held)
 
@@ -517,7 +637,8 @@ class TestReplayIsFromTheOriginalMoment:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
         declared = _event_type(tenant, key="acme.embed")
 
         replay = map_to_a_declaration(held, declared)
@@ -531,7 +652,8 @@ class TestReplayIsFromTheOriginalMoment:
         """Replaying the misspelling would re-run the failure it repairs."""
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed-v2", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={}, occurred_at=JANUARY)
         declared = _event_type(tenant, key="acme.embed")
 
         replay = map_to_a_declaration(held, declared)
@@ -539,8 +661,15 @@ class TestReplayIsFromTheOriginalMoment:
         assert replay.event_type_key == "acme.embed"
         assert replay.measurement_key == ""
 
-    def test_the_replay_carries_the_number_that_arrived(self):
-        """Verbatim, from the door to the re-costing, with nothing in between."""
+    def test_the_replay_carries_the_number_under_the_name_it_now_has(self):
+        """Verbatim from the door to the re-costing — and re-keyed.
+
+        The bag a replay hands on is looked up by name, and the name it
+        arrived under matches no declaration by construction: that is the
+        reason the row exists. Keying it by the typo would hand re-costing a
+        bag it cannot read, which is the original failure repeated one step
+        later.
+        """
         tenant = _tenant()
         declared = _event_type(tenant)
         held = hold_an_unrecognised_quantity(
@@ -550,8 +679,21 @@ class TestReplayIsFromTheOriginalMoment:
 
         replay = map_to_a_declaration(held, _measurement(declared))
 
-        assert replay.quantity == "0.000000000000000001"
+        assert replay.quantities == {
+            "prompt_tokens": "0.000000000000000001"}
         assert replay.tenant_id == tenant.id
+
+    def test_an_unplaceable_event_replays_with_everything_it_carried(self):
+        """The other branch, where the bag is the only copy there has ever been."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed-v2",
+            quantities={"prompt_tokens": 4096}, occurred_at=JANUARY)
+
+        replay = map_to_a_declaration(held, _event_type(tenant, key="acme.embed"))
+
+        assert replay.quantities == {"prompt_tokens": "4096"}
+        assert replay.effective_at == JANUARY
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +707,8 @@ class TestAPeriodDoesNotCloseSilently:
     def test_a_period_holding_an_unresolved_name_refuses_to_close(self):
         tenant = _tenant()
         hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
 
         with pytest.raises(PeriodHoldsUnresolvedValues) as refusal:
             refuse_a_silent_close(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -582,7 +725,8 @@ class TestAPeriodDoesNotCloseSilently:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
         register_the_held_name(held, _event_type(tenant, key="acme.embed"))
 
         refuse_a_silent_close(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -598,7 +742,7 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.healthcheck",
-            occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY)
         dismiss_as_non_economic(held)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -614,7 +758,8 @@ class TestAPeriodDoesNotCloseSilently:
         """
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
-            tenant=tenant, event_type_key="acme.embed", occurred_at=JANUARY)
+            tenant=tenant, event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == (held,)
@@ -633,7 +778,7 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         hold_an_unrecognised_event_type(
             tenant=_tenant("Other"), event_type_key="acme.embed",
-            occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == ()
@@ -648,7 +793,7 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            occurred_at=JANUARY_CLOSES)
+            quantities={}, occurred_at=JANUARY_CLOSES)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == ()

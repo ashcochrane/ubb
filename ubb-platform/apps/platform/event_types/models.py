@@ -1149,26 +1149,56 @@ class QuarantinedKey(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="quarantined_keys")
 
-    # The two names, held exactly as they arrived. `event_type_key` is always
-    # populated: on an unrecognised quantity it names the declared Event Type
-    # the quantity arrived beneath, and on an unrecognised Event Type it is the
-    # name nothing matched. Neither is ever taken apart — a supplier is a
-    # Provider record's identity and never a substring of a key (#261).
-    event_type_key = models.CharField(max_length=100)
-    measurement_key = models.CharField(max_length=100, blank=True, default="")
+    #: The two names, held exactly as they arrived. ``event_type_key`` is
+    #: always populated: on an unrecognised quantity it names the declared
+    #: Event Type the quantity arrived beneath, and on an unrecognised Event
+    #: Type it is the name nothing matched. Neither is ever taken apart — a
+    #: supplier is a Provider record's identity and never a substring of a key
+    #: (#261).
+    #:
+    #: **Unbounded, and that is the accept rule at the storage layer.** The
+    #: bound that governs a DECLARED key sits on the declaration, and this
+    #: record is about the absence of one — so a length here would be UBB
+    #: deciding how long a name a tenant is allowed to get wrong. It would also
+    #: refuse exactly the likeliest garbage: a client that concatenated
+    #: something into its call name sends a name too LONG to be legal, and a
+    #: bounded column would raise at the door on the one event the whole record
+    #: exists to keep.
+    event_type_key = models.TextField()
+    measurement_key = models.TextField(blank=True, default="")
 
-    #: The number that arrived, verbatim, as text.
+    #: The number that arrived under the one unrecognised name, verbatim, as
+    #: text. Measurement rows only.
     #:
     #: Text rather than a numeric column, and this is the whole of "nothing is
     #: zeroed": a numeric column has a scale, the declaration that would say
     #: which scale is legal is precisely the declaration that does not exist,
     #: and a quantity quietly rounded to fit a column UBB chose is a quantity
-    #: partly discarded. Held as sent, and read by whoever resolves it.
+    #: partly discarded. Unbounded for the same reason the names above are.
     #:
     #: Empty means the event carried no number for this name — a different fact
     #: from a number that was zero, and a column that could not tell those
     #: apart would answer "0" to both.
-    quantity = models.CharField(max_length=64, blank=True, default="")
+    quantity = models.TextField(blank=True, default="")
+
+    #: The whole measured bag, as it arrived. Event Type rows only, and the
+    #: asymmetry with ``quantity`` above is a merged decision rather than an
+    #: accident.
+    #:
+    #: ``docs/plans/2026-07-31-provider-supplied-cost-decision.md`` §3.4 draws
+    #: the line: an event whose Event Type is unknown is **not recorded as a
+    #: usage event** — "held outside the record until registered" — because
+    #: there is nothing to record it *as*. So for that case this row is the
+    #: only thing that holds what arrived, and a row without the numbers would
+    #: make "nothing is discarded" false and the replay uncostable. An event
+    #: whose Event Type is KNOWN is a first-class posting that carries its own
+    #: bag, and copying it here would be storing a fact twice (ADR-0006 §4) —
+    #: which is why that case holds only the single number above, the one thing
+    #: the posting's bag cannot explain on its own.
+    #:
+    #: Values are text, for the reason ``quantity`` is: a JSON number goes
+    #: through a float, and that is the rounding this record exists to refuse.
+    quantities = models.JSONField(default=dict, blank=True)
 
     #: When the event happened. **The load-bearing column of this record.**
     #: Remediation happens whenever somebody gets round to it, and a cost
@@ -1199,6 +1229,10 @@ class QuarantinedKey(BaseModel):
     #: declaration, under ``PROTECT``, on behalf of a typo. What guarantees
     #: this key names something real is the service that writes it, which is
     #: handed the declaration and reads the key off it.
+    #:
+    #: Bounded where the three columns above are not, and the asymmetry is the
+    #: point: this one always holds a key UBB itself declared, so it inherits
+    #: that column's length. The unbounded ones hold what a caller sent.
     resolved_key = models.CharField(max_length=100, blank=True, default="")
 
     objects = QuarantinedKeyQuerySet.as_manager()
@@ -1223,11 +1257,23 @@ class QuarantinedKey(BaseModel):
             # nothing to resolve.
             models.CheckConstraint(
                 condition=(
-                    models.Q(unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
-                             measurement_key__gt="")
+                    (models.Q(unrecognised=UNRECOGNISED_MEASUREMENT_KEY)
+                     & ~models.Q(measurement_key=""))
                     | models.Q(unrecognised=UNRECOGNISED_EVENT_TYPE,
                                measurement_key="")),
                 name="ck_quarantined_key_names_what_it_is_about",
+            ),
+            # And each kind holds the numbers ITS kind holds. Without this the
+            # two columns above become interchangeable, and the reason they
+            # are not — that one case has a posting behind it and the other has
+            # nothing at all — stops being visible to anything but a reader.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
+                             quantities={})
+                    | models.Q(unrecognised=UNRECOGNISED_EVENT_TYPE,
+                               quantity="")),
+                name="ck_quarantined_key_holds_its_own_numbers",
             ),
             # Resolved and dated move together, in both directions. A
             # resolution with no date is a repair nobody can place in time; a
@@ -1246,13 +1292,13 @@ class QuarantinedKey(BaseModel):
             # remediation path with no name and no rule.
             models.CheckConstraint(
                 condition=(
-                    models.Q(
-                        resolution__in=sorted(RESOLUTIONS_NAMING_A_DECLARATION),
-                        resolved_key__gt="")
+                    (models.Q(resolution__in=sorted(
+                        RESOLUTIONS_NAMING_A_DECLARATION))
+                     & ~models.Q(resolved_key=""))
                     | models.Q(resolution=RESOLUTION_DISMISSED, resolved_key="")
                     | models.Q(resolution=RESOLUTION_UNRESOLVED,
                                resolved_key="")),
-                name="ck_quarantined_key_a_dismissal_names_nothing",
+                name="ck_quarantined_key_resolution_and_key_agree",
             ),
         ]
         indexes = [
@@ -1272,11 +1318,16 @@ class QuarantinedKey(BaseModel):
     def held_name(self):
         """The name UBB did not recognise — the subject of this row.
 
-        Which of the two columns that is depends on ``unrecognised``, and the
-        constraints above are what make reading it this way total: a row about
-        a quantity always has one, and a row about an Event Type never does.
+        Read off ``unrecognised`` rather than off whichever column happens to
+        be populated. ``measurement_key or event_type_key`` gives the same
+        answer for every row the constraints admit and a WRONG one for a row
+        being assembled, where it would silently report an Event Type as the
+        held name on a half-built quantity row — and a half-built row is
+        exactly what a validator and a repair screen handle.
         """
-        return self.measurement_key or self.event_type_key
+        if self.unrecognised == UNRECOGNISED_MEASUREMENT_KEY:
+            return self.measurement_key
+        return self.event_type_key
 
     @property
     def is_unresolved(self):
@@ -1312,6 +1363,9 @@ class QuarantinedKey(BaseModel):
         about = self._subject_error()
         if about:
             errors["measurement_key"] = about
+        numbers = self._numbers_error()
+        if numbers:
+            errors[numbers[0]] = numbers[1]
         dated = self._resolution_dating_error()
         if dated:
             errors["resolved_at"] = dated
@@ -1336,6 +1390,25 @@ class QuarantinedKey(BaseModel):
                     "Type. The Event Type is what UBB did not recognise, so "
                     "nothing beneath it was ever looked up — naming a quantity "
                     "here would claim a lookup that never happened.")
+        return None
+
+    def _numbers_error(self):
+        """Each kind holds the numbers its kind holds. Returns (field, why)."""
+        if self.unrecognised == UNRECOGNISED_MEASUREMENT_KEY:
+            if self.quantities:
+                return ("quantities", (
+                    "carries the whole measured bag on a row about ONE "
+                    "unrecognised quantity. That event was recorded as a "
+                    "posting and the posting holds its bag; what is not "
+                    "anywhere else is the single number beside the name "
+                    "nothing matched, and that is `quantity`."))
+            return None
+        if self.quantity:
+            return ("quantity", (
+                "names one number on a row about an unrecognised Event Type, "
+                "where no quantity was ever looked up. The bag that arrived "
+                "goes in `quantities`, which is the only place it exists — an "
+                "event UBB cannot place is not recorded as a posting at all."))
         return None
 
     def _resolution_dating_error(self):
