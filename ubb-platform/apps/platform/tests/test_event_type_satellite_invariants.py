@@ -55,7 +55,9 @@ passed and not that the declarations were worth making:
   ``posting.event_type.provider_id`` inside a rating service names neither the
   app nor the class, and no token check can see it. What catches that is the
   ordinary import matrix plus review; what this file catches is a behavioural
-  module that reaches for the catalogue directly.
+  module that reaches for the catalogue directly. The same is true of
+  ``posting.measurement.concept`` (#264), which is the shortest route from a
+  rating path to the opt-in grouping and names none of the tokens below.
 """
 import ast
 import re
@@ -145,8 +147,20 @@ BEHAVIOURAL_SURFACES = (
 #: however it is spelled, or any of its classes by name. ``EventType`` joined
 #: the list with the record (#262) — nothing behavioural may read the
 #: declaration either, and the aggregate root is the name a rating path would
-#: reach for first.
-CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType")
+#: reach for first. ``MeasurementConcept`` joined it in #264, where the reach
+#: is not merely unwired but forbidden outright: the grouping is analytics-only
+#: and a rating path that can see it has made an analytics heading into a
+#: costing input.
+#:
+#: What that last one catches is a module that NAMES the class — an import, an
+#: ``apps.get_model``, a queryset. It does not catch ``posting.measurement
+#: .concept``, which is now the shortest route to the grouping from a rating
+#: path and names none of these tokens. That is the same limit the docstring
+#: records for reaching a satellite through the Event Type, and it is stated
+#: rather than half-closed: a token list that caught one spelling of an
+#: attribute walk and not another would read as coverage while providing none.
+CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType",
+                    "MeasurementConcept")
 
 #: Taking a key apart. ``startswith``/``endswith`` are here because a shortcut
 #: that only *tests* the prefix has still decided which supplier it is looking
@@ -889,6 +903,22 @@ def test_negative_control_a_behavioural_module_naming_the_catalogue_is_flagged()
     rule, _, message = hit
     assert rule == RULE_MONETARY
     assert "event_types" in message
+
+
+def test_negative_control_a_rating_path_reading_the_grouping_is_flagged():
+    """The analytics opt-in, read where money is decided (#264).
+
+    Nothing here holds a relation, so the model-registry rule next door has
+    nothing to walk — and grouping rates by a heading a tenant edits for a
+    chart is exactly what "analytics-only" refuses.
+    """
+    hit = _reach(
+        "apps/metering/pricing/services/rating.py",
+        "def rate_for(measurement):\n"
+        "    return MeasurementConcept.objects.get(pk=measurement.concept_id)\n",
+    )
+    assert hit is not None
+    assert hit[0] == RULE_MONETARY and "MeasurementConcept" in hit[2]
 
 
 def test_negative_control_a_catalogue_fetched_by_label_is_flagged():

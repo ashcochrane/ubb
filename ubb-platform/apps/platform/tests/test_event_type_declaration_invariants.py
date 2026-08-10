@@ -1,8 +1,8 @@
-"""What the declaration must never grow (#262, extended by #263).
+"""What the declaration must never grow (#262, extended by #263 and #264).
 
-Three of the four rules below are **absences**, and every one of them is an
-absence a merged decision once required: the grouping axes were on the cost key,
-the cost amount was on the declaration, and two operational variants of one call
+Four of the six rules below are **absences**, and three of those are an absence
+a merged decision once required: the grouping axes were on the cost key, the
+cost amount was on the declaration, and two operational variants of one call
 were one averaged thing. Each was removed by a later decision, and an
 implementer reading only the originating document would rebuild all three. An
 absence asserted in a docstring is a comment; these are properties of the model
@@ -33,13 +33,24 @@ registry, so they are classified here.
                               supplier costs are two costable things, and a
                               relation between them is the beginning of
                               averaging them.
+``a-quantity-stands-alone``   The grouping a quantity may be opted into is
+                              optional and singular. A required one makes an
+                              analytics heading a precondition for declaring a
+                              quantity; a many-to-many makes "which grouping is
+                              this in" a question with several answers.
+``grouping-is-analytics-``    Nothing but a declaration may point at that
+``only``                      grouping. A rate or a posting that could reach it
+                              would have made an analytics opt-in into a
+                              costing input, which is the one thing #264 says
+                              it can never become.
 ============================  ================================================
 
-**The two subjects.** The first two rules are asked of the Event Type and of the
-Measurement declared beneath it, and of nothing else: asking them of the whole
-tree would fail every model that legitimately carries a price or an axis, which
-is most of the money-bearing ones. The other two are asked of everything,
-because both are about what a SECOND model might quietly declare.
+**The three subjects.** The first two rules are asked of the Event Type, of the
+Measurement declared beneath it and of the grouping that Measurement may point
+at, and of nothing else: asking them of the whole tree would fail every model
+that legitimately carries a price or an axis, which is most of the money-bearing
+ones. The rest are asked of everything, because every one of them is about what
+a SECOND model might quietly declare.
 
 **Where the fourth absence lives.** "No account-level record beneath the
 supplier" is ``no-record-beneath`` in
@@ -67,6 +78,7 @@ from apps.platform.event_types.models import (
     EventCategory,
     EventType,
     Measurement,
+    MeasurementConcept,
     Provider,
 )
 from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
@@ -86,13 +98,42 @@ from apps.platform.tests.test_model_naming import first_party_models
 TICKET = "#262"
 CATALOGUE_APP = "apps.platform.event_types"
 
-#: The records that make up one declaration, and the subjects of the two
-#: absences below. The Measurement joined in #263: it is the other place a cost
-#: amount or a grouping axis would land if either came back, and it would land
-#: there looking reasonable — a quantity is the natural home for "what this one
-#: costs" right up until you notice there are two answers and no rule for which
-#: wins.
-DECLARATION_MODELS = (EventType, Measurement)
+#: The records the two absences below are asked of. The Measurement joined in
+#: #263 and the grouping in #264, and each is the next place a cost amount or a
+#: grouping axis would land if either came back — every one of them looking
+#: reasonable at the moment it was written. A quantity is the natural home for
+#: "what this one costs" right up until you notice there are two answers and no
+#: rule for which wins; a grouping is the natural home for "what everything
+#: under this heading costs", which is the same mistake one level up and reaches
+#: further, because a heading spans suppliers.
+#:
+#: The grouping is tenant-level rather than part of any one declaration, so this
+#: tuple is "what these two rules are stated about" and not "what a declaration
+#: is made of" — ``DECLARATION_PARTS`` below is the second of those and is
+#: deliberately not the same list.
+DECLARATION_MODELS = (EventType, Measurement, MeasurementConcept)
+
+#: Who may point at the opt-in grouping. Exactly the declared quantity: the
+#: grouping exists to say two quantities mean the same thing, and any other
+#: holder is something else having found a use for it. A rate or a posting
+#: reaching it is the whole of what "analytics-only" forbids.
+CONCEPT_HOLDERS = frozenset({"event_types.Measurement"})
+
+#: The grouping held as a value rather than as a relation — the evasion that
+#: gets past every rule above at once, because it carries the identity while
+#: declaring nothing to walk. #261's review found exactly this shape for the
+#: supplier (a bare ``provider_id = UUIDField()``) and closed it by name; the
+#: same hole is open on anything a later slice adds, so it is closed here in
+#: the same way rather than found again.
+#:
+#: Asked of every model INCLUDING the one holder, because the objection is
+#: different there: the declared quantity may hold this grouping, and holding it
+#: as a loose identifier is still unconstrained, uncascaded and dangling the
+#: moment the far side goes.
+GROUPING_IDENTIFIER_NAMES = frozenset({
+    "concept_id", "concept_key", "concept_uuid", "concept_ref",
+    "measurement_concept", "measurement_concept_id", "measurement_concept_key",
+})
 
 #: The records that are PART of one Event Type's declaration, and the single
 #: field on each by which they hang off it. A part necessarily names an Event
@@ -110,6 +151,7 @@ RULE_AMOUNT = "no-cost-amount"
 RULE_SHAPE = "one-response-shape"
 RULE_VARIANTS = "variants-stay-independent"
 RULE_OPTIONAL = "a-quantity-stands-alone"
+RULE_ANALYTICS = "grouping-is-analytics-only"
 
 #: The named extension for a second response shape, recorded here because the
 #: rule below is only half a ruling without it. Refusing the second shape
@@ -243,13 +285,63 @@ def classify_response_shape(model, fields):
     )
 
 
-def classify_optional_grouping(model, field):
-    """``a-quantity-stands-alone`` — a tripwire for #264, live before its model.
+def classify_analytics_only(model, field):
+    """``grouping-is-analytics-only`` — nothing but a declaration may reach it.
 
-    The Measurement Concept is **tenant-level, opt-in and analytics-only**, and
-    the record it points at does not exist yet — so the attribute cannot be
-    built here. What CAN be built is the check that fires when it lands, written
-    the way ``SATELLITE_HOLDERS`` was a ticket before its model existed.
+    The sharpest form of *"it can never become a costing input by accident"*.
+    The accident does not look like a cost column on the grouping — that is
+    caught above, and it is the version somebody would notice. It looks like a
+    rate, a posting or a spend ceiling growing a foreign key to it, each of
+    which reads as a reasonable local change and each of which makes an
+    analytics heading select money. A grouping that a rate can see is a rate
+    selector wearing an analytics name.
+
+    Keyed on the model LABEL rather than on class identity for #262's reason:
+    a synthetic control has to be able to carry the real record's identity, or
+    the allowance branch is the one rule here nothing ever exercises.
+
+    Two shapes, because the tidier one gets past a relation check entirely: a
+    column that holds the grouping's identity while declaring no relation is
+    the same reach with nothing to walk.
+    """
+    if field.is_relation:
+        if field.related_model is not MeasurementConcept:
+            return None
+        if model_label(model) in CONCEPT_HOLDERS:
+            return None
+        return (
+            RULE_ANALYTICS, site_of(model, field),
+            f"{site_of(model, field)} reaches the opt-in grouping. Only "
+            f"{sorted(CONCEPT_HOLDERS)} may (#264): the grouping is "
+            f"ANALYTICS-ONLY, so it can never become a costing input and can "
+            f"never block recording — and a rate, a posting or a ceiling that "
+            f"can see it has made it one of those by the ordinary route, which "
+            f"is a reasonable-looking foreign key rather than a decision "
+            f"anybody took. Adding a holder is a modelling decision, so it "
+            f"belongs in a decision record and in this list, in that order",
+        )
+    if field.name not in GROUPING_IDENTIFIER_NAMES:
+        return None
+    return (
+        RULE_ANALYTICS, site_of(model, field),
+        f"{site_of(model, field)} holds the opt-in grouping's identity without "
+        f"holding the grouping. It passes every rule that walks a relation, "
+        f"because there is no relation to walk (#264) — nothing constrains it, "
+        f"nothing cascades, and a delete on the far side leaves it pointing at "
+        f"a row that is gone. If a declared quantity is opting in, declare the "
+        f"ForeignKey; if anything else is reading the grouping, that is the "
+        f"reach this rule refuses",
+    )
+
+
+def classify_optional_grouping(model, field):
+    """``a-quantity-stands-alone`` — the shape #264's grouping had to land in.
+
+    The Measurement Concept is **tenant-level, opt-in and analytics-only**. This
+    rule was written in #263, a ticket before the record existed — the way
+    ``SATELLITE_HOLDERS`` named its model before there was one — so that the
+    wrong shape would fail on arrival rather than be argued about afterwards.
+    It now holds a real column in place.
 
     Two ways for it to land wrong, and both are one of #264's own fences taken
     down. A REQUIRED assignment makes an analytics grouping a precondition for
@@ -297,6 +389,7 @@ def _walk_registry():
             hits.extend(filter(None, [
                 classify_variant_relation(model, field),
                 classify_optional_grouping(model, field),
+                classify_analytics_only(model, field),
                 # The two absences are the declaration's own. Asking them of the
                 # whole tree would fail every model that legitimately carries a
                 # price or an axis, which is most of the money-bearing ones.
@@ -314,10 +407,10 @@ def _failures(rule):
 
 
 def test_the_walk_actually_saw_the_declaration():
-    """Vacuity guard: three of the four rules below are absences.
+    """Vacuity guard: four of the six rules below are absences.
 
     The Event Type by name, because it is the subject and a walk that lost it
-    would report four clean absences over a tree it never read; the satellites
+    would report a clean sweep of absences over a tree it never read; the satellites
     and the Grouping Field registry because they are what the rules are stated
     AGAINST, and a walk that could not see them could not tell a relation to one
     from a relation to anything else.
@@ -325,13 +418,20 @@ def test_the_walk_actually_saw_the_declaration():
     assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
     for expected in ("event_types.EventType", "event_types.Provider",
                      "event_types.EventCategory", "event_types.Measurement",
+                     "event_types.MeasurementConcept",
                      "grouping_fields.GroupingField", "usage.UsageEvent"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
     assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
     assert len(_local_fields(EventType)) >= 11, (
         "the Event Type's own fields were not read")
-    assert len(_local_fields(Measurement)) >= 8, (
+    assert len(_local_fields(Measurement)) >= 9, (
         "the Measurement's own fields were not read")
+    # The grouping's own relation, read from the far side. The rule that
+    # matters most about this record is about who POINTS at it, and a walk that
+    # could not see the one legitimate holder could not tell it from the
+    # illegitimate ones either.
+    assert [f.name for f in _local_fields(Measurement)
+            if f.related_model is MeasurementConcept] == ["concept"]
 
 
 def test_the_event_type_carries_no_grouping_axis():
@@ -356,6 +456,11 @@ def test_no_event_type_names_another_event_type():
 
 def test_a_declared_quantity_stands_alone():
     failures = _failures(RULE_OPTIONAL)
+    assert not failures, "\n" + failures
+
+
+def test_nothing_but_a_declaration_reaches_the_opt_in_grouping():
+    failures = _failures(RULE_ANALYTICS)
     assert not failures, "\n" + failures
 
 
@@ -780,6 +885,192 @@ def test_positive_control_an_optional_grouping_is_allowed():
 
     assert [classify_optional_grouping(Measurement, field)
             for field in _local_fields(Measurement)] == [None] * 3
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_rate_reaching_the_grouping_is_flagged():
+    """The costing input, arriving as the most reasonable change in the world.
+
+    "Price all the quantities under this heading the same way" is a sentence a
+    product owner will say, and the foreign key that implements it turns an
+    analytics opt-in into a rate selector — after which a tenant re-filing two
+    quantities under one heading changes what their customers are charged.
+    """
+    class Rate(models.Model):
+        concept = models.ForeignKey(MeasurementConcept, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_analytics_only(Rate, Rate._meta.get_field("concept"))
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+    assert "ANALYTICS-ONLY" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_recorded_event_reaching_the_grouping_is_flagged():
+    """The other direction, and the one that could block a recording.
+
+    A posting that resolves a grouping on the way in has put an analytics
+    heading on the path an event travels, where a missing or unknown one is one
+    refactor away from a refusal. Nullable and optional does not save it: the
+    rule is that nothing on that path may reach this record at all.
+    """
+    class Posting(models.Model):
+        measurement_concept = models.ForeignKey(
+            MeasurementConcept, null=True, blank=True, on_delete=models.SET_NULL)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_analytics_only(
+        Posting, Posting._meta.get_field("measurement_concept"))
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_gathering_groupings_is_flagged_too():
+    """Whatever the arity, the objection is that this model can see it."""
+    class SpendCeiling(models.Model):
+        applies_to = models.ManyToManyField(MeasurementConcept)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_analytics_only(SpendCeiling,
+                                  SpendCeiling._meta.get_field("applies_to"))
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_declared_quantity_may_hold_one():
+    """The allowance branch, exercised — the half the rule is useless without.
+
+    A rule that flagged every holder would make #264 unbuildable, and the
+    registry walk would say so identically to a walk that had simply gone
+    wrong. The synthetic model carries the real one's label, so this reaches
+    the allowance rather than passing for want of recognising the class.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concept = models.ForeignKey(MeasurementConcept, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in CONCEPT_HOLDERS, (
+        "the control has to be the model the allowance is about")
+    assert [classify_analytics_only(Measurement, field)
+            for field in _local_fields(Measurement)] == [None] * 3
+    # And the shape it landed in still satisfies the rule written for it a
+    # ticket earlier: optional, and to exactly one.
+    assert [classify_optional_grouping(Measurement, field)
+            for field in _local_fields(Measurement)] == [None] * 3
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_bare_grouping_identifier_is_flagged():
+    """The reach with nothing to walk, and the tidiest of the lot.
+
+    It passes the relation branch (there is no relation), it looks like it
+    honours "keys on identity", and it does neither: nothing constrains it and
+    a delete on the far side leaves it dangling. #261's review found this exact
+    shape for the supplier; the fence is closed here rather than found twice.
+    """
+    class Rate(models.Model):
+        measurement_concept_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = Rate._meta.get_field("measurement_concept_id")
+    hit = classify_analytics_only(Rate, field)
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+    assert "no relation to walk" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_holder_may_not_hold_it_loosely_either():
+    """The one model allowed to opt in is not allowed to opt in by UUID.
+
+    The allowance is for the relation, and the objection to a loose identifier
+    is a different one — so the model label cannot excuse this shape.
+    """
+    class Measurement(models.Model):
+        concept_id = models.UUIDField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in CONCEPT_HOLDERS, (
+        "the control has to be the model the allowance is about")
+    hit = classify_analytics_only(Measurement,
+                                  Measurement._meta.get_field("concept_id"))
+    assert hit is not None and hit[0] == RULE_ANALYTICS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_real_foreign_key_is_not_a_bare_identifier():
+    """The rule must not fire on the shape it is asking for.
+
+    Django gives a ForeignKey an ``attname`` of ``concept_id``, and a check
+    that read the attname rather than the field name would fail the very column
+    #264 shipped — which is how a gate gets weakened until it stops meaning
+    anything.
+    """
+    class Measurement(models.Model):
+        concept = models.ForeignKey(MeasurementConcept, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    field = Measurement._meta.get_field("concept")
+    assert field.attname in GROUPING_IDENTIFIER_NAMES, (
+        "the control is only meaningful while the attname is a listed name")
+    assert classify_analytics_only(Measurement, field) is None
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_cost_on_the_grouping_is_flagged():
+    """The same mistake one level up, and it reaches further than on a quantity.
+
+    "Everything under this heading costs the same" is the sentence, and a
+    heading spans suppliers — so a number here would price a Gemini call from a
+    row an analyst edited to tidy up a chart.
+    """
+    class MeasurementConcept(models.Model):
+        default_cost_micros = models.BigIntegerField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        MeasurementConcept,
+        MeasurementConcept._meta.get_field("default_cost_micros"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_slot_on_the_grouping_is_flagged():
+    """The grouping, rebuilt as an analytics axis (#264).
+
+    It groups measurement RECORDS rather than events, so it consumes no slot
+    and appears nowhere in the slot map. Reaching for the registry next door is
+    the obvious thing to do with the word "grouping" in hand, and it would
+    spend one of the finite slots a real analytics axis needs.
+    """
+    class MeasurementConcept(models.Model):
+        slot = models.CharField(max_length=8)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_grouping_axis(MeasurementConcept,
+                                 MeasurementConcept._meta.get_field("slot"))
+    assert hit is not None and hit[0] == RULE_GROUPING
 
 
 @isolate_apps(CATALOGUE_APP)

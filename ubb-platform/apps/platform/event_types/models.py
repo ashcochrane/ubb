@@ -29,8 +29,9 @@ except through a sanctioned channel — so a table several products read cannot 
 inside any one of them.
 
 **What is here so far.** ``EventType`` — the aggregate root — the two optional
-satellites it hangs off, ``Provider`` and ``EventCategory``, and ``Measurement``,
-the declared quantity. The reported-cost mapping arrives in the ticket that
+satellites it hangs off, ``Provider`` and ``EventCategory``, ``Measurement``,
+the declared quantity, and ``MeasurementConcept``, the opt-in grouping two
+declarations may share. The reported-cost mapping arrives in the ticket that
 follows, and the recorded consumer debts naming this path stay open until the
 fields that serve them are built. Nothing here is wired to anything: no rating
 path reads it, no cost resolves through it, no spend ceiling consults it. Slice 2
@@ -623,6 +624,72 @@ class EventType(PinnedDeclaration, BaseModel):
         return None
 
 
+class MeasurementConcept(BaseModel):
+    """Two quantities a tenant has SAID mean the same thing. Opt-in, analytics-only.
+
+    An analyst wants one chart adding a Gemini call's ``prompt_tokens`` to an
+    OpenAI call's ``input_tokens``. Nothing in either declaration says those are
+    one quantity, and nothing could: the declarations are Event-Type-local by
+    design, and the two integrations never had to agree about spelling to both
+    be correct. This record is the tenant saying it, and it is the only thing
+    that ever says it.
+
+    **Both fences are about what a NAME is not allowed to decide.** A matching
+    name never automatically proves equivalence — two declarations that happen
+    to share a spelling stay apart until a tenant groups them, because UBB
+    cannot tell a genuine duplicate from a collision and a wrong guess silently
+    merges two unrelated quantities on somebody's chart. And a differing name
+    never prevents aggregation: the opt-in is the whole mechanism, so spelling
+    is not consulted in either direction.
+
+    **Analytics-only, which is a set of absences.** It carries no amount, no
+    currency and no rate; nothing but a declaration may point at it; and no
+    rating, cost-resolution or spend-ceiling module can see it. Those are
+    properties of the tree rather than of this docstring, and
+    ``apps/platform/tests/test_event_type_declaration_invariants.py`` is where
+    they are held to it.
+
+    **It is not a Grouping Field, and the distinction is the reason it is its
+    own record.** A Grouping Field binds a tenant's key to one of a fixed number
+    of physical slots on the posting: it groups EVENTS, the slots are finite,
+    and a slot spent here is a real analytics axis nobody else can have. This
+    groups measurement RECORDS. It consumes no slot, appears nowhere in the slot
+    map, and is not a role on that vocabulary.
+
+    **It carries no ``retired_at``, and that is a ruling rather than an
+    oversight** — the same one ``EventCategory`` records above, for the same
+    reason. Retirement earns its place on ``Provider`` because a Provider is
+    load-bearing for historical *money* attribution; nothing here is. What a
+    tenant does with a heading they have finished with is unassign it, which
+    the declarations' ``PROTECT`` makes them do explicitly rather than by a
+    delete that silently un-groups last quarter.
+
+    **"Concept" here is the domain's word, not the vocabulary registry's.** The
+    registry's concepts are UBB-owned value sets with generated artifacts behind
+    them; this is a tenant's own row, holding a tenant's own key, which UBB
+    never enumerates. The collision is accepted for the same reason the app's
+    name is (see the module docstring): the alternatives all describe it worse,
+    and the two live nowhere near each other.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="measurement_concepts")
+    # A plain CharField for the reason given on ``Provider.key``: this is the
+    # tenant's own heading for their own chart, and a charset UBB invented
+    # would be UBB deciding what an analyst may call their own quantity.
+    key = models.CharField(max_length=64)
+
+    class Meta:
+        db_table = "ubb_measurement_concept"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "key"],
+                                    name="uq_measurement_concept_key"),
+        ]
+
+    def __str__(self):
+        return f"MeasurementConcept({self.key})"
+
+
 class Measurement(PinnedDeclaration, BaseModel):
     """One declared quantity beneath an Event Type — the record this slice is for.
 
@@ -644,6 +711,10 @@ class Measurement(PinnedDeclaration, BaseModel):
       tell a fully costed event from one missing an input.
     * **A source kind**, held by reference, and **a structured source path** —
       where the number comes from, and how the builder is to reach it.
+    * **Optionally, one Measurement Concept** — the tenant saying that this
+      quantity and another differently-named one mean the same thing, so a
+      chart may add them together. Opt-in, analytics-only, and absent by
+      default: a declaration that carries none is a normal declaration.
 
     **Declarations are Event-Type-local, and that is the correctness boundary.**
     The same code on two Event Types is two independent records that happen to
@@ -676,7 +747,10 @@ class Measurement(PinnedDeclaration, BaseModel):
     #: is. ``display_name`` is deliberately absent: it names the quantity for a
     #: human and reaches no emitted behaviour, so returning a live integration
     #: to draft over a corrected caption would be a cost with nothing on the
-    #: other side.
+    #: other side. ``concept`` is absent for the same reason and one more: an
+    #: analyst re-filing two quantities under one heading changes nothing about
+    #: what UBB will accept or what the integration must send, and a grouping
+    #: that could un-publish a live integration would not be analytics-only.
     PINNED = ("code", "value_type", "unit", "required_for_costing",
               "source_kind", "source_path")
 
@@ -706,6 +780,18 @@ class Measurement(PinnedDeclaration, BaseModel):
     # more than one language, and a stored expression is portable to none of
     # them. `source_paths.py` owns the whole of what that means.
     source_path = models.JSONField(default=list, blank=True)
+
+    # The opt-in grouping, and every part of this declaration is a fence.
+    # OPTIONAL, because a quantity stands alone and an analytics heading can
+    # never be a precondition for declaring one. SINGULAR, because "which
+    # grouping is this quantity in" has one answer or an analyst gets a
+    # different total depending on which one a query took. PROTECT, because a
+    # grouping deleted out from under a declaration silently un-groups
+    # historical numbers — the same rule, and the same reasoning, as the
+    # supplier above. And deliberately NOT in `PINNED`: see `save` below.
+    concept = models.ForeignKey(MeasurementConcept, on_delete=models.PROTECT,
+                                null=True, blank=True,
+                                related_name="measurements")
 
     class Meta:
         db_table = "ubb_measurement"
@@ -889,6 +975,10 @@ class Measurement(PinnedDeclaration, BaseModel):
                 "line cannot tell what was counted. UBB records the spellings "
                 "it has met and never bounds the set — declare your own.")
 
+        grouping_error = self._grouping_tenant_error()
+        if grouping_error:
+            errors["concept"] = grouping_error
+
         problems = path_errors(self.source_path)
         obligation = None if problems else self._path_obligation_error()
         if problems:
@@ -899,6 +989,33 @@ class Measurement(PinnedDeclaration, BaseModel):
 
         if errors:
             raise ValidationError(errors)
+
+    def _grouping_tenant_error(self):
+        """A grouping belongs to one tenant, and so does the quantity it groups.
+
+        The worst outcome available to a feature whose entire job is adding
+        quantities together is adding somebody else's in, so the two tenants
+        are compared rather than assumed equal. No database constraint can say
+        this: the declaration's tenant is its Event Type's, a table away, and a
+        check constraint cannot follow a foreign key. Held here on the same
+        footing as every other rule in this file — a courtesy to the ordinary
+        path (ADR-0007 §2), which is all a model-level rule ever is.
+        """
+        if self.concept_id is None or self.event_type_id is None:
+            return None
+        # The owner by a narrow read rather than by walking the relation: a
+        # `concept_id` naming no row would raise `DoesNotExist` out of
+        # `full_clean`, and a validator that can raise something other than a
+        # `ValidationError` is one every caller has to wrap.
+        owner = (MeasurementConcept.objects.filter(pk=self.concept_id)
+                 .values_list("tenant_id", flat=True).first())
+        if owner == self.event_type.tenant_id:
+            return None
+        return ("is not one of this tenant's groupings. A grouping is "
+                "tenant-level, and one reaching across tenants would put one "
+                "tenant's numbers on another's chart — which is the whole of "
+                "what this feature does, aimed at the one place it must never "
+                "point.")
 
     def _path_obligation_error(self):
         """Which source kinds owe a path, and which may not carry one.
