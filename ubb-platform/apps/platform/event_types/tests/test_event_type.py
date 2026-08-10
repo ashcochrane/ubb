@@ -150,6 +150,11 @@ class TestAnIncompleteDeclarationStaysInDraft:
         Without it, a check that returned "incomplete" for every `reported`
         declaration whatever it carried would pass — and the rule under test is
         that publication reads the MAPPING's presence, not the costing method.
+
+        The stand-in is the mapping, which is the rule's INPUT and does not
+        exist until #266; the rule itself is exercised for real. Standing in
+        for the thing under test would be the other thing, and is what
+        ``tests/contracts/README.md`` refuses.
         """
         declared = _event_type(_tenant(), costing_method=COSTING_METHOD_REPORTED)
         assert declared.publication_blockers()
@@ -159,6 +164,42 @@ class TestAnIncompleteDeclarationStaysInDraft:
         assert declared.publication_blockers() == ()
         declared.publish()
         assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
+
+    def test_an_empty_mapping_relation_is_not_a_mapping(self):
+        """The shape the rule must not be at the mercy of.
+
+        A reverse one-to-one answers `None` when absent; a to-many answers with
+        a manager, which is never `None`. If #266 declares the second shape, a
+        presence test would start passing for every `reported` declaration in
+        the tree at once, and nothing here would go red.
+        """
+        declared = _event_type(_tenant(), costing_method=COSTING_METHOD_REPORTED)
+        setattr(declared, REPORTED_COST_MAPPING,
+                EventType.objects.none())  # a manager-shaped, empty relation
+
+        assert declared.publication_blockers() == (REPORTED_COST_MAPPING,)
+
+    def test_the_reported_cost_mapping_joins_the_pinned_declaration(self):
+        """A tripwire for the ticket that builds the mapping (#266).
+
+        Publication pins the response shape, the structured paths and the
+        reported-cost mapping, because an incorrect mapping produces an
+        incorrect supplier cost. Only the first of those three exists here, so
+        `PINNED` cannot yet name the others — and an obligation that lives
+        only in a comment is one #266 can land without noticing. This is
+        written the way ``SATELLITE_HOLDERS`` was written a ticket before its
+        model existed: it passes vacuously today, and goes red on the commit
+        that adds the relation without pinning it.
+        """
+        arrived = (hasattr(EventType, REPORTED_COST_MAPPING)
+                   or any(rel.get_accessor_name() == REPORTED_COST_MAPPING
+                          for rel in EventType._meta.related_objects))
+
+        assert not arrived or REPORTED_COST_MAPPING in EventType.PINNED, (
+            f"the reported-cost mapping has arrived and publication does not "
+            f"pin it: add {REPORTED_COST_MAPPING!r} to EventType.PINNED, "
+            f"because a changed mapping is a revised publication and never a "
+            f"silent reinterpretation of an integration already deployed")
 
     def test_publishing_an_unchanged_declaration_again_pins_nothing_new(self):
         """There is no second declaration to pin, so there is no second revision."""
@@ -234,6 +275,46 @@ class TestAChangedDeclarationIsARevisedPublication:
 
         assert EventType.objects.get(pk=declared.pk).declaration_status \
             == DECLARATION_STATUS_DRAFT
+
+    def test_a_deferred_load_does_not_dodge_the_guard_either(self):
+        """The careful caller's spelling, which is the one that fails open.
+
+        ``only("key")`` defers the rest of the row, so an instance loaded that
+        way never saw the declaration it is about to change — and Django then
+        narrows ``update_fields`` to the fields it did load. A guard that took
+        its baseline only at load time reads "no baseline" here, which is
+        indistinguishable from "nothing changed", and the live publication
+        moves underneath the tenant in silence.
+        """
+        declared = _event_type(_tenant())
+        declared.publish()
+
+        deferred = EventType.objects.only("key").get(pk=declared.pk)
+        deferred.key = "acme.embed.v2"
+        deferred.save()
+
+        stored = EventType.objects.get(pk=declared.pk)
+        assert stored.key == "acme.embed.v2"
+        assert stored.declaration_status == DECLARATION_STATUS_DRAFT
+        assert stored.published_revision == 1
+
+    def test_the_change_that_unpublished_it_is_actually_written(self):
+        """Widening `update_fields` for the status alone would invent a state.
+
+        A record reading `draft` because a pinned element changed, while that
+        element was never written, is a third state nobody declared — and the
+        next save would compare against a baseline the database never held.
+        """
+        declared = _event_type(_tenant())
+        declared.publish()
+
+        reloaded = EventType.objects.get(pk=declared.pk)
+        reloaded.key = "acme.embed.v2"
+        reloaded.save(update_fields=["published_at"])
+
+        stored = EventType.objects.get(pk=declared.pk)
+        assert stored.key == "acme.embed.v2"
+        assert stored.declaration_status == DECLARATION_STATUS_DRAFT
 
     def test_an_unpinned_element_leaves_the_publication_alone(self):
         """The other direction, which a guard that unpublished on any save fails.

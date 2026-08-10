@@ -278,10 +278,20 @@ def classify_category_shape(field):
     return None
 
 
+def field_words(name):
+    """A field name's words, for the rules that read a name for meaning.
+
+    One definition, shared with the gate next door (#262) rather than copied
+    there — a second money rule splitting names its own way is two rules that
+    agree until the day they do not, and the one that drifted would be the one
+    nobody was looking at.
+    """
+    return set(re.split(r"[^a-z]+", name.lower()))
+
+
 def classify_monetary_field(model, field):
     """``never-monetary`` — a satellite carries no cost and no price."""
-    words = set(re.split(r"[^a-z]+", field.name.lower()))
-    named_money = sorted(words & MONETARY_FIELD_WORDS)
+    named_money = sorted(field_words(field.name) & MONETARY_FIELD_WORDS)
     typed_money = field.get_internal_type() in MONETARY_FIELD_TYPES
     if not named_money and not typed_money:
         return None

@@ -44,6 +44,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from core.exceptions import UBBError
 from core.models import BaseModel
 from core.vocabulary import (
     COSTING_METHOD_REPORTED,
@@ -71,7 +72,7 @@ RECOGNISED_RESPONSE_SHAPES = SOURCE_SHAPE_ID_KNOWN_VALUES - {SOURCE_SHAPE_ID_CUS
 REPORTED_COST_MAPPING = "reported_cost_mapping"
 
 
-class DeclarationIncomplete(Exception):
+class DeclarationIncomplete(UBBError):
     """Publication refused: the declaration does not yet pin what it must.
 
     An exception rather than a silent no-op, because the two outcomes a caller
@@ -320,7 +321,15 @@ class EventType(BaseModel):
         """
         if self.costing_method != COSTING_METHOD_REPORTED:
             return ()
-        if getattr(self, REPORTED_COST_MAPPING, None) is None:
+        declared = getattr(self, REPORTED_COST_MAPPING, None)
+        # A missing reverse one-to-one answers `None` through `getattr`'s
+        # default. A to-many relation would answer with a MANAGER, which is
+        # never `None` — so the shape #266 happens to choose would decide
+        # whether this rule ran at all. Asking an emptiness question of
+        # whatever arrives fails CLOSED in both, which is the only direction
+        # of error that keeps an incomplete declaration unpublished.
+        if declared is None or (hasattr(declared, "exists")
+                                and not declared.exists()):
             return (REPORTED_COST_MAPPING,)
         return ()
 
@@ -337,7 +346,7 @@ class EventType(BaseModel):
         blockers = self.publication_blockers()
         if blockers:
             raise DeclarationIncomplete(blockers)
-        baseline = getattr(self, "_pinned_as_loaded", None)
+        baseline = self._pinned_baseline()
         if (self.declaration_status == DECLARATION_STATUS_PUBLISHED
                 and baseline is not None
                 and self._pinned_declaration() == baseline):
@@ -360,19 +369,38 @@ class EventType(BaseModel):
     def _pinned_declaration(self):
         return tuple(getattr(self, name) for name in self.PINNED)
 
+    def _pinned_baseline(self):
+        """What the row's pinned elements said when this instance met them.
+
+        Cached from the load where there was one, and otherwise READ, because
+        the alternative is a guard that fails open on exactly the load a caller
+        reaches for when they are being careful: ``objects.only("key")`` defers
+        the rest, so a baseline taken only at load time would be absent, and
+        absent is indistinguishable from unchanged. One query, and only on an
+        instance that has no baseline and a row behind it.
+        """
+        cached = getattr(self, "_pinned_as_loaded", None)
+        if cached is not None or self._state.adding or self.pk is None:
+            return cached
+        row = (type(self)._base_manager.filter(pk=self.pk)
+               .values_list(*self.PINNED).first())
+        return tuple(row) if row is not None else None
+
     @classmethod
     def from_db(cls, db, field_names, values):
         """Remember what was published, so a change to it can be seen.
 
-        A deferred load cannot answer the question, so it does not pretend to:
-        the baseline is taken only when every pinned element was actually read.
+        Only when every pinned element was actually read — a deferred load
+        cannot answer the question and does not pretend to. What covers that
+        case is :meth:`_pinned_baseline`, which reads it rather than assuming
+        it.
         """
         instance = super().from_db(db, field_names, values)
         if set(cls.PINNED) <= set(field_names):
             instance._pinned_as_loaded = instance._pinned_declaration()
         return instance
 
-    def save(self, *args, update_fields=None, **kwargs):
+    def save(self, *, update_fields=None, **kwargs):
         """A change to a pinned element of a published declaration un-publishes it.
 
         In ``save`` rather than in a service, because the rule is that the
@@ -380,17 +408,27 @@ class EventType(BaseModel):
         remember to route through is a rule that holds until the first caller
         who does not. ``update_fields`` is widened rather than honoured as
         given, for the same reason: naming only the field being changed is the
-        obvious way round a save-time guard.
+        obvious way round a save-time guard, and a status that said "draft"
+        while the change that caused it went unwritten would be a third state
+        nobody declared.
+
+        ``QuerySet.update()`` goes round this, as it goes round every
+        model-level guard in this repository — ADR-0007 §2 is explicit that
+        these are a courtesy to the ordinary path and never the enforcement.
+        What enforces the vocabulary itself is in ``Meta.constraints``.
         """
-        baseline = getattr(self, "_pinned_as_loaded", None)
+        baseline = self._pinned_baseline()
         if (baseline is not None
                 and self.declaration_status == DECLARATION_STATUS_PUBLISHED
                 and self._pinned_declaration() != baseline):
             self.declaration_status = DECLARATION_STATUS_DRAFT
             if update_fields is not None:
-                update_fields = tuple(set(update_fields) | {"declaration_status"})
+                changed = {name for name, was in zip(self.PINNED, baseline)
+                           if getattr(self, name) != was}
+                update_fields = tuple(
+                    set(update_fields) | changed | {"declaration_status"})
 
-        super().save(*args, update_fields=update_fields, **kwargs)
+        super().save(update_fields=update_fields, **kwargs)
         self._pinned_as_loaded = self._pinned_declaration()
 
     # -- validation ----------------------------------------------------------

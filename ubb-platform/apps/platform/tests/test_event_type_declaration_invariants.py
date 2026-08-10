@@ -60,6 +60,7 @@ from apps.platform.tests.test_event_type_satellite_invariants import (
     MONETARY_FIELD_TYPES,
     MONETARY_FIELD_WORDS,
     _local_fields,
+    field_words,
     model_label,
     site_of,
 )
@@ -91,16 +92,16 @@ GROUPING_FIELD_NAMES = frozenset(
 )
 GROUPING_MODELS = (GroupingField, GroupingFieldValue)
 
-#: The Event Type's response-shape declaration, in full. Any other field on any
-#: model that names a shape is a second one.
-DECLARED_SHAPE_FIELDS = frozenset({"source_shape_id", "source_shape_label"})
+#: Who may declare a response shape, and exactly which fields say so. Keyed by
+#: model LABEL rather than by class identity, for the reason the negative
+#: controls make concrete: a control that has to shadow the real class to build
+#: a violation can never reach the branch that allows the real one, so the
+#: allowance would be the one rule in this file nothing ever exercised.
+SHAPE_DECLARERS = {
+    "event_types.EventType": frozenset({"source_shape_id",
+                                        "source_shape_label"}),
+}
 SHAPE_WORD = "shape"
-
-
-def _words(name):
-    """A field name's words. The same split the money rule next door uses, so
-    the two cannot come to disagree about what a name says."""
-    return set(re.split(r"[^a-z]+", name.lower()))
 
 
 def _class_words(name):
@@ -130,7 +131,7 @@ def classify_grouping_axis(model, field):
 
 def classify_cost_amount(model, field):
     """``no-cost-amount`` — a declaration is not a price list."""
-    named_money = sorted(_words(field.name) & MONETARY_FIELD_WORDS)
+    named_money = sorted(field_words(field.name) & MONETARY_FIELD_WORDS)
     typed_money = field.get_internal_type() in MONETARY_FIELD_TYPES
     if not named_money and not typed_money:
         return None
@@ -170,21 +171,22 @@ def classify_response_shape(model, fields):
     second record would be a second active shape however tidily it was housed.
     """
     declared = {field.name for field in fields
-                if SHAPE_WORD in _words(field.name)
+                if SHAPE_WORD in field_words(field.name)
                 or (field.is_relation and field.related_model is not None
                     and SHAPE_WORD in _class_words(field.related_model.__name__))}
     if not declared:
         return None
-    if model is EventType and declared == DECLARED_SHAPE_FIELDS:
+    allowed = SHAPE_DECLARERS.get(model_label(model))
+    if allowed is not None and declared == allowed:
         return None
     return (
         RULE_SHAPE, site_of(model),
-        f"{site_of(model)} declares a response shape as "
-        f"{sorted(declared)}. There is exactly ONE active response shape per "
-        f"Event Type in v1, declared once at the Event Type as "
-        f"{sorted(DECLARED_SHAPE_FIELDS)} so two quantities beneath it can "
-        f"never disagree about which client they are mapped to ({TICKET}). The "
-        f"named extension is {NAMED_EXTENSION}",
+        f"{site_of(model)} declares a response shape as {sorted(declared)}. "
+        f"There is exactly ONE active response shape per Event Type in v1, "
+        f"declared once at the Event Type as "
+        f"{sorted(SHAPE_DECLARERS['event_types.EventType'])} so two quantities "
+        f"beneath it can never disagree about which client they are mapped to "
+        f"({TICKET}). The named extension is {NAMED_EXTENSION}",
     )
 
 
@@ -346,6 +348,13 @@ def test_positive_control_the_costing_method_is_not_a_cost_amount():
 
 @isolate_apps(CATALOGUE_APP)
 def test_negative_control_a_second_shape_column_is_flagged():
+    """The Event Type itself, grown a second shape.
+
+    The synthetic class carries the real one's label, so this reaches the
+    allowance branch and fails it — rather than passing because the classifier
+    did not recognise the model, which is what a control keyed on class
+    identity would have done.
+    """
     class EventType(models.Model):
         source_shape_id = models.CharField(max_length=100)
         source_shape_label = models.CharField(max_length=200)
@@ -354,11 +363,48 @@ def test_negative_control_a_second_shape_column_is_flagged():
         class Meta:
             app_label = CATALOGUE_LABEL
 
+    assert model_label(EventType) in SHAPE_DECLARERS, (
+        "the control has to be the model the allowance is about")
     hit = classify_response_shape(EventType, _local_fields(EventType))
     assert hit is not None and hit[0] == RULE_SHAPE
     assert "fallback_shape_id" in hit[2]
     # The refusal names where a second shape actually goes.
     assert NAMED_EXTENSION in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_declared_pair_is_allowed():
+    """The allowance branch, exercised — the half the rule is useless without.
+
+    A classifier that flagged every shape field whatever declared it would
+    make the Event Type unbuildable, and the registry walk would say so; but
+    it would say so identically to a walk that had simply gone wrong.
+    """
+    class EventType(models.Model):
+        source_shape_id = models.CharField(max_length=100)
+        source_shape_label = models.CharField(max_length=200)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert classify_response_shape(EventType, _local_fields(EventType)) is None
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_dropping_half_the_pair_is_flagged_too():
+    """Checked in both directions, for the reason the counted gates give.
+
+    An allowance stated as "at most these" would let the label be deleted and
+    the shape go unnamed for every wrapper UBB does not recognise.
+    """
+    class EventType(models.Model):
+        source_shape_id = models.CharField(max_length=100)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_response_shape(EventType, _local_fields(EventType))
+    assert hit is not None and hit[0] == RULE_SHAPE
 
 
 @isolate_apps(CATALOGUE_APP)
@@ -382,7 +428,7 @@ def test_negative_control_a_shape_housed_on_its_own_record_is_flagged():
             app_label = CATALOGUE_LABEL
 
     fields = _local_fields(MappingProfile)
-    assert not any(SHAPE_WORD in _words(field.name) for field in fields), (
+    assert not any(SHAPE_WORD in field_words(field.name) for field in fields), (
         "the control has to be caught by the relation, not by a field name")
     hit = classify_response_shape(MappingProfile, fields)
     assert hit is not None and hit[0] == RULE_SHAPE
