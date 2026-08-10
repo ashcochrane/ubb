@@ -472,7 +472,15 @@ unit:
     - byte
   allow_unknown: true
   label_key_prefix: unit
-  consumers: []
+  # The backend consumer arrives with the field (#263). It holds the five by
+  # reference in order to notice a NEAR MISS — `Tokens` where UBB spells
+  # `token` — and to say so and change nothing: one noun spelled two ways
+  # across two declarations reads as two different things on one invoice. It
+  # never refuses a spelling, because the set does not bound what a tenant may
+  # measure. The contract consumer arrives with the field it marks (#268).
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/models.py
 
 declaration_status:
   kind: closed
@@ -515,11 +523,18 @@ source_kind:
     - derived
     - constant
   label_key_prefix: source_kind
+  # THE CONTRACT CONSUMER ARRIVES WITH THE FIELD IT MARKS (#268), not before —
+  # the same move `costing_method` above made, and for the same mechanical
+  # reason. `known_values.document.decide` reads "advertised" from the CENSUS
+  # alone, so the moment the backend held these values by reference (#263) a
+  # declared contract consumer would have required the committed contract to
+  # carry a marked field NOW, and no route exposes a declared measurement until
+  # #268 builds one. The two halves are one act and the ledger has no entry
+  # shape for "the backend serves and the contract lags", so the consumer is
+  # declared by the ticket that builds it.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
-    - surface: openapi
-      path: openapi/v1.json
 
 source_shape_id:
   kind: open

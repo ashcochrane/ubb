@@ -688,10 +688,12 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     join the list unremarked. It therefore SHRINKS as the slice runs, and each
     ticket that builds a field takes its concept off this list in the same
     commit — three of slice 2's four left with the Event Type (#262), which
-    holds the declaration lifecycle and the response-shape declaration; the
-    measurement unit is still owed. The payment-rail names stay: declared in
-    slice 0 and built in slice 8 (ADR-0008 §10.4).
+    holds the declaration lifecycle and the response-shape declaration, and the
+    fourth left with the declared quantity that carries a unit (#263). **Slice
+    2's four are now all consumed**, so what remains is slice 0's pair alone:
+    the payment-rail names, declared there and built in slice 8 (ADR-0008
+    §10.4).
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment", "unit",
+        "payment_rail", "payment_rail_environment",
     }

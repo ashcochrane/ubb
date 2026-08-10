@@ -1,4 +1,4 @@
-"""What the Event Type must never grow (#262).
+"""What the declaration must never grow (#262, extended by #263).
 
 Three of the four rules below are **absences**, and every one of them is an
 absence a merged decision once required: the grouping axes were on the cost key,
@@ -9,15 +9,21 @@ absence asserted in a docstring is a comment; these are properties of the model
 registry, so they are classified here.
 
 ============================  ================================================
-``no-grouping-axis``          The Event Type carries no grouping axis. They were
-                              deleted outright from the cost key, which now
+``no-grouping-axis``          The declaration carries no grouping axis. They
+                              were deleted outright from the cost key, which now
                               collapses to tenant + Event Type + measurement +
-                              timestamp.
-``no-cost-amount``            The Event Type carries no cost amount. The
+                              timestamp — and a Measurement Concept groups
+                              measurement RECORDS, which is why it is not a role
+                              on the Grouping Field vocabulary either.
+``no-cost-amount``            The declaration carries no cost amount. The
                               exact-variant-then-explicit-default ladder is
                               gone, so there is nothing here for an amount to
                               hang off; a cost lives on the rate that resolves
-                              through this record.
+                              through this record. On the Measurement it is the
+                              other half of the same ruling: a quantity has a
+                              unit, a reported supplier cost has a currency, and
+                              the second is a SIBLING of the quantities rather
+                              than one of them.
 ``one-response-shape``        One active response shape per Event Type, and one
                               model that declares one. The named extension for a
                               second is a sparse mapping profile BENEATH the
@@ -28,6 +34,12 @@ registry, so they are classified here.
                               relation between them is the beginning of
                               averaging them.
 ============================  ================================================
+
+**The two subjects.** The first two rules are asked of the Event Type and of the
+Measurement declared beneath it, and of nothing else: asking them of the whole
+tree would fail every model that legitimately carries a price or an axis, which
+is most of the money-bearing ones. The other two are asked of everything,
+because both are about what a SECOND model might quietly declare.
 
 **Where the fourth absence lives.** "No account-level record beneath the
 supplier" is ``no-record-beneath`` in
@@ -51,7 +63,12 @@ import re
 from django.db import models
 from django.test.utils import isolate_apps
 
-from apps.platform.event_types.models import EventCategory, EventType, Provider
+from apps.platform.event_types.models import (
+    EventCategory,
+    EventType,
+    Measurement,
+    Provider,
+)
 from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 # One definition of "every model a UBB app declares", and one definition of what
 # makes a field a money field — both shared with the gates next door rather than
@@ -69,10 +86,30 @@ from apps.platform.tests.test_model_naming import first_party_models
 TICKET = "#262"
 CATALOGUE_APP = "apps.platform.event_types"
 
+#: The records that make up one declaration, and the subjects of the two
+#: absences below. The Measurement joined in #263: it is the other place a cost
+#: amount or a grouping axis would land if either came back, and it would land
+#: there looking reasonable — a quantity is the natural home for "what this one
+#: costs" right up until you notice there are two answers and no rule for which
+#: wins.
+DECLARATION_MODELS = (EventType, Measurement)
+
+#: The records that are PART of one Event Type's declaration, and the single
+#: field on each by which they hang off it. A part necessarily names an Event
+#: Type — that is what makes it a part — and naming its own parent is not the
+#: thing ``variants-stay-independent`` is about, which is one costable thing
+#: being related to another. Spelled as the exact field set so that a SECOND
+#: Event Type arriving on a part is still caught, and so that adding a part is
+#: a line somebody writes rather than a rule that quietly stopped applying.
+DECLARATION_PARTS = {
+    "event_types.Measurement": frozenset({"event_type"}),
+}
+
 RULE_GROUPING = "no-grouping-axis"
 RULE_AMOUNT = "no-cost-amount"
 RULE_SHAPE = "one-response-shape"
 RULE_VARIANTS = "variants-stay-independent"
+RULE_OPTIONAL = "a-quantity-stands-alone"
 
 #: The named extension for a second response shape, recorded here because the
 #: rule below is only half a ruling without it. Refusing the second shape
@@ -121,11 +158,13 @@ def classify_grouping_axis(model, field):
         return None
     return (
         RULE_GROUPING, site_of(model, field),
-        f"{site_of(model, field)} {why}. The Event Type carries NO grouping "
+        f"{site_of(model, field)} {why}. The declaration carries NO grouping "
         f"axis: they were deleted outright from the cost key, which collapses "
         f"to tenant + Event Type + measurement + timestamp ({TICKET}). A "
         f"grouping axis groups a POSTING for analytics; it never selects what "
-        f"a call cost",
+        f"a call cost — and the grouping a Measurement may carry groups "
+        f"measurement RECORDS, so it consumes no slot and is not a role on "
+        f"this vocabulary either (#263)",
     )
 
 
@@ -139,17 +178,31 @@ def classify_cost_amount(model, field):
         else f"is a {field.get_internal_type()}"
     return (
         RULE_AMOUNT, site_of(model, field),
-        f"{site_of(model, field)} {why}. The Event Type carries no cost "
+        f"{site_of(model, field)} {why}. The declaration carries no cost "
         f"amount ({TICKET}): the exact-variant-then-explicit-default ladder "
         f"was removed, so a cost lives on the rate that resolves THROUGH this "
         f"declaration and never on the declaration itself. A number here would "
-        f"be a second answer to what a call cost, with no rule for which wins",
+        f"be a second answer to what a call cost, with no rule for which wins. "
+        f"A Measurement is a quantity with a unit; a reported supplier cost is "
+        f"money with a currency, and it is a SIBLING of the quantities rather "
+        f"than one of them (#263)",
     )
 
 
 def classify_variant_relation(model, field):
-    """``variants-stay-independent`` — no Event Type names another one."""
+    """``variants-stay-independent`` — no Event Type names another one.
+
+    The allowance is for the records that ARE one Event Type's declaration:
+    a part holds exactly one Event Type and it is its parent, not a peer. Stated
+    as the exact field set rather than as "a part may relate", so that a second
+    Event Type appearing on a part is still the thing this rule is about — and
+    keyed on the model LABEL for #262's reason, so a synthetic model can carry
+    the real one's identity and the allowance branch is reachable by a control.
+    """
     if not field.is_relation or field.related_model is not EventType:
+        return None
+    allowed = DECLARATION_PARTS.get(model_label(model))
+    if allowed is not None and field.name in allowed and not field.many_to_many:
         return None
     return (
         RULE_VARIANTS, site_of(model, field),
@@ -190,22 +243,65 @@ def classify_response_shape(model, fields):
     )
 
 
+def classify_optional_grouping(model, field):
+    """``a-quantity-stands-alone`` — a tripwire for #264, live before its model.
+
+    The Measurement Concept is **tenant-level, opt-in and analytics-only**, and
+    the record it points at does not exist yet — so the attribute cannot be
+    built here. What CAN be built is the check that fires when it lands, written
+    the way ``SATELLITE_HOLDERS`` was a ticket before its model existed.
+
+    Two ways for it to land wrong, and both are one of #264's own fences taken
+    down. A REQUIRED assignment makes an analytics grouping a precondition for
+    declaring a quantity, when *"an event whose declaration carries no grouping
+    records exactly as one whose declaration does"*. And a MANY assignment makes
+    "which grouping is this quantity in" a question with several answers, when
+    the opt-in is to one.
+
+    Stated over everything a declaration part points at other than its own
+    parent, rather than over a field name nobody has chosen yet: a rule keyed on
+    a guessed spelling is a rule the real commit walks past. Keyed on the model
+    LABEL rather than on class identity, so a synthetic control can carry the
+    real record's identity and actually reach this branch — #262 shipped the
+    other spelling and review caught it.
+    """
+    parent = DECLARATION_PARTS.get(model_label(model))
+    if parent is None or not field.is_relation or field.name in parent:
+        return None
+    if field.many_to_many:
+        why = "may be assigned to MANY of them"
+    elif not (field.null and field.blank):
+        why = "is required"
+    else:
+        return None
+    return (
+        RULE_OPTIONAL, site_of(model, field),
+        f"{site_of(model, field)} {why}. A declared quantity stands alone: the "
+        f"analytics grouping is tenant-level, OPT-IN and to ONE grouping "
+        f"(#264), so a quantity records identically whether or not a tenant has "
+        f"grouped it — and it can never block recording. If this is that "
+        f"grouping arriving, make it optional and singular; if it is something "
+        f"else, it is a relation on a declaration that nothing has decided",
+    )
+
+
 def _walk_registry():
     hits, seen, fields_seen = [], set(), 0
     for model in first_party_models():
         seen.add(model_label(model))
         fields = _local_fields(model)
         fields_seen += len(fields)
-        in_catalogue = model._meta.app_config.name == CATALOGUE_APP
         hits.extend(filter(None, [classify_response_shape(model, fields)]))
         for field in fields:
+            declares = model in DECLARATION_MODELS
             hits.extend(filter(None, [
                 classify_variant_relation(model, field),
-                # The two absences are the Event Type's own. Asking them of the
+                classify_optional_grouping(model, field),
+                # The two absences are the declaration's own. Asking them of the
                 # whole tree would fail every model that legitimately carries a
                 # price or an axis, which is most of the money-bearing ones.
-                classify_grouping_axis(model, field) if model is EventType else None,
-                classify_cost_amount(model, field) if model is EventType else None,
+                classify_grouping_axis(model, field) if declares else None,
+                classify_cost_amount(model, field) if declares else None,
             ]))
     return hits, seen, fields_seen
 
@@ -228,12 +324,14 @@ def test_the_walk_actually_saw_the_declaration():
     """
     assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
     for expected in ("event_types.EventType", "event_types.Provider",
-                     "event_types.EventCategory",
+                     "event_types.EventCategory", "event_types.Measurement",
                      "grouping_fields.GroupingField", "usage.UsageEvent"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
     assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
     assert len(_local_fields(EventType)) >= 11, (
         "the Event Type's own fields were not read")
+    assert len(_local_fields(Measurement)) >= 8, (
+        "the Measurement's own fields were not read")
 
 
 def test_the_event_type_carries_no_grouping_axis():
@@ -253,6 +351,11 @@ def test_exactly_one_response_shape_is_declared_per_event_type():
 
 def test_no_event_type_names_another_event_type():
     failures = _failures(RULE_VARIANTS)
+    assert not failures, "\n" + failures
+
+
+def test_a_declared_quantity_stands_alone():
+    failures = _failures(RULE_OPTIONAL)
     assert not failures, "\n" + failures
 
 
@@ -344,6 +447,86 @@ def test_positive_control_the_costing_method_is_not_a_cost_amount():
 
     assert classify_cost_amount(
         EventType, EventType._meta.get_field("costing_method")) is None
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_cost_on_the_quantity_is_flagged():
+    """The reported supplier cost, folded into the quantities (#263 §D2).
+
+    The natural mistake, and it reads as tidy: a Measurement already says where
+    a number comes from, so why not let one of them be the cost? Because a
+    quantity has a unit and money has a currency — folding them makes the unit
+    mean "currency", gives the value type a money shape, and puts a figure
+    governed by a shared cost bound under a caller-set unbounded integer. It is
+    a SIBLING of the quantities, and #266 declares it as one.
+    """
+    class Measurement(models.Model):
+        provider_cost_micros = models.BigIntegerField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        Measurement, Measurement._meta.get_field("provider_cost_micros"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_currency_on_the_quantity_is_flagged():
+    """The same fold, arriving from the other end.
+
+    A currency beside a quantity is the column somebody adds when the cost is
+    already there in spirit, and it is the one that makes the unit meaningless.
+    """
+    class Measurement(models.Model):
+        currency = models.CharField(max_length=3)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(Measurement,
+                               Measurement._meta.get_field("currency"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_a_unit_is_not_a_currency():
+    """The control that stops the money rule from making a quantity unbuildable.
+
+    ``unit`` is the noun beside the number. A check that failed it would have to
+    be weakened until it stopped failing, which is how a gate becomes decorative
+    — and it is a live risk here, because "minor unit" is money's own English.
+    """
+    class Measurement(models.Model):
+        unit = models.CharField(max_length=64)
+        required_for_costing = models.BooleanField(default=False)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert [classify_cost_amount(Measurement, field)
+            for field in _local_fields(Measurement)] == [None] * 3
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_grouping_slot_on_the_quantity_is_flagged():
+    """The Measurement Concept, built as a Grouping Field (#263, #264).
+
+    It groups measurement RECORDS rather than events, so it is not a role on
+    that vocabulary and consumes no slot. Reaching for the registry next door is
+    the obvious thing to do with the word "grouping" in hand, and it would take
+    an analytics-only opt-in and give it an axis that selects postings.
+    """
+    class Measurement(models.Model):
+        grouping_field = models.ForeignKey(GroupingField,
+                                           on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_grouping_axis(
+        Measurement, Measurement._meta.get_field("grouping_field"))
+    assert hit is not None and hit[0] == RULE_GROUPING
 
 
 @isolate_apps(CATALOGUE_APP)
@@ -474,6 +657,129 @@ def test_negative_control_the_friendly_spelling_is_flagged_too():
     hit = classify_variant_relation(
         Ancestry, Ancestry._meta.get_field("parent_event_type"))
     assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_a_declaration_part_may_name_its_own_parent():
+    """The allowance branch, exercised.
+
+    The synthetic model carries the real one's label, so this reaches the
+    allowance and passes it — rather than passing because the classifier failed
+    to recognise the model, which is what a control keyed on class identity
+    would have done (#262 shipped exactly that mistake and it was caught in
+    review).
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in DECLARATION_PARTS, (
+        "the control has to be the model the allowance is about")
+    assert classify_variant_relation(
+        Measurement, Measurement._meta.get_field("event_type")) is None
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_second_event_type_on_a_part_is_flagged():
+    """Checked in both directions.
+
+    An allowance stated as "a part may relate to an Event Type" would let a
+    quantity declared beneath one call quietly answer for another — which is
+    averaging two costable things, arrived at from underneath.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        also_priced_as = models.ForeignKey(EventType, null=True,
+                                           on_delete=models.PROTECT,
+                                           related_name="+")
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_variant_relation(
+        Measurement, Measurement._meta.get_field("also_priced_as"))
+    assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_part_may_not_gather_event_types():
+    """The allowance is for ONE parent, so a many-to-many is still a hit."""
+    class Measurement(models.Model):
+        event_type = models.ManyToManyField(EventType)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_variant_relation(
+        Measurement, Measurement._meta.get_field("event_type"))
+    assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_required_grouping_is_flagged():
+    """#264's grouping, landed as a precondition for declaring a quantity.
+
+    The synthetic model carries the real one's label, so this reaches the rule
+    rather than being ignored as an unknown class — which is the difference
+    between a tripwire and a comment.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concept = models.ForeignKey(EventCategory, on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert model_label(Measurement) in DECLARATION_PARTS, (
+        "the control has to be the model the rule is about")
+    hit = classify_optional_grouping(Measurement,
+                                     Measurement._meta.get_field("concept"))
+    assert hit is not None and hit[0] == RULE_OPTIONAL
+    assert "required" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_grouping_to_many_is_flagged():
+    """The evasion the optionality check alone cannot see.
+
+    A many-to-many is optional in the sense that it may be empty, and it takes
+    #264's other fence down instead: the opt-in is to ONE grouping, and "which
+    grouping is this quantity in" is a question with one answer.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concepts = models.ManyToManyField(EventCategory)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_optional_grouping(Measurement,
+                                     Measurement._meta.get_field("concepts"))
+    assert hit is not None and hit[0] == RULE_OPTIONAL
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_an_optional_grouping_is_allowed():
+    """The shape #264 is supposed to land, shown to pass.
+
+    A rule that flagged every grouping would make #264 unbuildable, and the
+    registry walk would say so — identically to a walk that had simply gone
+    wrong. The parent link is exercised here too: it is required by
+    construction, and a rule that could not tell it from a grouping would fire
+    on every declaration part there will ever be.
+    """
+    class Measurement(models.Model):
+        event_type = models.ForeignKey(EventType, on_delete=models.CASCADE)
+        concept = models.ForeignKey(EventCategory, null=True, blank=True,
+                                    on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert [classify_optional_grouping(Measurement, field)
+            for field in _local_fields(Measurement)] == [None] * 3
 
 
 @isolate_apps(CATALOGUE_APP)
