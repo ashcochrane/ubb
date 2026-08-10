@@ -57,9 +57,9 @@
     },
     "costing_method": {
       "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "none"
     },
     "costing_status": {
       "advertised": false,
@@ -75,7 +75,7 @@
     },
     "declaration_status": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
       "representation": "none"
     },
@@ -201,7 +201,7 @@
     },
     "source_shape_id": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "4 of 4 values",
       "kind": "open",
       "representation": "none"
     },

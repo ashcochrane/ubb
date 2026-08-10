@@ -72,13 +72,24 @@ costing_method:
     - calculated
     - reported
   label_key_prefix: costing_method
+  # THE CONTRACT CONSUMER ARRIVES WITH THE FIELD IT MARKS (#267), not before.
+  # Declaring it while the backend restated its values was legal, because the
+  # migration ledger's G4 entry excused precisely that pair. The moment the
+  # backend held them by reference (#262) the pair stopped being expressible:
+  # `known_values.document.decide` reads "advertised" from the CENSUS alone, so
+  # a declared contract consumer plus a serving backend means the committed
+  # contract must carry a marked field NOW — and no route exposes an Event Type
+  # until #267 builds one. The two halves are one act, and the ledger has no
+  # entry shape for "the backend serves and the contract lags".
+  #
+  # So this follows the rule the rest of this slice already follows: a consumer
+  # is declared by the ticket that builds it. `unit` and `source_shape_id`
+  # declare no contract consumer for the same reason and gain one in #268.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
     - surface: console
       path: apps/ui/src/lib/labels.ts
-    - surface: openapi
-      path: openapi/v1.json
 
 pricing_method:
   kind: closed
@@ -485,7 +496,9 @@ declaration_status:
     - draft
     - published
   label_key_prefix: declaration_status
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/models.py
 
 source_kind:
   kind: closed
@@ -540,7 +553,9 @@ source_shape_id:
     - custom
   allow_unknown: true
   label_key_prefix: source_shape_id
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/models.py
 
 source_shape_label:
   kind: free_text
@@ -551,7 +566,9 @@ source_shape_label:
     checking at all in this case, so there is nothing to check the name
     against and nothing for UBB to enumerate. Declaring a wrapper of one's own
     is a supported case rather than a blocked one (#193 §C7).
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/models.py
 
 amount_representation:
   kind: closed

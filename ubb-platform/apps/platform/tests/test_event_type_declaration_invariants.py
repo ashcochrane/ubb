@@ -1,0 +1,450 @@
+"""What the Event Type must never grow (#262).
+
+Three of the four rules below are **absences**, and every one of them is an
+absence a merged decision once required: the grouping axes were on the cost key,
+the cost amount was on the declaration, and two operational variants of one call
+were one averaged thing. Each was removed by a later decision, and an
+implementer reading only the originating document would rebuild all three. An
+absence asserted in a docstring is a comment; these are properties of the model
+registry, so they are classified here.
+
+============================  ================================================
+``no-grouping-axis``          The Event Type carries no grouping axis. They were
+                              deleted outright from the cost key, which now
+                              collapses to tenant + Event Type + measurement +
+                              timestamp.
+``no-cost-amount``            The Event Type carries no cost amount. The
+                              exact-variant-then-explicit-default ladder is
+                              gone, so there is nothing here for an amount to
+                              hang off; a cost lives on the rate that resolves
+                              through this record.
+``one-response-shape``        One active response shape per Event Type, and one
+                              model that declares one. The named extension for a
+                              second is a sparse mapping profile BENEATH the
+                              Event Type.
+``variants-stay-independent`` Nothing relates one Event Type to another. Two
+                              operational variants with genuinely different
+                              supplier costs are two costable things, and a
+                              relation between them is the beginning of
+                              averaging them.
+============================  ================================================
+
+**Where the fourth absence lives.** "No account-level record beneath the
+supplier" is ``no-record-beneath`` in
+``test_event_type_satellite_invariants.py`` next door, whose allowlist named
+``event_types.EventType`` a ticket before the model existed. It is not restated
+here: two encodings of one rule drift, and the one that drifts is the one nobody
+is looking at.
+
+**The obligations** (``tests/contracts/README.md``): every rule has a negative
+control that pushes a synthetic violation through the real classifier, and the
+walk has a vacuity guard, because a check over an absence that silently read
+nothing is worse than no check at all.
+
+**What this cannot see.** A cost amount reachable *through* the Event Type —
+``event_type.provider.something`` inside a rating service — names nothing this
+walker can classify. What catches that is the import matrix plus the behavioural
+reach check next door; what this catches is the column being added here.
+"""
+import re
+
+from django.db import models
+from django.test.utils import isolate_apps
+
+from apps.platform.event_types.models import EventCategory, EventType, Provider
+from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
+# One definition of "every model a UBB app declares", and one definition of what
+# makes a field a money field — both shared with the gates next door rather than
+# copied, for the reason those files give: two encodings of one fact drift.
+from apps.platform.tests.test_event_type_satellite_invariants import (
+    MONETARY_FIELD_TYPES,
+    MONETARY_FIELD_WORDS,
+    _local_fields,
+    model_label,
+    site_of,
+)
+from apps.platform.tests.test_model_naming import first_party_models
+
+TICKET = "#262"
+CATALOGUE_APP = "apps.platform.event_types"
+
+RULE_GROUPING = "no-grouping-axis"
+RULE_AMOUNT = "no-cost-amount"
+RULE_SHAPE = "one-response-shape"
+RULE_VARIANTS = "variants-stay-independent"
+
+#: The named extension for a second response shape, recorded here because the
+#: rule below is only half a ruling without it. Refusing the second shape
+#: without naming where one goes reads as "this was not thought about", and the
+#: thing it must not be is a duplicated Event Type — which would fork a
+#: money-bearing declaration to solve a rendering problem.
+NAMED_EXTENSION = ("a sparse mapping profile beneath the Event Type, never a "
+                   "duplicated Event Type")
+
+#: A grouping axis, by name. The relation forms are caught by their target
+#: model instead, so a rename on the far side cannot slip past this list.
+GROUPING_FIELD_NAMES = frozenset(
+    {f"dim{slot}" for slot in range(1, 11)}
+    | {"grouping_field", "grouping_field_key", "grouping_field_value",
+       "grouping_key", "grouping_value", "axis", "axes", "grouping_axis",
+       "grouping_axes", "slot", "slots"}
+)
+GROUPING_MODELS = (GroupingField, GroupingFieldValue)
+
+#: The Event Type's response-shape declaration, in full. Any other field on any
+#: model that names a shape is a second one.
+DECLARED_SHAPE_FIELDS = frozenset({"source_shape_id", "source_shape_label"})
+SHAPE_WORD = "shape"
+
+
+def _words(name):
+    """A field name's words. The same split the money rule next door uses, so
+    the two cannot come to disagree about what a name says."""
+    return set(re.split(r"[^a-z]+", name.lower()))
+
+
+def _class_words(name):
+    """A CLASS name's words. ``ResponseShape`` is one lowercase run to the
+    splitter above, which is why it needs its own reader rather than sharing
+    one that would silently answer "no" for every model name."""
+    return {word.lower() for word in re.findall(r"[A-Z][a-z]*|[a-z]+", name)}
+
+
+def classify_grouping_axis(model, field):
+    """``no-grouping-axis`` — the axes are gone from the cost key entirely."""
+    if field.is_relation and field.related_model in GROUPING_MODELS:
+        why = f"relates to {field.related_model.__name__}"
+    elif field.name in GROUPING_FIELD_NAMES:
+        why = "is named for a grouping axis"
+    else:
+        return None
+    return (
+        RULE_GROUPING, site_of(model, field),
+        f"{site_of(model, field)} {why}. The Event Type carries NO grouping "
+        f"axis: they were deleted outright from the cost key, which collapses "
+        f"to tenant + Event Type + measurement + timestamp ({TICKET}). A "
+        f"grouping axis groups a POSTING for analytics; it never selects what "
+        f"a call cost",
+    )
+
+
+def classify_cost_amount(model, field):
+    """``no-cost-amount`` — a declaration is not a price list."""
+    named_money = sorted(_words(field.name) & MONETARY_FIELD_WORDS)
+    typed_money = field.get_internal_type() in MONETARY_FIELD_TYPES
+    if not named_money and not typed_money:
+        return None
+    why = f"is named for money ({', '.join(named_money)})" if named_money \
+        else f"is a {field.get_internal_type()}"
+    return (
+        RULE_AMOUNT, site_of(model, field),
+        f"{site_of(model, field)} {why}. The Event Type carries no cost "
+        f"amount ({TICKET}): the exact-variant-then-explicit-default ladder "
+        f"was removed, so a cost lives on the rate that resolves THROUGH this "
+        f"declaration and never on the declaration itself. A number here would "
+        f"be a second answer to what a call cost, with no rule for which wins",
+    )
+
+
+def classify_variant_relation(model, field):
+    """``variants-stay-independent`` — no Event Type names another one."""
+    if not field.is_relation or field.related_model is not EventType:
+        return None
+    return (
+        RULE_VARIANTS, site_of(model, field),
+        f"{site_of(model, field)} relates one Event Type to another. A batch "
+        f"endpoint and a standard endpoint with genuinely different supplier "
+        f"costs are TWO costable things ({TICKET}) — variants-are-not-"
+        f"identities was reversed for exactly this case, and a link between "
+        f"them is where averaging two different costs into one wrong number "
+        f"starts. Declaring the variant separately is the supported shape",
+    )
+
+
+def classify_response_shape(model, fields):
+    """``one-response-shape`` — one declaration of the shape, in one place.
+
+    On the model rather than on a field, because "exactly one" is a statement
+    about how many there are and no single field can see the others. Asked of
+    every first-party model, not only the Event Type: a shape declared on a
+    second record would be a second active shape however tidily it was housed.
+    """
+    declared = {field.name for field in fields
+                if SHAPE_WORD in _words(field.name)
+                or (field.is_relation and field.related_model is not None
+                    and SHAPE_WORD in _class_words(field.related_model.__name__))}
+    if not declared:
+        return None
+    if model is EventType and declared == DECLARED_SHAPE_FIELDS:
+        return None
+    return (
+        RULE_SHAPE, site_of(model),
+        f"{site_of(model)} declares a response shape as "
+        f"{sorted(declared)}. There is exactly ONE active response shape per "
+        f"Event Type in v1, declared once at the Event Type as "
+        f"{sorted(DECLARED_SHAPE_FIELDS)} so two quantities beneath it can "
+        f"never disagree about which client they are mapped to ({TICKET}). The "
+        f"named extension is {NAMED_EXTENSION}",
+    )
+
+
+def _walk_registry():
+    hits, seen, fields_seen = [], set(), 0
+    for model in first_party_models():
+        seen.add(model_label(model))
+        fields = _local_fields(model)
+        fields_seen += len(fields)
+        in_catalogue = model._meta.app_config.name == CATALOGUE_APP
+        hits.extend(filter(None, [classify_response_shape(model, fields)]))
+        for field in fields:
+            hits.extend(filter(None, [
+                classify_variant_relation(model, field),
+                # The two absences are the Event Type's own. Asking them of the
+                # whole tree would fail every model that legitimately carries a
+                # price or an axis, which is most of the money-bearing ones.
+                classify_grouping_axis(model, field) if model is EventType else None,
+                classify_cost_amount(model, field) if model is EventType else None,
+            ]))
+    return hits, seen, fields_seen
+
+
+_HITS, _MODELS_SEEN, _FIELDS_SEEN = _walk_registry()
+
+
+def _failures(rule):
+    return "\n".join(message for name, _, message in _HITS if name == rule)
+
+
+def test_the_walk_actually_saw_the_declaration():
+    """Vacuity guard: three of the four rules below are absences.
+
+    The Event Type by name, because it is the subject and a walk that lost it
+    would report four clean absences over a tree it never read; the satellites
+    and the Grouping Field registry because they are what the rules are stated
+    AGAINST, and a walk that could not see them could not tell a relation to one
+    from a relation to anything else.
+    """
+    assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
+    for expected in ("event_types.EventType", "event_types.Provider",
+                     "event_types.EventCategory",
+                     "grouping_fields.GroupingField", "usage.UsageEvent"):
+        assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
+    assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
+    assert len(_local_fields(EventType)) >= 11, (
+        "the Event Type's own fields were not read")
+
+
+def test_the_event_type_carries_no_grouping_axis():
+    failures = _failures(RULE_GROUPING)
+    assert not failures, "\n" + failures
+
+
+def test_the_event_type_carries_no_cost_amount():
+    failures = _failures(RULE_AMOUNT)
+    assert not failures, "\n" + failures
+
+
+def test_exactly_one_response_shape_is_declared_per_event_type():
+    failures = _failures(RULE_SHAPE)
+    assert not failures, "\n" + failures
+
+
+def test_no_event_type_names_another_event_type():
+    failures = _failures(RULE_VARIANTS)
+    assert not failures, "\n" + failures
+
+
+# ---------------------------------------------------------------------------
+# Negative controls — every rule above, shown to fail, on REAL Django models
+# pushed through the same classifiers the registry walk uses.
+# ---------------------------------------------------------------------------
+
+CATALOGUE_LABEL = "event_types"
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_grouping_relation_is_flagged():
+    class EventType(models.Model):
+        grouping_field = models.ForeignKey(GroupingField, on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_grouping_axis(EventType,
+                                 EventType._meta.get_field("grouping_field"))
+    assert hit is not None and hit[0] == RULE_GROUPING
+    assert "GroupingField" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_bare_axis_column_is_flagged_by_its_name():
+    """The evasion the relation check cannot see: an axis held as a value.
+
+    A slot column declaring no relation is exactly how the axes sat on the
+    usage row, and it is the shape someone reaching for the old model would
+    reach for first.
+    """
+    class EventType(models.Model):
+        dim1 = models.CharField(max_length=64)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_grouping_axis(EventType, EventType._meta.get_field("dim1"))
+    assert hit is not None and hit[0] == RULE_GROUPING
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_cost_column_is_flagged():
+    class EventType(models.Model):
+        provider_cost_micros = models.BigIntegerField(null=True)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        EventType, EventType._meta.get_field("provider_cost_micros"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_decimal_is_flagged_by_its_type_alone():
+    """A money column that avoids every money word still gets caught.
+
+    ``default_charge`` reads as configuration rather than as a price, which is
+    exactly why the type is checked as well as the name.
+    """
+    class EventType(models.Model):
+        default_per_call = models.DecimalField(max_digits=12, decimal_places=6)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_cost_amount(
+        EventType, EventType._meta.get_field("default_per_call"))
+    assert hit is not None and hit[0] == RULE_AMOUNT
+    assert "DecimalField" in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_costing_method_is_not_a_cost_amount():
+    """The control that stops the money check from being unsatisfiable.
+
+    ``costing_method`` says how a cost is DERIVED and carries no number. A
+    check that failed it would have to be weakened until it stopped failing,
+    which is how a gate becomes decorative.
+    """
+    class EventType(models.Model):
+        costing_method = models.CharField(max_length=32)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert classify_cost_amount(
+        EventType, EventType._meta.get_field("costing_method")) is None
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_second_shape_column_is_flagged():
+    class EventType(models.Model):
+        source_shape_id = models.CharField(max_length=100)
+        source_shape_label = models.CharField(max_length=200)
+        fallback_shape_id = models.CharField(max_length=100)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_response_shape(EventType, _local_fields(EventType))
+    assert hit is not None and hit[0] == RULE_SHAPE
+    assert "fallback_shape_id" in hit[2]
+    # The refusal names where a second shape actually goes.
+    assert NAMED_EXTENSION in hit[2]
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_shape_housed_on_its_own_record_is_flagged():
+    """Tidier, and still a second active shape.
+
+    Moving the second shape onto a record of its own is what an implementer
+    does after reading a rule about columns, so the rule is about the model —
+    and the relation is deliberately named something that says nothing, so
+    what catches it is the model it points AT rather than the field's own
+    spelling.
+    """
+    class ResponseShape(models.Model):
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    class MappingProfile(models.Model):
+        target = models.ForeignKey(ResponseShape, on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    fields = _local_fields(MappingProfile)
+    assert not any(SHAPE_WORD in _words(field.name) for field in fields), (
+        "the control has to be caught by the relation, not by a field name")
+    hit = classify_response_shape(MappingProfile, fields)
+    assert hit is not None and hit[0] == RULE_SHAPE
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_a_set_of_event_types_gathered_together_is_flagged():
+    """The shape the rule exists for, spelled as plainly as it ever would be.
+
+    A record holding several Event Types is a record that has something to say
+    about them jointly, and the only thing slice 2 has to say about two
+    variants is that their costs are separate.
+    """
+    class CostGroup(models.Model):
+        members = models.ManyToManyField(EventType)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_variant_relation(CostGroup,
+                                    CostGroup._meta.get_field("members"))
+    assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_negative_control_the_friendly_spelling_is_flagged_too():
+    """``parent_event_type`` is the spelling that sounds like housekeeping.
+
+    It is the same claim as ``averages_with`` — that one variant's cost is not
+    entirely its own — and it exercises the same branch a self-relation on the
+    Event Type would, because the rule is about the model a field POINTS AT.
+    (A true ``ForeignKey("self")`` cannot be synthesised here: under
+    ``isolate_apps`` "self" resolves to the throwaway class, not to the record
+    the rule is stated about.)
+    """
+    class Ancestry(models.Model):
+        parent_event_type = models.ForeignKey(EventType, null=True,
+                                              on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    hit = classify_variant_relation(
+        Ancestry, Ancestry._meta.get_field("parent_event_type"))
+    assert hit is not None and hit[0] == RULE_VARIANTS
+
+
+@isolate_apps(CATALOGUE_APP)
+def test_positive_control_the_satellites_are_not_a_variant_relation():
+    """The other direction: the two relations the Event Type is SUPPOSED to hold.
+
+    A variant rule that flagged the supplier and the category would make the
+    Event Type unbuildable, so it is shown here not to.
+    """
+    class EventType(models.Model):
+        provider = models.ForeignKey(Provider, null=True, blank=True,
+                                     on_delete=models.PROTECT)
+        category = models.ForeignKey(EventCategory, null=True, blank=True,
+                                     on_delete=models.PROTECT)
+
+        class Meta:
+            app_label = CATALOGUE_LABEL
+
+    assert [classify_variant_relation(EventType, field)
+            for field in _local_fields(EventType)] == [None] * 3
