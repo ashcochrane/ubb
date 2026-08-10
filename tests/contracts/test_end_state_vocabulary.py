@@ -681,15 +681,17 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     declaration — legal, and legal *visibly*, because the author had to write
     it and the compiler reports it by name.
 
-    Stated as the whole set rather than as four lookups, because
+    Stated as the whole set rather than as a lookup per concept, because
     `concepts_without_consumers` IS `not concept.consumers`
-    (`tools/vocabulary/compiler.py`): naming the four would prove nothing the
+    (`tools/vocabulary/compiler.py`): naming them would prove nothing the
     equality does not, while letting a concept that quietly LOST its consumer
-    join the list unremarked. Two groups, both deliberate — the payment-rail
-    names, declared in slice 0 and built in slice 8 (ADR-0008 §10.4), and
-    slice 2's four.
+    join the list unremarked. It therefore SHRINKS as the slice runs, and each
+    ticket that builds a field takes its concept off this list in the same
+    commit — three of slice 2's four left with the Event Type (#262), which
+    holds the declaration lifecycle and the response-shape declaration; the
+    measurement unit is still owed. The payment-rail names stay: declared in
+    slice 0 and built in slice 8 (ADR-0008 §10.4).
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment",
-        "declaration_status", "unit", "source_shape_id", "source_shape_label",
+        "payment_rail", "payment_rail_environment", "unit",
     }

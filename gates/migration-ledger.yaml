@@ -2267,21 +2267,6 @@ entries:
       one word that named all of them at once. Slice 6 is where they become
       real.
 
-  - id: g2-backend-costing_method
-    gate: G2
-    site: ubb-platform/apps/platform/event_types/models.py::costing_method
-    expected: costing_method
-    found: 0 of 2 values
-    owner_slice: slice_2
-    reason: >-
-      Not a restated value set — an empty one. The app landed ahead of its
-      models so the registry could name this path at all (spec §A2), so this
-      consumer holds none of the concept's values because no field yet exists
-      to hold them. #146 declares the costing mode on the Event Type — the only
-      shape under which a ceiling can know in advance that the events it
-      governs are costable. The debt is paid by the ticket that builds that
-      field, importing its values from `core.vocabulary`.
-
   - id: g2-backend-costing_status
     gate: G2
     site: ubb-platform/apps/metering/usage/models.py::costing_status
@@ -3002,20 +2987,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 6 rebuilds spend control around #150's four families, which
       is what this names. The metadata appears in that slice.
-
-  - id: g4-openapi-costing_method
-    gate: G4
-    site: openapi/v1.json::costing_method
-    expected: costing_method
-    found: 0 of 2 values
-    owner_slice: slice_2
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 2 rebuilds the Event Type catalogue, where #146 declares
-      which derivation reaches the one COGS number. The metadata appears in
-      that slice.
 
   - id: g4-openapi-costing_status
     gate: G4

@@ -31,11 +31,13 @@ Five rules, each a pure function, each shown to bite:
                              no supplier as a string.
 ===========================  =================================================
 
-**Why the allowlist names a model that does not exist yet.** The Event Type
-arrives in the ticket after this one. Writing its name into
-``SATELLITE_HOLDERS`` now is what makes ``no-record-beneath`` a gate rather than
-a note: the second model to hold a Provider fails on arrival, whatever it is
-called, instead of being argued about after it is built.
+**The allowlist named its model before the model existed.** ``SATELLITE_HOLDERS``
+carried ``event_types.EventType`` for a ticket before the record arrived (#262),
+which is what makes ``no-record-beneath`` a gate rather than a note: the second
+model to hold a Provider fails on arrival, whatever it is called, instead of
+being argued about after it is built. The Event Type's own limits — no grouping
+axis, no cost amount, one response shape, no relation between two of them — are
+next door in ``test_event_type_declaration_invariants.py``.
 
 **The obligations** (``tests/contracts/README.md``, from the boundary walker
 next door): every rule has a negative control that pushes a synthetic violation
@@ -140,8 +142,11 @@ BEHAVIOURAL_SURFACES = (
 )
 
 #: What reaching the catalogue looks like from another module: its app label,
-#: however it is spelled, or either class by name.
-CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory")
+#: however it is spelled, or any of its classes by name. ``EventType`` joined
+#: the list with the record (#262) — nothing behavioural may read the
+#: declaration either, and the aggregate root is the name a rating path would
+#: reach for first.
+CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType")
 
 #: Taking a key apart. ``startswith``/``endswith`` are here because a shortcut
 #: that only *tests* the prefix has still decided which supplier it is looking
@@ -273,10 +278,20 @@ def classify_category_shape(field):
     return None
 
 
+def field_words(name):
+    """A field name's words, for the rules that read a name for meaning.
+
+    One definition, shared with the gate next door (#262) rather than copied
+    there — a second money rule splitting names its own way is two rules that
+    agree until the day they do not, and the one that drifted would be the one
+    nobody was looking at.
+    """
+    return set(re.split(r"[^a-z]+", name.lower()))
+
+
 def classify_monetary_field(model, field):
     """``never-monetary`` — a satellite carries no cost and no price."""
-    words = set(re.split(r"[^a-z]+", field.name.lower()))
-    named_money = sorted(words & MONETARY_FIELD_WORDS)
+    named_money = sorted(field_words(field.name) & MONETARY_FIELD_WORDS)
     typed_money = field.get_internal_type() in MONETARY_FIELD_TYPES
     if not named_money and not typed_money:
         return None
@@ -349,7 +364,8 @@ def test_the_registry_walk_actually_saw_the_models():
     and a walk that lost the app registry loses all of them at once.
     """
     assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
-    for expected in ("event_types.Provider", "event_types.EventCategory",
+    for expected in ("event_types.EventType", "event_types.Provider",
+                     "event_types.EventCategory",
                      "grouping_fields.GroupingField", "work.TaskType",
                      "tenants.Tenant", "usage.UsageEvent"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
