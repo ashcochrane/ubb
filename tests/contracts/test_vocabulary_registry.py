@@ -282,6 +282,61 @@ def test_an_open_concept_that_refuses_unknown_values_is_rejected(tmp_path):
     assert E.OPEN_MUST_ALLOW_UNKNOWN in invalid.codes()
 
 
+def test_an_open_concept_declaring_a_complete_value_set_is_rejected(tmp_path):
+    """The other direction, and the one that would quietly close an open set.
+
+    `values` is what a `closed` concept declares — *exactly these, no more* —
+    so an `open` concept carrying one is a closed set wearing the open kind's
+    name. The measurement unit is the case this protects (#193 §C5): a closed
+    unit set would cap what a tenant may measure, which map #137 constraint 5
+    forbids, and the field that says so is the one the schema keys on.
+    """
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": {
+        "kind": "open",
+        "summary": "Open, but with a complete value set.",
+        "values": ["alpha", "beta"],
+        "allow_unknown": True,
+        "label_key_prefix": "thing",
+        "consumers": [],
+    }}})
+    assert E.FORBIDDEN_FIELD in invalid.codes()
+    assert E.MISSING_FIELD in invalid.codes()
+
+
+def test_a_closed_concept_that_also_declares_known_values_is_rejected(tmp_path):
+    """And the reverse, which is how a closed set would quietly open.
+
+    The generator reads the FIELD, not the kind, to decide what it emits —
+    `set_name` picks `KNOWN_VALUES` over `VALUES` on `known_values` alone — so
+    a concept carrying both would render as open on every surface while the
+    registry still called it closed. The declaration lifecycle (#193 §B6) is
+    closed and must stay unable to acquire a third state this way.
+    """
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": {
+        "kind": "closed",
+        "summary": "Closed, and also open.",
+        "values": ["draft", "published"],
+        "known_values": ["draft"],
+        "label_key_prefix": "thing",
+        "consumers": [],
+    }}})
+    assert E.FORBIDDEN_FIELD in invalid.codes()
+
+
+def test_a_free_text_concept_that_declares_a_label_key_prefix_is_rejected(tmp_path):
+    """`free_text` is prose a human typed, so UBB has no wording to supply for
+    it and nothing to hang a key on. The tenant's own wrapper name (#193 §C7)
+    is the case: UBB performs no shape validation on it at all, which is
+    exactly why it may not acquire a label key and look like vocabulary."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": {
+        "kind": "free_text",
+        "summary": "Prose, with a label key it has no values to hang on.",
+        "label_key_prefix": "thing",
+        "consumers": [],
+    }}})
+    assert E.FORBIDDEN_FIELD in invalid.codes()
+
+
 def test_a_term_both_retired_and_live_is_rejected(tmp_path):
     """The forbidden-term sweep works over text, so it cannot forbid a word here
     and require it there. Ambiguity is caught where it is authored."""
@@ -573,6 +628,56 @@ def test_an_uncompilable_token_pattern_override_is_rejected(tmp_path):
         "economics.yaml": {"thing": concept(token_pattern="^[a-z")},
     })
     assert E.INVALID_TOKEN_PATTERN in invalid.codes()
+
+
+def test_a_namespaced_value_without_an_override_is_rejected(tmp_path):
+    """Why the response-shape concept needs an override at all (#193 §C7).
+
+    The registry-wide pattern admits no dots, so a namespaced identifier is
+    refused outright rather than truncated or accepted with a warning. Without
+    this control the override could be deleted from the shipped concept and
+    only the four values would fail — here the RULE fails, by name.
+    """
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        values=["google.genai.python.v1"],
+    )}})
+    assert E.INVALID_TOKEN in invalid.codes()
+
+
+def test_the_shipped_shape_pattern_admits_a_namespaced_value_and_a_bare_one(
+        tmp_path, registry):
+    """The positive control for the override the response-shape concept ships.
+
+    Driven by the SHIPPED pattern rather than by a copy of it, so narrowing the
+    concept's override in the registry is felt here rather than passing against
+    a constant this file kept. Both shapes have to be admitted by one pattern:
+    the namespaced identifiers, and the bare `custom` that names no shape UBB
+    knows.
+    """
+    pattern = registry.concepts["source_shape_id"].token_pattern
+    loaded = load(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        token_pattern=pattern,
+        values=["google.gemini.rest.v1", "openai.responses.python.v1",
+                "custom"],
+    )}})
+    assert loaded.concepts["thing"].values == (
+        "google.gemini.rest.v1", "openai.responses.python.v1", "custom")
+
+
+def test_the_shipped_shape_pattern_still_refuses_what_it_does_not_admit(
+        tmp_path, registry):
+    """An override widens the shape; it does not abolish it.
+
+    A pattern that admitted anything would make the concept free text with
+    extra steps, and the advisory checker's whole reason for existing — four
+    spellings of one shape give it nothing stable to match — would come back.
+    """
+    pattern = registry.concepts["source_shape_id"].token_pattern
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        token_pattern=pattern,
+        values=["Google.GenAI.Python.v1"],
+    )}})
+    assert E.INVALID_TOKEN in invalid.codes()
 
 
 def test_a_broken_schema_is_rejected_before_the_concepts_are_blamed(tmp_path):

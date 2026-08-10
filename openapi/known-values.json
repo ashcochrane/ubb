@@ -73,6 +73,12 @@
       "kind": "closed",
       "representation": "enum"
     },
+    "declaration_status": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
     "event_type_key": {
       "advertised": false,
       "backend_serves": null,
@@ -193,6 +199,18 @@
       "kind": "closed",
       "representation": "enum"
     },
+    "source_shape_id": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "open",
+      "representation": "none"
+    },
+    "source_shape_label": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
+    },
     "spend_pool_enforce_mode": {
       "advertised": false,
       "backend_serves": "0 of 2 values",
@@ -251,6 +269,12 @@
       "backend_serves": "0 of 5 values",
       "kind": "open",
       "representation": "known_values"
+    },
+    "unit": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "open",
+      "representation": "none"
     },
     "usage_event_kind": {
       "advertised": false,

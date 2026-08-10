@@ -34,6 +34,76 @@ measurement_key:
     - metric
     - metric_name
     - usage_metrics
+  retired_senses:
+    # THE PLURAL OF `unit`, AND IT CANNOT BE A RETIRED ALIAS. Slice 2's own
+    # ruling (#193 §F1) said to register it as one and "remove every occurrence
+    # in the same commit, so the sweep finds zero and no ledger entry is
+    # needed". That is not achievable, and the evidence is unusually clean.
+    #
+    # `retired_aliases` states something about itself — retired WHEREVER IT
+    # APPEARS, as a whole token — which is simply false of this word. Four
+    # unrelated senses carry it, and one of them cannot be removed by any
+    # commit at all:
+    #
+    #   * THE RETIRED FIELD — the usage row's own column for the metered
+    #     quantity, its request and response fields, the summary query's sums,
+    #     and the SDK and console code that reads them. This one dies in slice
+    #     2, and it dies whatever this entry says.
+    #   * CURRENCY MINOR UNITS — `core/money.py`, the billing services, and the
+    #     console's money inputs. That is `amount_representation`'s own
+    #     English, and its values `minor_units` / `major_units_decimal` are not
+    #     even sweep-visible, because `_` is an identifier character.
+    #   * RATE ARITHMETIC — `Rate.compute`, and the console's "per 1K units".
+    #     Slice 4 renames that to a quantity word; it is not this slice's.
+    #   * ORDINARY ENGLISH INSIDE THREE GENERATED MODULES, and this row is
+    #     fatal on its own. `core/vocabulary.py`, `ubb-sdk/ubb/vocabulary.py`
+    #     and `apps/ui/src/lib/vocabulary.ts` are `@generated ... do not edit
+    #     by hand`, and their text is rendered from concept SUMMARIES in this
+    #     directory — `analytics_measure` ("rather than units of work") and
+    #     `ceiling_basis` ("different units, so each ceiling field states its
+    #     own basis"). The registry may spell the word freely while its own
+    #     generated output may not, and the only commit that could remove it
+    #     would reword the registry to dodge a gate.
+    #
+    # This is exactly the precedent case the schema records: a word retired in
+    # one sense while alive in others "would force the sweep into exclusions
+    # broad enough to disarm it", putting G22's zero out of reach by
+    # construction. `retired_senses` is NOT sweep input, so there is no "sweep
+    # finds zero" to reach here and no seeding authorisation to take.
+    #
+    # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
+    # precedent, which records its method because #206's did not. Measured over
+    # the sweep's OWN swept set (`sweep.partition` under
+    # `gates/forbidden-term-sweep.yaml`: 1,467 of 1,809 tracked files) with its
+    # OWN token matcher (`sweep.pattern` — the token with a non-identifier
+    # character required on each side). That is the measure which answers the
+    # question actually being decided: what the gate would see if this word
+    # were input. It also excludes this directory, so the file can record its
+    # own number without changing it.
+    #
+    #     units    75 files, 325 occurrences
+    #
+    # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
+    # one falls in a sense above; there is no fifth. The column and every
+    # reader of it still die in this slice — that half of the ruling is
+    # untouched — but the deletion is proved by a targeted test rather than by
+    # the sweep, because the sweep can never reach zero on this word.
+    - term: units
+      retired_as: >-
+        the usage row's own field for the metered quantity. One nameless
+        integer per event could only ever describe one thing, which is what
+        made an event carrying both input and output amounts inexpressible; a
+        declared Measurement replaces it, keyed by this concept and carrying
+        its own `unit`.
+      survives_as: >-
+        three live senses UBB depends on. Currency MINOR units, which is
+        `amount_representation`'s own English in the money module, the billing
+        services and every console money input. Rate arithmetic — `Rate.compute`
+        and the console's "per 1K units" — which slice 4 renames to a quantity
+        word. And ordinary English inside three GENERATED vocabulary modules,
+        whose text is rendered from concept summaries in this directory: that
+        one is unremovable by any commit, since the registry may spell the word
+        freely and its generated output may not be hand-edited.
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py

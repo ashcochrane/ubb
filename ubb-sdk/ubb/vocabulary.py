@@ -462,6 +462,28 @@ CUSTOMER_BILLING_MODE_VALUES = frozenset({
 })
 
 
+# --- declaration_status ------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Whether a tenant's declaration is still being drafted or has been published
+# for integrations to be generated against. Publication is what pins the
+# response shape, the structured paths and the reported-cost mapping, because
+# an incorrect mapping produces an incorrect supplier cost — so a later change
+# is a revised publication, never a silent reinterpretation of integrations
+# already generated and deployed (#193 §B7).
+#
+# Declared in concepts/economics.yaml.
+
+DECLARATION_STATUS_DRAFT = 'draft'
+DECLARATION_STATUS_PUBLISHED = 'published'
+
+DECLARATION_STATUS_VALUES = frozenset({
+    DECLARATION_STATUS_DRAFT,
+    DECLARATION_STATUS_PUBLISHED,
+})
+
+
 # --- event_type_key ----------------------------------------------------------
 #
 # tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -879,6 +901,55 @@ SOURCE_KIND_VALUES = frozenset({
 })
 
 
+# --- source_shape_id ---------------------------------------------------------
+#
+# open — UBB records the values it knows; consumers accept future and external
+# ones. Checking is asymmetric — a registry-known value missing from a
+# UBB-owned consumer is a defect, a runtime value the registry has never seen
+# is legal.
+#
+# Which provider response shape a tenant's declared paths are written against,
+# declared once at the Event Type so two quantities beneath it can never
+# disagree about which client they are mapped to. UBB uses it to WARN that a
+# path looks inconsistent with a shape it knows, and never to substitute one:
+# rendering a supplier's own field name would make UBB's catalogue commercially
+# load-bearing by the back door.
+#
+# Declared in concepts/economics.yaml.
+
+SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1 = 'google.gemini.rest.v1'
+SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1 = 'google.genai.python.v1'
+SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1 = 'openai.responses.python.v1'
+SOURCE_SHAPE_ID_CUSTOM = 'custom'
+
+SOURCE_SHAPE_ID_KNOWN_VALUES = frozenset({
+    SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1,
+    SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1,
+    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
+    SOURCE_SHAPE_ID_CUSTOM,
+})
+
+
+# --- source_shape_label ------------------------------------------------------
+#
+# free_text — Not vocabulary. Recorded here so that "is this a value set?" is
+# answered once, in data, rather than re-litigated by whoever next wants to add
+# an enum to it.
+#
+# The name a tenant gives a response shape UBB does not recognise — their own
+# wrapper around a supplier's client. Prose a human typed, and deliberately
+# unvalidated: UBB generates from the declared path and performs no shape
+# checking at all in this case, so there is nothing to check the name against
+# and nothing for UBB to enumerate. Declaring a wrapper of one's own is a
+# supported case rather than a blocked one (#193 §C7).
+#
+# Declared in concepts/economics.yaml.
+#
+# No constants: this kind declares no values by construction. The section is
+# here so that fact is visible, rather than looking like a concept the
+# generator lost.
+
+
 # --- spend_pool_enforce_mode -------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -1081,6 +1152,36 @@ TRIGGER_SOURCE_KNOWN_VALUES = frozenset({
     TRIGGER_SOURCE_PARENT_CASCADE,
     TRIGGER_SOURCE_POOL_CROSSING,
     TRIGGER_SOURCE_STALE_REAPER,
+})
+
+
+# --- unit --------------------------------------------------------------------
+#
+# open — UBB records the values it knows; consumers accept future and external
+# ones. Checking is asymmetric — a registry-known value missing from a
+# UBB-owned consumer is a defect, a runtime value the registry has never seen
+# is legal.
+#
+# What one declared quantity is counted in — the noun beside the number, so an
+# amount of 1,500 means something without the reader knowing which supplier
+# produced it. UBB owns the field and records the spellings it has met; it
+# never bounds the set, because the quantity a tenant sells is the tenant's to
+# choose.
+#
+# Declared in concepts/economics.yaml.
+
+UNIT_TOKEN = 'token'
+UNIT_SEARCH = 'search'
+UNIT_CALL = 'call'
+UNIT_SECOND = 'second'
+UNIT_BYTE = 'byte'
+
+UNIT_KNOWN_VALUES = frozenset({
+    UNIT_TOKEN,
+    UNIT_SEARCH,
+    UNIT_CALL,
+    UNIT_SECOND,
+    UNIT_BYTE,
 })
 
 

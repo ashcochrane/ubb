@@ -220,7 +220,9 @@ webhook catalogue's `<owner>.<past-tense>` names and the audit ledger's
 the form a term takes is data rather than something the sweep has to guess.
 
 Some words are retired **in one sense only**, and those go in `retired_senses`
-instead — with the sense that went, and the sense that survives:
+instead — with the sense that went, and the sense that survives. A few of them,
+to show the shape (the registry itself is the list; the compiler prints all of
+them, and each is recorded beside the concept that retired it):
 
 ```
 limit      retired as a spend-control field word
@@ -232,6 +234,14 @@ job, step  retired as prose synonyms for Task and Subtask
 ingest     retired as a selectable recording lane
            survives in `usage_ingest`, the trigger source
 ```
+
+The plural of `unit` is the case that shows why this list cannot be a
+convenience. It survives in three senses at once, and one of them is
+**unremovable by any commit**: the generated vocabulary modules render their
+text from concept summaries in this directory, and this directory is a
+permanent sweep exclusion — so the registry may spell the word freely while its
+own generated output may not. A retirement whose zero is unreachable by
+construction is a false statement if it is written as an alias.
 
 Putting those in `retired_aliases` would state something false in a normative
 file, and would force the sweep into exactly the exclusions above. They are not
