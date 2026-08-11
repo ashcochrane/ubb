@@ -274,7 +274,12 @@ def get_usage_event(request, event_id: UUID):
     _product_check(request)
     from apps.metering.usage.models import Posting
 
-    e = get_object_or_404(Posting, id=event_id, tenant=request.auth.tenant)
+    # select_related on the measurement child (#270): the response reads the
+    # measured quantities through it, and the detail route is a single-row
+    # lookup where a second query buys nothing.
+    e = get_object_or_404(
+        Posting.objects.select_related("measurement"),
+        id=event_id, tenant=request.auth.tenant)
     return 200, {
         "id": e.id,
         "request_id": e.request_id,
