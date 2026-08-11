@@ -341,7 +341,7 @@ which is #154 §14's over-broad exclusion arriving by a different door.
 
 Two things the ticket asked for are recorded in the **manifest** rather than
 here, because they are facts about what G2 covers rather than debts anybody
-owes. ADR-0005's selector invariant — `Rate.SELECTORS` against `UsageEvent` —
+owes. ADR-0005's selector invariant — `Rate.SELECTORS` against the `Posting` —
 is **superseded** by G2's registry-backed form, with the existing test left in
 place until slice 4 deletes its subject, so that deletion is not later mistaken
 for a loss of coverage. And `ProductFeeConfig.fee_type`, #206's one lost

@@ -134,7 +134,7 @@ or priced on that was not declared. Unlike a `tags` value, a dimension's keyspac
 write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
 
 **Slot**:
-The physical column (`dim1`..`dim6`) a declared dimension key is bound to on both `UsageEvent`
+The physical column (`dim1`..`dim6`) a declared dimension key is bound to on both `Posting`
 and `Rate` — immutable once set, since re-slotting would silently change the meaning of every
 historical row in that column. (ADR-0005)
 
@@ -199,7 +199,7 @@ consumer; rides the ack's `stop_reason`, never an HTTP error.
 (`apps/platform/work/reasons.py`)
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though
-immutable pre-removal `UsageEvent.stop_context` rows may still carry it forever.
+immutable pre-removal `Posting.stop_context` rows may still carry it forever.
 
 **Task floor snapshot (removed)**:
 A per-task copy of the tenant's wallet-floor default, compared at every `accumulate_cost` call
@@ -347,5 +347,5 @@ unsupported. (`core/soft_delete.py`)
 
 **Lock ordering**:
 The canonical global lock-acquisition order no code path may violate:
-Task → Wallet → Customer → TopUpAttempt → Invoice → UsageEvent; within Task, a parent before its
+Task → Wallet → Customer → TopUpAttempt → Invoice → Posting; within Task, a parent before its
 subtasks. (`core/locking.py`)

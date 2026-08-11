@@ -37,6 +37,26 @@ class PeriodTotals(TypedDict):
     event_count: int
 
 
+#: STILL SPELLS THE RETIRED NOUN, DELIBERATELY, AND NOBODY OWNS IT YET (#269).
+#:
+#: #269 renamed the model and its table; it did not rename the *names built on*
+#: the model, and the ticket says so — "the model, the table, the two neighbours
+#: that reference it, and the tests that name it". Three groups survive the
+#: rename and they are not in the same position:
+#:
+#:   * `UsageEventOut` / `UsageEventDetailOut` (`api/v1/schemas.py`) are on the
+#:     PUBLISHED contract. Renaming a schema is a contract break, and ADR-0007 §3
+#:     forbids doing it twice on one field — so it happens once, deliberately,
+#:     in whichever slice rebuilds that surface.
+#:   * `iter_billable_usage_events` and `get_usage_event_cost` are `queries.py`
+#:     read-contract entry points, consumed across a product boundary
+#:     (`apps/billing/wallets/`). Renaming them is a same-commit change on both
+#:     sides, cheap but out of #269's stated extent.
+#:   * This TypedDict is neither: it is internal to metering and it names a
+#:     thing that is now called something else. It is the one of the three with
+#:     no reason to wait, and it is recorded here rather than renamed only
+#:     because #269 declined to widen — a later reader should treat it as
+#:     payable, not as a decision.
 class UsageEventCost(TypedDict):
     billed_cost_micros: int
     provider_cost_micros: int

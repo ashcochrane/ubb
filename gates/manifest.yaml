@@ -128,9 +128,10 @@ gates:
       refuses the question rather than answering it. Its check is G4's,
       installed by #208.
       ADR-0005'S SELECTOR INVARIANT IS SUPERSEDED HERE (#191 §13).
-      `test_usage_event_and_rate_share_one_selector_vocabulary` in
+      `test_posting_and_rate_share_one_selector_vocabulary` in
       ubb-platform/apps/platform/tests/test_grouping_field_invariants.py holds
-      `Rate.SELECTORS` to `UsageEvent`'s columns — the closest thing in the
+      `Rate.SELECTORS` to the `Posting`'s columns (#269 renamed the model, the
+      test and this reference in one commit) — the closest thing in the
       tree to a registry check, and #145 removed its subject in the target
       model. The rule it encodes, that a selector must exist as a declared
       column, survives as this gate's registry-backed form. THE EXISTING TEST

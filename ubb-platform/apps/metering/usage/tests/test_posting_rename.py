@@ -490,34 +490,52 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
         The vacuity risk is the point: if one of these tables were renamed or
         dropped from under the list, "this ticket did not touch it" would pass
         by naming nothing. So each is resolved against the live catalogue first.
+
+        **This test is MEANT to go red when a later slice does its job**, which
+        is the same shape as `test_every_seeded_entry_is_still_a_real_violation`
+        in `apps/platform/tests/test_model_naming.py`: a record of a debt that
+        must be edited when the debt is paid, so paying it and recording the
+        payment are one act rather than two. Slice 4 deletes
+        `ubb_rate_card_assignment` outright and rebuilds the rate entity, so it
+        will trip this — and the failure message says what to do about it,
+        because a tripwire whose message reads as "restore the table" would be
+        worse than no tripwire at all.
         """
+        stale = (
+            "this list records the unowned currency-constraint gap as it stood "
+            "at #269. If a later slice deleted or rebuilt the table, the fix is "
+            "to DELETE the line from UNOWNED_CURRENCY_COLUMNS in this module — "
+            "not to restore the table. Slice 4 is expected to do exactly that "
+            "to ubb_rate_card_assignment."
+        )
         with connection.cursor() as cur:
             for table in UNOWNED_CURRENCY_COLUMNS:
                 with self.subTest(table=table):
                     self.assertIsNotNone(
-                        _table_of(table), f"{table} no longer exists")
+                        _table_of(table), f"{table} no longer exists — {stale}")
                     cur.execute("""
                         SELECT count(*) FROM information_schema.columns
                         WHERE table_name = %s AND column_name = 'currency'
                     """, [table])
-                    self.assertEqual(cur.fetchone()[0], 1,
-                                     f"{table} lost its currency column")
+                    self.assertEqual(
+                        cur.fetchone()[0], 1,
+                        f"{table} lost its currency column — {stale}")
 
 
 class TheHistoryStillReplaysTest(TestCase):
     """A rename migration is worthless if the chain in front of it cannot run.
 
     The suite's own test database is built by replaying every migration, so
-    reaching this assertion at all is most of the proof. What it adds is the
-    negative: nothing in this app is waiting to be made.
+    reaching this assertion at all is most of the proof.
+
+    **There is deliberately no "this is the last migration in the app" test.**
+    It would read as a tighter check and would in fact be a trap: #270 — the
+    ticket this one blocks — adds the child record to this same app, so the
+    assertion would go red on the very next commit in the chain while proving
+    nothing the ticket asks for. "Nothing in this app is waiting to be made" is
+    already the job of `makemigrations --check`, which is an acceptance
+    criterion in its own right and does not rot as the chain grows.
     """
-
-    def test_the_rename_is_the_last_migration_in_the_app(self):
-        loader = MigrationLoader(connection)
-        names = sorted(name for app, name in loader.disk_migrations
-                       if app == APP_LABEL)
-
-        self.assertEqual(names[-1], RENAME_MIGRATION)
 
     def test_it_replaces_nothing(self):
         """It has to run on every database that needs it, so a `replaces` here

@@ -40,7 +40,7 @@ only for genuinely synchronous needs; everything tolerant of latency goes on the
 ## Locking & concurrency
 
 - Take row locks with `select_for_update` in the canonical global order (Run → Wallet → Customer →
-  TopUpAttempt → Invoice → UsageEvent; `core/locking.py`). Wallet mutations go through
+  TopUpAttempt → Invoice → Posting; `core/locking.py`). Wallet mutations go through
   `lock_for_billing`, which also lazily creates the wallet in the tenant currency.
 - The serialization points that matter (e.g. wallet drawdown) row-lock a single counter row and
   advance it **inside the caller's event-insert transaction** — don't split the lock and the write
@@ -59,7 +59,7 @@ for correctness. Always keep a live-ORM fallback so caching never under-holds mo
 Async work and periodic safety nets are Celery tasks/beats: the outbox `sweep`, the run `reaper`,
 AR/cost-accumulator `reconcile_*` jobs, postpaid period close. Broker/result backend are Redis
 (`config/celery.py`). These reconcilers are the belt-and-suspenders backstop — the durable ledger /
-`UsageEvent` rows remain the source of truth they repair toward, never a cache.
+`Posting` rows remain the source of truth they repair toward, never a cache.
 
 ## API
 
