@@ -494,7 +494,7 @@ def test_walker_actually_sees_the_model_layer():
         assert expected in seen, f"walker did not visit {expected}"
 
 
-def test_g10_has_a_derived_fact_to_protect_and_matches_it_whole():
+def test_g10_has_a_derived_fact_to_protect():
     """G10's own vacuity guard, over the set rather than over the walk.
 
     The guard above proves the app registry was read; this proves the gate had
@@ -502,23 +502,38 @@ def test_g10_has_a_derived_fact_to_protect_and_matches_it_whole():
     G10 an assertion about nothing while every message about it stayed true,
     and each name must be a plain column name or the classifier could never
     meet it.
-
-    The match is whole-name, pinned here for the reason the repository's other
-    absence check pins the same property: `measurements_status_at` and
-    `tenant_postures` are different columns, and an absence check that fires on
-    names having nothing to do with it is one that gets suppressed rather than
-    obeyed.
     """
     assert DERIVED_NEVER_STORED, "G10 protects no fact — it asserts nothing"
     for name in DERIVED_NEVER_STORED:
         assert name.islower() and name.isidentifier(), name
 
-    near_misses = {f"{name}{suffix}" for name in DERIVED_NEVER_STORED
-                   for suffix in ("_at", "s")} | \
-                  {f"prior_{name}" for name in DERIVED_NEVER_STORED}
-    assert not (near_misses & DERIVED_NEVER_STORED)
-    for near_miss in near_misses:
-        assert near_miss not in DERIVED_NEVER_STORED, near_miss
+
+def test_the_derived_check_matches_the_whole_column_name():
+    """A near miss is NOT flagged — driven through the real classifier.
+
+    The counterpart to the negative control below, and it has to go through
+    `classify` for the same reason that one does: a check written against the
+    frozenset alone would be true by construction and would prove nothing about
+    what the gate does to a column.
+
+    `tenant_postures` and `measurements_status_at` are different columns, and
+    an absence check that fires on names having nothing to do with it is one
+    that gets suppressed rather than obeyed — which is the property the
+    repository's other absence check pins for itself.
+    """
+    for name in sorted(DERIVED_NEVER_STORED):
+        for near_miss in (f"{name}s", f"{name}_at", f"prior_{name}"):
+            with isolate_apps(APP):
+                widget = type("Widget", (models.Model,), {
+                    "__module__": __name__,
+                    near_miss: models.CharField(max_length=20),
+                    "Meta": type("Meta", (), {"app_label": "tenants",
+                                              "db_table": "ubb_widget"}),
+                })
+                assert not classify(model_facts(widget)), (
+                    f"`{near_miss}` was flagged; only `{name}` is the derived "
+                    f"fact, and a gate that condemns correct columns is one "
+                    f"people delete")
 
 
 def test_every_model_site_names_a_file_that_exists():

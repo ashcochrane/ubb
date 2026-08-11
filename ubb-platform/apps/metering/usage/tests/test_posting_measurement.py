@@ -255,17 +255,38 @@ class TheDerivedMeasurementsStatusTest(TestCase):
     def test_a_synthetic_charge_posting_is_not_applicable(self):
         """A Task sold at one agreed price was never measured.
 
-        The kind is passed to the rule rather than read off a column, because
-        there is no column: `usage_event_kind`'s backend consumer is a G2 debt
-        whose ledger entry names slice 5, which is the slice that builds the
-        Charge such a posting is projected from. Until then nothing in this
-        repository projects one — `posting_kind` says so for every row — and
-        the value this ticket owes an answer for is reached through the rule
-        that will serve it when the column arrives.
+        A REAL posting stands in for the charge — the same stand-in
+        `AbsenceIsExpressedByAbsenceTest` builds — and the rule is driven with
+        that row's own record state rather than with a hand-typed `False`, so
+        what is asserted is a fact about a posting rather than about two
+        literals.
+
+        The kind is passed rather than read off a column because there is no
+        column: `usage_event_kind`'s backend consumer is a G2 debt whose ledger
+        entry names slice 5, the slice that builds the Charge such a posting is
+        projected from. So the second assertion below records what this row
+        reads as TODAY, which is not `not_applicable` — and that is not a
+        defect, because nothing projects a Charge and no such row exists
+        outside this test. It is the seam, stated where slice 5 will meet it.
         """
+        charge = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="", idempotency_key="chg_1",
+            billed_cost_micros=250_000)
+        measured = PostingMeasurement.objects.filter(posting=charge).exists()
+        self.assertFalse(measured, "§E4: absent by construction")
+
         self.assertEqual(
-            measurements_status(USAGE_EVENT_KIND_TASK_CHARGE, measured=False),
+            measurements_status(USAGE_EVENT_KIND_TASK_CHARGE,
+                                measured=measured),
             MEASUREMENTS_STATUS_NOT_APPLICABLE)
+
+        # Today, unmarked, the same row reads as a metered posting that has
+        # lost its record. Pinned rather than hidden: it is the one reading the
+        # missing discriminator costs, and it is confined to a row this
+        # repository never creates.
+        self.assertEqual(measurements_status_for(charge),
+                         MEASUREMENTS_STATUS_PRUNED)
 
     def test_a_charge_is_not_applicable_even_if_a_record_somehow_exists(self):
         """The kind is read first, and the record's presence is not consulted.
@@ -296,19 +317,23 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.assertEqual(set(answers.values()), MEASUREMENTS_STATUS_VALUES,
                          "a declared value is unreachable through the rule")
 
-    def test_every_posting_recorded_today_is_a_metered_one(self):
+    def test_every_posting_reads_as_a_metered_one_today(self):
         """The seam slice 5 replaces, pinned as the fact it currently is.
 
-        Nothing in this repository projects a Charge, so every row in the table
-        is metered. When that stops being true this fails, which is the point:
-        the reading is stated in one place rather than assumed at each caller.
+        This does NOT claim to fail on the day a discriminator lands — a new
+        column would classify a row it can see a marker on, and neither row
+        below carries one, so nothing here would go red on its own. What it
+        does is put the current reading under a name, in one place, for two
+        differently-shaped rows: whoever makes `posting_kind` read a column has
+        one function to change and one statement of what it used to answer,
+        instead of a constant inlined at each caller.
         """
         self.assertEqual(posting_kind(self._fresh()),
                          USAGE_EVENT_KIND_METERED_USAGE)
         self.assertEqual(
             posting_kind(Posting.objects.create(
                 tenant=self.tenant, customer=self.customer,
-                request_id="", idempotency_key="chg_1",
+                request_id="", idempotency_key="chg_2",
                 billed_cost_micros=250_000)),
             USAGE_EVENT_KIND_METERED_USAGE)
 

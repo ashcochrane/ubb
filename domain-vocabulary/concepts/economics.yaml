@@ -325,15 +325,51 @@ measurements_status:
   # `tenant_posture` above, extended rather than copied.
   #
   # AND THE NEAR MISS WITH `measure_status` BELOW IS ACCEPTED RATHER THAN
-  # OVERLOOKED. ADR-0006 §3 forbids two declared names that differ by little
-  # and mean something unrelated — the rule that refused `publication_status`
-  # for the declaration lifecycle further down this file. This is not that
-  # case, and the reason is that the two are not unrelated at all: one is the
-  # analytics reading of a requested measure's amount, and says whether a
-  # NUMBER is knowable at the grain asked for; this one says whether the RECORD
-  # of what was measured is still there to read a number from. They sit either
-  # side of the same question and the plural is what separates them — the same
-  # plural the child record carries, and the same one the wire field takes.
+  # OVERLOOKED. Two rules are in the neighbourhood and neither is breached.
+  #
+  # ADR-0006 §3 forbids two declared names that differ by little and mean
+  # something UNRELATED — the rule that refused `publication_status` for the
+  # declaration lifecycle further down this file, and the rule `pricing_model`
+  # beside `pricing_mode` broke. The meanings here are not unrelated, which is
+  # exactly what takes this out of §3: one is the analytics reading of a
+  # requested measure's amount and says whether a NUMBER is knowable at the
+  # grain asked for; this one says whether the RECORD of what was measured is
+  # still there to read a number from. They are two halves of one subject, and
+  # a reader who confuses them still lands in the right domain.
+  #
+  # ADR-0006 §2 is the sharper edge and it is about ONE concept, not two: no
+  # short form beside a long form, no second public name for the same thing.
+  # These are two concepts with two value sets that share not one member
+  # spelling except `not_applicable`, which several closed sets in this file
+  # already share. What §2 WOULD forbid is coining a distinct concept name here
+  # while the wire field stays `measurements_status` — that is precisely a
+  # second public name for one concept, and it is why the two are kept
+  # identical rather than pulled apart to look less alike.
+  #
+  # The wire name is not this file's to choose in any case: #193 §E5 declares
+  # the field, and ADR-0007 §3 makes a name added to `openapi/v1.json` final.
+  #
+  # THE WHOLE SET PUBLISHES NOW, THOUGH ONLY ONE VALUE IS REACHABLE IN
+  # PRODUCTION TODAY — a deliberate ruling, and the opposite of the one G4
+  # applies to a RENAME. Every posting the table holds has a measurement record
+  # (#270's fold gave every existing row one, and the metered recording path
+  # writes one in the same transaction), so today every response says
+  # `available`. `pruned` becomes reachable when something prunes — §E6 ships
+  # the horizon column with no clock behind it, deliberately — and
+  # `not_applicable` when slice 5 marks a posting as the projection of a
+  # Charge. Publishing two values now and a third later is precisely what a
+  # CLOSED set may not do: it would make slice 5 a breaking change to a
+  # generated client that had switched exhaustively over the pair. So the
+  # complete set ships in the commit that coins it, and both mechanisms land
+  # underneath it without touching this document.
+  #
+  # This is NOT a migration-ledger debt and must not be seeded as one. A ledger
+  # entry records a violation some slice owes a payment for, and
+  # `test_g*_every_seeded_entry_is_still_a_real_violation` deletes one the day
+  # it stops being true. Nothing here is owed: the value set is complete, final
+  # and correctly advertised — its backend consumer holds 3 of 3 — and what is
+  # outstanding is the arrival of two mechanisms, each already owned by the
+  # slice that builds it.
   summary: >-
     Whether a posting's measured quantities can still be read. `available`
     says the measurement record is there; `pruned` says it was there and has

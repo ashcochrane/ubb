@@ -323,9 +323,13 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertEqual(body["usage_metrics"], {})
         self.assertEqual(body["measurements_status"], "pruned")
 
-    def test_the_status_is_served_on_every_detail_response(self):
+    def test_the_status_is_present_and_declared_even_on_an_assembled_posting(self):
         """It is required, not optional — there is no posting without an
-        answer, and an absent key would default exactly like an empty bag."""
+        answer, and an absent key would default exactly like an empty bag.
+
+        The subject is the bare fixture above, which is assembled rather than
+        recorded: even that answers, and answers with a declared value.
+        """
         from core.vocabulary import MEASUREMENTS_STATUS_VALUES
 
         body = self.http.get(f"/api/v1/metering/usage/{self._event().id}",
