@@ -375,6 +375,12 @@ class TestEventTypeCatalogueSurface:
         narrowing of the value set: it is the rule that a reader of the
         declaration can always tell what the paths beneath it are written
         against, and it applies to any shape UBB validates nothing against.
+
+        Both halves are asserted, because only together do they say what kind
+        of rule this is. The refusal names `source_shape_label` and never
+        `source_shape_id` — UBB is asking for the missing name, not rejecting
+        the unrecognised shape, and a reader who saw only the acceptance could
+        not tell those apart.
         """
         self._declare_calculated()
 
@@ -385,6 +391,15 @@ class TestEventTypeCatalogueSurface:
 
         assert declared.status_code == 200
         assert declared.json()["source_shape_id"] == "acme.internal_wrapper.v2"
+        assert EventType.objects.get(
+            tenant=self.tenant).source_shape_id == "acme.internal_wrapper.v2"
+
+        unnamed = self._patch("/api/v1/event-types/chat.completion",
+                              {"source_shape_id": "acme.other_wrapper.v1",
+                               "source_shape_label": ""})
+
+        assert unnamed.status_code == 422
+        assert "source_shape_label" in unnamed.json()["detail"]
         assert EventType.objects.get(
             tenant=self.tenant).source_shape_id == "acme.internal_wrapper.v2"
 

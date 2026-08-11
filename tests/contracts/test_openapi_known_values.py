@@ -48,6 +48,7 @@ document to walk, so this module is deliberately built not to be vacuous:
 
 import ast
 import json
+from typing import NamedTuple
 
 import pytest
 
@@ -559,6 +560,36 @@ def test_applying_twice_is_refused_rather_than_doubled(spec, decisions):
     assert raised.value.location.startswith("/components/schemas/")
 
 
+def test_applying_twice_to_an_open_node_is_refused_as_an_annotation(spec,
+                                                                     decisions):
+    """The same proof for the OPEN kind, and it needs its own test.
+
+    The check above walks the whole document and stops at the FIRST already-
+    applied node it meets, which is a closed concept's `enum` — so it proves
+    the closed path and says nothing about this one. The two refusals are
+    different code paths guarding different keys (`already-enumerated` on
+    `enum`, `already-annotated` on `x-ubb-known-values`), and #268 is the first
+    commit where the second has real bytes to guard at all.
+
+    So each shipped known-value node is re-applied ON ITS OWN — the real node
+    lifted out of the committed contract, not a fixture shaped like one — and
+    must be refused. Without this, "a second run is proved not to double-apply"
+    would be a claim about the kind that was already covered, made in the
+    commit that introduced the kind that was not.
+    """
+    checked = 0
+    for pointer, node in marked_nodes(spec):
+        if decisions[node[MARKER]].representation != KNOWN_VALUES:
+            continue
+        checked += 1
+        refusal = _refusal(_document(node), decisions)
+        assert refusal.code == codes.ALREADY_ANNOTATED, pointer
+
+    assert checked == sum(published.nodes for published
+                          in CONCEPTS_IN_THE_CONTRACT.values()
+                          if published.kind == KNOWN_VALUES)
+
+
 #: THE ACCOUNTING AT THIS COMMIT — per concept, how many nodes name it and the
 #: KIND it is published under. Checked in both directions.
 #:
@@ -575,19 +606,31 @@ def test_applying_twice_is_refused_rather_than_doubled(spec, decisions):
 #: `open` widens what the wire admits and `open` becoming `closed` is the
 #: silent conversion G4 is named after. Either one moves a line here, in the
 #: commit that does it.
+class Published(NamedTuple):
+    """One concept's row in the map below.
+
+    Named rather than a bare pair because the two halves fail differently and
+    a reader of `(3, ENUM)` has to count commas to tell which is which.
+    """
+    #: How many schema nodes name this concept.
+    nodes: int
+    #: What those nodes render — `ENUM` or `KNOWN_VALUES`.
+    kind: str
+
+
 CONCEPTS_IN_THE_CONTRACT = {
     # #240 (slice 1) — the first marker of any kind.
-    "tenant_product": (2, ENUM),
+    "tenant_product": Published(2, ENUM),         # TenantOut, and the update
     # #267 — the catalogue's three closed sets.
-    "costing_method": (3, ENUM),          # EventTypeIn/Out + the update's anyOf
-    "source_kind": (4, ENUM),             # the quantity's and the cost's, in+out
-    "amount_representation": (2, ENUM),   # the reported cost's, in+out
+    "costing_method": Published(3, ENUM),         # EventTypeIn/Out + the update
+    "source_kind": Published(4, ENUM),            # quantity + cost, in and out
+    "amount_representation": Published(2, ENUM),  # the reported cost, in+out
     # #268 — THE FIRST OPEN CONCEPTS THE CONTRACT HAS EVER CARRIED. Both render
     # `x-ubb-known-values` beside an untouched `type: string`: the values are
     # what UBB has met, never what it will accept, so UBB meeting a new one is
     # not a change to this document at all.
-    "unit": (2, KNOWN_VALUES),            # MeasurementIn/Out
-    "source_shape_id": (3, KNOWN_VALUES), # EventTypeIn/Out + the update's anyOf
+    "unit": Published(2, KNOWN_VALUES),           # MeasurementIn/Out
+    "source_shape_id": Published(3, KNOWN_VALUES),  # EventTypeIn/Out + update
 }
 
 
@@ -609,80 +652,64 @@ def test_the_contract_advertises_exactly_these_concepts_under_these_kinds(
     for _, node in marked_nodes(spec):
         marked[node[MARKER]] = marked.get(node[MARKER], 0) + 1
 
-    expected = {name: count for name, (count, _) in
-                CONCEPTS_IN_THE_CONTRACT.items()}
+    expected = {name: published.nodes for name, published
+                in CONCEPTS_IN_THE_CONTRACT.items()}
     assert marked == expected, (
         "the set of concepts the contract advertises has changed. Adding one "
         "is a deliberate act — the registry gains an `openapi` consumer and a "
         "schema field gains a marker in the same commit — so update the map "
         "above in that commit and say which ticket did it.")
 
-    for name, (_, representation) in CONCEPTS_IN_THE_CONTRACT.items():
-        assert decisions[name].representation == representation, name
+    for name, published in CONCEPTS_IN_THE_CONTRACT.items():
+        assert decisions[name].representation == published.kind, name
         assert registry.concepts[name].kind == (
-            "closed" if representation == ENUM else "open"), name
+            "closed" if published.kind == ENUM else "open"), name
 
 
-def test_the_accounting_is_exactly_what_the_registry_declares(registry,
-                                                               programme,
-                                                               decisions):
-    """The totals, from the other end: the registry and the decision document.
+def test_the_accounting_is_exactly_what_the_registry_declares(
+        registry, decisions):
+    """The same totals, read off the REGISTRY rather than off the document.
 
     The map above is a statement about the DOCUMENT — what a walk of the
-    committed bytes finds. This is the same statement read off the REGISTRY,
-    and the two are independent: a concept can declare a contract consumer and
+    committed bytes finds. This reaches the same set from the other end, and
+    the two are independent: a concept can declare a contract consumer and
     still reach no schema field, which is the half-done state
     `test_every_advertised_concept_reaches_the_contract` exists for.
 
     The registry's `openapi` consumers are the concepts that will EVENTUALLY be
     published; the advertised ones are those whose backend already serves them,
-    which is the only set the contract may carry today. So the accounting
-    closes over the concepts that CONTRIBUTE something, and each of those lands
-    in exactly one place: advertised and mapped here, or withheld and owed in
-    the ledger below. A concept whose values the tenant owns declares a
-    contract consumer and contributes nothing by construction, which is neither
-    state and is section 1's subject rather than this one's.
+    which is the only set the contract may carry today. **The remainder — a
+    concept that would contribute something and does not yet — is a G4 debt,
+    and section 6 already pins the ledger against it in both directions.** It
+    is deliberately not restated here: a third copy of that claim would either
+    duplicate those two tests or, if it read `owed` back out of the same
+    decisions, assert nothing at all.
     """
     declaring = {name for name, c in registry.concepts.items()
                  if any(consumer.surface == CONTRACT
                         for consumer in c.consumers)}
-    contributing = {name for name, decision in decisions.items()
-                    if decision.representation != NOTHING}
     advertised = {name for name, decision in decisions.items()
                   if decision.advertised}
+    mapped = set(CONCEPTS_IN_THE_CONTRACT)
 
-    assert set(CONCEPTS_IN_THE_CONTRACT) == advertised, (
+    assert mapped == advertised, (
         f"the map above and the decision document disagree about what the "
         f"contract advertises.\n"
-        f"  advertised but unmapped: {sorted(advertised - set(CONCEPTS_IN_THE_CONTRACT))}\n"
-        f"  mapped but unadvertised: {sorted(set(CONCEPTS_IN_THE_CONTRACT) - advertised)}")
+        f"  advertised but unmapped: {sorted(advertised - mapped)}\n"
+        f"  mapped but unadvertised: {sorted(mapped - advertised)}")
 
-    assert set(CONCEPTS_IN_THE_CONTRACT) <= declaring, (
+    assert mapped <= declaring, (
         f"a concept reaches the contract without the registry declaring an "
-        f"`openapi` consumer for it: "
-        f"{sorted(set(CONCEPTS_IN_THE_CONTRACT) - declaring)}")
+        f"`openapi` consumer for it: {sorted(mapped - declaring)}")
 
-    # And the remainder is not a residue nobody counted: every concept that
-    # would contribute something and does not yet is a G4 debt with a slice's
-    # name on it, which section 6 pins in both directions.
-    owed = {entry.site.rpartition("::")[2] for entry in _entries(programme)}
-    assert advertised | owed == contributing, (
-        f"the contract's concepts and the G4 ledger do not partition the ones "
-        f"that contribute.\n"
-        f"  contributing, neither advertised nor owed: "
-        f"{sorted(contributing - advertised - owed)}\n"
-        f"  claimed but contributing nothing:          "
-        f"{sorted((advertised | owed) - contributing)}")
-
-    kinds = {representation for _, representation
-             in CONCEPTS_IN_THE_CONTRACT.values()}
+    kinds = {published.kind for published in CONCEPTS_IN_THE_CONTRACT.values()}
     assert kinds == {ENUM, KNOWN_VALUES}, (
         "the contract has stopped carrying one of the two kinds. Both halves "
         "of ADR-0003's stance are meant to be live here — an enum for a set "
         "UBB owns, documentation metadata for one it does not — and a gate "
         "with only one kind in front of it proves half of what it claims")
 
-    for name, (_, representation) in CONCEPTS_IN_THE_CONTRACT.items():
+    for name in CONCEPTS_IN_THE_CONTRACT:
         assert decisions[name].advertised, name
         assert decisions[name].values == \
             tuple(registry.concepts[name].declared_values), name
@@ -740,6 +767,10 @@ def test_an_unknown_value_stays_legal_on_the_wire(spec, registry, decisions):
     for. The wire half of the same claim is
     `api/v1/tests/test_event_type_endpoints.py`, where a unit UBB has never met
     is POSTed and comes back unchanged.
+
+    That the block CONTAINS the registry's known values is
+    `test_g4_no_open_concept_is_a_closed_enum_in_the_contract`'s assertion and
+    is not restated here. This one is about what the node does NOT carry.
     """
     checked = 0
     for pointer, node in marked_nodes(spec):
@@ -755,13 +786,13 @@ def test_an_unknown_value_stays_legal_on_the_wire(spec, registry, decisions):
                 f"(ADR-0003), so this would make UBB learning one a breaking "
                 f"change to the published contract")
 
-        assert node[KNOWN_VALUES_KEY] == \
-            list(registry.concepts[name].known_values), pointer
+        # The registry's own half of the same statement: the concept must
+        # actually ALLOW the unknown value the schema declines to refuse.
         assert registry.concepts[name].allow_unknown, name
 
-    assert checked == sum(count for count, representation
+    assert checked == sum(published.nodes for published
                           in CONCEPTS_IN_THE_CONTRACT.values()
-                          if representation == KNOWN_VALUES), (
+                          if published.kind == KNOWN_VALUES), (
         "the walk found a different number of known-value nodes than the "
         "accounting above declares — suspect the walk, not the contract")
 
