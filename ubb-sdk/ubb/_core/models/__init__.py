@@ -145,11 +145,11 @@ from .ready_response import ReadyResponse
 from .ready_response_checks import ReadyResponseChecks
 from .record_usage_request import RecordUsageRequest
 from .record_usage_request_dimensions import RecordUsageRequestDimensions
+from .record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
 from .record_usage_request_metadata import RecordUsageRequestMetadata
-from .record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
 from .record_usage_response import RecordUsageResponse
+from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
 from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
-from .record_usage_response_usage_metrics_type_0 import RecordUsageResponseUsageMetricsType0
 from .referral_out import ReferralOut
 from .referrer_earnings_summary import ReferrerEarningsSummary
 from .referrer_out import ReferrerOut
@@ -216,10 +216,10 @@ from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
 from .usage_batch_response_results_item import UsageBatchResponseResultsItem
 from .usage_event_detail_out import UsageEventDetailOut
+from .usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-from .usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
 from .usage_event_out import UsageEventOut
 from .usage_event_out_metadata import UsageEventOutMetadata
 from .usage_invoice_list_response import UsageInvoiceListResponse
@@ -385,11 +385,11 @@ __all__ = (
     "ReadyResponseChecks",
     "RecordUsageRequest",
     "RecordUsageRequestDimensions",
+    "RecordUsageRequestMeasurementsType0",
     "RecordUsageRequestMetadata",
-    "RecordUsageRequestUsageMetricsType0",
     "RecordUsageResponse",
+    "RecordUsageResponseMeasurementsType0",
     "RecordUsageResponsePricingProvenanceType0",
-    "RecordUsageResponseUsageMetricsType0",
     "ReferralOut",
     "ReferrerEarningsSummary",
     "ReferrerOut",
@@ -456,10 +456,10 @@ __all__ = (
     "UsageBatchResponse",
     "UsageBatchResponseResultsItem",
     "UsageEventDetailOut",
+    "UsageEventDetailOutMeasurements",
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutPricingProvenance",
-    "UsageEventDetailOutUsageMetrics",
     "UsageEventOut",
     "UsageEventOutMetadata",
     "UsageInvoiceListResponse",

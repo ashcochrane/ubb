@@ -59,7 +59,7 @@ function idItem(label: string, value: string): DetailItem {
 }
 
 function metricRows(detail: UsageEventDetail): Array<[string, string]> {
-  return Object.entries(detail.usage_metrics).map(([metric, quantity]) => [
+  return Object.entries(detail.measurements).map(([metric, quantity]) => [
     metric,
     typeof quantity === "number" ? quantity.toLocaleString() : String(quantity),
   ]);

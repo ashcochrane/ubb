@@ -27,7 +27,7 @@ _RESULT_KEYS = {
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
     "stop", "stop_reason", "stop_scope", "stop_context",
-    "usage_metrics", "pricing_provenance", "dim2", "dim3",
+    "measurements", "pricing_provenance", "dim2", "dim3",
 }
 
 
@@ -45,7 +45,7 @@ class ResultSignatureTest(TestCase):
         # trigger deterministically.
         event = MagicMock(
             id="e1", provider_cost_micros=1, billed_cost_micros=1,
-            task_id=None, usage_metrics={}, pricing_provenance={},
+            task_id=None, measurements={}, pricing_provenance={},
             dim2="", dim3="", stop_context=None,
         )
         out = _result(event)

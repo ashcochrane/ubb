@@ -48,6 +48,13 @@ from apps.metering.usage.measurements import (
 )
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
+#: The bag's name in the historical state `TheReverseIsExercisedTest` replays.
+#: #274 renamed it, and only the classes above this one see the new name — a
+#: migration replay must speak the vocabulary of the migration it replays.
+#: Imported rather than spelled so this module keeps out of the retired extent;
+#: the derivation itself lives beside the rename that caused it.
+from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
+    RETIRED_COLUMN as HISTORICAL_BAG)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.transitions import DATABASE_DEFENDED, RECORD_RULE
@@ -67,7 +74,7 @@ PARENT_MIGRATION = "0030_the_usage_row_becomes_the_posting"
 
 #: The columns the child was ruled to carry, over and above the ones every
 #: record in this repository inherits.
-DECLARED_COLUMNS = ("posting", "usage_metrics", "recorded_at", "prunable_at")
+DECLARED_COLUMNS = ("posting", "measurements", "recorded_at", "prunable_at")
 
 
 def _tenant_and_customer():
@@ -101,12 +108,12 @@ class TheChildRecordTest(TestCase):
         posting = Posting.objects.create(
             tenant=tenant, customer=customer, request_id="r", idempotency_key="i")
         PostingMeasurement.objects.create(
-            posting=posting, usage_metrics={"input_tokens": 12},
+            posting=posting, measurements={"input_tokens": 12},
             recorded_at=posting.created_at)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 PostingMeasurement.objects.create(
-                    posting=posting, usage_metrics={},
+                    posting=posting, measurements={},
                     recorded_at=posting.created_at)
 
     def test_recorded_at_is_when_the_quantities_were_recorded(self):
@@ -118,7 +125,7 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", usage_metrics={"input_tokens": 900})
+            tenant, customer, "r1", "i1", measurements={"input_tokens": 900})
         measurement = PostingMeasurement.objects.get(
             posting_id=result["event_id"])
         posting = Posting.objects.get(id=result["event_id"])
@@ -127,7 +134,7 @@ class TheChildRecordTest(TestCase):
     def test_the_quantities_are_read_through_the_posting_and_never_written(self):
         """The move cost no reader anything, and it cost every writer.
 
-        `Posting.usage_metrics` is a read-through onto the child now. Every
+        `Posting.measurements` is a read-through onto the child now. Every
         reader that used to read the column reads this and sees what it saw
         before; a writer that tries to set it fails, which is the half that
         makes "there is one encoding of the quantities" true rather than
@@ -135,17 +142,17 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", usage_metrics={"input_tokens": 1200})
+            tenant, customer, "r1", "i1", measurements={"input_tokens": 1200})
         posting = Posting.objects.get(id=result["event_id"])
 
-        self.assertEqual(posting.usage_metrics, {"input_tokens": 1200})
+        self.assertEqual(posting.measurements, {"input_tokens": 1200})
         with self.assertRaises(AttributeError):
-            posting.usage_metrics = {"input_tokens": 0}
-        self.assertNotIn("usage_metrics",
+            posting.measurements = {"input_tokens": 0}
+        self.assertNotIn("measurements",
                          {f.name for f in Posting._meta.fields})
 
     def test_the_strict_coverage_flag_still_defaults_off(self):
-        """Carried in from `test_usage_metrics_field.py`, which this module
+        """Carried in from `test_measurements_field.py`, which this module
         replaces: that file was named for a column that is no longer on the
         posting, and its one assertion about the tenant flag beside it would
         otherwise have been lost with it.
@@ -165,7 +172,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         self.measured = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r1", "i1",
-                usage_metrics={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": 1200})["event_id"])
         # The subject: a posting standing in for the synthetic charge — a Task
         # sold at one agreed price, projected as a posting with revenue and no
         # provider operation behind it. The `kind` column that will name it
@@ -178,7 +185,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
             billed_cost_micros=250_000)
 
     def test_the_control_has_a_child(self):
-        self.assertEqual(self.measured.measurement.usage_metrics,
+        self.assertEqual(self.measured.measurement.measurements,
                          {"input_tokens": 1200})
 
     def test_the_synthetic_charge_posting_has_none(self):
@@ -204,7 +211,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
                 self.charge.measurement
             # The read-through answers the empty bag every reader saw before
             # the split, and creates nothing to do it.
-            self.assertEqual(self.charge.usage_metrics, {})
+            self.assertEqual(self.charge.measurements, {})
         self.assertEqual(PostingMeasurement.objects.count(), 1)
 
 
@@ -229,7 +236,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.posting = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r1", "i1",
-                usage_metrics={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": 1200})["event_id"])
 
     def _fresh(self):
         """Re-read, so a cached reverse relation cannot answer for the table."""
@@ -248,7 +255,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         PostingMeasurement.objects.filter(posting=self.posting).delete()
 
         posting = self._fresh()
-        self.assertEqual(posting.usage_metrics, {})
+        self.assertEqual(posting.measurements, {})
         self.assertEqual(measurements_status_for(posting),
                          MEASUREMENTS_STATUS_PRUNED)
 
@@ -382,7 +389,7 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
     def test_the_recording_path_leaves_it_null(self):
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", usage_metrics={"input_tokens": 5})
+            tenant, customer, "r1", "i1", measurements={"input_tokens": 5})
         self.assertIsNone(
             PostingMeasurement.objects.get(
                 posting_id=result["event_id"]).prunable_at)
@@ -460,17 +467,25 @@ class TheReverseIsExercisedTest(TestCase):
     """Forward and back, against a real database, with a real row.
 
     The fold's callables run against the state they see inside the migration:
-    the child created, the posting's own column not yet dropped. The live table
-    has moved on since — that column went in this migration and another went in
-    #272 — so `setUp` restores whatever the historical model has and the table
-    does not, for the test's own duration. PostgreSQL runs DDL inside the
-    transaction this `TestCase` rolls back, so the columns leave with everything
-    else and no other test ever sees them.
+    the child created, the posting's own column not yet dropped. The live tables
+    have moved on since — that column went in this migration, another went in
+    #272 and the child's bag was renamed in #274 — so `setUp` reconciles each
+    table with the historical model that writes to it, for the test's own
+    duration. PostgreSQL runs DDL inside the transaction this `TestCase` rolls
+    back, so every change leaves with everything else and no other test ever
+    sees them.
 
     RECONCILED BY COMPARISON RATHER THAN BY NAME. Naming the columns would make
     this fixture go red on the next commit that drops one — which is what
     happened the first time, and the failure read as a broken reverse rather
     than as a stale fixture.
+
+    BOTH DIRECTIONS, since #274. A drop leaves the table short of a column the
+    old model writes, and a rename does that *and* leaves the table demanding a
+    column the old model has never heard of. So the reconciliation adds what the
+    model has and the table lacks, and lifts NOT NULL on what the table demands
+    and the model cannot supply — which is exactly the difference between
+    replaying a migration and re-running today's schema.
     """
 
     def setUp(self):
@@ -484,16 +499,30 @@ class TheReverseIsExercisedTest(TestCase):
         self.Posting = self.historical.get_model(APP_LABEL, "Posting")
         self.Measurement = self.historical.get_model(
             APP_LABEL, "PostingMeasurement")
-        with connection.cursor() as cursor:
-            live = {column.name for column in
-                    connection.introspection.get_table_description(
-                        cursor, self.Posting._meta.db_table)}
-        with connection.schema_editor() as editor:
-            for field in self.Posting._meta.local_fields:
-                if field.column not in live:
-                    editor.add_field(self.Posting, field)
+        for model in (self.Posting, self.Measurement):
+            self._reconcile(model)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
+
+    def _reconcile(self, model):
+        """Make one live table accept one historical model's writes."""
+        table = model._meta.db_table
+        with connection.cursor() as cursor:
+            live = {column.name: column for column in
+                    connection.introspection.get_table_description(
+                        cursor, table)}
+        with connection.schema_editor() as editor:
+            for field in model._meta.local_fields:
+                if field.column not in live:
+                    editor.add_field(model, field)
+        known = {field.column for field in model._meta.local_fields}
+        quote = connection.ops.quote_name
+        with connection.cursor() as cursor:
+            for name, column in live.items():
+                if name not in known and not column.null_ok:
+                    cursor.execute(
+                        f"ALTER TABLE {quote(table)} "
+                        f"ALTER COLUMN {quote(name)} DROP NOT NULL")
 
     def _run(self, code):
         with connection.schema_editor() as editor:
@@ -504,24 +533,24 @@ class TheReverseIsExercisedTest(TestCase):
         posting = self.Posting.objects.create(
             tenant_id=tenant.id, customer_id=customer.id,
             request_id="r", idempotency_key="i",
-            usage_metrics={"input_tokens": 1200, "searches": 2})
+            **{HISTORICAL_BAG: {"input_tokens": 1200, "searches": 2}})
 
         self._run(self.run_python.code)
 
         measurement = self.Measurement.objects.get(posting_id=posting.id)
-        self.assertEqual(measurement.usage_metrics,
+        self.assertEqual(getattr(measurement, HISTORICAL_BAG),
                          {"input_tokens": 1200, "searches": 2})
         self.assertEqual(measurement.recorded_at, posting.created_at)
         self.assertIsNone(measurement.prunable_at)
 
         # Blank the column first: otherwise a reverse that wrote nothing at all
         # would pass this on the value the forward fold never removed.
-        self.Posting.objects.filter(pk=posting.pk).update(usage_metrics={})
+        self.Posting.objects.filter(pk=posting.pk).update(**{HISTORICAL_BAG: {}})
 
         self._run(self.run_python.reverse_code)
 
         self.assertEqual(
-            self.Posting.objects.values_list("usage_metrics", flat=True).get(
+            self.Posting.objects.values_list(HISTORICAL_BAG, flat=True).get(
                 pk=posting.pk),
             {"input_tokens": 1200, "searches": 2})
         self.assertEqual(self.Measurement.objects.count(), 0)
@@ -535,10 +564,11 @@ class TheReverseIsExercisedTest(TestCase):
         tenant, customer = _tenant_and_customer()
         posting = self.Posting.objects.create(
             tenant_id=tenant.id, customer_id=customer.id,
-            request_id="r", idempotency_key="i", usage_metrics={})
+            request_id="r", idempotency_key="i", **{HISTORICAL_BAG: {}})
 
         self._run(self.run_python.code)
 
         self.assertEqual(
-            self.Measurement.objects.get(posting_id=posting.id).usage_metrics,
+            getattr(self.Measurement.objects.get(posting_id=posting.id),
+                    HISTORICAL_BAG),
             {})

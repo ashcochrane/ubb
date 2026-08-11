@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,533 of 1,885 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,534 of 1,887 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -109,6 +109,15 @@ measurement_key:
     # falls because generated files stopped being generated is still the "needs
     # no story" case; this note exists so the next reader does not go looking
     # for a deletion nobody made.
+    #
+    # #274 MOVED THE DENOMINATOR ONLY, UPWARD (1,533 → 1,534 swept, 1,885 →
+    # 1,887 tracked, 51/127 unchanged) — the "needs no story" direction. It
+    # renamed a DIFFERENT bag, the measured-quantity one, which is a retired
+    # ALIAS of this concept and so left this sense untouched: the alias reached
+    # zero and its four ledger entries went with it, while every occurrence
+    # counted here is still one of the three surviving senses above. Recorded
+    # because two adjacent numbers moving for unrelated reasons is exactly how a
+    # reader talks themselves out of investigating the one that matters.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

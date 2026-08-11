@@ -173,3 +173,52 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/uni
 GET /api/v1/metering/usage/{event_id} removed the optional property `tags` from the response with the `200` status
 POST /api/v1/metering/usage removed the request property `tags`
 POST /api/v1/metering/usage/batch removed the request property `events/items/tags`
+
+# THE MEASURED-QUANTITY BAG TAKES THE CANONICAL MEASUREMENT NAME (#274, slice 2).
+#
+# A RENAME, and the third distinct shape in three blocks: the unit total had
+# nowhere to go and died, the second open bag folded into the first, and this one
+# keeps its column, its contents and its meaning and changes only what it is
+# called. `usage/migrations/0034_the_measured_quantities_take_the_canonical_name
+# .py` is a single `RenameField` — no row moves and nothing is recomputed.
+#
+# WHY THE NAME. The keys in this bag are keys INTO the Measurement declarations
+# an Event Type carries, and the field now says so. That is what separates a
+# quantity that can be costed from one that is merely carried, and it is the same
+# word the declarations already publish (`GET /event-types/{key}/measurements`).
+# On the detail response it also ends a two-year-old oddity: `measurements_status`
+# was named for this bag before the bag was, and a reader had to be told the two
+# were about the same thing.
+#
+# BOTH DIRECTIONS, for the reason the blocks above give: two of these four are
+# REQUEST properties, because a name the server no longer stores under must stop
+# being part of what the contract accepts.
+#
+# WHAT A STALE CALLER GETS, AND WHY THIS ONE IS THE EXPENSIVE CASE. django-ninja
+# keeps pydantic's `extra="ignore"`, so a caller still sending the retired key is
+# NOT refused: it gets a 200 and its quantities are dropped. Where #273's fold
+# above lost labels and moved no money, everything the pricing engine prices from
+# lives in THIS bag — so a caller relying on server-side pricing is charged as
+# though it measured nothing, and the posting records saying so. Both halves are
+# pinned rather than left to a support ticket:
+# `test_the_measured_quantities_take_the_canonical_name.py` takes the 200 and the
+# dropped bag, and `test_record_usage_pricing.py` runs it against a real cost card
+# and takes the zero.
+#
+# RECORDED RATHER THAN REPAIRED, on #273's grounds exactly: refusing unknown
+# fields is a decision about every schema on the contract, which one field on
+# three schemas does not own. The pre-live window is what makes the break free
+# (ADR-0007 §5 — the launch tag is not what binds), the same rename after platform
+# admission costs a 90-day deprecation cycle under ADR-0003 §4, and the caller's
+# migration is one line.
+#
+# NO BEHAVIOUR MOVED WITH THE NAME. The bag's only validation is that its values
+# are not negative, and that validator crossed unchanged. A quantity no
+# declaration matches is still accepted here and still contributes nothing to the
+# amounts beside it; making that visible instead of silent is slice 3's, and this
+# ticket deliberately leaves it alone so the next reader does not read the rename
+# as the fix.
+GET /api/v1/metering/usage/{event_id} removed the optional property `usage_metrics` from the response with the `200` status
+POST /api/v1/metering/usage removed the optional property `usage_metrics` from the response with the `200` status
+POST /api/v1/metering/usage removed the request property `usage_metrics`
+POST /api/v1/metering/usage/batch removed the request property `events/items/usage_metrics`

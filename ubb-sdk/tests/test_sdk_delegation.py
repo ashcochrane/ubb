@@ -181,14 +181,14 @@ class TestMeteringDelegation:
         self.client.metering.record_usage = MagicMock(return_value=sentinel)
         result = self.client.record_usage(
             "cust1", "r1", "i1",
-            usage_metrics={"tokens": 1000},
+            measurements={"tokens": 1000},
             recorded_at="2026-06-01T00:00:00Z",
             task_id="task_1",
             raise_on_stop=True,
         )
         assert result is sentinel
         _, kwargs = self.client.metering.record_usage.call_args
-        assert kwargs["usage_metrics"] == {"tokens": 1000}
+        assert kwargs["measurements"] == {"tokens": 1000}
         assert kwargs["recorded_at"] == "2026-06-01T00:00:00Z"
         assert kwargs["task_id"] == "task_1"
         assert kwargs["raise_on_stop"] is True

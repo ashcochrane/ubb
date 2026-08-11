@@ -195,7 +195,7 @@ class UBBClient:
                      dimensions: dict | None = None,
                      metadata: dict | None = None,
                      task_id: str | None = None,
-                     usage_metrics: dict | None = None,
+                     measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
                      raise_on_stop: bool = False) -> RecordUsageResponse:
         """Record a usage event via metering — a full passthrough to
@@ -208,7 +208,7 @@ class UBBClient:
         UBBStoppedError instead, for exception-driven loops.
 
         Pricing: supply ``provider_cost_micros`` (explicit cost) and/or
-        ``usage_metrics`` (named metrics priced server-side by the rate card);
+        ``measurements`` (named quantities priced server-side by the rate card);
         both are optional here and the server enforces its pricing rules.
         ``recorded_at`` backdates the event (tz-aware datetime or ISO-8601
         string, bounded by the tenant's backfill window).
@@ -234,7 +234,7 @@ class UBBClient:
             dimensions=dimensions,
             metadata=metadata,
             task_id=task_id,
-            usage_metrics=usage_metrics,
+            measurements=measurements,
             recorded_at=recorded_at,
             raise_on_stop=raise_on_stop,
         )

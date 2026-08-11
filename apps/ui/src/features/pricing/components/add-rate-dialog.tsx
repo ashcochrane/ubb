@@ -134,7 +134,7 @@ export function AddRateDialog({
           <FormField
             label="Metric name"
             error={form.formState.errors.metric_name?.message}
-            hint="The usage_metrics key this rate prices, e.g. gpt4o_input_tokens."
+            hint="The measurement key this rate prices, e.g. gpt4o_input_tokens."
           >
             {(id) => (
               <Input

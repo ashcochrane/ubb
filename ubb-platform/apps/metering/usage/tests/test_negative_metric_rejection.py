@@ -1,4 +1,4 @@
-"""Fix 1: negative usage_metrics values must be rejected.
+"""Fix 1: negative measurements values must be rejected.
 
 Pydantic schema validator on RecordUsageRequest — endpoint returns 422,
 unconditionally (any card shape, strict mode or not).
@@ -34,7 +34,7 @@ def _post(http, auth, customer, payload):
 
 @pytest.mark.django_db
 class TestNegativeMetricSchemaRejection:
-    """Endpoint returns 422 for any negative usage_metrics value."""
+    """Endpoint returns 422 for any negative measurements value."""
 
     def test_negative_metric_returns_422(self):
         """Schema rejects the negative metric before pricing runs."""
@@ -45,7 +45,7 @@ class TestNegativeMetricSchemaRejection:
         )
         resp = _post(http, auth, customer, {
             "request_id": "r1", "idempotency_key": "k1",
-            "usage_metrics": {"calls": -5},
+            "measurements": {"calls": -5},
         })
         assert resp.status_code == 422
 
@@ -63,7 +63,7 @@ class TestNegativeMetricSchemaRejection:
         auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
         resp = _post(http, auth, customer, {
             "request_id": "r3", "idempotency_key": "k3",
-            "usage_metrics": {"tok": -100},
+            "measurements": {"tok": -100},
         })
         assert resp.status_code == 422
 
@@ -72,7 +72,7 @@ class TestNegativeMetricSchemaRejection:
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
             "request_id": "r4", "idempotency_key": "k4",
-            "usage_metrics": {"calls": 0},
+            "measurements": {"calls": 0},
         })
         assert resp.status_code == 200
 
@@ -81,7 +81,7 @@ class TestNegativeMetricSchemaRejection:
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
             "request_id": "r5", "idempotency_key": "k5",
-            "usage_metrics": {"calls": 1},
+            "measurements": {"calls": 1},
         })
         assert resp.status_code == 200
 
@@ -90,6 +90,6 @@ class TestNegativeMetricSchemaRejection:
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
             "request_id": "r6", "idempotency_key": "k6",
-            "usage_metrics": {"good": 10, "bad": -1},
+            "measurements": {"good": 10, "bad": -1},
         })
         assert resp.status_code == 422

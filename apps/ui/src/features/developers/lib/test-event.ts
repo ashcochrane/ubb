@@ -103,7 +103,7 @@ export function buildTestEventRequest(
     ...(values.billed_cost !== "" && {
       billed_cost_micros: toMicros(values.billed_cost),
     }),
-    ...(Object.keys(metrics).length > 0 && { usage_metrics: metrics }),
+    ...(Object.keys(metrics).length > 0 && { measurements: metrics }),
     ...(values.effective_at !== "" && {
       effective_at: new Date(values.effective_at).toISOString(),
     }),

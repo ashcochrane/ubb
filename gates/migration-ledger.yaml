@@ -844,16 +844,6 @@ entries:
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
 
-  - id: g7-backend-usage_metrics
-    gate: G7
-    site: backend::usage_metrics
-    expected: measurement_key
-    found: 18 files
-    owner_slice: slice_2
-    reason: >-
-      The bag of measured quantities on one event. Slice 2 replaces it
-      with declared measurements, which is what makes them costable.
-
   - id: g7-console-budget
     gate: G7
     site: console::budget
@@ -1205,16 +1195,6 @@ entries:
     reason: >-
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
-
-  - id: g7-console-usage_metrics
-    gate: G7
-    site: console::usage_metrics
-    expected: measurement_key
-    found: 7 files
-    owner_slice: slice_2
-    reason: >-
-      The bag of measured quantities on one event. Slice 2 replaces it
-      with declared measurements, which is what makes them costable.
 
   - id: g7-docs-budget
     gate: G7
@@ -1772,16 +1752,6 @@ entries:
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
 
-  - id: g7-openapi-usage_metrics
-    gate: G7
-    site: openapi::usage_metrics
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The bag of measured quantities on one event. Slice 2 replaces it
-      with declared measurements, which is what makes them costable.
-
   # Two words #210 spread to this surface, and would not have without it.
   # `tests/contracts/test_label_catalogue.py` pins the files that import the
   # legacy label adapter, as a shrink-only set — and two of them are
@@ -2069,16 +2039,6 @@ entries:
     reason: >-
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
-
-  - id: g7-sdk-usage_metrics
-    gate: G7
-    site: sdk::usage_metrics
-    expected: measurement_key
-    found: 8 files
-    owner_slice: slice_2
-    reason: >-
-      The bag of measured quantities on one event. Slice 2 replaces it
-      with declared measurements, which is what makes them costable.
 
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an

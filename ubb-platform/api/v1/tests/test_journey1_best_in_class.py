@@ -158,7 +158,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         for i, (product, service, agent, day) in enumerate(matrix):
             res = client.record_usage(
                 customer_id=str(c1.id), request_id=f"r{i}", idempotency_key=f"i{i}",
-                usage_metrics={"tokens": 100},
+                measurements={"tokens": 100},
                 # "product"/"service"/"agent" are all DECLARED dimensions
                 # (dim1/dim2/dim3) — what the cost card selects on and the
                 # breakdown below groups by. The open bag (`metadata` —
@@ -299,7 +299,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         with pytest.raises(UBBAPIError) as exc:
             client.record_usage(
                 customer_id=str(c1.id), request_id="r_strict",
-                idempotency_key="i_strict", usage_metrics={"unmatched_metric": 5},
+                idempotency_key="i_strict", measurements={"unmatched_metric": 5},
                 dimensions={"service": "alpha"})
         assert exc.value.status_code == 422
     finally:

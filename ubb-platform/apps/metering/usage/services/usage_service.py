@@ -197,7 +197,7 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         # The itemized past-limit array (#41, spec §H) — read from the event
         # row, so idempotent replays return the ORIGINAL context unchanged.
         "stop_context": event.stop_context,
-        "usage_metrics": event.usage_metrics,
+        "measurements": event.measurements,
         "pricing_provenance": event.pricing_provenance,
         "dim2": event.dim2,
         "dim3": event.dim3,
@@ -246,7 +246,7 @@ class RecordingInput:
     event_type: str
     provider: str
     currency: str
-    usage_metrics: dict
+    measurements: dict
     task_type: str
     subtask_type: str
     dim1: str
@@ -267,7 +267,7 @@ class RecordingInput:
 
     @classmethod
     def gather(cls, *, tenant, customer, request_id, idempotency_key,
-               metadata, event_type, provider, usage_metrics,
+               metadata, event_type, provider, measurements,
                task_id, caller_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, dimension_slots=None):
@@ -300,7 +300,7 @@ class RecordingInput:
             # currency, stored normalized lowercase. The sync adapter has
             # already rejected any mismatching caller currency.
             currency=_tenant_currency(tenant),
-            usage_metrics=usage_metrics or {},
+            measurements=measurements or {},
             **dims,
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
@@ -383,7 +383,7 @@ class UsageService:
                              "dim4": inp.dim4, "dim5": inp.dim5, "dim6": inp.dim6}
                 provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
                     tenant=tenant, customer=customer, selectors=selectors,
-                    usage_metrics=inp.usage_metrics,
+                    measurements=inp.measurements,
                     currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
                     caller_billed=inp.caller_billed,
@@ -417,7 +417,7 @@ class UsageService:
                 # simply left out. `prunable_at` stays NULL: no document states
                 # the horizon and nothing in this repository sets it.
                 PostingMeasurement.objects.create(
-                    posting=event, usage_metrics=inp.usage_metrics or {},
+                    posting=event, measurements=inp.measurements or {},
                     recorded_at=event.created_at)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
@@ -492,7 +492,7 @@ class UsageService:
     def record_usage(tenant, customer, request_id, idempotency_key, *,
                      provider_cost_micros=None, billed_cost_micros=None,
                      provider="", event_type="", currency=None,
-                     metadata=None, task_id=None, usage_metrics=None,
+                     metadata=None, task_id=None, measurements=None,
                      effective_at=None, dimension_slots=None):
         """The recording path (#112): validation + replay + owner resolve,
         then the recording core. The keyword surface is the input adapter every
@@ -540,7 +540,7 @@ class UsageService:
             tenant=tenant, customer=customer, request_id=request_id,
             idempotency_key=idempotency_key, metadata=metadata,
             event_type=event_type, provider=provider,
-            usage_metrics=usage_metrics,
+            measurements=measurements,
             task_id=task_id,
             caller_provider_cost=provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,

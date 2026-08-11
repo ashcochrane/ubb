@@ -87,7 +87,7 @@ class MeteringClient:
                      dimensions: dict | None = None,
                      metadata: dict | None = None,
                      task_id: str | None = None,
-                     usage_metrics: dict | None = None,
+                     measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
                      raise_on_stop: bool = False) -> RecordUsageResponse:
         """Record a usage event via POST /api/v1/metering/usage.
@@ -129,8 +129,8 @@ class MeteringClient:
             body["effective_at"] = _serialize_recorded_at(recorded_at)
         if provider_cost_micros is not None:
             body["provider_cost_micros"] = provider_cost_micros
-        if usage_metrics is not None:
-            body["usage_metrics"] = usage_metrics
+        if measurements is not None:
+            body["measurements"] = measurements
         if billed_cost_micros is not None:
             body["billed_cost_micros"] = billed_cost_micros
         if currency is not None:

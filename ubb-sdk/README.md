@@ -47,7 +47,7 @@ print(card.id)
 
 ### 2. Record a usage event
 
-Supply `usage_metrics` — the engine looks up matching cost cards and computes COGS automatically.
+Supply `measurements` — the engine looks up matching cost cards and computes COGS automatically.
 Do **not** pass `provider_cost_micros` when you want the engine to price it.
 
 ```python
@@ -56,7 +56,7 @@ res = client.record_usage(
     request_id="req-abc-123",
     idempotency_key="idem-abc-123",
     product_id="search",
-    usage_metrics={"input_tokens": 1000},
+    measurements={"input_tokens": 1000},
 )
 
 print(res.provider_cost_micros)   # computed COGS in micros (e.g. 2000 = $0.002)
@@ -88,7 +88,7 @@ client.record_usage(
     customer_id="cust-uuid-here",
     request_id="req-late-1",
     idempotency_key="idem-late-1",
-    usage_metrics={"input_tokens": 1000},
+    measurements={"input_tokens": 1000},
     recorded_at=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
 )
 ```
@@ -110,9 +110,9 @@ your input order:
 ```python
 batch = client.record_batch([
     {"customer_id": "cust-1", "request_id": "r1", "idempotency_key": "k1",
-     "usage_metrics": {"input_tokens": 500}},
+     "measurements": {"input_tokens": 500}},
     {"customer_id": "cust-1", "request_id": "r2", "idempotency_key": "k2",
-     "usage_metrics": {"input_tokens": 800},
+     "measurements": {"input_tokens": 800},
      "recorded_at": "2026-06-01T12:00:00+00:00"},
 ])
 print(batch.accepted, batch.rejected)
@@ -357,7 +357,7 @@ client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider_cost_micros=None, billed_cost_micros=None,
     provider="", event_type="", currency=None,
-    product_id="", metadata=None, run_id=None, usage_metrics=None,
+    product_id="", metadata=None, run_id=None, measurements=None,
     recorded_at=None)
 
 # record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected)

@@ -297,12 +297,12 @@ class UsageEventDetailEndpointTest(TestCase):
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r-avail", "i-avail",
-                usage_metrics={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": 1200})["event_id"])
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()
         self.assertEqual(body["measurements_status"], "available")
-        self.assertEqual(body["usage_metrics"], {"input_tokens": 1200})
+        self.assertEqual(body["measurements"], {"input_tokens": 1200})
 
     def test_a_pruned_payload_does_not_read_as_an_empty_one(self):
         """**The defect this field exists to end**, stated on the response.
@@ -318,12 +318,12 @@ class UsageEventDetailEndpointTest(TestCase):
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r-pruned", "i-pruned",
-                usage_metrics={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": 1200})["event_id"])
         PostingMeasurement.objects.filter(posting=ev).delete()
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()
-        self.assertEqual(body["usage_metrics"], {})
+        self.assertEqual(body["measurements"], {})
         self.assertEqual(body["measurements_status"], "pruned")
 
     def test_the_status_is_present_and_declared_even_on_an_assembled_posting(self):
@@ -707,7 +707,7 @@ class RateCardValidationTest(TestCase):
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
             data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
-                  "usage_metrics": {"unknown_metric": 100}}),
+                  "measurements": {"unknown_metric": 100}}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
         assert "unknown_metric" in resp.json().get("uncosted_metrics", [])

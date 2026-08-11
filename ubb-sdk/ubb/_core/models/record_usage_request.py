@@ -15,8 +15,8 @@ import datetime
 
 if TYPE_CHECKING:
   from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+  from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
   from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-  from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
 
 
 
@@ -38,11 +38,11 @@ class RecordUsageRequest:
             dimensions (RecordUsageRequestDimensions | Unset):
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
+            measurements (None | RecordUsageRequestMeasurementsType0 | Unset):
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset):
             provider_cost_micros (int | None | Unset):
             task_id (None | Unset | UUID):
-            usage_metrics (None | RecordUsageRequestUsageMetricsType0 | Unset):
      """
 
     customer_id: UUID
@@ -53,11 +53,11 @@ class RecordUsageRequest:
     dimensions: RecordUsageRequestDimensions | Unset = UNSET
     effective_at: datetime.datetime | None | Unset = UNSET
     event_type: None | str | Unset = UNSET
+    measurements: None | RecordUsageRequestMeasurementsType0 | Unset = UNSET
     metadata: RecordUsageRequestMetadata | Unset = UNSET
     provider: None | str | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     task_id: None | Unset | UUID = UNSET
-    usage_metrics: None | RecordUsageRequestUsageMetricsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -66,8 +66,8 @@ class RecordUsageRequest:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+        from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-        from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
         customer_id = str(self.customer_id)
 
         idempotency_key = self.idempotency_key
@@ -104,6 +104,14 @@ class RecordUsageRequest:
         else:
             event_type = self.event_type
 
+        measurements: dict[str, Any] | None | Unset
+        if isinstance(self.measurements, Unset):
+            measurements = UNSET
+        elif isinstance(self.measurements, RecordUsageRequestMeasurementsType0):
+            measurements = self.measurements.to_dict()
+        else:
+            measurements = self.measurements
+
         metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.metadata, Unset):
             metadata = self.metadata.to_dict()
@@ -128,14 +136,6 @@ class RecordUsageRequest:
         else:
             task_id = self.task_id
 
-        usage_metrics: dict[str, Any] | None | Unset
-        if isinstance(self.usage_metrics, Unset):
-            usage_metrics = UNSET
-        elif isinstance(self.usage_metrics, RecordUsageRequestUsageMetricsType0):
-            usage_metrics = self.usage_metrics.to_dict()
-        else:
-            usage_metrics = self.usage_metrics
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -154,6 +154,8 @@ class RecordUsageRequest:
             field_dict["effective_at"] = effective_at
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
+        if measurements is not UNSET:
+            field_dict["measurements"] = measurements
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
         if provider is not UNSET:
@@ -162,8 +164,6 @@ class RecordUsageRequest:
             field_dict["provider_cost_micros"] = provider_cost_micros
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
-        if usage_metrics is not UNSET:
-            field_dict["usage_metrics"] = usage_metrics
 
         return field_dict
 
@@ -172,8 +172,8 @@ class RecordUsageRequest:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+        from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-        from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
         d = dict(src_dict)
         customer_id = UUID(d.pop("customer_id"))
 
@@ -244,6 +244,26 @@ class RecordUsageRequest:
         event_type = _parse_event_type(d.pop("event_type", UNSET))
 
 
+        def _parse_measurements(data: object) -> None | RecordUsageRequestMeasurementsType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                measurements_type_0 = RecordUsageRequestMeasurementsType0.from_dict(data)
+
+
+
+                return measurements_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageRequestMeasurementsType0 | Unset, data)
+
+        measurements = _parse_measurements(d.pop("measurements", UNSET))
+
+
         _metadata = d.pop("metadata", UNSET)
         metadata: RecordUsageRequestMetadata | Unset
         if isinstance(_metadata,  Unset):
@@ -294,26 +314,6 @@ class RecordUsageRequest:
         task_id = _parse_task_id(d.pop("task_id", UNSET))
 
 
-        def _parse_usage_metrics(data: object) -> None | RecordUsageRequestUsageMetricsType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                usage_metrics_type_0 = RecordUsageRequestUsageMetricsType0.from_dict(data)
-
-
-
-                return usage_metrics_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RecordUsageRequestUsageMetricsType0 | Unset, data)
-
-        usage_metrics = _parse_usage_metrics(d.pop("usage_metrics", UNSET))
-
-
         record_usage_request = cls(
             customer_id=customer_id,
             idempotency_key=idempotency_key,
@@ -323,11 +323,11 @@ class RecordUsageRequest:
             dimensions=dimensions,
             effective_at=effective_at,
             event_type=event_type,
+            measurements=measurements,
             metadata=metadata,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             task_id=task_id,
-            usage_metrics=usage_metrics,
         )
 
 

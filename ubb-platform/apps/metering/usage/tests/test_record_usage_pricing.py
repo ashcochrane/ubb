@@ -8,6 +8,8 @@ from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
+    RETIRED_COLUMN)
 
 
 @pytest.mark.django_db
@@ -22,11 +24,46 @@ class TestRecordUsagePricing:
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
-            provider="openai", event_type="chat", usage_metrics={"input_tokens": 1000})
+            provider="openai", event_type="chat", measurements={"input_tokens": 1000})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
         e = Posting.objects.get(id=r["event_id"])
-        assert e.usage_metrics == {"input_tokens": 1000}
+        assert e.measurements == {"input_tokens": 1000}
         assert e.pricing_provenance["cost_source"] == "rate_card"
+
+    def test_a_stale_callers_quantities_are_dropped_and_it_is_priced_at_zero(self):
+        """WHAT THE #274 RENAME COSTS A CALLER THAT HAS NOT MIGRATED.
+
+        The request schema ignores an unknown key rather than refusing it, so a
+        caller still sending the retired name is accepted — and this is the case
+        where that is not cosmetic. Everything this engine prices from lives in
+        that bag, so the same request that costs 5 above costs **nothing** here,
+        silently, with a 200 and a posting to show for it.
+
+        The 200 is `test_the_measured_quantities_take_the_canonical_name.py`'s;
+        what is added here is the number, against a real cost card, because
+        "labels are lost" and "the invoice is wrong" are different sizes of
+        consequence and only one of them is this one.
+        """
+        t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
+        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+            metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+        http = Client()
+        _, raw_key = TenantApiKey.create_key(t, label="test")
+        resp = http.post(
+            "/api/v1/metering/usage",
+            data=json.dumps({
+                "customer_id": str(c.id), "request_id": "r_stale",
+                "idempotency_key": "i_stale", "provider": "openai",
+                "event_type": "chat",
+                RETIRED_COLUMN: {"input_tokens": 1000},
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {raw_key}")
+
+        assert resp.status_code == 200
+        assert resp.json()["provider_cost_micros"] == 0
+        e = Posting.objects.get(idempotency_key="i_stale")
+        assert e.measurements == {}
 
 
 # ---- Strict coverage at the door ----
@@ -126,12 +163,12 @@ class TestStrictCoverage:
             metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
 
     def test_strict_uncovered_metric_still_422_via_existing_gate(self):
-        """Regression: strict + usage_metrics with uncovered metric → 422 (existing gate)."""
+        """Regression: strict + measurements with uncovered metric → 422 (existing gate)."""
         t, c, http, auth = self._setup(strict=True)
         self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
             "request_id": "r6", "idempotency_key": "ik6",
-            "usage_metrics": {"uncovered_metric": 5},
+            "measurements": {"uncovered_metric": 5},
         })
         assert resp.status_code == 422
         assert resp.json()["code"] == "pricing_error"
@@ -147,7 +184,7 @@ class TestStrictCoverage:
         # First attempt: a metric with no cost card → 422, no row created.
         resp1 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",
-            "usage_metrics": {"uncovered_metric": 5},
+            "measurements": {"uncovered_metric": 5},
         })
         assert resp1.status_code == 422
         assert not Posting.objects.filter(
