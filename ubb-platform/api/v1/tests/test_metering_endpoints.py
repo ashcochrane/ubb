@@ -251,7 +251,10 @@ class UsageEventDetailEndpointTest(TestCase):
             tenant=t, customer=c,
             request_id=f"req-{c.external_id}", idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
-            event_type="chat", provider="openai", units=35_000, currency="usd",
+            event_type="chat", provider="openai", currency="usd",
+            # The quantity in the RECEIPT survives #272 — it is what a rate card
+            # was fed, per named metric, and slice 4 renames it. Only the
+            # posting's own nameless inline total died.
             pricing_provenance={
                 "engine_version": "2.1.0",
                 "metrics": [{"metric": "input_tokens", "price_card_id": "abc",

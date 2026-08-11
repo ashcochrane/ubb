@@ -50,7 +50,6 @@ class UsageEventDetailOut:
             stop_context (list[Any] | None | Unset):
             tags (None | Unset | UsageEventDetailOutTagsType0):
             task_id (None | str | Unset):
-            units (int | None | Unset):
             usage_metrics (UsageEventDetailOutUsageMetrics | Unset):
      """
 
@@ -73,7 +72,6 @@ class UsageEventDetailOut:
     stop_context: list[Any] | None | Unset = UNSET
     tags: None | Unset | UsageEventDetailOutTagsType0 = UNSET
     task_id: None | str | Unset = UNSET
-    units: int | None | Unset = UNSET
     usage_metrics: UsageEventDetailOutUsageMetrics | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -146,12 +144,6 @@ class UsageEventDetailOut:
         else:
             task_id = self.task_id
 
-        units: int | None | Unset
-        if isinstance(self.units, Unset):
-            units = UNSET
-        else:
-            units = self.units
-
         usage_metrics: dict[str, Any] | Unset = UNSET
         if not isinstance(self.usage_metrics, Unset):
             usage_metrics = self.usage_metrics.to_dict()
@@ -191,8 +183,6 @@ class UsageEventDetailOut:
             field_dict["tags"] = tags
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
-        if units is not UNSET:
-            field_dict["units"] = units
         if usage_metrics is not UNSET:
             field_dict["usage_metrics"] = usage_metrics
 
@@ -309,16 +299,6 @@ class UsageEventDetailOut:
         task_id = _parse_task_id(d.pop("task_id", UNSET))
 
 
-        def _parse_units(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        units = _parse_units(d.pop("units", UNSET))
-
-
         _usage_metrics = d.pop("usage_metrics", UNSET)
         usage_metrics: UsageEventDetailOutUsageMetrics | Unset
         if isinstance(_usage_metrics,  Unset):
@@ -349,7 +329,6 @@ class UsageEventDetailOut:
             stop_context=stop_context,
             tags=tags,
             task_id=task_id,
-            units=units,
             usage_metrics=usage_metrics,
         )
 

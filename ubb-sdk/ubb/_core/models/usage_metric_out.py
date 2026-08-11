@@ -25,13 +25,11 @@ class UsageMetricOut:
             billed_cost_micros (int):
             event_count (int):
             event_type (str):
-            units (int):
      """
 
     billed_cost_micros: int
     event_count: int
     event_type: str
-    units: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -45,8 +43,6 @@ class UsageMetricOut:
 
         event_type = self.event_type
 
-        units = self.units
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -54,7 +50,6 @@ class UsageMetricOut:
             "billed_cost_micros": billed_cost_micros,
             "event_count": event_count,
             "event_type": event_type,
-            "units": units,
         })
 
         return field_dict
@@ -70,13 +65,10 @@ class UsageMetricOut:
 
         event_type = d.pop("event_type")
 
-        units = d.pop("units")
-
         usage_metric_out = cls(
             billed_cost_micros=billed_cost_micros,
             event_count=event_count,
             event_type=event_type,
-            units=units,
         )
 
 

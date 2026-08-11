@@ -100,3 +100,25 @@ PATCH /api/v1/tenant/config removed the optional property `default_task_floor_sn
 GET /api/v1/tenant/config removed the optional property `arrival_signals_enabled` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the optional property `arrival_signals_enabled` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the request property `arrival_signals_enabled`
+
+# THE INLINE UNIT TOTAL, RETIRED — the column and every reader (#272, slice 2).
+# The other half of the block in `oasdiff-err-ignore.txt`, which carries the
+# ruling and the reason; these five findings are the same retirement on the four
+# endpoints where the property was optional rather than required.
+#
+# BOTH DIRECTIONS, AND THAT IS THE POINT. Two of these five are REQUEST
+# properties. The field was writable — a caller stated a nameless magnitude and
+# UBB stored it whole — so retiring it had to close the door as well as the
+# window. Leaving the request side open would have meant accepting a number with
+# nowhere to put it, which is worse than refusing it.
+#
+# A CALLER LOSES NOTHING IT CAN STILL EXPRESS. `usage_metrics` carries the
+# measured quantities by declared key and prices them; `provider_cost_micros`
+# carries a cost the caller already knows. What is gone is only the third thing
+# — one integer with no name, which could describe an input amount or an output
+# amount but never both, and which is exactly why the split happened.
+GET /api/v1/metering/customers/{customer_id}/usage removed the optional property `data/items/units` from the response with the `200` status
+GET /api/v1/metering/usage/{event_id} removed the optional property `units` from the response with the `200` status
+POST /api/v1/metering/usage removed the optional property `units` from the response with the `200` status
+POST /api/v1/metering/usage removed the request property `units`
+POST /api/v1/metering/usage/batch removed the request property `events/items/units`

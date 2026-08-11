@@ -198,7 +198,6 @@ class PaginatedSubscriptionInvoices(Paginated[MeSubscriptionInvoiceOut]):
 
 class UsageMetricOut(Schema):
     event_type: str
-    units: int
     billed_cost_micros: int
     event_count: int
 
@@ -206,7 +205,6 @@ class UsageMetricOut(Schema):
 class UsageSummaryResponse(Schema):
     period_start: str
     period_end: str
-    total_units: int
     total_billed_micros: int
     currency: str
     metrics: list[UsageMetricOut]
@@ -356,6 +354,10 @@ def get_usage_summary(request):
     Metering-scoped, not billing-scoped: a meter-only tenant's customers can
     still see what they consumed.
     """
+    # The per-Event-Type rows are the magnitude here (#272). This response is
+    # where the retirement was argued and where its reviewed break was taken —
+    # see the block in `openapi/oasdiff-err-ignore.txt`. (A comment, not
+    # docstring prose: this docstring is the published description.)
     _check_metering_product(request)
     customer = request.widget_customer
     from apps.metering.queries import get_customer_usage_summary
@@ -368,7 +370,6 @@ def get_usage_summary(request):
     return {
         "period_start": period_start.isoformat(),
         "period_end": period_end.isoformat(),
-        "total_units": summary["total_units"],
         "total_billed_micros": summary["total_billed_micros"],
         "currency": request.widget_tenant.default_currency or "usd",
         "metrics": summary["metrics"],

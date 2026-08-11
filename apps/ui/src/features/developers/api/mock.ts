@@ -17,7 +17,6 @@ import {
   MOCK_SANDBOX_TENANT_ID,
   MOCK_LIVE_TENANT_ID,
   MOCK_STARTING_BALANCE_MICROS,
-  MOCK_UNIT_RATE_MICROS,
   mockKeyPrefix,
   mockRawKey,
 } from "./mock-data";
@@ -176,9 +175,7 @@ export async function sendTestEvent(
     metricCost += (MOCK_METRIC_RATE_MICROS[name] ?? 0) * quantity;
   }
 
-  const billed =
-    body.billed_cost_micros ??
-    (body.units ?? 0) * MOCK_UNIT_RATE_MICROS + metricCost;
+  const billed = body.billed_cost_micros ?? metricCost;
   const provider = body.provider_cost_micros ?? Math.round(billed * 0.62);
 
   balanceMicros -= billed;
@@ -192,7 +189,6 @@ export async function sendTestEvent(
     billed_cost_micros: billed,
     provider_cost_micros: provider,
     new_balance_micros: balanceMicros,
-    units: body.units ?? null,
     usage_metrics: body.usage_metrics ?? null,
     uncosted_metrics: uncosted,
     pricing_provenance: {

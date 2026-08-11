@@ -56,7 +56,6 @@ export function TestEventConsole() {
       event_type: "",
       provider: "",
       product_id: "",
-      units: "",
       provider_cost: "",
       billed_cost: "",
       effective_at: "",
@@ -169,11 +168,6 @@ export function TestEventConsole() {
               <FormField label="Product" error={errors.product_id?.message}>
                 {(id) => (
                   <Input id={id} placeholder="assistant-pro" {...form.register("product_id")} />
-                )}
-              </FormField>
-              <FormField label="Units" error={errors.units?.message}>
-                {(id) => (
-                  <Input id={id} inputMode="numeric" placeholder="1" {...form.register("units")} />
                 )}
               </FormField>
             </div>

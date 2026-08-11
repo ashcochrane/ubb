@@ -44,7 +44,6 @@ class RecordUsageResponse:
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
             uncosted_metrics (list[str] | Unset):
-            units (int | None | Unset):
             usage_metrics (None | RecordUsageResponseUsageMetricsType0 | Unset):
      """
 
@@ -65,7 +64,6 @@ class RecordUsageResponse:
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
     uncosted_metrics: list[str] | Unset = UNSET
-    units: int | None | Unset = UNSET
     usage_metrics: None | RecordUsageResponseUsageMetricsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -164,12 +162,6 @@ class RecordUsageResponse:
 
 
 
-        units: int | None | Unset
-        if isinstance(self.units, Unset):
-            units = UNSET
-        else:
-            units = self.units
-
         usage_metrics: dict[str, Any] | None | Unset
         if isinstance(self.usage_metrics, Unset):
             usage_metrics = UNSET
@@ -215,8 +207,6 @@ class RecordUsageResponse:
             field_dict["task_total_provider_cost_micros"] = task_total_provider_cost_micros
         if uncosted_metrics is not UNSET:
             field_dict["uncosted_metrics"] = uncosted_metrics
-        if units is not UNSET:
-            field_dict["units"] = units
         if usage_metrics is not UNSET:
             field_dict["usage_metrics"] = usage_metrics
 
@@ -370,16 +360,6 @@ class RecordUsageResponse:
         uncosted_metrics = cast(list[str], d.pop("uncosted_metrics", UNSET))
 
 
-        def _parse_units(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        units = _parse_units(d.pop("units", UNSET))
-
-
         def _parse_usage_metrics(data: object) -> None | RecordUsageResponseUsageMetricsType0 | Unset:
             if data is None:
                 return data
@@ -418,7 +398,6 @@ class RecordUsageResponse:
             task_total_billed_cost_micros=task_total_billed_cost_micros,
             task_total_provider_cost_micros=task_total_provider_cost_micros,
             uncosted_metrics=uncosted_metrics,
-            units=units,
             usage_metrics=usage_metrics,
         )
 

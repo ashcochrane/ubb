@@ -69,9 +69,6 @@ export function TestEventResponseCard({
             value={formatMicros(response.new_balance_micros, currency)}
           />
         )}
-        {response.units != null && (
-          <ResponseStat label="Units" value={response.units.toLocaleString()} />
-        )}
       </dl>
 
       {response.suspended && (

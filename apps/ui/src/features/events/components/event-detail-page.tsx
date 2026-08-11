@@ -151,9 +151,6 @@ export function EventDetailPage({
       value: formatSignedEventMicros(margin, detail.currency),
     },
     { label: "Currency", value: detail.currency.toUpperCase() },
-    ...(detail.units !== null && detail.units !== undefined
-      ? [{ label: "Units", value: detail.units.toLocaleString() }]
-      : []),
   ];
 
   return (

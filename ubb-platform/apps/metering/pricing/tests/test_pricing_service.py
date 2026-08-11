@@ -117,33 +117,37 @@ class TestPricing:
         )
         assert prov == 500 and p["cost_source"] == "caller"
 
-    # ---- F2.4: units-only strict coverage gate ----
+    # ---- Strict coverage, after F2.4's second refusal retired with its input ----
+    #
+    # That refusal rejected an event which declared a nameless magnitude and no
+    # metric name to resolve a rate card against. #272 deleted the magnitude, so
+    # the refusal is not relaxed here — it has become unexpressible, and the
+    # tests that drove it went with it. What remains is proved below: an event
+    # with nothing to price is a marker and is accepted in either mode, and an
+    # event that DOES name its quantities is refused exactly as before.
 
-    def test_units_no_metrics_strict_raises(self):
-        # Strict ON + units > 0 + no usage_metrics → PricingError.
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_nothing_to_price_is_a_marker_event(self, strict):
+        """No quantities and no caller cost → accepted at zero, strict or not.
+
+        This was already the answer whenever the retired magnitude was zero or
+        omitted, which is what every such request now is. The refusal only ever
+        fired above zero, so no request that used to be rejected can still be
+        made — which is the whole reason deleting the branch changes no verdict.
+        """
         t = self._t()
-        t.require_cost_card_coverage = True
+        t.require_cost_card_coverage = strict
         t.save(update_fields=["require_cost_card_coverage"])
-        c = Customer.objects.create(tenant=t, external_id="c5")
-        with pytest.raises(PricingError, match="strict cost coverage"):
-            PricingService.price(
-                tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-                usage_metrics=None, currency="usd",
-                caller_provider_cost=None, caller_billed=None, units=5)
-
-    def test_units_no_metrics_strict_off_returns_zero(self):
-        # Strict OFF + units > 0 + no usage_metrics → accepted, cost = 0.
-        t = self._t()  # require_cost_card_coverage defaults False
-        c = Customer.objects.create(tenant=t, external_id="c6")
+        c = Customer.objects.create(tenant=t, external_id=f"c5-{strict}")
         prov, billed, p = PricingService.price(
-            tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
+            tenant=t, customer=c,
+            selectors={"event_type": "e", "provider": "o"},
             usage_metrics=None, currency="usd",
-            caller_provider_cost=None, caller_billed=None, units=5)
+            caller_provider_cost=None, caller_billed=None)
         assert prov == 0
 
-    def test_units_with_caller_cost_strict_accepted(self):
-        # Strict ON + units > 0 + no usage_metrics BUT caller supplies provider_cost_micros
-        # → cost is known; must be accepted.
+    def test_caller_cost_with_no_metrics_is_still_accepted_in_strict_mode(self):
+        # Cost is explicitly known, so there is nothing for coverage to enforce.
         t = self._t()
         t.require_cost_card_coverage = True
         t.save(update_fields=["require_cost_card_coverage"])
@@ -151,36 +155,13 @@ class TestPricing:
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             usage_metrics=None, currency="usd",
-            caller_provider_cost=123, caller_billed=None, units=5)
+            caller_provider_cost=123, caller_billed=None)
         assert prov == 123 and p["cost_source"] == "caller"
 
-    def test_zero_units_no_metrics_strict_accepted(self):
-        # Strict ON + units = 0 + no usage_metrics → marker event, must be accepted.
-        t = self._t()
-        t.require_cost_card_coverage = True
-        t.save(update_fields=["require_cost_card_coverage"])
-        c = Customer.objects.create(tenant=t, external_id="c8")
-        prov, billed, p = PricingService.price(
-            tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics=None, currency="usd",
-            caller_provider_cost=None, caller_billed=None, units=0)
-        assert prov == 0
-
-    def test_none_units_no_metrics_strict_accepted(self):
-        # Strict ON + units = None + no usage_metrics → marker event, must be accepted.
-        t = self._t()
-        t.require_cost_card_coverage = True
-        t.save(update_fields=["require_cost_card_coverage"])
-        c = Customer.objects.create(tenant=t, external_id="c9")
-        prov, billed, p = PricingService.price(
-            tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics=None, currency="usd",
-            caller_provider_cost=None, caller_billed=None, units=None)
-        assert prov == 0
-
     def test_strict_uncovered_metric_still_raises_via_existing_gate(self):
-        # Regression: strict + usage_metrics with an uncovered metric → 422 via the
-        # existing uncosted gate (unchanged behavior — the new gate must not interfere).
+        # THE GUARANTEE THAT SURVIVES, and the one that was always load-bearing:
+        # an event that names a quantity UBB cannot cost is refused. Untouched by
+        # #272 — this branch never read the retired magnitude.
         t = self._t()
         t.require_cost_card_coverage = True
         t.save(update_fields=["require_cost_card_coverage"])
@@ -189,7 +170,7 @@ class TestPricing:
             PricingService.price(
                 tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
                 usage_metrics={"unmatched": 5}, currency="usd",
-                caller_provider_cost=None, caller_billed=None, units=5)
+                caller_provider_cost=None, caller_billed=None)
 
 
 def test_unassigned_customer_uses_provider_default_book(db):

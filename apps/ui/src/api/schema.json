@@ -4766,18 +4766,6 @@
             ],
             "title": "Task Id"
           },
-          "units": {
-            "anyOf": [
-              {
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Units"
-          },
           "usage_metrics": {
             "anyOf": [
               {
@@ -4956,17 +4944,6 @@
             },
             "title": "Uncosted Metrics",
             "type": "array"
-          },
-          "units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Units"
           },
           "usage_metrics": {
             "anyOf": [
@@ -6946,17 +6923,6 @@
             ],
             "title": "Task Id"
           },
-          "units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Units"
-          },
           "usage_metrics": {
             "additionalProperties": true,
             "default": {},
@@ -7040,17 +7006,6 @@
               }
             ],
             "title": "Stop Context"
-          },
-          "units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Units"
           }
         },
         "required": [
@@ -7172,15 +7127,10 @@
           "event_type": {
             "title": "Event Type",
             "type": "string"
-          },
-          "units": {
-            "title": "Units",
-            "type": "integer"
           }
         },
         "required": [
           "event_type",
-          "units",
           "billed_cost_micros",
           "event_count"
         ],
@@ -7211,16 +7161,11 @@
           "total_billed_micros": {
             "title": "Total Billed Micros",
             "type": "integer"
-          },
-          "total_units": {
-            "title": "Total Units",
-            "type": "integer"
           }
         },
         "required": [
           "period_start",
           "period_end",
-          "total_units",
           "total_billed_micros",
           "currency",
           "metrics"

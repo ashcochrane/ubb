@@ -59,7 +59,6 @@ function toRow(detail: UsageEventDetail): UsageEventRow {
     provider: detail.provider,
     billed_cost_micros: detail.billed_cost_micros,
     provider_cost_micros: detail.provider_cost_micros,
-    units: detail.units ?? null,
     stop_context: detail.stop_context ?? null,
   };
 }

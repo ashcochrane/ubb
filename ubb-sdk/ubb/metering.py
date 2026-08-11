@@ -82,7 +82,7 @@ class MeteringClient:
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
-                     units: int | None = None, provider: str = "", event_type: str = "",
+                     provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      dimensions: dict | None = None,
                      metadata: dict | None = None,
@@ -129,8 +129,6 @@ class MeteringClient:
             body["usage_metrics"] = usage_metrics
         if billed_cost_micros is not None:
             body["billed_cost_micros"] = billed_cost_micros
-        if units is not None:
-            body["units"] = units
         if currency is not None:
             body["currency"] = currency
         if tags is not None:

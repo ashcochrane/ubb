@@ -22,7 +22,7 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # core registers kill execution on its own transaction.on_commit — the
 # exact-key-set assertion below pins that nothing internal can sneak in.
 _RESULT_KEYS = {
-    "event_id", "provider_cost_micros", "billed_cost_micros", "units",
+    "event_id", "provider_cost_micros", "billed_cost_micros",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
@@ -44,7 +44,7 @@ class ResultSignatureTest(TestCase):
         # asserting it here covers the replay paths that are awkward to
         # trigger deterministically.
         event = MagicMock(
-            id="e1", provider_cost_micros=1, billed_cost_micros=1, units=None,
+            id="e1", provider_cost_micros=1, billed_cost_micros=1,
             task_id=None, usage_metrics={}, pricing_provenance={},
             dim2="", dim3="", stop_context=None,
         )

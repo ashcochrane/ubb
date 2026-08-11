@@ -14,7 +14,6 @@ const BASE_VALUES: TestEventFormValues = {
   event_type: "",
   provider: "",
   product_id: "",
-  units: "",
   provider_cost: "",
   billed_cost: "",
   effective_at: "",
@@ -47,7 +46,6 @@ describe("buildTestEventRequest", () => {
       {
         ...BASE_VALUES,
         event_type: "chat_completion",
-        units: "3",
         provider_cost: "0.42",
         billed_cost: "0.6",
         metrics: [
@@ -58,7 +56,6 @@ describe("buildTestEventRequest", () => {
       "console-req-2",
     );
     expect(body.event_type).toBe("chat_completion");
-    expect(body.units).toBe(3);
     expect(body.provider_cost_micros).toBe(420_000);
     expect(body.billed_cost_micros).toBe(600_000);
     expect(body.usage_metrics).toEqual({ tokens_in: 1200 });

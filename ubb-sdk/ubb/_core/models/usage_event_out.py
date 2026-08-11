@@ -36,7 +36,6 @@ class UsageEventOut:
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
-            units (int | None | Unset):
      """
 
     effective_at: str
@@ -48,7 +47,6 @@ class UsageEventOut:
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
-    units: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -91,12 +89,6 @@ class UsageEventOut:
         else:
             stop_context = self.stop_context
 
-        units: int | None | Unset
-        if isinstance(self.units, Unset):
-            units = UNSET
-        else:
-            units = self.units
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -116,8 +108,6 @@ class UsageEventOut:
             field_dict["provider_cost_micros"] = provider_cost_micros
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
-        if units is not UNSET:
-            field_dict["units"] = units
 
         return field_dict
 
@@ -183,16 +173,6 @@ class UsageEventOut:
         stop_context = _parse_stop_context(d.pop("stop_context", UNSET))
 
 
-        def _parse_units(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        units = _parse_units(d.pop("units", UNSET))
-
-
         usage_event_out = cls(
             effective_at=effective_at,
             id=id,
@@ -203,7 +183,6 @@ class UsageEventOut:
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,
-            units=units,
         )
 
 

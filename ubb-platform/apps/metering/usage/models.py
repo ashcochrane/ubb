@@ -26,7 +26,14 @@ class Posting(BaseModel):
     metadata = models.JSONField(default=dict)
 
     # Pricing breakdown (populated when platform prices the event)
-    units = models.BigIntegerField(null=True, blank=True)
+    #
+    # The nameless inline quantity that used to sit here died in #272 — one
+    # integer per posting could only ever describe one thing, which is what made
+    # an event carrying both an input and an output amount inexpressible. What
+    # is measured lives on the child record, keyed by a declared measurement.
+    # The argument for dropping it rather than moving it is in
+    # `migrations/0032_the_inline_unit_total_dies.py`.
+    #
     # CUR-1: lowercase, matching the seven other currency columns and the
     # payment rail's own casing (#269, spec §K2). No CHECK constraint —
     # see the module note in `tests/test_posting_rename.py` for why the one

@@ -190,7 +190,7 @@ class UBBClient:
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
-                     units: int | None = None, provider: str = "", event_type: str = "",
+                     provider: str = "", event_type: str = "",
                      currency: str | None = None, tags: dict | None = None,
                      dimensions: dict | None = None,
                      metadata: dict | None = None,
@@ -228,7 +228,6 @@ class UBBClient:
             idempotency_key=idempotency_key,
             provider_cost_micros=provider_cost_micros,
             billed_cost_micros=billed_cost_micros,
-            units=units,
             provider=provider,
             event_type=event_type,
             currency=currency,

@@ -5,7 +5,6 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
-from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
@@ -30,11 +29,24 @@ class TestRecordUsagePricing:
         assert e.pricing_provenance["cost_source"] == "rate_card"
 
 
-# ---- F2.4: strict coverage — units-only events ----
+# ---- Strict coverage at the door ----
 
 @pytest.mark.django_db
-class TestStrictCoverageUnitsOnly:
-    """Endpoint-level tests for the units-only strict-mode gate."""
+class TestStrictCoverage:
+    """Endpoint-level tests for strict cost-card coverage.
+
+    F2.4's SECOND REFUSAL RETIRED WITH ITS INPUT (#272). It rejected an event
+    that declared a nameless magnitude with no metric name to resolve a rate
+    card against; that magnitude was the posting's inline unit total, and a
+    caller can no longer state it at all. The refusal is therefore unexpressible
+    rather than relaxed, and the four cases that drove it are gone.
+
+    What is asserted instead is the pair that decides whether anything was lost:
+    an event with nothing to price is a marker and is accepted (which is what
+    every such request already was, at zero or omitted), and an event that DOES
+    name a quantity UBB cannot cost is refused exactly as before — before any
+    row exists, and replayable under the same idempotency key.
+    """
 
     def _setup(self, strict=False, products=None):
         t = Tenant.objects.create(
@@ -57,62 +69,66 @@ class TestStrictCoverageUnitsOnly:
             **auth,
         )
 
-    def test_strict_on_units_no_metrics_returns_422(self):
-        """strict ON + units=5, no usage_metrics, no provider_cost_micros → 422 pricing_error."""
-        t, c, http, auth = self._setup(strict=True)
-        resp = self._post(http, auth, c, {
-            "request_id": "r1", "idempotency_key": "ik1",
-            "units": 5,
-        })
-        assert resp.status_code == 422
-        body = resp.json()
-        assert body["code"] == "pricing_error"
-        assert "strict cost coverage" in body["detail"]
-
-    def test_strict_off_units_no_metrics_returns_200_zero_cost(self):
-        """strict OFF + same payload → 200 with provider_cost_micros=0 (old behavior)."""
-        t, c, http, auth = self._setup(strict=False)
-        resp = self._post(http, auth, c, {
-            "request_id": "r2", "idempotency_key": "ik2",
-            "units": 5,
-        })
-        assert resp.status_code == 200
-        assert resp.json()["provider_cost_micros"] == 0
-
-    def test_strict_on_units_with_provider_cost_returns_200(self):
-        """strict ON + units=5 + provider_cost_micros=123 → 200 (cost is known)."""
-        t, c, http, auth = self._setup(strict=True)
-        resp = self._post(http, auth, c, {
-            "request_id": "r3", "idempotency_key": "ik3",
-            "units": 5, "provider_cost_micros": 123,
-        })
-        assert resp.status_code == 200
-        assert resp.json()["provider_cost_micros"] == 123
-
-    def test_strict_on_zero_units_no_metrics_returns_200(self):
-        """strict ON + units=0, no metrics → marker event accepted."""
-        t, c, http, auth = self._setup(strict=True)
-        resp = self._post(http, auth, c, {
-            "request_id": "r4", "idempotency_key": "ik4",
-            "units": 0,
-        })
-        assert resp.status_code == 200
-
-    def test_strict_on_null_units_no_metrics_returns_200(self):
-        """strict ON + units omitted, no metrics → marker event accepted."""
+    def test_strict_on_nothing_to_price_is_a_marker_event(self):
+        """strict ON, no quantities, no caller cost → 200, a marker event."""
         t, c, http, auth = self._setup(strict=True)
         resp = self._post(http, auth, c, {
             "request_id": "r5", "idempotency_key": "ik5",
         })
         assert resp.status_code == 200
+        assert resp.json()["provider_cost_micros"] == 0
+
+    def test_strict_on_caller_cost_with_no_metrics_returns_200(self):
+        """strict ON + provider_cost_micros → 200; cost is explicitly known."""
+        t, c, http, auth = self._setup(strict=True)
+        resp = self._post(http, auth, c, {
+            "request_id": "r3", "idempotency_key": "ik3",
+            "provider_cost_micros": 123,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["provider_cost_micros"] == 123
+
+    def test_a_stale_client_still_sending_the_retired_field_is_accepted(self):
+        """WHAT THE RETIREMENT COSTS A CALLER THAT HAS NOT MIGRATED (#272).
+
+        The request schema ignores unknown fields, so a client still posting the
+        retired inline total is not rejected — the field is dropped and the
+        event records as the marker it now is. Under strict coverage that same
+        payload used to be a 422, so a loud refusal became a quiet accept for
+        exactly one population: stale callers.
+
+        Pinned rather than left in a comment, because it is the whole migration
+        story for anyone reading the reviewed break on the request side. Nothing
+        is mis-metered — there was never anything to multiply that number by.
+        """
+        t, c, http, auth = self._setup(strict=True)
+        resp = self._post(http, auth, c, {
+            "request_id": "r8", "idempotency_key": "ik8", "units": 5,
+        })
+
+        assert resp.status_code == 200
+        assert resp.json()["provider_cost_micros"] == 0
+        assert "units" not in resp.json()
+        posting = Posting.objects.get(tenant=t, customer=c, idempotency_key="ik8")
+        assert not hasattr(posting, "units")
+
+    def _card_for_some_other_measurement(self, tenant):
+        """A cost card the tenant HAS, for a key the event will not name.
+
+        Strict mode is about coverage, so a tenant with no cards at all would be
+        a weaker subject than one whose cards simply miss. Both refusal tests
+        below need exactly this, and they need it identical — a second card
+        written slightly differently is how a regression test quietly stops
+        testing the regression.
+        """
+        return Rate.objects.create(
+            tenant=tenant, card_type="cost", provider="", event_type="",
+            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
 
     def test_strict_uncovered_metric_still_422_via_existing_gate(self):
         """Regression: strict + usage_metrics with uncovered metric → 422 (existing gate)."""
         t, c, http, auth = self._setup(strict=True)
-        # Add a cost card for the tenant so we can enable strict mode, but use a
-        # different metric in the event so it's still uncovered.
-        Rate.objects.create(tenant=t, card_type="cost", provider="", event_type="",
-            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+        self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
             "request_id": "r6", "idempotency_key": "ik6",
             "usage_metrics": {"uncovered_metric": 5},
@@ -120,25 +136,31 @@ class TestStrictCoverageUnitsOnly:
         assert resp.status_code == 422
         assert resp.json()["code"] == "pricing_error"
 
-    def test_strict_422_fires_before_usageevent_creation_idempotency_retry_succeeds(self):
-        """F2.4 idempotency: strict 422 fires before Posting row exists.
-        A corrected retry with the same idempotency_key must succeed (no row to replay).
+    def test_strict_422_fires_before_posting_creation_idempotency_retry_succeeds(self):
+        """F2.4 idempotency: a strict 422 fires before the Posting row exists.
+        A corrected retry with the same idempotency_key must succeed (no row to
+        replay). Driven off the refusal that survives #272 — an uncosted metric
+        — because the one it was written against no longer has an input.
         """
         t, c, http, auth = self._setup(strict=True)
-        # First attempt: units=5, no metrics → 422, no row created.
+        self._card_for_some_other_measurement(t)
+        # First attempt: a metric with no cost card → 422, no row created.
         resp1 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",
-            "units": 5,
+            "usage_metrics": {"uncovered_metric": 5},
         })
         assert resp1.status_code == 422
         assert not Posting.objects.filter(
             tenant=t, customer=c, idempotency_key="ik7").exists(), (
             "Posting must NOT exist after a strict-mode 422")
 
-        # Corrected retry with SAME idempotency_key: provide provider_cost_micros.
+        # Corrected retry with SAME idempotency_key: state the cost outright
+        # instead of naming a quantity UBB has no card for. (Supplying the cost
+        # AND keeping the uncosted metric would still be refused — the caller-
+        # cost branch runs the same coverage check, deliberately.)
         resp2 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",
-            "units": 5, "provider_cost_micros": 500,
+            "provider_cost_micros": 500,
         })
         assert resp2.status_code == 200, (
             f"Corrected retry must succeed (got {resp2.status_code}): {resp2.json()}")

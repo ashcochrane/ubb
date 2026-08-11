@@ -30,7 +30,6 @@ class UsageSummaryResponse:
             period_end (str):
             period_start (str):
             total_billed_micros (int):
-            total_units (int):
      """
 
     currency: str
@@ -38,7 +37,6 @@ class UsageSummaryResponse:
     period_end: str
     period_start: str
     total_billed_micros: int
-    total_units: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -62,8 +60,6 @@ class UsageSummaryResponse:
 
         total_billed_micros = self.total_billed_micros
 
-        total_units = self.total_units
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -73,7 +69,6 @@ class UsageSummaryResponse:
             "period_end": period_end,
             "period_start": period_start,
             "total_billed_micros": total_billed_micros,
-            "total_units": total_units,
         })
 
         return field_dict
@@ -102,15 +97,12 @@ class UsageSummaryResponse:
 
         total_billed_micros = d.pop("total_billed_micros")
 
-        total_units = d.pop("total_units")
-
         usage_summary_response = cls(
             currency=currency,
             metrics=metrics,
             period_end=period_end,
             period_start=period_start,
             total_billed_micros=total_billed_micros,
-            total_units=total_units,
         )
 
 
