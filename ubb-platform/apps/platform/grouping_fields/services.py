@@ -116,7 +116,8 @@ class DimensionService:
                 f"dimension {grouping_field.key!r} cardinality exceeded: "
                 f"{count} distinct values already recorded (max "
                 f"{grouping_field.max_cardinality}); {value!r} refused. High-"
-                "cardinality data belongs in tags or a filter, not a dimension")
+                "cardinality data belongs in metadata or a filter, not a "
+                "dimension")
         try:
             with transaction.atomic():
                 GroupingFieldValue.objects.create(

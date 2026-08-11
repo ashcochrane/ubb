@@ -32,7 +32,7 @@ The immutable, system-owned array a usage event carries when it landed past a st
 limit (`task_limit` / `subtask_limit` / `customer_wide_stop` / `suspended` / `task_not_active`),
 each naming the scope, the trip time, the stop episode (customer scope), and whether the event
 *tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record, inside the
-recording transaction; never from tenant tags or metadata. Soft-floor crossings never tag events.
+recording transaction; never from the tenant's own metadata. Soft-floor crossings never mark events.
 (`apps/metering/usage/services/stop_context.py`)
 _Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row;
 a value's meaning can be renamed later (`customer_floor` → `customer_wide_stop`,
@@ -68,12 +68,16 @@ A marker that a backfilled event landed in a prior calendar month, signalling th
 snapshot must be recomputed; produced here, consumed by subscriptions.
 (`apps/metering/usage/models.py:BackfillDirtyPeriod`)
 
-**tags**:
-Caller-supplied, free-form labels on a usage event — never grouped, never priced, unbounded and
-undeclared by design. Grouping and pricing are the declared `Dimension` registry's job (ADR-0005),
-not tags'. (`apps/metering/usage/models.py`)
-_Avoid_: "group_keys" — renamed to `tags`; "dimensional tags" — dimensions and tags are now two
-separate mechanisms, not one.
+**Metadata**:
+The ONE open bag on a posting: caller-supplied, free-form labelling — **filterable and readable,
+never groupable** — unbounded and undeclared by design. Grouping and pricing are the declared
+`GroupingField` registry's job (ADR-0005), never this bag's: an unbounded free-text keyspace that
+can become a chart is one that can drive an invoice line label. Its keys are the tenant's own and
+are stored and returned exactly as authored, never reworded into English nobody chose.
+(`apps/metering/usage/models.py:Posting.metadata`)
+_Avoid_: "group_keys" and the second bag's name, both retired — the second bag folded into this one
+in #273 (slice 2) and its name went with the capability it advertised. "dimensional labels" —
+dimensions and this bag are two separate mechanisms, not one.
 
 **Recording**:
 Turning one reported use into a durable priced `Posting` — price, create, accumulate the task's

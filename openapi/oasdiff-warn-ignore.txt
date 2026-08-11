@@ -122,3 +122,54 @@ GET /api/v1/metering/usage/{event_id} removed the optional property `units` from
 POST /api/v1/metering/usage removed the optional property `units` from the response with the `200` status
 POST /api/v1/metering/usage removed the request property `units`
 POST /api/v1/metering/usage/batch removed the request property `events/items/units`
+
+# THE SECOND OPEN BAG, FOLDED INTO THE FIRST (#273, slice 2).
+#
+# A MOVE, NOT A RETIREMENT, and that is the whole difference from the block
+# above. The unit total had nowhere to go, so it died. This one had somewhere:
+# the same posting already carried an open bag, and the second one duplicated it
+# under a name that advertised a capability the survivor deliberately does not
+# have. A caller sends the same keys, to the same posting, under `metadata` —
+# and `usage/migrations/0033_the_second_open_bag_folds.py` carries every
+# existing value across so nothing already recorded is lost.
+#
+# WHY THE NAME GOES WITH THE CAPABILITY. The survivor is FILTERABLE AND
+# READABLE, NEVER GROUPABLE. The retiring name promised grouping, and an
+# unbounded free-text keyspace that can become a chart is one that can drive an
+# invoice line label. Keeping the name would keep advertising the thing the
+# design refuses. The keys inside are the tenant's own and are stored and
+# returned exactly as authored — UBB never rewords an identifier it did not
+# choose.
+#
+# BOTH DIRECTIONS, for the same reason the block above gives: two of these three
+# are REQUEST properties, because a bag that is no longer stored must stop being
+# part of what the contract accepts.
+#
+# WHAT THAT DOES *NOT* MEAN, STATED PLAINLY BECAUSE THE FIRST DRAFT OF THIS
+# BLOCK GOT IT BACKWARDS. Removing the property from the schema does not make a
+# stale caller's request fail. django-ninja keeps pydantic's `extra="ignore"`
+# (pinned by `api/v1/tests/test_usage_dimensions.py`), so a caller still posting
+# the retired bag gets a **200 and its labels are silently dropped** — they do
+# not land in the surviving bag. Nothing is mis-metered and no money moves, but
+# labels a caller believes it sent are not there.
+#
+# That is the same shape as #272's own request-side consequence and it is
+# accepted on the same grounds: the pre-live window (ADR-0007 §5), and a
+# migration path that is a one-line rename in the caller. It is recorded here
+# rather than repaired because forbidding unknown fields is a whole-surface
+# decision about every schema in the contract, which this ticket does not own.
+# `test_a_stale_caller_is_accepted_and_its_labels_are_dropped` pins it.
+#
+# WHY THIS BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5) —
+# the launch tag is not what binds. The same drop after platform admission
+# costs a 90-day deprecation cycle under ADR-0003 §4.
+#
+# NOT FLAGGED FOR SLICE 7, AND THE DISTINCTION IS DELIBERATE. Slice 7 owns the
+# GROUPING vocabulary that still reads keys out of this bag — the keyed
+# analytics parameter, the keyed margin breakdown and the key-driven invoice
+# line labels (`g7-backend-tag_key`, `g7-backend-usage_line_item_group_by`).
+# None of those three surfaces changed shape here; only the column beneath them
+# moved. Slice 2 folded the field, slice 7 migrates the capability.
+GET /api/v1/metering/usage/{event_id} removed the optional property `tags` from the response with the `200` status
+POST /api/v1/metering/usage removed the request property `tags`
+POST /api/v1/metering/usage/batch removed the request property `events/items/tags`

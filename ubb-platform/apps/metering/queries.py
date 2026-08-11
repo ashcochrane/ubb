@@ -345,7 +345,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     group_by in {"provider", "event_type", "task_type", "subtask_type",
     "dim1".."dim6"} (a resolved column, not a tenant-facing key — the caller
     resolves the tenant's declared name via the dimension registry first);
-    OR tag_key for tags->>key.
+    OR tag_key for a key read out of the open bag.
     Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
     """
     from apps.metering.usage.models import Posting
@@ -361,9 +361,11 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
                 "margin_micros": (billed or 0) - (provider or 0), "event_count": count}
 
     if tag_key:
+        # The keyed margin breakdown is slice 7's surface, left where #273
+        # found it — only the column underneath moved, with the fold.
         grouped = (
-            qs.filter(tags__has_key=tag_key)
-            .annotate(dimension=KeyTextTransform(tag_key, "tags"))
+            qs.filter(metadata__has_key=tag_key)
+            .annotate(dimension=KeyTextTransform(tag_key, "metadata"))
             .values("dimension")
             .annotate(
                 prov_sum=Sum("provider_cost_micros"),
@@ -447,7 +449,7 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
 
     Returns UNSORTED, aggregated [(label, billed_micros), ...] pairs (the
     caller owns presentation order). Postpaid invoice-line label semantics:
-    a missing tag key, NULL tags, a JSON-null or EMPTY-STRING tag value, and
+    a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
     an empty dim1 ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
     distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
@@ -461,7 +463,9 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
         effective_at__lt=utc_day_start(period_end),
     )
     if group_by.startswith("tag:"):
-        rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "tags"))
+        # The key-driven invoice line labels are slice 7's surface, left where
+        # #273 found them — only the column underneath moved, with the fold.
+        rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "metadata"))
                 .values("label").annotate(total=Sum("billed_cost_micros")).order_by())
         raw_key = "label"
     else:  # "dim1"

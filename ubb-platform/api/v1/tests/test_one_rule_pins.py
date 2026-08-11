@@ -16,8 +16,8 @@ Pin 14 — only the provider (COGS) total races the task limit; both totals on
          the record and the response.
 Pin 15 — the coverage gate refuses `cost_coverage_required` with coverage
          off, passes with it on.
-Pin 16 — the tag fallback is removed: tags={"task": ...} with no task_id gets
-         no unit attribution, no limit, no kill.
+Pin 16 — the label fallback is removed: metadata={"task": ...} with no task_id
+         gets no unit attribution, no limit, no kill.
 Pin 17 — the clean-cut sweep: no run-era event type in the catalog, neither
          retired Redis key family is ever written, the old per-task cap
          config is gone, and no API/SDK/event surface answers to a run-era
@@ -327,10 +327,10 @@ class Pin15CoverageGateTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin16TagFallbackRemovedTest(OneRulePinTestBase):
-    def test_task_tag_gets_no_attribution_no_limit_no_kill(self, _mock):
+class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
+    def test_a_task_label_gets_no_attribution_no_limit_no_kill(self, _mock):
         task = self._task(limit=1)  # would trip on any attributed event
-        resp = self._record(tags={"task": str(task.id)},
+        resp = self._record(metadata={"task": str(task.id)},
                             provider_cost_micros=5_000_000,
                             billed_cost_micros=5_000_000)
         self.assertEqual(resp.status_code, 200)
@@ -341,7 +341,7 @@ class Pin16TagFallbackRemovedTest(OneRulePinTestBase):
 
         event = Posting.objects.get(id=body["event_id"])
         self.assertIsNone(event.task_id)
-        self.assertEqual(event.tags, {"task": str(task.id)})  # analytics only
+        self.assertEqual(event.metadata, {"task": str(task.id)})  # labels only
         task.refresh_from_db()
         self.assertEqual(task.status, "active")
         self.assertEqual(task.event_count, 0)
@@ -423,7 +423,7 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
         self.tenant.save(update_fields=["enforcement_mode"])
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=2_000_000, tags={"task": "labelled"})
+                     billed_cost_micros=2_000_000, metadata={"task": "labelled"})
         self._record(task_id=str(task.id), billed_cost_micros=3_000_000)
 
         client = redis.from_url(settings.REDIS_URL)

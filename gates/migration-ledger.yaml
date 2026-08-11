@@ -803,18 +803,6 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-backend-tags
-    gate: G7
-    site: backend::tags
-    expected: metadata_key
-    found: 24 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
-
   - id: g7-backend-task.limit_exceeded
     gate: G7
     site: backend::task.limit_exceeded
@@ -1185,18 +1173,6 @@ entries:
       A grouping kind that read from the open bag. Slice 7's grouping
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
-
-  - id: g7-console-tags
-    gate: G7
-    site: console::tags
-    expected: metadata_key
-    found: 4 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
 
   - id: g7-console-task.limit_exceeded
     gate: G7
@@ -1751,13 +1727,18 @@ entries:
     gate: G7
     site: openapi::tags
     expected: metadata_key
-    found: 3 files
+    found: 2 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
+      surviving one deliberately does not have. Slice 2 folded `tags`
+      into `metadata` (#145 §8, #273) and the capability retires with
+      the name. THE PUBLISHED CONTRACT IS PAID: the field left
+      `openapi/v1.json` with the fold. What remains is not the field at
+      all — the contract gate's own prose and the contract README both
+      use the word as an ordinary English VERB about cutting a git
+      baseline, and spec §I2 rules those payable by rewording, in the
+      ticket that owns the two exclusion rulings.
 
   - id: g7-openapi-task.limit_exceeded
     gate: G7
@@ -2068,18 +2049,6 @@ entries:
       A grouping kind that read from the open bag. Slice 7's grouping
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
-
-  - id: g7-sdk-tags
-    gate: G7
-    site: sdk::tags
-    expected: metadata_key
-    found: 6 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
 
   - id: g7-sdk-task_limit
     gate: G7

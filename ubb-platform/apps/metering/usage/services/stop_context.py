@@ -9,7 +9,7 @@ this ONE builder, so the tagging rules cannot drift between them.
 
 The rules:
 
-- A fresh crossing verdict tags the TIPPING event — ``arrived_after=false``,
+- A fresh crossing verdict marks the TIPPING event — ``arrived_after=false``,
   ``tripped_at`` = the event's own record time (the trip IS this event).
 - A late event on a limit-killed unit carries the same limit with
   ``arrived_after=true`` and the kill time as ``tripped_at``, so an
@@ -18,12 +18,12 @@ The rules:
   trip). Non-limit terminal states (completed, failed, reaped) tag
   ``task_not_active``.
 - Customer scope reads the durable ledger, never the Redis flag: an open
-  ``floor_stop`` episode tags ``customer_wide_stop`` carrying the episode id;
+  ``floor_stop`` episode marks ``customer_wide_stop`` carrying the episode id;
   the entry is the tipping one (``arrived_after=false``) only when THIS
   event's live debit won the stop transition (``opened_episode_seq``).
-  An owner suspended with NO open episode (admin/fraud) tags ``suspended``
+  An owner suspended with NO open episode (admin/fraud) marks ``suspended``
   — with a null ``tripped_at``: suspension carries no durable timestamp,
-  and inventing one would be a lie. The soft-floor family never tags (§F —
+  and inventing one would be a lie. The soft-floor family never marks (§F —
   work completing past the soft line is permitted, not "past limit").
 - Enforcement off ⇒ no customer-scope tagging (there is no signal suite to
   be past); unit-scope tagging follows the unit machinery, which runs for

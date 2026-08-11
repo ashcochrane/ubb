@@ -109,7 +109,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # vocabulary that rate selection AND analytics grouping both read.
         # "service"/"agent" are event-scoped dimensions bound to dim2/dim3 and
         # are sent as `dimensions=` on each usage call (Task 9 retired the old
-        # tag-lifting; tags are now free-form labels only). "product" is bound
+        # label-lifting; the open bag is free-form only). "product" is bound
         # to dim1 the same way — declared and sent via `dimensions=` (the
         # legacy product_id wire field is gone; the only path onto dim1 is a
         # declared dimension) — and GROUPING speaks declared keys (Task 15),
@@ -161,12 +161,12 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 usage_metrics={"tokens": 100},
                 # "product"/"service"/"agent" are all DECLARED dimensions
                 # (dim1/dim2/dim3) — what the cost card selects on and the
-                # breakdown below groups by. `tags` (free-form labels, never
-                # priced/grouped, still stored) is covered directly by
-                # apps/metering/usage/tests/test_tags.py and
-                # api/v1/tests/test_usage_dimensions.py::
-                # test_tags_no_longer_become_dimensions -- no response field
-                # exposes tags here to assert against, so this journey test
+                # breakdown below groups by. The open bag (`metadata` —
+                # free-form, never priced or grouped, still stored) is covered
+                # directly by apps/metering/usage/tests/test_the_open_bag.py
+                # and api/v1/tests/test_usage_dimensions.py::
+                # test_the_open_bag_no_longer_becomes_dimensions -- no response
+                # field exposes it here to assert against, so this journey test
                 # does not duplicate that coverage.
                 dimensions={"product": product, "service": service, "agent": agent})
             # Server computed COGS from the matching dimensional cost card.
@@ -204,7 +204,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             exp_by_product[product] = exp_by_product.get(product, 0) + cost
             exp_by_service[service] = exp_by_service.get(service, 0) + cost
             exp_by_agent[agent] = exp_by_agent.get(agent, 0) + cost
-        # The extra unattributed event has no service/agent/product tags.
+        # The extra unattributed event has no service/agent/product values.
         exp_by_service["(unattributed)"] = COST_UNATTR
         exp_by_product["(unattributed)"] = COST_UNATTR
         exp_by_agent["(unattributed)"] = COST_UNATTR

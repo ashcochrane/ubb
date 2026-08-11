@@ -568,7 +568,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
             request_id="req_dim_1", idempotency_key="idem_dim_1",
-            provider_cost_micros=2_000_000, tags={"model": "gpt-4"},
+            provider_cost_micros=2_000_000, metadata={"model": "gpt-4"},
             dimension_slots={"dim1": "chat"},
         )
         response = self.http_client.get(
@@ -604,7 +604,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         from apps.platform.customers.models import Customer
         from apps.metering.usage.models import Posting
         # dimensions= now resolves through the registry (#128 rework); the
-        # tag:region escape hatch is gone (tags are no longer groupable), so
+        # tag:region escape hatch is gone (the open bag is not groupable), so
         # this ports "region" to a declared dimension bound to dim4.
         GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")

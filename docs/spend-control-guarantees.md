@@ -366,7 +366,7 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 13 | Subtask killed alone — parent keeps running; parent trip cascades | `api/v1/tests/test_subtask_pins.py::Pin13ContainmentTest` |
 | 14 | Only the provider (COGS) total races a limit; both totals on record and response | `test_one_rule_pins.py::Pin14DenominationTest`; `test_subtask_pins.py::Pin14SubtaskDenominationTest` |
 | 15 | Coverage gate: a resolvable limit without cost coverage is refused `cost_coverage_required` | `test_one_rule_pins.py::Pin15CoverageGateTest` |
-| 16 | Tag fallback removed — tags are analytics only | `test_one_rule_pins.py::Pin16TagFallbackRemovedTest` |
+| 16 | Tag fallback removed — tags are analytics only | `test_one_rule_pins.py::Pin16LabelFallbackRemovedTest` |
 | 17 | The clean cut holds: no run-era name on any surface | `test_one_rule_pins.py::Pin17CleanCutSweepTest` |
 
 **Guaranteed-delivery + auto-repair spec**

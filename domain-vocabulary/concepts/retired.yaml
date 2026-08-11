@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,534 of 1,885 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,533 of 1,885 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -100,6 +100,15 @@ measurement_key:
     # of one of the surviving senses; say which sense and why, here. The
     # denominator moves on any commit that adds a tracked file and needs no
     # story at all.
+    #
+    # #273 MOVED THE DENOMINATOR ONLY (1,534 → 1,533 swept, 51/127 unchanged),
+    # and it is worth recording that the denominator can fall as well as rise:
+    # that commit added a migration (excluded from the swept set) and two test
+    # modules, deleted one, and REGENERATED THE SDK — where two generated model
+    # files existed only to type the bag it folded away. A denominator that
+    # falls because generated files stopped being generated is still the "needs
+    # no story" case; this note exists so the next reader does not go looking
+    # for a deletion nobody made.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

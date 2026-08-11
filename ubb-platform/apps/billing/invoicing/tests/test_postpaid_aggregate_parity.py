@@ -3,11 +3,14 @@ metering reads moved behind the apps.metering.queries contract.
 
 The pre-F3.2 per-event Python loops are inlined below VERBATIM as the
 reference implementation. Fixtures are adversarial on the label semantics:
-an EMPTY-STRING tag value, a missing tag key, NULL tags, an empty dict tags,
-and an empty dim1 must ALL collapse into "(other)" (the `or` in
-`(tags or {}).get(key) or "(other)"` maps both ''-valued and absent tags to
-the same bucket — note this differs from the analytics contract where ""
-stays a distinct dimension).
+an EMPTY-STRING value, a missing key, an empty bag, and an empty dim1 must
+ALL collapse into "(other)" (the `or` in `(bag or {}).get(key) or "(other)"`
+maps both ''-valued and absent keys to the same bucket — note this differs
+from the analytics contract where "" stays a distinct dimension).
+
+The bag these read is the survivor of #273's fold; the `tag:` grouping
+prefix keeps the spelling it is published under, which is slice 7's to
+migrate onto the declared grouping contract.
 """
 import datetime
 from collections import defaultdict
@@ -55,8 +58,8 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
     agg = defaultdict(int)
     if group_by.startswith("tag:"):
         tag_key = group_by[4:]
-        for tags, billed in qs.values_list("tags", "billed_cost_micros"):
-            label = (tags or {}).get(tag_key) or "(other)"
+        for bag, billed in qs.values_list("metadata", "billed_cost_micros"):
+            label = (bag or {}).get(tag_key) or "(other)"
             agg[label] += billed or 0
     else:  # "dim1"
         for pid, billed in qs.values_list("dim1", "billed_cost_micros"):
@@ -114,12 +117,12 @@ class TestGroupByBranchParity:
                                   products=["metering", "billing"])
         c = Customer.objects.create(tenant=t, external_id="c1")
         PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="tag:seat")
-        _ev(t, c, "i1", 500_000, tags={"seat": "alice"})
-        _ev(t, c, "i2", 40_000, tags={"seat": ""})       # EMPTY STRING value -> (other)
-        _ev(t, c, "i3", 300_000, tags=None)               # NULL tags -> (other)
-        _ev(t, c, "i4", 20_000, tags={})                  # empty dict -> (other)
-        _ev(t, c, "i5", 10_000, tags={"other": "x"})      # key missing -> (other)
-        _ev(t, c, "i6", 100_000, tags={"seat": "bob"})
+        _ev(t, c, "i1", 500_000, metadata={"seat": "alice"})
+        _ev(t, c, "i2", 40_000, metadata={"seat": ""})    # EMPTY STRING value -> (other)
+        _ev(t, c, "i3", 300_000, metadata={})             # absent bag -> (other)
+        _ev(t, c, "i4", 20_000, metadata={})              # empty dict -> (other)
+        _ev(t, c, "i5", 10_000, metadata={"other": "x"})  # key missing -> (other)
+        _ev(t, c, "i6", 100_000, metadata={"seat": "bob"})
 
         old_total, old_lines = _old_grouped_lines(t, c, PS, PE, "tag:seat")
         new_total, new_lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)

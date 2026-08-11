@@ -273,11 +273,15 @@ class PlannerIndexProofTest(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# F2.2 — tags GIN opclass swap tests
+# F2.2 — the open bag's GIN opclass, on the bag that survived #273
 # ---------------------------------------------------------------------------
 
-class TagsGinSchemaTest(TestCase):
-    """Assert the post-0022 schema has exactly the right tags GIN index.
+class OpenBagGinSchemaTest(TestCase):
+    """Assert the schema has exactly the right GIN index on the open bag.
+
+    0022 swapped the retiring bag's index to the default opclass; #273
+    folded that bag into the survivor and the index moved with the
+    filtering, this time declared on the model rather than as raw SQL.
 
     CONCURRENTLY DDL cannot run inside a transaction, so we do not run the
     migration functions here.  Instead we assert the schema state produced by
@@ -292,17 +296,17 @@ class TagsGinSchemaTest(TestCase):
             self.skipTest("Schema assertion requires Postgres")
 
     def test_new_jsonb_ops_index_exists(self):
-        """idx_usage_event_tags_ops (default jsonb_ops) must be present."""
+        """idx_posting_metadata (default jsonb_ops) must be present."""
         with connection.cursor() as cur:
             cur.execute("""
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'ubb_posting'
-                  AND indexname = 'idx_usage_event_tags_ops';
+                  AND indexname = 'idx_posting_metadata';
             """)
             row = cur.fetchone()
-        self.assertIsNotNone(row, "idx_usage_event_tags_ops not found in pg_indexes")
-        # Default jsonb_ops index has NO opclass qualifier — just 'gin (tags)'
+        self.assertIsNotNone(row, "idx_posting_metadata not found in pg_indexes")
+        # Default jsonb_ops index has NO opclass qualifier — just 'gin (…)'
         self.assertNotIn("jsonb_path_ops", row[1],
                          f"Expected jsonb_ops (no qualifier) but got: {row[1]}")
         self.assertIn("gin", row[1].lower(), row[1])
@@ -320,23 +324,23 @@ class TagsGinSchemaTest(TestCase):
         self.assertIsNone(row,
                           "Old idx_usage_event_tags (jsonb_path_ops) still present — swap failed")
 
-    def test_exactly_one_tags_gin_index(self):
-        """Only one GIN index on the tags column must exist post-swap."""
+    def test_exactly_one_gin_index_on_the_open_bag(self):
+        """Only one GIN index on the open bag may exist."""
         with connection.cursor() as cur:
             cur.execute("""
                 SELECT indexname
                 FROM pg_indexes
                 WHERE tablename = 'ubb_posting'
-                  AND indexname LIKE '%tags%';
+                  AND indexname LIKE '%metadata%';
             """)
             rows = cur.fetchall()
         self.assertEqual(len(rows), 1,
-                         f"Expected exactly 1 tags index, found: {[r[0] for r in rows]}")
+                         f"Expected exactly 1 index, found: {[r[0] for r in rows]}")
 
 
-class TagsGinPlannerProofTest(TestCase):
+class OpenBagGinPlannerProofTest(TestCase):
     """Planner proof: both has_key (?) and containment (@>) are served by
-    idx_usage_event_tags_ops (the new jsonb_ops GIN index from F2.2).
+    idx_posting_metadata (the jsonb_ops GIN index on the surviving bag).
 
     GIN indexes in Postgres are always accessed via Bitmap Index Scan, never
     plain Index Scan.  Therefore we CANNOT disable bitmapscan (unlike F2.1
@@ -346,14 +350,14 @@ class TagsGinPlannerProofTest(TestCase):
     * The query filters on a highly selective value (only 1 row matches) — so
       the GIN bitmap path is decisively cheaper than any FK btree + heap filter.
     * We insert one "needle" row with a rare tag value and a large number of
-      "haystack" rows with no tags, so the GIN estimate for the selective value
+      "haystack" rows with no rare key, so the GIN estimate for the selective value
       is tiny relative to the table size.
 
     EXPLAIN(FORMAT TEXT) output for a Bitmap path contains both
     "Bitmap Index Scan" and the index name; we assert both.
     """
 
-    GIN_INDEX = "idx_usage_event_tags_ops"
+    GIN_INDEX = "idx_posting_metadata"
 
     def setUp(self):
         if connection.vendor != "postgresql":
@@ -362,20 +366,20 @@ class TagsGinPlannerProofTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_f22_gin")
 
-        # Haystack: 1000 rows with common tag so the rare-value needle is selective.
+        # Haystack: 1000 rows with a common key so the rare needle is selective.
         haystack = [Posting(
             tenant=self.tenant, customer=self.customer,
             request_id=f"req_f22_h{i}", idempotency_key=f"idem_f22_h{i}",
-            billed_cost_micros=500, tags={"env": "prod", "team": "common"})
+            billed_cost_micros=500, metadata={"env": "prod", "team": "common"})
             for i in range(1000)]
         Posting.objects.bulk_create(haystack, batch_size=500)
 
-        # Needle: 1 row with a rare unique tag value, plus a common key for @>.
+        # Needle: 1 row with a rare unique value, plus a common key for @>.
         self.needle = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="req_f22_needle", idempotency_key="idem_f22_needle",
             billed_cost_micros=1_000,
-            tags={"env": "prod", "rare_key": "unique_val_xyz", "team": "common"})
+            metadata={"env": "prod", "rare_key": "unique_val_xyz", "team": "common"})
 
         with connection.cursor() as cur:
             cur.execute("SELECT setseed(0.22)")
@@ -393,18 +397,18 @@ class TagsGinPlannerProofTest(TestCase):
         return qs.order_by().explain()
 
     def test_has_key_served_by_gin_index(self):
-        """tags__has_key('rare_key') compiles to the ? operator — rare key
+        """metadata__has_key('rare_key') compiles to the ? operator — rare key
         means the GIN bitmap path is cheap vs. FK btree + heap filter."""
-        qs = Posting.objects.filter(tags__has_key="rare_key")
+        qs = Posting.objects.filter(metadata__has_key="rare_key")
         plan = self._explain(qs)
         self.assertIn(self.GIN_INDEX, plan,
                       f"GIN index not used for has_key.  Plan:\n{plan}")
 
     def test_containment_served_by_same_gin_index(self):
-        """tags__contains({'rare_key': ...}) compiles to @> — jsonb_ops serves
+        """metadata__contains({'rare_key': ...}) compiles to @> — jsonb_ops serves
         both ? and @>, proving the swap lost nothing for containment queries."""
         qs = Posting.objects.filter(
-            tags__contains={"rare_key": "unique_val_xyz"})
+            metadata__contains={"rare_key": "unique_val_xyz"})
         plan = self._explain(qs)
         self.assertIn(self.GIN_INDEX, plan,
                       f"GIN index not used for containment (@>).  Plan:\n{plan}")
@@ -424,7 +428,7 @@ class TagGroupByPushdownTest(TestCase):
       C  env=staging,  billed=4_000_000  provider=2_000_000
       D  env=""        billed=1_000_000  provider=400_000    <- empty-string tag value
 
-    All four rows have tags__has_key("env") so all appear in the output.
+    All four rows have metadata__has_key("env") so all appear in the output.
 
     Expected get_dimensional_margin (sorted -margin_micros):
       prod    prov=1_500_000 billed=5_000_000 margin=3_500_000 count=2
@@ -444,12 +448,12 @@ class TagGroupByPushdownTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c_f23")
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="f23")
 
-        def _create(n, tags, billed, provider, ts):
+        def _create(n, bag, billed, provider, ts):
             ev = Posting.objects.create(
                 tenant=self.tenant, customer=self.customer,
                 request_id=f"req_f23_{n}", idempotency_key=f"idem_f23_{n}",
                 billed_cost_micros=billed, provider_cost_micros=provider,
-                tags=tags)
+                metadata=bag)
             _pin(ev, ts)
             return ev
 
@@ -476,10 +480,10 @@ class TagGroupByPushdownTest(TestCase):
                     "event_count": count}
 
         agg = defaultdict(lambda: {"p": 0, "b": 0, "n": 0})
-        for tags, p, b in UE.objects.filter(
-                tenant_id=tenant_id, tags__has_key=tag_key
-        ).values_list("tags", "provider_cost_micros", "billed_cost_micros"):
-            k = (tags or {}).get(tag_key)
+        for bag, p, b in UE.objects.filter(
+                tenant_id=tenant_id, metadata__has_key=tag_key
+        ).values_list("metadata", "provider_cost_micros", "billed_cost_micros"):
+            k = (bag or {}).get(tag_key)
             agg[k]["p"] += p or 0
             agg[k]["b"] += b or 0
             agg[k]["n"] += 1
@@ -494,10 +498,10 @@ class TagGroupByPushdownTest(TestCase):
 
         agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
                                    "total_provider_cost_micros": 0})
-        for tags, billed, provider in UE.objects.filter(
-                tenant_id=tenant_id, tags__has_key=tag_key
-        ).values_list("tags", "billed_cost_micros", "provider_cost_micros"):
-            val = (tags or {}).get(tag_key)
+        for bag, billed, provider in UE.objects.filter(
+                tenant_id=tenant_id, metadata__has_key=tag_key
+        ).values_list("metadata", "billed_cost_micros", "provider_cost_micros"):
+            val = (bag or {}).get(tag_key)
             agg[val]["event_count"] += 1
             agg[val]["total_cost_micros"] += billed or 0
             agg[val]["total_provider_cost_micros"] += provider or 0
@@ -624,7 +628,7 @@ class TagGroupByPushdownTest(TestCase):
                     idempotency_key=f"idem_f23s_{n}_{i}",
                     billed_cost_micros=1_000,
                     provider_cost_micros=500,
-                    tags={"env": "prod" if i % 2 == 0 else "staging"},
+                    metadata={"env": "prod" if i % 2 == 0 else "staging"},
                 ))
             Posting.objects.bulk_create(evs, batch_size=200)
             client = Client()

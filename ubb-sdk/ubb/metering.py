@@ -83,7 +83,7 @@ class MeteringClient:
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
-                     currency: str | None = None, tags: dict | None = None,
+                     currency: str | None = None,
                      dimensions: dict | None = None,
                      metadata: dict | None = None,
                      task_id: str | None = None,
@@ -100,8 +100,12 @@ class MeteringClient:
 
         ``dimensions``: declared EVENT-scoped dimension values (the tenant's
         registry, ``PUT /api/v1/metering/dimensions``) — what rate cards
-        select on and analytics group by. Distinct from ``tags``, which are
-        free-form labels never consulted for pricing or grouping.
+        select on and analytics group by. Distinct from ``metadata``, the one
+        open bag: free-form labelling, filterable and readable, never
+        consulted for pricing or grouping. The second open bag folded into it
+        and its name retired with the grouping capability that name promised
+        — a caller that sent the old bag sends the same keys under
+        ``metadata``.
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
         datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
@@ -131,8 +135,6 @@ class MeteringClient:
             body["billed_cost_micros"] = billed_cost_micros
         if currency is not None:
             body["currency"] = currency
-        if tags is not None:
-            body["tags"] = tags
         if dimensions is not None:
             body["dimensions"] = dimensions
         if event_type:

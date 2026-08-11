@@ -1,5 +1,4 @@
 import logging
-import re
 from collections import namedtuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -16,8 +15,37 @@ from apps.platform.events.schemas import UsageRecorded
 
 logger = logging.getLogger(__name__)
 
-# Min 2 chars, max 64 chars, starts with letter, lowercase alphanumeric + underscores
-TAG_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]{1,63}$')
+# THE RETIRING BAG'S VALIDATION DIED WITH THE BAG (#273), AND THE SURVIVOR DOES
+# NOT INHERIT IT. It enforced FOUR rules and each is answered separately here,
+# because "it validated the field we deleted" is a reason to look at them, not a
+# reason to drop them unexamined.
+#
+#   1. A lowercase-snake KEY PATTERN. Retired on the merits: that pattern exists
+#      so keys make stable chart labels — a *grouping* rule wearing a validation
+#      hat. The survivor is never groupable, and enforcing it would be UBB
+#      dictating the shape of identifiers the tenant authored, on the very
+#      commit that rules UBB never rewords them.
+#   2. VALUES MUST BE STRINGS. Cannot be carried: the surviving bag has always
+#      held arbitrary JSON and nesting is a real, intended use of it (a request
+#      envelope, a client block). Imposing it would break callers of a field
+#      that never had the rule.
+#   3. AT MOST 50 KEYS and 4. VALUES UNDER 256 CHARS. Size guards, not
+#      vocabulary — but they are also rules the surviving bag never had, and
+#      adding them here would narrow a published field this ticket was not
+#      asked to narrow. Left off deliberately, and recorded as the open
+#      question they are rather than quietly dropped.
+#
+# THE CONSEQUENCE, STATED IN THE DIRECTION IT ACTUALLY RUNS. A caller whose keys
+# the retired bag refused with a 422 now gets a 200 — that much is the #272
+# precedent. But the removal also WIDENS what can reach the three grouping
+# surfaces slice 7 owns: they used to read a bag validated flat `str -> str` and
+# now read the same arbitrary JSON everything else in this bag may hold, so a
+# key-driven chart or invoice line label can be handed a serialised object
+# rather than a short string. Nothing is mis-metered and no money moves — the
+# bag is filtered and read, never priced — but this is a widening on the very
+# surfaces this ticket must not widen, and it is slice 7's to close when it
+# moves that capability onto the declared grouping contract.
+# `tests/test_the_second_open_bag_folds.py` pins both halves.
 
 # Tolerated clock skew for caller-supplied effective_at in the future.
 _FUTURE_SKEW = timedelta(minutes=5)
@@ -83,26 +111,6 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
             "billing_period_closed",
             f"the billing period starting {period_start.isoformat()} has already "
             "been invoiced; backfills into it are rejected")
-
-
-def validate_tags(tags):
-    """Validate tags dict. Raises ValueError on invalid input."""
-    if tags is None:
-        return
-    if not isinstance(tags, dict):
-        raise ValueError("tags must be a dict")
-    if len(tags) > 50:
-        raise ValueError("tags cannot have more than 50 keys")
-    for key, value in tags.items():
-        if not TAG_KEY_PATTERN.match(key):
-            raise ValueError(
-                f"tags key '{key}' must be lowercase alphanumeric + underscores, "
-                "start with a letter, 2-64 chars"
-            )
-        if not isinstance(value, str):
-            raise ValueError(f"tags value for '{key}' must be a string")
-        if len(value) > 256:
-            raise ValueError(f"tags value for '{key}' exceeds 256 chars")
 
 
 SLOTS = ("dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
@@ -223,8 +231,8 @@ def _replay_stop(customer, tenant):
 @dataclass(frozen=True)
 class RecordingInput:
     """The recording core's typed input (#112): already-validated,
-    already-normalized facts — currency stamped from the tenant, reserved
-    tags extracted, billing owner resolved. Internal to the metering service;
+    already-normalized facts — currency stamped from the tenant, declared
+    slot values resolved, billing owner resolved. Internal to the metering service;
     it never appears in the API surface. Build it via ``gather``, never by
     hand — the normalization rules live there once."""
 
@@ -239,7 +247,6 @@ class RecordingInput:
     provider: str
     currency: str
     usage_metrics: dict
-    tags: dict | None
     task_type: str
     subtask_type: str
     dim1: str
@@ -260,7 +267,7 @@ class RecordingInput:
 
     @classmethod
     def gather(cls, *, tenant, customer, request_id, idempotency_key,
-               metadata, event_type, provider, usage_metrics, tags,
+               metadata, event_type, provider, usage_metrics,
                task_id, caller_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, dimension_slots=None):
@@ -271,12 +278,12 @@ class RecordingInput:
 
         ``dimension_slots`` is an ALREADY-ADMITTED {slot: value} map (Task 9:
         DimensionService.admit ran in the caller — gather() never admits).
-        Tags are analytics-only labels (#37) and are never consulted for
+        The open bag is labelling only (#37) and is never consulted for
         dimension values — the historical "product"/"service"/"agent"
-        tag-lifting is retired.
+        label-lifting is retired.
 
         Dimensions are DECLARED and INHERITED (design D1/D6) — there is no
-        tag-fallback inference and no legacy ``product_id`` wire field: the
+        label-fallback inference and no legacy ``product_id`` wire field: the
         write contract's only path onto dim1 is a declared dimension bound
         to that slot (DimensionService.admit), same as any other dimension.
         ``_inherit_dimensions`` resolves the ten selector columns per slot:
@@ -293,7 +300,7 @@ class RecordingInput:
             # currency, stored normalized lowercase. The sync adapter has
             # already rejected any mismatching caller currency.
             currency=_tenant_currency(tenant),
-            usage_metrics=usage_metrics or {}, tags=tags,
+            usage_metrics=usage_metrics or {},
             **dims,
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
@@ -392,7 +399,7 @@ class UsageService:
                     billed_cost_micros=billed_cost_micros,
                     currency=inp.currency,
                     pricing_provenance=provenance,
-                    tags=inp.tags, task_id=inp.task_id,
+                    task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
                     task_type=inp.task_type, subtask_type=inp.subtask_type,
                     dim1=inp.dim1, dim2=inp.dim2, dim3=inp.dim3,
@@ -484,19 +491,19 @@ class UsageService:
     @transaction.atomic
     def record_usage(tenant, customer, request_id, idempotency_key, *,
                      provider_cost_micros=None, billed_cost_micros=None,
-                     provider="", event_type="", currency=None, tags=None,
+                     provider="", event_type="", currency=None,
                      metadata=None, task_id=None, usage_metrics=None,
                      effective_at=None, dimension_slots=None):
         """The recording path (#112): validation + replay + owner resolve,
         then the recording core. The keyword surface is the input adapter every
         service-level call site and both recording endpoints already speak; it
-        lost the nameless inline quantity in #272 and is otherwise verbatim.
+        lost the nameless inline quantity in #272, lost the second open bag in
+        #273, and is otherwise verbatim.
 
         ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
         — the caller (endpoint / record_sync_item) runs DimensionService.admit
         BEFORE calling this, so a DimensionError is the whole-request/whole-
         item rejection and never reaches here."""
-        validate_tags(tags)
         # select_related on the measurement child (#270): a replay's response
         # carries the ORIGINAL quantities, which the posting now reads through
         # the child — and the replay path is the hot one, so it pays for that
@@ -533,7 +540,7 @@ class UsageService:
             tenant=tenant, customer=customer, request_id=request_id,
             idempotency_key=idempotency_key, metadata=metadata,
             event_type=event_type, provider=provider,
-            usage_metrics=usage_metrics, tags=tags,
+            usage_metrics=usage_metrics,
             task_id=task_id,
             caller_provider_cost=provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,

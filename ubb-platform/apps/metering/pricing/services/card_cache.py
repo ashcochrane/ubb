@@ -6,7 +6,7 @@ card_type, metric, currency, full ten-selector tuple from ``Rate.SELECTORS``:
 provider, event_type, task_type, subtask_type, dim1..dim6) — not a set of
 candidate rows to re-match. Dimensions are declared and cardinality-capped
 (design D4), so the selector tuple is a bounded, safe cache key: unlike the
-old free-text ``tags`` keyspace it once bypassed L1 for, two different
+old free-text open-bag keyspace it once bypassed L1 for, two different
 selector sets can never collide and the keyspace itself cannot grow
 unbounded. Version key ubb:cardver:{tenant} is read at most once per request:
 begin_request stores the observed version in a contextvars.ContextVar —

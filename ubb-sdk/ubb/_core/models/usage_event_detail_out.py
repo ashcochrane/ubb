@@ -16,7 +16,6 @@ from uuid import UUID
 if TYPE_CHECKING:
   from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
   from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-  from ..models.usage_event_detail_out_tags_type_0 import UsageEventDetailOutTagsType0
   from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
 
 
@@ -48,7 +47,6 @@ class UsageEventDetailOut:
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset):
             provider (str | Unset):  Default: ''.
             stop_context (list[Any] | None | Unset):
-            tags (None | Unset | UsageEventDetailOutTagsType0):
             task_id (None | str | Unset):
             usage_metrics (UsageEventDetailOutUsageMetrics | Unset):
      """
@@ -70,7 +68,6 @@ class UsageEventDetailOut:
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
     provider: str | Unset = ''
     stop_context: list[Any] | None | Unset = UNSET
-    tags: None | Unset | UsageEventDetailOutTagsType0 = UNSET
     task_id: None | str | Unset = UNSET
     usage_metrics: UsageEventDetailOutUsageMetrics | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -82,7 +79,6 @@ class UsageEventDetailOut:
     def to_dict(self) -> dict[str, Any]:
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-        from ..models.usage_event_detail_out_tags_type_0 import UsageEventDetailOutTagsType0
         from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
         billed_cost_micros = self.billed_cost_micros
 
@@ -130,14 +126,6 @@ class UsageEventDetailOut:
         else:
             stop_context = self.stop_context
 
-        tags: dict[str, Any] | None | Unset
-        if isinstance(self.tags, Unset):
-            tags = UNSET
-        elif isinstance(self.tags, UsageEventDetailOutTagsType0):
-            tags = self.tags.to_dict()
-        else:
-            tags = self.tags
-
         task_id: None | str | Unset
         if isinstance(self.task_id, Unset):
             task_id = UNSET
@@ -179,8 +167,6 @@ class UsageEventDetailOut:
             field_dict["provider"] = provider
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
-        if tags is not UNSET:
-            field_dict["tags"] = tags
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
         if usage_metrics is not UNSET:
@@ -194,7 +180,6 @@ class UsageEventDetailOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-        from ..models.usage_event_detail_out_tags_type_0 import UsageEventDetailOutTagsType0
         from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
         d = dict(src_dict)
         billed_cost_micros = d.pop("billed_cost_micros")
@@ -269,26 +254,6 @@ class UsageEventDetailOut:
         stop_context = _parse_stop_context(d.pop("stop_context", UNSET))
 
 
-        def _parse_tags(data: object) -> None | Unset | UsageEventDetailOutTagsType0:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                tags_type_0 = UsageEventDetailOutTagsType0.from_dict(data)
-
-
-
-                return tags_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | Unset | UsageEventDetailOutTagsType0, data)
-
-        tags = _parse_tags(d.pop("tags", UNSET))
-
-
         def _parse_task_id(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -327,7 +292,6 @@ class UsageEventDetailOut:
             pricing_provenance=pricing_provenance,
             provider=provider,
             stop_context=stop_context,
-            tags=tags,
             task_id=task_id,
             usage_metrics=usage_metrics,
         )

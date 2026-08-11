@@ -3,12 +3,12 @@ limit and why", in one call.
 
 Composition-layer module (api may import every product; ADR-001): episodes
 are reconstructed from THREE sources and married to the itemized events by
-the stop-context tags —
+the stop-context markers —
 
 - **Customer-wide floor episodes** from the ``stop.fired`` / ``stop.cleared``
   outbox pair (each carries the signal ledger's ``episode_seq``), backstopped
   by the current ``StopSignalState`` row (an open episode survives outbox
-  retention) and by the tags themselves (a tagged event's ``tripped_at``
+  retention) and by the markers themselves (a marked event's ``tripped_at``
   re-dates an episode whose outbox rows were purged).
 - **Task/subtask trip episodes** from killed Task rows whose
   ``kill_reason`` names a limit. A kill is terminal — no resume.

@@ -61,21 +61,22 @@ class MeteringClientTest(unittest.TestCase):
         self.assertNotIn("usage_metrics", body)
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_tags(self, mock_post):
+    def test_record_usage_with_the_open_bag(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
-            provider_cost_micros=1_000_000, tags={"project": "proj_1"},
+            provider_cost_micros=1_000_000, metadata={"project": "proj_1"},
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["tags"], {"project": "proj_1"})
+        self.assertEqual(body["metadata"], {"project": "proj_1"})
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_with_dimensions(self, mock_post):
-        """dimensions is distinct from tags: declared, rate-card/analytics-
-        selecting values, not free-form labels — plumbed the same way."""
+        """dimensions is distinct from the open bag: declared, rate-card/
+        analytics-selecting values, not free-form labels — plumbed the same
+        way."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3b", "new_balance_micros": 7_000_000, "suspended": False,
         })

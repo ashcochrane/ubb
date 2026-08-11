@@ -16,7 +16,6 @@ import datetime
 if TYPE_CHECKING:
   from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
   from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-  from ..models.record_usage_request_tags_type_0 import RecordUsageRequestTagsType0
   from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
 
 
@@ -42,7 +41,6 @@ class RecordUsageRequest:
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset):
             provider_cost_micros (int | None | Unset):
-            tags (None | RecordUsageRequestTagsType0 | Unset):
             task_id (None | Unset | UUID):
             usage_metrics (None | RecordUsageRequestUsageMetricsType0 | Unset):
      """
@@ -58,7 +56,6 @@ class RecordUsageRequest:
     metadata: RecordUsageRequestMetadata | Unset = UNSET
     provider: None | str | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
-    tags: None | RecordUsageRequestTagsType0 | Unset = UNSET
     task_id: None | Unset | UUID = UNSET
     usage_metrics: None | RecordUsageRequestUsageMetricsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -70,7 +67,6 @@ class RecordUsageRequest:
     def to_dict(self) -> dict[str, Any]:
         from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-        from ..models.record_usage_request_tags_type_0 import RecordUsageRequestTagsType0
         from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
         customer_id = str(self.customer_id)
 
@@ -124,14 +120,6 @@ class RecordUsageRequest:
         else:
             provider_cost_micros = self.provider_cost_micros
 
-        tags: dict[str, Any] | None | Unset
-        if isinstance(self.tags, Unset):
-            tags = UNSET
-        elif isinstance(self.tags, RecordUsageRequestTagsType0):
-            tags = self.tags.to_dict()
-        else:
-            tags = self.tags
-
         task_id: None | str | Unset
         if isinstance(self.task_id, Unset):
             task_id = UNSET
@@ -172,8 +160,6 @@ class RecordUsageRequest:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
             field_dict["provider_cost_micros"] = provider_cost_micros
-        if tags is not UNSET:
-            field_dict["tags"] = tags
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
         if usage_metrics is not UNSET:
@@ -187,7 +173,6 @@ class RecordUsageRequest:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
-        from ..models.record_usage_request_tags_type_0 import RecordUsageRequestTagsType0
         from ..models.record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
         d = dict(src_dict)
         customer_id = UUID(d.pop("customer_id"))
@@ -289,26 +274,6 @@ class RecordUsageRequest:
         provider_cost_micros = _parse_provider_cost_micros(d.pop("provider_cost_micros", UNSET))
 
 
-        def _parse_tags(data: object) -> None | RecordUsageRequestTagsType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                tags_type_0 = RecordUsageRequestTagsType0.from_dict(data)
-
-
-
-                return tags_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RecordUsageRequestTagsType0 | Unset, data)
-
-        tags = _parse_tags(d.pop("tags", UNSET))
-
-
         def _parse_task_id(data: object) -> None | Unset | UUID:
             if data is None:
                 return data
@@ -361,7 +326,6 @@ class RecordUsageRequest:
             metadata=metadata,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
-            tags=tags,
             task_id=task_id,
             usage_metrics=usage_metrics,
         )

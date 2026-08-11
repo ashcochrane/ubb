@@ -130,7 +130,7 @@ API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
 **Dimension**:
 A bounded, declared slicing axis usable for both analytics grouping and rate selection — the
 tenant's `GroupingField` registry is the single vocabulary for both, so nothing may be grouped by
-or priced on that was not declared. Unlike a `tags` value, a dimension's keyspace is capped on
+or priced on that was not declared. Unlike a `metadata` value, a dimension's keyspace is capped on
 write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
 
 **Slot**:
@@ -160,8 +160,8 @@ one logical workflow execution, registered at the start-gate; lives in the kerne
 billing can both reference it without crossing a product boundary. Carries both running totals
 (billed + provider, denominationally explicit) and its signal points. Status
 `active | completed | failed | killed`. (`apps/platform/work/models.py:Task`)
-_Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `tags` value) —
-tags are analytics-only and never attach a limit.
+_Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
+the open bag is labelling only and never attaches a limit.
 
 **Subtask**:
 A parent-linked child unit of work — a task registered under an active top-level task, with its
