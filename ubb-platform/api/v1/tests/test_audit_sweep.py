@@ -58,7 +58,18 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # EXEMPT side falls with it, 6 - 1 = 5 — the row goes, the PRINCIPLE does not:
 # the two surviving usage routes are still telemetry rather than governance,
 # and still keep their rows above.
-_EXPECTED_MUTATING = 63
+#
+# the Event Type catalogue reaches the contract (slice 2, #267): +11, EVERY
+# ONE OF THEM RECORDING and none exempt, so the exempt side does not move.
+# Declaring what a call is and how it is costed is the same kind of act as
+# declaring a grouping axis or a task type's ceiling — governance, not
+# telemetry — and the catalogue's five actions say which act it was:
+# event_type.declared (the type, and its reported-cost mapping, which is a
+# part of that one declaration), event_type.published (the act a tenant's
+# generated integration is built against, so it is not a second "declared"),
+# measurement.declared, provider.declared, event_category.declared.
+# 63 + 11 = 74.
+_EXPECTED_MUTATING = 74
 _EXPECTED_EXEMPT = 5
 
 

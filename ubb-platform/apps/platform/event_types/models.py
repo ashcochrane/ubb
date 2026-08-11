@@ -159,9 +159,23 @@ REPORTED_COST_KIND_REFUSALS = {
 #:
 #: UBB owns this pair and the registry declares no concept for it — legal, and
 #: legal VISIBLY, which is what `tests/contracts/test_undeclared_value_sets.py`
-#: exists to count. It stays a `choices=` list rather than becoming a concept
-#: because nothing outside this model reads it: it is not on the contract, not
-#: in the console's catalogue and not in the generated integration's vocabulary.
+#: exists to count.
+#:
+#: ⚠ THE ARGUMENT FOR LEAVING IT A `choices=` LIST HAS WEAKENED, AND #267 IS
+#: WHAT WEAKENED IT. This note used to read "nothing outside this model reads
+#: it: it is not on the contract, not in the console's catalogue and not in the
+#: generated integration's vocabulary". The first clause is now false —
+#: `MeasurementIn`/`MeasurementOut` carry the field, so a tenant declares it
+#: over the wire — and the correction is recorded here rather than quietly
+#: dropped, because a stale justification is how a decision comes to look
+#: settled when its reason has gone.
+#:
+#: What is still true, and is why it stays: the contract does not RESTATE the
+#: pair. The field publishes as a plain string and the refusal is this model's,
+#: so there is still exactly one place the values live. What a concept would
+#: buy is the published `enum` and the console wording, and neither is owed by
+#: a ticket that names three concepts and no more. A later slice that wants
+#: either should register it; the cost of doing so has not risen.
 VALUE_TYPE_INTEGER = "integer"
 VALUE_TYPE_DECIMAL = "decimal"
 VALUE_TYPE_CHOICES = (

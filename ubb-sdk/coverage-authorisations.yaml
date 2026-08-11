@@ -58,3 +58,23 @@ authorisations:
       credentials that client does not hold. And `GET /api/v1/health` and
       `GET /api/v1/ready` are probes for an orchestrator, not for a caller
       metering usage.
+
+  - id: slice-2-267-the-catalogue-reaches-the-contract
+    issue: 267
+    operations_added: 17
+    reason: >-
+      The Event Type catalogue arrives on the published contract as seventeen
+      operations — the Event Type and its declaration lifecycle, the declared
+      quantities, the reported-cost mapping, and the two satellites — and every
+      one of them is reachable through the generated core and through none of
+      the hand-written clients. They are gaps by the manifest's own definition,
+      not by intent: the SDK's hand-written surface for this slice is #282's,
+      deliberately a ticket of its own so that what a human types is designed
+      against the whole published catalogue rather than accreted one route at a
+      time.
+
+      Signing for seventeen now is what makes that sequencing visible rather
+      than merely intended. The alternative — wrapping them here — would put
+      the contract's first three concept-marked enumerations and a new
+      hand-written client surface into one change, and a red run would not say
+      which of the two produced it.

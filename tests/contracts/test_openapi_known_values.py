@@ -527,6 +527,106 @@ def test_the_committed_contract_is_a_fixed_point_of_the_applier(spec,
     assert apply_known_values(strip_known_values(spec), decisions) == spec
 
 
+def test_applying_twice_is_refused_rather_than_doubled(spec, decisions):
+    """The other half of the fixed point, and the reason regeneration STRIPS.
+
+    The check above proves strip-then-apply reproduces the committed bytes. It
+    cannot, on its own, tell that apart from an applier that is merely
+    idempotent — and the difference is the whole design. From inside a node
+    there is nothing to distinguish a generated `enum` from a hand-written
+    `Literal[...]`, so an applier that quietly re-applied would have to treat
+    the second as the first, and the refusal that catches a silent conversion
+    would be the refusal it had just given up.
+
+    So this asserts the refusal against the REAL committed contract rather than
+    a synthetic node: applying to the already-applied document raises, naming a
+    real field's JSON pointer. `test_negative_control_a_hand_written_enum_under
+    _a_marker_is_refused` states the same rule over a fixture; this states it
+    over the bytes that ship, which is where "regeneration strips before it
+    applies" is a claim about the export rather than about a unit.
+    """
+    with pytest.raises(KnownValuesRefused) as raised:
+        apply_known_values(spec, decisions)
+
+    assert raised.value.code == codes.ALREADY_ENUMERATED
+    assert raised.value.location.startswith("/components/schemas/")
+
+
+#: THE ENUM ACCOUNTING AT THIS COMMIT, per concept, checked in both directions.
+#:
+#: `test_g4_every_enum_in_the_contract_is_accounted_for` above pins every enum
+#: by POINTER, which answers "did an unaccounted enum arrive". It cannot answer
+#: the question this ticket is about, because a marker moving from one concept
+#: to another leaves the pointer set untouched: what reaches the contract, and
+#: under which kind.
+#:
+#: Three of these four arrived with #267 and every one of them is `closed`, so
+#: every one renders a real `enum`. That is the fact worth pinning, because it
+#: is the one that is easy to get wrong in the opposite direction:
+#: `x-ubb-known-values` is what an OPEN concept renders as, and #268 ships the
+#: first of those. Zero known-value blocks is therefore not an omission here —
+#: it is this commit's stated position, and it goes red the moment #268 lands,
+#: which is exactly when a reader should be made to look.
+CONCEPTS_IN_THE_CONTRACT = {
+    "tenant_product": 2,          # slice 1 (#240) — the first marker of any kind
+    "costing_method": 3,          # EventTypeIn/Out, and the update's `anyOf`
+    "source_kind": 4,             # the quantity's and the reported cost's, in+out
+    "amount_representation": 2,   # the reported cost's, in+out
+}
+
+
+def test_the_contract_advertises_exactly_these_concepts_and_all_as_enums(
+        spec, registry, decisions):
+    """AC: three concept-marked enums arrive, and no known-value block does.
+
+    Both directions, for the reason the pointer inventory gives: too few and a
+    marker has been dropped or a concept has stopped being advertised; too many
+    and a concept reached the published contract without anyone signing for it.
+    """
+    marked = {}
+    for _, node in marked_nodes(spec):
+        marked[node[MARKER]] = marked.get(node[MARKER], 0) + 1
+
+    assert marked == CONCEPTS_IN_THE_CONTRACT, (
+        "the set of concepts the contract advertises has changed. Adding one "
+        "is a deliberate act — the registry gains an `openapi` consumer and a "
+        "schema field gains a marker in the same commit — so update the map "
+        "above in that commit and say which ticket did it.")
+
+    for name in marked:
+        assert decisions[name].representation == ENUM, name
+        assert registry.concepts[name].kind == "closed", name
+
+    blocks = [pointer for pointer, node in marked_nodes(spec)
+              if KNOWN_VALUES_KEY in node]
+    assert blocks == [], (
+        f"the contract carries {len(blocks)} known-value block(s) at a commit "
+        f"whose stated position is zero: {blocks}. If this is #268 landing the "
+        f"first OPEN concepts, that is the change — move the map above and "
+        f"this assertion together, in the commit that does it.")
+
+
+def test_the_three_closed_concepts_are_advertised_where_the_catalogue_is(spec):
+    """The concepts are on the catalogue's own schemas, not merely somewhere.
+
+    A marker is only worth having where a value actually travels, and a count
+    alone would be satisfied by three markers on one unrelated schema. This
+    names the schemas, because the agreement being asserted is between a
+    tenant's declaration and the vocabulary UBB serves it under.
+    """
+    where = {}
+    for pointer, node in marked_nodes(spec):
+        where.setdefault(node[MARKER], set()).add(pointer.split("/")[3])
+
+    assert where["costing_method"] == {"EventTypeIn", "EventTypeOut",
+                                       "EventTypeUpdateIn"}
+    assert where["source_kind"] == {"MeasurementIn", "MeasurementOut",
+                                    "ReportedCostMappingIn",
+                                    "ReportedCostMappingOut"}
+    assert where["amount_representation"] == {"ReportedCostMappingIn",
+                                              "ReportedCostMappingOut"}
+
+
 def test_the_spec_export_applies_the_metadata(spec):
     """The wiring, read out of the export's own source.
 

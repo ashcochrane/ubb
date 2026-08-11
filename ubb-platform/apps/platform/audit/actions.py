@@ -66,6 +66,38 @@ AUDIT_ACTIONS = (
     "dimension.declared",
     # task type registry (unified dimension model plan, D7)
     "task_type.declared",
+    # The Event Type catalogue — what the tenant declares it meters (#267).
+    # Declaring what a call is, and what it costs, is governance in the same
+    # sense the two registries above are: it decides how usage is costed.
+    #
+    # ONE ACTION PER RECORD PER KIND OF ACT, which is the shape the pairs above
+    # already run (`rate.added`/`rate.deleted`, `webhook_config.created`/
+    # `.deleted`, `grant.created`/`.voided`). Declaring and re-declaring are
+    # one act — a correction to a declaration is still a declaration, which is
+    # why `dimension.declared` covers a re-PUT — but WITHDRAWING is not, and
+    # neither is publishing:
+    #
+    #   * publication is what a tenant's generated integration is built
+    #     against, so "a draft was edited" and "revision 3 was published" are
+    #     different answers to the question this ledger exists to answer;
+    #   * a withdrawal removes something the tenant may be metering against,
+    #     and a governance reader asking "when did this stop being declared"
+    #     must not have to read metadata to find out;
+    #   * retiring a supplier is a commercial decision to stop offering it,
+    #     not a correction to its name.
+    #
+    # Splitting any of these later is the rename ADR-004 §2 calls a breaking
+    # change, so they are split now, when it is free.
+    "event_type.declared",
+    "event_type.published",
+    "measurement.declared",
+    "measurement.withdrawn",
+    "reported_cost_mapping.declared",
+    "reported_cost_mapping.withdrawn",
+    "provider.declared",
+    "provider.retired",
+    "event_category.declared",
+    "event_category.withdrawn",
     # margin / revenue
     "margin_threshold.set",
     "revenue_profile.set",

@@ -19,6 +19,7 @@ from api.v1.audit_endpoints import audit_router
 from api.v1.billing_endpoints import billing_router
 from api.v1.connect_endpoints import connect_router
 from api.v1.endpoints import root_router
+from api.v1.event_type_endpoints import event_type_router
 from api.v1.me_endpoints import me_router
 from api.v1.metering_endpoints import metering_router
 from api.v1.plan_endpoints import plan_router
@@ -95,8 +96,16 @@ api.add_router("webhooks/", webhook_router)
 api.add_router("platform/", platform_router)
 api.add_router("connect/", connect_router)
 api.add_router("audit/", audit_router)
-# Mounted at the root prefix, before root_router: its concrete paths
-# (/plans, /customers/{external_id}/plan) must bind before root_router's
-# catch-alls, since django-ninja resolves routes in registration order.
+# Mounted at the root prefix, before root_router: their concrete paths
+# (/plans, /customers/{external_id}/plan; /event-types, /providers,
+# /event-categories) must bind before root_router's catch-alls, since
+# django-ninja resolves routes in registration order.
+#
+# The Event Type catalogue is at the root for the reason plan_router is: it is
+# a KERNEL concept several products read and none owns, so mounting it inside
+# one product's prefix would say the opposite on the published contract —
+# which ADR-0007 §3 then forbids correcting. api/v1/event_type_endpoints.py
+# carries the argument.
 api.add_router("", plan_router)
+api.add_router("", event_type_router)
 api.add_router("", root_router)

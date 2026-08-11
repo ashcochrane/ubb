@@ -8,10 +8,15 @@
       "representation": "known_values"
     },
     "amount_representation": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "micros",
+        "minor_units",
+        "major_units_decimal"
+      ]
     },
     "analytics_grouping_kind": {
       "advertised": false,
@@ -33,7 +38,7 @@
     },
     "audit_action": {
       "advertised": false,
-      "backend_serves": "0 of 58 values",
+      "backend_serves": "0 of 66 values",
       "kind": "closed",
       "representation": "enum"
     },
@@ -56,10 +61,14 @@
       "representation": "enum"
     },
     "costing_method": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "calculated",
+        "reported"
+      ]
     },
     "costing_status": {
       "advertised": false,
@@ -194,10 +203,16 @@
       "representation": "none"
     },
     "source_kind": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "provider_response",
+        "caller_supplied",
+        "derived",
+        "constant"
+      ]
     },
     "source_shape_id": {
       "advertised": false,

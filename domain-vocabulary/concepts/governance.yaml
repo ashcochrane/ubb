@@ -64,6 +64,35 @@ audit_action:
     - grouping_field.declared
     - task_type.declared
     - tenant_supplied_revenue.recorded
+    # Eight more of the same family, added by #267 when the catalogue reached
+    # the contract and its twelve-mutation write surface needed names.
+    # Additive, which is the only direction ADR-004 §2 leaves open, and taken
+    # now rather than later because splitting a conflated action afterwards is
+    # the rename that rule calls a breaking change. Doing it here costs
+    # nothing; doing it in slice 8 costs a break.
+    #
+    # ONE ACTION PER RECORD PER KIND OF ACT — the shape `rate.added`/
+    # `rate.deleted` and `webhook_config.created`/`.deleted` above already
+    # run. Declaring and re-declaring are ONE act, because a correction to a
+    # declaration is still a declaration; the three that are NOT are the
+    # publication (what a tenant's generated integration is built against),
+    # the withdrawal (a governance reader asking "when did this stop being
+    # declared" must not have to read metadata to find out) and the
+    # retirement (a commercial decision to stop offering a supplier, not a
+    # correction to its name).
+    #
+    # Each satellite and each declaration part carries its own noun rather
+    # than borrowing the Event Type's, because the ledger's `resource_type`
+    # already says which record moved and an action naming a different one
+    # would make the two disagree.
+    - event_type.published
+    - measurement.withdrawn
+    - reported_cost_mapping.declared
+    - reported_cost_mapping.withdrawn
+    - provider.declared
+    - provider.retired
+    - event_category.declared
+    - event_category.withdrawn
     # Customers, plans and subscriptions.
     - customer.created
     - plan.created
