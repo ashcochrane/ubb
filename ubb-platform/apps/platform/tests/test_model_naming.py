@@ -73,11 +73,21 @@ TABLE_PREFIX = "ubb_"
 IDENTIFIER_LIMIT = 63
 
 # --- G10 -------------------------------------------------------------------
-# The facts ADR-0006 §4 says are derived and must never be stored. `Tenant`'s
-# posture is derived from `customer_billing_mode`; it may be *served* read-only
-# so callers need not reconstruct the mapping, and a property or a serializer
-# field does exactly that without becoming a column. This gate is about columns.
-DERIVED_NEVER_STORED = frozenset({"tenant_posture"})
+# The facts ADR-0006 §4 says are derived and must never be stored. Each may be
+# *served* read-only so callers need not reconstruct the derivation, and a
+# property or a serializer field does exactly that without becoming a column.
+# This gate is about columns.
+#
+# `tenant_posture` is derived from `customer_billing_mode`.
+#
+# `measurements_status` (#271) is derived from a posting's own kind and from
+# whether its measurement record is there — the registry declares that rule as
+# `value_semantics` and the compiler proves it total. It joined this gate
+# rather than arriving with an absence check of its own because the claim is
+# identical and the subject is the same one: every column of every model in the
+# app registry. A second mechanism asserting the same absence over the same
+# walk would be two encodings of one gate, which is the shape §4 is about.
+DERIVED_NEVER_STORED = frozenset({"tenant_posture", "measurements_status"})
 
 # --- G11 -------------------------------------------------------------------
 MONEY_SUFFIX = "_micros"
@@ -484,6 +494,33 @@ def test_walker_actually_sees_the_model_layer():
         assert expected in seen, f"walker did not visit {expected}"
 
 
+def test_g10_has_a_derived_fact_to_protect_and_matches_it_whole():
+    """G10's own vacuity guard, over the set rather than over the walk.
+
+    The guard above proves the app registry was read; this proves the gate had
+    something to look for in it. An empty `DERIVED_NEVER_STORED` would make
+    G10 an assertion about nothing while every message about it stayed true,
+    and each name must be a plain column name or the classifier could never
+    meet it.
+
+    The match is whole-name, pinned here for the reason the repository's other
+    absence check pins the same property: `measurements_status_at` and
+    `tenant_postures` are different columns, and an absence check that fires on
+    names having nothing to do with it is one that gets suppressed rather than
+    obeyed.
+    """
+    assert DERIVED_NEVER_STORED, "G10 protects no fact — it asserts nothing"
+    for name in DERIVED_NEVER_STORED:
+        assert name.islower() and name.isidentifier(), name
+
+    near_misses = {f"{name}{suffix}" for name in DERIVED_NEVER_STORED
+                   for suffix in ("_at", "s")} | \
+                  {f"prior_{name}" for name in DERIVED_NEVER_STORED}
+    assert not (near_misses & DERIVED_NEVER_STORED)
+    for near_miss in near_misses:
+        assert near_miss not in DERIVED_NEVER_STORED, near_miss
+
+
 def test_every_model_site_names_a_file_that_exists():
     """The `site` strings the ledger carries point at real files.
 
@@ -556,12 +593,14 @@ def test_table_name_is_the_canonical_snake_cased_model_name():
     assert not _failures(RULE_TABLE), "\n" + _failures(RULE_TABLE)
 
 
-def test_no_writable_column_stores_the_derived_tenant_posture():
+def test_no_writable_column_stores_a_derived_fact():
     """G10 — ADR-0006 §4.
 
     Green in the tree today, which is why it ships with the negative control
     below: an absence test with nothing proving it can fail is a test that
     asserts nothing, and this repository has shipped that shape three times.
+    The control is driven over every name in `DERIVED_NEVER_STORED`, so a fact
+    added to the set is shown to be catchable rather than assumed to be.
     """
     assert not _failures(RULE_DERIVED), "\n" + _failures(RULE_DERIVED)
 
@@ -641,18 +680,31 @@ def test_negative_control_a_mismatched_table_is_flagged():
     assert site.endswith("::Widget")
 
 
-@isolate_apps(APP)
 def test_negative_control_a_stored_derived_fact_is_flagged():
-    class Widget(models.Model):
-        tenant_posture = models.CharField(max_length=20)
+    """One control per derived fact, driven off the set itself.
 
-        class Meta:
-            app_label = "tenants"
-            db_table = "ubb_widget"
+    Written as a loop rather than as one control per name so that coverage is
+    structural: a fact added to `DERIVED_NEVER_STORED` is exercised the moment
+    it is added, and cannot arrive with a gate nobody has ever seen fail. Each
+    iteration gets its own app registry, so the models do not collide.
 
-    hits = classify(model_facts(Widget))
-    assert [rule for rule, _, _ in hits] == [RULE_DERIVED]
-    assert "DERIVED" in hits[0][2]
+    The whole hit list is compared, not just its first entry — a control that
+    also tripped G9 or G11 would be evidence for the wrong rule.
+    """
+    for name in sorted(DERIVED_NEVER_STORED):
+        with isolate_apps(APP):
+            widget = type("Widget", (models.Model,), {
+                # Django's metaclass reads this out of the attrs dict, and
+                # `type()` does not supply it the way a `class` statement does.
+                "__module__": __name__,
+                name: models.CharField(max_length=20),
+                "Meta": type("Meta", (), {"app_label": "tenants",
+                                          "db_table": "ubb_widget"}),
+            })
+            hits = classify(model_facts(widget))
+            assert [rule for rule, _, _ in hits] == [RULE_DERIVED], name
+            assert "DERIVED" in hits[0][2], name
+            assert hits[0][1].endswith(f"::Widget.{name}"), hits[0][1]
 
 
 @isolate_apps(APP)

@@ -313,6 +313,82 @@ usage_event_kind:
     - surface: openapi
       path: openapi/v1.json
 
+measurements_status:
+  kind: closed
+  # DERIVED, NEVER STORED — and that is the whole of #193 §E5's ruling. Every
+  # one of the three is computable from facts the row already carries, so a
+  # column holding a fourth copy could only ever disagree with them, and
+  # ADR-0006 §4 says the wrong encoding is always the one nobody is looking at.
+  # It is SERVED read-only by the serialiser, which §4 expressly permits. What
+  # enforces that here is the absence test G10 — no writable column for it
+  # exists anywhere in the schema — the same gate that already covers
+  # `tenant_posture` above, extended rather than copied.
+  #
+  # AND THE NEAR MISS WITH `measure_status` BELOW IS ACCEPTED RATHER THAN
+  # OVERLOOKED. ADR-0006 §3 forbids two declared names that differ by little
+  # and mean something unrelated — the rule that refused `publication_status`
+  # for the declaration lifecycle further down this file. This is not that
+  # case, and the reason is that the two are not unrelated at all: one is the
+  # analytics reading of a requested measure's amount, and says whether a
+  # NUMBER is knowable at the grain asked for; this one says whether the RECORD
+  # of what was measured is still there to read a number from. They sit either
+  # side of the same question and the plural is what separates them — the same
+  # plural the child record carries, and the same one the wire field takes.
+  summary: >-
+    Whether a posting's measured quantities can still be read. `available`
+    says the measurement record is there; `pruned` says it was there and has
+    been removed at its retention horizon; `not_applicable` says the posting's
+    own kind never had one. Three answers where a reader previously met one
+    empty bag and could not tell which of them it meant — which is how a
+    payload that expired on schedule reaches an end customer as a confident
+    "no usage" (#193 §E5).
+  values:
+    - available
+    - pruned
+    - not_applicable
+  label_key_prefix: measurements_status
+  value_semantics:
+    summary: >-
+      The derivation, carried beside the values as data because it is the
+      concept's whole content: these three answers exist only as a rule over
+      two facts, and a summary sentence above the values is not beside them.
+      Read the kind first — a posting that never had measurements is not a
+      posting that has lost them.
+    inputs:
+      - the_posting_is_a_task_charge
+      - a_measurement_record_exists
+    cases:
+      - when:
+          the_posting_is_a_task_charge: true
+          a_measurement_record_exists: any
+        then: not_applicable
+        because: >-
+          A Task sold for one agreed price was never measured, so there is
+          nothing that could have been removed. The record's existence is not
+          consulted deliberately: §E4 makes it absent by construction here, and
+          a rule that read it anyway would answer `pruned` for a posting whose
+          detail no retention horizon ever governed.
+      - when:
+          the_posting_is_a_task_charge: false
+          a_measurement_record_exists: true
+        then: available
+        because: >-
+          The measurement record is there and its quantities can be read.
+      - when:
+          the_posting_is_a_task_charge: false
+          a_measurement_record_exists: false
+        then: pruned
+        because: >-
+          A metered posting always had a measurement record written in the same
+          transaction as itself, so its absence is a removal rather than an
+          omission. This is the answer the whole concept exists to make
+          sayable, and reporting it as an empty result is the defect.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/measurements.py
+    - surface: openapi
+      path: openapi/v1.json
+
 pricing_receipt_subject_type:
   kind: closed
   summary: >-

@@ -58,6 +58,15 @@ interface DetailSeed {
   pricing_provenance?: Record<string, unknown>;
   request_id?: string;
   idempotency_key?: string;
+  /**
+   * Whether the measured quantities can still be read (#271). Every seed below
+   * is a metered posting whose measurement record is present, so the default
+   * says so explicitly rather than being inferred from `usage_metrics` being
+   * empty — inferring it is exactly the mistake the field exists to end. The
+   * pruned and not-applicable scenarios arrive with the canonical scenario
+   * module in #281.
+   */
+  measurements_status?: UsageEventDetail["measurements_status"];
 }
 
 function makeDetail(seed: DetailSeed): UsageEventDetail {
@@ -77,6 +86,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     dim3: seed.dim3 ?? "",
     units: seed.units ?? null,
     usage_metrics: seed.usage_metrics ?? {},
+    measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},
     tags: seed.tags ?? null,
     metadata: seed.metadata ?? {},

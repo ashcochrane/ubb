@@ -217,6 +217,7 @@ from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
 from .usage_batch_response_results_item import UsageBatchResponseResultsItem
 from .usage_event_detail_out import UsageEventDetailOut
+from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
 from .usage_event_detail_out_tags_type_0 import UsageEventDetailOutTagsType0
@@ -458,6 +459,7 @@ __all__ = (
     "UsageBatchResponse",
     "UsageBatchResponseResultsItem",
     "UsageEventDetailOut",
+    "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutPricingProvenance",
     "UsageEventDetailOutTagsType0",

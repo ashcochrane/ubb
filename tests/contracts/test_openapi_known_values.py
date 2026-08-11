@@ -631,6 +631,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # not a change to this document at all.
     "unit": Published(2, KNOWN_VALUES),           # MeasurementIn/Out
     "source_shape_id": Published(3, KNOWN_VALUES),  # EventTypeIn/Out + update
+    # #271 — the first DERIVED fact the contract advertises. Its backend
+    # consumer is a serialiser rather than a model, which is the whole ruling:
+    # no column holds it, G10 proves so, and the census measures the module
+    # that computes it exactly as it measures any other consumer.
+    "measurements_status": Published(1, ENUM),    # UsageEventDetailOut
 }
 
 
@@ -744,6 +749,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # the opposite on the published contract.
     assert where["source_shape_id"] == {"EventTypeIn", "EventTypeOut",
                                         "EventTypeUpdateIn"}
+    # OUT ONLY, and that is the ruling rather than an omission: the status is
+    # derived and served, so a request schema naming it would be inviting a
+    # caller to state a fact UBB computes — the second encoding ADR-0006 §4
+    # refuses, arriving through the wire instead of through a column.
+    assert where["measurements_status"] == {"UsageEventDetailOut"}
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is

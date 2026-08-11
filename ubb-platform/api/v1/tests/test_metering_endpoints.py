@@ -281,6 +281,58 @@ class UsageEventDetailEndpointTest(TestCase):
         resp = self.http.get(f"/api/v1/metering/usage/{ev.id}", **self._auth())
         self.assertEqual(resp.status_code, 404)
 
+    def test_the_response_says_the_measurements_are_available(self):
+        """#271 — the status reaches the wire, on a really measured posting.
+
+        Recorded through the real path rather than assembled, so what the
+        response reports is the state the recording path actually leaves
+        behind.
+        """
+        from apps.metering.usage.models import Posting
+        from apps.metering.usage.services.usage_service import UsageService
+
+        ev = Posting.objects.get(
+            id=UsageService.record_usage(
+                self.tenant, self.customer, "r-avail", "i-avail",
+                usage_metrics={"input_tokens": 1200})["event_id"])
+
+        body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
+                             **self._auth()).json()
+        self.assertEqual(body["measurements_status"], "available")
+        self.assertEqual(body["usage_metrics"], {"input_tokens": 1200})
+
+    def test_a_pruned_payload_does_not_read_as_an_empty_one(self):
+        """**The defect this field exists to end**, stated on the response.
+
+        The quantities come back `{}` — that is the reading the whole ticket is
+        about — and the status beside them says the detail was removed rather
+        than absent. A consumer defaulting on the empty bag alone would render
+        this row as "no usage" to an end customer.
+        """
+        from apps.metering.usage.models import Posting, PostingMeasurement
+        from apps.metering.usage.services.usage_service import UsageService
+
+        ev = Posting.objects.get(
+            id=UsageService.record_usage(
+                self.tenant, self.customer, "r-pruned", "i-pruned",
+                usage_metrics={"input_tokens": 1200})["event_id"])
+        PostingMeasurement.objects.filter(posting=ev).delete()
+
+        body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
+                             **self._auth()).json()
+        self.assertEqual(body["usage_metrics"], {})
+        self.assertEqual(body["measurements_status"], "pruned")
+
+    def test_the_status_is_served_on_every_detail_response(self):
+        """It is required, not optional — there is no posting without an
+        answer, and an absent key would default exactly like an empty bag."""
+        from core.vocabulary import MEASUREMENTS_STATUS_VALUES
+
+        body = self.http.get(f"/api/v1/metering/usage/{self._event().id}",
+                             **self._auth()).json()
+        self.assertIn("measurements_status", body)
+        self.assertIn(body["measurements_status"], MEASUREMENTS_STATUS_VALUES)
+
 
 class MeteringTaskEndpointTest(TestCase):
     def setUp(self):

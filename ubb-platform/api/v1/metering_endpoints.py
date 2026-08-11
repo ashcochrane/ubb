@@ -272,11 +272,13 @@ def get_usage_event(request, event_id: UUID):
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id."""
     _product_check(request)
+    from apps.metering.usage.measurements import measurements_status_for
     from apps.metering.usage.models import Posting
 
     # select_related on the measurement child (#270): the response reads the
     # measured quantities through it, and the detail route is a single-row
-    # lookup where a second query buys nothing.
+    # lookup where a second query buys nothing. #271's status reads the same
+    # cached relation, so serving it costs no query either.
     e = get_object_or_404(
         Posting.objects.select_related("measurement"),
         id=event_id, tenant=request.auth.tenant)
@@ -294,6 +296,9 @@ def get_usage_event(request, event_id: UUID):
         "provider_cost_micros": e.provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
         "usage_metrics": e.usage_metrics or {},
+        # Derived, never stored (ADR-0006 §4) — computed here, at the
+        # serialiser, which is the only place §E5 permits it to exist.
+        "measurements_status": measurements_status_for(e),
         "pricing_provenance": e.pricing_provenance or {},
         "tags": e.tags,
         "metadata": e.metadata,

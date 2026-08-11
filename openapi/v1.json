@@ -6876,6 +6876,16 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "measurements_status": {
+            "enum": [
+              "available",
+              "pruned",
+              "not_applicable"
+            ],
+            "title": "Measurements Status",
+            "type": "string",
+            "x-ubb-concept": "measurements_status"
+          },
           "metadata": {
             "additionalProperties": true,
             "default": {},
@@ -6960,6 +6970,7 @@
           "idempotency_key",
           "provider_cost_micros",
           "billed_cost_micros",
+          "measurements_status",
           "effective_at",
           "created_at"
         ],

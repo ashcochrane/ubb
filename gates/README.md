@@ -190,8 +190,9 @@ as slice 0 proceeds rather than arriving pre-written.
 #203's six are the `Rate`/`RateCard` table inversion and
 `ubb_customer_sub_item` (G9), the two `markup_percentage_micros` columns where
 `_micros` means millionths of a percent (G11), and `Rate.pricing_model` (G12).
-G10 seeds nothing: no writable `tenant_posture` column exists, which is why it
-ships with a negative control rather than an entry. The one permanent exception
+G10 seeds nothing: no writable column exists for either fact it protects —
+`tenant_posture`, and `measurements_status` since #271 — which is why it ships
+with a negative control rather than an entry. The one permanent exception
 is `ConnectOAuthState`, and it is an exception to the *mechanism* — mechanical
 snake-casing produces a worse name than the one in place — not to the rule.
 
