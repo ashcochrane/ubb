@@ -288,12 +288,12 @@ class TestFrozenLineSnapshot:
     re-aggregate and diff the wrong indices on resume."""
 
     def _events(self, t, c):
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
-            ev = UsageEvent.objects.create(
+            ev = Posting.objects.create(
                 tenant=t, customer=c, request_id=f"r{i}", idempotency_key=f"i{i}",
                 provider_cost_micros=1, billed_cost_micros=micros, dim1=pid)
-            UsageEvent.objects.filter(id=ev.id).update(
+            Posting.objects.filter(id=ev.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
 
     def test_resume_after_group_by_flip_creates_zero_new_items(self):
@@ -354,11 +354,11 @@ class TestSnapshotDivergenceTripwire:
     postpaid.snapshot_divergence. Alert-only: the frozen lines still bill."""
 
     def _event(self, t, c, n, micros):
-        from apps.metering.usage.models import UsageEvent
-        ev = UsageEvent.objects.create(
+        from apps.metering.usage.models import Posting
+        ev = Posting.objects.create(
             tenant=t, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
             provider_cost_micros=1, billed_cost_micros=micros)
-        UsageEvent.objects.filter(id=ev.id).update(
+        Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
 
     def test_post_freeze_event_fires_divergence_and_keeps_frozen_lines(self, caplog):
@@ -468,14 +468,14 @@ class TestOwnerFirstKeying:
         assert rec.customer_id == biz.id and rec.status == "pushed"
 
     def test_close_task_then_direct_seat_push_one_row_per_owner_period(self):
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         from apps.billing.invoicing.tasks import close_postpaid_usage_periods, _prior_month
         t = _charge_ready_tenant()
         biz, seat = _pooled_business(t)
         start, end = _prior_month()
-        ev = UsageEvent.objects.create(tenant=t, customer=seat, request_id="r1",
+        ev = Posting.objects.create(tenant=t, customer=seat, request_id="r1",
             idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=1_000_000)
-        UsageEvent.objects.filter(id=ev.id).update(
+        Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
         with _stripe() as m:
             close_postpaid_usage_periods()

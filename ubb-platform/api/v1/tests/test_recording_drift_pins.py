@@ -32,7 +32,7 @@ question is whether a tenant's own request can reach that state, and that is
 answerable only where the request crosses.
 
 THE MECHANISM (``usage_service.py``). ``UsageService.record_usage`` is
-``@transaction.atomic``. The ``UsageEvent`` row is created inside an INNER
+``@transaction.atomic``. The ``Posting`` row is created inside an INNER
 atomic — a savepoint — and the live-counter debit is issued AFTER that
 savepoint commits while the OUTER transaction is still open. Everything from
 the debit to the outer commit is therefore a window in which the row can still
@@ -59,7 +59,7 @@ from django.test import Client, TestCase
 from api.v1.schemas import RecordUsageRequest
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
@@ -151,7 +151,7 @@ class RecordingDriftPinTest(TestCase):
         resp = self._record()
 
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(UsageEvent.objects.count(), 1)
+        self.assertEqual(Posting.objects.count(), 1)
         self.assertEqual(self._live_balance(), WALLET_MICROS - BILLED_MICROS)
 
     # -- Ruling A: the drift check ----------------------------------------
@@ -166,7 +166,7 @@ class RecordingDriftPinTest(TestCase):
         # record that is true — the row rolled back with the transaction.
         self.assertEqual(resp.status_code, 500)
         self.assertEqual(resp.json()["code"], "internal_error")
-        self.assertEqual(UsageEvent.objects.count(), 0)
+        self.assertEqual(Posting.objects.count(), 0)
         self.assertEqual(self._durable_balance(), WALLET_MICROS)
 
         # For the live counter it is not true. Redis has no rollback, and the
@@ -184,7 +184,7 @@ class RecordingDriftPinTest(TestCase):
         back."""
         self._record_crashing_after_the_counter_write(OVERSPEND_MICROS)
 
-        self.assertEqual(UsageEvent.objects.count(), 0)
+        self.assertEqual(Posting.objects.count(), 0)
         self.assertEqual(self._durable_balance(), WALLET_MICROS)
         self.assertEqual(self._live_balance(), WALLET_MICROS - OVERSPEND_MICROS)
         self.assertLess(self._live_balance(), 0, "the debit crossed the floor")

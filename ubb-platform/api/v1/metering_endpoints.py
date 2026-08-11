@@ -45,7 +45,7 @@ from apps.platform.audit.marker import records_audit
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
@@ -230,7 +230,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
     - episode_seq=N    → events tagged into customer-wide episode N.
 
     The array-containment filters ride the partial GIN index on
-    UsageEvent.stop_context (JSONB @>)."""
+    Posting.stop_context (JSONB @>)."""
     if past_limit is not None:
         qs = qs.filter(stop_context__isnull=not past_limit)
     if stop_scope is not None:
@@ -251,7 +251,7 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
 
-    qs = customer.usage_events.all()
+    qs = customer.postings.all()
     if tag_key and tag_value:
         qs = qs.filter(tags__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
@@ -272,9 +272,9 @@ def get_usage_event(request, event_id: UUID):
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id."""
     _product_check(request)
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    e = get_object_or_404(UsageEvent, id=event_id, tenant=request.auth.tenant)
+    e = get_object_or_404(Posting, id=event_id, tenant=request.auth.tenant)
     return 200, {
         "id": e.id,
         "request_id": e.request_id,
@@ -353,7 +353,7 @@ def get_task(request, task_id: UUID):
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
-    ubb_usage_event. One indexed row read plus its children."""
+    ubb_posting. One indexed row read plus its children."""
     _product_check(request)
 
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
@@ -572,7 +572,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             raise Problem("validation_error", "end_date must not precede start_date")
         if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
             raise Problem("validation_error", "date window must not exceed 366 days")
-    qs = UsageEvent.objects.filter(tenant=tenant)
+    qs = Posting.objects.filter(tenant=tenant)
 
     if start_date:
         qs = qs.filter(effective_at__gte=utc_day_start(start_date))

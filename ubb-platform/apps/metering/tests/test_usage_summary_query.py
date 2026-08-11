@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.queries import get_customer_usage_summary
 
 
@@ -23,7 +23,7 @@ class GetCustomerUsageSummaryTest(TestCase):
         self.start, self.end = _month_window()
 
     def _event(self, customer, key, *, event_type="", units=None, billed=0):
-        return UsageEvent.objects.create(
+        return Posting.objects.create(
             tenant=self.tenant, customer=customer,
             request_id=f"r-{key}", idempotency_key=f"i-{key}",
             event_type=event_type, units=units, billed_cost_micros=billed,
@@ -53,7 +53,7 @@ class GetCustomerUsageSummaryTest(TestCase):
 
     def test_excludes_events_outside_the_window(self):
         e = self._event(self.customer, "old", event_type="tokens", units=9, billed=900_000)
-        UsageEvent.objects.filter(id=e.id).update(
+        Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=70))
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
         self.assertEqual(s["event_count"], 0)

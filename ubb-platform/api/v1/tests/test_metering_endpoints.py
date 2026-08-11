@@ -244,10 +244,10 @@ class UsageEventDetailEndpointTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
 
     def _event(self, tenant=None, customer=None):
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         t = tenant or self.tenant
         c = customer or self.customer
-        return UsageEvent.objects.create(
+        return Posting.objects.create(
             tenant=t, customer=c,
             request_id=f"req-{c.external_id}", idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
@@ -340,7 +340,7 @@ class MeteringTaskEndpointTest(TestCase):
         """One-rule (#37): the 429 hard-stop is retired — the tipping event
         answers 200, LANDS, and the stop verdict rides the body while the
         server kills the task."""
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         from apps.platform.events.models import OutboxEvent
 
         task = self._task(limit=10_000_000)
@@ -372,7 +372,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(body["task_total_provider_cost_micros"], 11_000_000)
 
         # The tipping event landed; the task is killed; the signal fired once.
-        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 2)
+        self.assertEqual(Posting.objects.filter(tenant=self.tenant).count(), 2)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
         self.assertEqual(task.metadata.get("kill_reason"), "task_limit")
@@ -385,7 +385,7 @@ class MeteringTaskEndpointTest(TestCase):
         """One-rule (#37): the 409 run_not_active is retired — an event for a
         killed task answers 200, lands, bills, and counts; the body carries
         the task_not_active verdict."""
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
 
         task = self._task()
         TaskService.kill_task(task.id)
@@ -398,7 +398,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(body["stop_scope"], "task")
 
         # Landed and counted into both totals.
-        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 1)
+        self.assertEqual(Posting.objects.filter(tenant=self.tenant).count(), 1)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
         self.assertEqual(task.total_billed_cost_micros, 1_000_000)
@@ -543,7 +543,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
     def test_usage_analytics_multi_dimension_breakdown(self):
         from apps.platform.customers.models import Customer
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         # dimensions= now resolves through the registry (#128 rework); the
         # tag:region escape hatch is gone (tags are no longer groupable), so
         # this ports "region" to a declared dimension bound to dim4.
@@ -551,7 +551,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim4", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
             provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
             dim2="svcA", dim3="ag1", dim4="us",
@@ -587,10 +587,10 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 422)
 
     def test_usage_analytics_breakdowns_include_provider_cost(self):
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
             provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
         )
@@ -727,12 +727,12 @@ class UsageTimeseriesEndpointTest(TestCase):
         import datetime
         from django.utils import timezone
         from apps.platform.customers.models import Customer
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         for i, day in enumerate([1, 2, 3]):
-            e = UsageEvent.objects.create(tenant=self.tenant, customer=c, request_id=f"r{i}",
+            e = Posting.objects.create(tenant=self.tenant, customer=c, request_id=f"r{i}",
                 idempotency_key=f"i{i}", provider_cost_micros=100_000, billed_cost_micros=150_000)
-            UsageEvent.objects.filter(id=e.id).update(
+            Posting.objects.filter(id=e.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, day, 12, 0)))
         resp = self.client.get(
             "/api/v1/metering/analytics/usage/timeseries?customer_id=%s&granularity=day&start_date=2026-06-01&end_date=2026-07-01" % c.id,
@@ -757,7 +757,7 @@ class DimensionBreakdownReconciliationTest(TestCase):
     """
 
     def setUp(self):
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
 
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -769,14 +769,14 @@ class DimensionBreakdownReconciliationTest(TestCase):
             tenant=self.tenant, external_id="c_reconcile"
         )
         # Event 1: has a service tag -> dim2 = "svcA"
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_1", idempotency_key="i_rec_1",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
             dim2="svcA",
         )
         # Event 2: NO service tag -> dim2 is empty string (the default)
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_2", idempotency_key="i_rec_2",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
@@ -852,8 +852,8 @@ class RecordUsageCurrencyTest(TestCase):
         resp = self._post(self._body("cur_mismatch", currency="eur"))
         self.assertEqual(resp.status_code, 422, resp.content)
         self.assertIn("currency mismatch", resp.json()["detail"])
-        from apps.metering.usage.models import UsageEvent
-        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant).count(), 0)
+        from apps.metering.usage.models import Posting
+        self.assertEqual(Posting.objects.filter(tenant=self.tenant).count(), 0)
 
     def test_matching_currency_accepted(self):
         resp = self._post(self._body("cur_match", currency="usd"))
@@ -862,8 +862,8 @@ class RecordUsageCurrencyTest(TestCase):
     def test_currency_compare_is_case_insensitive_and_stored_lowercase(self):
         resp = self._post(self._body("cur_case", currency="USD"))
         self.assertEqual(resp.status_code, 200, resp.content)
-        from apps.metering.usage.models import UsageEvent
-        event = UsageEvent.objects.get(id=resp.json()["event_id"])
+        from apps.metering.usage.models import Posting
+        event = Posting.objects.get(id=resp.json()["event_id"])
         self.assertEqual(event.currency, "usd")
 
     def test_omitted_currency_defaults_to_tenant_currency(self):
@@ -883,8 +883,8 @@ class RecordUsageCurrencyTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {eur_key}",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
-        from apps.metering.usage.models import UsageEvent
-        event = UsageEvent.objects.get(id=resp.json()["event_id"])
+        from apps.metering.usage.models import Posting
+        event = Posting.objects.get(id=resp.json()["event_id"])
         self.assertEqual(event.currency, "eur")
 
     def test_batch_item_currency_mismatch_is_per_item_validation_error(self):

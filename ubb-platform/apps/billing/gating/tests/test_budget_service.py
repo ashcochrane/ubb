@@ -20,10 +20,10 @@ class TestBudgetService:
         return c
 
     def _usage(self, c, billed, n):
-        # Mirror production: the UsageEvent is durably committed BEFORE budget_incr runs,
+        # Mirror production: the Posting is durably committed BEFORE budget_incr runs,
         # so a counter rebuild-on-miss reconstructs to the total that already includes it.
-        from apps.metering.usage.models import UsageEvent
-        UsageEvent.objects.create(
+        from apps.metering.usage.models import Posting
+        Posting.objects.create(
             tenant=c.tenant, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
 

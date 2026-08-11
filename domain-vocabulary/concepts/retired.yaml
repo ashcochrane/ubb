@@ -74,7 +74,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,527 of 1,875 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,528 of 1,877 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -87,7 +87,10 @@ measurement_key:
     # this is re-taken rather than inherited. #267 published the Event Type
     # catalogue — a router, its tests and 43 generated SDK modules — so the
     # swept set grew from 1,483/1,831, and the substantive claim above did not
-    # move by a single occurrence. Expect the denominator to move on any commit
+    # move by a single occurrence. #269 renamed the usage row to the Posting and
+    # added two tracked files, one of them a migration the sweep excludes, so
+    # the denominator moved unevenly (1,527/1,875 → 1,528/1,877) and the count
+    # again did not. Expect the denominator to move on any commit
     # that adds a tracked file; that half is mechanical. If `75 files, 325
     # occurrences` ever moves, somebody WROTE the word — find it before
     # rewriting the number, because rewriting it is how the sentence this

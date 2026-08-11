@@ -50,7 +50,7 @@ def close_tenant_billing_periods():
     retry_backoff=True,
 )
 def reconcile_tenant_billing_periods():
-    """Reconcile all open billing periods against actual UsageEvent data.
+    """Reconcile all open billing periods against actual Posting data.
 
     Catches any accumulate_usage drift from transient failures.
     Runs hourly — fast no-op when totals match.

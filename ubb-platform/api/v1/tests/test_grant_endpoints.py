@@ -12,7 +12,7 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import (
     CreditGrant, GrantAllocation, Wallet, WalletTransaction,
 )
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -248,8 +248,8 @@ class RefundLotAwareTest(TestCase):
         return resp.json()["id"]
 
     def _spend(self, cost):
-        """Record a real UsageEvent + drive the live drawdown handler."""
-        ev = UsageEvent.objects.create(
+        """Record a real Posting + drive the live drawdown handler."""
+        ev = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id=f"req-{uuid.uuid4()}",
             idempotency_key=f"uek-{uuid.uuid4()}",

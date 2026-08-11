@@ -27,7 +27,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import (
@@ -298,7 +298,7 @@ class TestAnalyticsOnly:
         # arrives and adds one.
         assert {k: v for k, v in grouped.items() if k != "event_id"} \
             == {k: v for k, v in ungrouped.items() if k != "event_id"}
-        rows = [UsageEvent.objects.get(id=result["event_id"])
+        rows = [Posting.objects.get(id=result["event_id"])
                 for result in (ungrouped, grouped)]
         assert [row.event_type for row in rows] == [event_type.key] * 2
         assert len({row.provider_cost_micros for row in rows}) == 1
@@ -317,7 +317,7 @@ class TestAnalyticsOnly:
                                            provider_cost_micros=1_000_000)
 
         assert MeasurementConcept.objects.count() == 0
-        assert UsageEvent.objects.filter(id=result["event_id"]).exists()
+        assert Posting.objects.filter(id=result["event_id"]).exists()
 
 
 @pytest.mark.django_db

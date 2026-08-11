@@ -1,6 +1,6 @@
 """Task 16: per-task-type unit economics — the number that sets a price.
 
-Aggregates ubb_task, never ubb_usage_event: per-unit costs are already
+Aggregates ubb_task, never ubb_posting: per-unit costs are already
 materialized by the accumulate primitive, with a subtask's spend rolled into
 its parent. GET /metering/analytics/tasks reports run count, mean, p95, and
 limit-hit count per KIND of job.

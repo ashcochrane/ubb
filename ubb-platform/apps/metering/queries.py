@@ -52,12 +52,12 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
     tenant platform-fee reconciliation, which accrues fees in the ARRIVAL
     period to match the wall-clock live accumulator.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
     if basis not in ("effective", "arrival"):
         raise ValueError("basis must be 'effective' or 'arrival'")
     field = "created_at" if basis == "arrival" else "effective_at"
-    totals = UsageEvent.objects.filter(
+    totals = Posting.objects.filter(
         tenant_id=tenant_id,
         **{f"{field}__gte": utc_day_start(period_start),
            f"{field}__lt": utc_day_start(period_end)},
@@ -77,9 +77,9 @@ def get_usage_event_cost(usage_event_id: str, tenant_id: str | None = None) -> i
 
     If tenant_id is provided, only returns cost for events belonging to that tenant.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    qs = UsageEvent.objects.filter(id=usage_event_id)
+    qs = Posting.objects.filter(id=usage_event_id)
     if tenant_id is not None:
         qs = qs.filter(tenant_id=tenant_id)
     event = qs.values_list("billed_cost_micros", flat=True).first()
@@ -102,9 +102,9 @@ def get_revenue_analytics(
     list of dicts with day, provider_cost_micros, billed_cost_micros,
     event_count.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+    qs = Posting.objects.filter(tenant_id=tenant_id)
 
     if start_date:
         qs = qs.filter(effective_at__gte=utc_day_start(start_date))
@@ -155,9 +155,9 @@ def get_customer_usage_for_period(
     Returns list of dicts with billed_cost_micros, provider_cost_micros.
     Used by referrals reconciliation.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    events = UsageEvent.objects.filter(
+    events = Posting.objects.filter(
         tenant_id=tenant_id,
         customer_id=customer_id,
         effective_at__gte=period_start,
@@ -186,7 +186,7 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
     usage of its own. Rows sort largest-billed first (ties by event_type);
     NULL units sum as 0. Sargable half-open day window via core.time_windows.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
     from apps.platform.customers.models import Customer
 
     customer_ids = [customer_id]
@@ -199,7 +199,7 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
             return {"total_units": 0, "total_billed_micros": 0,
                     "event_count": 0, "metrics": []}
 
-    rows = (UsageEvent.objects.filter(
+    rows = (Posting.objects.filter(
         tenant_id=tenant_id, customer_id__in=customer_ids,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
@@ -223,8 +223,8 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
 
 def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> dict:
     """Provider + billed cost totals for one customer over [start, end)."""
-    from apps.metering.usage.models import UsageEvent
-    agg = UsageEvent.objects.filter(
+    from apps.metering.usage.models import Posting
+    agg = Posting.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
@@ -241,15 +241,15 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
 
 def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_date) -> int:
     """Σ billed_cost_micros over [start, end) for every event whose pinned
-    billing owner is ``billing_owner_id`` (Stage D ``UsageEvent.billing_owner_id``).
+    billing owner is ``billing_owner_id`` (Stage D ``Posting.billing_owner_id``).
 
     This OWNER-aggregates a pooled business across all its seats (each seat's
     events pin the business as billing owner) and reduces to a single seat for
     an allocated/individual owner (whose events pin themselves). It is the
     durable source of truth the Tier-2 postpaid live-spend counter MAX-merges
     toward (apps.billing.gating.services.live_counter)."""
-    from apps.metering.usage.models import UsageEvent
-    return UsageEvent.objects.filter(
+    from apps.metering.usage.models import Posting
+    return Posting.objects.filter(
         tenant_id=tenant_id, billing_owner_id=billing_owner_id,
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
@@ -264,10 +264,10 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
     markup_micros, event_count, and optionally dimension (when group_by is set).
     """
     from django.db.models.functions import TruncHour
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
     trunc = TruncHour if granularity == "hour" else TruncDate
-    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+    qs = Posting.objects.filter(tenant_id=tenant_id)
     if customer_id:
         qs = qs.filter(customer_id=customer_id)
     if start_date:
@@ -305,8 +305,8 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
 
 def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
     """Per-customer provider + billed totals over [start, end)."""
-    from apps.metering.usage.models import UsageEvent
-    rows = (UsageEvent.objects.filter(
+    from apps.metering.usage.models import Posting
+    rows = (Posting.objects.filter(
         tenant_id=tenant_id,
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
@@ -328,8 +328,8 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     OR tag_key for tags->>key.
     Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
     """
-    from apps.metering.usage.models import UsageEvent
-    qs = UsageEvent.objects.filter(tenant_id=tenant_id)
+    from apps.metering.usage.models import Posting
+    qs = Posting.objects.filter(tenant_id=tenant_id)
     if start_date:
         qs = qs.filter(effective_at__gte=utc_day_start(start_date))
     if end_date:
@@ -373,13 +373,13 @@ def get_usage_event_effective_at(usage_event_id) -> datetime | None:
     validated BEFORE the DB query so a legacy id (e.g. "evt-1" in old
     fixtures) can never raise DataError inside a caller's atomic block.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
     try:
         uuid.UUID(str(usage_event_id))
     except (ValueError, TypeError):
         return None
-    return UsageEvent.objects.filter(id=usage_event_id).values_list(
+    return Posting.objects.filter(id=usage_event_id).values_list(
         "effective_at", flat=True
     ).first()
 
@@ -392,10 +392,10 @@ def get_customer_ids_with_usage(tenant_id, period_start: date, period_end: date)
     both want every customer that emitted events). tenant_id may be a single
     tenant id or a list/tuple/set of tenant ids (one query either way).
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
     tenant_ids = tenant_id if isinstance(tenant_id, (list, tuple, set)) else [tenant_id]
-    return list(UsageEvent.objects.filter(
+    return list(Posting.objects.filter(
         tenant_id__in=list(tenant_ids),
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
@@ -411,9 +411,9 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
     0). SQL GROUP BY pushdown — the trailing .order_by() clears the model's
     default ordering so it cannot poison the GROUP BY.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    rows = (UsageEvent.objects.filter(
+    rows = (Posting.objects.filter(
         tenant_id=tenant_id, customer_id__in=list(customer_ids),
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
@@ -433,9 +433,9 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
     into "(other)" post-query.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
-    qs = UsageEvent.objects.filter(
+    qs = Posting.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
@@ -503,12 +503,12 @@ def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
     {"id", "billed_cost_micros", "customer_id", "billing_owner_id"}.
     Server-side cursor via .iterator() — safe for large windows.
     """
-    from apps.metering.usage.models import UsageEvent
+    from apps.metering.usage.models import Posting
 
     if basis not in ("effective", "created"):
         raise ValueError("basis must be 'effective' or 'created'")
     field = "created_at" if basis == "created" else "effective_at"
-    return UsageEvent.objects.filter(
+    return Posting.objects.filter(
         tenant_id=tenant_id, billed_cost_micros__gt=0,
         **{f"{field}__gte": since, f"{field}__lt": before},
     ).values("id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()

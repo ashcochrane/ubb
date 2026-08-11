@@ -2,7 +2,7 @@ import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 
 
@@ -19,14 +19,14 @@ class TestDimensionInheritance:
 
     def _record(self, t, c, task, **kw):
         # record_usage returns a plain result dict (_result()), not the ORM
-        # row — fetch the persisted UsageEvent the same way
+        # row — fetch the persisted Posting the same way
         # test_attribution_columns.py does, so attribute access below reads
         # the durable columns, not the response envelope.
         r = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key=kw.pop("key", "k1"),
             provider="aws_textract", event_type="ocr_page",
             provider_cost_micros=1000, task_id=task.id, **kw)
-        return UsageEvent.objects.get(id=r["event_id"])
+        return Posting.objects.get(id=r["event_id"])
 
     def test_event_inherits_task_type_from_the_root(self):
         t, c, parent, sub = self._fixture()
@@ -56,7 +56,7 @@ class TestDimensionInheritance:
         r = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1)
-        e = UsageEvent.objects.get(id=r["event_id"])
+        e = Posting.objects.get(id=r["event_id"])
         assert e.task_type == "" and e.dim1 == ""
 
     def test_product_id_is_gone_from_the_record_usage_surface(self):
@@ -90,5 +90,5 @@ class TestDimensionInheritance:
             provider="openai", event_type="completion", provider_cost_micros=1,
             task_id=parent.id,
             dimension_slots={"dim1": "declared-value"})
-        e = UsageEvent.objects.get(id=r["event_id"])
+        e = Posting.objects.get(id=r["event_id"])
         assert e.dim1 == "declared-value"

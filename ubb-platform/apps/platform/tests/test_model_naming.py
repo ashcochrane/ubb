@@ -480,7 +480,7 @@ def test_walker_actually_sees_the_model_layer():
         assert expected in apps_seen, f"walker visited no model in `{expected}`"
 
     seen = {fact.name for fact in _FACTS}
-    for expected in ("Tenant", "Task", "UsageEvent", "Wallet"):
+    for expected in ("Tenant", "Task", "Posting", "Wallet"):
         assert expected in seen, f"walker did not visit {expected}"
 
 

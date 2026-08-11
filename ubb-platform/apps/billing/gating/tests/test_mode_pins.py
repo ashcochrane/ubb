@@ -18,7 +18,7 @@ from apps.billing.gating.models import StopSignalState
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
@@ -95,7 +95,7 @@ class TestOffIsByteForBytePreEnforcement:
         assert r.status_code == 200
         body = r.json()
         assert body["stop"] is False and body["stop_reason"] is None
-        ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
+        ev = Posting.objects.get(tenant=t, idempotency_key="k1")
         assert ev.stop_context is None                            # no tagging
         assert Door.balance(c.id) is None                         # no counter
         assert Door.stop_reason(c.id) is None                     # no flag

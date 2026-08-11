@@ -471,7 +471,7 @@ def test_the_registry_walk_actually_saw_the_held_name():
     """
     assert len(_MODELS_SEEN) > 50, f"only walked {len(_MODELS_SEEN)} models"
     for expected in ("event_types.QuarantinedKey", "event_types.EventType",
-                     "event_types.Measurement", "usage.UsageEvent"):
+                     "event_types.Measurement", "usage.Posting"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
     assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
     assert len(_local_fields(QuarantinedKey)) >= 10, (

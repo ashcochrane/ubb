@@ -5,7 +5,7 @@ from dataclasses import asdict
 import pytest
 from django.utils import timezone
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
@@ -15,7 +15,7 @@ from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
 
 @pytest.mark.django_db
 def test_payload_fast_path_buckets_by_effective_at_without_db_read():
-    """F4.2 fast path: the payload's effective_at wins — no UsageEvent row is
+    """F4.2 fast path: the payload's effective_at wins — no Posting row is
     needed at all (event_id deliberately bogus so the fallback getter would
     return None and the old code would have bucketed into the CURRENT month)."""
     t = Tenant.objects.create(name="T", products=["metering", "billing"])
@@ -43,10 +43,10 @@ def test_unparseable_payload_effective_at_falls_back_to_getter():
     c = Customer.objects.create(tenant=t, external_id="c1")
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
-    e = UsageEvent.objects.create(
+    e = Posting.objects.create(
         tenant=t, customer=c, request_id="r1", idempotency_key="i1",
         provider_cost_micros=1, billed_cost_micros=2)
-    UsageEvent.objects.filter(id=e.id).update(effective_at=backdated)
+    Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
     handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(
         tenant_id=t.id, customer_id=c.id,
@@ -73,10 +73,10 @@ def test_reconcile_covers_two_months_back():
     two_back = prev_start - datetime.timedelta(days=1)
     two_back_start = two_back.date().replace(day=1)
 
-    e = UsageEvent.objects.create(
+    e = Posting.objects.create(
         tenant=t, customer=c, request_id="r1", idempotency_key="i1",
         provider_cost_micros=111, billed_cost_micros=222)
-    UsageEvent.objects.filter(id=e.id).update(effective_at=two_back)
+    Posting.objects.filter(id=e.id).update(effective_at=two_back)
 
     reconcile_cost_accumulators()
 
@@ -89,7 +89,7 @@ def test_reconcile_covers_two_months_back():
 
 @pytest.mark.django_db
 def test_backdated_event_buckets_by_effective_at_not_wallclock():
-    """A backdated UsageEvent must land in the prior-month accumulator, not today's."""
+    """A backdated Posting must land in the prior-month accumulator, not today's."""
     t = Tenant.objects.create(name="T", products=["metering", "billing"])
     c = Customer.objects.create(tenant=t, external_id="c1")
 
@@ -97,12 +97,12 @@ def test_backdated_event_buckets_by_effective_at_not_wallclock():
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
 
-    e = UsageEvent.objects.create(
+    e = Posting.objects.create(
         tenant=t, customer=c, request_id="r1", idempotency_key="i1",
         provider_cost_micros=800_000, billed_cost_micros=1_000_000,
     )
     # auto_now_add blocks direct assignment; bypass via queryset .update()
-    UsageEvent.objects.filter(id=e.id).update(effective_at=backdated)
+    Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
     handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(
         tenant_id=t.id,
@@ -128,15 +128,15 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     t = Tenant.objects.create(name="T2", products=["metering", "billing"])
     c = Customer.objects.create(tenant=t, external_id="c2")
 
-    # Create a backdated UsageEvent in the prior calendar month
+    # Create a backdated Posting in the prior calendar month
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
 
-    e = UsageEvent.objects.create(
+    e = Posting.objects.create(
         tenant=t, customer=c, request_id="r2", idempotency_key="i2",
         provider_cost_micros=500_000, billed_cost_micros=700_000,
     )
-    UsageEvent.objects.filter(id=e.id).update(effective_at=backdated)
+    Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
     # Deliberately create a *wrong* accumulator (simulates the old wall-clock bug
     # having placed the event in the current month instead of prior month).

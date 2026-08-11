@@ -202,15 +202,15 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
         #    across its seats). effective_at is auto_now_add ("now" == June 2026),
         #    so nudge it into the closed June window via a post-create update.
         #    This usage will be pushed to a standalone invoice (Wave 4.5 C1).
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
         for seat, key, billed, provider in [
             (seat1, "u-alice", 4_000_000, 1_000_000),
             (seat2, "u-bob", 3_000_000, 800_000),
         ]:
-            ev = UsageEvent.objects.create(
+            ev = Posting.objects.create(
                 tenant=tenant, customer=seat, request_id=key, idempotency_key=key,
                 provider_cost_micros=provider, billed_cost_micros=billed)
-            UsageEvent.objects.filter(id=ev.id).update(effective_at=USAGE_AT)
+            Posting.objects.filter(id=ev.id).update(effective_at=USAGE_AT)
 
         # Push the closed June period for the BUSINESS. Wave 4.5 C1: usage is ALWAYS
         # routed to its own standalone finalized invoice -- the InvoiceItem carries NO

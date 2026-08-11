@@ -1,7 +1,7 @@
 """The stop-context builder (#41, spec §H) — the past-limit tagging rules.
 
 One function turns what the recording transaction already knows into the
-immutable ``UsageEvent.stop_context`` array: the accumulate verdicts (unit
+immutable ``Posting.stop_context`` array: the accumulate verdicts (unit
 scope), the unit's kill metadata (late events), and the owner's durable
 stop-signal state (customer scope, read through the ``apps.billing.queries``
 contract — ADR-001). Both ingest paths — sync record and async settle — call

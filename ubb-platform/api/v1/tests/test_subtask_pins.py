@@ -24,7 +24,7 @@ from django.test import TestCase, TransactionTestCase, Client
 
 from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
@@ -101,7 +101,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         # The tipping event answers 200 and is durably recorded + billed.
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        event = UsageEvent.objects.get(id=body["event_id"])
+        event = Posting.objects.get(id=body["event_id"])
         self.assertEqual(event.billed_cost_micros, 9_000_000)
         self.assertEqual(event.task_id, sub.id)
 

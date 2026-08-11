@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.queries import (
     get_period_totals, get_customer_usage_for_period,
     get_usage_event_cost, get_revenue_analytics,
@@ -21,12 +21,12 @@ class GetPeriodTotalsTest(TestCase):
             self.end = self.start.replace(month=self.start.month + 1, day=1)
 
     def test_returns_totals_for_period(self):
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_000_000,
         )
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r2", idempotency_key="i2",
             billed_cost_micros=2_000_000,
@@ -36,7 +36,7 @@ class GetPeriodTotalsTest(TestCase):
         self.assertEqual(totals["event_count"], 2)
 
     def test_sums_billed_cost(self):
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_500_000,
@@ -52,7 +52,7 @@ class GetPeriodTotalsTest(TestCase):
     def test_filters_by_tenant(self):
         other_tenant = Tenant.objects.create(name="Other")
         other_customer = Customer.objects.create(tenant=other_tenant, external_id="c2")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=other_tenant, customer=other_customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=5_000_000,
         )
@@ -64,12 +64,12 @@ class GetPeriodTotalsTest(TestCase):
         """basis="arrival" counts a backdated event by WHEN IT ARRIVED;
         basis="effective" (default) excludes it from the current period."""
         import datetime
-        e = UsageEvent.objects.create(
+        e = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
         # Backdate the effective time out of the window; created_at stays now.
-        UsageEvent.objects.filter(id=e.id).update(
+        Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=90))
         effective = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(effective["event_count"], 0)
@@ -94,7 +94,7 @@ class GetCustomerUsageForPeriodTest(TestCase):
             self.end = self.start.replace(month=self.start.month + 1, day=1)
 
     def test_returns_per_event_data(self):
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_200_000,
@@ -115,7 +115,7 @@ class GetCustomerUsageForPeriodTest(TestCase):
 
     def test_filters_by_customer(self):
         other_customer = Customer.objects.create(tenant=self.tenant, external_id="c2")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=other_customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=5_000_000,
         )
@@ -131,14 +131,14 @@ class GetUsageEventCostTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
     def test_returns_billed_cost(self):
-        event = UsageEvent.objects.create(
+        event = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
         self.assertEqual(get_usage_event_cost(event.id), 1_000_000)
 
     def test_prefers_billed_cost(self):
-        event = UsageEvent.objects.create(
+        event = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_500_000,
@@ -156,13 +156,13 @@ class GetRevenueAnalyticsTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
     def test_returns_totals_and_daily(self):
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_200_000,
             provider_cost_micros=800_000,
         )
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r2", idempotency_key="i2",
             billed_cost_micros=2_500_000,
@@ -186,7 +186,7 @@ class GetRevenueAnalyticsTest(TestCase):
         from datetime import timedelta
         today = timezone.now().date()
         yesterday = today - timedelta(days=1)
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_000_000, provider_cost_micros=500_000,
@@ -198,7 +198,7 @@ class GetRevenueAnalyticsTest(TestCase):
         self.assertEqual(result["total_billed_cost_micros"], 0)
 
     def test_markup_equals_billed_when_provider_cost_zero(self):
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_000_000,
@@ -217,11 +217,11 @@ class GetCostTotalsTest(TestCase):
         self.start = timezone.now().date().replace(day=1)
         self.end = (self.start.replace(month=self.start.month % 12 + 1, day=1)
                     if self.start.month < 12 else self.start.replace(year=self.start.year + 1, month=1, day=1))
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r1", idempotency_key="i1",
             provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai",
             dim1="chat", tags={"model": "gpt-4"})
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r2", idempotency_key="i2",
             provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai",
             dim1="chat", tags={"model": "gpt-4"})
@@ -255,7 +255,7 @@ class GetCostTotalsTest(TestCase):
 
 
 class CrossProductReadContractTest(TestCase):
-    """F3.2 contract functions: the only approved cross-product UsageEvent reads."""
+    """F3.2 contract functions: the only approved cross-product Posting reads."""
 
     def setUp(self):
         self.tenant = Tenant.objects.create(name="T")
@@ -267,7 +267,7 @@ class CrossProductReadContractTest(TestCase):
 
     def test_effective_at_returned(self):
         from apps.metering.queries import get_usage_event_effective_at
-        ev = UsageEvent.objects.create(
+        ev = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=1)
         self.assertEqual(get_usage_event_effective_at(ev.id), ev.effective_at)
@@ -282,11 +282,11 @@ class CrossProductReadContractTest(TestCase):
         from apps.metering.queries import get_customer_ids_with_usage
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         # zero-billed usage still counts (existence-based, no billed filter)
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1", billed_cost_micros=0)
-        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+        Posting.objects.create(tenant=self.tenant, customer=other,
                                   request_id="r2", idempotency_key="i2", billed_cost_micros=5)
-        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+        Posting.objects.create(tenant=self.tenant, customer=other,
                                   request_id="r3", idempotency_key="i3", billed_cost_micros=5)
         single = get_customer_ids_with_usage(self.tenant.id, self.start, self.end)
         listed = get_customer_ids_with_usage([self.tenant.id], self.start, self.end)
@@ -297,13 +297,13 @@ class CrossProductReadContractTest(TestCase):
         from apps.metering.queries import get_billed_totals_by_customer
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         excluded = Customer.objects.create(tenant=self.tenant, external_id="c3")
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1", billed_cost_micros=100)
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2", billed_cost_micros=200)
-        UsageEvent.objects.create(tenant=self.tenant, customer=other,
+        Posting.objects.create(tenant=self.tenant, customer=other,
                                   request_id="r3", idempotency_key="i3", billed_cost_micros=0)
-        UsageEvent.objects.create(tenant=self.tenant, customer=excluded,
+        Posting.objects.create(tenant=self.tenant, customer=excluded,
                                   request_id="r4", idempotency_key="i4", billed_cost_micros=7)
         totals = get_billed_totals_by_customer(
             self.tenant.id, [self.customer.id, other.id], self.start, self.end)
@@ -311,13 +311,13 @@ class CrossProductReadContractTest(TestCase):
 
     def test_billed_breakdown_tag_empty_string_and_missing_merge_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1",
                                   billed_cost_micros=100, tags={"seat": "alice"})
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2",
                                   billed_cost_micros=20, tags={"seat": ""})
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r3", idempotency_key="i3",
                                   billed_cost_micros=3, tags=None)
         pairs = get_customer_billed_breakdown(
@@ -326,10 +326,10 @@ class CrossProductReadContractTest(TestCase):
 
     def test_billed_breakdown_dim1_empty_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1",
                                   billed_cost_micros=100, dim1="chat")
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2",
                                   billed_cost_micros=20, dim1="")
         pairs = get_customer_billed_breakdown(
@@ -340,10 +340,10 @@ class CrossProductReadContractTest(TestCase):
         from datetime import timedelta
         from apps.metering.queries import iter_billable_usage_events
         now = timezone.now()
-        ev = UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        ev = Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                        request_id="r1", idempotency_key="i1",
                                        billed_cost_micros=500)
-        UsageEvent.objects.create(tenant=self.tenant, customer=self.customer,
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2",
                                   billed_cost_micros=0)  # not billable -> excluded
         rows = list(iter_billable_usage_events(
@@ -353,7 +353,7 @@ class CrossProductReadContractTest(TestCase):
                                    "customer_id": self.customer.id,
                                    "billing_owner_id": ev.billing_owner_id})
         # basis="created": move effective_at out of the window; created_at still matches.
-        UsageEvent.objects.filter(id=ev.id).update(effective_at=now - timedelta(days=30))
+        Posting.objects.filter(id=ev.id).update(effective_at=now - timedelta(days=30))
         window = (now - timedelta(hours=1), now + timedelta(hours=1))
         self.assertEqual(list(iter_billable_usage_events(
             self.tenant.id, *window, basis="effective")), [])

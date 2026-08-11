@@ -49,7 +49,7 @@ from apps.billing.gating.tasks import (
 )
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
@@ -137,7 +137,7 @@ class TestPin9RecordingWritesNoRedisKeys:
         assert Door.balance(c.id) is None                       # no counter
         assert Door.stop_reason(c.id) is None                   # no flag
         # Both events landed and billed — nothing was reserved anywhere.
-        assert UsageEvent.objects.filter(tenant=t).count() == 2
+        assert Posting.objects.filter(tenant=t).count() == 2
 
     def test_postpaid_recording_writes_no_livespend(self):
         t = _tenant(mode="postpaid", maintenance=False)
@@ -152,7 +152,7 @@ class TestPin9RecordingWritesNoRedisKeys:
         r = _record(Client(), _auth(t), c, billed=8_000_000, key="k1")
         assert r.status_code == 200
         assert r.json()["stop"] is False          # no record-time detection
-        ev = UsageEvent.objects.get(tenant=t, idempotency_key="k1")
+        ev = Posting.objects.get(tenant=t, idempotency_key="k1")
         assert ev.billed_cost_micros == 8_000_000  # lands and bills
         assert Door.balance(c.id) is None
         assert not _events("stop.fired").exists()

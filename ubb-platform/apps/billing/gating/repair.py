@@ -10,7 +10,7 @@ hourly reconcile beat; enforcing tenants only).
 THE CAUSE, per Ruling A2 (#233, slice 1 / #192), quoted: "the drift CAN occur
 on the surviving path... The repair's stated cause is therefore incomplete:
 the reservation is one cause, not the cause."
-``UsageService.record_usage`` is ``@transaction.atomic``; the ``UsageEvent``
+``UsageService.record_usage`` is ``@transaction.atomic``; the ``Posting``
 row is created inside an INNER atomic — a savepoint — and the live-counter
 debit is issued AFTER that savepoint commits while the OUTER transaction is
 still open. Everything from the debit to the outer commit (stop-context

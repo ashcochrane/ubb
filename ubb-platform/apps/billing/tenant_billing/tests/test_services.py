@@ -24,7 +24,7 @@ class TestProductFeeCalculation:
             period_end=date(2026, 2, 1),
             status="open",
             total_usage_cost_micros=100_000_000,  # $100 usage
-            event_count=1,  # Prevents reconcile from zeroing cost (no UsageEvents in test DB)
+            event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
         TenantBillingService.close_period(period)
@@ -48,7 +48,7 @@ class TestProductFeeCalculation:
             period_end=date(2026, 2, 1),
             status="open",
             total_usage_cost_micros=100_000_000,  # $100 usage
-            event_count=1,  # Prevents reconcile from zeroing cost (no UsageEvents in test DB)
+            event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
         TenantBillingService.close_period(period)
@@ -75,7 +75,7 @@ class TestProductFeeCalculation:
             period_end=date(2026, 2, 1),
             status="open",
             total_usage_cost_micros=200_000_000,  # $200 usage
-            event_count=1,  # Prevents reconcile from zeroing cost (no UsageEvents in test DB)
+            event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
         TenantBillingService.close_period(period)
@@ -99,7 +99,7 @@ class TestProductFeeCalculation:
             period_end=date(2026, 2, 1),
             status="open",
             total_usage_cost_micros=100_000_000,
-            event_count=1,  # Prevents reconcile from zeroing cost (no UsageEvents in test DB)
+            event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
         TenantBillingService.close_period(period)

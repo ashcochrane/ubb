@@ -34,7 +34,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 
 
 def _post(api, path, body):
@@ -86,8 +86,8 @@ COST_UNATTR = 300
 
 
 def _force_day(event_id, day):
-    """Pin an immutable UsageEvent onto a specific calendar day (UTC noon)."""
-    UsageEvent.objects.filter(id=event_id).update(
+    """Pin an immutable Posting onto a specific calendar day (UTC noon)."""
+    Posting.objects.filter(id=event_id).update(
         effective_at=timezone.make_aware(dt.datetime(2026, 1, day, 12, 0, 0)))
 
 

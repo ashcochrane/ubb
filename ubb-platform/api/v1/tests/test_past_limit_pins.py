@@ -22,7 +22,7 @@ from django.test import Client, TestCase
 
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
@@ -119,9 +119,9 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         # The ack carries the itemized array; the stored row matches it.
         tip_ctx, late_ctx = tip["stop_context"], late["stop_context"]
         self.assertEqual(
-            UsageEvent.objects.get(id=tip["event_id"]).stop_context, tip_ctx)
+            Posting.objects.get(id=tip["event_id"]).stop_context, tip_ctx)
         self.assertEqual(
-            UsageEvent.objects.get(id=late["event_id"]).stop_context, late_ctx)
+            Posting.objects.get(id=late["event_id"]).stop_context, late_ctx)
 
         # §H schema: exact key set, closed vocabulary values.
         for ctx in (tip_ctx, late_ctx):
@@ -177,7 +177,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         resp = self._record(task_id=str(task.id),
                             provider_cost_micros=12_000_000,
                             billed_cost_micros=1_000_000)
-        event = UsageEvent.objects.get()
+        event = Posting.objects.get()
         self.assertEqual(event.provider_cost_micros, 12_000_000)
         self.assertEqual(event.stop_context[0]["limit"], "task_limit")
         self.assertFalse(event.stop_context[0]["arrived_after"])
@@ -297,7 +297,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
 
         # A hand-crafted event carrying the RETIRED tag value at the SAME
         # episode — exactly what a pre-relabel write left behind, immutably.
-        legacy = UsageEvent.objects.create(
+        legacy = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="legacy-1", idempotency_key="legacy-1",
             provider_cost_micros=1_000_000, billed_cost_micros=4_000_000,
@@ -321,7 +321,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         """`suspended` is a taggable customer-scope value but never an
         episode — a bare suspension has nothing to itemize. It must stay
         excluded now that the filter is a deny-list, not an allow-list."""
-        suspended_event = UsageEvent.objects.create(
+        suspended_event = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="susp-1", idempotency_key="susp-1",
             provider_cost_micros=1_000_000, billed_cost_micros=1_000_000,

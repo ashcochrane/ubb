@@ -14,15 +14,15 @@ def handle_refund_requested(event_id, payload):
     Idempotent: IntegrityError from OneToOneField is silently ignored.
     Uses savepoint so IntegrityError doesn't break the outer transaction.
     """
-    from apps.metering.usage.models import UsageEvent, Refund
+    from apps.metering.usage.models import Posting, Refund
 
     evt = RefundRequested.from_payload(payload)
 
     try:
-        event = UsageEvent.objects.get(
+        event = Posting.objects.get(
             id=evt.usage_event_id, tenant_id=evt.tenant_id,
         )
-    except UsageEvent.DoesNotExist:
+    except Posting.DoesNotExist:
         logger.warning(
             "Refund requested for missing usage event",
             extra={"data": {"usage_event_id": evt.usage_event_id}},
@@ -34,7 +34,7 @@ def handle_refund_requested(event_id, payload):
             refund = Refund.objects.create(
                 tenant_id=evt.tenant_id,
                 customer_id=evt.customer_id,
-                usage_event=event,
+                posting=event,
                 amount_micros=evt.refund_amount_micros,
                 reason=evt.reason,
             )

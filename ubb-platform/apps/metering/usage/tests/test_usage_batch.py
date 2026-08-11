@@ -9,7 +9,7 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
@@ -56,7 +56,7 @@ class TestBatchBasics:
             "stop": False, "stop_reason": None, "stop_scope": None}
         assert body["results"][2]["accepted"] is True
         # Items 1 + 3 are durably committed: event rows AND outbox rows exist.
-        assert UsageEvent.objects.filter(tenant=t).count() == 2
+        assert Posting.objects.filter(tenant=t).count() == 2
         assert OutboxEvent.objects.filter(
             event_type="usage.recorded", tenant_id=t.id).count() == 2
 
@@ -65,11 +65,11 @@ class TestBatchBasics:
         events = {"events": [_item(c, 1), _item(c, 2), _item(c, 3)]}
         first = _post(http, auth, BATCH_URL, events).json()
         ids = [r["event_id"] for r in first["results"]]
-        assert UsageEvent.objects.filter(tenant=t).count() == 3
+        assert Posting.objects.filter(tenant=t).count() == 3
         replay = _post(http, auth, BATCH_URL, events).json()
         assert replay["accepted"] == 3 and replay["rejected"] == 0
         assert [r["event_id"] for r in replay["results"]] == ids
-        assert UsageEvent.objects.filter(tenant=t).count() == 3
+        assert Posting.objects.filter(tenant=t).count() == 3
 
     def test_duplicate_key_within_one_batch_resolves_to_first(self):
         t, c, http, auth = _setup()
@@ -80,7 +80,7 @@ class TestBatchBasics:
         ]}).json()
         assert resp["accepted"] == 2
         assert resp["results"][1]["event_id"] == resp["results"][0]["event_id"]
-        assert UsageEvent.objects.filter(tenant=t).count() == 1
+        assert Posting.objects.filter(tenant=t).count() == 1
 
     def test_zero_items_422(self):
         t, c, http, auth = _setup()
@@ -92,7 +92,7 @@ class TestBatchBasics:
         resp = _post(http, auth, BATCH_URL,
                      {"events": [_item(c, n) for n in range(101)]})
         assert resp.status_code == 422
-        assert UsageEvent.objects.count() == 0
+        assert Posting.objects.count() == 0
 
     def test_exactly_100_items_accepted(self):
         t, c, http, auth = _setup()
@@ -211,7 +211,7 @@ class TestBatchOneRuleParity:
         assert resp["accepted"] == 3 and resp["rejected"] == 0
 
         # Every item landed and counted into BOTH totals.
-        assert UsageEvent.objects.filter(tenant=t).count() == 3
+        assert Posting.objects.filter(tenant=t).count() == 3
         task.refresh_from_db()
         assert task.status == "killed"
         assert task.metadata.get("kill_reason") == "task_limit"
