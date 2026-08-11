@@ -1,11 +1,9 @@
 """The posting's inline unit total is dropped, and the drop reverses (#272).
 
 Slice 2 had to settle whether the child record #270 created carries one column
-or two. **One.** The nameless inline quantity does not follow the measured ones
-across — under the split it would have acquired a shorter life than the billed
-total sitting beside it on the same response, while the read contract's `or 0`
-coalescing went on rendering its absence as a currency zero on the end
-customer's own view.
+or two. **One.** The argument for dropping the nameless inline quantity rather
+than moving it across is in the migration's own docstring, which is where a
+reader looking at this table's history will find it.
 
 TWO DIFFERENT CLAIMS LIVE HERE, and only the first is about this database.
 

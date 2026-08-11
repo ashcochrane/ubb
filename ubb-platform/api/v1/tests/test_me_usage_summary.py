@@ -105,11 +105,9 @@ class WidgetUsageSummaryTest(TestCase):
     def test_the_response_carries_money_and_counts_and_no_quantity(self):
         """#272, at the surface the ruling was decided on.
 
-        This response is where the retirement was argued: the inline total sat
-        beside the billed total here, and under the measurement split it would
-        have been the one field on it with a shorter life than everything
-        around it — while the query layer's `or 0` rendered its absence as a
-        currency zero to the end customer rather than as an absence.
+        This response is where the retirement was argued and where its reviewed
+        contract break was taken — the reasoning is in the block in
+        `openapi/oasdiff-err-ignore.txt`.
 
         Pinned as the WHOLE key set rather than as an absence, so that adding
         the field back has to come past a test that says this was decided, and

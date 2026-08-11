@@ -354,13 +354,10 @@ def get_usage_summary(request):
     Metering-scoped, not billing-scoped: a meter-only tenant's customers can
     still see what they consumed.
     """
-    # THE PER-EVENT-TYPE ROWS ARE THE MAGNITUDE HERE (#272), and this comment is
-    # a comment rather than docstring prose because this docstring IS the
-    # published description. The posting's inline unit total used to ride beside
-    # the money on this very response; under the measurement split it would have
-    # been the one field on it with a shorter life than everything around it,
-    # while the query layer's coalescing went on rendering its absence as a zero
-    # to the end customer rather than as an absence.
+    # The per-Event-Type rows are the magnitude here (#272). This response is
+    # where the retirement was argued and where its reviewed break was taken —
+    # see the block in `openapi/oasdiff-err-ignore.txt`. (A comment, not
+    # docstring prose: this docstring is the published description.)
     _check_metering_product(request)
     customer = request.widget_customer
     from apps.metering.queries import get_customer_usage_summary

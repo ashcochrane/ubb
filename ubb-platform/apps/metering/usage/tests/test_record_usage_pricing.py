@@ -88,13 +88,47 @@ class TestStrictCoverage:
         assert resp.status_code == 200
         assert resp.json()["provider_cost_micros"] == 123
 
+    def test_a_stale_client_still_sending_the_retired_field_is_accepted(self):
+        """WHAT THE RETIREMENT COSTS A CALLER THAT HAS NOT MIGRATED (#272).
+
+        The request schema ignores unknown fields, so a client still posting the
+        retired inline total is not rejected — the field is dropped and the
+        event records as the marker it now is. Under strict coverage that same
+        payload used to be a 422, so a loud refusal became a quiet accept for
+        exactly one population: stale callers.
+
+        Pinned rather than left in a comment, because it is the whole migration
+        story for anyone reading the reviewed break on the request side. Nothing
+        is mis-metered — there was never anything to multiply that number by.
+        """
+        t, c, http, auth = self._setup(strict=True)
+        resp = self._post(http, auth, c, {
+            "request_id": "r8", "idempotency_key": "ik8", "units": 5,
+        })
+
+        assert resp.status_code == 200
+        assert resp.json()["provider_cost_micros"] == 0
+        assert "units" not in resp.json()
+        posting = Posting.objects.get(tenant=t, customer=c, idempotency_key="ik8")
+        assert not hasattr(posting, "units")
+
+    def _card_for_some_other_measurement(self, tenant):
+        """A cost card the tenant HAS, for a key the event will not name.
+
+        Strict mode is about coverage, so a tenant with no cards at all would be
+        a weaker subject than one whose cards simply miss. Both refusal tests
+        below need exactly this, and they need it identical — a second card
+        written slightly differently is how a regression test quietly stops
+        testing the regression.
+        """
+        return Rate.objects.create(
+            tenant=tenant, card_type="cost", provider="", event_type="",
+            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+
     def test_strict_uncovered_metric_still_422_via_existing_gate(self):
         """Regression: strict + usage_metrics with uncovered metric → 422 (existing gate)."""
         t, c, http, auth = self._setup(strict=True)
-        # Add a cost card for the tenant so we can enable strict mode, but use a
-        # different metric in the event so it's still uncovered.
-        Rate.objects.create(tenant=t, card_type="cost", provider="", event_type="",
-            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+        self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
             "request_id": "r6", "idempotency_key": "ik6",
             "usage_metrics": {"uncovered_metric": 5},
@@ -109,8 +143,7 @@ class TestStrictCoverage:
         — because the one it was written against no longer has an input.
         """
         t, c, http, auth = self._setup(strict=True)
-        Rate.objects.create(tenant=t, card_type="cost", provider="", event_type="",
-            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+        self._card_for_some_other_measurement(t)
         # First attempt: a metric with no cost card → 422, no row created.
         resp1 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",

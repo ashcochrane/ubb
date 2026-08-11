@@ -3,9 +3,7 @@
 The rollup lost its quantity half in #272: the posting's inline unit total, the
 `Sum` that aggregated it, the `or 0` that rendered a null of it as a zero, and
 the grand total it fed are all gone. What is left is the money and the count,
-per Event Type — which is what the ruling calls the honest replacement for "one
-comparable magnitude", since a single sum stops being comparable the moment two
-Event Types measure at different granularities.
+per Event Type.
 
 `test_a_row_carries_no_quantity_of_its_own` is the one assertion here that would
 have been pointless before: it pins the shape of a row so that a later slice

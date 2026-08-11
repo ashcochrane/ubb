@@ -114,12 +114,22 @@ class PricingService:
             # inline unit total, and a caller can no longer state it at all, so
             # the condition is not weakened here, it has become unexpressible.
             #
-            # NO REQUEST CHANGES VERDICT. The refusal only ever fired above
-            # zero; an event with no quantities and no caller cost was already
-            # accepted as a marker at zero or omitted, and that is exactly what
-            # every such request now is. The coverage guarantee for events that
-            # DO name their quantities is untouched — it is the `uncosted`
-            # branch below and the caller-cost branch above, both unchanged.
+            # NO EXPRESSIBLE REQUEST CHANGES VERDICT. The refusal only ever
+            # fired above zero; an event with no quantities and no caller cost
+            # was already accepted as a marker at zero or omitted, and that is
+            # what every such request now is. The coverage guarantee for events
+            # that DO name their quantities is untouched — the `uncosted` branch
+            # below and the caller-cost branch above, both unchanged.
+            #
+            # ONE CALLER DOES SEE A DIFFERENT ANSWER, AND IT IS WORTH SAYING SO.
+            # The request schema ignores unknown fields, so a STALE client still
+            # posting the retired field under strict coverage now gets a 200 and
+            # a zero-cost marker where it used to get a 422. Nothing is
+            # mis-metered — there was never anything to multiply that number by,
+            # and billed is markup(0) — but a loud refusal became a quiet accept
+            # for a caller that has not migrated. That is the cost of the
+            # removal rather than an oversight in it, and it is why the drop is
+            # recorded as a reviewed break on the request side too.
             for metric, units_val in usage_metrics.items():
                 card = resolve_card("cost", metric)
                 if card is None:

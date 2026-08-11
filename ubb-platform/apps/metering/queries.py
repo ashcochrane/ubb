@@ -207,8 +207,7 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
 
     The rollup ITSELF is what replaced the posting's inline unit total (#272):
     one comparable magnitude per Event Type, rather than one nameless integer
-    per posting summed across Event Types that a merged decision warns stop
-    being comparable the moment their granularity differs.
+    summed across Event Types whose granularities differ.
     """
     from apps.metering.usage.models import Posting
     from apps.platform.customers.models import Customer

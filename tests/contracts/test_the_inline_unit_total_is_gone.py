@@ -87,14 +87,28 @@ DOCUMENTS = ("openapi/v1.json", "apps/ui/src/api/schema.json")
 #: one aggregate up and dies with it, so both are the subject here.
 NAMES = ("units", "total_units")
 
+#: The names as one alternation, built FROM `NAMES` rather than beside it — two
+#: spellings of the same set drift, and the one that drifts is always the one
+#: nobody is looking at (ADR-0006 §4, applied to a test's own constants).
+_EITHER_NAME = "|".join(sorted((re.escape(name) for name in NAMES),
+                               key=len, reverse=True))
+
 #: The retired sense AS IT ACTUALLY APPEARED: a declaration, a keyword argument,
-#: a JSON or object key, or an attribute read. Never the bare English word —
-#: three senses of it survive (`measurement_key.retired_senses`), and a gate
-#: that condemned those would be suppressed rather than obeyed.
+#: a JSON or object key, a quoted or backticked reference, or an attribute read.
+#: Never the bare English word — three senses of it survive
+#: (`measurement_key.retired_senses`), and a gate that condemned those would be
+#: suppressed rather than obeyed.
+#:
+#: THE BACKTICK BRANCH IS DELIBERATE AND IT BINDS PROSE. A named reader may not
+#: name this field even in a comment, which is why the note left on the model
+#: describes the retirement without spelling it. That is the intended strictness:
+#: these seventeen files are the ones that must have stopped referring to it, and
+#: a doc comment saying `units` is how the console's mock rate survived a
+#: previous pass. Every other file in the tree is free to say it.
 FIELD = re.compile(
-    r"""(?<![0-9A-Za-z_])(?:total_)?units(?![0-9A-Za-z_])[ \t]*[:=](?!=)
-      | \.(?:total_)?units(?![0-9A-Za-z_])
-      | ["'`](?:total_)?units["'`]
+    rf"""(?<![0-9A-Za-z_])(?:{_EITHER_NAME})(?![0-9A-Za-z_])[ \t]*[:=](?!=)
+      | \.(?:{_EITHER_NAME})(?![0-9A-Za-z_])
+      | ["'`](?:{_EITHER_NAME})["'`]
     """, re.VERBOSE)
 
 #: A file that still carries the word field-shaped, in a sense that survives:
@@ -247,7 +261,16 @@ def test_the_control_the_match_is_field_shaped():
 
     An absence check that over-fires gets suppressed rather than obeyed, and
     this one is aimed at a word with three live senses — so the near misses are
-    the point, not a formality. Every string below appears in the tree today.
+    the point, not a formality.
+
+    THE TWO LISTS COME FROM DIFFERENT PLACES, and saying so is the whole reason
+    this docstring exists. The first is every shape the retired field took in the
+    readers this commit cleared, quoted from the diff that removed them — they
+    are gone from the tree by construction, and a control that required them to
+    still be there could never pass. The second is the near misses, which are
+    live spellings the tree still carries in senses that survive; the one that
+    proves the matcher runs against real code is
+    `test_the_control_the_surviving_sense_is_untouched`, which reads a file.
     """
     for field_shaped in ('units = models.BigIntegerField(null=True)',
                          'units=item.units', '"units": e.units',
@@ -256,6 +279,34 @@ def test_the_control_the_match_is_field_shaped():
         assert FIELD.search(field_shaped), field_shaped
 
     for near_miss in ("minor_units", "major_units_decimal", "whole_minor_units",
-                      "units_val", "units_sum", "top-level units of work",
+                      "units_val", "Top-level units of work",
                       "per 1K units", "different units, so each ceiling"):
         assert not FIELD.search(near_miss), near_miss
+
+
+def test_the_control_the_near_misses_are_spellings_the_tree_really_has():
+    """And the near misses are real, which is what makes them near misses.
+
+    A list of invented strings would let the matcher tighten until it condemned
+    something live, with this control still green. So each one is required to
+    appear somewhere the sweep can see — deliberately NOT in the reader list,
+    since that is exactly where they must not be.
+    """
+    surfaces = [_read(relative) for relative in (
+        # Currency minor units, rate arithmetic, and the ordinary English inside
+        # a generated module — one file per surviving sense, plus the two API
+        # modules whose own spellings the matcher must walk past.
+        "ubb-platform/core/money.py",
+        "ubb-platform/api/v1/schemas.py",
+        "ubb-platform/api/v1/metering_endpoints.py",
+        SURVIVING_SENSE,
+        "apps/ui/src/features/pricing/lib/pricing-math.ts",
+        "ubb-platform/core/vocabulary.py",
+    )]
+
+    for near_miss in ("minor_units", "major_units_decimal", "whole_minor_units",
+                      "units_val", "Top-level units of work",
+                      "per 1K units", "different units, so each ceiling"):
+        assert any(near_miss in text for text in surfaces), (
+            f"`{near_miss}` is not a spelling the tree has, so requiring the "
+            f"matcher to skip it proves nothing about over-firing")

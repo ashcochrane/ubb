@@ -82,15 +82,15 @@ measurement_key:
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    50 files, 122 occurrences
+    #     units    51 files, 127 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
     # only the denominator and left `75 files, 325 occurrences` untouched, which
     # is what those re-takes existed to demonstrate. #272 executed the other
-    # half of this ruling — the column and every named reader — and 25 files and
-    # 203 occurrences left the tree with it (1,532/1,882 → 1,534/1,885 swept,
-    # 75/325 → 50/122 counted). That is the retired sense being paid, not the
+    # half of this ruling — the column and every named reader — and 24 files and
+    # 198 occurrences left the tree with it (1,532/1,882 → 1,534/1,885 swept,
+    # 75/325 → 51/127 counted). That is the retired sense being paid, not the
     # claim eroding, and it is the only reason this number may fall.
     #
     # THE RULE FOR THE NEXT READER IS UNCHANGED AND NOW HAS TWO HALVES. If the
@@ -101,12 +101,17 @@ measurement_key:
     # denominator moves on any commit that adds a tracked file and needs no
     # story at all.
     #
-    # AND #272 SPELLS THE WORD IN TWO NEW FILES, DELIBERATELY. Both are the
-    # targeted proof named below, and they name the retired sense as the subject
-    # of its own absence — a quotation, not a fifth sense. A test that proves a
-    # word is gone must be allowed to say the word; the alternative is sourcing
-    # the token from this registry at runtime, which reads as cleverness and
-    # hides what the test is about.
+    # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
+    # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named
+    # below — a contract module and a migration test — and they name the retired
+    # sense as the subject of its own absence. The third is the endpoint test
+    # that pins what the retirement COSTS: a stale client still posting the
+    # field is accepted rather than refused, because the request schema ignores
+    # unknown fields, and under strict cost coverage that turns a 422 into a
+    # 200. All three are quotation, not a fifth sense. A test that proves a word
+    # is gone must be allowed to say the word; the alternative is sourcing the
+    # token from this registry at runtime, which reads as cleverness and hides
+    # what the test is about.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and
