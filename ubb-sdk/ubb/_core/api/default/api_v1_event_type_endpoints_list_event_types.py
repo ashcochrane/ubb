@@ -8,23 +8,41 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.event_type_list_out import EventTypeListOut
+from ...models.paginated_event_types import PaginatedEventTypes
+from ...types import UNSET, Unset
 from typing import cast
 
 
 
 def _get_kwargs(
-    
+    *,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
+
 ) -> dict[str, Any]:
     
 
     
 
-    
+    params: dict[str, Any] = {}
+
+    json_cursor: None | str | Unset
+    if isinstance(cursor, Unset):
+        json_cursor = UNSET
+    else:
+        json_cursor = cursor
+    params["cursor"] = json_cursor
+
+    params["limit"] = limit
+
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
+
 
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/v1/event-types",
+        "params": params,
     }
 
 
@@ -32,9 +50,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> EventTypeListOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PaginatedEventTypes | None:
     if response.status_code == 200:
-        response_200 = EventTypeListOut.from_dict(response.json())
+        response_200 = PaginatedEventTypes.from_dict(response.json())
 
 
 
@@ -46,7 +64,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[EventTypeListOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PaginatedEventTypes]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -58,23 +76,31 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
 
-) -> Response[EventTypeListOut]:
+) -> Response[PaginatedEventTypes]:
     """ List Event Types
 
-     The tenant's whole metered vocabulary, declarations and all.
+     The tenant's metered vocabulary, each declaration whole.
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EventTypeListOut]
+        Response[PaginatedEventTypes]
      """
 
 
     kwargs = _get_kwargs(
-        
+        cursor=cursor,
+limit=limit,
+
     )
 
     response = client.get_httpx_client().request(
@@ -86,46 +112,62 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
 
-) -> EventTypeListOut | None:
+) -> PaginatedEventTypes | None:
     """ List Event Types
 
-     The tenant's whole metered vocabulary, declarations and all.
+     The tenant's metered vocabulary, each declaration whole.
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EventTypeListOut
+        PaginatedEventTypes
      """
 
 
     return sync_detailed(
         client=client,
+cursor=cursor,
+limit=limit,
 
     ).parsed
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
 
-) -> Response[EventTypeListOut]:
+) -> Response[PaginatedEventTypes]:
     """ List Event Types
 
-     The tenant's whole metered vocabulary, declarations and all.
+     The tenant's metered vocabulary, each declaration whole.
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EventTypeListOut]
+        Response[PaginatedEventTypes]
      """
 
 
     kwargs = _get_kwargs(
-        
+        cursor=cursor,
+limit=limit,
+
     )
 
     response = await client.get_async_httpx_client().request(
@@ -137,22 +179,30 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
+    cursor: None | str | Unset = UNSET,
+    limit: int | Unset = 50,
 
-) -> EventTypeListOut | None:
+) -> PaginatedEventTypes | None:
     """ List Event Types
 
-     The tenant's whole metered vocabulary, declarations and all.
+     The tenant's metered vocabulary, each declaration whole.
+
+    Args:
+        cursor (None | str | Unset):
+        limit (int | Unset):  Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EventTypeListOut
+        PaginatedEventTypes
      """
 
 
     return (await asyncio_detailed(
         client=client,
+cursor=cursor,
+limit=limit,
 
     )).parsed

@@ -71,9 +71,9 @@ def sync_detailed(
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
     Not refused here, and that is deliberate: the blocker is reported on the
-    declaration itself and enforced where publication happens, so withdrawing
-    a mapping in order to redeclare it is an ordinary edit rather than a
-    sequence a tenant has to work around.
+    declaration itself and enforced where publication happens, so withdrawing a
+    mapping in order to redeclare it is an ordinary edit rather than a sequence
+    a tenant has to work around.
 
     Args:
         key (str):
@@ -109,9 +109,9 @@ def sync(
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
     Not refused here, and that is deliberate: the blocker is reported on the
-    declaration itself and enforced where publication happens, so withdrawing
-    a mapping in order to redeclare it is an ordinary edit rather than a
-    sequence a tenant has to work around.
+    declaration itself and enforced where publication happens, so withdrawing a
+    mapping in order to redeclare it is an ordinary edit rather than a sequence
+    a tenant has to work around.
 
     Args:
         key (str):
@@ -142,9 +142,9 @@ async def asyncio_detailed(
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
     Not refused here, and that is deliberate: the blocker is reported on the
-    declaration itself and enforced where publication happens, so withdrawing
-    a mapping in order to redeclare it is an ordinary edit rather than a
-    sequence a tenant has to work around.
+    declaration itself and enforced where publication happens, so withdrawing a
+    mapping in order to redeclare it is an ordinary edit rather than a sequence
+    a tenant has to work around.
 
     Args:
         key (str):
@@ -180,9 +180,9 @@ async def asyncio(
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
     Not refused here, and that is deliberate: the blocker is reported on the
-    declaration itself and enforced where publication happens, so withdrawing
-    a mapping in order to redeclare it is an ordinary edit rather than a
-    sequence a tenant has to work around.
+    declaration itself and enforced where publication happens, so withdrawing a
+    mapping in order to redeclare it is an ordinary edit rather than a sequence
+    a tenant has to work around.
 
     Args:
         key (str):

@@ -95,13 +95,18 @@ def sync_detailed(
 ) -> Response[ProblemOut | ProviderOut]:
     """ Revise Provider
 
-     Rename or retire a supplier.
+     Rename a supplier, or retire one — two acts, recorded apart.
 
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for the same reason the identity is not the
-    key: nothing downstream holds the handle.
+    cannot repair. Renaming is safe for exactly the same reason the identity is
+    not the key: nothing downstream holds the handle.
+
+    Retirement records ``provider.retired`` rather than a second
+    ``provider.declared``, because it is a commercial decision to stop offering
+    a supplier and not a correction to a name. Where one request does both, the
+    retirement is what the ledger is told: it is the consequential half.
 
     Args:
         key (str):
@@ -143,13 +148,18 @@ def sync(
 ) -> ProblemOut | ProviderOut | None:
     """ Revise Provider
 
-     Rename or retire a supplier.
+     Rename a supplier, or retire one — two acts, recorded apart.
 
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for the same reason the identity is not the
-    key: nothing downstream holds the handle.
+    cannot repair. Renaming is safe for exactly the same reason the identity is
+    not the key: nothing downstream holds the handle.
+
+    Retirement records ``provider.retired`` rather than a second
+    ``provider.declared``, because it is a commercial decision to stop offering
+    a supplier and not a correction to a name. Where one request does both, the
+    retirement is what the ledger is told: it is the consequential half.
 
     Args:
         key (str):
@@ -186,13 +196,18 @@ async def asyncio_detailed(
 ) -> Response[ProblemOut | ProviderOut]:
     """ Revise Provider
 
-     Rename or retire a supplier.
+     Rename a supplier, or retire one — two acts, recorded apart.
 
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for the same reason the identity is not the
-    key: nothing downstream holds the handle.
+    cannot repair. Renaming is safe for exactly the same reason the identity is
+    not the key: nothing downstream holds the handle.
+
+    Retirement records ``provider.retired`` rather than a second
+    ``provider.declared``, because it is a commercial decision to stop offering
+    a supplier and not a correction to a name. Where one request does both, the
+    retirement is what the ledger is told: it is the consequential half.
 
     Args:
         key (str):
@@ -234,13 +249,18 @@ async def asyncio(
 ) -> ProblemOut | ProviderOut | None:
     """ Revise Provider
 
-     Rename or retire a supplier.
+     Rename a supplier, or retire one — two acts, recorded apart.
 
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for the same reason the identity is not the
-    key: nothing downstream holds the handle.
+    cannot repair. Renaming is safe for exactly the same reason the identity is
+    not the key: nothing downstream holds the handle.
+
+    Retirement records ``provider.retired`` rather than a second
+    ``provider.declared``, because it is a commercial decision to stop offering
+    a supplier and not a correction to a name. Where one request does both, the
+    retirement is what the ledger is told: it is the consequential half.
 
     Args:
         key (str):

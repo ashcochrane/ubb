@@ -57,6 +57,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if response.status_code == 422:
         response_422 = ProblemOut.from_dict(response.json())
 
@@ -93,8 +100,8 @@ def sync_detailed(
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
-    does not. What this does is decide what an absent field means — untouched,
-    never cleared — and let an empty string detach a satellite, because \"no
+    does not. What this decides is what an absent field means — untouched,
+    never cleared — and that an empty string detaches a satellite, because \"no
     supplier\" is a state a tenant reaches on purpose.
 
     Args:
@@ -149,8 +156,8 @@ def sync(
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
-    does not. What this does is decide what an absent field means — untouched,
-    never cleared — and let an empty string detach a satellite, because \"no
+    does not. What this decides is what an absent field means — untouched,
+    never cleared — and that an empty string detaches a satellite, because \"no
     supplier\" is a state a tenant reaches on purpose.
 
     Args:
@@ -200,8 +207,8 @@ async def asyncio_detailed(
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
-    does not. What this does is decide what an absent field means — untouched,
-    never cleared — and let an empty string detach a satellite, because \"no
+    does not. What this decides is what an absent field means — untouched,
+    never cleared — and that an empty string detaches a satellite, because \"no
     supplier\" is a state a tenant reaches on purpose.
 
     Args:
@@ -256,8 +263,8 @@ async def asyncio(
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
-    does not. What this does is decide what an absent field means — untouched,
-    never cleared — and let an empty string detach a satellite, because \"no
+    does not. What this decides is what an absent field means — untouched,
+    never cleared — and that an empty string detaches a satellite, because \"no
     supplier\" is a state a tenant reaches on purpose.
 
     Args:

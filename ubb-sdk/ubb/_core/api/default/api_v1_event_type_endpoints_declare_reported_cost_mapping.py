@@ -64,6 +64,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if response.status_code == 422:
         response_422 = ProblemOut.from_dict(response.json())
 
@@ -100,8 +107,10 @@ def sync_detailed(
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
-    Event Type. Recorded under the Event Type's own action because it is a
-    part of that declaration, and the ledger row names which part.
+    Event Type. It carries its own action for the reason each satellite does —
+    the ledger's `resource_type` names which record moved, and an action
+    naming the Event Type over a row that is the mapping would make the two
+    disagree.
 
     Args:
         key (str):
@@ -146,8 +155,10 @@ def sync(
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
-    Event Type. Recorded under the Event Type's own action because it is a
-    part of that declaration, and the ledger row names which part.
+    Event Type. It carries its own action for the reason each satellite does —
+    the ledger's `resource_type` names which record moved, and an action
+    naming the Event Type over a row that is the mapping would make the two
+    disagree.
 
     Args:
         key (str):
@@ -187,8 +198,10 @@ async def asyncio_detailed(
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
-    Event Type. Recorded under the Event Type's own action because it is a
-    part of that declaration, and the ledger row names which part.
+    Event Type. It carries its own action for the reason each satellite does —
+    the ledger's `resource_type` names which record moved, and an action
+    naming the Event Type over a row that is the mapping would make the two
+    disagree.
 
     Args:
         key (str):
@@ -233,8 +246,10 @@ async def asyncio(
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
-    Event Type. Recorded under the Event Type's own action because it is a
-    part of that declaration, and the ledger row names which part.
+    Event Type. It carries its own action for the reason each satellite does —
+    the ledger's `resource_type` names which record moved, and an action
+    naming the Event Type over a row that is the mapping would make the two
+    disagree.
 
     Args:
         key (str):

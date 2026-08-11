@@ -73,8 +73,9 @@ class TestEventTypeCatalogueSurface:
 
         listed = self._get("/api/v1/providers")
         assert listed.status_code == 200
-        assert listed.json()["providers"] == [{"key": "openai",
-                                               "retired_at": None}]
+        assert listed.json() == {"data": [{"key": "openai",
+                                           "retired_at": None}],
+                                 "next_cursor": None, "has_more": False}
 
     def test_a_second_supplier_with_the_same_key_is_a_conflict(self):
         self._post("/api/v1/providers", {"key": "openai"})
@@ -96,7 +97,7 @@ class TestEventTypeCatalogueSurface:
 
         assert self._delete("/api/v1/providers/openai").status_code == 405
         assert [p["key"] for p in
-                self._get("/api/v1/providers").json()["providers"]] == ["openai"]
+                self._get("/api/v1/providers").json()["data"]] == ["openai"]
 
     def test_retiring_is_a_two_way_switch(self):
         self._post("/api/v1/providers", {"key": "openai"})
@@ -132,8 +133,8 @@ class TestEventTypeCatalogueSurface:
     def test_a_category_is_declared_listed_and_withdrawn(self):
         assert self._post("/api/v1/event-categories",
                           {"key": "inference"}).status_code == 201
-        assert self._get("/api/v1/event-categories").json()[
-            "event_categories"] == [{"key": "inference"}]
+        assert self._get("/api/v1/event-categories").json()["data"] == [
+            {"key": "inference"}]
         assert self._delete(
             "/api/v1/event-categories/inference").status_code == 204
         assert not EventCategory.objects.filter(tenant=self.tenant).exists()
@@ -270,7 +271,10 @@ class TestEventTypeCatalogueSurface:
         assert declared.json()["advisories"] == []
         assert self._get(
             "/api/v1/event-types/chat.completion/measurements").json()[
-                "measurements"] == [declared.json()]
+                "data"] == [declared.json()]
+        # Nested in the parent, NOT enveloped: the parts are one entity's own
+        # representation rather than an entity-list endpoint, and a tenant
+        # generating an integration needs them in the same reading as the root.
         assert self._get("/api/v1/event-types/chat.completion").json()[
             "measurements"] == [declared.json()]
 
@@ -436,30 +440,106 @@ class TestEventTypeCatalogueSurface:
                      "/api/v1/event-categories"):
             assert self.client.get(path).status_code == 401, path
 
+    def test_every_list_wears_the_cursor_envelope_and_really_cursors(self):
+        """`docs/conventions/api-contract.md`: bare arrays and unwrapped lists
+        are banned from the public surface, and short config lists wear the
+        envelope too.
+
+        Asserted by walking a page rather than by looking at the keys: an
+        endpoint can answer the right SHAPE while ignoring `cursor` entirely,
+        and that version of the bug is the one a reader cannot see.
+        """
+        for index in range(3):
+            self._post("/api/v1/providers", {"key": f"supplier-{index}"})
+
+        first = self._get("/api/v1/providers?limit=2").json()
+        assert set(first) == {"data", "next_cursor", "has_more"}
+        assert len(first["data"]) == 2 and first["has_more"] is True
+        assert first["next_cursor"]
+
+        rest = self._get(
+            f"/api/v1/providers?limit=2&cursor={first['next_cursor']}").json()
+        assert len(rest["data"]) == 1 and rest["has_more"] is False
+        assert rest["next_cursor"] is None
+
+        seen = [row["key"] for row in first["data"] + rest["data"]]
+        assert sorted(seen) == ["supplier-0", "supplier-1", "supplier-2"]
+
+    def test_a_bad_cursor_is_a_refusal_rather_than_an_empty_page(self):
+        assert self._get(
+            "/api/v1/event-types?cursor=not-a-cursor").status_code == 400
+
     def test_one_tenants_catalogue_is_invisible_to_another(self):
         other = Tenant.objects.create(name="Other", products=["metering"])
         EventType.objects.create(tenant=other, key="theirs",
                                  costing_method="calculated")
 
-        assert self._get("/api/v1/event-types").json()["event_types"] == []
+        assert self._get("/api/v1/event-types").json()["data"] == []
         assert self._get("/api/v1/event-types/theirs").status_code == 404
 
-    def test_every_write_writes_the_audit_action_it_declares(self):
-        """The marker declares which actions a route MAY write; this is that
-        the route actually wrote one, and which — the publication apart from
-        the declaration, and each satellite under its own noun."""
+    def test_every_write_records_the_act_it_actually_performed(self):
+        """The marker says which actions a route MAY write; this says which it
+        DID — and the ones worth the assertion are the un-declarings.
+
+        Declaring and re-declaring are one act, because a correction to a
+        declaration is still a declaration. Withdrawing is not, retiring is
+        not, and publishing is not: a governance reader asking "when did this
+        stop being declared" must not have to read metadata to find out.
+        Every one of the twelve mutations is exercised, so a route that
+        borrowed a neighbour's noun shows up here rather than in slice 8.
+        """
         self._post("/api/v1/providers", {"key": "openai"})
+        self._patch("/api/v1/providers/openai", {"key": "openai-us"})
+        self._patch("/api/v1/providers/openai-us", {"retired": True})
         self._post("/api/v1/event-categories", {"key": "inference"})
-        self._declare_calculated()
-        self._put(
-            "/api/v1/event-types/chat.completion/measurements/input_tokens",
-            {"value_type": "integer", "unit": "token",
-             "source_kind": "provider_response", "source_path": ["usage"]})
+        self._post("/api/v1/event-types", {"key": "chat.completion",
+                                           "costing_method": "reported"})
+        self._patch("/api/v1/event-types/chat.completion",
+                    {"source_shape_id": "openai.responses.python.v1"})
+        measurement = ("/api/v1/event-types/chat.completion"
+                       "/measurements/input_tokens")
+        self._put(measurement, {"value_type": "integer", "unit": "token",
+                                "source_kind": "provider_response",
+                                "source_path": ["usage"]})
+        self._delete(measurement)
+        mapping = "/api/v1/event-types/chat.completion/reported-cost-mapping"
+        self._put(mapping, {"source_kind": "provider_response",
+                            "amount_representation": "micros",
+                            "source_path": ["usage", "cost"],
+                            "currency": "usd"})
         self._post("/api/v1/event-types/chat.completion/publish")
+        self._delete(mapping)
+        self._delete("/api/v1/event-categories/inference")
 
         recorded = set(AuditRecord.objects.filter(
             tenant_id=self.tenant.id).values_list("action", flat=True))
 
-        assert recorded == {"provider.declared", "event_category.declared",
-                            "event_type.declared", "measurement.declared",
-                            "event_type.published"}
+        assert recorded == {
+            "provider.declared", "provider.retired",
+            "event_category.declared", "event_category.withdrawn",
+            "event_type.declared", "event_type.published",
+            "measurement.declared", "measurement.withdrawn",
+            "reported_cost_mapping.declared",
+            "reported_cost_mapping.withdrawn"}
+
+    def test_a_withdrawal_is_not_recorded_as_a_declaration(self):
+        """The failure the test above would miss if it only checked the SET.
+
+        A withdrawal that also wrote `*.declared` would leave both names in the
+        set and pass. This asks the narrower question: the row for the delete
+        carries the withdrawal noun and nothing else.
+        """
+        self._declare_calculated()
+        path = ("/api/v1/event-types/chat.completion"
+                "/measurements/input_tokens")
+        self._put(path, {"value_type": "integer", "unit": "token",
+                         "source_kind": "provider_response",
+                         "source_path": ["usage"]})
+        before = AuditRecord.objects.filter(tenant_id=self.tenant.id).count()
+
+        self._delete(path)
+
+        written = list(AuditRecord.objects.filter(
+            tenant_id=self.tenant.id).order_by("created_at")[before:])
+        assert [record.action for record in written] == [
+            "measurement.withdrawn"]

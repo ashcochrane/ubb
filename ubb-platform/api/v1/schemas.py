@@ -6,6 +6,7 @@ from ninja import Schema, Field
 from pydantic import field_validator
 
 from api.v1.pagination import Paginated
+from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 
@@ -1207,8 +1208,17 @@ class ProviderOut(Schema):
     retired_at: Optional[str] = None
 
 
-class ProviderListOut(Schema):
-    providers: List[ProviderOut]
+def provider_out(provider):
+    """ProviderOut's serializer — one supplier."""
+    return {
+        "key": provider.key,
+        "retired_at": (provider.retired_at.isoformat()
+                       if provider.retired_at else None),
+    }
+
+
+class PaginatedProviders(Paginated[ProviderOut]):
+    pass
 
 
 class EventCategoryIn(Schema):
@@ -1219,8 +1229,13 @@ class EventCategoryOut(Schema):
     key: str
 
 
-class EventCategoryListOut(Schema):
-    event_categories: List[EventCategoryOut]
+def event_category_out(category):
+    """EventCategoryOut's serializer — one grouping."""
+    return {"key": category.key}
+
+
+class PaginatedEventCategories(Paginated[EventCategoryOut]):
+    pass
 
 
 class MeasurementIn(Schema):
@@ -1257,8 +1272,29 @@ class MeasurementOut(Schema):
     advisories: List[str]
 
 
-class MeasurementListOut(Schema):
-    measurements: List[MeasurementOut]
+def measurement_out(measurement):
+    """MeasurementOut's serializer — one declared quantity.
+
+    `advisories` is computed rather than stored, and it reaches the wire
+    because advice is the entire product of the checking UBB does here: it says
+    a unit is a near miss, or a path looks inconsistent with the declared
+    response shape, and it never edits either. A tenant who cannot see the
+    advice gets the silence instead.
+    """
+    return {
+        "code": measurement.code,
+        "display_name": measurement.display_name,
+        "value_type": measurement.value_type,
+        "unit": measurement.unit,
+        "required_for_costing": measurement.required_for_costing,
+        "source_kind": measurement.source_kind,
+        "source_path": list(measurement.source_path),
+        "advisories": list(measurement.declaration_advisories()),
+    }
+
+
+class PaginatedMeasurements(Paginated[MeasurementOut]):
+    pass
 
 
 class ReportedCostMappingIn(Schema):
@@ -1291,6 +1327,20 @@ class ReportedCostMappingOut(Schema):
     #: same for both would tell a generator nothing.
     required_runtime_parameters: List[str]
     advisories: List[str]
+
+
+def reported_cost_mapping_out(mapping):
+    """ReportedCostMappingOut's serializer — where a supplier's cost is read."""
+    return {
+        "source_kind": mapping.source_kind,
+        "amount_representation": mapping.amount_representation,
+        "source_path": list(mapping.source_path),
+        "currency_path": list(mapping.currency_path),
+        "currency": mapping.currency,
+        "required_runtime_parameters":
+            list(mapping.required_runtime_parameters()),
+        "advisories": list(mapping.declaration_advisories()),
+    }
 
 
 class EventTypeIn(Schema):
@@ -1351,9 +1401,44 @@ class EventTypeOut(Schema):
     #: publishable. Served rather than stored, so two encodings of one fact
     #: cannot disagree.
     publication_blockers: List[str]
+    #: The parts travel with the root because they ARE the declaration, and a
+    #: nested list is not the banned "unwrapped list" the envelope rule is
+    #: about: this is one entity's own representation, not an entity-list
+    #: endpoint. Splitting it would let a tenant read the quantities and the
+    #: root either side of a publication and generate against a declaration
+    #: that never existed.
     measurements: List[MeasurementOut]
     reported_cost_mapping: Optional[ReportedCostMappingOut] = None
 
 
-class EventTypeListOut(Schema):
-    event_types: List[EventTypeOut]
+def event_type_out(event_type):
+    """EventTypeOut's serializer — one whole declaration.
+
+    `publication_blockers` is served rather than stored, so the two encodings
+    of one fact cannot disagree, and the reverse one-to-one is read through
+    `getattr` because a missing part raises rather than answering `None`.
+    """
+    mapping = getattr(event_type, REPORTED_COST_MAPPING, None)
+    return {
+        "key": event_type.key,
+        "costing_method": event_type.costing_method,
+        "provider_key": (event_type.provider.key
+                         if event_type.provider_id else None),
+        "category_key": (event_type.category.key
+                         if event_type.category_id else None),
+        "source_shape_id": event_type.source_shape_id,
+        "source_shape_label": event_type.source_shape_label,
+        "declaration_status": event_type.declaration_status,
+        "published_revision": event_type.published_revision,
+        "published_at": (event_type.published_at.isoformat()
+                         if event_type.published_at else None),
+        "publication_blockers": list(event_type.publication_blockers()),
+        "measurements": [measurement_out(m)
+                         for m in event_type.measurements.all()],
+        "reported_cost_mapping": (reported_cost_mapping_out(mapping)
+                                  if mapping is not None else None),
+    }
+
+
+class PaginatedEventTypes(Paginated[EventTypeOut]):
+    pass

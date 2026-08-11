@@ -38,29 +38,38 @@ The ruling is the one the Grouping Field and Task Type registries already
 carry: a declaration decides how usage is costed, which makes it a
 pricing-rule change rather than a day-to-day data operation.
 
+**Every list wears the cursor envelope** (``docs/conventions/api-contract.md``)
+— including the short ones, because the rule says so and because the shape of
+a published list is exactly the thing ADR-0007 §3 will not let a later slice
+repair. The row serializers live beside their Out schemas in ``schemas.py``,
+which is the same convention's other half.
+
 **What this module does NOT do.** It resolves nothing, rates nothing and costs
 nothing — no recording path reads a single row it serves. Slice 2 owns the
 declaration; slice 3 owns every behaviour the declaration selects. The one
-place that shows through is :func:`_event_type_out`'s ``publication_blockers``,
+place that shows through is ``event_type_out``'s ``publication_blockers``,
 which is served rather than stored so that two encodings of one fact cannot
 disagree.
 """
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from ninja import Router
 
+from api.v1.pagination import page
 from api.v1.schemas import (
-    EventCategoryIn, EventCategoryListOut, EventCategoryOut, EventTypeIn,
-    EventTypeListOut, EventTypeOut, EventTypeUpdateIn, MeasurementIn,
-    MeasurementListOut, MeasurementOut, ProviderIn, ProviderListOut,
+    EventCategoryIn, EventCategoryOut, EventTypeIn, EventTypeOut,
+    EventTypeUpdateIn, MeasurementIn, MeasurementOut, PaginatedEventCategories,
+    PaginatedEventTypes, PaginatedMeasurements, PaginatedProviders, ProviderIn,
     ProviderOut, ProviderUpdateIn, ReportedCostMappingIn,
-    ReportedCostMappingOut,
+    ReportedCostMappingOut, event_category_out, event_type_out,
+    measurement_out, provider_out, reported_cost_mapping_out,
 )
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.event_types.models import (
-    DeclarationIncomplete, EventCategory, EventType, Measurement, Provider,
-    ReportedCostMapping,
+    REPORTED_COST_MAPPING, DeclarationIncomplete, EventCategory, EventType,
+    Measurement, Provider, ReportedCostMapping,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.problems import Problem, ProblemOut
@@ -69,110 +78,52 @@ event_type_router = Router(auth=ApiKeyAuth())
 
 _product_check = ProductAccess("metering")
 
+#: The default page size the cursor envelope's endpoints take. The clamp to
+#: [1, 100] is `paginate`'s; this is only the default a caller who says nothing
+#: gets, and it matches the rest of the surface.
+_DEFAULT_LIMIT = 50
+
 
 # ---------------------------------------------------------------------------
-# Serializers — one per Out schema, declared once and reused
+# Lookups and refusals — the shapes every handler below needs
 # ---------------------------------------------------------------------------
 
-def _provider_out(provider):
-    """ProviderOut's serializer — one supplier."""
-    return {
-        "key": provider.key,
-        "retired_at": (provider.retired_at.isoformat()
-                       if provider.retired_at else None),
-    }
+def _declarations(tenant):
+    """Every Event Type of ``tenant``, with the parts a serializer will ask for.
 
-
-def _event_category_out(category):
-    """EventCategoryOut's serializer — one grouping."""
-    return {"key": category.key}
-
-
-def _measurement_out(measurement):
-    """MeasurementOut's serializer — one declared quantity.
-
-    ``advisories`` is computed rather than stored, and it reaches the wire
-    because advice is the entire product of the checking UBB does here: it says
-    a unit is a near miss or a path looks inconsistent with the declared
-    response shape, and it never edits either. A tenant who cannot see the
-    advice gets the silence instead.
+    One place rather than per handler, because every caller serializes the
+    WHOLE declaration: without the joins, listing a page of declarations issues
+    a query per quantity and per satellite on each row, and the N+1 arrives on
+    the read a Code Builder makes most.
     """
-    return {
-        "code": measurement.code,
-        "display_name": measurement.display_name,
-        "value_type": measurement.value_type,
-        "unit": measurement.unit,
-        "required_for_costing": measurement.required_for_costing,
-        "source_kind": measurement.source_kind,
-        "source_path": list(measurement.source_path),
-        "advisories": list(measurement.declaration_advisories()),
-    }
+    return (EventType.objects
+            .filter(tenant=tenant)
+            .select_related("provider", "category", REPORTED_COST_MAPPING)
+            .prefetch_related("measurements"))
 
-
-def _reported_cost_mapping_out(mapping):
-    """ReportedCostMappingOut's serializer — where a supplier's cost is read."""
-    return {
-        "source_kind": mapping.source_kind,
-        "amount_representation": mapping.amount_representation,
-        "source_path": list(mapping.source_path),
-        "currency_path": list(mapping.currency_path),
-        "currency": mapping.currency,
-        "required_runtime_parameters":
-            list(mapping.required_runtime_parameters()),
-        "advisories": list(mapping.declaration_advisories()),
-    }
-
-
-def _event_type_out(event_type):
-    """EventTypeOut's serializer — one whole declaration.
-
-    The parts travel with the root because they ARE the declaration: a tenant
-    generating an integration needs the quantities and the cost mapping in the
-    same reading, and two reads that could be taken either side of a
-    publication would let them generate against a declaration that never
-    existed.
-    """
-    mapping = getattr(event_type, "reported_cost_mapping", None)
-    return {
-        "key": event_type.key,
-        "costing_method": event_type.costing_method,
-        "provider_key": (event_type.provider.key
-                         if event_type.provider_id else None),
-        "category_key": (event_type.category.key
-                         if event_type.category_id else None),
-        "source_shape_id": event_type.source_shape_id,
-        "source_shape_label": event_type.source_shape_label,
-        "declaration_status": event_type.declaration_status,
-        "published_revision": event_type.published_revision,
-        "published_at": (event_type.published_at.isoformat()
-                         if event_type.published_at else None),
-        "publication_blockers": list(event_type.publication_blockers()),
-        "measurements": [_measurement_out(m)
-                         for m in event_type.measurements.all()],
-        "reported_cost_mapping": (_reported_cost_mapping_out(mapping)
-                                  if mapping is not None else None),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Lookups and refusals — the two shapes every handler below needs
-# ---------------------------------------------------------------------------
 
 def _declaration(tenant, key):
-    """One Event Type with its parts, or a 404 naming the key that missed.
-
-    Prefetched, because every caller serializes the whole declaration and the
-    obvious spelling issues one query per quantity on a list of them.
-    """
-    event_type = (EventType.objects
-                  .filter(tenant=tenant, key=key)
-                  .select_related("provider", "category",
-                                  "reported_cost_mapping")
-                  .prefetch_related("measurements")
-                  .first())
+    """One Event Type with its parts, or a 404 naming the key that missed."""
+    event_type = _declarations(tenant).filter(key=key).first()
     if event_type is None:
         raise Problem("not_found", f"event type with key '{key}' not found")
     return event_type
+
+
+def _mapping(event_type, key):
+    """The Event Type's reported-cost mapping, or a 404 saying it has none.
+
+    ``getattr`` with a default, because a reverse one-to-one RAISES when the
+    row is absent rather than answering ``None`` — and the absence is an
+    ordinary state here, not an error, so it has to be turned into the 404 the
+    caller can act on.
+    """
+    mapping = getattr(event_type, REPORTED_COST_MAPPING, None)
+    if mapping is None:
+        raise Problem(
+            "not_found",
+            f"event type '{key}' declares no reported cost mapping")
+    return mapping
 
 
 #: How Django reports a uniqueness failure out of ``full_clean``. Its own
@@ -239,39 +190,93 @@ def _one_message(invalid):
                      for field, messages in sorted(errors.items()))
 
 
-def _satellite(model, tenant, key, kind):
-    """A Provider or an EventCategory by key, or a 404. ``None`` for no key.
+def _by_key(model, tenant, key, kind):
+    """One tenant-scoped record by key, or a 404 naming the key that missed.
 
-    The empty string and ``None`` mean different things to a caller — see
-    ``EventTypeUpdateIn`` — but both mean "no record" here, and the branch that
-    tells them apart belongs to the handler that knows whether an absent field
-    is a detach or a no-op.
+    One helper rather than a lookup per handler, so the message a tenant gets
+    for a key that is not there is the same message wherever they meet it —
+    and so the tenant scoping is written once. A lookup that forgot it would be
+    a cross-tenant read, which is the one direction this surface must never
+    point.
     """
-    if not key:
-        return None
     found = model.objects.filter(tenant=tenant, key=key).first()
     if found is None:
         raise Problem("not_found", f"{kind} with key '{key}' not found")
     return found
 
 
+def _satellite(model, tenant, key, kind):
+    """A Provider or an EventCategory named on a declaration, or ``None``.
+
+    The empty string and ``None`` mean different things to a caller — see
+    ``EventTypeUpdateIn`` — but both mean "no record" here, and the branch that
+    tells them apart belongs to the handler that knows whether an absent field
+    is a detach or a no-op.
+
+    A key that names nothing is a 404 rather than an auto-registration: a name
+    UBB has never seen must never become permanent billing vocabulary by being
+    mentioned.
+    """
+    return _by_key(model, tenant, key, kind) if key else None
+
+
+def _saved(model, action, tenant, resource_type, resource_id, metadata,
+           conflict):
+    """Validate, save and audit one catalogue write, as one act.
+
+    Extracted because it was written five times and each copy spelled its
+    conflict message twice — once for the validator's uniqueness failure and
+    once for the ``IntegrityError`` underneath it. Two spellings of one
+    sentence is two chances to fix only one of them.
+
+    Both refusals are kept, and they are not redundant: ``full_clean`` catches
+    the duplicate a tenant can see, and the database catches the one they
+    cannot — a concurrent write between the check and the insert. Without the
+    second, that race is a 500 rather than the same 409.
+
+    ``metadata`` is called with the SAVED model rather than closing over the
+    caller's variable, and that is not a style preference: the caller's name is
+    unbound until this returns, so a closure over it raises on the first write.
+    Deferred rather than passed as a dict because the serializers read fields
+    the save fills in.
+    """
+    _refuse_invalid(model, conflict=conflict)
+    try:
+        with transaction.atomic():
+            model.save()
+            audit_record(action=action, tenant_id=tenant.id,
+                         resource_type=resource_type, resource_id=resource_id,
+                         metadata=metadata(model))
+    except IntegrityError:
+        raise Problem("conflict", conflict)
+    return model
+
+
+def _withdrawn(model, action, tenant, resource_type, resource_id, metadata):
+    """Delete one catalogue record and record that it went, as one act."""
+    with transaction.atomic():
+        model.delete()
+        audit_record(action=action, tenant_id=tenant.id,
+                     resource_type=resource_type, resource_id=resource_id,
+                     metadata=metadata)
+
+
 # ---------------------------------------------------------------------------
 # Suppliers
 # ---------------------------------------------------------------------------
 
-@event_type_router.get("/providers", response={200: ProviderListOut})
+@event_type_router.get("/providers", response={200: PaginatedProviders})
 @role_floor(READ)
-def list_providers(request):
+def list_providers(request, cursor: str = None, limit: int = _DEFAULT_LIMIT):
     """Every supplier this tenant has declared, retired ones included.
 
-    Retirement is about what may be ATTACHED next and never about what may be
-    READ: hiding retired suppliers here would make reading last quarter the
-    clever path and the wrong answer the easy one.
+    Retirement governs what may be ATTACHED next and never what may be READ:
+    hiding retired suppliers here would make reading last quarter the clever
+    path and the wrong answer the easy one.
     """
     _product_check(request)
-    providers = Provider.objects.filter(
-        tenant=request.auth.tenant).order_by("key")
-    return 200, {"providers": [_provider_out(p) for p in providers]}
+    return 200, page(Provider.objects.filter(tenant=request.auth.tenant),
+                     cursor, limit, serialize=provider_out)
 
 
 @event_type_router.post("/providers",
@@ -283,44 +288,40 @@ def declare_provider(request, payload: ProviderIn):
     """Declare a supplier. The key is the tenant's own handle for it."""
     _product_check(request)
     tenant = request.auth.tenant
-    provider = Provider(tenant=tenant, key=payload.key)
-    _refuse_invalid(provider,
-                    conflict=f"provider with key '{payload.key}' already exists")
-    try:
-        with transaction.atomic():
-            provider.save()
-            audit_record(action="provider.declared", tenant_id=tenant.id,
-                         resource_type="provider", resource_id=provider.key,
-                         metadata=_provider_out(provider))
-    except IntegrityError:
-        raise Problem("conflict",
-                      f"provider with key '{payload.key}' already exists")
-    return 201, _provider_out(provider)
+    provider = _saved(
+        Provider(tenant=tenant, key=payload.key),
+        action="provider.declared", tenant=tenant, resource_type="provider",
+        resource_id=payload.key,
+        metadata=provider_out,
+        conflict=f"provider with key '{payload.key}' already exists")
+    return 201, provider_out(provider)
 
 
 @event_type_router.patch("/providers/{key}",
                          response={200: ProviderOut, 404: ProblemOut,
                                    409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("provider.declared")
+@records_audit("provider.declared", "provider.retired")
 def revise_provider(request, key: str, payload: ProviderUpdateIn):
-    """Rename or retire a supplier.
+    """Rename a supplier, or retire one — two acts, recorded apart.
 
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for the same reason the identity is not the
-    key: nothing downstream holds the handle.
+    cannot repair. Renaming is safe for exactly the same reason the identity is
+    not the key: nothing downstream holds the handle.
+
+    Retirement records ``provider.retired`` rather than a second
+    ``provider.declared``, because it is a commercial decision to stop offering
+    a supplier and not a correction to a name. Where one request does both, the
+    retirement is what the ledger is told: it is the consequential half.
     """
     _product_check(request)
-    from django.utils import timezone
-
     tenant = request.auth.tenant
-    provider = Provider.objects.filter(tenant=tenant, key=key).first()
-    if provider is None:
-        raise Problem("not_found", f"provider with key '{key}' not found")
+    provider = _by_key(Provider, tenant, key, "provider")
 
     changed = []
+    retirement_moved = False
     if payload.key is not None and payload.key != provider.key:
         provider.key = payload.key
         changed.append("key")
@@ -329,23 +330,18 @@ def revise_provider(request, key: str, payload: ProviderUpdateIn):
         if payload.retired != was_retired:
             provider.retired_at = timezone.now() if payload.retired else None
             changed.append("retired_at")
+            retirement_moved = True
     if not changed:
-        return 200, _provider_out(provider)
+        return 200, provider_out(provider)
 
-    _refuse_invalid(
+    _saved(
         provider,
+        action=("provider.retired" if retirement_moved
+                else "provider.declared"),
+        tenant=tenant, resource_type="provider", resource_id=provider.key,
+        metadata=lambda saved: {"changed": changed, **provider_out(saved)},
         conflict=f"provider with key '{provider.key}' already exists")
-    try:
-        with transaction.atomic():
-            provider.save()
-            audit_record(action="provider.declared", tenant_id=tenant.id,
-                         resource_type="provider", resource_id=provider.key,
-                         metadata={"changed": changed,
-                                   **_provider_out(provider)})
-    except IntegrityError:
-        raise Problem("conflict",
-                      f"provider with key '{provider.key}' already exists")
-    return 200, _provider_out(provider)
+    return 200, provider_out(provider)
 
 
 # ---------------------------------------------------------------------------
@@ -353,15 +349,14 @@ def revise_provider(request, key: str, payload: ProviderUpdateIn):
 # ---------------------------------------------------------------------------
 
 @event_type_router.get("/event-categories",
-                       response={200: EventCategoryListOut})
+                       response={200: PaginatedEventCategories})
 @role_floor(READ)
-def list_event_categories(request):
+def list_event_categories(request, cursor: str = None,
+                          limit: int = _DEFAULT_LIMIT):
     """Every category this tenant has declared. One level, current."""
     _product_check(request)
-    categories = EventCategory.objects.filter(
-        tenant=request.auth.tenant).order_by("key")
-    return 200, {"event_categories": [_event_category_out(c)
-                                      for c in categories]}
+    return 200, page(EventCategory.objects.filter(tenant=request.auth.tenant),
+                     cursor, limit, serialize=event_category_out)
 
 
 @event_type_router.post("/event-categories",
@@ -373,33 +368,25 @@ def declare_event_category(request, payload: EventCategoryIn):
     """Declare a category. Analytics-only: it can never reach a cost or price."""
     _product_check(request)
     tenant = request.auth.tenant
-    category = EventCategory(tenant=tenant, key=payload.key)
-    _refuse_invalid(
-        category,
+    category = _saved(
+        EventCategory(tenant=tenant, key=payload.key),
+        action="event_category.declared", tenant=tenant,
+        resource_type="event_category", resource_id=payload.key,
+        metadata=event_category_out,
         conflict=f"event category with key '{payload.key}' already exists")
-    try:
-        with transaction.atomic():
-            category.save()
-            audit_record(action="event_category.declared", tenant_id=tenant.id,
-                         resource_type="event_category",
-                         resource_id=category.key,
-                         metadata=_event_category_out(category))
-    except IntegrityError:
-        raise Problem("conflict",
-                      f"event category with key '{payload.key}' already exists")
-    return 201, _event_category_out(category)
+    return 201, event_category_out(category)
 
 
 @event_type_router.delete("/event-categories/{key}",
                           response={204: None, 404: ProblemOut,
                                     409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_category.declared")
+@records_audit("event_category.withdrawn")
 def withdraw_event_category(request, key: str):
     """Withdraw a category, unless an Event Type still groups under it.
 
     A real delete rather than a retirement, and the asymmetry with the supplier
-    next door is the point rather than an inconsistency: a Provider earns
+    above is the point rather than an inconsistency: a Provider earns
     ``retired_at`` because historical COGS attribution keys on it, and a
     category reaches no money by any path, so there is no past reading to
     protect. Refused while in use, because ``PROTECT`` on the Event Type's
@@ -407,20 +394,16 @@ def withdraw_event_category(request, key: str):
     """
     _product_check(request)
     tenant = request.auth.tenant
-    category = EventCategory.objects.filter(tenant=tenant, key=key).first()
-    if category is None:
-        raise Problem("not_found", f"event category with key '{key}' not found")
+    category = _by_key(EventCategory, tenant, key, "event category")
     in_use = EventType.objects.filter(category=category).count()
     if in_use:
         raise Problem(
             "conflict",
             f"event category '{key}' still groups {in_use} event type(s); "
             f"move them to another category first")
-    with transaction.atomic():
-        category.delete()
-        audit_record(action="event_category.declared", tenant_id=tenant.id,
-                     resource_type="event_category", resource_id=key,
-                     metadata={"key": key, "withdrawn": True})
+    _withdrawn(category, action="event_category.withdrawn", tenant=tenant,
+               resource_type="event_category", resource_id=key,
+               metadata={"key": key})
     return 204, None
 
 
@@ -428,18 +411,13 @@ def withdraw_event_category(request, key: str):
 # Event Types
 # ---------------------------------------------------------------------------
 
-@event_type_router.get("/event-types", response={200: EventTypeListOut})
+@event_type_router.get("/event-types", response={200: PaginatedEventTypes})
 @role_floor(READ)
-def list_event_types(request):
-    """The tenant's whole metered vocabulary, declarations and all."""
+def list_event_types(request, cursor: str = None, limit: int = _DEFAULT_LIMIT):
+    """The tenant's metered vocabulary, each declaration whole."""
     _product_check(request)
-    event_types = (EventType.objects
-                   .filter(tenant=request.auth.tenant)
-                   .select_related("provider", "category",
-                                   "reported_cost_mapping")
-                   .prefetch_related("measurements")
-                   .order_by("key"))
-    return 200, {"event_types": [_event_type_out(e) for e in event_types]}
+    return 200, page(_declarations(request.auth.tenant), cursor, limit,
+                     serialize=event_type_out)
 
 
 @event_type_router.get("/event-types/{key}",
@@ -448,7 +426,7 @@ def list_event_types(request):
 def get_event_type(request, key: str):
     """One declaration, whole — the read a Code Builder generates from."""
     _product_check(request)
-    return 200, _event_type_out(_declaration(request.auth.tenant, key))
+    return 200, event_type_out(_declaration(request.auth.tenant, key))
 
 
 @event_type_router.post("/event-types",
@@ -466,33 +444,25 @@ def declare_event_type(request, payload: EventTypeIn):
     """
     _product_check(request)
     tenant = request.auth.tenant
-    event_type = EventType(
-        tenant=tenant, key=payload.key,
-        costing_method=payload.costing_method,
-        provider=_satellite(Provider, tenant, payload.provider_key,
-                            "provider"),
-        category=_satellite(EventCategory, tenant, payload.category_key,
-                            "event category"),
-        source_shape_id=payload.source_shape_id,
-        source_shape_label=payload.source_shape_label)
-    _refuse_invalid(
-        event_type,
+    event_type = _saved(
+        EventType(tenant=tenant, key=payload.key,
+                  costing_method=payload.costing_method,
+                  provider=_satellite(Provider, tenant, payload.provider_key,
+                                      "provider"),
+                  category=_satellite(EventCategory, tenant,
+                                      payload.category_key, "event category"),
+                  source_shape_id=payload.source_shape_id,
+                  source_shape_label=payload.source_shape_label),
+        action="event_type.declared", tenant=tenant,
+        resource_type="event_type", resource_id=payload.key,
+        metadata=event_type_out,
         conflict=f"event type with key '{payload.key}' already exists")
-    try:
-        with transaction.atomic():
-            event_type.save()
-            audit_record(action="event_type.declared", tenant_id=tenant.id,
-                         resource_type="event_type", resource_id=event_type.key,
-                         metadata=_event_type_out(event_type))
-    except IntegrityError:
-        raise Problem("conflict",
-                      f"event type with key '{payload.key}' already exists")
-    return 201, _event_type_out(event_type)
+    return 201, event_type_out(event_type)
 
 
 @event_type_router.patch("/event-types/{key}",
                          response={200: EventTypeOut, 404: ProblemOut,
-                                   422: ProblemOut})
+                                   409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("event_type.declared")
 def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
@@ -501,8 +471,8 @@ def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
-    does not. What this does is decide what an absent field means — untouched,
-    never cleared — and let an empty string detach a satellite, because "no
+    does not. What this decides is what an absent field means — untouched,
+    never cleared — and that an empty string detaches a satellite, because "no
     supplier" is a state a tenant reaches on purpose.
     """
     _product_check(request)
@@ -529,16 +499,13 @@ def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
         event_type.source_shape_label = payload.source_shape_label
         changed.append("source_shape_label")
     if not changed:
-        return 200, _event_type_out(event_type)
+        return 200, event_type_out(event_type)
 
-    _refuse_invalid(event_type)
-    with transaction.atomic():
-        event_type.save()
-        audit_record(action="event_type.declared", tenant_id=tenant.id,
-                     resource_type="event_type", resource_id=event_type.key,
-                     metadata={"changed": changed,
-                               **_event_type_out(event_type)})
-    return 200, _event_type_out(_declaration(tenant, event_type.key))
+    _saved(event_type, action="event_type.declared", tenant=tenant,
+           resource_type="event_type", resource_id=event_type.key,
+           metadata=lambda saved: {"changed": changed, **event_type_out(saved)},
+           conflict=f"event type with key '{event_type.key}' already exists")
+    return 200, event_type_out(_declaration(tenant, event_type.key))
 
 
 @event_type_router.post("/event-types/{key}/publish",
@@ -564,10 +531,10 @@ def publish_event_type(request, key: str):
                 action="event_type.published", tenant_id=tenant.id,
                 resource_type="event_type", resource_id=event_type.key,
                 metadata={"published_revision": event_type.published_revision,
-                          **_event_type_out(event_type)})
+                          **event_type_out(event_type)})
     except DeclarationIncomplete as incomplete:
         raise Problem("conflict", str(incomplete))
-    return 200, _event_type_out(_declaration(tenant, key))
+    return 200, event_type_out(_declaration(tenant, key))
 
 
 # ---------------------------------------------------------------------------
@@ -575,19 +542,21 @@ def publish_event_type(request, key: str):
 # ---------------------------------------------------------------------------
 
 @event_type_router.get("/event-types/{key}/measurements",
-                       response={200: MeasurementListOut, 404: ProblemOut})
+                       response={200: PaginatedMeasurements, 404: ProblemOut})
 @role_floor(READ)
-def list_measurements(request, key: str):
+def list_measurements(request, key: str, cursor: str = None,
+                      limit: int = _DEFAULT_LIMIT):
     """The quantities this Event Type declares."""
     _product_check(request)
     event_type = _declaration(request.auth.tenant, key)
-    return 200, {"measurements": [_measurement_out(m)
-                                  for m in event_type.measurements.all()]}
+    return 200, page(event_type.measurements.all(), cursor, limit,
+                     serialize=measurement_out)
 
 
 @event_type_router.put("/event-types/{key}/measurements/{code}",
                        response={200: MeasurementOut, 201: MeasurementOut,
-                                 404: ProblemOut, 422: ProblemOut})
+                                 404: ProblemOut, 409: ProblemOut,
+                                 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("measurement.declared")
 def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
@@ -617,22 +586,21 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
     measurement.required_for_costing = payload.required_for_costing
     measurement.source_kind = payload.source_kind
     measurement.source_path = list(payload.source_path)
-    _refuse_invalid(measurement)
 
-    with transaction.atomic():
-        measurement.save()
-        audit_record(action="measurement.declared", tenant_id=tenant.id,
-                     resource_type="measurement",
-                     resource_id=f"{event_type.key}:{code}",
-                     metadata={"event_type_key": event_type.key,
-                               **_measurement_out(measurement)})
-    return (201 if created else 200), _measurement_out(measurement)
+    _saved(measurement, action="measurement.declared", tenant=tenant,
+           resource_type="measurement",
+           resource_id=f"{event_type.key}:{code}",
+           metadata=lambda saved: {"event_type_key": event_type.key,
+                                  **measurement_out(saved)},
+           conflict=f"event type '{key}' is already declaring a measurement "
+                    f"with code '{code}'")
+    return (201 if created else 200), measurement_out(measurement)
 
 
 @event_type_router.delete("/event-types/{key}/measurements/{code}",
                           response={204: None, 404: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("measurement.declared")
+@records_audit("measurement.withdrawn")
 def withdraw_measurement(request, key: str, code: str):
     """Withdraw one declared quantity. This revises the publication too.
 
@@ -648,13 +616,10 @@ def withdraw_measurement(request, key: str, code: str):
         raise Problem(
             "not_found",
             f"event type '{key}' declares no measurement with code '{code}'")
-    with transaction.atomic():
-        measurement.delete()
-        audit_record(action="measurement.declared", tenant_id=tenant.id,
-                     resource_type="measurement",
-                     resource_id=f"{event_type.key}:{code}",
-                     metadata={"event_type_key": event_type.key,
-                               "code": code, "withdrawn": True})
+    _withdrawn(measurement, action="measurement.withdrawn", tenant=tenant,
+               resource_type="measurement",
+               resource_id=f"{event_type.key}:{code}",
+               metadata={"event_type_key": event_type.key, "code": code})
     return 204, None
 
 
@@ -669,21 +634,16 @@ def withdraw_measurement(request, key: str, code: str):
 def get_reported_cost_mapping(request, key: str):
     """Where this Event Type's supplier cost is read from, if it is declared."""
     _product_check(request)
-    event_type = _declaration(request.auth.tenant, key)
-    mapping = getattr(event_type, "reported_cost_mapping", None)
-    if mapping is None:
-        raise Problem(
-            "not_found",
-            f"event type '{key}' declares no reported cost mapping")
-    return 200, _reported_cost_mapping_out(mapping)
+    return 200, reported_cost_mapping_out(
+        _mapping(_declaration(request.auth.tenant, key), key))
 
 
 @event_type_router.put("/event-types/{key}/reported-cost-mapping",
                        response={200: ReportedCostMappingOut,
                                  201: ReportedCostMappingOut, 404: ProblemOut,
-                                 422: ProblemOut})
+                                 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_type.declared")
+@records_audit("reported_cost_mapping.declared")
 def declare_reported_cost_mapping(request, key: str,
                                   payload: ReportedCostMappingIn):
     """Declare where a supplier's own cost figure is read from. One per type.
@@ -691,13 +651,15 @@ def declare_reported_cost_mapping(request, key: str,
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
-    Event Type. Recorded under the Event Type's own action because it is a
-    part of that declaration, and the ledger row names which part.
+    Event Type. It carries its own action for the reason each satellite does —
+    the ledger's `resource_type` names which record moved, and an action
+    naming the Event Type over a row that is the mapping would make the two
+    disagree.
     """
     _product_check(request)
     tenant = request.auth.tenant
     event_type = _declaration(tenant, key)
-    mapping = getattr(event_type, "reported_cost_mapping", None)
+    mapping = getattr(event_type, REPORTED_COST_MAPPING, None)
     created = mapping is None
     if created:
         mapping = ReportedCostMapping(event_type=event_type)
@@ -707,43 +669,34 @@ def declare_reported_cost_mapping(request, key: str,
     mapping.source_path = list(payload.source_path)
     mapping.currency_path = list(payload.currency_path)
     mapping.currency = payload.currency
-    _refuse_invalid(mapping)
 
-    with transaction.atomic():
-        mapping.save()
-        audit_record(action="event_type.declared", tenant_id=tenant.id,
-                     resource_type="reported_cost_mapping",
-                     resource_id=event_type.key,
-                     metadata={"event_type_key": event_type.key,
-                               **_reported_cost_mapping_out(mapping)})
-    return (201 if created else 200), _reported_cost_mapping_out(mapping)
+    _saved(mapping, action="reported_cost_mapping.declared", tenant=tenant,
+           resource_type="reported_cost_mapping", resource_id=event_type.key,
+           metadata=lambda saved: {"event_type_key": event_type.key,
+                                  **reported_cost_mapping_out(saved)},
+           conflict=f"event type '{key}' is already declaring a reported cost "
+                    f"mapping")
+    return (201 if created else 200), reported_cost_mapping_out(mapping)
 
 
 @event_type_router.delete("/event-types/{key}/reported-cost-mapping",
                           response={204: None, 404: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_type.declared")
+@records_audit("reported_cost_mapping.withdrawn")
 def withdraw_reported_cost_mapping(request, key: str):
     """Withdraw the mapping. A `reported` declaration then cannot publish.
 
     Not refused here, and that is deliberate: the blocker is reported on the
-    declaration itself and enforced where publication happens, so withdrawing
-    a mapping in order to redeclare it is an ordinary edit rather than a
-    sequence a tenant has to work around.
+    declaration itself and enforced where publication happens, so withdrawing a
+    mapping in order to redeclare it is an ordinary edit rather than a sequence
+    a tenant has to work around.
     """
     _product_check(request)
     tenant = request.auth.tenant
     event_type = _declaration(tenant, key)
-    mapping = getattr(event_type, "reported_cost_mapping", None)
-    if mapping is None:
-        raise Problem(
-            "not_found",
-            f"event type '{key}' declares no reported cost mapping")
-    with transaction.atomic():
-        mapping.delete()
-        audit_record(action="event_type.declared", tenant_id=tenant.id,
-                     resource_type="reported_cost_mapping",
-                     resource_id=event_type.key,
-                     metadata={"event_type_key": event_type.key,
-                               "withdrawn": True})
+    _withdrawn(_mapping(event_type, key),
+               action="reported_cost_mapping.withdrawn", tenant=tenant,
+               resource_type="reported_cost_mapping",
+               resource_id=event_type.key,
+               metadata={"event_type_key": event_type.key})
     return 204, None

@@ -2204,11 +2204,12 @@ entries:
     gate: G2
     site: ubb-platform/apps/platform/audit/actions.py::audit_action
     expected: audit_action
-    # 58 -> 61: #267 added the Event Type catalogue's publication and its two
-    # satellites as actions. The numerator is untouched — this consumer still
-    # holds none of them by reference — so the debt is unchanged in kind and
-    # only its size moved, which is exactly what `found` exists to record.
-    found: 0 of 61 values
+    # 58 -> 66: #267 gave the Event Type catalogue's twelve-mutation write
+    # surface its action names — a declare and an un-declare per record, plus
+    # the publication. The numerator is untouched: this consumer still holds
+    # none of them by reference, so the debt is unchanged in kind and only its
+    # size moved, which is exactly what `found` exists to record.
+    found: 0 of 66 values
     owner_slice: slice_8
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -2897,15 +2898,15 @@ entries:
     gate: G4
     site: openapi/v1.json::audit_action
     expected: audit_action
-    # 58 -> 61 with the sibling G2 entry above: #267 added the Event Type
-    # catalogue's publication and its two satellites as actions.
-    found: 0 of 61 values
+    # 58 -> 66 with the sibling G2 entry above: #267 gave the Event Type
+    # catalogue's write surface its action names.
+    found: 0 of 66 values
     owner_slice: slice_8
     reason: >-
       The contract may not advertise these values while the backend consumer
-      holds 0 of 61 of them: the spec would publish the agreed vocabulary on a
+      holds 0 of 66 of them: the spec would publish the agreed vocabulary on a
       field that still returns the one it replaces, and a consumer can act on
-      that. Its sixty-one actions name subjects across every slice, so no one
+      that. Its sixty-six actions name subjects across every slice, so no one
       slice rebuilds the catalogue and it is recorded against the cutover for
       want of an owner — #227's finding, repeated here because it is the same
       absence and it wants an owner's eye. The metadata appears in that slice.

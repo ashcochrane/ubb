@@ -78,7 +78,7 @@ def sync_detailed(
      Withdraw a category, unless an Event Type still groups under it.
 
     A real delete rather than a retirement, and the asymmetry with the supplier
-    next door is the point rather than an inconsistency: a Provider earns
+    above is the point rather than an inconsistency: a Provider earns
     ``retired_at`` because historical COGS attribution keys on it, and a
     category reaches no money by any path, so there is no past reading to
     protect. Refused while in use, because ``PROTECT`` on the Event Type's
@@ -118,7 +118,7 @@ def sync(
      Withdraw a category, unless an Event Type still groups under it.
 
     A real delete rather than a retirement, and the asymmetry with the supplier
-    next door is the point rather than an inconsistency: a Provider earns
+    above is the point rather than an inconsistency: a Provider earns
     ``retired_at`` because historical COGS attribution keys on it, and a
     category reaches no money by any path, so there is no past reading to
     protect. Refused while in use, because ``PROTECT`` on the Event Type's
@@ -153,7 +153,7 @@ async def asyncio_detailed(
      Withdraw a category, unless an Event Type still groups under it.
 
     A real delete rather than a retirement, and the asymmetry with the supplier
-    next door is the point rather than an inconsistency: a Provider earns
+    above is the point rather than an inconsistency: a Provider earns
     ``retired_at`` because historical COGS attribution keys on it, and a
     category reaches no money by any path, so there is no past reading to
     protect. Refused while in use, because ``PROTECT`` on the Event Type's
@@ -193,7 +193,7 @@ async def asyncio(
      Withdraw a category, unless an Event Type still groups under it.
 
     A real delete rather than a retirement, and the asymmetry with the supplier
-    next door is the point rather than an inconsistency: a Provider earns
+    above is the point rather than an inconsistency: a Provider earns
     ``retired_at`` because historical COGS attribution keys on it, and a
     category reaches no money by any path, so there is no past reading to
     protect. Refused while in use, because ``PROTECT`` on the Event Type's
