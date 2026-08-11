@@ -235,7 +235,15 @@ class PostingMeasurement(BaseModel):
     # The bag, keyed by the tenant's own declared measurement codes (#274). The
     # record is singular and its bag is plural, and both are right: a posting has
     # ONE measurement record, and that record holds every quantity the posting
-    # was measured by. Only a declared quantity may participate in monetary
+    # was measured by.
+    #
+    # THE FIELD IS NAMED FOR THE ENTITY, NOT FOR THE CONCEPT ITS KEYS BELONG TO,
+    # which is the same shape as the bag above: `metadata_key`'s bag is spelled
+    # `metadata`, and this one is spelled for `Measurement` — ADR-0006's
+    # canonical name for a measurable quantity, and the word the declarations
+    # already publish. The retired entries this rename cleared named the concept
+    # (`expected: measurement_key`) rather than the field, as that neighbour's
+    # did; a key's concept and a bag of them do not share a spelling. Only a declared quantity may participate in monetary
     # calculation — a property of the declaration table, not of this column,
     # which still accepts any key a caller sends and lets an unmatched one
     # contribute nothing. Slice 3 owns making that visible.

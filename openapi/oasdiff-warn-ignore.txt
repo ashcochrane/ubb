@@ -174,7 +174,12 @@ GET /api/v1/metering/usage/{event_id} removed the optional property `tags` from 
 POST /api/v1/metering/usage removed the request property `tags`
 POST /api/v1/metering/usage/batch removed the request property `events/items/tags`
 
-# THE MEASURED-QUANTITY BAG TAKES THE CANONICAL MEASUREMENT NAME (#274, slice 2).
+# 2026-08-11 THE MEASURED-QUANTITY BAG TAKES THE CANONICAL MEASUREMENT NAME
+# (#274, slice 2; PR #302). Decision reference: ADR-0007 §1 and §3, and the slice
+# spec's §F. The four lines below were EMITTED by the gate itself
+# (`python openapi/contract_gate.py --baseline origin/main --emit`, oasdiff
+# v1.23.0) and pasted unedited, per ADR-0007 §4 — everything above them is the
+# human metadata that section permits.
 #
 # A RENAME, and the third distinct shape in three blocks: the unit total had
 # nowhere to go and died, the second open bag folded into the first, and this one
@@ -186,9 +191,10 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/tag
 # an Event Type carries, and the field now says so. That is what separates a
 # quantity that can be costed from one that is merely carried, and it is the same
 # word the declarations already publish (`GET /event-types/{key}/measurements`).
-# On the detail response it also ends a two-year-old oddity: `measurements_status`
-# was named for this bag before the bag was, and a reader had to be told the two
-# were about the same thing.
+# On the detail response it also closes a gap #271 opened three tickets ago:
+# `measurements_status` landed there under this name while the bag it describes
+# still carried the other one, so a reader had to be told the two were about the
+# same thing. They now read as the pair they always were.
 #
 # BOTH DIRECTIONS, for the reason the blocks above give: two of these four are
 # REQUEST properties, because a name the server no longer stores under must stop

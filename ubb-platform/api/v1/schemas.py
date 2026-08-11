@@ -115,7 +115,13 @@ class RecordUsageRequest(Schema):
 
         Not tightened, deliberately: refusing a key no declaration matches is
         slice 3's, which owns every behaviour a declaration selects. Anything
-        this refused before it was renamed it still refuses, and nothing more.
+        this refused before it was renamed it still refuses, and nothing more —
+        `usage/tests/test_negative_metric_rejection.py` states both halves.
+
+        The PREDICATE is what moved unchanged. The message had to be rewritten
+        because it names the field, and its second noun moved with it rather
+        than being left spelling the retired word for the one ticket between
+        this rename and the one that clears that word from the backend.
         """
         if v is None:
             return v

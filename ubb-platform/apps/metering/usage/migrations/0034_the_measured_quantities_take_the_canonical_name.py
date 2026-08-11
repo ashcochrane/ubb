@@ -15,8 +15,10 @@ column of the right name holding nothing, and every test that only asks whether
 the new name exists would pass over the loss. `tests/
 test_the_measured_quantities_take_the_canonical_name.py` reads its two names off
 the operation below rather than spelling them, so the assertions cannot drift
-from what actually ran — and this file stays the only place in the tree that
-still writes the retired word, which is where a reader should be looking it up.
+from what actually ran, and `old_name` here is where a reader should look the
+retired word up — the migrations tree being one of the two declared sweep
+exclusions where it legitimately survives, the contract gate's reviewed-break
+block being the other.
 
 **No behaviour moves with the name.** The only validation the bag has ever
 carried is that its values are not negative, and that validator moved across
