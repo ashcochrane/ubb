@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import BaseModel
+from core.transitions import RECORD_RULE
 
 
 class Posting(BaseModel):
@@ -10,7 +11,7 @@ class Posting(BaseModel):
 
     Renamed from the usage-event noun in #269 (slice 2), with its table, so the
     database stops preserving obsolete terminology (ADR-0006 §9, gate G9). The
-    record of WHAT WAS MEASURED splits off into a child of its own in #270; this
+    record of WHAT WAS MEASURED split off into a child of its own in #270; this
     row keeps the money, the attribution and the identity.
     """
     tenant = models.ForeignKey(
@@ -51,7 +52,6 @@ class Posting(BaseModel):
     provider_cost_micros = models.BigIntegerField(default=0)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
-    usage_metrics = models.JSONField(default=dict, blank=True)
     tags = models.JSONField(null=True, blank=True)
     # The exact unit of work this event belongs to. The ONLY unit attribution
     # — tags are free-form analytics labels and never silently become a
@@ -117,6 +117,31 @@ class Posting(BaseModel):
     def __str__(self):
         return f"Posting({self.request_id}: {self.billed_cost_micros})"
 
+    @property
+    def usage_metrics(self):
+        """The measured quantities, read from the measurement record (#270).
+
+        **This is not a column.** It was one until the split, and every reader
+        that used to read the column reads this instead — which is how the move
+        is provable to have cost no reader anything. There is exactly one
+        encoding of the quantities and it lives on the child; ADR-0006 §4 is why
+        this may be *served* read-only and may never be written back.
+
+        It is read-only on purpose: a writer that tries to set it fails loudly
+        rather than filling a column that is no longer there.
+
+        An absent child answers ``{}``, which is what every reader saw before
+        the split, when a posting with no measurements stored an empty bag. That
+        is deliberately still indistinguishable from a pruned one *here* —
+        making the difference visible is the next ticket's whole subject, and it
+        does it on the contract with a derived status rather than by teaching
+        this accessor to lie in a second way.
+        """
+        try:
+            return self.measurement.usage_metrics
+        except PostingMeasurement.DoesNotExist:
+            return {}
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValueError("Posting records are immutable and cannot be updated.")
@@ -124,6 +149,91 @@ class Posting(BaseModel):
 
     def delete(self, *args, **kwargs):
         raise ValueError("Posting records are immutable and cannot be deleted.")
+
+
+class PostingMeasurement(BaseModel):
+    """What was measured on a posting — the detail that may legitimately expire.
+
+    Singular, per this repository's convention and per the originating
+    decision's own recommendation: a posting has *a* measurement, not a set of
+    them. One-to-one with its parent, keyed by a unique posting reference, and
+    its table tracks its model name (ADR-0006 §9).
+
+    **Why it is a record and not four more columns on the posting.** Two merged
+    decisions each published a retention promise and they disagree by years: a
+    Pricing Receipt is kept six years, and bulky measurement detail prunes at a
+    shorter horizon so that "the money stays explicable after the measurements
+    expire". As one row, honouring both means a housekeeping job runs ``UPDATE``
+    against the durable economic record to blank a column — a scheduled
+    destructive write to the highest-volume six-year table in the system. As two
+    rows it is a ``DELETE`` from here, and **the posting is never written to at
+    all**. Retention is the load-bearing reason and it is the only one.
+
+    **Absence is expressed by absence.** Where a posting is a synthetic charge —
+    a Task sold at one agreed price — this record does not exist. Not an empty
+    record, not a record of zeroes: *"this avoids manufacturing an empty
+    measurement record merely so a task charge can possess an ID"*. Nothing
+    here defaults a child into being, and no code path creates one except the
+    metered recording path.
+
+    **The transition classes below are declared, not enforced.** ADR-0007 §2
+    requires every column to state what is allowed to happen to it; what this
+    record states is that *no column of it states anything on its own*, because
+    it has no per-column lifecycle to describe. The record's rule is::
+
+        INSERT   once, in the same transaction as its posting
+        UPDATE   never — no column of a measurement record is ever rewritten
+        DELETE   permitted only at or after prunable_at, and only while the
+                 parent posting is not unresolved
+
+    Enforcing that at the database is gate G19, which is ``owned_by_slice_3``
+    and whose ``DELETE`` condition is cross-table and unexpressible until slice
+    4, because one of the two statuses it reads lands in slice 3 and the other
+    in slice 4. **No column here is declared into a class the database defends**
+    (``core.transitions.DATABASE_DEFENDED``), so slice 3 is still the first
+    slice with a protected column, exactly as G19's own note says. A model-level
+    ``save()`` guard is deliberately *not* shipped in its place: ADR-0007 §2 is
+    explicit that such a guard is not enforcement, and this repository has
+    already shipped one that a production writer bypassed by design.
+
+    ``updated_at`` is inherited from ``BaseModel`` and, under the record rule
+    above, never moves after insert.
+    """
+    posting = models.OneToOneField(
+        Posting, on_delete=models.CASCADE, related_name="measurement"
+    )
+    usage_metrics = models.JSONField(default=dict, blank=True)
+    # When the quantities were RECORDED, which is not when this row was written:
+    # rows folded out of the posting by 0031 carry the moment their posting
+    # arrived, long before the fold ran. ``created_at`` answers the other
+    # question and the two are different facts.
+    recorded_at = models.DateTimeField()
+    # The retention horizon — a column, and nothing else. There is no prune job,
+    # no schedule, no owner and no default value anywhere in this repository,
+    # because no document states the short clock: shipping a column is not the
+    # same as starting one, and a clock nobody has decided must not be started
+    # by accident. It stays NULL until someone decides what it means.
+    prunable_at = models.DateTimeField(null=True, blank=True)
+
+    #: Every column of this record and the class it is declared into (ADR-0007
+    #: §2). All of them point at the record rule in the docstring above rather
+    #: than at a class of their own, and none of them is a class the database
+    #: defends.
+    transition_classes = {
+        "id": RECORD_RULE,
+        "created_at": RECORD_RULE,
+        "updated_at": RECORD_RULE,
+        "posting": RECORD_RULE,
+        "usage_metrics": RECORD_RULE,
+        "recorded_at": RECORD_RULE,
+        "prunable_at": RECORD_RULE,
+    }
+
+    class Meta:
+        db_table = "ubb_posting_measurement"
+
+    def __str__(self):
+        return f"PostingMeasurement({self.posting_id})"
 
 
 class BackfillDirtyPeriod(BaseModel):

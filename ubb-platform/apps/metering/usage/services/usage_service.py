@@ -9,7 +9,8 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
-from apps.metering.usage.models import BackfillDirtyPeriod, Posting
+from apps.metering.usage.models import (
+    BackfillDirtyPeriod, Posting, PostingMeasurement)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 
@@ -392,7 +393,6 @@ class UsageService:
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
                     units=inp.units, currency=inp.currency,
-                    usage_metrics=inp.usage_metrics,
                     pricing_provenance=provenance,
                     tags=inp.tags, task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
@@ -400,6 +400,20 @@ class UsageService:
                     dim1=inp.dim1, dim2=inp.dim2, dim3=inp.dim3,
                     dim4=inp.dim4, dim5=inp.dim5, dim6=inp.dim6,
                     **create_kwargs)
+                # The measurement record (#270), written in the SAME
+                # transaction as its posting — the child's whole-record rule
+                # says "insert once, with the parent", and the savepoint above
+                # is what makes that true of a failure too.
+                #
+                # This is the metered recording path, so every posting it
+                # records has one, empty bag or not. Absence is reserved for the
+                # posting kind that never had measurements, and manufacturing an
+                # empty child here would spend that meaning on a bag the caller
+                # simply left out. `prunable_at` stays NULL: no document states
+                # the horizon and nothing in this repository sets it.
+                PostingMeasurement.objects.create(
+                    posting=event, usage_metrics=inp.usage_metrics or {},
+                    recorded_at=event.created_at)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
                     # both totals (the tipping event and everything after a
@@ -485,7 +499,11 @@ class UsageService:
         BEFORE calling this, so a DimensionError is the whole-request/whole-
         item rejection and never reaches here."""
         validate_tags(tags)
-        existing = Posting.objects.filter(
+        # select_related on the measurement child (#270): a replay's response
+        # carries the ORIGINAL quantities, which the posting now reads through
+        # the child — and the replay path is the hot one, so it pays for that
+        # read here rather than a second query per retry.
+        existing = Posting.objects.select_related("measurement").filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
             # Replay wins BEFORE effective_at validation: a whole-batch retry
@@ -530,7 +548,7 @@ class UsageService:
             # IntegrityError propagates as the hard failure it is (it cannot
             # be a replay: our own row exists), exactly as on main.
             try:
-                existing = Posting.objects.get(
+                existing = Posting.objects.select_related("measurement").get(
                     tenant=tenant, customer=customer, idempotency_key=idempotency_key)
             except Posting.DoesNotExist:
                 # Not the idempotency duplicate — some other insert inside the
