@@ -313,6 +313,118 @@ usage_event_kind:
     - surface: openapi
       path: openapi/v1.json
 
+measurements_status:
+  kind: closed
+  # DERIVED, NEVER STORED — and that is the whole of #193 §E5's ruling. Every
+  # one of the three is computable from facts the row already carries, so a
+  # column holding a fourth copy could only ever disagree with them, and
+  # ADR-0006 §4 says the wrong encoding is always the one nobody is looking at.
+  # It is SERVED read-only by the serialiser, which §4 expressly permits. What
+  # enforces that here is the absence test G10 — no writable column for it
+  # exists anywhere in the schema — the same gate that already covers
+  # `tenant_posture` above, extended rather than copied.
+  #
+  # AND THE NEAR MISS WITH `measure_status` BELOW IS ACCEPTED RATHER THAN
+  # OVERLOOKED. Two rules are in the neighbourhood and neither is breached.
+  #
+  # ADR-0006 §3 forbids two declared names that differ by little and mean
+  # something UNRELATED — the rule that refused `publication_status` for the
+  # declaration lifecycle further down this file, and the rule `pricing_model`
+  # beside `pricing_mode` broke. The meanings here are not unrelated, which is
+  # exactly what takes this out of §3: one is the analytics reading of a
+  # requested measure's amount and says whether a NUMBER is knowable at the
+  # grain asked for; this one says whether the RECORD of what was measured is
+  # still there to read a number from. They are two halves of one subject, and
+  # a reader who confuses them still lands in the right domain.
+  #
+  # ADR-0006 §2 is the sharper edge and it is about ONE concept, not two: no
+  # short form beside a long form, no second public name for the same thing.
+  # These are two concepts with two value sets that share not one member
+  # spelling except `not_applicable`, which several closed sets in this file
+  # already share. What §2 WOULD forbid is coining a distinct concept name here
+  # while the wire field stays `measurements_status` — that is precisely a
+  # second public name for one concept, and it is why the two are kept
+  # identical rather than pulled apart to look less alike.
+  #
+  # The wire name is not this file's to choose in any case: #193 §E5 declares
+  # the field, and ADR-0007 §3 makes a name added to `openapi/v1.json` final.
+  #
+  # THE WHOLE SET PUBLISHES NOW, THOUGH ONLY ONE VALUE IS REACHABLE IN
+  # PRODUCTION TODAY — a deliberate ruling, and the opposite of the one G4
+  # applies to a RENAME. Every posting the table holds has a measurement record
+  # (#270's fold gave every existing row one, and the metered recording path
+  # writes one in the same transaction), so today every response says
+  # `available`. `pruned` becomes reachable when something prunes — §E6 ships
+  # the horizon column with no clock behind it, deliberately — and
+  # `not_applicable` when slice 5 marks a posting as the projection of a
+  # Charge. Publishing two values now and a third later is precisely what a
+  # CLOSED set may not do: it would make slice 5 a breaking change to a
+  # generated client that had switched exhaustively over the pair. So the
+  # complete set ships in the commit that coins it, and both mechanisms land
+  # underneath it without touching this document.
+  #
+  # This is NOT a migration-ledger debt and must not be seeded as one. A ledger
+  # entry records a violation some slice owes a payment for, and
+  # `test_g*_every_seeded_entry_is_still_a_real_violation` deletes one the day
+  # it stops being true. Nothing here is owed: the value set is complete, final
+  # and correctly advertised — its backend consumer holds 3 of 3 — and what is
+  # outstanding is the arrival of two mechanisms, each already owned by the
+  # slice that builds it.
+  summary: >-
+    Whether a posting's measured quantities can still be read. `available`
+    says the measurement record is there; `pruned` says it was there and has
+    been removed at its retention horizon; `not_applicable` says the posting's
+    own kind never had one. Three answers where a reader previously met one
+    empty bag and could not tell which of them it meant — which is how a
+    payload that expired on schedule reaches an end customer as a confident
+    "no usage" (#193 §E5).
+  values:
+    - available
+    - pruned
+    - not_applicable
+  label_key_prefix: measurements_status
+  value_semantics:
+    summary: >-
+      The derivation, carried beside the values as data because it is the
+      concept's whole content: these three answers exist only as a rule over
+      two facts, and a summary sentence above the values is not beside them.
+      Read the kind first — a posting that never had measurements is not a
+      posting that has lost them.
+    inputs:
+      - the_posting_is_a_task_charge
+      - a_measurement_record_exists
+    cases:
+      - when:
+          the_posting_is_a_task_charge: true
+          a_measurement_record_exists: any
+        then: not_applicable
+        because: >-
+          A Task sold for one agreed price was never measured, so there is
+          nothing that could have been removed. The record's existence is not
+          consulted deliberately: §E4 makes it absent by construction here, and
+          a rule that read it anyway would answer `pruned` for a posting whose
+          detail no retention horizon ever governed.
+      - when:
+          the_posting_is_a_task_charge: false
+          a_measurement_record_exists: true
+        then: available
+        because: >-
+          The measurement record is there and its quantities can be read.
+      - when:
+          the_posting_is_a_task_charge: false
+          a_measurement_record_exists: false
+        then: pruned
+        because: >-
+          A metered posting always had a measurement record written in the same
+          transaction as itself, so its absence is a removal rather than an
+          omission. This is the answer the whole concept exists to make
+          sayable, and reporting it as an empty result is the defect.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/measurements.py
+    - surface: openapi
+      path: openapi/v1.json
+
 pricing_receipt_subject_type:
   kind: closed
   summary: >-

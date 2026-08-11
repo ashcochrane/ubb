@@ -24,6 +24,16 @@ column and nothing else: no prune job, no schedule, no owner, no default. Two
 merged decisions independently record that no document anywhere states the short
 clock, and shipping a column is not the same as starting one. `TheHorizonHasNoClockBehindItTest`
 is what stops one being started by accident.
+
+**And #271 makes the difference sayable.** Point 2 above pins that a pruned
+payload and a never-measured one are two different facts in the table; on their
+own they are still one empty bag to anybody reading the response.
+`TheDerivedMeasurementsStatusTest` is the rule that separates them, over the two
+inputs the registry declares for `measurements_status` and covering all four of
+their combinations. It lives here rather than in a module of its own because its
+subject is this child record's presence, and because a new file naming the
+retired quantity token would owe a sixty-sixth entry on a debt this slice is
+paying down rather than adding to.
 """
 from django.db import IntegrityError, connection, transaction
 from django.db import migrations as operations
@@ -31,11 +41,25 @@ from django.db.migrations.loader import MigrationLoader
 from django.db.models import NOT_PROVIDED
 from django.test import TestCase
 
+from apps.metering.usage.measurements import (
+    measurements_status,
+    measurements_status_for,
+    posting_kind,
+)
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.transitions import DATABASE_DEFENDED, RECORD_RULE
+from core.vocabulary import (
+    MEASUREMENTS_STATUS_AVAILABLE,
+    MEASUREMENTS_STATUS_NOT_APPLICABLE,
+    MEASUREMENTS_STATUS_PRUNED,
+    MEASUREMENTS_STATUS_VALUES,
+    USAGE_EVENT_KIND_METERED_USAGE,
+    USAGE_EVENT_KIND_TASK_CHARGE,
+    USAGE_EVENT_KIND_VALUES,
+)
 
 APP_LABEL = "usage"
 FOLD_MIGRATION = "0031_the_measurements_become_a_child_record"
@@ -182,6 +206,136 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
             # the split, and creates nothing to do it.
             self.assertEqual(self.charge.usage_metrics, {})
         self.assertEqual(PostingMeasurement.objects.count(), 1)
+
+
+class TheDerivedMeasurementsStatusTest(TestCase):
+    """The three answers, and the rule that produces them (#271).
+
+    `measurements_status` is DERIVED and never stored: every value here is
+    computed from facts the row already carries, which is why no column holds
+    it and why G10 is the gate that proves so. What is asserted below is the
+    behaviour — a posting with its record, one whose record was removed, and a
+    synthetic charge — plus the rule being total over its two declared inputs,
+    because three examples cannot show that the fourth combination has an
+    answer at all.
+
+    No mock anywhere: the measured posting is recorded through the real path,
+    and `pruned` is produced by deleting the real child rather than by
+    arranging for a reader to return nothing.
+    """
+
+    def setUp(self):
+        self.tenant, self.customer = _tenant_and_customer()
+        self.posting = Posting.objects.get(
+            id=UsageService.record_usage(
+                self.tenant, self.customer, "r1", "i1",
+                usage_metrics={"input_tokens": 1200})["event_id"])
+
+    def _fresh(self):
+        """Re-read, so a cached reverse relation cannot answer for the table."""
+        return Posting.objects.get(pk=self.posting.pk)
+
+    def test_a_posting_with_its_record_is_available(self):
+        self.assertEqual(measurements_status_for(self._fresh()),
+                         MEASUREMENTS_STATUS_AVAILABLE)
+
+    def test_a_posting_whose_record_was_removed_is_pruned(self):
+        """The whole point of the concept: removal is not emptiness.
+
+        Note what is NOT asserted — that the quantities read as `{}`. They do,
+        and that is exactly the reading this status exists to qualify.
+        """
+        PostingMeasurement.objects.filter(posting=self.posting).delete()
+
+        posting = self._fresh()
+        self.assertEqual(posting.usage_metrics, {})
+        self.assertEqual(measurements_status_for(posting),
+                         MEASUREMENTS_STATUS_PRUNED)
+
+    def test_a_synthetic_charge_posting_is_not_applicable(self):
+        """A Task sold at one agreed price was never measured.
+
+        A REAL posting stands in for the charge — the same stand-in
+        `AbsenceIsExpressedByAbsenceTest` builds — and the rule is driven with
+        that row's own record state rather than with a hand-typed `False`, so
+        what is asserted is a fact about a posting rather than about two
+        literals.
+
+        The kind is passed rather than read off a column because there is no
+        column: `usage_event_kind`'s backend consumer is a G2 debt whose ledger
+        entry names slice 5, the slice that builds the Charge such a posting is
+        projected from. So the second assertion below records what this row
+        reads as TODAY, which is not `not_applicable` — and that is not a
+        defect, because nothing projects a Charge and no such row exists
+        outside this test. It is the seam, stated where slice 5 will meet it.
+        """
+        charge = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="", idempotency_key="chg_1",
+            billed_cost_micros=250_000)
+        measured = PostingMeasurement.objects.filter(posting=charge).exists()
+        self.assertFalse(measured, "§E4: absent by construction")
+
+        self.assertEqual(
+            measurements_status(USAGE_EVENT_KIND_TASK_CHARGE,
+                                measured=measured),
+            MEASUREMENTS_STATUS_NOT_APPLICABLE)
+
+        # Today, unmarked, the same row reads as a metered posting that has
+        # lost its record. Pinned rather than hidden: it is the one reading the
+        # missing discriminator costs, and it is confined to a row this
+        # repository never creates.
+        self.assertEqual(measurements_status_for(charge),
+                         MEASUREMENTS_STATUS_PRUNED)
+
+    def test_a_charge_is_not_applicable_even_if_a_record_somehow_exists(self):
+        """The kind is read first, and the record's presence is not consulted.
+
+        §E4 makes the child absent by construction for a charge, so this
+        combination should never occur — which is precisely why the rule must
+        state an answer for it rather than leave one to be inferred. A rule
+        that consulted the record here would answer `pruned` for a posting no
+        retention horizon ever governed.
+        """
+        self.assertEqual(
+            measurements_status(USAGE_EVENT_KIND_TASK_CHARGE, measured=True),
+            MEASUREMENTS_STATUS_NOT_APPLICABLE)
+
+    def test_the_rule_is_total_over_its_two_inputs(self):
+        """Four combinations, four answers, and every declared value reachable.
+
+        A three-example test would be satisfied by a rule with a hole in it,
+        and the hole would surface as `None` on the published contract.
+        """
+        answers = {
+            (kind, measured): measurements_status(kind, measured=measured)
+            for kind in USAGE_EVENT_KIND_VALUES
+            for measured in (True, False)
+        }
+        self.assertEqual(len(answers), 4)
+        self.assertTrue(set(answers.values()) <= MEASUREMENTS_STATUS_VALUES)
+        self.assertEqual(set(answers.values()), MEASUREMENTS_STATUS_VALUES,
+                         "a declared value is unreachable through the rule")
+
+    def test_every_posting_reads_as_a_metered_one_today(self):
+        """The seam slice 5 replaces, pinned as the fact it currently is.
+
+        This does NOT claim to fail on the day a discriminator lands — a new
+        column would classify a row it can see a marker on, and neither row
+        below carries one, so nothing here would go red on its own. What it
+        does is put the current reading under a name, in one place, for two
+        differently-shaped rows: whoever makes `posting_kind` read a column has
+        one function to change and one statement of what it used to answer,
+        instead of a constant inlined at each caller.
+        """
+        self.assertEqual(posting_kind(self._fresh()),
+                         USAGE_EVENT_KIND_METERED_USAGE)
+        self.assertEqual(
+            posting_kind(Posting.objects.create(
+                tenant=self.tenant, customer=self.customer,
+                request_id="", idempotency_key="chg_2",
+                billed_cost_micros=250_000)),
+            USAGE_EVENT_KIND_METERED_USAGE)
 
 
 class TheNullabilityAsymmetryTest(TestCase):

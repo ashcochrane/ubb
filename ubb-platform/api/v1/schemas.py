@@ -236,6 +236,19 @@ def usage_event_out(e):
     }
 
 
+#: Whether a posting's measured quantities can still be read (#271, §E5).
+#: `closed` — UBB owns all three — so the export writes a real `enum` here from
+#: `openapi/known-values.json`, and this file spells none of the values. The
+#: same marker mechanism as the block near the foot of this module; declared
+#: beside its one user rather than with them because it is the only one that
+#: belongs to a schema this far up the file.
+#:
+#: DERIVED AND SERVED, NEVER STORED. The serialiser computes it; no column
+#: holds it, and G10 is what proves so (ADR-0006 §4).
+MeasurementsStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "measurements_status"})]
+
+
 class UsageEventDetailOut(Schema):
     # Full pricing receipt for one event — the audit lookup. pricing_provenance
     # is the recorded "why this amount" (engine version, price source, per-metric
@@ -253,6 +266,12 @@ class UsageEventDetailOut(Schema):
     provider_cost_micros: int
     billed_cost_micros: int
     usage_metrics: dict = {}
+    # What the bag above MEANS when it is empty — pruned, never applicable, or
+    # genuinely there and empty. Without it an expired payload and a synthetic
+    # charge are one indistinguishable `{}`, and a reader that defaults on an
+    # empty bag shows an end customer "no usage" for detail that was removed on
+    # schedule. Required rather than optional: every posting has an answer.
+    measurements_status: MeasurementsStatus
     pricing_provenance: dict = {}
     tags: Optional[dict] = None
     metadata: dict = {}

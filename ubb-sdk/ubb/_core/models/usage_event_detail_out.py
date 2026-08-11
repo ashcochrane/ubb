@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -35,6 +36,7 @@ class UsageEventDetailOut:
             effective_at (str):
             id (UUID):
             idempotency_key (str):
+            measurements_status (UsageEventDetailOutMeasurementsStatus):
             provider_cost_micros (int):
             request_id (str):
             currency (str | Unset):  Default: 'usd'.
@@ -57,6 +59,7 @@ class UsageEventDetailOut:
     effective_at: str
     id: UUID
     idempotency_key: str
+    measurements_status: UsageEventDetailOutMeasurementsStatus
     provider_cost_micros: int
     request_id: str
     currency: str | Unset = 'usd'
@@ -92,6 +95,8 @@ class UsageEventDetailOut:
         id = str(self.id)
 
         idempotency_key = self.idempotency_key
+
+        measurements_status = self.measurements_status.value
 
         provider_cost_micros = self.provider_cost_micros
 
@@ -160,6 +165,7 @@ class UsageEventDetailOut:
             "effective_at": effective_at,
             "id": id,
             "idempotency_key": idempotency_key,
+            "measurements_status": measurements_status,
             "provider_cost_micros": provider_cost_micros,
             "request_id": request_id,
         })
@@ -213,6 +219,11 @@ class UsageEventDetailOut:
 
 
         idempotency_key = d.pop("idempotency_key")
+
+        measurements_status = UsageEventDetailOutMeasurementsStatus(d.pop("measurements_status"))
+
+
+
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
@@ -324,6 +335,7 @@ class UsageEventDetailOut:
             effective_at=effective_at,
             id=id,
             idempotency_key=idempotency_key,
+            measurements_status=measurements_status,
             provider_cost_micros=provider_cost_micros,
             request_id=request_id,
             currency=currency,

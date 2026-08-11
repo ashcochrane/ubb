@@ -130,6 +130,17 @@
       "kind": "tenant_defined",
       "representation": "none"
     },
+    "measurements_status": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "available",
+        "pruned",
+        "not_applicable"
+      ]
+    },
     "metadata_key": {
       "advertised": false,
       "backend_serves": null,

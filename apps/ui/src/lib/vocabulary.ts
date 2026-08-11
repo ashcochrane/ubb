@@ -701,6 +701,63 @@ export const MEASURE_STATUS_LABEL_KEYS = {
 // generator lost.
 
 
+// --- measurements_status ----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Whether a posting's measured quantities can still be read. `available` says
+// the measurement record is there; `pruned` says it was there and has been
+// removed at its retention horizon; `not_applicable` says the posting's own
+// kind never had one. Three answers where a reader previously met one empty
+// bag and could not tell which of them it meant — which is how a payload that
+// expired on schedule reaches an end customer as a confident "no usage" (#193
+// §E5).
+//
+// Declared in concepts/economics.yaml.
+//
+// Decision rule, declared as registry data and proved total and unambiguous by
+// the compiler:
+//
+//   The derivation, carried beside the values as data because it is the
+//   concept's whole content: these three answers exist only as a rule over two
+//   facts, and a summary sentence above the values is not beside them. Read
+//   the kind first — a posting that never had measurements is not a posting
+//   that has lost them.
+//
+//   the_posting_is_a_task_charge=true, a_measurement_record_exists=any
+//     -> not_applicable
+//        A Task sold for one agreed price was never measured, so there is
+//        nothing that could have been removed. The record's existence is not
+//        consulted deliberately: §E4 makes it absent by construction here, and
+//        a rule that read it anyway would answer `pruned` for a posting whose
+//        detail no retention horizon ever governed.
+//
+//   the_posting_is_a_task_charge=false, a_measurement_record_exists=true
+//     -> available
+//        The measurement record is there and its quantities can be read.
+//
+//   the_posting_is_a_task_charge=false, a_measurement_record_exists=false
+//     -> pruned
+//        A metered posting always had a measurement record written in the same
+//        transaction as itself, so its absence is a removal rather than an
+//        omission. This is the answer the whole concept exists to make
+//        sayable, and reporting it as an empty result is the defect.
+
+export const MEASUREMENTS_STATUS_VALUES = [
+  "available",
+  "pruned",
+  "not_applicable",
+] as const;
+
+export type MeasurementsStatus = (typeof MEASUREMENTS_STATUS_VALUES)[number];
+
+export const MEASUREMENTS_STATUS_LABEL_KEYS = {
+  "available": "measurements_status.available",
+  "pruned": "measurements_status.pruned",
+  "not_applicable": "measurements_status.not_applicable",
+} as const satisfies Record<MeasurementsStatus, string>;
+
+
 // --- metadata_key -----------------------------------------------------------
 //
 // tenant_defined — The tenant owns the values. UBB defines the field and its

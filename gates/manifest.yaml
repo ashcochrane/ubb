@@ -513,7 +513,9 @@ gates:
         node: ubb-platform/apps/platform/tests/test_model_naming.py::test_table_name_is_the_canonical_snake_cased_model_name
 
   G10:
-    statement: No writable `tenant_posture` column exists — the fact is derived, not stored.
+    statement: >-
+      No writable column exists for a fact ADR-0006 §4 says is derived —
+      `tenant_posture`, and `measurements_status` since #271.
     oracle: ADR-0006 §4, against the Django app registry
     source: ADR-0006 §4, #154 §12
     status: installed
@@ -522,11 +524,16 @@ gates:
       that puts a real model carrying the column through the same entry point,
       because an absence test with nothing proving it can fail is a test that
       asserts nothing — the shape this repository has already shipped three
-      times. "Writable" is a concrete column: a property or serializer field
-      serving the derived value read-only is exactly what ADR-0006 §4 permits.
+      times. That control is driven over the declared set rather than over one
+      name, so a fact joining the gate is shown to be catchable in the commit
+      that adds it. "Writable" is a concrete column: a property or serializer
+      field serving the derived value read-only is exactly what ADR-0006 §4
+      permits, and both facts here are served that way — the posture from
+      `customer_billing_mode`, the measurement status by the serialiser of the
+      posting detail response.
     enforced_by:
       - suite: platform
-        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_no_writable_column_stores_the_derived_tenant_posture
+        node: ubb-platform/apps/platform/tests/test_model_naming.py::test_no_writable_column_stores_a_derived_fact
 
   G11:
     statement: >-
