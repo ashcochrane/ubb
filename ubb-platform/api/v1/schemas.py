@@ -92,6 +92,12 @@ class RecordUsageRequest(Schema):
     customer_id: UUID
     request_id: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=500)
+    # THE ONE OPEN BAG (#273). Free-form labelling: filterable and readable,
+    # never grouped, never priced, never unit attribution. Anything you want to
+    # slice or price on is a declared `dimensions` key. The second bag that
+    # used to sit further down this schema folded into this one, and its name
+    # went with it — it advertised a grouping capability this bag deliberately
+    # does not have. Keys are yours: UBB stores and returns them as authored.
     metadata: dict = Field(default_factory=dict)
     provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
@@ -108,9 +114,6 @@ class RecordUsageRequest(Schema):
                 f"usage_metrics values must be >= 0; negative metrics: {negative}")
         return v
     currency: Optional[str] = Field(default=None, max_length=3)
-    # Free-form analytics labels. Never grouped, never priced, never unit
-    # attribution — see `dimensions` for anything you want to slice or price on.
-    tags: Optional[dict[str, str]] = None
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
@@ -268,7 +271,7 @@ class UsageEventDetailOut(Schema):
     # schedule. Required rather than optional: every posting has an answer.
     measurements_status: MeasurementsStatus
     pricing_provenance: dict = {}
-    tags: Optional[dict] = None
+    # The one open bag (#273) — see `RecordUsageRequest.metadata`.
     metadata: dict = {}
     task_id: Optional[str] = None
     effective_at: str

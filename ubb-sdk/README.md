@@ -356,7 +356,7 @@ client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
 # record_usage  → RecordUsageResponse
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider_cost_micros=None, billed_cost_micros=None,
-    provider="", event_type="", currency=None, tags=None,
+    provider="", event_type="", currency=None,
     product_id="", metadata=None, run_id=None, usage_metrics=None,
     recorded_at=None)
 

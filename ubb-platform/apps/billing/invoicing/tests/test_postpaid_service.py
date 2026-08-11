@@ -44,10 +44,10 @@ class TestAggregate:
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="tag:seat")
         Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=1, billed_cost_micros=500_000, tags={"seat": "alice"},
+            provider_cost_micros=1, billed_cost_micros=500_000, metadata={"seat": "alice"},
             effective_at=MID)
         Posting.objects.create(tenant=t, customer=c, request_id="r2", idempotency_key="i2",
-            provider_cost_micros=1, billed_cost_micros=300_000, tags=None,  # no tag
+            provider_cost_micros=1, billed_cost_micros=300_000, metadata={},  # no label
             effective_at=MID)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
         assert total == 800_000 and sum(a for _, a in lines) == 800_000

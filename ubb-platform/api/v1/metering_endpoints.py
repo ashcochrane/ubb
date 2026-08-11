@@ -79,7 +79,6 @@ def usage_kwargs(item):
         metadata=item.metadata,
         event_type=item.event_type,
         provider=item.provider,
-        tags=item.tags,
         task_id=item.task_id,
         usage_metrics=item.usage_metrics,
         effective_at=item.effective_at,
@@ -251,8 +250,11 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
 
     qs = customer.postings.all()
+    # FILTERING is what the open bag is for, and it is what survived the fold
+    # in #273 — the parameter names are the analytics vocabulary slice 7 owns
+    # and are deliberately left spelled as they are published.
     if tag_key and tag_value:
-        qs = qs.filter(tags__contains={tag_key: tag_value})
+        qs = qs.filter(metadata__contains={tag_key: tag_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
     qs = _apply_task_filter(qs, request.auth.tenant, task_id, include_subtasks)
 
@@ -298,7 +300,6 @@ def get_usage_event(request, event_id: UUID):
         # serialiser, which is the only place §E5 permits it to exist.
         "measurements_status": measurements_status_for(e),
         "pricing_provenance": e.pricing_provenance or {},
-        "tags": e.tags,
         "metadata": e.metadata,
         "task_id": str(e.task_id) if e.task_id else None,
         "effective_at": e.effective_at.isoformat(),
@@ -631,9 +632,15 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 
     by_tag = []
     if tag_key:
+        # SLICE 7 OWNS THIS SURFACE, and #273 left it exactly where it found
+        # it: the keyed parameter, the response block and their spelling are
+        # the analytics grouping vocabulary the ledger owns at slice 7, which
+        # is what migrates the capability onto the declared grouping contract.
+        # All that moved here is the column underneath, because the bag this
+        # read folded into the survivor.
         by_tag = list(
-            qs.filter(tags__has_key=tag_key)
-            .annotate(tag_value=KeyTextTransform(tag_key, "tags"))
+            qs.filter(metadata__has_key=tag_key)
+            .annotate(tag_value=KeyTextTransform(tag_key, "metadata"))
             .values("tag_value")
             .annotate(
                 event_count=Count("id"),

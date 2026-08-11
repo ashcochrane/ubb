@@ -5,7 +5,7 @@ the accumulate verdicts, the (possibly killed) unit, the owner's durable
 stop-signal state — into the immutable stop-context array stored on the
 event. The rules pinned here:
 
-- A fresh crossing verdict tags the TIPPING event: ``arrived_after=false``,
+- A fresh crossing verdict marks the TIPPING event: ``arrived_after=false``,
   ``tripped_at`` = the event's own record time.
 - A late event on a limit-killed unit carries the SAME limit with
   ``arrived_after=true`` and the kill time as ``tripped_at`` — the episode's
@@ -14,7 +14,7 @@ event. The rules pinned here:
 - Non-limit terminal states (completed / reaped) tag ``task_not_active``.
 - Customer scope comes from the durable ledger (floor_stop family): open
   episode → ``customer_wide_stop`` with the episode id; suspension without an
-  open episode → ``suspended``. Soft-floor state NEVER tags (§F).
+  open episode → ``suspended``. Soft-floor state NEVER marks (§F).
 - Multiple simultaneous limits → one array entry per limit, nothing lost.
 """
 from django.test import TestCase

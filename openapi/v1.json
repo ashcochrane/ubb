@@ -4740,20 +4740,6 @@
             "title": "Request Id",
             "type": "string"
           },
-          "tags": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
-          },
           "task_id": {
             "anyOf": [
               {
@@ -6899,18 +6885,6 @@
               }
             ],
             "title": "Stop Context"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
           },
           "task_id": {
             "anyOf": [

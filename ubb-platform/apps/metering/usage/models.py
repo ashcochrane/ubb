@@ -23,6 +23,17 @@ class Posting(BaseModel):
     request_id = models.CharField(max_length=255, db_index=True)
     idempotency_key = models.CharField(max_length=500, db_index=True)
     balance_after_micros = models.BigIntegerField(null=True, blank=True)
+    # THE ONE OPEN BAG. Caller-supplied, free-form, unbounded and undeclared:
+    # FILTERABLE AND READABLE, NEVER GROUPABLE. A second bag folded into this
+    # one in #273 (slice 2) and its name went with it, because that name
+    # advertised the one capability this bag deliberately does not have —
+    # an unbounded free-text keyspace that can become a chart is an unbounded
+    # free-text keyspace that can drive an invoice line label. Anything you
+    # want to slice or price on is a declared GroupingField.
+    #
+    # The keys in here are the tenant's own. UBB stores and returns them
+    # exactly as they were authored and never reshapes them into English
+    # nobody chose — see `migrations/0033_the_second_open_bag_folds.py`.
     metadata = models.JSONField(default=dict)
 
     # Pricing breakdown (populated when platform prices the event)
@@ -59,10 +70,9 @@ class Posting(BaseModel):
     provider_cost_micros = models.BigIntegerField(default=0)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
-    tags = models.JSONField(null=True, blank=True)
     # The exact unit of work this event belongs to. The ONLY unit attribution
-    # — tags are free-form analytics labels and never silently become a
-    # limited thing (no tag-fallback inference).
+    # — the open bag above is free-form labelling and never silently becomes a
+    # limited thing (no label-fallback inference).
     task = models.ForeignKey(
         "work.Task", on_delete=models.CASCADE, related_name="postings",
         null=True, blank=True,
@@ -73,7 +83,7 @@ class Posting(BaseModel):
     effective_at = models.DateTimeField(default=timezone.now, db_index=True)
     billing_owner_id = models.UUIDField(null=True, blank=True, db_index=True)
     # Past-limit stop context (#41, spec §H). SYSTEM-owned — never set from
-    # tenant tags or request metadata; written once at record (sync) / settle
+    # the tenant's own open bag; written once at record (sync) / settle
     # (async) inside the recording transaction, immutable with the event.
     # Null = the event landed past nothing. Non-null = a JSON ARRAY of
     # contexts (an event crossing several limits simultaneously carries one
@@ -113,11 +123,18 @@ class Posting(BaseModel):
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
             models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
             # Past-limit report + query filters (#41): JSONB containment on
-            # the stop-context array. Partial — tagged events are the rare
-            # exception, so the index stays tiny and untagged inserts pay
+            # the stop-context array. Partial — a marked posting is the rare
+            # exception, so the index stays tiny and unmarked inserts pay
             # nothing.
             GinIndex(fields=["stop_context"], name="idx_usage_stop_context",
                      condition=models.Q(stop_context__isnull=False)),
+            # The open bag's filtering index (#273). Default `jsonb_ops`, not
+            # `jsonb_path_ops`: it serves the key-exists operator (`?`) that
+            # `__has_key` compiles to as well as the containment operator (`@>`)
+            # that `__contains` does, and both are live call sites. 0022 is the
+            # argument in full — it moved the retiring bag's index to this
+            # opclass for these same lookups.
+            GinIndex(fields=["metadata"], name="idx_posting_metadata"),
         ]
         ordering = ["-effective_at"]
 

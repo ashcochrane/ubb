@@ -65,18 +65,19 @@ class TestUsageDimensions:
         assert r.status_code == 422
         assert "cardinality" in r.json()["detail"]
 
-    def test_tags_no_longer_become_dimensions(self):
-        """The reserved-tag lifting at usage_service.py (dim1/dim2/dim3 from
-        tags["product"]/["service"]/["agent"]) is deleted: tags are free-form
-        labels only (design 'What this deletes')."""
+    def test_the_open_bag_no_longer_becomes_dimensions(self):
+        """The reserved-label lifting at usage_service.py (dim1/dim2/dim3 from
+        ["product"]/["service"]/["agent"]) is deleted: the open bag is
+        free-form labelling only (design 'What this deletes')."""
         self._declare()
-        r = self._post(tags={"service": "extract", "agent": "textract-v2"})
+        r = self._post(metadata={"service": "extract", "agent": "textract-v2"})
         assert r.status_code == 200
         e = Posting.objects.get(id=r.json()["event_id"])
         assert e.dim1 == "" and e.dim2 == ""
-        # ...and reserved-NAMED tags still reach storage unchanged. Nothing else
-        # asserts this: test_tags.py only covers non-reserved keys.
-        assert e.tags == {"service": "extract", "agent": "textract-v2"}
+        # ...and reserved-NAMED keys still reach storage unchanged. Nothing
+        # else asserts this: `test_the_open_bag.py` only covers non-reserved
+        # keys.
+        assert e.metadata == {"service": "extract", "agent": "textract-v2"}
 
     def test_product_id_is_gone_from_the_wire_contract(self):
         """Final-fixes wave, Critical 1+2: the legacy `product_id` field is

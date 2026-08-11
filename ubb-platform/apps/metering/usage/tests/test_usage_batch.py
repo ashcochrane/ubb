@@ -137,10 +137,15 @@ class TestBatchBasics:
         assert resp["accepted"] == 1 and resp["rejected"] == 2
 
     def test_validation_error_mapped(self):
-        """The generic ValueError branch (e.g. bad tags) maps to validation_error."""
+        """The generic ValueError branch maps to validation_error.
+
+        Driven by a currency mismatch since #273: the open bag's key-shape
+        refusal was this branch's other reachable input and it retired with
+        the bag it belonged to.
+        """
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
-            _item(c, 1, tags={"BAD KEY": "x"})]}).json()
+            _item(c, 1, currency="eur")]}).json()
         assert resp["results"][0]["code"] == "validation_error"
         assert resp["rejected"] == 1
 

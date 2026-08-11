@@ -83,8 +83,11 @@ function matchesFilters(
     return false;
   }
   if (filters.tag_key !== undefined && filters.tag_value !== undefined) {
-    const tags = detail.tags ?? {};
-    if (tags[filters.tag_key] !== filters.tag_value) return false;
+    // Filtering is what the open bag is for, and what survived the fold.
+    // The parameter names keep the analytics spelling they are published
+    // under; that vocabulary is slice 7's to migrate.
+    const bag = detail.metadata ?? {};
+    if (bag[filters.tag_key] !== filters.tag_value) return false;
   }
   return true;
 }

@@ -1,5 +1,6 @@
 // The full receipt for one usage event: identity, timing, money, metrics,
-// tags, stop context, metadata, and the pricing-provenance "why this amount".
+// stop context, the open metadata bag, and the pricing-provenance "why this
+// amount".
 //
 // The detail response does NOT carry the customer's id — the ledger link
 // forwards it as a search param. Without it the refund action is hidden
@@ -102,8 +103,6 @@ export function EventDetailPage({
   const stopEntries = asStopContextEntries(detail.stop_context);
   const margin = detail.billed_cost_micros - detail.provider_cost_micros;
   const metrics = metricRows(detail);
-  const tags = detail.tags ?? {};
-  const hasTags = Object.keys(tags).length > 0;
   const hasMetadata = Object.keys(detail.metadata).length > 0;
   const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
   const backfilled =
@@ -190,17 +189,6 @@ export function EventDetailPage({
             </Section>
           )}
 
-          {hasTags && (
-            <Section title="Tags">
-              <DetailList
-                items={Object.entries(tags).map(([key, value]) => ({
-                  label: key,
-                  value: String(value),
-                  mono: true,
-                }))}
-              />
-            </Section>
-          )}
         </div>
 
         {stopEntries.length > 0 && (

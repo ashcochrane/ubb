@@ -146,7 +146,6 @@ from .ready_response_checks import ReadyResponseChecks
 from .record_usage_request import RecordUsageRequest
 from .record_usage_request_dimensions import RecordUsageRequestDimensions
 from .record_usage_request_metadata import RecordUsageRequestMetadata
-from .record_usage_request_tags_type_0 import RecordUsageRequestTagsType0
 from .record_usage_request_usage_metrics_type_0 import RecordUsageRequestUsageMetricsType0
 from .record_usage_response import RecordUsageResponse
 from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
@@ -220,7 +219,6 @@ from .usage_event_detail_out import UsageEventDetailOut
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-from .usage_event_detail_out_tags_type_0 import UsageEventDetailOutTagsType0
 from .usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
 from .usage_event_out import UsageEventOut
 from .usage_event_out_metadata import UsageEventOutMetadata
@@ -388,7 +386,6 @@ __all__ = (
     "RecordUsageRequest",
     "RecordUsageRequestDimensions",
     "RecordUsageRequestMetadata",
-    "RecordUsageRequestTagsType0",
     "RecordUsageRequestUsageMetricsType0",
     "RecordUsageResponse",
     "RecordUsageResponsePricingProvenanceType0",
@@ -462,7 +459,6 @@ __all__ = (
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutPricingProvenance",
-    "UsageEventDetailOutTagsType0",
     "UsageEventDetailOutUsageMetrics",
     "UsageEventOut",
     "UsageEventOutMetadata",

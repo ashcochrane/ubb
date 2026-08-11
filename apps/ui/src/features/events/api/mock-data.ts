@@ -50,7 +50,6 @@ interface DetailSeed {
   billed_cost_micros: number;
   provider_cost_micros: number;
   usage_metrics?: Record<string, number>;
-  tags?: Record<string, string> | null;
   metadata?: Record<string, unknown>;
   task_id?: string | null;
   stop_context?: Array<Record<string, unknown>> | null;
@@ -86,7 +85,6 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     usage_metrics: seed.usage_metrics ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},
-    tags: seed.tags ?? null,
     metadata: seed.metadata ?? {},
     task_id: seed.task_id ?? null,
     stop_context: seed.stop_context ?? null,
@@ -124,8 +122,10 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 187_500,
       provider_cost_micros: 142_300,
       usage_metrics: { input_tokens: 4200, output_tokens: 1730 },
-      tags: { env: "prod", team: "search", model: "gpt-5" },
       metadata: {
+        env: "prod",
+        team: "search",
+        model: "gpt-5",
         request: { model: "gpt-5", region: "us-east-1", stream: true },
         latency_ms: 812,
         client: { sdk: "ubb-node@3.0.0" },
@@ -167,8 +167,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 96_000,
       provider_cost_micros: 75_000,
       usage_metrics: { input_tokens: 2100, output_tokens: 940 },
-      tags: { env: "prod", team: "assist" },
-      metadata: { region: "us-east-1" },
+      metadata: { env: "prod", team: "assist", region: "us-east-1" },
       pricing_provenance: markupProvenance(75_000),
       stop_context: [
         {
@@ -192,7 +191,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 54_000,
       provider_cost_micros: 42_000,
       usage_metrics: { input_tokens: 1200, output_tokens: 480 },
-      tags: { env: "prod", team: "assist" },
+      metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(42_000),
       stop_context: [
         {
@@ -218,7 +217,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 31_000,
       provider_cost_micros: 24_000,
       usage_metrics: { input_tokens: 800, output_tokens: 260 },
-      tags: { env: "prod", team: "assist" },
+      metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(24_000),
       stop_context: [
         {
@@ -244,7 +243,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 64_000,
       provider_cost_micros: 50_000,
       usage_metrics: { input_tokens: 1500, output_tokens: 620 },
-      tags: { env: "prod", team: "assist" },
+      metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
       pricing_provenance: markupProvenance(50_000),
       stop_context: [
@@ -271,8 +270,11 @@ const FEATURE_EVENTS: MockEvent[] = [
       billed_cost_micros: 22_400,
       provider_cost_micros: 17_500,
       usage_metrics: { embedding_tokens: 5200 },
-      tags: { env: "prod", team: "search" },
-      metadata: { backfill_batch: "2026-07-20-recovery" },
+      metadata: {
+        env: "prod",
+        team: "search",
+        backfill_batch: "2026-07-20-recovery",
+      },
       pricing_provenance: markupProvenance(17_500),
     }),
   },
@@ -310,11 +312,9 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
         input_tokens: 900 + (index % 23) * 240,
         output_tokens: 260 + (index % 11) * 145,
       },
-      tags: {
+      metadata: {
         env: index % 4 === 0 ? "staging" : "prod",
         team: index % 2 === 0 ? "search" : "assist",
-      },
-      metadata: {
         region: index % 2 === 0 ? "us-east-1" : "eu-west-1",
         model:
           provider === "openai"
