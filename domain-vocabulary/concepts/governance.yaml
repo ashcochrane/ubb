@@ -64,6 +64,23 @@ audit_action:
     - grouping_field.declared
     - task_type.declared
     - tenant_supplied_revenue.recorded
+    # Three more of the same family, added by #267 when the catalogue reached
+    # the contract and its write surface needed names. Additive, which is the
+    # only direction ADR-004 §2 leaves open, and taken now rather than later
+    # because the alternative is worse in the one way that rule cares about:
+    # recording a publication and a satellite under `event_type.declared`
+    # would conflate three acts that a governance reader has to tell apart,
+    # and splitting them afterwards is the rename ADR-004 §2 calls breaking.
+    #
+    # The publication is the act a tenant's generated integration is built
+    # against, so "a draft was edited" and "revision 3 was published" are
+    # different answers to the question this ledger exists to answer. The two
+    # satellites carry their own nouns because the ledger's `resource_type`
+    # says which record moved, and an action naming the Event Type over a row
+    # that is a supplier would make the two disagree.
+    - event_type.published
+    - provider.declared
+    - event_category.declared
     # Customers, plans and subscriptions.
     - customer.created
     - plan.created

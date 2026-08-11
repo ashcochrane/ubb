@@ -66,6 +66,19 @@ AUDIT_ACTIONS = (
     "dimension.declared",
     # task type registry (unified dimension model plan, D7)
     "task_type.declared",
+    # The Event Type catalogue — what the tenant declares it meters (#267).
+    # Declaring what a call is, and what it costs, is governance in the same
+    # sense the two registries above are: it decides how usage is costed. The
+    # publication is its own action rather than a second `event_type.declared`,
+    # because it is the act a tenant's generated integration is built against
+    # — telling "a draft was edited" from "revision 3 was published" is the
+    # question this ledger exists to answer, and conflating them now would
+    # need a rename later, which ADR-004 §2 makes a breaking change.
+    "event_type.declared",
+    "event_type.published",
+    "measurement.declared",
+    "provider.declared",
+    "event_category.declared",
     # margin / revenue
     "margin_threshold.set",
     "revenue_profile.set",

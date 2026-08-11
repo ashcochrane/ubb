@@ -1461,6 +1461,298 @@
         "title": "EarningsOut",
         "type": "object"
       },
+      "EventCategoryIn": {
+        "properties": {
+          "key": {
+            "maxLength": 64,
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "EventCategoryIn",
+        "type": "object"
+      },
+      "EventCategoryListOut": {
+        "properties": {
+          "event_categories": {
+            "items": {
+              "$ref": "#/components/schemas/EventCategoryOut"
+            },
+            "title": "Event Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "event_categories"
+        ],
+        "title": "EventCategoryListOut",
+        "type": "object"
+      },
+      "EventCategoryOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "EventCategoryOut",
+        "type": "object"
+      },
+      "EventTypeIn": {
+        "properties": {
+          "category_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "costing_method": {
+            "enum": [
+              "calculated",
+              "reported"
+            ],
+            "title": "Costing Method",
+            "type": "string",
+            "x-ubb-concept": "costing_method"
+          },
+          "key": {
+            "maxLength": 100,
+            "title": "Key",
+            "type": "string"
+          },
+          "provider_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Key"
+          },
+          "source_shape_id": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Source Shape Id",
+            "type": "string"
+          },
+          "source_shape_label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Source Shape Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "costing_method"
+        ],
+        "title": "EventTypeIn",
+        "type": "object"
+      },
+      "EventTypeListOut": {
+        "properties": {
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventTypeOut"
+            },
+            "title": "Event Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "event_types"
+        ],
+        "title": "EventTypeListOut",
+        "type": "object"
+      },
+      "EventTypeOut": {
+        "properties": {
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "costing_method": {
+            "enum": [
+              "calculated",
+              "reported"
+            ],
+            "title": "Costing Method",
+            "type": "string",
+            "x-ubb-concept": "costing_method"
+          },
+          "declaration_status": {
+            "title": "Declaration Status",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "measurements": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementOut"
+            },
+            "title": "Measurements",
+            "type": "array"
+          },
+          "provider_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Key"
+          },
+          "publication_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Publication Blockers",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_revision": {
+            "title": "Published Revision",
+            "type": "integer"
+          },
+          "reported_cost_mapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportedCostMappingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_shape_id": {
+            "title": "Source Shape Id",
+            "type": "string"
+          },
+          "source_shape_label": {
+            "title": "Source Shape Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "costing_method",
+          "source_shape_id",
+          "source_shape_label",
+          "declaration_status",
+          "published_revision",
+          "publication_blockers",
+          "measurements"
+        ],
+        "title": "EventTypeOut",
+        "type": "object"
+      },
+      "EventTypeUpdateIn": {
+        "description": "Every field optional: an absent field is untouched, not cleared.\n\nThe two satellites detach on an EMPTY STRING rather than on a null, which\nis the one place this shape has to be explicit: \"no supplier\" is a state a\ntenant reaches deliberately, and a null that meant \"leave alone\" would\nleave them no way to say it.\n\n**The key is absent on purpose.** It is the name a tenant's own recorded\nevents arrive under, so renaming one would silently re-point every posting\nmade against it \u2014 the same objection that keeps supplier cost resolution on\nthe Provider's identity rather than on its handle, arriving at the opposite\nanswer because here the handle IS the identity. Withdraw and re-declare, or\nmap the old name through the quarantine that already exists for a name UBB\ndoes not recognise.",
+        "properties": {
+          "category_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "costing_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "calculated",
+                  "reported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "costing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costing Method"
+          },
+          "provider_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Key"
+          },
+          "source_shape_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Shape Id"
+          },
+          "source_shape_label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Shape Label"
+          }
+        },
+        "title": "EventTypeUpdateIn",
+        "type": "object"
+      },
       "GrantListResponse": {
         "properties": {
           "data": {
@@ -2185,6 +2477,134 @@
           "created_at"
         ],
         "title": "MeUsageInvoiceOut",
+        "type": "object"
+      },
+      "MeasurementIn": {
+        "description": "One measurable quantity an Event Type produces.\n\nThe code is the path segment rather than a body field: it is this\ndeclaration's identity beneath its Event Type, and a body that could\ndisagree with the URL would make \"which declaration is this\" a question\nwith two answers.",
+        "properties": {
+          "display_name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "required_for_costing": {
+            "default": false,
+            "title": "Required For Costing",
+            "type": "boolean"
+          },
+          "source_kind": {
+            "enum": [
+              "provider_response",
+              "caller_supplied",
+              "derived",
+              "constant"
+            ],
+            "title": "Source Kind",
+            "type": "string",
+            "x-ubb-concept": "source_kind"
+          },
+          "source_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Path",
+            "type": "array"
+          },
+          "unit": {
+            "maxLength": 64,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value_type": {
+            "maxLength": 16,
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value_type",
+          "unit",
+          "source_kind"
+        ],
+        "title": "MeasurementIn",
+        "type": "object"
+      },
+      "MeasurementListOut": {
+        "properties": {
+          "measurements": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementOut"
+            },
+            "title": "Measurements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "measurements"
+        ],
+        "title": "MeasurementListOut",
+        "type": "object"
+      },
+      "MeasurementOut": {
+        "properties": {
+          "advisories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Advisories",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "required_for_costing": {
+            "title": "Required For Costing",
+            "type": "boolean"
+          },
+          "source_kind": {
+            "enum": [
+              "provider_response",
+              "caller_supplied",
+              "derived",
+              "constant"
+            ],
+            "title": "Source Kind",
+            "type": "string",
+            "x-ubb-concept": "source_kind"
+          },
+          "source_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Path",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "display_name",
+          "value_type",
+          "unit",
+          "required_for_costing",
+          "source_kind",
+          "source_path",
+          "advisories"
+        ],
+        "title": "MeasurementOut",
         "type": "object"
       },
       "MemberListResponse": {
@@ -3660,6 +4080,91 @@
         "title": "ProgramUpdateRequest",
         "type": "object"
       },
+      "ProviderIn": {
+        "description": "Declare a supplier. The key is the tenant's own handle for it.",
+        "properties": {
+          "key": {
+            "maxLength": 64,
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "ProviderIn",
+        "type": "object"
+      },
+      "ProviderListOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderOut"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "ProviderListOut",
+        "type": "object"
+      },
+      "ProviderOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "ProviderOut",
+        "type": "object"
+      },
+      "ProviderUpdateIn": {
+        "description": "Rename or retire a supplier.\n\nThere is no delete, here or anywhere: a Provider is retired and never\nremoved, because supplier COGS attribution keys on its identity and\ndeleting one would silently rewrite what historical postings say they cost.\n`retired` is a two-way switch rather than a timestamp a caller supplies \u2014\nWHEN a supplier was retired is UBB's record of an act, not an input.",
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "retired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired"
+          }
+        },
+        "title": "ProviderUpdateIn",
+        "type": "object"
+      },
       "PublishIn": {
         "properties": {
           "changes": {
@@ -4573,6 +5078,126 @@
           "customer_id"
         ],
         "title": "RegisterReferrerRequest",
+        "type": "object"
+      },
+      "ReportedCostMappingIn": {
+        "description": "Where a supplier's own cost figure is read from. One per Event Type.\n\nA sibling of the declared quantities rather than one of them: money with a\ncurrency does not fit a shape built for a quantity and its unit.",
+        "properties": {
+          "amount_representation": {
+            "enum": [
+              "micros",
+              "minor_units",
+              "major_units_decimal"
+            ],
+            "title": "Amount Representation",
+            "type": "string",
+            "x-ubb-concept": "amount_representation"
+          },
+          "currency": {
+            "default": "",
+            "maxLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Currency Path",
+            "type": "array"
+          },
+          "source_kind": {
+            "enum": [
+              "provider_response",
+              "caller_supplied",
+              "derived",
+              "constant"
+            ],
+            "title": "Source Kind",
+            "type": "string",
+            "x-ubb-concept": "source_kind"
+          },
+          "source_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_kind",
+          "amount_representation"
+        ],
+        "title": "ReportedCostMappingIn",
+        "type": "object"
+      },
+      "ReportedCostMappingOut": {
+        "properties": {
+          "advisories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Advisories",
+            "type": "array"
+          },
+          "amount_representation": {
+            "enum": [
+              "micros",
+              "minor_units",
+              "major_units_decimal"
+            ],
+            "title": "Amount Representation",
+            "type": "string",
+            "x-ubb-concept": "amount_representation"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Currency Path",
+            "type": "array"
+          },
+          "required_runtime_parameters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Runtime Parameters",
+            "type": "array"
+          },
+          "source_kind": {
+            "enum": [
+              "provider_response",
+              "caller_supplied",
+              "derived",
+              "constant"
+            ],
+            "title": "Source Kind",
+            "type": "string",
+            "x-ubb-concept": "source_kind"
+          },
+          "source_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_kind",
+          "amount_representation",
+          "source_path",
+          "currency_path",
+          "currency",
+          "required_runtime_parameters",
+          "advisories"
+        ],
+        "title": "ReportedCostMappingOut",
         "type": "object"
       },
       "RevenueAnalyticsResponse": {
@@ -8237,6 +8862,711 @@
         "summary": "Assign Plan"
       }
     },
+    "/api/v1/event-categories": {
+      "get": {
+        "description": "Every category this tenant has declared. One level, current.",
+        "operationId": "api_v1_event_type_endpoints_list_event_categories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCategoryListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Event Categories"
+      },
+      "post": {
+        "description": "Declare a category. Analytics-only: it can never reach a cost or price.",
+        "operationId": "api_v1_event_type_endpoints_declare_event_category",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventCategoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCategoryOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Event Category"
+      }
+    },
+    "/api/v1/event-categories/{key}": {
+      "delete": {
+        "description": "Withdraw a category, unless an Event Type still groups under it.\n\nA real delete rather than a retirement, and the asymmetry with the supplier\nnext door is the point rather than an inconsistency: a Provider earns\n``retired_at`` because historical COGS attribution keys on it, and a\ncategory reaches no money by any path, so there is no past reading to\nprotect. Refused while in use, because ``PROTECT`` on the Event Type's\nrelation would otherwise surface as a 500.",
+        "operationId": "api_v1_event_type_endpoints_withdraw_event_category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Event Category"
+      }
+    },
+    "/api/v1/event-types": {
+      "get": {
+        "description": "The tenant's whole metered vocabulary, declarations and all.",
+        "operationId": "api_v1_event_type_endpoints_list_event_types",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTypeListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Event Types"
+      },
+      "post": {
+        "description": "Register an Event Type. It arrives as a draft, always.\n\nNever auto-registered from a recorded event, and that is the rule rather\nthan an implementation detail: a typo that registered itself would become\npermanent billing vocabulary. An Event Type UBB has never seen is\nquarantined and replayed instead.",
+        "operationId": "api_v1_event_type_endpoints_declare_event_type",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventTypeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTypeOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Event Type"
+      }
+    },
+    "/api/v1/event-types/{key}": {
+      "get": {
+        "description": "One declaration, whole \u2014 the read a Code Builder generates from.",
+        "operationId": "api_v1_event_type_endpoints_get_event_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Event Type"
+      },
+      "patch": {
+        "description": "Edit a declaration. Changing a pinned element returns it to draft.\n\nThe un-publishing is the model's, not this handler's, and deliberately so:\nit is a rule about what a change MEANS, and anything a caller has to\nremember to route through is a rule that holds until the first caller who\ndoes not. What this does is decide what an absent field means \u2014 untouched,\nnever cleared \u2014 and let an empty string detach a satellite, because \"no\nsupplier\" is a state a tenant reaches on purpose.",
+        "operationId": "api_v1_event_type_endpoints_revise_event_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventTypeUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Revise Event Type"
+      }
+    },
+    "/api/v1/event-types/{key}/measurements": {
+      "get": {
+        "description": "The quantities this Event Type declares.",
+        "operationId": "api_v1_event_type_endpoints_list_measurements",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementListOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Measurements"
+      }
+    },
+    "/api/v1/event-types/{key}/measurements/{code}": {
+      "delete": {
+        "description": "Withdraw one declared quantity. This revises the publication too.\n\nA real delete rather than the data plane's soft delete: that rule protects\nrows carrying money history, and a part of a declaration carries none.",
+        "operationId": "api_v1_event_type_endpoints_withdraw_measurement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Measurement"
+      },
+      "put": {
+        "description": "Declare or re-declare one quantity beneath an Event Type.\n\nThe same name on two Event Types is two independent declarations, so this\nis keyed on the pair and never on the code alone: a tenant's Gemini and\nOpenAI integrations never have to agree about spelling to both be correct.\n\nDeclaring one under a PUBLISHED Event Type revises the publication \u2014 the\nmodel does that, on the same footing as an edit, because a published\ndeclaration that grows a required quantity is a different declaration from\nthe one a tenant generated their integration against.",
+        "operationId": "api_v1_event_type_endpoints_declare_measurement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeasurementIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Measurement"
+      }
+    },
+    "/api/v1/event-types/{key}/publish": {
+      "post": {
+        "description": "Publish the declaration, or refuse and say what is missing.\n\nA refusal rather than a partial publication: the two outcomes a caller must\ntell apart are published and not-published, and an incomplete mapping\npublished anyway generates an integration that computes no cost at all.\nWhat is missing travels on the 409 so the caller can say which.",
+        "operationId": "api_v1_event_type_endpoints_publish_event_type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTypeOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Publish Event Type"
+      }
+    },
+    "/api/v1/event-types/{key}/reported-cost-mapping": {
+      "delete": {
+        "description": "Withdraw the mapping. A `reported` declaration then cannot publish.\n\nNot refused here, and that is deliberate: the blocker is reported on the\ndeclaration itself and enforced where publication happens, so withdrawing\na mapping in order to redeclare it is an ordinary edit rather than a\nsequence a tenant has to work around.",
+        "operationId": "api_v1_event_type_endpoints_withdraw_reported_cost_mapping",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Reported Cost Mapping"
+      },
+      "get": {
+        "description": "Where this Event Type's supplier cost is read from, if it is declared.",
+        "operationId": "api_v1_event_type_endpoints_get_reported_cost_mapping",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportedCostMappingOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Reported Cost Mapping"
+      },
+      "put": {
+        "description": "Declare where a supplier's own cost figure is read from. One per type.\n\nA sibling of the quantities rather than one of them, which is why it is a\nPUT on a singular path: money with a currency does not fit a shape built\nfor a quantity and its unit, and there is exactly one such number per\nEvent Type. Recorded under the Event Type's own action because it is a\npart of that declaration, and the ledger row names which part.",
+        "operationId": "api_v1_event_type_endpoints_declare_reported_cost_mapping",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportedCostMappingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportedCostMappingOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportedCostMappingOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Reported Cost Mapping"
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "api_v1_endpoints_health",
@@ -11273,6 +12603,159 @@
           }
         ],
         "summary": "Create Customer"
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "description": "Every supplier this tenant has declared, retired ones included.\n\nRetirement is about what may be ATTACHED next and never about what may be\nREAD: hiding retired suppliers here would make reading last quarter the\nclever path and the wrong answer the easy one.",
+        "operationId": "api_v1_event_type_endpoints_list_providers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Providers"
+      },
+      "post": {
+        "description": "Declare a supplier. The key is the tenant's own handle for it.",
+        "operationId": "api_v1_event_type_endpoints_declare_provider",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Provider"
+      }
+    },
+    "/api/v1/providers/{key}": {
+      "patch": {
+        "description": "Rename or retire a supplier.\n\nThere is no delete. Supplier COGS attribution keys on this record's\nidentity, so removing one would silently rewrite what historical postings\nsay they cost \u2014 the failure a finance owner finds a quarter later and\ncannot repair. Renaming is safe for the same reason the identity is not the\nkey: nothing downstream holds the handle.",
+        "operationId": "api_v1_event_type_endpoints_revise_provider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Revise Provider"
       }
     },
     "/api/v1/ready": {

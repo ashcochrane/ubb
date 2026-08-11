@@ -1133,3 +1133,227 @@ def tenant_invoice_out(inv):
 
 class TenantInvoiceListResponse(Paginated[TenantInvoiceOut]):
     pass
+
+
+# ---------------------------------------------------------------------------
+# The Event Type catalogue (#267) — the tenant's metered vocabulary, on the wire
+# ---------------------------------------------------------------------------
+#
+# ADR-0007 §3 governs everything below: every name here ships under its FINAL
+# name and final contract, even where the implementation behind it is only
+# partly built. Nothing rated, resolved or measured reads this catalogue yet —
+# slice 2 owns the declaration and slice 3 owns every behaviour the declaration
+# selects — but a field broken a second time purely to repair the first break's
+# placeholder is the cost that rule exists to refuse. Internal scaffolding is
+# permitted; public scaffolding is not.
+#
+# THE THREE MARKERS BELOW ARE THE FIRST CLOSED CONCEPTS THIS CONTRACT
+# ADVERTISES BEYOND THE TENANT'S PRODUCT LIST. Each renders as a real `enum`
+# rather than an `x-ubb-known-values` block, because all three are `closed` —
+# `tools/known_values/document.py::_representation` chooses on exactly that,
+# and the open kind's first appearance is #268's. The order that got them here
+# is not a matter of taste: the backend consumer was converted first (#262,
+# #263, #266), and marking a field before its consumer serves the concept is a
+# RED export naming the field's JSON pointer, never a silent no-op.
+
+#: How an Event Type's supplier COGS is derived. `closed` — UBB owns both
+#: values — so the export writes a real `enum` here from
+#: `openapi/known-values.json`. This file spells neither value: the set is the
+#: registry's, and the agreement is structural rather than a coincidence of
+#: spelling (#208, ADR-0006 §4).
+CostingMethod = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "costing_method"})]
+
+#: Where a declared number comes from, and how the Code Builder is to obtain
+#: it. One concept on two schemas below — the declared quantity's and the
+#: reported cost's — which is the sharing the registry's own summary describes
+#: rather than a duplication: the mapping NARROWS the set, at the model, and a
+#: narrowing restated here would be a second copy of a rule that already has an
+#: owner. A narrowed value's refusal is the model's, served through the one
+#: error dialect.
+SourceKind = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "source_kind"})]
+
+#: What an extracted supplier-cost number actually represents, so the
+#: conversion to currency micros is generated once and exactly rather than
+#: hand-written in a repository UBB never sees.
+AmountRepresentation = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "amount_representation"})]
+
+
+class ProviderIn(Schema):
+    """Declare a supplier. The key is the tenant's own handle for it."""
+    key: str = Field(max_length=64)
+
+
+class ProviderUpdateIn(Schema):
+    """Rename or retire a supplier.
+
+    There is no delete, here or anywhere: a Provider is retired and never
+    removed, because supplier COGS attribution keys on its identity and
+    deleting one would silently rewrite what historical postings say they cost.
+    `retired` is a two-way switch rather than a timestamp a caller supplies —
+    WHEN a supplier was retired is UBB's record of an act, not an input.
+    """
+    key: Optional[str] = Field(default=None, max_length=64)
+    retired: Optional[bool] = None
+
+
+class ProviderOut(Schema):
+    key: str
+    #: Null means live. A timestamp rather than a `retired` boolean, because a
+    #: reader reconciling last quarter needs to know WHEN the supplier stopped
+    #: being offered, and a boolean throws that away.
+    retired_at: Optional[str] = None
+
+
+class ProviderListOut(Schema):
+    providers: List[ProviderOut]
+
+
+class EventCategoryIn(Schema):
+    key: str = Field(max_length=64)
+
+
+class EventCategoryOut(Schema):
+    key: str
+
+
+class EventCategoryListOut(Schema):
+    event_categories: List[EventCategoryOut]
+
+
+class MeasurementIn(Schema):
+    """One measurable quantity an Event Type produces.
+
+    The code is the path segment rather than a body field: it is this
+    declaration's identity beneath its Event Type, and a body that could
+    disagree with the URL would make "which declaration is this" a question
+    with two answers.
+    """
+    display_name: str = Field(default="", max_length=200)
+    value_type: str = Field(max_length=16)
+    unit: str = Field(max_length=64)
+    required_for_costing: bool = False
+    source_kind: SourceKind
+    #: Canonical segments — `["usage_metadata", "prompt_token_count"]` — never
+    #: an expression. The builder emits more than one language, and a stored
+    #: expression is portable to none of them.
+    source_path: List[str] = Field(default_factory=list)
+
+
+class MeasurementOut(Schema):
+    code: str
+    display_name: str
+    value_type: str
+    unit: str
+    required_for_costing: bool
+    source_kind: SourceKind
+    source_path: List[str]
+    #: What UBB advises about this declaration, and will never act on. A near
+    #: miss on the unit, and a path that looks inconsistent with the shape its
+    #: Event Type declares. Advice is the entire product: UBB renders access
+    #: syntax and never translates a supplier's own field name.
+    advisories: List[str]
+
+
+class MeasurementListOut(Schema):
+    measurements: List[MeasurementOut]
+
+
+class ReportedCostMappingIn(Schema):
+    """Where a supplier's own cost figure is read from. One per Event Type.
+
+    A sibling of the declared quantities rather than one of them: money with a
+    currency does not fit a shape built for a quantity and its unit.
+    """
+    source_kind: SourceKind
+    amount_representation: AmountRepresentation
+    source_path: List[str] = Field(default_factory=list)
+    #: Where the currency is read from, when it travels beside the amount.
+    #: Exclusive with `currency` below — exactly one of the two, because an
+    #: amount whose currency is undeclared is an amount that can be
+    #: reinterpreted under the wrong one.
+    currency_path: List[str] = Field(default_factory=list)
+    #: The pinned currency, when the supplier always reports in one.
+    currency: str = Field(default="", max_length=3)
+
+
+class ReportedCostMappingOut(Schema):
+    source_kind: SourceKind
+    amount_representation: AmountRepresentation
+    source_path: List[str]
+    currency_path: List[str]
+    currency: str
+    #: What the caller's own code must pass, because UBB cannot read it off the
+    #: supplier's response. Empty for a cost that arrives on the response,
+    #: which is the point of serving it at all: a declaration answering the
+    #: same for both would tell a generator nothing.
+    required_runtime_parameters: List[str]
+    advisories: List[str]
+
+
+class EventTypeIn(Schema):
+    key: str = Field(max_length=100)
+    costing_method: CostingMethod
+    #: The supplier's key, or absent for internal work that has no supplier. A
+    #: fictitious Provider is a defect, not a workaround.
+    provider_key: Optional[str] = Field(default=None, max_length=64)
+    category_key: Optional[str] = Field(default=None, max_length=64)
+    source_shape_id: str = Field(default="", max_length=100)
+    source_shape_label: str = Field(default="", max_length=200)
+
+
+class EventTypeUpdateIn(Schema):
+    """Every field optional: an absent field is untouched, not cleared.
+
+    The two satellites detach on an EMPTY STRING rather than on a null, which
+    is the one place this shape has to be explicit: "no supplier" is a state a
+    tenant reaches deliberately, and a null that meant "leave alone" would
+    leave them no way to say it.
+
+    **The key is absent on purpose.** It is the name a tenant's own recorded
+    events arrive under, so renaming one would silently re-point every posting
+    made against it — the same objection that keeps supplier cost resolution on
+    the Provider's identity rather than on its handle, arriving at the opposite
+    answer because here the handle IS the identity. Withdraw and re-declare, or
+    map the old name through the quarantine that already exists for a name UBB
+    does not recognise.
+    """
+    costing_method: Optional[CostingMethod] = None
+    provider_key: Optional[str] = Field(default=None, max_length=64)
+    category_key: Optional[str] = Field(default=None, max_length=64)
+    source_shape_id: Optional[str] = Field(default=None, max_length=100)
+    source_shape_label: Optional[str] = Field(default=None, max_length=200)
+
+
+class EventTypeOut(Schema):
+    key: str
+    costing_method: CostingMethod
+    provider_key: Optional[str] = None
+    category_key: Optional[str] = None
+    source_shape_id: str
+    source_shape_label: str
+    #: `draft` or `published`. Deliberately UNMARKED: `declaration_status`
+    #: declares no `openapi` consumer in the registry, and the applier refuses
+    #: a marker for a concept that contributes nothing rather than emitting an
+    #: empty one. This ticket owns three concepts by name and no more. The
+    #: FIELD is still final under ADR-0007 §3 — gaining an `enum` later is
+    #: additive, and its values are already the registry's.
+    declaration_status: str
+    #: Bumped by each publication that pins something different. A tenant's
+    #: generated code was generated against a revision, so the revision is what
+    #: tells them their integration has become a reading of a contract that
+    #: moved.
+    published_revision: int
+    published_at: Optional[str] = None
+    #: What stands between this declaration and publication. Empty means
+    #: publishable. Served rather than stored, so two encodings of one fact
+    #: cannot disagree.
+    publication_blockers: List[str]
+    measurements: List[MeasurementOut]
+    reported_cost_mapping: Optional[ReportedCostMappingOut] = None
+
+
+class EventTypeListOut(Schema):
+    event_types: List[EventTypeOut]

@@ -97,7 +97,16 @@ _WRITE_ROUTES = {
 # deleted with the pipeline it watched, so _EXEMPT_EXACT loses its only ops
 # entry and the exempt total goes 11 - 1 = 10. The floored count is untouched
 # — an exempt route was never in it.
-_EXPECTED_FLOORED = 123
+#
+# the Event Type catalogue reaches the contract (slice 2, #267): +17, and NOT
+# ONE of them needs a _WRITE_ROUTES entry. Six Read GETs (/providers,
+# /event-categories, /event-types, /event-types/{key}, its measurements and
+# its reported-cost mapping) and eleven Admin writes. The Admin default is the
+# ruling the two registries beside it already carry — a declaration decides
+# how usage is costed, which makes it a pricing-rule change rather than a
+# day-to-day data operation — and it applies to the satellites too, because a
+# supplier is what supplier COGS attribution keys on. 123 + 17 = 140.
+_EXPECTED_FLOORED = 140
 _EXPECTED_EXEMPT = 10
 
 

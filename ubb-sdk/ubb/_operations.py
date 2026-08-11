@@ -130,6 +130,62 @@ API_V1_ENDPOINTS_PAST_LIMIT_REPORT = Operation(
     'get',
     '/api/v1/customers/{customer_id}/past-limit-report')
 API_V1_ENDPOINTS_READY = Operation('api_v1_endpoints_ready', 'get', '/api/v1/ready')
+API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_EVENT_CATEGORY = Operation(
+    'api_v1_event_type_endpoints_declare_event_category',
+    'post',
+    '/api/v1/event-categories')
+API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_EVENT_TYPE = Operation(
+    'api_v1_event_type_endpoints_declare_event_type', 'post', '/api/v1/event-types')
+API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_MEASUREMENT = Operation(
+    'api_v1_event_type_endpoints_declare_measurement',
+    'put',
+    '/api/v1/event-types/{key}/measurements/{code}')
+API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_PROVIDER = Operation(
+    'api_v1_event_type_endpoints_declare_provider', 'post', '/api/v1/providers')
+API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_REPORTED_COST_MAPPING = Operation(
+    'api_v1_event_type_endpoints_declare_reported_cost_mapping',
+    'put',
+    '/api/v1/event-types/{key}/reported-cost-mapping')
+API_V1_EVENT_TYPE_ENDPOINTS_GET_EVENT_TYPE = Operation(
+    'api_v1_event_type_endpoints_get_event_type', 'get', '/api/v1/event-types/{key}')
+API_V1_EVENT_TYPE_ENDPOINTS_GET_REPORTED_COST_MAPPING = Operation(
+    'api_v1_event_type_endpoints_get_reported_cost_mapping',
+    'get',
+    '/api/v1/event-types/{key}/reported-cost-mapping')
+API_V1_EVENT_TYPE_ENDPOINTS_LIST_EVENT_CATEGORIES = Operation(
+    'api_v1_event_type_endpoints_list_event_categories',
+    'get',
+    '/api/v1/event-categories')
+API_V1_EVENT_TYPE_ENDPOINTS_LIST_EVENT_TYPES = Operation(
+    'api_v1_event_type_endpoints_list_event_types', 'get', '/api/v1/event-types')
+API_V1_EVENT_TYPE_ENDPOINTS_LIST_MEASUREMENTS = Operation(
+    'api_v1_event_type_endpoints_list_measurements',
+    'get',
+    '/api/v1/event-types/{key}/measurements')
+API_V1_EVENT_TYPE_ENDPOINTS_LIST_PROVIDERS = Operation(
+    'api_v1_event_type_endpoints_list_providers', 'get', '/api/v1/providers')
+API_V1_EVENT_TYPE_ENDPOINTS_PUBLISH_EVENT_TYPE = Operation(
+    'api_v1_event_type_endpoints_publish_event_type',
+    'post',
+    '/api/v1/event-types/{key}/publish')
+API_V1_EVENT_TYPE_ENDPOINTS_REVISE_EVENT_TYPE = Operation(
+    'api_v1_event_type_endpoints_revise_event_type',
+    'patch',
+    '/api/v1/event-types/{key}')
+API_V1_EVENT_TYPE_ENDPOINTS_REVISE_PROVIDER = Operation(
+    'api_v1_event_type_endpoints_revise_provider', 'patch', '/api/v1/providers/{key}')
+API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_EVENT_CATEGORY = Operation(
+    'api_v1_event_type_endpoints_withdraw_event_category',
+    'delete',
+    '/api/v1/event-categories/{key}')
+API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_MEASUREMENT = Operation(
+    'api_v1_event_type_endpoints_withdraw_measurement',
+    'delete',
+    '/api/v1/event-types/{key}/measurements/{code}')
+API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_REPORTED_COST_MAPPING = Operation(
+    'api_v1_event_type_endpoints_withdraw_reported_cost_mapping',
+    'delete',
+    '/api/v1/event-types/{key}/reported-cost-mapping')
 API_V1_METERING_ENDPOINTS_ADD_RATE = Operation(
     'api_v1_metering_endpoints_add_rate',
     'post',

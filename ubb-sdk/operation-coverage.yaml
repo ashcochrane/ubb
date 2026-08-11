@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 133
-  unwrapped: 55
+  operations: 150
+  unwrapped: 72
   wrapped: 78
-  generated_only: 55
+  generated_only: 72
   not_yet_wrapped: 0
 
 operations:
@@ -206,6 +206,74 @@ operations:
   - operation_id: api_v1_endpoints_ready
     method: GET
     path: /api/v1/ready
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_declare_event_category
+    method: POST
+    path: /api/v1/event-categories
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_declare_event_type
+    method: POST
+    path: /api/v1/event-types
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_declare_measurement
+    method: PUT
+    path: /api/v1/event-types/{key}/measurements/{code}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_declare_provider
+    method: POST
+    path: /api/v1/providers
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_declare_reported_cost_mapping
+    method: PUT
+    path: /api/v1/event-types/{key}/reported-cost-mapping
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_get_event_type
+    method: GET
+    path: /api/v1/event-types/{key}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_get_reported_cost_mapping
+    method: GET
+    path: /api/v1/event-types/{key}/reported-cost-mapping
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_list_event_categories
+    method: GET
+    path: /api/v1/event-categories
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_list_event_types
+    method: GET
+    path: /api/v1/event-types
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_list_measurements
+    method: GET
+    path: /api/v1/event-types/{key}/measurements
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_list_providers
+    method: GET
+    path: /api/v1/providers
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_publish_event_type
+    method: POST
+    path: /api/v1/event-types/{key}/publish
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_revise_event_type
+    method: PATCH
+    path: /api/v1/event-types/{key}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_revise_provider
+    method: PATCH
+    path: /api/v1/providers/{key}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_withdraw_event_category
+    method: DELETE
+    path: /api/v1/event-categories/{key}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_withdraw_measurement
+    method: DELETE
+    path: /api/v1/event-types/{key}/measurements/{code}
+    disposition: generated_only
+  - operation_id: api_v1_event_type_endpoints_withdraw_reported_cost_mapping
+    method: DELETE
+    path: /api/v1/event-types/{key}/reported-cost-mapping
     disposition: generated_only
   - operation_id: api_v1_me_endpoints_create_top_up
     method: POST
