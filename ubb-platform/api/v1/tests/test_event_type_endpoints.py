@@ -336,6 +336,58 @@ class TestEventTypeCatalogueSurface:
         assert any("Tokens" in advice
                    for advice in declared.json()["advisories"])
 
+    def test_a_unit_ubb_has_never_met_is_declared_without_comment(self):
+        """**The property the OPEN kind exists for** (#268), on the wire.
+
+        The contract publishes the five spellings UBB knows as
+        `x-ubb-known-values` — documentation beside `type: string`, never an
+        `enum` — precisely so this is a normal declaration rather than a 422.
+        A closed set here would cap what a tenant is permitted to measure, and
+        UBB cannot know what the next supplier will charge for.
+
+        `advisories` is empty, and that is the second half of the claim: an
+        unrecognised spelling is not a near miss and gets no comment, so a
+        tenant is not nagged about a unit UBB simply has not met.
+        `tests/contracts/test_openapi_known_values.py` states the same rule
+        over the published bytes; this states it over a real request.
+        """
+        self._declare_calculated()
+
+        declared = self._put(
+            "/api/v1/event-types/chat.completion/measurements/gpu_time",
+            {"value_type": "decimal", "unit": "gpu_millisecond",
+             "source_kind": "provider_response", "source_path": ["usage"]})
+
+        assert declared.status_code == 201
+        assert declared.json()["unit"] == "gpu_millisecond"
+        assert declared.json()["advisories"] == []
+        assert [m["unit"] for m in self._get(
+            "/api/v1/event-types/chat.completion/measurements").json()["data"]
+        ] == ["gpu_millisecond"]
+
+    def test_a_response_shape_ubb_has_never_met_is_declared_with_its_name(self):
+        """The other open concept, and its one condition.
+
+        A shape UBB does not recognise is a tenant's own wrapper, and it is
+        supported rather than refused — which is what makes the four published
+        values documentation rather than a catalogue a tenant has to fit into.
+        What UBB does require is the LABEL beside it, and that is not a
+        narrowing of the value set: it is the rule that a reader of the
+        declaration can always tell what the paths beneath it are written
+        against, and it applies to any shape UBB validates nothing against.
+        """
+        self._declare_calculated()
+
+        declared = self._patch(
+            "/api/v1/event-types/chat.completion",
+            {"source_shape_id": "acme.internal_wrapper.v2",
+             "source_shape_label": "Our own client"})
+
+        assert declared.status_code == 200
+        assert declared.json()["source_shape_id"] == "acme.internal_wrapper.v2"
+        assert EventType.objects.get(
+            tenant=self.tenant).source_shape_id == "acme.internal_wrapper.v2"
+
     def test_declaring_a_quantity_under_a_published_type_revises_it(self):
         self._declare_calculated()
         self._post("/api/v1/event-types/chat.completion/publish")

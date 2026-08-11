@@ -1532,7 +1532,14 @@
             "default": "",
             "maxLength": 100,
             "title": "Source Shape Id",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "source_shape_id",
+            "x-ubb-known-values": [
+              "google.gemini.rest.v1",
+              "google.genai.python.v1",
+              "openai.responses.python.v1",
+              "custom"
+            ]
           },
           "source_shape_label": {
             "default": "",
@@ -1630,7 +1637,14 @@
           },
           "source_shape_id": {
             "title": "Source Shape Id",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "source_shape_id",
+            "x-ubb-known-values": [
+              "google.gemini.rest.v1",
+              "google.genai.python.v1",
+              "openai.responses.python.v1",
+              "custom"
+            ]
           },
           "source_shape_label": {
             "title": "Source Shape Label",
@@ -1697,7 +1711,14 @@
             "anyOf": [
               {
                 "maxLength": 100,
-                "type": "string"
+                "type": "string",
+                "x-ubb-concept": "source_shape_id",
+                "x-ubb-known-values": [
+                  "google.gemini.rest.v1",
+                  "google.genai.python.v1",
+                  "openai.responses.python.v1",
+                  "custom"
+                ]
               },
               {
                 "type": "null"
@@ -2482,7 +2503,15 @@
           "unit": {
             "maxLength": 64,
             "title": "Unit",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "unit",
+            "x-ubb-known-values": [
+              "token",
+              "search",
+              "call",
+              "second",
+              "byte"
+            ]
           },
           "value_type": {
             "maxLength": 16,
@@ -2539,7 +2568,15 @@
           },
           "unit": {
             "title": "Unit",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "unit",
+            "x-ubb-known-values": [
+              "token",
+              "search",
+              "call",
+              "second",
+              "byte"
+            ]
           },
           "value_type": {
             "title": "Value Type",

@@ -215,10 +215,16 @@
       ]
     },
     "source_shape_id": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "4 of 4 values",
       "kind": "open",
-      "representation": "none"
+      "representation": "known_values",
+      "values": [
+        "google.gemini.rest.v1",
+        "google.genai.python.v1",
+        "openai.responses.python.v1",
+        "custom"
+      ]
     },
     "source_shape_label": {
       "advertised": false,
@@ -286,10 +292,17 @@
       "representation": "known_values"
     },
     "unit": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "5 of 5 values",
       "kind": "open",
-      "representation": "none"
+      "representation": "known_values",
+      "values": [
+        "token",
+        "search",
+        "call",
+        "second",
+        "byte"
+      ]
     },
     "usage_event_kind": {
       "advertised": false,
