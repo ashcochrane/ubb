@@ -9,9 +9,9 @@
     },
     "amount_representation": {
       "advertised": false,
-      "backend_serves": "0 of 3 values",
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "none"
     },
     "analytics_grouping_kind": {
       "advertised": false,

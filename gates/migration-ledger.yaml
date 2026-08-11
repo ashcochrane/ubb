@@ -2161,21 +2161,6 @@ entries:
   #     it earlier; none may take it later.
   #
 
-  - id: g2-backend-amount_representation
-    gate: G2
-    site: ubb-platform/apps/platform/event_types/models.py::amount_representation
-    expected: amount_representation
-    found: 0 of 3 values
-    owner_slice: slice_2
-    reason: >-
-      Not a restated value set — an empty one. The app landed ahead of its
-      models so the registry could name this path at all (spec §A2), so this
-      consumer holds none of the concept's values because no field yet exists
-      to hold them. It is declared on the Event Type, beside the measurement
-      whose supplier cost it converts (#179 §3.4). The debt is paid by the
-      ticket that builds that field, importing its values from
-      `core.vocabulary`.
-
   - id: g2-backend-analytics_grouping_kind
     gate: G2
     site: ubb-platform/apps/metering/queries.py::analytics_grouping_kind
@@ -2862,20 +2847,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 6 rebuilds spend control, and the affordability read is where
       these reasons are reported. The metadata appears in that slice.
-
-  - id: g4-openapi-amount_representation
-    gate: G4
-    site: openapi/v1.json::amount_representation
-    expected: amount_representation
-    found: 0 of 3 values
-    owner_slice: slice_2
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 2 rebuilds the measurement catalogue, which is where this is
-      declared on the Event Type (#179 §3.4). The metadata appears in that
-      slice.
 
   - id: g4-openapi-analytics_grouping_kind
     gate: G4

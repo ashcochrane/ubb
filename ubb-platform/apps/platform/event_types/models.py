@@ -28,21 +28,21 @@ headcount: anything may import the kernel, and no product may import another
 except through a sanctioned channel — so a table several products read cannot sit
 inside any one of them.
 
-**What is here so far.** ``EventType`` — the aggregate root — the two optional
+**What is here.** ``EventType`` — the aggregate root — the two optional
 satellites it hangs off, ``Provider`` and ``EventCategory``, ``Measurement``,
 the declared quantity, ``MeasurementConcept``, the opt-in grouping two
-declarations may share, and ``QuarantinedKey`` — the one record here that is
-about a name the catalogue does NOT contain. The reported-cost mapping arrives
-in the ticket that follows, and the recorded consumer debts naming this path
-stay open until the fields that serve them are built. Nothing here is wired to
+declarations may share, ``ReportedCostMapping``, where a supplier's own cost
+figure is read from, and ``QuarantinedKey`` — the one record here that is
+about a name the catalogue does NOT contain. Nothing here is wired to
 anything: no rating path reads it, no cost resolves through it, no spend ceiling
 consults it. Slice 2 owns the declaration; slice 3 owns every behaviour the
 declaration selects. ``apps/platform/tests/test_event_type_satellite_invariants.py``
-and its siblings ``test_event_type_declaration_invariants.py`` and
-``test_quarantine_invariants.py`` are where those claims are held to the tree
-rather than asserted here.
+and its siblings ``test_event_type_declaration_invariants.py``,
+``test_reported_cost_invariants.py`` and ``test_quarantine_invariants.py`` are
+where those claims are held to the tree rather than asserted here.
 """
 from decimal import Decimal, InvalidOperation
+from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -50,12 +50,17 @@ from django.utils import timezone
 
 from core.exceptions import UBBError
 from core.models import BaseModel
+from core.money import SUPPORTED_CURRENCIES
 from core.vocabulary import (
+    AMOUNT_REPRESENTATION_VALUES,
     COSTING_METHOD_REPORTED,
     COSTING_METHOD_VALUES,
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
     DECLARATION_STATUS_VALUES,
+    SOURCE_KIND_CALLER_SUPPLIED,
+    SOURCE_KIND_CONSTANT,
+    SOURCE_KIND_DERIVED,
     SOURCE_KIND_PROVIDER_RESPONSE,
     SOURCE_KIND_VALUES,
     SOURCE_SHAPE_ID_CUSTOM,
@@ -77,8 +82,76 @@ from .source_paths import advisories, path_errors
 RECOGNISED_RESPONSE_SHAPES = SOURCE_SHAPE_ID_KNOWN_VALUES - {SOURCE_SHAPE_ID_CUSTOM}
 
 #: The record a `reported` Event Type must carry before it may be published,
-#: named once. It is declared beneath the Event Type and arrives in #266.
+#: named once, and the accessor by which the Event Type reaches it.
 REPORTED_COST_MAPPING = "reported_cost_mapping"
+
+#: The two source kinds a REPORTED COST may be declared with. The concept
+#: declares four and they are shared with the quantities beside it; these two
+#: are what survives the narrowing, and the other two are refused below for two
+#: different reasons.
+REPORTED_COST_SOURCE_KINDS = frozenset({SOURCE_KIND_PROVIDER_RESPONSE,
+                                        SOURCE_KIND_CALLER_SUPPLIED})
+
+#: What the generated integration must ask its caller for when the number is
+#: not on the supplier's response. Named once here rather than spelled at the
+#: builder, because the parameter a tenant's own code has to pass is part of
+#: the declaration's published contract and not a rendering detail.
+REPORTED_COST_PARAMETER = "reported_cost"
+
+class KindRefusal(NamedTuple):
+    """Why a source kind is not a reported cost, and whether that can change.
+
+    ``permanent`` is the load-bearing half and it is a field rather than a turn
+    of phrase in ``reason``, for the reason this whole slice keeps arriving at:
+    a fact encoded only in prose is one that cannot be asked a question. A
+    tenant who cannot tell "this was weighed and rejected" from "nothing has
+    designed this yet" cannot tell whether to ask again, and the ticket that
+    eventually designs the missing half needs to find its own obligation by
+    something more reliable than reading for a caveat.
+    """
+    reason: str
+    permanent: bool
+
+
+#: What a refusal that is not permanent says about itself, composed onto the
+#: reason rather than written into each one. Generated from the flag, so the
+#: two can never disagree — a refusal whose prose claimed to be temporary while
+#: its flag said otherwise would be the second encoding drifting from the first
+#: on the one field a reader acts on.
+V1_LIMITATION = (
+    "This is a stated v1 limitation rather than a defect: it is refused "
+    "because nothing has yet designed what it would mean, not because it was "
+    "weighed and found wanting.")
+
+#: The other two kinds the concept declares, and why each is not a reported
+#: cost. Two entries rather than one list, because they are not one refusal:
+#: the first is permanent and on the merits, and the second is a limitation a
+#: later slice can lift.
+#:
+#: Their union with :data:`REPORTED_COST_SOURCE_KINDS` is exactly the concept,
+#: which ``apps/platform/tests/test_reported_cost_invariants.py`` holds to the
+#: registry: a fifth kind UBB learns would arrive here unruled, and the
+#: database constraint below would refuse it with no reason anybody wrote.
+REPORTED_COST_KIND_REFUSALS = {
+    SOURCE_KIND_CONSTANT: KindRefusal(
+        reason=(
+            "a fixed per-call supplier cost is a configured cost rule, not a "
+            "number that arrives with the event. 'Reported' cannot mean both "
+            "'a number that arrives' and 'a number that never arrives' — "
+            "admitting the second would make every rule about where the "
+            "number comes from optional, which is the undeclared field this "
+            "record exists to end. A flat supplier cost belongs on a rate."),
+        permanent=True),
+    SOURCE_KIND_DERIVED: KindRefusal(
+        reason=(
+            "a derived reported cost is refused. Its constraint is 'a named, "
+            "declarative transformation', and that transformation vocabulary "
+            "has no design and no owner yet — so there is nothing here for a "
+            "declaration to name. Read the number from the supplier's "
+            "response, or supply it from the caller; those two cover the "
+            "cases this version has. A derived QUANTITY is unaffected."),
+        permanent=False),
+}
 
 #: What a declared quantity's number may be. Two values, and the distinction is
 #: the whole of it: a count of calls that arrived as 2.5 is a defect somewhere
@@ -153,6 +226,16 @@ class DeclarationIncomplete(UBBError):
         super().__init__(
             f"the declaration is incomplete and stays in "
             f"{DECLARATION_STATUS_DRAFT}: {', '.join(self.blockers)}")
+
+
+class DeclarationMisplaced(UBBError):
+    """A part of one declaration cannot be moved to another.
+
+    Raised rather than quietly handled, because the tidy-looking alternative —
+    revise both Event Types and carry on — makes one edit do two things and
+    leaves the second invisible. Withdrawing and re-declaring says the same
+    thing in two acts that each read as what they are.
+    """
 
 
 class ValueTypeMismatch(UBBError):
@@ -253,6 +336,117 @@ class PinnedDeclaration(models.Model):
         wrote_all = (update_fields is None
                      or set(self.PINNED) <= set(update_fields))
         self._pinned_as_loaded = self._pinned_declaration() if wrote_all else None
+
+
+class DeclarationPart(PinnedDeclaration):
+    """A record that is PART of one Event Type's declaration, and behaves like one.
+
+    Two of them exist — the declared quantity and the reported-cost mapping —
+    and everything below was written twice before it was written here. That is
+    not a tidiness argument: :class:`PinnedDeclaration` above records that the
+    second copy of the baseline machinery shipped without ``update_fields``
+    widening and un-published declarations over changes that were never
+    written, and the third copy went in beside it before review caught the
+    shape. Two encodings of one rule drift, and the one that drifts is the one
+    nobody is looking at.
+
+    What a part does that its parent does not: declaring one, changing one, or
+    withdrawing one is a **revised publication** of the Event Type above it,
+    because the code a tenant generated and deployed was generated against the
+    declaration that included it.
+    """
+
+    #: The field by which this part hangs off its Event Type. A name rather
+    #: than an assumption, so a part that spells it differently declares that
+    #: rather than silently losing every rule below.
+    PARENT = "event_type"
+
+    class Meta:
+        abstract = True
+
+    def save(self, *, update_fields=None, **kwargs):
+        """A change to a part revises the publication above it.
+
+        Including ADDING one: a published Event Type that grows a required
+        quantity, or a mapping, is a different declaration from the one a
+        tenant generated their integration against.
+
+        ``update_fields`` is widened by whichever pinned elements actually
+        changed. Naming only the field being changed is the obvious way round a
+        save-time guard, and a declaration returned to draft over a change the
+        row never received would be a third state nobody declared.
+
+        ``QuerySet.update()`` goes round this as it goes round every
+        model-level guard in this repository — ADR-0007 §2 is explicit that
+        these are a courtesy to the ordinary path and never the enforcement.
+        """
+        self._refuse_reparenting()
+        baseline = self._pinned_baseline()
+        revised = baseline is None or self._pinned_declaration() != baseline
+        if revised and baseline is not None:
+            update_fields = self._widened(update_fields, baseline)
+
+        super().save(update_fields=update_fields, **kwargs)
+        self._remember_pinned(update_fields)
+        if revised:
+            self.parent.revise_declaration()
+
+    def delete(self, *args, **kwargs):
+        """Withdrawing a part revises the publication too.
+
+        The declaration a tenant's deployed integration was generated against
+        no longer describes what UBB will accept, which is the same event as a
+        changed path arriving at it from the other direction.
+
+        A real delete rather than the data plane's soft delete
+        (``docs/conventions/coding-standards.md``): that rule protects rows
+        carrying money history, and a part of a declaration carries none —
+        withdrawing one is an edit to a declaration. ``Provider`` earns
+        ``retired_at`` because supplier COGS attribution keys on its identity;
+        nothing keys on a part's. The ticket that first attaches a posting to a
+        declaration is the one that can revisit this, and the one that could
+        test the answer.
+        """
+        parent = self.parent
+        outcome = super().delete(*args, **kwargs)
+        parent.revise_declaration()
+        return outcome
+
+    @property
+    def parent(self):
+        return getattr(self, self.PARENT)
+
+    def _refuse_reparenting(self):
+        """A part belongs to the declaration it was declared under.
+
+        Moving one is two edits wearing the clothes of one, and the half it
+        hides is the damaging half: the Event Type it LEFT keeps its published
+        status while losing a part of what was published — for the mapping,
+        that is a live `reported` declaration with nowhere to read its cost
+        from, which is precisely what :meth:`EventType.publication_blockers`
+        exists to prevent and never gets asked again after publication.
+        Withdraw it and declare a new one: each of those revises the right
+        publication, and both are visible.
+
+        Read from the ROW rather than from a cached load, on the same footing
+        as :meth:`_pinned_baseline` and for the same reason — a guard that
+        answered "unchanged" because nobody told it otherwise would fail open
+        on exactly the careful caller who loaded the record narrowly.
+        """
+        if self._state.adding or self.pk is None:
+            return
+        column = f"{self.PARENT}_id"
+        was = (type(self)._base_manager.filter(pk=self.pk)
+               .values_list(column, flat=True).first())
+        if was is None or was == getattr(self, column):
+            return
+        raise DeclarationMisplaced(
+            f"this {type(self).__name__} was declared under Event Type {was} "
+            f"and cannot be moved to {getattr(self, column)}. A part belongs "
+            f"to the declaration it is part of: moving one leaves the Event "
+            f"Type it left published while a part of what was published is "
+            f"gone. Withdraw it and declare a new one under the other Event "
+            f"Type — each of those revises the publication it should.")
 
 
 class Provider(BaseModel):
@@ -394,12 +588,14 @@ class EventType(PinnedDeclaration, BaseModel):
     #: resolution rather than to the code a tenant deploys — unpublishing a
     #: tenant's live integration because they re-filed it under a different
     #: analytics grouping would be a cost with no benefit on the other side.
-    #: The structured paths turned out not to fit here: they arrived on rows
-    #: BENEATH the Event Type (#263), and a tuple of this record's own field
-    #: names cannot reach them. They pin the publication all the same, through
-    #: :meth:`revise_declaration`, which the child calls. The mapping still
-    #: joins this tuple, and the tripwire for that is in
-    #: ``event_types/tests/test_event_type.py``.
+    #: The structured paths turned out not to fit here, and neither did the
+    #: mapping. Both arrived on rows BENEATH the Event Type (#263, #266), and a
+    #: tuple of this record's own field names cannot reach them: ``getattr`` on
+    #: a reverse relation answers with a row, and two different declarations on
+    #: one row compare equal. They pin the publication all the same, through
+    #: :meth:`revise_declaration`, which each child calls — which is the
+    #: obligation the tripwire in ``event_types/tests/test_event_type.py``
+    #: carried, now asked of the behaviour rather than of this tuple.
     PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label")
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -542,18 +738,17 @@ class EventType(PinnedDeclaration, BaseModel):
         per Event Type, so its PRESENCE is the question asked here — not the
         costing method, which is why the test for this ships a positive control
         that attaches one and watches the blocker clear.
+
+        A missing reverse one-to-one answers `None` through `getattr`'s default.
+        That the relation IS one-to-one is what makes presence one comparison,
+        and it is asserted rather than defended against here: a to-many would
+        answer with a manager, which is never `None`, and this rule would clear
+        for every `reported` declaration in the tree at once. The test next door
+        names that shape so a change to it goes red where it is made.
         """
         if self.costing_method != COSTING_METHOD_REPORTED:
             return ()
-        declared = getattr(self, REPORTED_COST_MAPPING, None)
-        # A missing reverse one-to-one answers `None` through `getattr`'s
-        # default. A to-many relation would answer with a MANAGER, which is
-        # never `None` — so the shape #266 happens to choose would decide
-        # whether this rule ran at all. Asking an emptiness question of
-        # whatever arrives fails CLOSED in both, which is the only direction
-        # of error that keeps an incomplete declaration unpublished.
-        if declared is None or (hasattr(declared, "exists")
-                                and not declared.exists()):
+        if getattr(self, REPORTED_COST_MAPPING, None) is None:
             return (REPORTED_COST_MAPPING,)
         return ()
 
@@ -733,7 +928,7 @@ class MeasurementConcept(BaseModel):
         return f"MeasurementConcept({self.key})"
 
 
-class Measurement(PinnedDeclaration, BaseModel):
+class Measurement(DeclarationPart, BaseModel):
     """One declared quantity beneath an Event Type — the record this slice is for.
 
     Before this, the measured quantities reaching the pricing engine travelled
@@ -946,58 +1141,6 @@ class Measurement(PinnedDeclaration, BaseModel):
                 f"yours — but one noun spelled two ways across two declarations "
                 f"reads as two different things on one invoice.",)
 
-    # -- publication reaches down here too ------------------------------------
-
-    def save(self, *, update_fields=None, **kwargs):
-        """Declaring a quantity, or changing one, revises the publication.
-
-        Including ADDING one: a published Event Type that grows a required
-        quantity is a different declaration from the one a tenant generated
-        their integration against, and leaving it published would mean the
-        deployed code was generated against a contract that has moved.
-
-        ``update_fields`` is widened by whichever pinned elements actually
-        changed, exactly as the parent's own guard widens: without it,
-        ``save(update_fields=["display_name"])`` after editing a path would
-        return the declaration to draft over a change the row never received.
-
-        ``QuerySet.update()`` goes round this as it goes round every
-        model-level guard here — ADR-0007 §2 is explicit that these are a
-        courtesy to the ordinary path and never the enforcement. What defends
-        the emitted code itself is :func:`source_paths.render`, which re-asks
-        the grammar at the moment a path becomes code.
-        """
-        baseline = self._pinned_baseline()
-        revised = baseline is None or self._pinned_declaration() != baseline
-        if revised and baseline is not None:
-            update_fields = self._widened(update_fields, baseline)
-
-        super().save(update_fields=update_fields, **kwargs)
-        self._remember_pinned(update_fields)
-        if revised:
-            self.event_type.revise_declaration()
-
-    def delete(self, *args, **kwargs):
-        """Withdrawing a quantity revises the publication too.
-
-        The declaration a tenant's deployed integration was generated against
-        no longer describes what UBB will accept, and that is the same event as
-        a changed path arriving at it from the other direction.
-
-        A real delete rather than the data plane's soft delete
-        (``docs/conventions/coding-standards.md``): that rule protects rows
-        carrying money history, and this record carries none — it is part of a
-        declaration, and withdrawing a quantity is an edit to one. ``Provider``
-        next door earns ``retired_at`` because supplier COGS attribution keys
-        on its identity; nothing keys on a Measurement's. The ticket that first
-        attaches a posting to a declaration is the one that can revisit this,
-        and it is the one that could test the answer.
-        """
-        event_type = self.event_type
-        outcome = super().delete(*args, **kwargs)
-        event_type.revise_declaration()
-        return outcome
-
     # -- validation -----------------------------------------------------------
 
     def clean(self):
@@ -1080,6 +1223,273 @@ class Measurement(PinnedDeclaration, BaseModel):
             return (f"reads a supplier response, and this quantity is declared "
                     f"as '{self.source_kind}', which reads none. A path here "
                     f"would be emitted by nothing.")
+        return None
+
+
+class ReportedCostMapping(DeclarationPart, BaseModel):
+    """Where a supplier's own cost figure comes from — a SIBLING of the quantities.
+
+    When an Event Type is costed from a number the supplier reports, that number
+    is the cheapest COGS UBB can have and its most important field was the one
+    nobody declared. Every integrator hand-wrote *"the cost is
+    ``response.usage.total_cost``, and it is in dollars"* into a repository UBB
+    never sees, along with the ``* 1e6`` that turned it into micros. This record
+    is that sentence, declared.
+
+    **Why it is not one of the Measurements.** A Measurement is a quantity with
+    a unit; this is money with a currency. Folding it into the quantities would
+    make the unit meaningless or force it to mean "currency", give the value
+    type a money shape, and put a figure governed by a single shared cost bound
+    under a caller-set unbounded integer. It shares the *machinery* — the source
+    declaration, the response shape inherited from the Event Type, structured
+    path segments, the advisory — and none of the shape.
+
+    **The source vocabulary is shared and then narrowed.** Two of the four kinds
+    are a reported cost: read it from the response (which then requires a path),
+    or have the caller supply it (which then requires the generated integration
+    to ask). :data:`REPORTED_COST_KIND_REFUSALS` carries the other two and the
+    two different reasons they are refused.
+
+    **What the number means is declared, and never rounded.** The amount
+    representation is held by reference to the generated vocabulary, and
+    ``reported_cost.py`` owns the conversion: exact whole micros or a refusal,
+    because the four rounding rules govern amounts UBB *computes* and this is
+    one it *observes*.
+
+    **The currency is pinned exactly once** — a fixed code here, or a structured
+    path into the supplier's response, never both and never neither. A
+    supplier-returned currency that disagrees with the pinned one makes the
+    generated integration fail clearly rather than convert: v1 is
+    single-currency with no FX, so there is no correct conversion to perform.
+
+    *Why the fixed code is here and not on the Event Type.* Both were
+    sanctioned, both hold one code per Event Type, and one of them had to be
+    chosen — declaring it in both places would be two encodings of one fact
+    (ADR-0006 §4). It goes where the number it denominates is declared, and
+    keeping money off the Event Type keeps ``no-cost-amount`` next door able to
+    say something absolute about that record.
+
+    **Nothing behavioural is wired.** An Event Type declared with a mapping sits
+    inert: no rating path reads this, and no cost resolves through it. Whether
+    the reported cost and the diagnostic claimed-cost field on the wire are one
+    field routed by costing method or two is explicitly owed to slice 3 and is
+    deliberately not answered here.
+    """
+
+    #: Everything that reaches the generated integration, which is everything
+    #: this record has other than its parent. An incorrect mapping produces an
+    #: incorrect COGS, so all of it is what publication pins (#193 §B7).
+    PINNED = ("source_kind", "source_path", "amount_representation",
+              "currency", "currency_path")
+
+    # One per Event Type, at the database, by the shape of the relation itself.
+    # `publication_blockers` on the parent reads this accessor's PRESENCE, and
+    # a to-many here would answer with a manager — never `None` — and quietly
+    # clear the blocker for every `reported` declaration in the tree at once.
+    event_type = models.OneToOneField(EventType, on_delete=models.CASCADE,
+                                      related_name=REPORTED_COST_MAPPING)
+
+    # The closed vocabularies, held BY REFERENCE from `core.vocabulary` at every
+    # point that reads them — `clean` below and the constraints in `Meta` — so
+    # this model cannot keep a second copy that drifts from the registry. The
+    # source kind is constrained to the NARROWED set rather than the concept's
+    # own, because the two refusals are as much a property of this record as the
+    # two admissions are.
+    source_kind = models.CharField(max_length=32)
+    amount_representation = models.CharField(max_length=32)
+
+    # Canonical segments, never an executable expression — `source_paths.py`
+    # owns the whole of what that means, and both of these are the same kind of
+    # thing as a declared quantity's path, read against the one response shape
+    # the Event Type declares.
+    source_path = models.JSONField(default=list, blank=True)
+    currency_path = models.JSONField(default=list, blank=True)
+
+    # Lowercase, per the convention every currency column in this repository
+    # follows and the casing the payment rail itself uses. Blank exactly when
+    # the currency arrives on the supplier's response instead.
+    currency = models.CharField(max_length=3, blank=True, default="")
+
+    class Meta:
+        db_table = "ubb_reported_cost_mapping"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    source_kind__in=sorted(REPORTED_COST_SOURCE_KINDS)),
+                name="ck_reported_cost_source_kind",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    amount_representation__in=sorted(
+                        AMOUNT_REPRESENTATION_VALUES)),
+                name="ck_reported_cost_amount_representation",
+            ),
+            # EXACTLY ONE of the two ways to pin the currency. The half of the
+            # rule that never moves, which is why it is here and the code's own
+            # validity is not: WHICH currencies UBB can hold is a table in
+            # `core.money` that grows, and a constraint over it would make
+            # admitting a currency a schema migration. That a cost denominated
+            # twice, or not at all, is meaningless is true whatever that table
+            # says.
+            models.CheckConstraint(
+                condition=(models.Q(currency="") ^ models.Q(currency_path=[])),
+                name="ck_reported_cost_currency_pinned_once",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ReportedCostMapping({self.event_type_id})"
+
+    # -- what the generated integration has to do -----------------------------
+
+    def required_runtime_parameters(self):
+        """What the caller's own code must pass, because UBB cannot read it.
+
+        The builder's half of ``caller_supplied``: a cost that is not on the
+        supplier's response has to arrive from somewhere, and the only place
+        left is the call itself. Empty for a cost read from the response, which
+        is the point — a declaration that returned the same answer for both
+        would tell the builder nothing.
+        """
+        if self.source_kind == SOURCE_KIND_CALLER_SUPPLIED:
+            return (REPORTED_COST_PARAMETER,)
+        return ()
+
+    def declaration_advisories(self):
+        """Everything UBB advises about this mapping. It never acts on any of it.
+
+        Both paths, against the one response shape the Event Type declares. The
+        same stance the declared quantities take, and for the same reason: a
+        quiet rewrite of a tenant's own mapping is the failure being designed
+        out, so advice is the entire product.
+        """
+        shape = self.event_type.source_shape_id
+        return (*advisories(shape, self.source_path),
+                *advisories(shape, self.currency_path))
+
+    # -- validation -----------------------------------------------------------
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        kind_error = self._source_kind_error()
+        if kind_error:
+            errors["source_kind"] = kind_error
+        if self.amount_representation not in AMOUNT_REPRESENTATION_VALUES:
+            errors["amount_representation"] = (
+                f"'{self.amount_representation}' is not an amount "
+                f"representation, so what the supplier's number means is "
+                f"undeclared and the conversion to micros is back to being "
+                f"hand-written. UBB owns this whole value set: "
+                f"{', '.join(sorted(AMOUNT_REPRESENTATION_VALUES))}.")
+
+        currency_error = self._currency_error()
+        if currency_error:
+            errors["currency"] = currency_error
+
+        self._collect_path_error(errors, "source_path", self.source_path,
+                                 self._amount_path_obligation)
+        self._collect_path_error(errors, "currency_path", self.currency_path,
+                                 self._currency_path_obligation)
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _source_kind_error(self):
+        """The narrowing, and the two refusals stated apart.
+
+        The limitation notice is composed from the refusal's own flag rather
+        than written into its text, so a refusal cannot claim to be temporary
+        while the flag a later ticket will look for says it is not.
+        """
+        if self.source_kind in REPORTED_COST_SOURCE_KINDS:
+            return None
+        refusal = REPORTED_COST_KIND_REFUSALS.get(self.source_kind)
+        if refusal is not None:
+            return (refusal.reason if refusal.permanent
+                    else f"{refusal.reason} {V1_LIMITATION}")
+        return (f"'{self.source_kind}' is not a source kind. UBB owns this "
+                f"whole value set: {', '.join(sorted(SOURCE_KIND_VALUES))} — "
+                f"and a reported cost narrows it to "
+                f"{', '.join(sorted(REPORTED_COST_SOURCE_KINDS))}.")
+
+    def _currency_error(self):
+        """Pinned exactly once, and pinned to something UBB can hold.
+
+        The 'exactly once' half is also a database constraint; this is the
+        courtesy that says which of the two mistakes was made. The 'can hold'
+        half is only here, because the table it reads grows.
+        """
+        pinned = bool(self.currency)
+        by_path = bool(self.currency_path)
+        if pinned and by_path:
+            return ("this cost is denominated twice — a fixed code and a path "
+                    "into the supplier's response. Two encodings of one fact "
+                    "disagree eventually, and the one that is wrong is always "
+                    "the one nobody is looking at. Declare one.")
+        if not pinned and not by_path:
+            return ("this cost is denominated in nothing. Pin a currency here, "
+                    "or declare the path the supplier returns one on — a "
+                    "reported cost with no currency is a number an invoice "
+                    "reader cannot compare to anything, and UBB will not "
+                    "assume its own default on a tenant's behalf.")
+        if pinned and self.currency not in SUPPORTED_CURRENCIES:
+            if self.currency.lower() in SUPPORTED_CURRENCIES:
+                return (f"'{self.currency}' is a currency UBB holds, spelled "
+                        f"in capitals. UBB spells currency codes in lower "
+                        f"case throughout — write '{self.currency.lower()}'.")
+            return (f"'{self.currency}' is not a currency UBB can hold: it "
+                    f"knows no minor unit for it, so an amount in it could "
+                    f"never reach the payment rail. The currencies it holds "
+                    f"are {', '.join(sorted(SUPPORTED_CURRENCIES))}.")
+        return None
+
+    def _collect_path_error(self, errors, field, segments, obligation):
+        """The grammar first, then the obligation — never both about one path.
+
+        A path that is not structured data has not yet reached the question of
+        whether this kind owes one, and reporting both would be two complaints
+        about one mistake.
+        """
+        problems = path_errors(segments)
+        if problems:
+            errors[field] = [f"the {field.replace('_', ' ')} {problem}"
+                             for problem in problems]
+            return
+        owed = obligation()
+        if owed:
+            errors[field] = f"the {field.replace('_', ' ')} {owed}"
+
+    def _amount_path_obligation(self):
+        """Only the kind that READS a response owes a path, and only it may
+        carry one: a path on a caller-supplied cost is a read nothing
+        performs, sitting in the one column a builder is about to emit from."""
+        if self.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
+            if not self.source_path:
+                return ("is empty, and a cost read from the supplier's "
+                        "response has to say where in it. Declare the "
+                        "segments, or declare the caller supplies the number.")
+            return None
+        if self.source_path:
+            return (f"reads a supplier response, and this cost is declared as "
+                    f"'{self.source_kind}', which reads none. A path here "
+                    f"would be emitted by nothing.")
+        return None
+
+    def _currency_path_obligation(self):
+        """A supplier-returned currency needs a supplier-read amount.
+
+        The currency path is read out of the same response the amount is, under
+        the one shape the Event Type declares. A mapping whose number comes from
+        the caller reads no response at all, so it has none to take a currency
+        out of — and the fixed code is the sanctioned way to pin it there.
+        """
+        if (self.currency_path
+                and self.source_kind != SOURCE_KIND_PROVIDER_RESPONSE):
+            return (f"reads a supplier response, and this cost is declared as "
+                    f"'{self.source_kind}', which reads none. Pin the currency "
+                    f"as a fixed code instead.")
         return None
 
 

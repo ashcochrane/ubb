@@ -26,6 +26,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
 from apps.platform.event_types.models import (
+    DeclarationMisplaced,
     EventType,
     Measurement,
     ValueTypeMismatch,
@@ -660,5 +661,30 @@ class TestTheDeclarationBeneathAPublishedEventType:
         assert (EventType.objects.get(pk=declared.pk).declaration_status
                 == DECLARATION_STATUS_DRAFT)
         assert EventType.objects.get(pk=declared.pk).published_revision == 1
+
+    def test_a_quantity_cannot_be_moved_to_another_event_type(self):
+        """The shared rule, arriving here because the machinery is shared (#266).
+
+        Declarations are Event-Type-local, and moving one is two acts wearing
+        the clothes of one: the Event Type it arrives at is revised, and the one
+        it LEFT keeps its published status while quietly losing a quantity that
+        publication pinned. Withdraw and re-declare — each of those revises the
+        publication it should.
+        """
+        tenant = _tenant()
+        here = _event_type(tenant, key="acme.embed")
+        there = _event_type(tenant, key="acme.rerank")
+        quantity = _measurement(here)
+        here.refresh_from_db()
+        here.publish()
+
+        quantity.event_type = there
+        with pytest.raises(DeclarationMisplaced):
+            quantity.save()
+
+        assert [held.pk for held
+                in EventType.objects.get(pk=here.pk).measurements.all()] \
+            == [quantity.pk]
+        assert not EventType.objects.get(pk=there.pk).measurements.exists()
 
 

@@ -28,13 +28,16 @@ from apps.platform.event_types.models import (
     EventType,
     Provider,
     REPORTED_COST_MAPPING,
+    ReportedCostMapping,
 )
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
+    AMOUNT_REPRESENTATION_MICROS,
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
+    SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_SHAPE_ID_CUSTOM,
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
 )
@@ -47,6 +50,14 @@ def _tenant(name="T"):
 def _event_type(tenant, key="acme.embed", **kwargs):
     kwargs.setdefault("costing_method", COSTING_METHOD_CALCULATED)
     return EventType.objects.create(tenant=tenant, key=key, **kwargs)
+
+
+def _mapping(event_type):
+    """The simplest complete reported-cost mapping: the caller supplies the
+    number, already in micros, in a currency pinned here (#266)."""
+    return ReportedCostMapping.objects.create(
+        event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
+        amount_representation=AMOUNT_REPRESENTATION_MICROS, currency="usd")
 
 
 @pytest.mark.django_db
@@ -150,56 +161,65 @@ class TestAnIncompleteDeclarationStaysInDraft:
         Without it, a check that returned "incomplete" for every `reported`
         declaration whatever it carried would pass — and the rule under test is
         that publication reads the MAPPING's presence, not the costing method.
-
-        The stand-in is the mapping, which is the rule's INPUT and does not
-        exist until #266; the rule itself is exercised for real. Standing in
-        for the thing under test would be the other thing, and is what
-        ``tests/contracts/README.md`` refuses.
         """
         declared = _event_type(_tenant(), costing_method=COSTING_METHOD_REPORTED)
         assert declared.publication_blockers()
 
-        setattr(declared, REPORTED_COST_MAPPING, object())
+        _mapping(declared)
 
+        declared.refresh_from_db()
         assert declared.publication_blockers() == ()
         declared.publish()
         assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
 
-    def test_an_empty_mapping_relation_is_not_a_mapping(self):
-        """The shape the rule must not be at the mercy of.
+    def test_presence_is_the_question_because_the_relation_is_one_to_one(self):
+        """The shape the rule must not be at the mercy of, now decided.
 
-        A reverse one-to-one answers `None` when absent; a to-many answers with
-        a manager, which is never `None`. If #266 declares the second shape, a
-        presence test would start passing for every `reported` declaration in
-        the tree at once, and nothing here would go red.
+        A reverse one-to-one answers `None` when absent, which is what makes
+        "is it there" one comparison. A to-many would answer with a MANAGER —
+        never `None` — and the blocker would clear for every `reported`
+        declaration in the tree at once, silently. #266 declared the first
+        shape; this is what holds it to that, because the rule above reads
+        emptiness and only one of the two shapes expresses emptiness that way.
         """
-        declared = _event_type(_tenant(), costing_method=COSTING_METHOD_REPORTED)
-        setattr(declared, REPORTED_COST_MAPPING,
-                EventType.objects.none())  # a manager-shaped, empty relation
+        relation = EventType._meta.get_field(REPORTED_COST_MAPPING)
 
-        assert declared.publication_blockers() == (REPORTED_COST_MAPPING,)
+        assert relation.one_to_one, (
+            f"{REPORTED_COST_MAPPING} is no longer one-to-one, so "
+            f"`publication_blockers` is asking a presence question of a "
+            f"manager and will answer 'complete' for every reported "
+            f"declaration there is")
 
-    def test_the_reported_cost_mapping_joins_the_pinned_declaration(self):
-        """A tripwire for the ticket that builds the mapping (#266).
+    def test_the_reported_cost_mapping_pins_the_publication(self):
+        """The obligation this file has carried since #262, now payable.
 
         Publication pins the response shape, the structured paths and the
         reported-cost mapping, because an incorrect mapping produces an
-        incorrect supplier cost. Only the first of those three exists here, so
-        `PINNED` cannot yet name the others — and an obligation that lives
-        only in a comment is one #266 can land without noticing. This is
-        written the way ``SATELLITE_HOLDERS`` was written a ticket before its
-        model existed: it passes vacuously today, and goes red on the commit
-        that adds the relation without pinning it.
-        """
-        arrived = (hasattr(EventType, REPORTED_COST_MAPPING)
-                   or any(rel.get_accessor_name() == REPORTED_COST_MAPPING
-                          for rel in EventType._meta.related_objects))
+        incorrect supplier cost. `EventType.PINNED` was where that was expected
+        to land and it is not where it could: `PINNED` is a tuple of THIS
+        record's own field names, read with `getattr`, and the mapping is a row
+        beneath it — the same discovery #263 made about the structured paths,
+        which pin through `revise_declaration()` instead.
 
-        assert not arrived or REPORTED_COST_MAPPING in EventType.PINNED, (
-            f"the reported-cost mapping has arrived and publication does not "
-            f"pin it: add {REPORTED_COST_MAPPING!r} to EventType.PINNED, "
-            f"because a changed mapping is a revised publication and never a "
-            f"silent reinterpretation of an integration already deployed")
+        So the tripwire's mechanism was wrong and its obligation was right, and
+        what replaces it asks the obligation directly and behaviourally: change
+        the mapping, and the declaration must be back in draft. That is
+        strictly more than the name-in-a-tuple check it replaces, which a
+        mapping could have satisfied while revising nothing.
+        """
+        declared = _event_type(_tenant(), costing_method=COSTING_METHOD_REPORTED)
+        mapping = _mapping(declared)
+        declared.refresh_from_db()
+        declared.publish()
+
+        mapping.currency = "gbp"
+        mapping.save()
+
+        assert EventType.objects.get(pk=declared.pk).declaration_status \
+            == DECLARATION_STATUS_DRAFT, (
+            "a changed mapping left the declaration published, so an "
+            "integration a tenant already generated and deployed is now a "
+            "reading of a contract that moved under it")
 
     def test_publishing_an_unchanged_declaration_again_pins_nothing_new(self):
         """There is no second declaration to pin, so there is no second revision."""
@@ -235,7 +255,7 @@ class TestAChangedDeclarationIsARevisedPublication:
         declared.publish()
 
         declared.costing_method = COSTING_METHOD_REPORTED
-        setattr(declared, REPORTED_COST_MAPPING, object())
+        _mapping(declared)
         declared.save()
         assert declared.declaration_status == DECLARATION_STATUS_DRAFT
 

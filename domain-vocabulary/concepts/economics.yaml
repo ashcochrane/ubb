@@ -597,11 +597,19 @@ amount_representation:
     - minor_units
     - major_units_decimal
   label_key_prefix: amount_representation
+  # THE CONTRACT CONSUMER ARRIVES WITH THE FIELD IT MARKS (#267), not before —
+  # the third and last of the three closed sets to make this move, after
+  # `costing_method` (#262) and `source_kind` (#263), and for the same
+  # mechanical reason. `known_values.document.decide` reads "advertised" from
+  # the CENSUS alone, so the moment the backend held these values by reference
+  # (#266) a declared contract consumer would have required the committed
+  # contract to carry a marked field NOW, and no route exposes a reported-cost
+  # mapping until #267 builds one. The two halves are one act and the ledger
+  # has no entry shape for "the backend serves and the contract lags", so the
+  # consumer is declared by the ticket that builds it.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
-    - surface: openapi
-      path: openapi/v1.json
 
 tenant_product:
   kind: closed
