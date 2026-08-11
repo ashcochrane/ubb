@@ -15,6 +15,11 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
+# The retired bag's name, read off the migration that drops it rather than
+# spelled here — see that module's own note for why. Importing it keeps the
+# derivation in one place instead of two.
+from apps.metering.usage.tests.test_the_second_open_bag_folds import (
+    RETIRED_COLUMN)
 
 
 class TheBagIsStoredAsAuthoredTest(TestCase):
@@ -168,6 +173,39 @@ class TheBagIsFilterableTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body["data"]), 2)
+
+    @patch("apps.platform.events.tasks.process_single_event")
+    def test_a_stale_caller_is_accepted_and_its_labels_are_dropped(
+            self, mock_process):
+        """WHAT THE FOLD COSTS A CALLER THAT HAS NOT MIGRATED YET.
+
+        Removing the field from the request schema does NOT make a stale
+        request fail: django-ninja keeps pydantic's `extra="ignore"`, so the
+        retired bag is accepted and thrown away. The posting records, no money
+        moves wrongly and nothing is mis-metered — but labels the caller
+        believes it sent are not there, and they do not fall into the
+        surviving bag either.
+
+        Pinned rather than left to be discovered from a support ticket. The
+        alternative — forbidding unknown fields — is a decision about every
+        schema on the contract, which this ticket does not own.
+        """
+        response = self.client.post(
+            "/api/v1/metering/usage",
+            data=json.dumps({
+                "customer_id": str(self.customer.id),
+                "request_id": "req_stale",
+                "idempotency_key": "idem_stale",
+                "provider_cost_micros": 1_000_000,
+                RETIRED_COLUMN: {"department": "sales"},
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Posting.objects.get(idempotency_key="idem_stale")
+        self.assertEqual(event.metadata, {})
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_the_bag_is_readable_on_the_detail_response(self, mock_process):

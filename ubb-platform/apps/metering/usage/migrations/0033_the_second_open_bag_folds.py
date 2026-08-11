@@ -51,6 +51,18 @@ to swap opclasses concurrently.
 bring it back.** It was created by `RunPython` in 0022 and never entered Django's
 migration state, so no operation here owns it; reversing to 0022 is what restores
 it. Recorded rather than left to be discovered from a slow query.
+
+**AND THE NEW ONE IS BUILT NON-CONCURRENTLY, WHICH 0022 WENT TO TROUBLE TO
+AVOID.** `AddIndex` takes an ACCESS EXCLUSIVE lock on the largest table in the
+system for the length of the build; 0022 used `CREATE INDEX CONCURRENTLY` and
+paid for it with `atomic = False` and a documented recovery runbook for an
+interrupted build leaving an INVALID index. This migration keeps the
+transaction instead, deliberately: it also MOVES DATA, and a data migration that
+cannot roll back atomically is a worse failure than a lock. Nothing is deployed
+— cutover is a code event, not a data event — so the lock is on an empty table
+today. **A future operator running this against a populated table should build
+the index concurrently out-of-band first**; `AddIndex` then finds it and is a
+no-op on the name.
 """
 
 from django.db import migrations

@@ -142,8 +142,23 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/uni
 # choose.
 #
 # BOTH DIRECTIONS, for the same reason the block above gives: two of these three
-# are REQUEST properties, and a bag that is no longer stored must stop being
-# accepted rather than be quietly discarded.
+# are REQUEST properties, because a bag that is no longer stored must stop being
+# part of what the contract accepts.
+#
+# WHAT THAT DOES *NOT* MEAN, STATED PLAINLY BECAUSE THE FIRST DRAFT OF THIS
+# BLOCK GOT IT BACKWARDS. Removing the property from the schema does not make a
+# stale caller's request fail. django-ninja keeps pydantic's `extra="ignore"`
+# (pinned by `api/v1/tests/test_usage_dimensions.py`), so a caller still posting
+# the retired bag gets a **200 and its labels are silently dropped** — they do
+# not land in the surviving bag. Nothing is mis-metered and no money moves, but
+# labels a caller believes it sent are not there.
+#
+# That is the same shape as #272's own request-side consequence and it is
+# accepted on the same grounds: the pre-live window (ADR-0007 §5), and a
+# migration path that is a one-line rename in the caller. It is recorded here
+# rather than repaired because forbidding unknown fields is a whole-surface
+# decision about every schema in the contract, which this ticket does not own.
+# `test_a_stale_caller_is_accepted_and_its_labels_are_dropped` pins it.
 #
 # WHY THIS BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5) —
 # the launch tag is not what binds. The same drop after platform admission

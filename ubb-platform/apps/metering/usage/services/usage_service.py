@@ -15,18 +15,37 @@ from apps.platform.events.schemas import UsageRecorded
 
 logger = logging.getLogger(__name__)
 
-# THE RETIRING BAG'S KEY SHAPE DIED WITH THE BAG (#273), AND THE SURVIVOR DOES
-# NOT INHERIT IT. A lowercase-snake key pattern exists so keys make stable chart
-# labels — it is a *grouping* rule wearing a validation hat. The bag that
-# survives is never groupable, so the pattern has no work left to do, and
-# enforcing it would be UBB dictating the shape of identifiers the tenant
-# authored on the very commit that rules UBB never rewords them.
+# THE RETIRING BAG'S VALIDATION DIED WITH THE BAG (#273), AND THE SURVIVOR DOES
+# NOT INHERIT IT. It enforced FOUR rules and each is answered separately here,
+# because "it validated the field we deleted" is a reason to look at them, not a
+# reason to drop them unexamined.
 #
-# The consequence is stated rather than glossed, exactly as #272 stated its
-# own: a caller whose keys the retired bag would have refused with a 422 now
-# gets a 200. Nothing is mis-metered — the open bag is filtered and read, never
-# priced and never grouped — and `tests/test_the_second_open_bag_folds.py` pins
-# it so the change is a decision rather than a discovery.
+#   1. A lowercase-snake KEY PATTERN. Retired on the merits: that pattern exists
+#      so keys make stable chart labels — a *grouping* rule wearing a validation
+#      hat. The survivor is never groupable, and enforcing it would be UBB
+#      dictating the shape of identifiers the tenant authored, on the very
+#      commit that rules UBB never rewords them.
+#   2. VALUES MUST BE STRINGS. Cannot be carried: the surviving bag has always
+#      held arbitrary JSON and nesting is a real, intended use of it (a request
+#      envelope, a client block). Imposing it would break callers of a field
+#      that never had the rule.
+#   3. AT MOST 50 KEYS and 4. VALUES UNDER 256 CHARS. Size guards, not
+#      vocabulary — but they are also rules the surviving bag never had, and
+#      adding them here would narrow a published field this ticket was not
+#      asked to narrow. Left off deliberately, and recorded as the open
+#      question they are rather than quietly dropped.
+#
+# THE CONSEQUENCE, STATED IN THE DIRECTION IT ACTUALLY RUNS. A caller whose keys
+# the retired bag refused with a 422 now gets a 200 — that much is the #272
+# precedent. But the removal also WIDENS what can reach the three grouping
+# surfaces slice 7 owns: they used to read a bag validated flat `str -> str` and
+# now read the same arbitrary JSON everything else in this bag may hold, so a
+# key-driven chart or invoice line label can be handed a serialised object
+# rather than a short string. Nothing is mis-metered and no money moves — the
+# bag is filtered and read, never priced — but this is a widening on the very
+# surfaces this ticket must not widen, and it is slice 7's to close when it
+# moves that capability onto the declared grouping contract.
+# `tests/test_the_second_open_bag_folds.py` pins both halves.
 
 # Tolerated clock skew for caller-supplied effective_at in the future.
 _FUTURE_SKEW = timedelta(minutes=5)

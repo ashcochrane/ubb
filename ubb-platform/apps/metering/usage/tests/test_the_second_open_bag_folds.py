@@ -47,7 +47,10 @@ PARENT_MIGRATION = "0032_the_inline_unit_total_dies"
 #: Deriving it costs one import and takes no seeding authorisation, and a
 #: leftover hit in this file would have said the removal was incomplete when
 #: it was not.
-RETIRED_COLUMN = next(
+#: Unpacked from a one-element tuple on purpose: a migration that ever grew a
+#: second `RemoveField` would make `next(...)` pick one silently, and every
+#: assertion below would then be about a column nobody meant.
+(RETIRED_COLUMN,) = tuple(
     op.name for op in
     import_module(
         f"apps.metering.usage.migrations.{FOLD_MIGRATION}").Migration.operations
@@ -294,6 +297,17 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
     both owned by slice 7, and slice 7 is where the capability moves onto the
     declared grouping contract. Slice 2 folded the field; moving the capability
     early would be building another slice's design without it.
+
+    AND IT REACHES FURTHER THAN IT DID, WHICH IS WORTH SAYING OUT LOUD ON THIS
+    COMMIT OF ALL COMMITS. Those three surfaces used to read a bag the recording
+    path validated flat `str -> str`; they now read the same arbitrary JSON the
+    surviving bag has always been allowed to hold, so a label can arrive as a
+    serialised object rather than a short string.
+    `test_a_nested_value_reaches_the_label_path_unconstrained` runs it rather
+    than asserting it cannot happen. The alternative was imposing the retired
+    bag's value rules on a published field that never had them, which is a
+    break this ticket was not asked to make — the module note in
+    `services/usage_service.py` takes all four rules one at a time.
     """
 
     def setUp(self):
@@ -317,21 +331,60 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         from apps.platform.grouping_fields.models import SLOT_CHOICES
         assert SURVIVING_COLUMN not in dict(SLOT_CHOICES)
 
-    def test_naming_the_bag_as_an_invoice_line_grouping_does_not_read_it(self):
-        """The postpaid line-label reader groups by a resolved column, and
-        being handed the bag's own name does not make it read the bag.
+    def test_naming_the_bag_as_an_invoice_line_grouping_falls_back_to_a_column(
+            self):
+        """Being handed the bag's own name does not make the line-label reader
+        read the bag — but READ HOW IT GETS THERE BEFORE TRUSTING THIS.
+
+        It is not a refusal. That reader recognises the `tag:` prefix and
+        otherwise falls through to `dim1`, so an unrecognised grouping is
+        silently grouped by a column the caller did not name. The bag is not
+        read, which is what this test is entitled to claim; the silent
+        fallback underneath is a defect in a slice-7-owned surface, recorded
+        here rather than repaired here.
         """
         from apps.metering.queries import get_customer_billed_breakdown
         from datetime import date
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i_lbl",
-            billed_cost_micros=500_000, dim1="",
+            billed_cost_micros=500_000, dim1="chat",
             metadata={"seat": "alice"})
 
         rows = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, date(2020, 1, 1),
             date(2100, 1, 1), group_by=SURVIVING_COLUMN)
 
-        # The bag held "alice"; the label is the empty-dim1 collapse, not it.
-        self.assertEqual(rows, [("(other)", 500_000)])
+        # dim1, not the bag: "chat" rather than "alice". A row reading
+        # "(other)" would have passed on an empty dim1 without distinguishing
+        # "grouped by the wrong column" from "read nothing at all".
+        self.assertEqual(rows, [("chat", 500_000)])
+
+    def test_a_nested_value_reaches_the_label_path_unconstrained(self):
+        """WHAT THE FOLD WIDENED, RUN RATHER THAN ASSERTED AWAY.
+
+        The retiring bag was validated flat `str -> str` on the recording
+        path. The survivor never was, and nesting is a real use of it — so a
+        key-driven invoice line label can now be handed a serialised object
+        where it used to be handed a short string. Nothing is mis-metered and
+        no money moves; the label is ugly and unbounded.
+
+        This is the widening slice 7 closes when it moves grouping onto the
+        declared contract. It is pinned here so that closing it is a change to
+        a red test rather than a discovery.
+        """
+        from apps.metering.queries import get_customer_billed_breakdown
+        from datetime import date
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            idempotency_key="i_nested",
+            billed_cost_micros=500_000,
+            metadata={"request": {"model": "gpt-5", "stream": True}})
+
+        rows = get_customer_billed_breakdown(
+            self.tenant.id, self.customer.id, date(2020, 1, 1),
+            date(2100, 1, 1), group_by="tag:request")
+
+        (label, amount), = rows
+        self.assertEqual(amount, 500_000)
+        self.assertIn("gpt-5", label)   # a JSON object, serialised as a label
