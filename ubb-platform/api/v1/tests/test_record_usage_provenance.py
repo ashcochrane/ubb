@@ -35,7 +35,7 @@ class RecordUsageProvenanceTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_response_includes_pricing_provenance_and_usage_metrics(self, mock_process):
+    def test_response_includes_pricing_provenance_and_measurements(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -44,7 +44,7 @@ class RecordUsageProvenanceTest(TestCase):
                 "idempotency_key": "idem_provenance_1",
                 "provider": "openai",
                 "event_type": "chat",
-                "usage_metrics": {"input_tokens": 1000},
+                "measurements": {"input_tokens": 1000},
                 # no provider_cost_micros — should be derived from rate card
             }),
             content_type="application/json",
@@ -54,4 +54,4 @@ class RecordUsageProvenanceTest(TestCase):
         body = response.json()
         self.assertEqual(body["provider_cost_micros"], 5)
         self.assertEqual(body["pricing_provenance"]["cost_source"], "rate_card")
-        self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
+        self.assertEqual(body["measurements"], {"input_tokens": 1000})

@@ -76,7 +76,7 @@ class PricingService:
             wildcard_book, selectors, metric_name, currency, as_of)
 
     @staticmethod
-    def _compute(*, tenant, usage_metrics, caller_provider_cost, caller_billed,
+    def _compute(*, tenant, measurements, caller_provider_cost, caller_billed,
                  resolve_card, apply_markup):
         """The ONE compute spine (#112): coverage → cost → price → markup
         fallback. ``price`` is this spine under one card resolver —
@@ -88,18 +88,18 @@ class PricingService:
         rather than forking a pricing body. Raises PricingError exactly where
         strict cost coverage fails; always returns
         (provider_cost, billed, provenance)."""
-        usage_metrics = usage_metrics or {}
+        measurements = measurements or {}
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
         # ---- COST ----
         if caller_provider_cost is not None:
             provider_cost = caller_provider_cost
             prov["cost_source"] = "caller"
-            # When the strict coverage flag is on, every metric in usage_metrics must have
+            # When the strict coverage flag is on, every metric in measurements must have
             # a matching cost card even when the caller supplies the aggregate cost.
             # Without this check the caller-cost path silently bypasses the guarantee.
-            if usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
-                uncosted = [m for m in usage_metrics
+            if measurements and getattr(tenant, "require_cost_card_coverage", False):
+                uncosted = [m for m in measurements
                             if resolve_card("cost", m) is None]
                 if uncosted:
                     prov["uncosted_metrics"] = uncosted
@@ -130,7 +130,7 @@ class PricingService:
             # for a caller that has not migrated. That is the cost of the
             # removal rather than an oversight in it, and it is why the drop is
             # recorded as a reviewed break on the request side too.
-            for metric, units_val in usage_metrics.items():
+            for metric, units_val in measurements.items():
                 card = resolve_card("cost", metric)
                 if card is None:
                     uncosted.append(metric)
@@ -151,7 +151,7 @@ class PricingService:
             prov["price_source"] = "caller"
         else:
             price_total, matched = 0, False
-            for metric, units_val in sorted(usage_metrics.items()):
+            for metric, units_val in sorted(measurements.items()):
                 card = resolve_card("price", metric)
                 if card is None:
                     continue
@@ -174,7 +174,7 @@ class PricingService:
         return provider_cost, billed, prov
 
     @staticmethod
-    def price(*, tenant, customer, selectors, usage_metrics, currency,
+    def price(*, tenant, customer, selectors, measurements, currency,
               caller_provider_cost, caller_billed, as_of=None):
         """Exact pricing: the compute spine over as_of-exact ORM card
         resolution (the full provenance receipt is persisted with the event)
@@ -192,7 +192,7 @@ class PricingService:
             return MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
 
         return PricingService._compute(
-            tenant=tenant, usage_metrics=usage_metrics,
+            tenant=tenant, measurements=measurements,
             caller_provider_cost=caller_provider_cost,
             caller_billed=caller_billed,
             resolve_card=resolve_card, apply_markup=apply_markup)

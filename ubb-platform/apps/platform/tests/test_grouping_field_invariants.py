@@ -115,7 +115,7 @@ class TestGroupingFieldInvariants:
                     "dim4": "", "dim5": "", "dim6": ""}
         provider_cost, _, provenance = PricingService.price(
             tenant=t, customer=c, selectors=selectors,
-            usage_metrics={"input_tokens": 1_000_000}, currency="usd",
+            measurements={"input_tokens": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
 
         # The openai book's broad, specificity-1 rate wins over the ""

@@ -41,7 +41,7 @@ describe("buildTestEventRequest", () => {
     });
   });
 
-  it("converts costs to micros and assembles usage_metrics", () => {
+  it("converts costs to micros and assembles measurements", () => {
     const body = buildTestEventRequest(
       {
         ...BASE_VALUES,
@@ -58,7 +58,7 @@ describe("buildTestEventRequest", () => {
     expect(body.event_type).toBe("chat_completion");
     expect(body.provider_cost_micros).toBe(420_000);
     expect(body.billed_cost_micros).toBe(600_000);
-    expect(body.usage_metrics).toEqual({ tokens_in: 1200 });
+    expect(body.measurements).toEqual({ tokens_in: 1200 });
   });
 
   it("sends effective_at as a tz-aware UTC ISO string", () => {

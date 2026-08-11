@@ -178,7 +178,7 @@ class TestHistoricalPricing:
         Rate.objects.filter(id=v2.id).update(valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(
-            t, c, "r1", "k1", usage_metrics={"tok": 100},
+            t, c, "r1", "k1", measurements={"tok": 100},
             effective_at=now - timedelta(days=20))
         assert r_old["billed_cost_micros"] == 1_000  # 100 @ v1's 10
         entry = [m for m in r_old["pricing_provenance"]["metrics"]
@@ -186,7 +186,7 @@ class TestHistoricalPricing:
         assert entry["rate_card_id"] == str(v1.id)
 
         r_new = UsageService.record_usage(
-            t, c, "r2", "k2", usage_metrics={"tok": 100})
+            t, c, "r2", "k2", measurements={"tok": 100})
         assert r_new["billed_cost_micros"] == 5_000  # 100 @ v2's 50
 
 

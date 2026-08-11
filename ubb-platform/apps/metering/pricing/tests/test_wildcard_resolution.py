@@ -18,7 +18,7 @@ class TestWildcardResolution:
         base.update(selectors)
         return PricingService.price(
             tenant=t, customer=c, selectors=base,
-            usage_metrics={"input_tokens": 1_000_000}, currency="usd",
+            measurements={"input_tokens": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
 
     def test_wildcard_rate_matches_any_provider(self):
@@ -96,6 +96,6 @@ class TestWildcardResolution:
                 "dim4": "", "dim5": "", "dim6": ""}
         prov, _, p = PricingService.price(
             tenant=t, customer=c, selectors=base,
-            usage_metrics={"metric_y": 1_000_000}, currency="usd",
+            measurements={"metric_y": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 3_000 and p["cost_source"] == "rate_card"

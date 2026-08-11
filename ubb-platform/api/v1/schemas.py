@@ -101,17 +101,34 @@ class RecordUsageRequest(Schema):
     metadata: dict = Field(default_factory=dict)
     provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
-    usage_metrics: Optional[dict[str, int]] = None
+    # The measured quantities, keyed by the codes declared beneath this event's
+    # Event Type (#274). The name is the declarations' own: a quantity is
+    # costable exactly when a declaration matches its key, and one that matches
+    # nothing is still accepted here and still contributes nothing to the
+    # amounts below — slice 3 owns making that visible rather than silent.
+    measurements: Optional[dict[str, int]] = None
 
-    @field_validator("usage_metrics")
+    @field_validator("measurements")
     @classmethod
-    def usage_metrics_values_nonnegative(cls, v):
+    def measurement_values_nonnegative(cls, v):
+        """The only validation this bag has ever carried, moved unchanged.
+
+        Not tightened, deliberately: refusing a key no declaration matches is
+        slice 3's, which owns every behaviour a declaration selects. Anything
+        this refused before it was renamed it still refuses, and nothing more —
+        `usage/tests/test_negative_metric_rejection.py` states both halves.
+
+        The PREDICATE is what moved unchanged. The message had to be rewritten
+        because it names the field, and its second noun moved with it rather
+        than being left spelling the retired word for the one ticket between
+        this rename and the one that clears that word from the backend.
+        """
         if v is None:
             return v
         negative = [k for k, val in v.items() if val < 0]
         if negative:
             raise ValueError(
-                f"usage_metrics values must be >= 0; negative metrics: {negative}")
+                f"measurements values must be >= 0; negative quantities: {negative}")
         return v
     currency: Optional[str] = Field(default=None, max_length=3)
     task_id: Optional[UUID] = None
@@ -179,7 +196,8 @@ class RecordUsageResponse(Schema):
     # {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
     # arrived_after} — arrived_after=false marks the tipping event.
     stop_context: Optional[list] = None
-    usage_metrics: Optional[dict] = None
+    # The quantities as recorded — see `RecordUsageRequest.measurements` (#274).
+    measurements: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
     dim2: str = ""
@@ -263,7 +281,9 @@ class UsageEventDetailOut(Schema):
     currency: str = "usd"
     provider_cost_micros: int
     billed_cost_micros: int
-    usage_metrics: dict = {}
+    # The quantities this posting was measured by, keyed by declared code
+    # (#274) — the field the status below has always been about.
+    measurements: dict = {}
     # What the bag above MEANS when it is empty — pruned, never applicable, or
     # genuinely there and empty. Without it an expired payload and a synthetic
     # charge are one indistinguishable `{}`, and a reader that defaults on an

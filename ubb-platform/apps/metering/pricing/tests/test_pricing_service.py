@@ -16,7 +16,7 @@ class TestPricing:
         TenantMarkup.objects.create(tenant=t, markup_percentage_micros=20_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
-            usage_metrics=None, currency="usd",
+            measurements=None, currency="usd",
             caller_provider_cost=1_000_000, caller_billed=None)
         assert prov == 1_000_000 and billed == 1_200_000 and p["price_source"] == "markup"
 
@@ -28,7 +28,7 @@ class TestPricing:
         prov, billed, p = PricingService.price(
             tenant=t, customer=c,
             selectors={"event_type": "chat", "provider": "openai", "dim1": "gpt-4"},
-            usage_metrics={"input_tokens": 1000}, currency="usd",
+            measurements={"input_tokens": 1000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 5 and billed == 5
 
@@ -40,7 +40,7 @@ class TestPricing:
             metric_name="seats", pricing_model="flat", fixed_micros=9_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
-            usage_metrics={"input_tokens": 1000, "seats": 3}, currency="usd",
+            measurements={"input_tokens": 1000, "seats": 3}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 5 and billed == 9_000_000 and p["price_source"] == "rate_card"
 
@@ -53,13 +53,13 @@ class TestPricing:
         prov, _, _ = PricingService.price(
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o", "dim1": "gpt-4"},
-            usage_metrics={"tok": 1_000_000}, currency="usd",
+            measurements={"tok": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 9_000
         prov2, _, _ = PricingService.price(
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o", "dim1": "other"},
-            usage_metrics={"tok": 1_000_000}, currency="usd",
+            measurements={"tok": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov2 == 1_000
 
@@ -67,14 +67,14 @@ class TestPricing:
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics={"tok": 100}, currency="usd",
+            measurements={"tok": 100}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 0 and p["uncosted_metrics"] == ["tok"]
         t.require_cost_card_coverage = True; t.save(update_fields=["require_cost_card_coverage"])
         with pytest.raises(PricingError):
             PricingService.price(
                 tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-                usage_metrics={"tok": 100}, currency="usd",
+                measurements={"tok": 100}, currency="usd",
                 caller_provider_cost=None, caller_billed=None)
 
     def test_caller_cost_path_respects_coverage_when_strict(self):
@@ -87,7 +87,7 @@ class TestPricing:
         with pytest.raises(PricingError):
             PricingService.price(
                 tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-                usage_metrics={"unmatched_metric": 100}, currency="usd",
+                measurements={"unmatched_metric": 100}, currency="usd",
                 caller_provider_cost=500, caller_billed=None,
             )
 
@@ -97,7 +97,7 @@ class TestPricing:
         c = Customer.objects.create(tenant=t, external_id="c3")
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics={"unmatched_metric": 100}, currency="usd",
+            measurements={"unmatched_metric": 100}, currency="usd",
             caller_provider_cost=500, caller_billed=None,
         )
         assert prov == 500 and p["cost_source"] == "caller"
@@ -112,7 +112,7 @@ class TestPricing:
             metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics={"tok": 100}, currency="usd",
+            measurements={"tok": 100}, currency="usd",
             caller_provider_cost=500, caller_billed=None,
         )
         assert prov == 500 and p["cost_source"] == "caller"
@@ -142,7 +142,7 @@ class TestPricing:
         prov, billed, p = PricingService.price(
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o"},
-            usage_metrics=None, currency="usd",
+            measurements=None, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 0
 
@@ -154,7 +154,7 @@ class TestPricing:
         c = Customer.objects.create(tenant=t, external_id="c7")
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            usage_metrics=None, currency="usd",
+            measurements=None, currency="usd",
             caller_provider_cost=123, caller_billed=None)
         assert prov == 123 and p["cost_source"] == "caller"
 
@@ -169,7 +169,7 @@ class TestPricing:
         with pytest.raises(PricingError):
             PricingService.price(
                 tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-                usage_metrics={"unmatched": 5}, currency="usd",
+                measurements={"unmatched": 5}, currency="usd",
                 caller_provider_cost=None, caller_billed=None)
 
 

@@ -49,7 +49,7 @@ interface DetailSeed {
   dim3?: string;
   billed_cost_micros: number;
   provider_cost_micros: number;
-  usage_metrics?: Record<string, number>;
+  measurements?: Record<string, number>;
   metadata?: Record<string, unknown>;
   task_id?: string | null;
   stop_context?: Array<Record<string, unknown>> | null;
@@ -59,7 +59,7 @@ interface DetailSeed {
   /**
    * Whether the measured quantities can still be read (#271). Every seed below
    * is a metered posting whose measurement record is present, so the default
-   * says so explicitly rather than being inferred from `usage_metrics` being
+   * says so explicitly rather than being inferred from `measurements` being
    * empty — inferring it is exactly the mistake the field exists to end. The
    * pruned and not-applicable scenarios arrive with the canonical scenario
    * module in #281.
@@ -82,7 +82,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     dim1: seed.dim1 ?? "",
     dim2: seed.dim2 ?? "",
     dim3: seed.dim3 ?? "",
-    usage_metrics: seed.usage_metrics ?? {},
+    measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},
     metadata: seed.metadata ?? {},
@@ -121,7 +121,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim3: "agent-7",
       billed_cost_micros: 187_500,
       provider_cost_micros: 142_300,
-      usage_metrics: { input_tokens: 4200, output_tokens: 1730 },
+      measurements: { input_tokens: 4200, output_tokens: 1730 },
       metadata: {
         env: "prod",
         team: "search",
@@ -166,7 +166,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:02:12Z",
       billed_cost_micros: 96_000,
       provider_cost_micros: 75_000,
-      usage_metrics: { input_tokens: 2100, output_tokens: 940 },
+      measurements: { input_tokens: 2100, output_tokens: 940 },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
       pricing_provenance: markupProvenance(75_000),
       stop_context: [
@@ -190,7 +190,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:03:28Z",
       billed_cost_micros: 54_000,
       provider_cost_micros: 42_000,
-      usage_metrics: { input_tokens: 1200, output_tokens: 480 },
+      measurements: { input_tokens: 1200, output_tokens: 480 },
       metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(42_000),
       stop_context: [
@@ -216,7 +216,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       event_type: "messages.create",
       billed_cost_micros: 31_000,
       provider_cost_micros: 24_000,
-      usage_metrics: { input_tokens: 800, output_tokens: 260 },
+      measurements: { input_tokens: 800, output_tokens: 260 },
       metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(24_000),
       stop_context: [
@@ -242,7 +242,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim2: "batch-worker",
       billed_cost_micros: 64_000,
       provider_cost_micros: 50_000,
-      usage_metrics: { input_tokens: 1500, output_tokens: 620 },
+      measurements: { input_tokens: 1500, output_tokens: 620 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
       pricing_provenance: markupProvenance(50_000),
@@ -269,7 +269,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim1: "search-api",
       billed_cost_micros: 22_400,
       provider_cost_micros: 17_500,
-      usage_metrics: { embedding_tokens: 5200 },
+      measurements: { embedding_tokens: 5200 },
       metadata: {
         env: "prod",
         team: "search",
@@ -308,7 +308,7 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       dim3: index % 5 === 0 ? "agent-7" : "",
       billed_cost_micros: billed,
       provider_cost_micros: providerCost,
-      usage_metrics: {
+      measurements: {
         input_tokens: 900 + (index % 23) * 240,
         output_tokens: 260 + (index % 11) * 145,
       },

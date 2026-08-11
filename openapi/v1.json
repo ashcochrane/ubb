@@ -4704,6 +4704,20 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "measurements": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measurements"
+          },
           "metadata": {
             "additionalProperties": true,
             "title": "Metadata",
@@ -4751,20 +4765,6 @@
               }
             ],
             "title": "Task Id"
-          },
-          "usage_metrics": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Usage Metrics"
           }
         },
         "required": [
@@ -4801,6 +4801,18 @@
           "event_id": {
             "title": "Event Id",
             "type": "string"
+          },
+          "measurements": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measurements"
           },
           "new_balance_micros": {
             "anyOf": [
@@ -4930,18 +4942,6 @@
             },
             "title": "Uncosted Metrics",
             "type": "array"
-          },
-          "usage_metrics": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Usage Metrics"
           }
         },
         "required": [
@@ -6839,6 +6839,12 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "measurements": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Measurements",
+            "type": "object"
+          },
           "measurements_status": {
             "enum": [
               "available",
@@ -6896,12 +6902,6 @@
               }
             ],
             "title": "Task Id"
-          },
-          "usage_metrics": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Usage Metrics",
-            "type": "object"
           }
         },
         "required": [

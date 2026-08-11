@@ -166,7 +166,7 @@ export async function sendTestEvent(
   await mockDelay();
   eventCounter += 1;
 
-  const metrics = body.usage_metrics ?? {};
+  const metrics = body.measurements ?? {};
   const uncosted = Object.keys(metrics).filter(
     (name) => !MOCK_COSTED_METRICS.has(name),
   );
@@ -189,7 +189,7 @@ export async function sendTestEvent(
     billed_cost_micros: billed,
     provider_cost_micros: provider,
     new_balance_micros: balanceMicros,
-    usage_metrics: body.usage_metrics ?? null,
+    measurements: body.measurements ?? null,
     uncosted_metrics: uncosted,
     pricing_provenance: {
       engine_version: "mock-1",

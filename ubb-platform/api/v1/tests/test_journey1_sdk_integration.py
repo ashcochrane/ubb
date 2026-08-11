@@ -92,12 +92,12 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         assert rate["metric_name"] == "output_tokens"
         assert rate["rate_card_id"] == book_id
 
-        # (b) record usage with usage_metrics and NO caller cost -> engine computes COGS.
+        # (b) record usage with measurements and NO caller cost -> engine computes COGS.
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
         #     contract, real (tolerant) deserialization into RecordUsageResult.
         res = client.record_usage(customer_id=str(customer.id), request_id="r1",
                                   idempotency_key="i1", dimensions={"dim1": "search"},
-                                  usage_metrics={"input_tokens": 1000})
+                                  measurements={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2
         assert res.uncosted_metrics == []   # input_tokens HAS a cost card

@@ -14,9 +14,9 @@ from typing import cast
 from uuid import UUID
 
 if TYPE_CHECKING:
+  from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
   from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
   from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-  from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
 
 
 
@@ -43,12 +43,12 @@ class UsageEventDetailOut:
             dim2 (str | Unset):  Default: ''.
             dim3 (str | Unset):  Default: ''.
             event_type (str | Unset):  Default: ''.
+            measurements (UsageEventDetailOutMeasurements | Unset):
             metadata (UsageEventDetailOutMetadata | Unset):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset):
             provider (str | Unset):  Default: ''.
             stop_context (list[Any] | None | Unset):
             task_id (None | str | Unset):
-            usage_metrics (UsageEventDetailOutUsageMetrics | Unset):
      """
 
     billed_cost_micros: int
@@ -64,12 +64,12 @@ class UsageEventDetailOut:
     dim2: str | Unset = ''
     dim3: str | Unset = ''
     event_type: str | Unset = ''
+    measurements: UsageEventDetailOutMeasurements | Unset = UNSET
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
     provider: str | Unset = ''
     stop_context: list[Any] | None | Unset = UNSET
     task_id: None | str | Unset = UNSET
-    usage_metrics: UsageEventDetailOutUsageMetrics | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -77,9 +77,9 @@ class UsageEventDetailOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-        from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
         billed_cost_micros = self.billed_cost_micros
 
         created_at = self.created_at
@@ -105,6 +105,10 @@ class UsageEventDetailOut:
         dim3 = self.dim3
 
         event_type = self.event_type
+
+        measurements: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.measurements, Unset):
+            measurements = self.measurements.to_dict()
 
         metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.metadata, Unset):
@@ -132,10 +136,6 @@ class UsageEventDetailOut:
         else:
             task_id = self.task_id
 
-        usage_metrics: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.usage_metrics, Unset):
-            usage_metrics = self.usage_metrics.to_dict()
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -159,6 +159,8 @@ class UsageEventDetailOut:
             field_dict["dim3"] = dim3
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
+        if measurements is not UNSET:
+            field_dict["measurements"] = measurements
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
         if pricing_provenance is not UNSET:
@@ -169,8 +171,6 @@ class UsageEventDetailOut:
             field_dict["stop_context"] = stop_context
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
-        if usage_metrics is not UNSET:
-            field_dict["usage_metrics"] = usage_metrics
 
         return field_dict
 
@@ -178,9 +178,9 @@ class UsageEventDetailOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-        from ..models.usage_event_detail_out_usage_metrics import UsageEventDetailOutUsageMetrics
         d = dict(src_dict)
         billed_cost_micros = d.pop("billed_cost_micros")
 
@@ -213,6 +213,16 @@ class UsageEventDetailOut:
         dim3 = d.pop("dim3", UNSET)
 
         event_type = d.pop("event_type", UNSET)
+
+        _measurements = d.pop("measurements", UNSET)
+        measurements: UsageEventDetailOutMeasurements | Unset
+        if isinstance(_measurements,  Unset):
+            measurements = UNSET
+        else:
+            measurements = UsageEventDetailOutMeasurements.from_dict(_measurements)
+
+
+
 
         _metadata = d.pop("metadata", UNSET)
         metadata: UsageEventDetailOutMetadata | Unset
@@ -264,16 +274,6 @@ class UsageEventDetailOut:
         task_id = _parse_task_id(d.pop("task_id", UNSET))
 
 
-        _usage_metrics = d.pop("usage_metrics", UNSET)
-        usage_metrics: UsageEventDetailOutUsageMetrics | Unset
-        if isinstance(_usage_metrics,  Unset):
-            usage_metrics = UNSET
-        else:
-            usage_metrics = UsageEventDetailOutUsageMetrics.from_dict(_usage_metrics)
-
-
-
-
         usage_event_detail_out = cls(
             billed_cost_micros=billed_cost_micros,
             created_at=created_at,
@@ -288,12 +288,12 @@ class UsageEventDetailOut:
             dim2=dim2,
             dim3=dim3,
             event_type=event_type,
+            measurements=measurements,
             metadata=metadata,
             pricing_provenance=pricing_provenance,
             provider=provider,
             stop_context=stop_context,
             task_id=task_id,
-            usage_metrics=usage_metrics,
         )
 
 

@@ -57,8 +57,8 @@ class MeteringClientTest(unittest.TestCase):
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["provider_cost_micros"], 500_000)
         self.assertEqual(body["billed_cost_micros"], 1_000_000)
-        # No usage_metrics supplied → must not appear in body
-        self.assertNotIn("usage_metrics", body)
+        # No measurements supplied → must not appear in body
+        self.assertNotIn("measurements", body)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_with_the_open_bag(self, mock_post):
@@ -315,36 +315,36 @@ class MeteringClientTest(unittest.TestCase):
             self.client.close()
             mock_close.assert_called_once()
 
-    # ---- record_usage with usage_metrics (no provider_cost_micros) ----
+    # ---- record_usage with measurements (no provider_cost_micros) ----
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_usage_metrics_no_cost(self, mock_post):
+    def test_record_usage_with_measurements_no_cost(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_m1", "new_balance_micros": 9_000_000, "suspended": False,
         })
         result = self.client.record_usage(
             customer_id="c", request_id="r", idempotency_key="i",
-            usage_metrics={"input_tokens": 1000},
+            measurements={"input_tokens": 1000},
         )
         self.assertIsInstance(result, RecordUsageResponse)
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["usage_metrics"], {"input_tokens": 1000})
+        self.assertEqual(body["measurements"], {"input_tokens": 1000})
         self.assertNotIn("provider_cost_micros", body)
 
-    # ---- record_usage tolerates extra server fields (usage_metrics/provenance/uncosted) ----
+    # ---- record_usage tolerates extra server fields (measurements/provenance/uncosted) ----
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_full_server_body_with_extra_fields(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
             "provider_cost_micros": 2000, "billed_cost_micros": 2000,
-            "usage_metrics": {"input_tokens": 1000},
+            "measurements": {"input_tokens": 1000},
             "pricing_provenance": {"engine_version": "x"},
             "uncosted_metrics": ["foo"],
         })
         res = self.client.record_usage(
             customer_id="c", request_id="r", idempotency_key="i",
-            usage_metrics={"input_tokens": 1000},
+            measurements={"input_tokens": 1000},
         )
         self.assertIsInstance(res, RecordUsageResponse)
         self.assertEqual(res.provider_cost_micros, 2000)

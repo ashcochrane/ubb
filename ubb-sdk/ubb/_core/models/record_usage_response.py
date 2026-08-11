@@ -12,8 +12,8 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
   from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
-  from ..models.record_usage_response_usage_metrics_type_0 import RecordUsageResponseUsageMetricsType0
 
 
 
@@ -32,6 +32,7 @@ class RecordUsageResponse:
             billed_cost_micros (int | None | Unset):
             dim2 (str | Unset):  Default: ''.
             dim3 (str | Unset):  Default: ''.
+            measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
             parent_task_id (None | str | Unset):
             pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset):
@@ -44,7 +45,6 @@ class RecordUsageResponse:
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
             uncosted_metrics (list[str] | Unset):
-            usage_metrics (None | RecordUsageResponseUsageMetricsType0 | Unset):
      """
 
     event_id: str
@@ -52,6 +52,7 @@ class RecordUsageResponse:
     billed_cost_micros: int | None | Unset = UNSET
     dim2: str | Unset = ''
     dim3: str | Unset = ''
+    measurements: None | RecordUsageResponseMeasurementsType0 | Unset = UNSET
     new_balance_micros: int | None | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_provenance: None | RecordUsageResponsePricingProvenanceType0 | Unset = UNSET
@@ -64,7 +65,6 @@ class RecordUsageResponse:
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
     uncosted_metrics: list[str] | Unset = UNSET
-    usage_metrics: None | RecordUsageResponseUsageMetricsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -72,8 +72,8 @@ class RecordUsageResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
-        from ..models.record_usage_response_usage_metrics_type_0 import RecordUsageResponseUsageMetricsType0
         event_id = self.event_id
 
         suspended = self.suspended
@@ -87,6 +87,14 @@ class RecordUsageResponse:
         dim2 = self.dim2
 
         dim3 = self.dim3
+
+        measurements: dict[str, Any] | None | Unset
+        if isinstance(self.measurements, Unset):
+            measurements = UNSET
+        elif isinstance(self.measurements, RecordUsageResponseMeasurementsType0):
+            measurements = self.measurements.to_dict()
+        else:
+            measurements = self.measurements
 
         new_balance_micros: int | None | Unset
         if isinstance(self.new_balance_micros, Unset):
@@ -162,14 +170,6 @@ class RecordUsageResponse:
 
 
 
-        usage_metrics: dict[str, Any] | None | Unset
-        if isinstance(self.usage_metrics, Unset):
-            usage_metrics = UNSET
-        elif isinstance(self.usage_metrics, RecordUsageResponseUsageMetricsType0):
-            usage_metrics = self.usage_metrics.to_dict()
-        else:
-            usage_metrics = self.usage_metrics
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -183,6 +183,8 @@ class RecordUsageResponse:
             field_dict["dim2"] = dim2
         if dim3 is not UNSET:
             field_dict["dim3"] = dim3
+        if measurements is not UNSET:
+            field_dict["measurements"] = measurements
         if new_balance_micros is not UNSET:
             field_dict["new_balance_micros"] = new_balance_micros
         if parent_task_id is not UNSET:
@@ -207,8 +209,6 @@ class RecordUsageResponse:
             field_dict["task_total_provider_cost_micros"] = task_total_provider_cost_micros
         if uncosted_metrics is not UNSET:
             field_dict["uncosted_metrics"] = uncosted_metrics
-        if usage_metrics is not UNSET:
-            field_dict["usage_metrics"] = usage_metrics
 
         return field_dict
 
@@ -216,8 +216,8 @@ class RecordUsageResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
-        from ..models.record_usage_response_usage_metrics_type_0 import RecordUsageResponseUsageMetricsType0
         d = dict(src_dict)
         event_id = d.pop("event_id")
 
@@ -236,6 +236,26 @@ class RecordUsageResponse:
         dim2 = d.pop("dim2", UNSET)
 
         dim3 = d.pop("dim3", UNSET)
+
+        def _parse_measurements(data: object) -> None | RecordUsageResponseMeasurementsType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                measurements_type_0 = RecordUsageResponseMeasurementsType0.from_dict(data)
+
+
+
+                return measurements_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponseMeasurementsType0 | Unset, data)
+
+        measurements = _parse_measurements(d.pop("measurements", UNSET))
+
 
         def _parse_new_balance_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -360,32 +380,13 @@ class RecordUsageResponse:
         uncosted_metrics = cast(list[str], d.pop("uncosted_metrics", UNSET))
 
 
-        def _parse_usage_metrics(data: object) -> None | RecordUsageResponseUsageMetricsType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                usage_metrics_type_0 = RecordUsageResponseUsageMetricsType0.from_dict(data)
-
-
-
-                return usage_metrics_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RecordUsageResponseUsageMetricsType0 | Unset, data)
-
-        usage_metrics = _parse_usage_metrics(d.pop("usage_metrics", UNSET))
-
-
         record_usage_response = cls(
             event_id=event_id,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,
             dim2=dim2,
             dim3=dim3,
+            measurements=measurements,
             new_balance_micros=new_balance_micros,
             parent_task_id=parent_task_id,
             pricing_provenance=pricing_provenance,
@@ -398,7 +399,6 @@ class RecordUsageResponse:
             task_total_billed_cost_micros=task_total_billed_cost_micros,
             task_total_provider_cost_micros=task_total_provider_cost_micros,
             uncosted_metrics=uncosted_metrics,
-            usage_metrics=usage_metrics,
         )
 
 

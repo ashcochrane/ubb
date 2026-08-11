@@ -80,7 +80,7 @@ def usage_kwargs(item):
         event_type=item.event_type,
         provider=item.provider,
         task_id=item.task_id,
-        usage_metrics=item.usage_metrics,
+        measurements=item.measurements,
         effective_at=item.effective_at,
     )
 
@@ -295,7 +295,7 @@ def get_usage_event(request, event_id: UUID):
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
-        "usage_metrics": e.usage_metrics or {},
+        "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the
         # serialiser, which is the only place §E5 permits it to exist.
         "measurements_status": measurements_status_for(e),
